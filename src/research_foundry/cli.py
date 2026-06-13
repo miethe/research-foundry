@@ -69,6 +69,20 @@ def doctor() -> None:
     except Exception as exc:  # noqa: BLE001
         table.add_row("adapters", "warn", str(exc))
 
+    # Integration reachability — informational only; offline is not an error.
+    try:
+        from .integrations import get_arc_client, get_intenttree_client
+
+        arc_status = "reachable" if get_arc_client().available() else "unreachable"
+        it_status = "reachable" if get_intenttree_client().available() else "unreachable"
+        table.add_row(
+            "integrations",
+            "ok",
+            f"arc {arc_status} / intenttree {it_status}",
+        )
+    except Exception as exc:  # noqa: BLE001
+        table.add_row("integrations", "warn", str(exc))
+
     console.print(table)
 
 

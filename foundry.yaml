@@ -26,3 +26,12 @@ foundry:
     gpt_researcher: optional
     paperqa2: optional
     litellm: optional
+
+  # Bidirectional integration clients (Phase 0+).
+  # Set base_url here to override the compiled defaults.
+  # Tokens go in the per-profile .env file (see .env.example).
+  integrations:
+    arc:
+      base_url: http://127.0.0.1:8910   # ARC (Agent Review Council)
+    intenttree:
+      base_url: http://localhost:8000   # IntentTree task dispatcher
