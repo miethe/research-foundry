@@ -84,6 +84,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         audience: str = typer.Option("technical", "--audience"),
         max_cost: float = typer.Option(5.0, "--max-cost"),
         freshness: int = typer.Option(180, "--freshness", help="max source age (days)"),
+        profile: str | None = typer.Option(None, "--profile", help="runtime key profile"),
     ) -> None:
         """Plan a research swarm: brief + swarm plan + routing decision (spec §10.4)."""
 
@@ -92,10 +93,10 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         try:
             r = svc.plan_run(
                 intent_id, depth=depth, audience=audience,
-                max_cost_usd=max_cost, freshness_days=freshness,
+                max_cost_usd=max_cost, freshness_days=freshness, profile=profile,
             )
         except RFError as e:
-            _fail(e)
+            _fail(e)  # GovernanceError carries exit_code=3; others default to usage
         console.print(f"[green]planned[/green] run {r.run_id}")
         typer.echo(f"run={r.run_id}")  # plain (unwrapped) for scripting
         for p in (r.brief_path, r.swarm_path, r.routing_path):
@@ -297,18 +298,63 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
     def guard_check(
         profile: str = typer.Option("personal", "--profile"),
         run: str | None = typer.Option(None, "--run"),
+        sensitivity: str | None = typer.Option(None, "--sensitivity"),
+        provider: str | None = typer.Option(None, "--provider"),
+        writeback: list[str] = typer.Option(None, "--writeback", help="repeatable target"),
+        key_profile: str | None = typer.Option(
+            None, "--key-profile", help="alias of --profile (runtime key)"
+        ),
+        key_profile_allowed: str | None = typer.Option(
+            None, "--key-profile-allowed", help="intent's allowed key profile (standalone form)"
+        ),
     ) -> None:
-        """Check governance policy for a profile/run."""
+        """Check governance policy for a profile/run.
+
+        With ``--run``, the run's intent + source cards populate the context so
+        the §7.2 rules can actually fire. Without a run, the boundary is testable
+        standalone via ``--key-profile-allowed`` / ``--sensitivity`` / ``--provider``.
+        """
 
         from .services import governance as svc
 
-        ctx = svc.GuardContext(profile=profile, run_id=run)
+        eff_profile = key_profile or profile
+        targets = tuple(writeback) if writeback else ()
         try:
+            if run:
+                ctx = svc.load_run_context(
+                    run,
+                    profile=eff_profile,
+                    model_provider=provider,
+                    writeback_targets=targets,
+                    paths=None,
+                )
+                # CLI overrides take precedence over derived run values.
+                if sensitivity or key_profile_allowed:
+                    ctx = svc.GuardContext(
+                        profile=ctx.profile,
+                        run_id=ctx.run_id,
+                        sensitivity=sensitivity or ctx.sensitivity,
+                        source_sensitivities=ctx.source_sensitivities,
+                        model_provider=provider or ctx.model_provider,
+                        writeback_targets=ctx.writeback_targets,
+                        intent_key_profile_allowed=(
+                            key_profile_allowed or ctx.intent_key_profile_allowed
+                        ),
+                        artifact_paths=ctx.artifact_paths,
+                    )
+            else:
+                ctx = svc.GuardContext(
+                    profile=eff_profile,
+                    sensitivity=sensitivity,
+                    model_provider=provider,
+                    writeback_targets=targets,
+                    intent_key_profile_allowed=key_profile_allowed,
+                )
             r = svc.guard_check(ctx)
         except RFError as e:
             _fail(e, ExitCode.GOVERNANCE)
         if r.passed:
-            console.print(f"[green]✓ guard passed[/green] (profile {profile})")
+            console.print(f"[green]✓ guard passed[/green] (profile {eff_profile})")
         else:
             for v in r.violations:
                 err_console.print(f"[red]{v.severity}[/red] {v.rule_id}: {v.message}")
@@ -372,14 +418,16 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         """Run enabled discovery adapters (degraded-safe) to produce source candidates."""
 
         from .adapters import get_adapter, load_all
+        from .frontmatter import load_md
         from .paths import FoundryPaths
-        from .yamlio import dump_yaml, load_yaml
+        from .yamlio import dump_yaml
 
         load_all()
         paths = FoundryPaths.discover()
         rp = paths.run_paths(run)
         wanted = [a.strip() for a in adapters.split(",")]
-        brief = load_yaml(rp.research_brief) if rp.research_brief.exists() else {}
+        # research_brief.md is front-mattered Markdown, not pure YAML.
+        brief = load_md(rp.research_brief)[0] if rp.research_brief.exists() else {}
         if dry_run:
             console.print(f"[cyan]dry-run[/cyan] would run: {', '.join(wanted)}")
             return
@@ -446,6 +494,114 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             console.print("[yellow]index rebuild not implemented[/yellow]")
 
     app.add_typer(index_app, name="index")
+
+    # ----- init (spec §10.1 / §16 Day-1) -----
+    @app.command()
+    def init(
+        path: str = typer.Argument(".", help="target workspace path"),
+        profile: str = typer.Option("personal", "--profile", help="default key profile"),
+    ) -> None:
+        """Initialize a new foundry workspace (folders + schemas/config/templates)."""
+
+        from .services import workspace as svc
+
+        try:
+            r = svc.init_workspace(path, profile=profile)
+        except RFError as e:
+            _fail(e)
+        console.print(f"[green]initialized[/green] foundry at {r.root}")
+        if r.created_dirs:
+            console.print(f"  created {len(r.created_dirs)} dir(s)")
+        if r.copied:
+            console.print(f"  copied: {', '.join(r.copied)}")
+        if r.already_present:
+            console.print(f"  already present: {', '.join(sorted(set(r.already_present)))}")
+
+    # ----- redact (spec §10.15) -----
+    @app.command()
+    def redact(
+        run: str = typer.Argument(..., help="run id"),
+        target: str = typer.Option("public", "--target", help="redaction audience"),
+    ) -> None:
+        """Write a target-audience-redacted copy of a run's report (spec §10.15)."""
+
+        from .services import workspace as svc
+
+        try:
+            r = svc.redact_run(run, target=target)
+        except RFError as e:
+            _fail(e)
+        console.print(f"[green]redacted[/green] {r.redacted_path}")
+        console.print(f"  masked {len(r.redacted_claims)} sensitive claim(s)")
+
+    # ----- intent (spec §16 Day-2: rf intent show) -----
+    intent_app = typer.Typer(help="Research intent operations (spec §16 Day-2).")
+
+    @intent_app.command("show")
+    def intent_show(intent_id: str = typer.Argument(...)) -> None:
+        """Print a research intent's YAML (resolve active, then recursive search)."""
+
+        from .paths import FoundryPaths
+        from .yamlio import dumps_yaml, load_yaml
+
+        paths = FoundryPaths.discover()
+        candidate = paths.intents_active / f"{intent_id}.yaml"
+        if not candidate.exists() and paths.intents.exists():
+            matches = sorted(paths.intents.rglob(f"{intent_id}.yaml"))
+            candidate = matches[0] if matches else candidate
+        if not candidate.exists():
+            err_console.print(f"[red]intent not found: {intent_id}[/red]")
+            raise typer.Exit(int(ExitCode.USAGE))
+        typer.echo(dumps_yaml(load_yaml(candidate)).rstrip())
+
+    app.add_typer(intent_app, name="intent")
+
+    # ----- tree (spec §16 Day-2: rf tree add-node) -----
+    tree_app = typer.Typer(help="IntentTree operations (spec §16 Day-2).")
+
+    @tree_app.command("add-node")
+    def tree_add_node(
+        intent: str = typer.Option(..., "--intent", help="intent id this node serves"),
+        title: str = typer.Option(..., "--title", help="node title"),
+        level: str = typer.Option("L4", "--level"),
+        status: str = typer.Option("ready", "--status"),
+        priority: str = typer.Option("medium", "--priority"),
+        parent: str | None = typer.Option(None, "--parent"),
+    ) -> None:
+        """Create/append an IntentTree node YAML (validated vs intenttree_node)."""
+
+        from .ids import tree_node_id
+        from .paths import FoundryPaths
+        from .schemas import SchemaRegistry
+        from .yamlio import dump_yaml
+
+        paths = FoundryPaths.discover()
+        node_id = tree_node_id(title)
+        node = {
+            "node_id": node_id,
+            "level": level,
+            "title": title,
+            "intent_id": intent,
+            "status": status,
+            "priority": priority,
+            "expected_artifacts": ["evidence_bundle"],
+        }
+        if parent:
+            node["parent"] = parent
+        reg = SchemaRegistry()
+        if reg.has("intenttree_node"):
+            result = reg.validate(node, "intenttree_node")
+            if not result.ok:
+                err_console.print("[red]invalid intenttree node[/red]")
+                for e in result.errors:
+                    err_console.print(f"  - {e}")
+                raise typer.Exit(int(ExitCode.SCHEMA))
+        out_path = paths.intenttree_nodes / f"{node_id}.yaml"
+        dump_yaml(node, out_path)
+        console.print(f"[green]tree node[/green] {node_id}")
+        typer.echo(str(out_path))
+
+    app.add_typer(tree_app, name="tree")
 
 
 def _render_checks(checks) -> None:

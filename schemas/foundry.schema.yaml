@@ -1,0 +1,48 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/foundry.schema.yaml"
+title: Foundry Workspace Manifest
+description: >-
+  Top-level foundry.yaml manifest for a Research Foundry workspace. Wraps the
+  workspace identity under a `foundry:` object alongside a `schema_version`.
+type: object
+properties:
+  schema_version:
+    type:
+      - number
+      - string
+  foundry:
+    type: object
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      owner:
+        type: string
+      default_profile:
+        enum:
+          - personal
+          - work_approved
+          - client_approved
+          - offline_only
+      storage_mode:
+        type: string
+      timezone:
+        type: string
+      systems:
+        type: object
+        additionalProperties: true
+      defaults:
+        type: object
+        additionalProperties: true
+      adapters:
+        type: object
+        additionalProperties: true
+    required:
+      - id
+      - name
+      - owner
+    additionalProperties: true
+required:
+  - foundry
+additionalProperties: true

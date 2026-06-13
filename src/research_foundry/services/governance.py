@@ -37,8 +37,15 @@ _BUILTIN_SECRET_PATTERNS: tuple[str, ...] = (
     r"AKIA[0-9A-Z]{16}",
     r"ASIA[0-9A-Z]{16}",
     r"AIza[0-9A-Za-z\-_]{35}",
-    r"xox[baprs]-[0-9A-Za-z\-]{10,}",
+    r"xox[baprse]-[0-9A-Za-z\-]{10,}",
+    r"xapp-[0-9]-[A-Za-z0-9\-]{10,}",
     r"glpat-[0-9A-Za-z\-_]{20,}",
+    r"(?:sk|rk)_live_[0-9A-Za-z]{20,}",
+    r"SG\.[A-Za-z0-9_\-]{22,}\.[A-Za-z0-9_\-]{43,}",
+    r"SK[0-9a-fA-F]{32}",
+    r"AC[0-9a-fA-F]{32}",
+    r"(?i)aws_secret[_a-z]*\s*[:=]\s*['\"]?[A-Za-z0-9/+]{40}",
+    r"(?i)bearer\s+[A-Za-z0-9_\-\.=]{16,}",
     r"(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|client[_-]?secret)"
     r"\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{16,}",
     r"(?i)(password|passwd|pwd)\s*[:=]\s*['\"]?\S{8,}",
@@ -303,6 +310,108 @@ def guard_check(
     return result
 
 
+def load_run_context(
+    run_id: str,
+    *,
+    profile: str = "personal",
+    model_provider: str | None = None,
+    writeback_targets: tuple[str, ...] = (),
+    paths: FoundryPaths | None = None,
+) -> GuardContext:
+    """Build a :class:`GuardContext` from a planned run's on-disk artifacts.
+
+    Resolves the run's ``run.yaml`` → linked intent (``intents/active/<id>.yaml``)
+    to read ``governance.key_profile_allowed`` and sensitivity, scans the run's
+    ``sources/*.md`` front matter for their sensitivities, and collects the run's
+    Markdown/YAML artifact paths for the secret scan. Missing pieces degrade to
+    empty values so the guard is still evaluable. Raises :class:`NotFoundError`
+    when the run directory itself is absent.
+    """
+
+    from ..errors import NotFoundError  # local import to avoid cycle at module load
+
+    paths = paths or FoundryPaths.discover()
+    rp = paths.run_paths(run_id)
+    if not rp.run.exists():
+        raise NotFoundError(f"run not found: {run_id} ({rp.run})")
+
+    run_doc = _safe_load_yaml(rp.run_yaml)
+    intent_id = run_doc.get("intent_id") if isinstance(run_doc, dict) else None
+    run_sensitivity = run_doc.get("sensitivity") if isinstance(run_doc, dict) else None
+
+    key_profile_allowed: str | None = None
+    intent_sensitivity: str | None = None
+    if intent_id:
+        intent = _load_intent_doc(str(intent_id), paths)
+        gov = intent.get("governance") if isinstance(intent.get("governance"), dict) else {}
+        key_profile_allowed = gov.get("key_profile_allowed")
+        intent_sensitivity = intent.get("sensitivity") or gov.get("sensitivity")
+
+    source_sensitivities = _scan_source_sensitivities(rp.sources)
+    artifact_paths = _collect_run_artifacts(rp.run)
+
+    return GuardContext(
+        profile=profile,
+        run_id=run_id,
+        sensitivity=intent_sensitivity or run_sensitivity,
+        source_sensitivities=tuple(source_sensitivities),
+        model_provider=model_provider,
+        writeback_targets=tuple(writeback_targets),
+        intent_key_profile_allowed=key_profile_allowed,
+        artifact_paths=tuple(artifact_paths),
+    )
+
+
+def _safe_load_yaml(path: Path) -> dict:
+    from ..yamlio import load_yaml
+
+    try:
+        data = load_yaml(path)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _load_intent_doc(intent_id: str, paths: FoundryPaths) -> dict:
+    """Resolve an intent by id under ``intents/active/`` (recursive fallback)."""
+
+    candidate = paths.intents_active / f"{intent_id}.yaml"
+    if not candidate.exists():
+        matches = sorted(paths.intents.rglob(f"{intent_id}.yaml")) if paths.intents.exists() else []
+        candidate = matches[0] if matches else candidate
+    return _safe_load_yaml(candidate) if candidate.exists() else {}
+
+
+def _scan_source_sensitivities(sources_dir: Path) -> list[str]:
+    """Collect the ``sensitivity`` front-matter value from each source card."""
+
+    if not sources_dir.exists():
+        return []
+    from ..frontmatter import load_md
+
+    out: list[str] = []
+    for md in sorted(sources_dir.glob("*.md")):
+        try:
+            meta, _ = load_md(md)
+        except (OSError, ValueError):
+            continue
+        sens = meta.get("sensitivity") if isinstance(meta, dict) else None
+        if isinstance(sens, str) and sens:
+            out.append(sens)
+    return out
+
+
+def _collect_run_artifacts(run_dir: Path) -> list[Path]:
+    """Gather Markdown/YAML files under a run dir for the secret scan."""
+
+    if not run_dir.exists():
+        return []
+    files: list[Path] = []
+    for pattern in ("*.md", "*.yaml", "*.yml"):
+        files.extend(run_dir.rglob(pattern))
+    return sorted(set(files))
+
+
 def preflight(
     intent: dict,
     ibom: dict,
@@ -394,6 +503,7 @@ __all__ = [
     "GuardContext",
     "guard_check",
     "preflight",
+    "load_run_context",
     "scan_secrets",
     "scan_paths",
 ]

@@ -148,21 +148,27 @@ def test_secret_patterns_match_canonical_formats():
         assert scan_secrets(s, config=cfg), s
 
 
-def test_secret_scanner_misses_common_vendor_formats_weakness():
-    # WEAKNESS: the 15 builtin patterns do not cover several extremely common
-    # real-world secret formats. These slip through with zero hits. Documented
-    # so we know the scanner is a heuristic, not exhaustive.
+def test_secret_scanner_catches_common_vendor_formats():
+    # The scanner now covers several extremely common real-world secret formats
+    # that previously slipped through (Stripe, SendGrid, newer Slack, bearer
+    # tokens, bare AWS secret keys). This locks in the closed weakness.
     cfg = _cfg()
-    misses = [
+    caught = [
         "sk_live_4eC39HqLyjWDarjtT1zdp7dc",   # Stripe live (underscore, not dash)
-        "sk_test_4eC39HqLyjWDarjtT1zdp7dc",   # Stripe test
         "SG.aaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",  # SendGrid
+        "SK0123456789abcdef0123456789abcdef",  # Twilio API key SID
+        "AC0123456789abcdef0123456789abcdef",  # Twilio account SID
         "xoxe-0123456789ab",                  # newer Slack token class
+        "xapp-1-A012345678-abcdefghij",       # Slack app-level token
         "Authorization: Bearer abcdef1234567890ABCDEF",  # bare bearer token
         "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",  # AWS secret (no prefix)
     ]
-    for s in misses:
-        assert scan_secrets(s, config=cfg) == [], f"unexpectedly caught: {s}"
+    for s in caught:
+        assert scan_secrets(s, config=cfg), f"expected detection: {s}"
+
+    # Stripe *test* keys remain out of scope by design (only sk_live_/rk_live_
+    # are flagged to limit churn on documented test fixtures).
+    assert scan_secrets("sk_test_4eC39HqLyjWDarjtT1zdp7dc", config=cfg) == []
 
 
 def test_secret_scanner_does_not_flag_plain_prose():
@@ -255,18 +261,29 @@ def test_block_wins_over_require_approval():
 # ---------------------------------------------------------------------------
 
 
-def test_cli_guard_check_cannot_block_because_context_is_empty_weakness():
-    # WEAKNESS: `rf guard check --profile work_approved` always exits 0. The CLI
-    # constructs GuardContext(profile=..., run_id=...) only; it never loads the
-    # run's intent/ibom/routing/sources. So the user-facing guard command can
-    # never fire rules 1-6 regardless of profile.
-    proc = subprocess.run(
+def test_cli_guard_check_blocks_when_given_a_conflicting_boundary():
+    # The CLI guard now populates the context from real inputs, so the boundary
+    # is enforceable. With no blocking inputs it passes (0); a work_approved
+    # profile against a personal-only intent blocks (3).
+    clean = subprocess.run(
         [sys.executable, "-m", "research_foundry", "guard", "check", "--profile", "work_approved"],
         cwd=REPO,
         capture_output=True,
         text=True,
     )
-    assert proc.returncode == 0, proc.stderr
+    assert clean.returncode == 0, clean.stderr
+
+    blocked = subprocess.run(
+        [
+            sys.executable, "-m", "research_foundry", "guard", "check",
+            "--profile", "work_approved", "--key-profile-allowed", "personal",
+        ],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    assert blocked.returncode == 3, blocked.stderr
+    assert "no_work_keys_for_personal_runs" in blocked.stderr
 
 
 def test_preflight_would_block_if_it_were_wired():

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import FoundryConfig
-from ..errors import NotFoundError, SchemaError
+from ..errors import ExitCode, GovernanceError, NotFoundError, SchemaError
 from ..frontmatter import dump_md
 from ..ids import (
     brief_id,
@@ -32,6 +32,7 @@ from ..paths import FoundryPaths
 from ..registry import RUN_INDEX, Registry
 from ..schemas import default_registry, validate
 from ..yamlio import append_jsonl, dump_yaml, load_yaml
+from . import governance as governance_svc
 
 # Default model profiles when the I-BOM does not specify a model_policy.
 _DEFAULT_MODEL_POLICY = {
@@ -224,6 +225,7 @@ def plan_run(
     max_cost_usd: float = 5.0,
     max_runtime_minutes: int = 60,
     freshness_days: int = 180,
+    profile: str | None = None,
     paths: FoundryPaths | None = None,
 ) -> PlanResult:
     """Plan a research run for ``intent_id``.
@@ -233,6 +235,12 @@ def plan_run(
     ``swarm_plan.yaml``, and ``routing_decision.yaml``. The brief, swarm plan,
     and routing decision are validated against their schemas. The run is
     recorded in ``registries/run_index.yaml``.
+
+    After the routing decision is written, a governance preflight is run for the
+    effective key ``profile`` (defaulting to the intent's
+    ``governance.key_profile_allowed`` or ``personal``). A blocking violation
+    (e.g. a ``work_approved`` profile against a personal-only intent) raises
+    :class:`GovernanceError`; a normal personal run plans cleanly.
     """
 
     paths = paths or FoundryPaths.discover()
@@ -379,6 +387,24 @@ def plan_run(
     }
     dump_yaml(routing, run.routing_decision)
     _validate_or_raise(routing, "routing_decision", run.routing_decision)
+
+    # --- governance preflight (enforcement gate) -----------------------------
+    # Run AFTER the routing decision is written so the guard sees the planned
+    # routing. The effective key profile defaults to the intent's allowed
+    # profile (so a normal personal run is never over-blocked); a caller passing
+    # a conflicting profile (e.g. work_approved on a personal-only intent) is
+    # hard-blocked here per rule no_work_keys_for_personal_runs.
+    intent_gov = intent.get("governance") if isinstance(intent.get("governance"), dict) else {}
+    allowed_profile = intent_gov.get("key_profile_allowed") if isinstance(intent_gov, dict) else None
+    effective_profile = profile or (str(allowed_profile) if allowed_profile else "personal")
+    guard = governance_svc.preflight(intent, ibom, routing, effective_profile, paths=paths)
+    if not guard.passed and guard.exit_code == int(ExitCode.GOVERNANCE):
+        blocked = [v.rule_id for v in guard.violations if v.severity == "block"]
+        raise GovernanceError(
+            "governance preflight blocked planning for "
+            f"{run_id} (profile={effective_profile}): {', '.join(blocked)}",
+            violations=blocked,
+        )
 
     # --- run.yaml ------------------------------------------------------------
     run_doc: dict[str, Any] = {

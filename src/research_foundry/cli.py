@@ -116,13 +116,20 @@ def schema(
 
 
 def _guess_schema(path: str, instance: object) -> str | None:
-    """Best-effort schema inference from a ``type`` field or filename."""
+    """Best-effort schema inference from a ``type`` field, filename, or shape."""
 
+    from pathlib import Path
+
+    reg = SchemaRegistry()
     if isinstance(instance, dict):
         t = instance.get("type") or instance.get("schema") or ""
-        reg = SchemaRegistry()
         if isinstance(t, str) and reg.has(t):
             return t
+        # foundry.yaml has a top-level `foundry:` wrapper, not a `type` field.
+        if "foundry" in instance and reg.has("foundry"):
+            return "foundry"
+    if Path(path).name == "foundry.yaml" and reg.has("foundry"):
+        return "foundry"
     return None
 
 

@@ -26,6 +26,7 @@ EXPECTED_SCHEMA_NAMES: list[str] = [
     "claim_ledger",
     "evidence_bundle",
     "extraction_card",
+    "foundry",
     "ibom",
     "intenttree_node",
     "meatywiki_writeback",
@@ -66,6 +67,15 @@ def _valid(name: str) -> dict:
         "extraction_card": {
             "id": "extract_demo",
             "source_card_id": "src_demo",
+        },
+        # required: foundry (object with id, name, owner)
+        "foundry": {
+            "schema_version": 0.1,
+            "foundry": {
+                "id": "rf_demo",
+                "name": "Demo Foundry",
+                "owner": "Tester",
+            },
         },
         # required: id, intent_id
         "ibom": {
@@ -163,6 +173,7 @@ def _invalid(name: str) -> dict:
         "claim_ledger": "id",
         "evidence_bundle": "id",
         "extraction_card": "id",
+        "foundry": "foundry",
         "ibom": "id",
         "intenttree_node": "node_id",
         "meatywiki_writeback": "id",
@@ -197,10 +208,10 @@ def test_invalid_instance_fails(name: str) -> None:
 
 
 def test_registry_lists_all_schemas() -> None:
-    """The registry reports exactly the 16 expected schema names."""
+    """The registry reports exactly the 17 expected schema names."""
 
     names = SchemaRegistry().names()
-    assert len(names) == 16
+    assert len(names) == 17
     assert names == sorted(EXPECTED_SCHEMA_NAMES)
 
 
