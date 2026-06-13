@@ -303,6 +303,23 @@ def guard_check(
             )
         )
 
+    # 5c. arc_writeback_requires_review (require_approval) — arc council
+    arc_target = "arc" in targets
+    if arc_target and work_source:
+        violations.append(
+            Violation(
+                rule_id="arc_writeback_requires_review",
+                severity=_REQUIRE_APPROVAL,
+                message=_rule_message(
+                    cfg,
+                    "arc_writeback_requires_review",
+                    "Work/client-sensitive content requires human review before "
+                    "ARC council writeback.",
+                ),
+                detail=f"targets={targets}, sensitivity={ctx.sensitivity}",
+            )
+        )
+
     # 6. material_claims_must_be_mapped (block)
     if ctx.unmapped_material_claims > 0 or ctx.unsupported_claims > 0:
         violations.append(

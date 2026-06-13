@@ -22,6 +22,7 @@ from research_foundry.schemas import SchemaRegistry, validate
 # parametrization itself documents the expected surface; cross-checked against
 # ``SchemaRegistry().names()`` in ``test_registry_lists_all_schemas``.
 EXPECTED_SCHEMA_NAMES: list[str] = [
+    "arc_review_request",
     "ccdash_event",
     "claim_ledger",
     "evidence_bundle",
@@ -47,6 +48,21 @@ def _valid(name: str) -> dict:
     """Return a minimal instance that satisfies ``name``'s required fields."""
 
     builders = {
+        # required: id, run_id, evidence_bundle_id, target, objective, council, roles,
+        #           claims_for_review, rf_exit_code, status, governance_context
+        "arc_review_request": {
+            "id": "arc_review_run_demo",
+            "run_id": "run_demo",
+            "evidence_bundle_id": "eb_demo",
+            "target": "runs/run_demo/evidence_bundle.yaml",
+            "objective": "Review evidence bundle for demo run.",
+            "council": "research-review-council",
+            "roles": ["domain_reviewer", "claim_critic"],
+            "claims_for_review": [],
+            "rf_exit_code": 7,
+            "status": "proposed",
+            "governance_context": {"sensitivity": "personal", "requires_review": False},
+        },
         # required: event_id, timestamp, project
         "ccdash_event": {
             "event_id": "ccd_demo",
@@ -176,6 +192,7 @@ def _invalid(name: str) -> dict:
 
     # Drop the first required field for every other schema.
     required_first = {
+        "arc_review_request": "id",
         "ccdash_event": "event_id",
         "claim_ledger": "id",
         "evidence_bundle": "id",
@@ -216,10 +233,10 @@ def test_invalid_instance_fails(name: str) -> None:
 
 
 def test_registry_lists_all_schemas() -> None:
-    """The registry reports exactly the 18 expected schema names."""
+    """The registry reports exactly the 19 expected schema names."""
 
     names = SchemaRegistry().names()
-    assert len(names) == 18
+    assert len(names) == 19
     assert names == sorted(EXPECTED_SCHEMA_NAMES)
 
 

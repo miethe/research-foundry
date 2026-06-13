@@ -233,6 +233,10 @@ class RunPaths:
         return self.writebacks / "intenttree_update.yaml"
 
     @property
+    def arc_review_request(self) -> Path:
+        return self.writebacks / "arc_review_request.yaml"
+
+    @property
     def telemetry(self) -> Path:
         return self.run / "telemetry"
 

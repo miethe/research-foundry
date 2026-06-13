@@ -264,6 +264,7 @@ class WritebackResult:
     skillbom_path: Path | None
     ccdash_path: Path | None
     intenttree_update_path: Path | None
+    arc_review_path: Path | None
     requires_review: bool
 
 
@@ -537,6 +538,107 @@ def _render_intenttree_update(
     return rp.intenttree_update
 
 
+def _render_arc_council(
+    rp,
+    paths: FoundryPaths,
+    *,
+    bundle_ident: str,
+    ledger: dict[str, Any],
+    sensitivity: str,
+    requires_review: bool,
+    profile: str = "personal",
+) -> Path:
+    """Write writebacks/arc_review_request.yaml (schema-valid ARC review candidate).
+
+    ALWAYS writes the candidate (status: proposed). When ArcClient is reachable AND
+    profile is not offline_only AND NOT requires_review: POSTs to ARC to scaffold the
+    review, persists the arc_run_id, then GETs the run to read any available verdict;
+    maps verdict (approve -> rf_exit_code 0, concern/block -> 7). Offline/requires_review
+    path leaves the candidate at status 'proposed'. Never raises into the pipeline.
+    """
+
+    claims_for_review = [
+        {
+            "claim_id": c.get("claim_id"),
+            "text": c.get("text", ""),
+            "status": c.get("status", ""),
+        }
+        for c in (ledger.get("claims") or [])
+        if c.get("materiality") == "material"
+    ]
+
+    target = f"runs/{rp.run.name}/evidence_bundle.yaml"
+    report_meta, _ = _report_meta(rp)
+    title = str(report_meta.get("title") or rp.run.name)
+    objective = f"Review evidence bundle and claim quality for: {title}"
+
+    candidate: dict[str, Any] = {
+        "id": f"arc_review_{rp.run.name}",
+        "run_id": rp.run.name,
+        "arc_run_id": None,
+        "evidence_bundle_id": bundle_ident,
+        "target": target,
+        "objective": objective,
+        "council": "research-review-council",
+        "roles": ["domain_reviewer", "claim_critic", "governance_officer"],
+        "claims_for_review": claims_for_review,
+        "verdict": None,
+        "rf_exit_code": 7,
+        "status": "proposed",
+        "governance_context": {
+            "sensitivity": sensitivity,
+            "requires_review": requires_review,
+            "profile": profile,
+        },
+    }
+    _schema_or_raise(candidate, "arc_review_request")
+    dump_yaml(candidate, rp.arc_review_request)
+
+    # Live push: only when conditions are met (all errors silently swallowed).
+    _offline_profiles = {"offline_only"}
+    if not requires_review and profile not in _offline_profiles:
+        try:
+            from ..integrations.arc import ArcClient
+
+            client = ArcClient.from_config()
+            if client.available():
+                arc_payload: dict[str, Any] = {
+                    "council": candidate["council"],
+                    "target": target,
+                    "objective": objective,
+                }
+                response = client.scaffold_review(arc_payload)
+                if isinstance(response, dict):
+                    arc_run_id = str(response.get("run_id") or "")
+                    if arc_run_id:
+                        candidate = {**candidate, "arc_run_id": arc_run_id, "status": "submitted"}
+                        dump_yaml(candidate, rp.arc_review_request)
+
+                        # Try reading back the run for a verdict.
+                        run_record = client.get_run(arc_run_id)
+                        if isinstance(run_record, dict):
+                            verdict_raw = run_record.get("verdict")
+                            if verdict_raw in ("approve", "concern", "block"):
+                                verdict = str(verdict_raw)
+                                rf_exit = 0 if verdict == "approve" else 7
+                                status_map = {
+                                    "approve": "approved",
+                                    "concern": "concern",
+                                    "block": "block",
+                                }
+                                candidate = {
+                                    **candidate,
+                                    "verdict": verdict,
+                                    "rf_exit_code": rf_exit,
+                                    "status": status_map[verdict],
+                                }
+                                dump_yaml(candidate, rp.arc_review_request)
+        except Exception:  # noqa: BLE001 — live push is best-effort, never fails pipeline
+            pass
+
+    return rp.arc_review_request
+
+
 def writeback(
     run_id: str,
     *,
@@ -571,6 +673,7 @@ def writeback(
     skillbom_path: Path | None = None
     ccdash_path: Path | None = None
     intenttree_update_path: Path | None = None
+    arc_review_path: Path | None = None
     ccdash_event_id_value = ""
 
     if "ccdash" in targets:
@@ -608,6 +711,16 @@ def writeback(
             requires_review=requires_review,
         )
 
+    if "arc" in targets:
+        arc_review_path = _render_arc_council(
+            rp,
+            paths,
+            bundle_ident=bundle_ident,
+            ledger=ledger,
+            sensitivity=sensitivity,
+            requires_review=requires_review,
+        )
+
     report_meta, report_path = _report_meta(rp)
     report_id = report_meta.get("report_id")
     if report_id:
@@ -631,6 +744,7 @@ def writeback(
         skillbom_path=skillbom_path,
         ccdash_path=ccdash_path,
         intenttree_update_path=intenttree_update_path,
+        arc_review_path=arc_review_path,
         requires_review=requires_review,
     )
 
@@ -792,4 +906,5 @@ __all__ = [
     "skillbom_propose",
     "skillbom_promote",
     "_render_intenttree_update",
+    "_render_arc_council",
 ]

@@ -1,0 +1,65 @@
+# ARC review request / candidate schema (Phase 3).
+# Written by _render_arc_council() into runs/<run>/writebacks/arc_review_request.yaml.
+# status: proposed (offline/requires_review) | submitted | approved | concern | block
+$schema: "http://json-schema.org/draft-07/schema#"
+title: arc_review_request
+type: object
+required:
+  - id
+  - run_id
+  - evidence_bundle_id
+  - target
+  - objective
+  - council
+  - roles
+  - claims_for_review
+  - rf_exit_code
+  - status
+  - governance_context
+additionalProperties: true
+properties:
+  id:
+    type: string
+  run_id:
+    type: string
+  arc_run_id:
+    type: ["string", "null"]
+  evidence_bundle_id:
+    type: string
+  target:
+    type: string
+    description: "ARC target (e.g. 'runs/<run>/evidence_bundle.yaml')"
+  objective:
+    type: string
+    description: "Human-readable review objective passed to ARC"
+  council:
+    type: string
+    description: "ARC council name (e.g. 'research-review-council')"
+  roles:
+    type: array
+    items:
+      type: string
+  claims_for_review:
+    type: array
+    items:
+      type: object
+      additionalProperties: true
+  verdict:
+    type: ["string", "null"]
+    enum: ["approve", "concern", "block", null]
+  rf_exit_code:
+    type: integer
+    description: "0=approve, 7=concern|block; null until verdict arrives"
+  status:
+    type: string
+    enum: ["proposed", "submitted", "approved", "concern", "block"]
+  governance_context:
+    type: object
+    additionalProperties: true
+    properties:
+      sensitivity:
+        type: string
+      requires_review:
+        type: boolean
+      profile:
+        type: string

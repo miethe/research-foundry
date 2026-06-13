@@ -19,7 +19,6 @@ No auth required for local ARC; the remote runs on the same machine.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import Any
 
 from .base import IntegrationClient
@@ -77,32 +76,32 @@ class ArcClient(IntegrationClient):
         return True
 
     # ------------------------------------------------------------------
-    # Phase 3 stubs (no-op; will be filled in during Phase 3)
+    # Review operations (Phase 3)
     # ------------------------------------------------------------------
 
     def scaffold_review(
         self,
-        run_id: str,
-        bundle_path: Path,
-        *,
-        roles: list[str] | None = None,
+        payload: dict[str, Any],
     ) -> dict[str, Any] | None:
-        """POST an evidence bundle to ARC for council review.
+        """POST ``payload`` to ARC ``POST /api/runs`` to scaffold a council review.
 
-        Returns the scaffolded run record (with ``arc_run_id``) or ``None``
-        when ARC is offline. **Phase 3 stub — currently a no-op.**
+        ``payload`` must include at minimum ``council``, ``target``, and
+        ``objective`` (ARC surface contract). Returns the ARC response (which
+        includes ``run_id`` as the arc_run_id) or ``None`` on any error.
+        Never raises.
         """
 
-        return None  # pragma: no cover (Phase 3)
+        return self._post("/api/runs", payload)
 
     def get_run(self, arc_run_id: str) -> dict[str, Any] | None:
-        """GET the current state/verdict of an ARC review run.
+        """GET ``/api/runs/{arc_run_id}`` — return the ARC run record or ``None``.
 
-        Returns the run record or ``None`` when offline.
-        **Phase 3 stub — currently a no-op.**
+        The run record may include a ``verdict`` field once reviewers have
+        populated the run. Returns ``None`` on any network/parse error.
+        Never raises.
         """
 
-        return None  # pragma: no cover (Phase 3)
+        return self._get(f"/api/runs/{arc_run_id}")
 
 
 # ---------------------------------------------------------------------------

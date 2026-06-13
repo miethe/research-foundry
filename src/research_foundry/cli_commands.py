@@ -27,6 +27,92 @@ def _fail(exc: Exception, code: ExitCode = ExitCode.USAGE) -> NoReturn:
     raise typer.Exit(int(getattr(exc, "exit_code", code)))
 
 
+def _arc_council_via(run_id: str, console: Console, err_console: Console, svc: object) -> None:
+    """Submit a council review to ARC; fall back to local if unreachable.
+
+    Exit 0 on approve, 7 on concern|block. When ARC is unreachable, falls back
+    to the local deterministic council with a printed note.
+    """
+
+    try:
+        from .integrations.arc import ArcClient
+        from .paths import FoundryPaths
+
+        client = ArcClient.from_config()
+        if not client.available():
+            console.print("[yellow]ARC unreachable — falling back to local council review[/yellow]")
+            _local_council_fallback(run_id, console, svc)
+            return
+
+        paths = FoundryPaths.discover()
+        rp = paths.run_paths(run_id)
+        rp.ensure_scaffold()
+
+        # Build a minimal evidence bundle if not present.
+        from .services.writeback import (
+            _ledger,
+            _load_bundle,
+            _render_arc_council,
+            _sensitivity,
+            build_bundle,
+        )
+
+        bundle = _load_bundle(rp)
+        if not bundle:
+            build_bundle(run_id, verify=True, paths=paths)
+            bundle = _load_bundle(rp)
+        bundle_ident = str((bundle or {}).get("id") or run_id)
+        ledger = _ledger(rp)
+        sensitivity = _sensitivity(rp)
+
+        arc_path = _render_arc_council(
+            rp,
+            paths,
+            bundle_ident=bundle_ident,
+            ledger=ledger,
+            sensitivity=sensitivity,
+            requires_review=False,
+        )
+
+        # Read back the candidate to get verdict + exit code.
+        from .yamlio import load_yaml
+        candidate = load_yaml(arc_path) or {}
+        verdict = candidate.get("verdict")
+        rf_exit = int(candidate.get("rf_exit_code", 7))
+        status = candidate.get("status", "proposed")
+
+        if verdict:
+            color = "green" if verdict == "approve" else "red"
+            console.print(f"[{color}]ARC verdict: {verdict}[/{color}] (status: {status})")
+        else:
+            console.print(f"[yellow]ARC run submitted; verdict pending (status: {status})[/yellow]")
+        console.print(f"  review request: {arc_path}")
+        raise typer.Exit(rf_exit)
+
+    except typer.Exit:
+        raise
+    except Exception:  # noqa: BLE001 — any error falls back to local
+        console.print("[yellow]ARC error — falling back to local council review[/yellow]")
+        _local_council_fallback(run_id, console, svc)
+
+
+def _local_council_fallback(run_id: str, console: Console, svc: object) -> None:
+    """Run the local deterministic council (used as ARC fallback)."""
+
+    from .errors import RFError
+
+    try:
+        path = svc.council_review(  # type: ignore[attr-defined]
+            run_id,
+            roles=["critic", "domain_reviewer", "governance_officer", "executive_translator"],
+            vote="approve-concern-block",
+        )
+    except RFError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from e
+    console.print(f"[green]council review (local)[/green] {path}")
+
+
 def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
     # ----- capture -----
     @app.command()
@@ -237,10 +323,21 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         run: str = typer.Argument(...),
         roles: str = typer.Option("critic,domain_reviewer,governance_officer,executive_translator", "--roles"),
         vote: str = typer.Option("approve-concern-block", "--vote"),
+        via: str = typer.Option("local", "--via", help="Review backend: 'arc' to submit to ARC, 'local' for deterministic local review (default: local). Falls back to local when ARC is unreachable."),
     ) -> None:
-        """Run a council review (spec §10.11)."""
+        """Run a council review (spec §10.11).
+
+        With ``--via arc`` submits the run's evidence bundle to ARC for review
+        and exits 0 on 'approve', 7 on 'concern' or 'block'. Falls back to local
+        review when ARC is unreachable.
+        """
 
         from .services import writeback as svc
+
+        if via == "arc":
+            # Try ARC path first; fall back to local on error or unavailability.
+            _arc_council_via(run, console, err_console, svc)
+            return
 
         try:
             path = svc.council_review(run, roles=[r.strip() for r in roles.split(",")], vote=vote)
@@ -272,7 +369,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
     def writeback(
         run: str = typer.Argument(...),
         targets: str = typer.Option("meatywiki,skillmeat,ccdash", "--targets",
-                                    help="Comma-separated targets: meatywiki,skillmeat,ccdash,intenttree"),
+                                    help="Comma-separated targets: meatywiki,skillmeat,ccdash,intenttree,arc"),
         require_review: bool = typer.Option(False, "--require-review/--no-require-review"),
     ) -> None:
         """Generate writebacks to MeatyWiki / SkillMeat / CCDash / IntentTree (spec §10.13)."""
@@ -286,7 +383,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             )
         except RFError as e:
             _fail(e)
-        for p in (r.meatywiki_path, r.skillbom_path, r.ccdash_path, r.intenttree_update_path):
+        for p in (r.meatywiki_path, r.skillbom_path, r.ccdash_path, r.intenttree_update_path, r.arc_review_path):
             if p:
                 console.print(f"  {p}")
         if r.requires_review:

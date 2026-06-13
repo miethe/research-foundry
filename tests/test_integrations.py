@@ -142,19 +142,55 @@ class TestArcClientConfig:
 
 
 class TestArcClientStubs:
-    """Phase 3 stubs return None (no-op)."""
+    """Phase 3: scaffold_review / get_run do real HTTP but return None when offline."""
 
-    def test_scaffold_review_stub_returns_none(self):
-        from pathlib import Path
+    def test_scaffold_review_offline_returns_none(self):
+        """scaffold_review returns None when ARC is unreachable (connection error)."""
+        import urllib.error
 
-        client = ArcClient()
-        result = client.scaffold_review("run_id", Path("/tmp/bundle.yaml"))
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.URLError("connection refused"),
+        ):
+            client = ArcClient()
+            result = client.scaffold_review(
+                {"council": "research-review-council", "target": "evidence_bundle.yaml", "objective": "test"}
+            )
         assert result is None
 
-    def test_get_run_stub_returns_none(self):
-        client = ArcClient()
-        result = client.get_run("arc_run_xyz")
+    def test_scaffold_review_online_returns_response(self):
+        """scaffold_review returns the parsed JSON when ARC responds."""
+        payload = {"run_id": "arc_run_abc123", "dir": "/tmp/runs/arc_run_abc123"}
+        resp = _mock_urlopen(_json_response(payload))
+        with patch("urllib.request.urlopen", return_value=resp):
+            client = ArcClient()
+            result = client.scaffold_review(
+                {"council": "research-review-council", "target": "evidence_bundle.yaml", "objective": "test"}
+            )
+        assert isinstance(result, dict)
+        assert result.get("run_id") == "arc_run_abc123"
+
+    def test_get_run_offline_returns_none(self):
+        """get_run returns None when ARC is unreachable."""
+        import urllib.error
+
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.URLError("connection refused"),
+        ):
+            client = ArcClient()
+            result = client.get_run("arc_run_xyz")
         assert result is None
+
+    def test_get_run_online_returns_run_record(self):
+        """get_run returns the run record with verdict when ARC responds."""
+        payload = {"run_id": "arc_run_xyz", "verdict": "approve", "status": "complete"}
+        resp = _mock_urlopen(_json_response(payload))
+        with patch("urllib.request.urlopen", return_value=resp):
+            client = ArcClient()
+            result = client.get_run("arc_run_xyz")
+        assert isinstance(result, dict)
+        assert result.get("verdict") == "approve"
 
 
 # ===========================================================================

@@ -15,6 +15,7 @@ from .base import (
 # Names of the concrete adapter modules. They are imported lazily by
 # ``load_all`` so a missing/partial module never breaks ``import research_foundry``.
 _CONCRETE = (
+    "arc_council",
     "claude_agent_sdk",
     "gpt_researcher",
     "paperqa2",
