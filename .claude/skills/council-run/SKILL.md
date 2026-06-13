@@ -20,6 +20,15 @@ updated: 2026-06-01
 
 - **For offline RF use:** drive the council through the `rf council` command and the
   `.claude/workflows/research-foundry-council.js` Workflow instead of any `arc` commands.
+- **Live ARC integration:** Research Foundry now integrates bidirectionally with ARC when reachable:
+  - `rf council --via arc` runs a live ARC review when the ARC server is online (configured via
+    `integrations.arc.base_url` in `foundry.yaml` or `ARC_BASE_URL` env var), with automatic
+    offline fallback to the local `research-foundry-council.js` workflow.
+  - `rf writeback <run_id> --targets arc` writes a review request to ARC and folds the verdict back
+    into RF's gate (approve → exit 0; concern/block → exit 7).
+  - `rf swarm run --adapters arc_council` lets ARC reviewers critique discovery/synthesis mid-run,
+    degrading to the deterministic stub when ARC is offline.
+  - All paths degrade safely: if ARC is unreachable, RF falls back to the offline council.
 - **`arc` commands below apply only** when an `agentic-research` arc server is actually running
   (`GET /api/authoring/status` returns `available: true`). If you are not certain a server is
   running, assume it is not and use the RF-native path.

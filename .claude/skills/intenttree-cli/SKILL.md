@@ -28,17 +28,30 @@ These commands read and write YAML files under the RF workspace directory and ar
 correct tool for **ordinary RF research runs** (intent capture, node decomposition, loop
 step 4 in the research cycle). They work fully offline.
 
-This `intenttree-cli` skill is a **REST client to a live IntentTree server**
-(`INTENTTREE_API_URL`, default `http://localhost:8000`). Use it **only** when that server
-is running — for example, to leverage the full work-tree lifecycle: `decompose`, `dispatch`,
-`whats-next`, M1 agent runs, run approval workflows, and cross-workspace scheduling.
+**Live IntentTree integration:** Research Foundry now integrates bidirectionally with the
+live IntentTree server when reachable (configured via `integrations.intenttree.base_url` in
+`foundry.yaml` or `INTENTTREE_BASE_URL` env var):
+
+- `rf intake intenttree <node_id>` — pull a dispatched IntentTree task (with its linked detail
+  including MeatyWiki refs) into capture → triage → optional plan; back-links the RF intent
+  to the source node. Offline fallback: accept a locally-exported node YAML via `--from-file PATH`.
+- `rf status push --run <run_id> --to intenttree` — push status updates at key milestones
+  (discovery_started, sources_ingested, verify_passed, bundle_written) back to the originating
+  IntentTree node. Best-effort when reachable; silent degrade when offline.
+- `rf writeback <run_id> --targets intenttree` — link the evidence bundle, report, and result
+  artifacts back to the originating node. Offline fallback: write a candidate file only.
+
+This `intenttree-cli` skill is a **REST client to a live IntentTree server** for richer
+direct work-tree operations (`decompose`, `dispatch`, `whats-next`, M1 agent runs, scheduling).
+Use it when you need features the RF CLI does not expose beyond inbound task intake.
 
 **Decision rule**: If you are inside an RF research run and the task is intent capture or
-tree manipulation, use `rf intent`/`rf tree` first. Reach for this skill only when you
-need features the RF CLI does not expose (server-side decompose, dispatch loop, scheduling).
+tree manipulation, use `rf intent`/`rf tree` or `rf intake intenttree` first. Reach for this
+skill only when you need server-side features beyond task intake (decompose, dispatch, scheduling).
 
 See also: `.claude/skills/research-foundry/SKILL.md` (the RF research run skill — covers
-the full swarm lifecycle including loop step 4 where `rf intent`/`rf tree` are called).
+the full swarm lifecycle including loop step 4 where `rf intent`/`rf tree` and the new IntentTree
+commands are called).
 
 ---
 

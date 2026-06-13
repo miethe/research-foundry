@@ -223,3 +223,11 @@ rf doctor
 
 Utility commands: `rf status`, `rf cost runs/rf_run_*/`, `rf redact runs/rf_run_*/ --target public`,
 `rf index rebuild`.
+
+Live integrations (degrade to file candidates when servers offline):
+- `rf intake intenttree <node_id> [--from-file PATH] [--plan/--no-plan] [--sensitivity S] [--profile P]` — ingest a dispatched IntentTree task with linked detail into capture → triage → optional plan.
+- `rf status push --run <run_id> --to intenttree [--stage STAGE]` — push progress updates to the originating IntentTree node at key milestones (discovery_started, sources_ingested, verify_passed, bundle_written).
+- `rf council <run_id> --via arc` (vs default `--local`) — run live ARC council review when reachable; offline fallback to local `research-foundry-council.js` workflow.
+- `rf writeback <run_id> --targets intenttree,arc,meatywiki,skillmeat,ccdash [--require-review]` — link results back to IntentTree node and request ARC review when servers reachable.
+- `rf swarm run --adapters arc_council` — use ARC reviewers to critique discovery/synthesis; degrades to stub when ARC offline.
+- `rf doctor` — reports ARC and IntentTree reachability alongside adapter status.

@@ -16,12 +16,12 @@ const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args
 
 export const meta = {
   name: 'research-foundry-council',
-  description: 'Offline council gate (no arc server) for a Research Foundry run. Fans out domain-research-reviewer, correctness-reviewer, architecture-reviewer, and evaluator-reviewer agents in parallel over runs/<run_id>/ report and claim ledger, then a council-coordinator synthesizes a single approve | concern | block verdict. Maps verdict to RF exit-code 0 (approved) or 7 (human review required). Accept run_id via args. Use before `rf bundle` when `rf verify` exits 7 or when governance requires multi-lens sign-off.',
+  description: 'Offline council gate for a Research Foundry run (local fallback when ARC is unreachable). Fans out domain-research-reviewer, correctness-reviewer, architecture-reviewer, and evaluator-reviewer agents in parallel over runs/<run_id>/ report and claim ledger, then a council-coordinator synthesizes a single approve | concern | block verdict. Maps verdict to RF exit-code 0 (approved) or 7 (human review required). Accept run_id via args. Use before `rf bundle` when `rf verify` exits 7 or when governance requires multi-lens sign-off. For live ARC review when available, use `rf council --via arc` instead.',
   phases: [
     { title: 'Review' },
     { title: 'Adjudicate' },
   ],
-  whenToUse: 'Use when `rf verify` exits 7 (human review required), when a run requires multi-lens council sign-off before bundling, or as a standalone governance gate. Requires runs/<run_id>/reports/report_draft.md and runs/<run_id>/claims/claim_ledger.yaml to exist.',
+  whenToUse: 'Use when `rf verify` exits 7 (human review required), when a run requires multi-lens council sign-off before bundling, or as a standalone governance gate. Requires runs/<run_id>/reports/report_draft.md and runs/<run_id>/claims/claim_ledger.yaml to exist. For live ARC review when the ARC server is reachable, `rf council --via arc` is preferred.',
 }
 
 // === Script body ===

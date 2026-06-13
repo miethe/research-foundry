@@ -11,6 +11,28 @@ This skill covers **workspace bootstrap** and **swarm orchestration**. It is the
 
 ---
 
+## Live Integrations (ARC + IntentTree)
+
+**Bidirectional integrations with ARC (council review) and IntentTree (inbound task dispatch + outbound status + result links)** are now live and degrade safely to file-based candidates when servers are offline.
+
+**ARC (Agent Review Council) — RF ↔ ARC**
+- **Live council review**: `rf council --via arc` runs a live ARC review when reachable; offline fallback to the local `research-foundry-council.js` workflow (exit code 0 = approved, 7 = human review required).
+- **Writeback target**: `rf writeback <run_id> --targets arc` writes a review request and folds the verdict into RF's gate.
+- **Swarm adapter**: `rf swarm run --adapters arc_council` lets ARC reviewers critique discovery/synthesis mid-run (degrades to stub offline).
+- **Configuration**: `foundry.yaml` `integrations.arc.base_url` (default `http://127.0.0.1:8910`); env `ARC_BASE_URL`; `rf doctor` reports reachability.
+
+**IntentTree — IntentTree ↔ RF**
+- **Inbound task intake**: `rf intake intenttree <node_id>` pulls a dispatched task with linked detail (MeatyWiki refs, artifacts) into capture → triage → optional plan. `--from-file PATH` for offline fallback.
+- **Status updates**: `rf status push --run <run_id> --to intenttree [--stage STAGE]` posts progress at milestones (discovery_started, sources_ingested, verify_passed, bundle_written); best-effort when online, silent degrade offline.
+- **Result linking**: `rf writeback <run_id> --targets intenttree` links the evidence bundle, report, and artifacts back to the originating node; writes a candidate file as fallback.
+- **Configuration**: `foundry.yaml` `integrations.intenttree.base_url` (default `http://localhost:8000`); env `INTENTTREE_BASE_URL` / `INTENTTREE_API_TOKEN`; `rf doctor` reports reachability.
+
+**Principle: "candidate first, push second"** — RF always emits a deterministic, schema-valid candidate file under `runs/<run>/writebacks/`; the live HTTP push happens only when reachable and permitted by the run's key profile. If the server is offline, RF falls back to file candidates; the push is best-effort and reversible.
+
+See also: `docs/projects/research-foundry/bidirectional-integrations-plan.md` (design & architecture).
+
+---
+
 ## 1. Install & Init
 
 ### Ensure `rf` is on PATH

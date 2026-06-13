@@ -15,7 +15,7 @@ const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args
 
 export const meta = {
   name: 'research-foundry-swarm',
-  description: 'Path B Claude Code-orchestrated swarm: reads a Research Foundry research brief, fans out domain-researcher and source-scout agents to discover source candidates, deduplicates results, then ingests each accepted candidate via `rf ingest` (guarded by `rf guard check`). Returns a manifest of ingested source cards. POST-RUN (not inline): run `rf extract`, `rf claim-map`, `rf synthesize`, `rf verify --fail-on-unsupported`, `rf bundle`, and `rf writeback` manually or via a follow-on workflow. Exit code 7 from `rf verify` means human council review is required before bundling.',
+  description: 'Path B Claude Code-orchestrated swarm: reads a Research Foundry research brief, fans out domain-researcher and source-scout agents to discover source candidates, deduplicates results, then ingests each accepted candidate via `rf ingest` (guarded by `rf guard check`). Returns a manifest of ingested source cards. POST-RUN (not inline): run `rf extract`, `rf claim-map`, `rf synthesize`, `rf verify --fail-on-unsupported`, `rf bundle`, and `rf writeback` (targets: intenttree, arc, meatywiki, skillmeat, ccdash; all degrade to candidates offline) manually or via follow-on workflow. If IntentTree is reachable, `rf status push --to intenttree` during Ingest, then `rf writeback --targets intenttree` after bundling. Exit code 7 from `rf verify` means human council review required before bundling.',
   phases: [
     { title: 'Plan' },
     { title: 'Discover' },
@@ -251,7 +251,7 @@ if (acceptedCandidates.length === 0) {
 // For each accepted candidate: run `rf guard check`, then `rf ingest`.
 // Each ingest writes a schema-valid source card to runs/<run_id>/sources/src_*.md.
 phase('Ingest')
-log(`[research-foundry-swarm] Phase 4 — Ingest: ingesting ${acceptedCandidates.length} sources into run "${run_id}"`)
+log(`[research-foundry-swarm] Phase 4 — Ingest: ingesting ${acceptedCandidates.length} sources into run "${run_id}" (when IntentTree is reachable, operator can push status via 'rf status push --to intenttree' during this phase, then link results via 'rf writeback --targets intenttree' after bundling)`)
 
 const ingestResults = await pipeline(
   acceptedCandidates,
