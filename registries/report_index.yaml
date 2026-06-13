@@ -1,0 +1,12 @@
+items:
+- id: report_20260613_what_is_the_minimum_viable_architecture
+  run_id: rf_run_20260613_what_is_the_minimum_viable_architecture
+  intent_id: intent_research_20260613_what_is_the_minimum_viable_architecture
+  evidence_bundle_id: bundle_20260613_intent_research_20260613_what_is_the
+  sensitivity: personal
+  status: draft
+  requires_review: false
+  path: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260613_what_is_the_minimum_viable_architecture/reports/report_draft.md
+  indexed_at: '2026-06-13T02:11:45-04:00'
+count: 1
+updated_at: '2026-06-13T02:11:45-04:00'

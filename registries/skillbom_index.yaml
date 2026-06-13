@@ -1,0 +1,10 @@
+items:
+- id: skillcand_research_swarm_20260613_what_is_the_minimum_viable_architecture
+  proposed_skillbom_id: skill_research_swarm_v0
+  evidence_bundle_id: bundle_20260613_intent_research_20260613_what_is_the
+  status: candidate
+  run_id: rf_run_20260613_what_is_the_minimum_viable_architecture
+  path: /Users/miethe/dev/homelab/development/research-foundry/skillmeat/skillboms/skillcand_research_swarm_20260613_what_is_the_minimum_viable_architecture.md
+  indexed_at: '2026-06-13T02:11:45-04:00'
+count: 1
+updated_at: '2026-06-13T02:11:45-04:00'

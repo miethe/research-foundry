@@ -1,0 +1,13 @@
+items:
+- id: rf_run_20260613_what_is_the_minimum_viable_architecture
+  intent_id: intent_research_20260613_what_is_the_minimum_viable_architecture
+  status: planned
+  created_at: '2026-06-13T02:11:43-04:00'
+  brief_id: brief_20260613_what_is_the_minimum_viable_architecture
+  swarm_id: swarm_20260613_what_is_the_minimum_viable_architecture
+  routing_id: route_20260613_what_is_the_minimum_viable_architecture
+  human_required: false
+  run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260613_what_is_the_minimum_viable_architecture
+  indexed_at: '2026-06-13T02:11:43-04:00'
+count: 1
+updated_at: '2026-06-13T02:11:43-04:00'

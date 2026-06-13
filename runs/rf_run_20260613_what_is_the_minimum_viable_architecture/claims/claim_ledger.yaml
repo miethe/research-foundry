@@ -1,0 +1,90 @@
+id: claims_20260613_rf_run_20260613_what_is_the
+intent_id: intent_research_20260613_what_is_the_minimum_viable_architecture
+report_ref: reports/report_draft.md
+verification_status: passed
+claims:
+- claim_id: clm_001
+  text: CCDash tracks completion, rework, drift, cost, latency, quality, and reuse candidates to answer
+    which research workflows actually worked.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260613_ccdash_36212ddb
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_002
+  text: PaperQA2 performs agentic RAG over scientific papers, grounding responses with in-text citations
+    and re-ranking.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260613_paperqa2_5f264205
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_003
+  text: GPT Researcher supports web, local, and hybrid research, produces multi-source cited reports,
+    and supports many LLMs.
+  materiality: background
+  claim_type: attribution
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260613_gpt_researcher_b4d1f755
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_004
+  text: The Claude Agent SDK exposes built-in tools, hooks, subagents, MCP, permissions, and sessions.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260613_claude_agent_sdk_3fc9e943
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_005
+  text: LiteLLM supports routing strategies including cost-based and lowest-cost routing, and provider,
+    model, and tag budgets.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260613_litellm_c5cef789
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+unresolved_questions: []

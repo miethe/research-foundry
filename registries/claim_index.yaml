@@ -1,0 +1,11 @@
+items:
+- id: claims_20260613_rf_run_20260613_what_is_the
+  run_id: rf_run_20260613_what_is_the_minimum_viable_architecture
+  intent_id: intent_research_20260613_what_is_the_minimum_viable_architecture
+  claims_total: 5
+  by_status:
+    supported: 5
+  path: runs/rf_run_20260613_what_is_the_minimum_viable_architecture/claims/claim_ledger.yaml
+  indexed_at: '2026-06-13T02:11:44-04:00'
+count: 1
+updated_at: '2026-06-13T02:11:44-04:00'

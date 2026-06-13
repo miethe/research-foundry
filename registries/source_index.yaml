@@ -1,0 +1,43 @@
+items:
+- id: src_20260613_claude_agent_sdk_3fc9e943
+  run_id: rf_run_20260613_what_is_the_minimum_viable_architecture
+  title: claude_agent_sdk
+  source_type: repo
+  sensitivity: personal
+  degraded: false
+  path: runs/rf_run_20260613_what_is_the_minimum_viable_architecture/sources/src_20260613_claude_agent_sdk_3fc9e943.md
+  indexed_at: '2026-06-13T02:11:43-04:00'
+- id: src_20260613_gpt_researcher_b4d1f755
+  run_id: rf_run_20260613_what_is_the_minimum_viable_architecture
+  title: gpt_researcher
+  source_type: repo
+  sensitivity: personal
+  degraded: false
+  path: runs/rf_run_20260613_what_is_the_minimum_viable_architecture/sources/src_20260613_gpt_researcher_b4d1f755.md
+  indexed_at: '2026-06-13T02:11:43-04:00'
+- id: src_20260613_paperqa2_5f264205
+  run_id: rf_run_20260613_what_is_the_minimum_viable_architecture
+  title: paperqa2
+  source_type: paper
+  sensitivity: personal
+  degraded: false
+  path: runs/rf_run_20260613_what_is_the_minimum_viable_architecture/sources/src_20260613_paperqa2_5f264205.md
+  indexed_at: '2026-06-13T02:11:44-04:00'
+- id: src_20260613_litellm_c5cef789
+  run_id: rf_run_20260613_what_is_the_minimum_viable_architecture
+  title: litellm
+  source_type: official_doc
+  sensitivity: personal
+  degraded: false
+  path: runs/rf_run_20260613_what_is_the_minimum_viable_architecture/sources/src_20260613_litellm_c5cef789.md
+  indexed_at: '2026-06-13T02:11:44-04:00'
+- id: src_20260613_ccdash_36212ddb
+  run_id: rf_run_20260613_what_is_the_minimum_viable_architecture
+  title: ccdash
+  source_type: personal_note
+  sensitivity: personal
+  degraded: false
+  path: runs/rf_run_20260613_what_is_the_minimum_viable_architecture/sources/src_20260613_ccdash_36212ddb.md
+  indexed_at: '2026-06-13T02:11:44-04:00'
+count: 5
+updated_at: '2026-06-13T02:11:44-04:00'
