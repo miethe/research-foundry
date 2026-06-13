@@ -16,9 +16,8 @@ Covers:
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -80,7 +79,7 @@ def _build_run(
 
 def _inject_node_ref(paths: FoundryPaths, run_id: str, node_id: str = "node_test_123") -> None:
     """Inject intenttree_node_ref into the run's intent (simulates IntentTree dispatch)."""
-    from research_foundry.yamlio import load_yaml, dump_yaml
+    from research_foundry.yamlio import dump_yaml, load_yaml
 
     rp = paths.run_paths(run_id)
     run_meta = load_yaml(rp.run_yaml) or {}
@@ -524,7 +523,6 @@ def test_push_status_no_node_ref_returns_false(tmp_foundry: FoundryPaths):
 
 def test_push_status_never_raises(tmp_foundry: FoundryPaths):
     """push_status must swallow all exceptions silently."""
-    import urllib.error
 
     paths = tmp_foundry
     run_id = _build_run(paths)
@@ -546,6 +544,7 @@ def test_push_status_never_raises(tmp_foundry: FoundryPaths):
 
 def test_cli_status_push_prints_pushed_when_success(tmp_foundry: FoundryPaths):
     from typer.testing import CliRunner
+
     from research_foundry.cli import app
 
     paths = tmp_foundry
@@ -568,6 +567,7 @@ def test_cli_status_push_prints_pushed_when_success(tmp_foundry: FoundryPaths):
 
 def test_cli_status_push_prints_skipped_when_offline(tmp_foundry: FoundryPaths):
     from typer.testing import CliRunner
+
     from research_foundry.cli import app
 
     paths = tmp_foundry
@@ -589,6 +589,7 @@ def test_cli_status_push_prints_skipped_when_offline(tmp_foundry: FoundryPaths):
 
 def test_cli_status_push_unknown_target_exits_1():
     from typer.testing import CliRunner
+
     from research_foundry.cli import app
 
     runner = CliRunner()
@@ -664,6 +665,7 @@ def test_add_node_artifact_sends_post_to_artifacts_endpoint():
 
 def test_patch_node_returns_none_on_connection_error():
     import urllib.error
+
     from research_foundry.integrations.intenttree import IntentTreeClient
 
     client = IntentTreeClient()
@@ -674,6 +676,7 @@ def test_patch_node_returns_none_on_connection_error():
 
 def test_add_node_artifact_returns_none_on_connection_error():
     import urllib.error
+
     from research_foundry.integrations.intenttree import IntentTreeClient
 
     client = IntentTreeClient()

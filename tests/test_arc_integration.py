@@ -13,13 +13,8 @@ Covers:
 
 from __future__ import annotations
 
-import json
-import urllib.error
-from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from research_foundry.paths import FoundryPaths
 from research_foundry.schemas import validate
@@ -155,6 +150,7 @@ class TestRenderArcCouncil:
     def test_offline_writes_proposed_candidate(self, tmp_foundry: FoundryPaths):
         """With ARC unavailable, candidate is written with status=proposed, no calls."""
         run_id = _build_run(tmp_foundry)
+        from research_foundry.ids import bundle_id
         from research_foundry.services.writeback import (
             _ledger,
             _load_bundle,
@@ -162,7 +158,6 @@ class TestRenderArcCouncil:
             _sensitivity,
             build_bundle,
         )
-        from research_foundry.ids import bundle_id
 
         build_bundle(run_id, verify=True, paths=tmp_foundry)
         rp = tmp_foundry.run_paths(run_id)
@@ -175,7 +170,7 @@ class TestRenderArcCouncil:
         with patch(
             "research_foundry.integrations.arc.ArcClient.available",
             return_value=False,
-        ) as mock_avail:
+        ):
             path = _render_arc_council(
                 rp, tmp_foundry,
                 bundle_ident=bundle_ident,
@@ -194,14 +189,13 @@ class TestRenderArcCouncil:
     def test_requires_review_holds_push(self, tmp_foundry: FoundryPaths):
         """When requires_review=True, candidate stays proposed and no ARC calls are made."""
         run_id = _build_run(tmp_foundry)
+        from research_foundry.ids import bundle_id
         from research_foundry.services.writeback import (
             _ledger,
             _load_bundle,
             _render_arc_council,
-            _sensitivity,
             build_bundle,
         )
-        from research_foundry.ids import bundle_id
 
         build_bundle(run_id, verify=True, paths=tmp_foundry)
         rp = tmp_foundry.run_paths(run_id)
@@ -237,6 +231,7 @@ class TestRenderArcCouncil:
     def test_online_path_records_arc_run_id_and_approve_verdict(self, tmp_foundry: FoundryPaths):
         """Online path: scaffold_review called, arc_run_id persisted, verdict mapped, exit 0."""
         run_id = _build_run(tmp_foundry)
+        from research_foundry.ids import bundle_id
         from research_foundry.services.writeback import (
             _ledger,
             _load_bundle,
@@ -244,7 +239,6 @@ class TestRenderArcCouncil:
             _sensitivity,
             build_bundle,
         )
-        from research_foundry.ids import bundle_id
 
         build_bundle(run_id, verify=True, paths=tmp_foundry)
         rp = tmp_foundry.run_paths(run_id)
@@ -281,6 +275,7 @@ class TestRenderArcCouncil:
     def test_online_path_block_verdict_maps_exit_7(self, tmp_foundry: FoundryPaths):
         """Online path with block verdict: rf_exit_code=7, status=block."""
         run_id = _build_run(tmp_foundry)
+        from research_foundry.ids import bundle_id
         from research_foundry.services.writeback import (
             _ledger,
             _load_bundle,
@@ -288,7 +283,6 @@ class TestRenderArcCouncil:
             _sensitivity,
             build_bundle,
         )
-        from research_foundry.ids import bundle_id
 
         build_bundle(run_id, verify=True, paths=tmp_foundry)
         rp = tmp_foundry.run_paths(run_id)
@@ -321,6 +315,7 @@ class TestRenderArcCouncil:
     def test_concern_verdict_maps_exit_7(self, tmp_foundry: FoundryPaths):
         """concern verdict maps to rf_exit_code=7 (same as block)."""
         run_id = _build_run(tmp_foundry)
+        from research_foundry.ids import bundle_id
         from research_foundry.services.writeback import (
             _ledger,
             _load_bundle,
@@ -328,7 +323,6 @@ class TestRenderArcCouncil:
             _sensitivity,
             build_bundle,
         )
-        from research_foundry.ids import bundle_id
 
         build_bundle(run_id, verify=True, paths=tmp_foundry)
         rp = tmp_foundry.run_paths(run_id)
@@ -595,7 +589,6 @@ class TestArcGovernanceRule:
 
     def test_arc_requires_review_for_work_sensitive(self):
         from research_foundry.services.governance import GuardContext, guard_check
-        from research_foundry.paths import FoundryPaths
 
         ctx = GuardContext(
             profile="work_approved",

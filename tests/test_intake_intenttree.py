@@ -243,7 +243,7 @@ class TestIntakeOnline:
         assert any("meatywiki" in u for u in uris)
         # All attachments must carry the source tag
         for att in attachments:
-            assert att["source"] == f"intenttree:node_research_agentic_sys"
+            assert att["source"] == "intenttree:node_research_agentic_sys"
 
     def test_online_captured_from_is_intenttree(self, tmp_foundry: FoundryPaths):
         with patch(
