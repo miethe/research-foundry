@@ -4,15 +4,15 @@ doc_type: context
 status: active
 created: 2026-05-27
 updated: 2026-05-27
-title: {{PROJECT_NAME}} Project Intent
-description: Durable orientation document for AI agents and developers. Captures why {{PROJECT_NAME}} exists, who it serves, and what it should become. Refresh quarterly or when strategic direction changes.
+title: Research Foundry Project Intent
+description: Durable orientation document for AI agents and developers. Captures why Research Foundry exists, who it serves, and what it should become. Refresh quarterly or when strategic direction changes.
 ---
 
-# {{PROJECT_NAME}} Project Intent
+# Research Foundry Project Intent
 
 ## Mission
 
-{{PROJECT_NAME}} is {{PROJECT_DESCRIPTION}}.
+Research Foundry is a Markdown/YAML-first, evidence-first research control plane: it turns raw ideas into governed research swarms, evidence bundles, and claim-verified reports, with writebacks to MeatyWiki, SkillMeat, and CCDash.
 
 <!-- Replace this section with a 2–4 paragraph description of your project's purpose
      and the problems it solves. Be specific: explain the gaps in the current landscape

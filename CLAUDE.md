@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-{{PROJECT_NAME}}: {{PROJECT_DESCRIPTION}}
+Research Foundry: a Markdown/YAML-first, evidence-first research control plane: it turns raw ideas into governed research swarms, evidence bundles, and claim-verified reports, with writebacks to MeatyWiki, SkillMeat, and CCDash
 
-> Created: 2026-05-27 | Author: {{AUTHOR}}
+> Created: 2026-05-27 | Author: Nick Miethe
 
 ## Prime Directives
 
@@ -228,9 +228,9 @@ python .claude/skills/artifact-tracking/scripts/update-batch.py \
 
 ## Architecture Overview
 
-**{{PROJECT_NAME}}** — {{PROJECT_DESCRIPTION}}
+**Research Foundry** — a Markdown/YAML-first, evidence-first research control plane: it turns raw ideas into governed research swarms, evidence bundles, and claim-verified reports, with writebacks to MeatyWiki, SkillMeat, and CCDash
 
-{{ARCHITECTURE_DESCRIPTION}}
+Research Foundry is a thin, file-backed control plane — a Python `rf` CLI and `research_foundry` package. Markdown/YAML is the source of truth and the claim ledger is the authority: every material claim in a report maps to a source card or is labeled inference/speculation. Cheap models extract, expensive models synthesize, and governance (key profiles, policy rules, secret scanning) is enforced as a runtime gate. See `docs/projects/research-foundry/` for the MVP spec, implementation plan, and service contract.
 
 ### Artifact Types Supported
 
@@ -239,7 +239,7 @@ This project defines its own artifact types. See `docs/dev/architecture/artifact
 ### Project Structure
 
 ```
-{{PROJECT_NAME}}/
+Research Foundry/
 ├── CLAUDE.md               # This file — project methodology and agent config
 ├── intents/
 │   └── intent.md           # Project mission, users, JTBD, principles
