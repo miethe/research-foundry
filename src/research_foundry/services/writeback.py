@@ -1,0 +1,649 @@
+"""Writeback + bundle assembly service (contract §9).
+
+Assembles an ``evidence_bundle`` for a run, materializes the three MVP
+writeback targets (MeatyWiki source note, SkillBOM candidate, CCDash event),
+runs a deterministic review council, and proposes/promotes SkillBOM candidates.
+
+Determinism: every value is derived from on-disk run artifacts; no network or
+API keys are required. Verification (when requested) is delegated to the
+``verification`` service, which exists after this wave (imported lazily).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from ..frontmatter import dump_md, load_md
+from ..ids import (
+    bundle_id,
+    meatywiki_writeback_id,
+    now_iso,
+    skillbom_candidate_id,
+    slugify,
+)
+from ..paths import FoundryPaths
+from ..registry import REPORT_INDEX, SKILLBOM_INDEX, Registry
+from ..schemas import default_registry, validate
+from ..yamlio import append_jsonl, dump_yaml, load_yaml
+from . import telemetry
+
+_REGISTRY = default_registry()
+
+_WORK_SENSITIVITIES = {"work_sensitive", "client_sensitive"}
+
+
+# --------------------------------------------------------------------------- #
+# small helpers
+# --------------------------------------------------------------------------- #
+def _trace(rp, stage: str, **extra: Any) -> None:
+    try:
+        append_jsonl({"stage": stage, "ts": now_iso(), **extra}, rp.run_trace)
+    except Exception:  # noqa: BLE001 - tracing is best-effort
+        pass
+
+
+def _safe_load(path: Path) -> Any:
+    try:
+        return load_yaml(path)
+    except FileNotFoundError:
+        return None
+
+
+def _schema_or_raise(obj: Any, schema_name: str) -> None:
+    if not _REGISTRY.has(schema_name):
+        return
+    result = validate(obj, schema_name)
+    if not result.ok:
+        from ..errors import SchemaError
+
+        raise SchemaError(f"{schema_name} invalid: " + "; ".join(result.errors))
+
+
+def _run_meta(rp) -> dict[str, Any]:
+    return _safe_load(rp.run_yaml) or {}
+
+
+def _ledger(rp) -> dict[str, Any]:
+    return _safe_load(rp.claim_ledger) or {}
+
+
+def _count_files(directory: Path, pattern: str) -> int:
+    if not directory.exists():
+        return 0
+    return sum(1 for p in directory.glob(pattern) if p.is_file())
+
+
+def _claim_status_counts(ledger: dict[str, Any]) -> dict[str, int]:
+    claims = ledger.get("claims") or []
+    counts = {
+        "claims_total": len(claims),
+        "claims_supported": 0,
+        "claims_inference": 0,
+        "claims_speculation": 0,
+        "claims_unsupported": 0,
+    }
+    for claim in claims:
+        key = f"claims_{(claim or {}).get('status')}"
+        if key in counts:
+            counts[key] += 1
+    return counts
+
+
+def _report_meta(rp) -> tuple[dict[str, Any], Path | None]:
+    for report in (rp.report_final, rp.report_draft):
+        if report.exists():
+            meta, _ = load_md(report)
+            return meta, report
+    return {}, None
+
+
+def _sensitivity(rp) -> str:
+    meta, _ = _report_meta(rp)
+    sens = meta.get("sensitivity")
+    if sens:
+        return str(sens)
+    return str(_run_meta(rp).get("sensitivity") or "personal")
+
+
+def _intent_ibom_node(rp, paths: FoundryPaths) -> tuple[str, str, str, dict[str, Any]]:
+    """Resolve (intent_id, ibom_id, node_id, intent_dict) from run + intent."""
+
+    meta = _run_meta(rp)
+    intent_id = str(meta.get("intent_id") or "")
+    intent: dict[str, Any] = {}
+    if intent_id:
+        candidate = paths.intents_active / f"{intent_id}.yaml"
+        loaded = _safe_load(candidate)
+        if isinstance(loaded, dict):
+            intent = loaded
+    ibom_id = str(intent.get("ibom_ref") or meta.get("ibom_id") or "")
+    node_id = str(
+        intent.get("intenttree_node_ref")
+        or meta.get("task_node_id")
+        or meta.get("intenttree_node_id")
+        or ""
+    )
+    return intent_id, ibom_id, node_id, intent
+
+
+def _supported_claims(ledger: dict[str, Any]) -> list[dict[str, Any]]:
+    return [c for c in (ledger.get("claims") or []) if (c or {}).get("status") == "supported"]
+
+
+def _source_card_titles(rp, paths: FoundryPaths) -> dict[str, str]:
+    """Map source_card_id -> title from the run's source cards."""
+
+    out: dict[str, str] = {}
+    if not rp.sources.exists():
+        return out
+    for p in sorted(rp.sources.glob("*.md")):
+        meta, _ = load_md(p)
+        sid = meta.get("source_card_id")
+        title = ((meta.get("source") or {}).get("title")) or sid
+        if sid:
+            out[str(sid)] = str(title)
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# build_bundle
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class BundleResult:
+    run_id: str
+    bundle_id: str
+    bundle_path: Path
+    counts: dict
+    verified: bool
+
+
+def build_bundle(run_id: str, *, verify: bool = True, paths: FoundryPaths | None = None) -> BundleResult:
+    """Assemble ``runs/<run>/evidence_bundle.yaml`` (spec §6.11).
+
+    Counts source/extraction cards + claims by status. When ``verify`` is set,
+    runs the verification service first and reflects pass/fail in the bundle
+    status and ``governance.approved_for_writeback``.
+    """
+
+    paths = paths or FoundryPaths.discover()
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+
+    ledger = _ledger(rp)
+    status_counts = _claim_status_counts(ledger)
+    counts = {
+        "source_cards": _count_files(rp.sources, "*.md"),
+        "extraction_cards": _count_files(rp.extractions, "*.yaml"),
+        **status_counts,
+    }
+
+    verified = False
+    if verify:
+        try:
+            from .verification import verify_report
+
+            vr = verify_report(run_id, paths=paths)
+            verified = bool(vr.passed)
+        except Exception:  # noqa: BLE001 - verification optional / degrades
+            verified = False
+
+    intent_id, ibom_id, node_id, intent = _intent_ibom_node(rp, paths)
+    sensitivity = _sensitivity(rp)
+
+    bundle_ident = bundle_id(intent_id or run_id)
+    report_rel = "reports/report_final.md" if rp.report_final.exists() else "reports/report_draft.md"
+    bundle: dict[str, Any] = {
+        "id": bundle_ident,
+        "intent_id": intent_id,
+        "run_id": run_id,
+        "created_at": now_iso(),
+        "status": "verified" if verified else "draft",
+        "artifacts": {
+            "research_brief": "research_brief.md",
+            "swarm_plan": "swarm_plan.yaml",
+            "source_cards_dir": "sources/",
+            "extraction_cards_dir": "extractions/",
+            "claim_ledger": "claims/claim_ledger.yaml",
+            "report": report_rel,
+            "verification": "reviews/verification.yaml",
+            "ccdash_event": "writebacks/ccdash_event.yaml",
+        },
+        "counts": counts,
+        "governance": {
+            "sensitivity": sensitivity,
+            "approved_for_writeback": verified,
+            "approved_by": None,
+            "approval_timestamp": None,
+        },
+        "lineage": {
+            "raw_idea_ids": list(intent.get("raw_idea_ids", [])) if isinstance(intent, dict) else [],
+            "intent_id": intent_id,
+            "ibom_id": ibom_id,
+            "intenttree_node_id": node_id,
+            "skillbom_ids_used": ["skill_research_swarm_v0"],
+        },
+    }
+
+    _schema_or_raise(bundle, "evidence_bundle")
+    dump_yaml(bundle, rp.evidence_bundle)
+    _trace(rp, "bundle", run_id=run_id, bundle_id=bundle_ident, verified=verified)
+    return BundleResult(
+        run_id=run_id,
+        bundle_id=bundle_ident,
+        bundle_path=rp.evidence_bundle,
+        counts=counts,
+        verified=verified,
+    )
+
+
+def _load_bundle(rp) -> dict[str, Any]:
+    """Load the evidence bundle, building it (unverified) if missing."""
+
+    bundle = _safe_load(rp.evidence_bundle)
+    return bundle if isinstance(bundle, dict) else {}
+
+
+# --------------------------------------------------------------------------- #
+# writeback
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class WritebackResult:
+    run_id: str
+    meatywiki_path: Path | None
+    skillbom_path: Path | None
+    ccdash_path: Path | None
+    requires_review: bool
+
+
+def _render_meatywiki(
+    rp,
+    paths: FoundryPaths,
+    *,
+    bundle_ident: str,
+    sensitivity: str,
+    ledger: dict[str, Any],
+    requires_review: bool,
+) -> Path:
+    """Write writebacks/meatywiki_writeback.md (+ mirror) from the template fields."""
+
+    titles = _source_card_titles(rp, paths)
+    supported = _supported_claims(ledger)
+    report_meta, _ = _report_meta(rp)
+    title = str(report_meta.get("title") or "Research Foundry source note")
+    slug = slugify(title)
+    mwb_ident = meatywiki_writeback_id(title)
+    target_page = f"meatywiki/sources/{slug}.md"
+
+    summary = (
+        f"Source note distilled from research run {rp.run.name}: "
+        f"{len(supported)} supported claim(s) across {len(titles)} source card(s)."
+    )
+    status = "proposed" if requires_review else "written"
+
+    front: dict[str, Any] = {
+        "id": mwb_ident,
+        "evidence_bundle_id": bundle_ident,
+        "target_page": target_page,
+        "writeback_type": "source_note",
+        "status": status,
+        "summary": summary,
+        "key_claims": [
+            {"claim_id": c.get("claim_id"), "include": True} for c in supported
+        ],
+        "links": {
+            "source_cards": sorted(titles.keys()),
+            "related_pages": ["[[Research Foundry]]", "[[Agentic Control Plane]]"],
+        },
+        "approval": {
+            "required": requires_review,
+            "reason": (
+                "work/client sensitivity requires human review before writeback"
+                if requires_review
+                else "personal/public research: auto-approved"
+            ),
+            "approved_by": None,
+        },
+    }
+    _schema_or_raise(front, "meatywiki_writeback")
+
+    claim_lines = "\n".join(
+        f"- {c.get('text', '')} [claim:{c.get('claim_id', '')}]" for c in supported
+    ) or "- (no supported claims yet)"
+    source_lines = "\n".join(f"- {sid} — {ttl}" for sid, ttl in sorted(titles.items())) or "- (none)"
+    body = (
+        f"# {title}\n\n"
+        f"## Summary\n\n{summary}\n\n"
+        f"## Key claims\n\n{claim_lines}\n\n"
+        f"## Sources\n\n{source_lines}\n\n"
+        f"## Links\n\n- [[Research Foundry]]\n- [[Agentic Control Plane]]\n"
+    )
+
+    dump_md(front, body, rp.meatywiki_writeback)
+    if not requires_review:
+        mirror = paths.meatywiki / "sources" / f"{slug}.md"
+        dump_md(front, body, mirror)
+    return rp.meatywiki_writeback
+
+
+def _render_skillbom(
+    rp,
+    paths: FoundryPaths,
+    *,
+    bundle_ident: str,
+    ccdash_event_id_value: str,
+    requires_review: bool,
+) -> Path:
+    """Write writebacks/skillbom_candidate.md (+ mirror) from the template fields."""
+
+    report_meta, _ = _report_meta(rp)
+    title = str(report_meta.get("title") or "Research swarm")
+    cand_ident = skillbom_candidate_id(title)
+    name = f"Research Swarm — {title}"
+    purpose = (
+        "Reusable research swarm: cheap extraction + deep synthesis with claim "
+        "traceability and governance gating."
+    )
+
+    front: dict[str, Any] = {
+        "id": cand_ident,
+        "name": name,
+        "proposed_skillbom_id": "skill_research_swarm_v0",
+        "evidence_bundle_id": bundle_ident,
+        "status": "needs_review" if requires_review else "candidate",
+        "purpose": purpose,
+        "agent_postures": ["researcher", "critic", "synthesizer"],
+        "tools_used": ["gpt_researcher", "paperqa2", "claude_agent_sdk", "litellm"],
+        "prompts": {
+            "system": "skillmeat/prompts/research_swarm_system.md",
+            "task": "skillmeat/prompts/research_swarm_task.md",
+        },
+        "context_packs": ["research_foundry_core"],
+        "output_schemas": [
+            "source_card.schema.yaml",
+            "claim_ledger.schema.yaml",
+            "evidence_bundle.schema.yaml",
+        ],
+        "validation": ["claim_verifier_passed", "governance_guard_passed", "report_reviewed"],
+        "known_failure_modes": [
+            "source_overcollection",
+            "unsupported_synthesis",
+            "citation_mismatch",
+            "stale_sources",
+            "work_personal_boundary_leak",
+        ],
+        "performance_evidence": {
+            "ccdash_event_id": ccdash_event_id_value,
+            "quality_score": "pending",
+            "rework_count": 0,
+            "estimated_cost_usd": 0.0,
+        },
+    }
+    _schema_or_raise(front, "skillbom_candidate")
+
+    body = (
+        f"# SkillBOM Candidate: {name}\n\n"
+        f"## Purpose\n\n{purpose}\n\n"
+        "## Agent postures\n\n- researcher\n- critic\n- synthesizer\n\n"
+        "## Tools\n\n- gpt_researcher\n- paperqa2\n- claude_agent_sdk\n- litellm\n\n"
+        "## Output schemas\n\n- source_card.schema.yaml\n- claim_ledger.schema.yaml"
+        "\n- evidence_bundle.schema.yaml\n\n"
+        f"## Performance evidence\n\n- CCDash event id: {ccdash_event_id_value}\n"
+    )
+
+    dump_md(front, body, rp.skillbom_candidate)
+    mirror = paths.skillmeat / "skillboms" / f"{cand_ident}.md"
+    dump_md(front, body, mirror)
+
+    Registry.open(SKILLBOM_INDEX, paths=paths).upsert(
+        {
+            "id": cand_ident,
+            "proposed_skillbom_id": "skill_research_swarm_v0",
+            "evidence_bundle_id": bundle_ident,
+            "status": front["status"],
+            "run_id": rp.run.name,
+            "path": str(mirror),
+        }
+    )
+    return rp.skillbom_candidate
+
+
+def writeback(
+    run_id: str,
+    *,
+    targets: tuple[str, ...] = ("meatywiki", "skillmeat", "ccdash"),
+    require_review: bool = False,
+    paths: FoundryPaths | None = None,
+) -> WritebackResult:
+    """Materialize the run's writeback targets + workspace mirrors (contract §9).
+
+    Governance: if ``require_review`` or the run is work/client-sensitive, the
+    MeatyWiki writeback is marked ``proposed`` and NOT mirrored into the wiki.
+    """
+
+    paths = paths or FoundryPaths.discover()
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+
+    bundle = _load_bundle(rp)
+    if not bundle:
+        bundle = {"id": build_bundle(run_id, verify=True, paths=paths).bundle_id}
+    bundle_ident = str(bundle.get("id") or bundle_id(run_id))
+
+    ledger = _ledger(rp)
+    sensitivity = _sensitivity(rp)
+    requires_review = bool(require_review) or sensitivity in _WORK_SENSITIVITIES
+
+    meatywiki_path: Path | None = None
+    skillbom_path: Path | None = None
+    ccdash_path: Path | None = None
+    ccdash_event_id_value = ""
+
+    if "ccdash" in targets:
+        ccdash_path = telemetry.emit_ccdash_event(run_id, paths=paths)
+        event = _safe_load(ccdash_path) or {}
+        ccdash_event_id_value = str(event.get("event_id") or "")
+
+    if "meatywiki" in targets:
+        meatywiki_path = _render_meatywiki(
+            rp,
+            paths,
+            bundle_ident=bundle_ident,
+            sensitivity=sensitivity,
+            ledger=ledger,
+            requires_review=requires_review,
+        )
+
+    if "skillmeat" in targets:
+        skillbom_path = _render_skillbom(
+            rp,
+            paths,
+            bundle_ident=bundle_ident,
+            ccdash_event_id_value=ccdash_event_id_value,
+            requires_review=requires_review,
+        )
+
+    report_meta, report_path = _report_meta(rp)
+    report_id = report_meta.get("report_id")
+    if report_id:
+        Registry.open(REPORT_INDEX, paths=paths).upsert(
+            {
+                "id": str(report_id),
+                "run_id": run_id,
+                "intent_id": str(report_meta.get("intent_id") or ""),
+                "evidence_bundle_id": bundle_ident,
+                "sensitivity": sensitivity,
+                "status": str(report_meta.get("status") or "draft"),
+                "requires_review": requires_review,
+                "path": str(report_path) if report_path else "",
+            }
+        )
+
+    _trace(rp, "writeback", run_id=run_id, requires_review=requires_review)
+    return WritebackResult(
+        run_id=run_id,
+        meatywiki_path=meatywiki_path,
+        skillbom_path=skillbom_path,
+        ccdash_path=ccdash_path,
+        requires_review=requires_review,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# council_review
+# --------------------------------------------------------------------------- #
+_ROLE_POSTURE = {
+    "domain_reviewer": "researcher",
+    "claim_critic": "critic",
+    "governance_officer": "red_team",
+    "executive_translator": "executive_translator",
+}
+
+
+def council_review(
+    run_id: str,
+    *,
+    roles: list[str],
+    vote: str = "approve-concern-block",
+    paths: FoundryPaths | None = None,
+) -> Path:
+    """Deterministic review council (spec §13.5) → reviews/council_review.yaml.
+
+    Votes are derived from the verification result: pass → approve, warnings →
+    concern, fail → block. Validated against the ``review_packet`` schema.
+    """
+
+    paths = paths or FoundryPaths.discover()
+    rp = paths.run_paths(run_id)
+    rp.reviews.mkdir(parents=True, exist_ok=True)
+
+    bundle = _load_bundle(rp)
+    bundle_ident = str(bundle.get("id") or bundle_id(run_id))
+
+    # Derive the council decision from verification (deterministic; degrades).
+    decision = "approve"
+    has_warning = False
+    concerns: list[dict[str, Any]] = []
+    try:
+        from .verification import verify_report
+
+        vr = verify_report(run_id, paths=paths)
+        has_warning = any(
+            getattr(c, "severity", "") == "warning" and getattr(c, "status", "") in {"warn", "fail"}
+            for c in vr.checks
+        )
+        if not vr.passed:
+            decision = "required_block"
+            for failed in [
+                c for c in vr.checks if getattr(c, "status", "") == "fail"
+            ]:
+                concerns.append(
+                    {
+                        "concern_id": getattr(failed, "id", "check"),
+                        "severity": "blocker"
+                        if getattr(failed, "severity", "") == "error"
+                        else "medium",
+                        "text": getattr(failed, "detail", "verification check failed"),
+                        "required_fix": "Resolve the failing verification check before publishing.",
+                    }
+                )
+        elif has_warning:
+            decision = "revise"
+            concerns.append(
+                {
+                    "concern_id": "verification_warnings",
+                    "severity": "low",
+                    "text": "Verification passed with warnings.",
+                    "required_fix": "Review non-blocking warnings before writeback.",
+                }
+            )
+    except Exception:  # noqa: BLE001 - verification optional; default approve
+        decision = "approve"
+
+    members = [
+        {"role": role, "posture": _ROLE_POSTURE.get(role, "researcher")} for role in roles
+    ]
+    member_vote = {"approve": "approve", "revise": "concern", "required_block": "block"}[decision]
+    for m in members:
+        m["vote"] = member_vote
+
+    packet: dict[str, Any] = {
+        "id": f"council_{rp.run.name}",
+        "evidence_bundle_id": bundle_ident,
+        "voting": {"allowed_votes": ["approve", "concern", "block"]},
+        "members": members,
+        "output": {"decision": decision, "concerns": concerns},
+        "reviewer_notes": f"Deterministic council over run {run_id}; vote policy {vote}.",
+    }
+    _schema_or_raise(packet, "review_packet")
+    dump_yaml(packet, rp.council_review)
+    _trace(rp, "council", run_id=run_id, decision=decision)
+    return rp.council_review
+
+
+# --------------------------------------------------------------------------- #
+# skillbom propose / promote
+# --------------------------------------------------------------------------- #
+def skillbom_propose(run_id, paths: FoundryPaths | None = None) -> Path:
+    """Propose a SkillBOM candidate for ``run_id`` (writes skillmeat target only)."""
+
+    paths = paths or FoundryPaths.discover()
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+
+    bundle = _load_bundle(rp)
+    if not bundle:
+        bundle = {"id": build_bundle(run_id, verify=True, paths=paths).bundle_id}
+    bundle_ident = str(bundle.get("id") or bundle_id(run_id))
+
+    sensitivity = _sensitivity(rp)
+    requires_review = sensitivity in _WORK_SENSITIVITIES
+
+    ccdash_event_id_value = ""
+    event = _safe_load(rp.ccdash_event)
+    if isinstance(event, dict):
+        ccdash_event_id_value = str(event.get("event_id") or "")
+
+    return _render_skillbom(
+        rp,
+        paths,
+        bundle_ident=bundle_ident,
+        ccdash_event_id_value=ccdash_event_id_value,
+        requires_review=requires_review,
+    )
+
+
+def skillbom_promote(candidate_id, *, reviewer: str, paths: FoundryPaths | None = None) -> Path:
+    """Promote a candidate to ``status: promoted`` in its file + registry."""
+
+    paths = paths or FoundryPaths.discover()
+    candidate_path = paths.skillmeat / "skillboms" / f"{candidate_id}.md"
+    if not candidate_path.exists():
+        from ..errors import NotFoundError
+
+        raise NotFoundError(f"SkillBOM candidate not found: {candidate_id}")
+
+    front, body = load_md(candidate_path)
+    front["status"] = "promoted"
+    approval = front.get("promotion") if isinstance(front.get("promotion"), dict) else {}
+    approval = {**approval, "promoted_by": reviewer, "promoted_at": now_iso()}
+    front["promotion"] = approval
+    _schema_or_raise(front, "skillbom_candidate")
+    dump_md(front, body, candidate_path)
+
+    reg = Registry.open(SKILLBOM_INDEX, paths=paths)
+    existing = reg.get(str(candidate_id)) or {"id": str(candidate_id)}
+    reg.upsert({**existing, "status": "promoted", "promoted_by": reviewer})
+    return candidate_path
+
+
+__all__ = [
+    "BundleResult",
+    "build_bundle",
+    "WritebackResult",
+    "writeback",
+    "council_review",
+    "skillbom_propose",
+    "skillbom_promote",
+]

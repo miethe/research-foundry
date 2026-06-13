@@ -39,7 +39,7 @@ class FoundryConfig:
     _cache: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
 
     @classmethod
-    def load(cls, start: str | Path | None = None) -> "FoundryConfig":
+    def load(cls, start: str | Path | None = None) -> FoundryConfig:
         return cls(paths=FoundryPaths.discover(start))
 
     @cached_property

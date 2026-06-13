@@ -34,7 +34,7 @@ class Registry:
     key: str = "id"
 
     @classmethod
-    def open(cls, name: str, *, paths: FoundryPaths | None = None, key: str = "id") -> "Registry":
+    def open(cls, name: str, *, paths: FoundryPaths | None = None, key: str = "id") -> Registry:
         p = (paths or FoundryPaths.discover()).registries / name
         return cls(path=p, key=key)
 

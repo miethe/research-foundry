@@ -46,7 +46,7 @@ class FoundryPaths:
     root: Path
 
     @classmethod
-    def discover(cls, start: str | Path | None = None) -> "FoundryPaths":
+    def discover(cls, start: str | Path | None = None) -> FoundryPaths:
         return cls(root=find_workspace_root(start))
 
     # --- top-level directories (spec §5) ---
@@ -122,7 +122,7 @@ class FoundryPaths:
     def run_dir(self, run_id: str) -> Path:
         return self.runs / run_id
 
-    def run_paths(self, run_id: str) -> "RunPaths":
+    def run_paths(self, run_id: str) -> RunPaths:
         return RunPaths(run=self.run_dir(run_id))
 
 
@@ -244,7 +244,7 @@ class RunPaths:
     def run_trace(self) -> Path:
         return self.telemetry / "run_trace.jsonl"
 
-    def ensure_scaffold(self) -> "RunPaths":
+    def ensure_scaffold(self) -> RunPaths:
         """Create the standard run sub-directories (idempotent)."""
 
         for d in (self.sources, self.extractions, self.claims, self.reports,

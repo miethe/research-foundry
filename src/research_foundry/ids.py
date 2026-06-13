@@ -12,12 +12,17 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
 
 # --- Clock -----------------------------------------------------------------
 
-_clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc).astimezone()
+
+def _default_clock() -> datetime:
+    return datetime.now(UTC).astimezone()
+
+
+_clock: Callable[[], datetime] = _default_clock
 
 
 def set_clock(fn: Callable[[], datetime]) -> None:

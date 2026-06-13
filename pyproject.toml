@@ -48,6 +48,9 @@ packages = ["src/research_foundry"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+markers = [
+    "integration: end-to-end pipeline tests that drive multiple services",
+]
 
 [tool.ruff]
 line-length = 100
@@ -57,6 +60,10 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "W"]
 ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Typer's idiom places Option/Argument descriptors in parameter defaults.
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
 
 [tool.mypy]
 python_version = "3.11"

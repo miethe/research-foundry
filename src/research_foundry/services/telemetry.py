@@ -1,0 +1,325 @@
+"""Telemetry / CCDash emission service (contract §10).
+
+Builds a deterministic ``execution_event`` (spec §6.15) from a run's artifacts
+and mirrors it into the workspace-level ``ccdash/`` tree, then aggregates events
+into daily + period rollups. No network or API keys are required: every value is
+derived from on-disk artifacts.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from ..ids import ccdash_event_id, now_iso, today_compact
+from ..paths import FoundryPaths
+from ..schemas import default_registry, validate
+from ..yamlio import append_jsonl, dump_yaml, load_yaml
+
+_REGISTRY = default_registry()
+
+# Sensitivity -> key profile that would have been used at runtime (spec §7.1).
+_KEY_PROFILE_BY_SENSITIVITY = {
+    "public": "personal",
+    "personal": "personal",
+    "work_sensitive": "work_approved",
+    "client_sensitive": "client_approved",
+}
+
+_DEFAULT_TOOLS = ["claude_code", "claude_agent_sdk", "gpt_researcher", "paperqa2", "litellm"]
+_DEFAULT_POSTURES = ["researcher", "critic", "synthesizer", "operator"]
+
+
+def _trace(run_paths, stage: str, **extra: Any) -> None:
+    """Best-effort append to ``telemetry/run_trace.jsonl`` (never fails the stage)."""
+
+    try:
+        append_jsonl({"stage": stage, "ts": now_iso(), **extra}, run_paths.run_trace)
+    except Exception:  # noqa: BLE001 - tracing is best-effort
+        pass
+
+
+def _safe_load(path: Path) -> Any:
+    try:
+        return load_yaml(path)
+    except FileNotFoundError:
+        return None
+
+
+def _run_meta(run_paths) -> dict[str, Any]:
+    return _safe_load(run_paths.run_yaml) or {}
+
+
+def _ledger_counts(run_paths) -> dict[str, int]:
+    """Status counts from the run's claim ledger (zeros when absent)."""
+
+    ledger = _safe_load(run_paths.claim_ledger) or {}
+    claims = ledger.get("claims") or []
+    counts = {
+        "claims_total": len(claims),
+        "claims_supported": 0,
+        "claims_inference": 0,
+        "claims_speculation": 0,
+        "claims_unsupported": 0,
+    }
+    for claim in claims:
+        status = (claim or {}).get("status")
+        key = f"claims_{status}"
+        if key in counts:
+            counts[key] += 1
+    return counts
+
+
+def _count_files(directory: Path, *patterns: str) -> int:
+    if not directory.exists():
+        return 0
+    total = 0
+    for pattern in patterns or ("*",):
+        total += sum(1 for p in directory.glob(pattern) if p.is_file())
+    return total
+
+
+def _verification(run_paths) -> dict[str, Any]:
+    return _safe_load(run_paths.verification) or {}
+
+
+def _sensitivity_for_run(run_paths) -> str:
+    """Resolve run sensitivity from report front matter or run.yaml (default personal)."""
+
+    for report in (run_paths.report_final, run_paths.report_draft):
+        if report.exists():
+            from ..frontmatter import load_md
+
+            meta, _ = load_md(report)
+            sens = meta.get("sensitivity")
+            if sens:
+                return str(sens)
+    meta = _run_meta(run_paths)
+    return str(meta.get("sensitivity") or "personal")
+
+
+def _tools_and_postures(run_paths) -> tuple[list[str], list[str]]:
+    """Pull tool + posture lists from swarm_plan / routing_decision when present."""
+
+    tools: list[str] = []
+    postures: list[str] = []
+    swarm = _safe_load(run_paths.swarm_plan) or {}
+    routing = _safe_load(run_paths.routing_decision) or {}
+    for agent in swarm.get("agents", []) or []:
+        posture = (agent or {}).get("posture")
+        if posture and posture not in postures:
+            postures.append(posture)
+    for key in ("selected_tools", "tools"):
+        vals = routing.get(key)
+        if isinstance(vals, list):
+            for tool in vals:
+                if tool and tool not in tools:
+                    tools.append(tool)
+    return (tools or list(_DEFAULT_TOOLS), postures or list(_DEFAULT_POSTURES))
+
+
+def emit_ccdash_event(run_id: str, *, paths: FoundryPaths | None = None) -> Path:
+    """Build + write the run's CCDash ``execution_event`` (spec §6.15).
+
+    Writes ``runs/<run>/writebacks/ccdash_event.yaml`` and mirrors it into
+    ``ccdash/events/<event_id>.yaml``. Validates against ``ccdash_event``.
+    """
+
+    paths = paths or FoundryPaths.discover()
+    rp = paths.run_paths(run_id)
+    rp.writebacks.mkdir(parents=True, exist_ok=True)
+
+    meta = _run_meta(rp)
+    intent_id = str(meta.get("intent_id") or "")
+    task_node_id = str(meta.get("task_node_id") or meta.get("intenttree_node_id") or "")
+
+    counts = _ledger_counts(rp)
+    source_cards_created = _count_files(rp.sources, "*.md")
+    verification = _verification(rp)
+    verification_passed = bool(verification.get("passed", False))
+
+    tools, postures = _tools_and_postures(rp)
+    sensitivity = _sensitivity_for_run(rp)
+    key_profile_used = _KEY_PROFILE_BY_SENSITIVITY.get(sensitivity, "personal")
+    requires_review = sensitivity in {"work_sensitive", "client_sensitive"}
+
+    event_id = ccdash_event_id(intent_id or run_id)
+    event: dict[str, Any] = {
+        "event_id": event_id,
+        "timestamp": now_iso(),
+        "project": "Research Foundry",
+        "intent_id": intent_id,
+        "task_node_id": task_node_id,
+        "run_id": run_id,
+        "agent_postures": postures,
+        "skillbom_ids": ["skill_research_swarm_v0"],
+        "tools": tools,
+        "input_artifacts": [
+            "inbox/raw_ideas/raw_*.md",
+            "intents/active/intent_*.yaml",
+        ],
+        "output_artifacts": [
+            f"runs/{run_id}/evidence_bundle.yaml",
+            f"runs/{run_id}/reports/report_final.md",
+            f"runs/{run_id}/writebacks/meatywiki_writeback.md",
+            f"runs/{run_id}/writebacks/skillbom_candidate.md",
+        ],
+        "metrics": {
+            "source_cards_created": source_cards_created,
+            "claims_total": counts["claims_total"],
+            "claims_supported": counts["claims_supported"],
+            "claims_inference": counts["claims_inference"],
+            "claims_speculation": counts["claims_speculation"],
+            "unsupported_claims": counts["claims_unsupported"],
+            "verification_passed": verification_passed,
+            "tokens_estimated": 0,
+            "cost_estimated_usd": 0.0,
+            "latency_minutes": 0.0,
+            "rework_count": 0,
+            "drift_score": 0.0,
+            "quality_score": "pending",
+        },
+        "governance": {
+            "sensitivity": sensitivity,
+            "key_profile_used": key_profile_used,
+            "policy_passed": verification_passed,
+            "violations": [],
+        },
+        "reuse": {
+            "meatywiki_writeback_candidate": True,
+            "skillbom_candidate": True,
+            "reusable_source_pack_candidate": source_cards_created > 0,
+        },
+        "human_review": {
+            "required": requires_review,
+            "status": "pending" if requires_review else "not_required",
+            "reviewer": None,
+        },
+    }
+
+    if _REGISTRY.has("ccdash_event"):
+        result = validate(event, "ccdash_event")
+        if not result.ok:
+            from ..errors import SchemaError
+
+            raise SchemaError("ccdash_event invalid: " + "; ".join(result.errors))
+
+    dump_yaml(event, rp.ccdash_event)
+    mirror = paths.ccdash / "events" / f"{event_id}.yaml"
+    dump_yaml(event, mirror)
+    _trace(rp, "ccdash_event", run_id=run_id, event_id=event_id)
+    return rp.ccdash_event
+
+
+def emit_latest_or_noop(*, paths: FoundryPaths | None = None) -> Path | None:
+    """Stop-hook helper: emit a CCDash event for the most-recent run, else no-op.
+
+    Safe to call outside a foundry workspace: if no runs exist (or the workspace
+    is absent) it returns ``None`` without raising.
+    """
+
+    try:
+        paths = paths or FoundryPaths.discover()
+    except Exception:  # noqa: BLE001
+        return None
+    runs_dir = paths.runs
+    if not runs_dir.exists():
+        return None
+    run_dirs = [d for d in runs_dir.iterdir() if d.is_dir()]
+    if not run_dirs:
+        return None
+    latest = max(run_dirs, key=lambda d: d.stat().st_mtime)
+    try:
+        return emit_ccdash_event(latest.name, paths=paths)
+    except Exception:  # noqa: BLE001 - hook must never break the host process
+        return None
+
+
+@dataclass(frozen=True)
+class _Rollup:
+    runs: int
+    claims_total: int
+    unsupported: int
+    cost_estimated_usd: float
+    verification_pass_rate: float
+    meatywiki_candidates: int
+    skillbom_candidates: int
+
+
+def _aggregate_events(events: list[dict[str, Any]]) -> _Rollup:
+    runs = len(events)
+    claims_total = 0
+    unsupported = 0
+    cost = 0.0
+    passed = 0
+    mwb = 0
+    skb = 0
+    for ev in events:
+        metrics = ev.get("metrics") or {}
+        claims_total += int(metrics.get("claims_total") or 0)
+        unsupported += int(metrics.get("unsupported_claims") or 0)
+        cost += float(metrics.get("cost_estimated_usd") or 0.0)
+        if metrics.get("verification_passed"):
+            passed += 1
+        reuse = ev.get("reuse") or {}
+        if reuse.get("meatywiki_writeback_candidate"):
+            mwb += 1
+        if reuse.get("skillbom_candidate"):
+            skb += 1
+    pass_rate = round(passed / runs, 4) if runs else 0.0
+    return _Rollup(
+        runs=runs,
+        claims_total=claims_total,
+        unsupported=unsupported,
+        cost_estimated_usd=round(cost, 4),
+        verification_pass_rate=pass_rate,
+        meatywiki_candidates=mwb,
+        skillbom_candidates=skb,
+    )
+
+
+def summarize(period: str = "daily", *, paths: FoundryPaths | None = None) -> Path:
+    """Aggregate ``ccdash/events/*.yaml`` into a daily rollup + period summary.
+
+    Writes ``ccdash/daily/<date>.yaml`` and ``ccdash/summaries/<period>_<date>.yaml``
+    and returns the period-summary path. Empty event sets produce a zeroed rollup.
+    """
+
+    paths = paths or FoundryPaths.discover()
+    events_dir = paths.ccdash / "events"
+    events: list[dict[str, Any]] = []
+    if events_dir.exists():
+        for p in sorted(events_dir.glob("*.yaml")):
+            data = _safe_load(p)
+            if isinstance(data, dict):
+                events.append(data)
+
+    date = today_compact()
+    rollup = _aggregate_events(events)
+    body = {
+        "period": period,
+        "date": date,
+        "generated_at": now_iso(),
+        "totals": {
+            "runs": rollup.runs,
+            "claims_total": rollup.claims_total,
+            "unsupported_claims": rollup.unsupported,
+            "cost_estimated_usd": rollup.cost_estimated_usd,
+            "verification_pass_rate": rollup.verification_pass_rate,
+        },
+        "reuse_candidates": {
+            "meatywiki_writebacks": rollup.meatywiki_candidates,
+            "skillbom_candidates": rollup.skillbom_candidates,
+        },
+        "event_ids": [ev.get("event_id") for ev in events if ev.get("event_id")],
+    }
+
+    daily_path = paths.ccdash / "daily" / f"{date}.yaml"
+    dump_yaml(body, daily_path)
+    summary_path = paths.ccdash / "summaries" / f"{period}_{date}.yaml"
+    dump_yaml(body, summary_path)
+    return summary_path
+
+
+__all__ = ["emit_ccdash_event", "emit_latest_or_noop", "summarize"]

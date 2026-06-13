@@ -13,7 +13,7 @@ from a fresh checkout.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -52,7 +52,7 @@ class SchemaRegistry:
     def __init__(self, schemas_dir: str | Path | None = None) -> None:
         self.dir = Path(schemas_dir) if schemas_dir else _schemas_dir()
 
-    @lru_cache(maxsize=None)  # noqa: B019  (registry instances are long-lived)
+    @cache  # noqa: B019  (registry instances are long-lived)
     def _load(self, name: str) -> dict[str, Any]:
         path = self.dir / f"{name}{SCHEMA_SUFFIX}"
         if not path.exists():
