@@ -126,12 +126,21 @@ def capture_idea(
     tags: list[str] | None = None,
     research_potential: str = "unknown",
     suggested_project: str = "Research Foundry",
+    attachments: list[dict] | None = None,
     paths: FoundryPaths | None = None,
 ) -> CaptureResult:
     """Capture raw idea ``text`` into ``inbox/raw_ideas/<raw_id>.md``.
 
     Fields are stored at the TOP LEVEL of the Markdown front matter plus a body.
     Validates the result against the ``raw_idea`` schema.
+
+    Parameters
+    ----------
+    attachments:
+        Optional list of attachment dicts (``path_or_uri``, ``type``, …) that
+        are embedded into the raw-idea front matter verbatim. Useful when the
+        idea originates from a system that already carries source links (e.g.
+        IntentTree nodes with ``links`` / ``artifacts``).
     """
 
     paths = paths or FoundryPaths.discover()
@@ -150,7 +159,7 @@ def capture_idea(
         "research_potential": research_potential,
         "suggested_project": suggested_project,
         "initial_questions": [],
-        "attachments": [],
+        "attachments": list(attachments or []),
         "triage": {"status": "untriaged", "intent_id": None},
     }
 

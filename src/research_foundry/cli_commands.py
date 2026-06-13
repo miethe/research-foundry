@@ -632,6 +632,51 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(tree_app, name="tree")
 
+    # ----- intake (spec §3.3: IntentTree inbound) -----
+    intake_app = typer.Typer(help="Inbound intake from external systems (spec §3.3).")
+
+    @intake_app.command("intenttree")
+    def intake_intenttree(
+        node_id: str = typer.Argument(..., help="IntentTree node id to pull"),
+        from_file: Path | None = typer.Option(
+            None, "--from-file", help="Load node from a local YAML file (offline mode)"
+        ),
+        do_plan: bool = typer.Option(False, "--plan/--no-plan", help="Also run plan after triage"),
+        sensitivity: str = typer.Option("personal", "--sensitivity", help="Governance sensitivity"),
+        profile: str | None = typer.Option(None, "--profile", help="Runtime key profile for planning"),
+    ) -> None:
+        """Pull an IntentTree node and run capture→triage→(optional)plan.
+
+        Closes the Phase 1 loop: the resulting intent's intenttree_node_ref is
+        set to the source node_id so subsequent writebacks update the originating
+        IntentTree node rather than a locally-minted placeholder.
+        """
+
+        from .services.intake import intake_from_intenttree
+
+        try:
+            r = intake_from_intenttree(
+                node_id,
+                from_file=from_file,
+                do_plan=do_plan,
+                sensitivity=sensitivity,
+                profile=profile,
+            )
+        except RFError as e:
+            _fail(e)
+        console.print(f"[green]intake[/green] node {r.node_id}")
+        typer.echo(f"raw_idea={r.raw_idea_id}")
+        if r.intent_id:
+            typer.echo(f"intent={r.intent_id}")
+        if r.run_id:
+            typer.echo(f"run={r.run_id}")
+        if r.raw_idea_path:
+            typer.echo(str(r.raw_idea_path))
+        if r.intent_path:
+            typer.echo(str(r.intent_path))
+
+    app.add_typer(intake_app, name="intake")
+
 
 def _render_checks(checks) -> None:
     table = Table(title="verifier checks", show_header=True, header_style="bold")

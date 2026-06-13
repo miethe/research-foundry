@@ -100,11 +100,14 @@ class IntentTreeClient(IntegrationClient):
     ) -> dict[str, Any] | None:
         """GET ``/api/nodes/{node_id}?include={include}``.
 
-        Returns the node record or ``None`` when offline.
-        **Phase 2 stub — currently a no-op.**
+        Returns the node record or ``None`` when offline or on any error
+        (fail-soft contract mirrors ``patch_node`` / ``add_node_artifact``).
         """
 
-        return None  # pragma: no cover (Phase 2)
+        path = f"/api/nodes/{node_id}"
+        if include:
+            path = f"{path}?include={include}"
+        return self._get(path, headers=self._auth_headers())
 
     def patch_node(
         self,

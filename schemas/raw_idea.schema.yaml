@@ -17,6 +17,7 @@ properties:
       - email
       - meeting
       - manual
+      - intenttree
   title:
     type: string
   body:
