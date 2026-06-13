@@ -1,0 +1,131 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/research_intent.schema.yaml"
+title: Research Intent
+description: A structured research intent extending the Agentic OS intent model.
+type: object
+properties:
+  id:
+    type: string
+  title:
+    type: string
+  owner:
+    type: string
+  created_at:
+    type: string
+  status:
+    enum:
+      - proposed
+      - active
+      - paused
+      - completed
+      - archived
+  type:
+    type: string
+  objective:
+    type: string
+  motivation:
+    type: string
+  desired_output:
+    type: object
+    properties:
+      artifact_type:
+        enum:
+          - evidence_bundle
+          - report
+          - brief
+          - source_note
+          - market_scan
+          - technical_memo
+          - literature_review
+      audience:
+        enum:
+          - self
+          - public
+          - executive
+          - technical
+          - client
+          - work_internal
+      depth:
+        enum:
+          - skim
+          - standard
+          - deep
+          - exhaustive
+    additionalProperties: true
+  scope:
+    type: object
+    properties:
+      in:
+        type: array
+        items:
+          type: string
+      out:
+        type: array
+        items:
+          type: string
+    additionalProperties: true
+  research_questions:
+    type: object
+    properties:
+      primary:
+        type: array
+        items:
+          type: string
+      secondary:
+        type: array
+        items:
+          type: string
+    additionalProperties: true
+  constraints:
+    type: object
+    properties:
+      hard:
+        type: array
+        items:
+          type: string
+      soft:
+        type: array
+        items:
+          type: string
+    additionalProperties: true
+  success_criteria:
+    type: array
+    items:
+      type: object
+      properties:
+        criterion:
+          type: string
+        measure:
+          type: string
+      additionalProperties: true
+  governance:
+    type: object
+    properties:
+      sensitivity:
+        enum:
+          - public
+          - personal
+          - work_sensitive
+          - client_sensitive
+      key_profile_allowed:
+        enum:
+          - personal
+          - work_approved
+          - client_approved
+          - offline_only
+      requires_human_review:
+        type: boolean
+      allowed_writebacks:
+        type: array
+        items:
+          type: string
+    additionalProperties: true
+  ibom_ref:
+    type: string
+  intenttree_node_ref:
+    type: string
+required:
+  - id
+  - title
+  - objective
+additionalProperties: true

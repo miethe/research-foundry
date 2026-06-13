@@ -1,0 +1,123 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/ccdash_event.schema.yaml"
+title: CCDash Event
+description: An execution event emitted to CCDash capturing metrics, governance, reuse, and review state.
+type: object
+properties:
+  event_id:
+    type: string
+  timestamp:
+    type: string
+  project:
+    type: string
+  intent_id:
+    type: string
+  task_node_id:
+    type: string
+  run_id:
+    type: string
+  agent_postures:
+    type: array
+    items:
+      type: string
+  skillbom_ids:
+    type: array
+    items:
+      type: string
+  tools:
+    type: array
+    items:
+      type: string
+  input_artifacts:
+    type: array
+    items:
+      type: string
+  output_artifacts:
+    type: array
+    items:
+      type: string
+  metrics:
+    type: object
+    properties:
+      source_cards_created:
+        type: integer
+      claims_total:
+        type: integer
+      claims_supported:
+        type: integer
+      claims_inference:
+        type: integer
+      claims_speculation:
+        type: integer
+      unsupported_claims:
+        type: integer
+      verification_passed:
+        type: boolean
+      tokens_estimated:
+        type: integer
+      cost_estimated_usd:
+        type: number
+      latency_minutes:
+        type: number
+      rework_count:
+        type: integer
+      drift_score:
+        type: number
+      quality_score:
+        type:
+          - string
+          - number
+    additionalProperties: true
+  governance:
+    type: object
+    properties:
+      sensitivity:
+        enum:
+          - public
+          - personal
+          - work_sensitive
+          - client_sensitive
+      key_profile_used:
+        enum:
+          - personal
+          - work_approved
+          - client_approved
+          - offline_only
+      policy_passed:
+        type: boolean
+      violations:
+        type: array
+        items:
+          type: string
+    additionalProperties: true
+  reuse:
+    type: object
+    properties:
+      meatywiki_writeback_candidate:
+        type: boolean
+      skillbom_candidate:
+        type: boolean
+      reusable_source_pack_candidate:
+        type: boolean
+    additionalProperties: true
+  human_review:
+    type: object
+    properties:
+      required:
+        type: boolean
+      status:
+        enum:
+          - pending
+          - approved
+          - rejected
+          - not_required
+      reviewer:
+        type:
+          - string
+          - "null"
+    additionalProperties: true
+required:
+  - event_id
+  - timestamp
+  - project
+additionalProperties: true

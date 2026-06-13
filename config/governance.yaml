@@ -1,0 +1,105 @@
+# Research Foundry governance policy
+# Top-level keys: key_profiles, policy_rules, approved_work_providers, secret_patterns
+# See spec sections 7.1 (key_profiles) and 7.2 (policy_rules).
+
+key_profiles:
+  personal:
+    allowed_use:
+      - personal_research
+      - public_research
+      - personal_meatywiki
+    forbidden_use:
+      - employer_confidential_data
+      - client_confidential_data
+    env_file: .env.personal
+    gitignored: true
+
+  work_approved:
+    allowed_use:
+      - work_internal_research
+      - approved_work_tools
+    forbidden_use:
+      - personal_cost_avoidance
+      - personal_publication_without_review
+      - non_approved_model_endpoints
+      - personal_meatywiki_writeback_without_sanitization
+    env_file: .env.work
+    gitignored: true
+    requires_profile_flag: true
+
+  client_approved:
+    allowed_use:
+      - explicit_client_authorized_research
+    forbidden_use:
+      - cross_client_reuse
+      - public_writeback
+      - personal_writeback
+    env_file: .env.client
+    gitignored: true
+    requires_human_review: true
+
+  offline_only:
+    allowed_use:
+      - local_documents
+      - local_models
+      - no_network
+    forbidden_use:
+      - external_llm_calls
+      - external_search
+
+# Non-negotiable policy rules (ordered list; each rule is evaluated by the
+# governance guard). severity: block | require_approval.
+policy_rules:
+  - id: no_work_keys_for_personal_runs
+    severity: block
+    condition: "intent.governance.key_profile_allowed == personal AND runtime.key_profile == work_approved"
+    message: "Work-provided keys cannot be used for personal research."
+
+  - id: no_work_sensitive_to_unapproved_provider
+    severity: block
+    condition: "run.sensitivity in [work_sensitive, client_sensitive] AND model.provider not in approved_work_providers"
+    message: "Sensitive work/client data cannot be sent to non-approved providers."
+
+  - id: no_mixed_personal_work_bundle
+    severity: block
+    condition: "evidence_bundle contains both personal and work_sensitive sources"
+    message: "Personal and work-sensitive source cards cannot be mixed in one evidence bundle."
+
+  - id: no_secret_in_markdown
+    severity: block
+    condition: "file_content matches secret_pattern"
+    message: "Potential secret detected in Markdown/YAML artifact."
+
+  - id: work_writeback_requires_review
+    severity: require_approval
+    condition: "writeback.target contains personal_meatywiki AND source.sensitivity == work_sensitive"
+    message: "Work-sensitive content requires sanitization and approval before personal MeatyWiki writeback."
+
+  - id: material_claims_must_be_mapped
+    severity: block
+    condition: "report contains material claim without claim_id OR claim.status == unsupported"
+    message: "Every material claim must map to a source card or be labeled inference/speculation."
+
+# Providers explicitly approved to receive work-sensitive or client-sensitive
+# data. Empty by default; populate only after explicit authorization. Referenced
+# by policy rule no_work_sensitive_to_unapproved_provider.
+approved_work_providers: []
+
+# Regex patterns used by the secret scanner (policy rule no_secret_in_markdown).
+# Matches against Markdown/YAML artifact content before commit/writeback.
+secret_patterns:
+  - "sk-[A-Za-z0-9]{20,}"                                  # OpenAI / generic secret keys
+  - "sk-ant-[A-Za-z0-9_\\-]{20,}"                          # Anthropic API keys
+  - "ghp_[A-Za-z0-9]{36,}"                                 # GitHub personal access tokens
+  - "gho_[A-Za-z0-9]{36,}"                                 # GitHub OAuth tokens
+  - "github_pat_[A-Za-z0-9_]{22,}"                         # GitHub fine-grained PATs
+  - "AKIA[0-9A-Z]{16}"                                     # AWS access key IDs
+  - "ASIA[0-9A-Z]{16}"                                     # AWS temporary access key IDs
+  - "AIza[0-9A-Za-z\\-_]{35}"                              # Google API keys
+  - "xox[baprs]-[0-9A-Za-z\\-]{10,}"                       # Slack tokens
+  - "glpat-[0-9A-Za-z\\-_]{20,}"                           # GitLab personal access tokens
+  - "(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|client[_-]?secret)\\s*[:=]\\s*['\"]?[A-Za-z0-9_\\-]{16,}"  # generic key=value secrets
+  - "(?i)(password|passwd|pwd)\\s*[:=]\\s*['\"]?\\S{8,}"  # inline passwords
+  - "-----BEGIN[ A-Z]*PRIVATE KEY-----"                    # PEM private keys
+  - "-----BEGIN OPENSSH PRIVATE KEY-----"                  # OpenSSH private keys
+  - "eyJ[A-Za-z0-9_\\-]+\\.[A-Za-z0-9_\\-]+\\.[A-Za-z0-9_\\-]+"  # JWTs

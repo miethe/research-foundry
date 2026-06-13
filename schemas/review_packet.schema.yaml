@@ -1,0 +1,60 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/review_packet.schema.yaml"
+title: Review Packet
+description: A council review packet capturing voting policy, members, decision, and concerns.
+type: object
+properties:
+  id:
+    type: string
+  evidence_bundle_id:
+    type: string
+  voting:
+    type: object
+    properties:
+      allowed_votes:
+        type: array
+        items:
+          type: string
+    additionalProperties: true
+  members:
+    type: array
+    items:
+      type: object
+      properties:
+        role:
+          type: string
+        posture:
+          type: string
+      additionalProperties: true
+  output:
+    type: object
+    properties:
+      decision:
+        enum:
+          - approve
+          - revise
+          - required_block
+      concerns:
+        type: array
+        items:
+          type: object
+          properties:
+            concern_id:
+              type: string
+            severity:
+              enum:
+                - low
+                - medium
+                - high
+                - blocker
+            text:
+              type: string
+            required_fix:
+              type: string
+          additionalProperties: true
+    additionalProperties: true
+  reviewer_notes:
+    type: string
+required:
+  - id
+additionalProperties: true

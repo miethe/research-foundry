@@ -1,0 +1,143 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/source_card.schema.yaml"
+title: Source Card
+description: Front-matter schema for a source card Markdown document.
+type: object
+properties:
+  schema_version:
+    type: string
+  type:
+    const: source_card
+  source_card_id:
+    type: string
+  created_at:
+    type: string
+  created_by_agent:
+    type: string
+  sensitivity:
+    enum:
+      - public
+      - personal
+      - work_sensitive
+      - client_sensitive
+  source:
+    type: object
+    properties:
+      title:
+        type: string
+      source_type:
+        enum:
+          - official_doc
+          - paper
+          - standard
+          - repo
+          - news
+          - blog
+          - book
+          - personal_note
+          - internal_doc
+          - other
+      locator:
+        type: object
+        properties:
+          url:
+            type:
+              - string
+              - "null"
+          file_path:
+            type:
+              - string
+              - "null"
+          doi:
+            type:
+              - string
+              - "null"
+          repo:
+            type:
+              - string
+              - "null"
+        additionalProperties: true
+      authors:
+        type: array
+        items:
+          type: string
+      publisher:
+        type:
+          - string
+          - "null"
+      published_at:
+        type:
+          - string
+          - "null"
+      accessed_at:
+        type: string
+      version:
+        type:
+          - string
+          - "null"
+    additionalProperties: true
+  trust:
+    type: object
+    properties:
+      source_rank:
+        enum:
+          - primary
+          - secondary
+          - tertiary
+          - unknown
+      reliability_notes:
+        type: string
+      known_limitations:
+        type: array
+        items:
+          type: string
+      conflicts_with:
+        type: array
+        items:
+          type: object
+          properties:
+            source_card_id:
+              type: string
+            reason:
+              type: string
+          additionalProperties: true
+    additionalProperties: true
+  usage:
+    type: object
+    properties:
+      allowed_for_public_output:
+        type: boolean
+      allowed_for_work_output:
+        type: boolean
+      allowed_for_personal_meatywiki:
+        type: boolean
+      citation_required:
+        type: boolean
+      quote_limit_notes:
+        type: string
+    additionalProperties: true
+  extracted_points:
+    type: array
+    items:
+      type: object
+      properties:
+        evidence_id:
+          type: string
+        locator:
+          type: string
+        summary:
+          type: string
+        quote:
+          type:
+            - string
+            - "null"
+        supports_potential_claims:
+          type: array
+          items:
+            type: string
+      additionalProperties: true
+required:
+  - source_card_id
+  - type
+  - source
+additionalProperties: true

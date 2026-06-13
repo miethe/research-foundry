@@ -1,0 +1,85 @@
+# Research Foundry external tool registry
+# See spec section 3 (external tool fit) and section 13 (adapter contracts).
+# claude_* adapters are enabled by default; others are optional and disabled
+# until explicitly configured. allowed_profiles and postprocessing_required are
+# drawn from the section 13 adapter contracts.
+
+tools:
+  claude_code:
+    enabled: true
+    type: code_agent
+    allowed_profiles:
+      - personal
+      - work_approved
+      - client_approved
+      - offline_only
+    postprocessing_required: []
+    notes: >-
+      Main repo operator, schema generator, file editor, hook runner, and local
+      orchestrator. Reads codebases, edits files, runs commands, and automates
+      development tasks.
+
+  claude_agent_sdk:
+    enabled: true
+    type: orchestration
+    allowed_profiles:
+      - personal
+      - work_approved
+      - client_approved
+    postprocessing_required: []
+    notes: >-
+      Programmatic swarm orchestration, structured agent runs, subagents,
+      sessions, and writeback generation. Required controls: permission_mode,
+      disallowed_tools_for_sensitive_runs, setting_sources, governance_preflight.
+
+  opencode:
+    enabled: false
+    type: code_agent
+    allowed_profiles:
+      - personal
+      - offline_only
+    postprocessing_required: []
+    notes: >-
+      Optional open-source coding agent for local codebase edits and parallel
+      implementation sessions. Required controls: no_secret_write,
+      git_diff_review, ccdash_event.
+
+  gpt_researcher:
+    enabled: false
+    type: research_discovery
+    allowed_profiles:
+      - personal
+      - work_approved_if_provider_approved
+    postprocessing_required:
+      - source_card_generation
+      - claim_ledger_mapping
+    notes: >-
+      Optional web/local/hybrid source discovery and first-pass reports. Final
+      output is source discovery and draft input only; the claim ledger remains
+      authoritative.
+
+  paperqa2:
+    enabled: false
+    type: scientific_rag
+    allowed_profiles:
+      - personal
+      - offline_only
+      - work_approved_if_docs_are_approved
+    postprocessing_required:
+      - claim_ledger_mapping
+      - locator_validation
+    notes: >-
+      Optional scientific-paper RAG over local PDF/text corpora with
+      citation-grounded answers and contradiction search across papers.
+
+  litellm:
+    enabled: false
+    type: model_router
+    allowed_profiles:
+      - personal
+      - work_approved
+      - client_approved
+    postprocessing_required: []
+    notes: >-
+      Optional cost-aware model routing with provider/model budgets and
+      fallbacks. Configured via the LiteLLM proxy (see spec section 8.3).

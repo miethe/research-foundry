@@ -1,0 +1,52 @@
+# Research Foundry routing rules
+# Encodes the section 8.1 routing policy table: each work_type is mapped to a
+# model_tier with a reason. model_tier values:
+#   cheap_free    -> local/free extraction (rf_extract_free)
+#   cheap         -> cheap API extraction (rf_extract_cheap)
+#   balanced      -> verification / contradiction / governance (rf_verify_balanced)
+#   deep          -> final synthesis / high-stakes writing (rf_synthesize_deep)
+#   deterministic -> rule-based / validation work, temperature 0.0, no creative model needed
+
+routing_rules:
+  - work_type: source_discovery
+    model_tier: cheap
+    reason: "Broad web/local scans tolerate cheap API extraction; volume favors low cost."
+
+  - work_type: source_card_creation
+    model_tier: cheap_free
+    reason: "Mechanical extraction and formatting; local/free models are sufficient."
+
+  - work_type: deduplication
+    model_tier: cheap_free
+    reason: "Structural comparison and tagging; no reasoning depth required."
+
+  - work_type: claim_mapping
+    model_tier: cheap
+    reason: "Initial claim-to-source mapping is bounded extraction; cheap API is adequate."
+
+  - work_type: contradiction_detection
+    model_tier: balanced
+    reason: "Requires careful cross-source reasoning to flag disagreements reliably."
+
+  - work_type: final_synthesis
+    model_tier: deep
+    reason: "High-stakes report writing and strategic framing warrant the strongest model."
+
+  - work_type: executive_translation
+    model_tier: deep
+    reason: "Audience-sensitive reframing of findings is high-impact synthesis work."
+
+  - work_type: yaml_validation
+    model_tier: deterministic
+    reason: "Schema/structure validation is rule-based; deterministic, temperature 0.0."
+
+  - work_type: governance_guard
+    model_tier: deterministic
+    reason: "Policy evaluation is rule-based and must be reproducible; deterministic."
+
+# Default mapping from research profile (intent altitude) to model profile.
+# Used when a work_type does not override the model profile directly.
+profile_to_model_profile:
+  extraction: rf_extract_cheap
+  verification: rf_verify_balanced
+  synthesis: rf_synthesize_deep

@@ -1,0 +1,72 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/skillbom_candidate.schema.yaml"
+title: SkillBOM Candidate
+description: A candidate reusable skill stack proposed for promotion into SkillMeat/SAM.
+type: object
+properties:
+  id:
+    type: string
+  name:
+    type: string
+  proposed_skillbom_id:
+    type: string
+  evidence_bundle_id:
+    type: string
+  status:
+    enum:
+      - candidate
+      - needs_review
+      - promoted
+      - rejected
+  purpose:
+    type: string
+  agent_postures:
+    type: array
+    items:
+      type: string
+  tools_used:
+    type: array
+    items:
+      type: string
+  prompts:
+    type: object
+    properties:
+      system:
+        type: string
+      task:
+        type: string
+    additionalProperties: true
+  context_packs:
+    type: array
+    items:
+      type: string
+  output_schemas:
+    type: array
+    items:
+      type: string
+  validation:
+    type: array
+    items:
+      type: string
+  known_failure_modes:
+    type: array
+    items:
+      type: string
+  performance_evidence:
+    type: object
+    properties:
+      ccdash_event_id:
+        type: string
+      quality_score:
+        type:
+          - string
+          - number
+      rework_count:
+        type: integer
+      estimated_cost_usd:
+        type: number
+    additionalProperties: true
+required:
+  - id
+  - name
+additionalProperties: true

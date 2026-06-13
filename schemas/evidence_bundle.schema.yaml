@@ -1,0 +1,101 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/evidence_bundle.schema.yaml"
+title: Evidence Bundle
+description: A bundle assembling all artifacts, counts, governance, and lineage for a research run.
+type: object
+properties:
+  id:
+    type: string
+  intent_id:
+    type: string
+  run_id:
+    type: string
+  created_at:
+    type: string
+  status:
+    enum:
+      - draft
+      - verified
+      - published
+      - archived
+  artifacts:
+    type: object
+    properties:
+      research_brief:
+        type: string
+      swarm_plan:
+        type: string
+      source_cards_dir:
+        type: string
+      extraction_cards_dir:
+        type: string
+      claim_ledger:
+        type: string
+      report:
+        type: string
+      verification:
+        type: string
+      ccdash_event:
+        type: string
+    additionalProperties: true
+  counts:
+    type: object
+    properties:
+      source_cards:
+        type: integer
+      extraction_cards:
+        type: integer
+      claims_total:
+        type: integer
+      claims_supported:
+        type: integer
+      claims_inference:
+        type: integer
+      claims_speculation:
+        type: integer
+      claims_unsupported:
+        type: integer
+    additionalProperties: true
+  governance:
+    type: object
+    properties:
+      sensitivity:
+        enum:
+          - public
+          - personal
+          - work_sensitive
+          - client_sensitive
+      approved_for_writeback:
+        type: boolean
+      approved_by:
+        type:
+          - string
+          - "null"
+      approval_timestamp:
+        type:
+          - string
+          - "null"
+    additionalProperties: true
+  lineage:
+    type: object
+    properties:
+      raw_idea_ids:
+        type: array
+        items:
+          type: string
+      intent_id:
+        type: string
+      ibom_id:
+        type: string
+      intenttree_node_id:
+        type: string
+      skillbom_ids_used:
+        type: array
+        items:
+          type: string
+    additionalProperties: true
+required:
+  - id
+  - intent_id
+  - run_id
+additionalProperties: true

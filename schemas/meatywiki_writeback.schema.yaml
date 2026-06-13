@@ -1,0 +1,66 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/meatywiki_writeback.schema.yaml"
+title: MeatyWiki Writeback
+description: A proposed writeback of research output into MeatyWiki.
+type: object
+properties:
+  id:
+    type: string
+  evidence_bundle_id:
+    type: string
+  target_page:
+    type: string
+  writeback_type:
+    enum:
+      - source_note
+      - concept_update
+      - decision_record
+      - pattern
+      - project_update
+      - insight
+  status:
+    enum:
+      - proposed
+      - approved
+      - written
+      - rejected
+  summary:
+    type: string
+  key_claims:
+    type: array
+    items:
+      type: object
+      properties:
+        claim_id:
+          type: string
+        include:
+          type: boolean
+      additionalProperties: true
+  links:
+    type: object
+    properties:
+      source_cards:
+        type: array
+        items:
+          type: string
+      related_pages:
+        type: array
+        items:
+          type: string
+    additionalProperties: true
+  approval:
+    type: object
+    properties:
+      required:
+        type: boolean
+      reason:
+        type: string
+      approved_by:
+        type:
+          - string
+          - "null"
+    additionalProperties: true
+required:
+  - id
+  - evidence_bundle_id
+additionalProperties: true

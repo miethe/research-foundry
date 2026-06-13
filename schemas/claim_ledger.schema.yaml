@@ -1,0 +1,115 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/claim_ledger.schema.yaml"
+title: Claim Ledger
+description: A ledger of claims with status, materiality, sources, and verification state.
+type: object
+properties:
+  id:
+    type: string
+  intent_id:
+    type: string
+  report_ref:
+    type: string
+  verification_status:
+    enum:
+      - pending
+      - passed
+      - failed
+  claims:
+    type: array
+    items:
+      type: object
+      properties:
+        claim_id:
+          type: string
+        text:
+          type: string
+        materiality:
+          enum:
+            - material
+            - background
+            - style
+        claim_type:
+          enum:
+            - factual
+            - causal
+            - comparative
+            - quantitative
+            - attribution
+            - recommendation
+            - prediction
+        status:
+          enum:
+            - supported
+            - mixed
+            - contradicted
+            - inference
+            - speculation
+            - unsupported
+        confidence:
+          enum:
+            - low
+            - medium
+            - high
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              source_card_id:
+                type: string
+              evidence_id:
+                type: string
+              relation:
+                enum:
+                  - supports
+                  - contradicts
+                  - context
+              locator:
+                type: string
+            additionalProperties: true
+        inference_basis:
+          type: object
+          properties:
+            from_claims:
+              type: array
+              items:
+                type: string
+            reasoning_summary:
+              type:
+                - string
+                - "null"
+          additionalProperties: true
+        report_locations:
+          type: array
+          items:
+            type: object
+            properties:
+              file:
+                type: string
+              heading:
+                type: string
+              paragraph_id:
+                type: string
+            additionalProperties: true
+        reviewer_notes:
+          type: string
+      additionalProperties: true
+  unresolved_questions:
+    type: array
+    items:
+      type: object
+      properties:
+        question:
+          type: string
+        why_unresolved:
+          type: string
+        recommended_next_source:
+          type:
+            - string
+            - "null"
+      additionalProperties: true
+required:
+  - id
+  - intent_id
+additionalProperties: true

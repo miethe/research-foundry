@@ -1,0 +1,63 @@
+execution_event:
+  event_id: {{event_id}}
+  timestamp: {{timestamp}}
+  project: Research Foundry
+  intent_id: {{intent_id}}
+  task_node_id: {{task_node_id}}
+  run_id: {{run_id}}
+
+  agent_postures:
+    - researcher
+    - critic
+    - synthesizer
+    - operator
+  skillbom_ids:
+    - {{skillbom_id}}
+
+  tools:
+    - claude_code
+    - claude_agent_sdk
+    - gpt_researcher
+    - paperqa2
+    - litellm
+
+  input_artifacts:
+    - inbox/raw_ideas/raw_*.md
+    - intents/active/intent_*.yaml
+  output_artifacts:
+    - runs/rf_run_*/evidence_bundle.yaml
+    - runs/rf_run_*/reports/report_final.md
+    - runs/rf_run_*/writebacks/meatywiki_writeback.md
+    - runs/rf_run_*/writebacks/skillbom_candidate.md
+
+  metrics:
+    source_cards_created: {{source_cards_created}}
+    claims_total: {{claims_total}}
+    claims_supported: {{claims_supported}}
+    claims_inference: {{claims_inference}}
+    claims_speculation: {{claims_speculation}}
+    unsupported_claims: {{unsupported_claims}}
+    verification_passed: {{verification_passed}}
+    tokens_estimated: {{tokens_estimated}}
+    cost_estimated_usd: {{cost_estimated_usd}}
+    latency_minutes: {{latency_minutes}}
+    rework_count: {{rework_count}}
+    drift_score: {{drift_score}}
+    quality_score: {{quality_score}}
+
+  governance:
+    sensitivity: {{sensitivity}}
+    key_profile_used: {{key_profile_used}}
+    policy_passed: {{policy_passed}}
+    violations:
+      - {{violation_1}}
+
+  reuse:
+    meatywiki_writeback_candidate: {{meatywiki_writeback_candidate}}
+    skillbom_candidate: {{skillbom_candidate}}
+    reusable_source_pack_candidate: {{reusable_source_pack_candidate}}
+
+  human_review:
+    required: {{human_review_required}}
+    status: {{human_review_status}}
+    reviewer: {{human_review_reviewer}}

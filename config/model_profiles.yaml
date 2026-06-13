@@ -1,0 +1,66 @@
+# Research Foundry model profiles
+# See spec section 8.2. Each profile maps a research role to a cost tier and a
+# prioritized list of preferred (provider, model) pairs.
+
+model_profiles:
+  rf_extract_free:
+    purpose: "Local/free extraction and formatting"
+    tier: cheap_free
+    allowed_for:
+      - source_carding
+      - simple_extraction
+      - tagging
+      - dedupe
+    preferred:
+      - provider: ollama
+        model: local-small-instruct
+      - provider: openrouter
+        model: free-or-low-cost-extraction-model
+    max_tokens: 4096
+    temperature: 0.1
+
+  rf_extract_cheap:
+    purpose: "Cheap API extraction when local quality is insufficient"
+    tier: cheap
+    allowed_for:
+      - source_carding
+      - extraction_cards
+      - initial_claim_mapping
+    preferred:
+      - provider: anthropic
+        model: haiku_or_equivalent
+      - provider: openai
+        model: mini_or_equivalent
+      - provider: google
+        model: flash_or_equivalent
+    temperature: 0.1
+
+  rf_verify_balanced:
+    purpose: "Claim verification, contradiction detection, governance review"
+    tier: balanced
+    allowed_for:
+      - claim_audit
+      - contradiction_review
+      - council_review
+    preferred:
+      - provider: anthropic
+        model: sonnet_or_equivalent
+      - provider: openai
+        model: standard_reasoning_or_equivalent
+    temperature: 0.0
+
+  rf_synthesize_deep:
+    purpose: "Final synthesis, high-stakes report writing, strategic framing"
+    tier: expensive
+    allowed_for:
+      - final_report
+      - executive_synthesis
+      - deep_literature_synthesis
+    preferred:
+      - provider: anthropic
+        model: opus_or_equivalent
+      - provider: openai
+        model: high_reasoning_or_equivalent
+      - provider: google
+        model: pro_or_equivalent
+    temperature: 0.2

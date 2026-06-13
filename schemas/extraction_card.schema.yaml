@@ -1,0 +1,85 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/extraction_card.schema.yaml"
+title: Extraction Card
+description: Structured extraction of facts, definitions, metrics, and cautions from a source card.
+type: object
+properties:
+  id:
+    type: string
+  source_card_id:
+    type: string
+  created_at:
+    type: string
+  extractor_agent:
+    type: string
+  model_profile:
+    type: string
+  extracted_facts:
+    type: array
+    items:
+      type: object
+      properties:
+        evidence_id:
+          type: string
+        text:
+          type: string
+        locator:
+          type: string
+        confidence:
+          enum:
+            - low
+            - medium
+            - high
+        quote_available:
+          type: boolean
+        notes:
+          type: string
+      additionalProperties: true
+  extracted_definitions:
+    type: array
+    items:
+      type: object
+      properties:
+        term:
+          type: string
+        definition:
+          type: string
+        locator:
+          type: string
+      additionalProperties: true
+  extracted_metrics:
+    type: array
+    items:
+      type: object
+      properties:
+        metric_name:
+          type: string
+        value:
+          type:
+            - string
+            - number
+        unit:
+          type:
+            - string
+            - "null"
+        date_context:
+          type:
+            - string
+            - "null"
+        locator:
+          type: string
+      additionalProperties: true
+  contradictions_or_cautions:
+    type: array
+    items:
+      type: object
+      properties:
+        text:
+          type: string
+        locator:
+          type: string
+      additionalProperties: true
+required:
+  - id
+  - source_card_id
+additionalProperties: true

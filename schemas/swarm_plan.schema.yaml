@@ -1,0 +1,60 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/swarm_plan.schema.yaml"
+title: Swarm Plan
+description: A research swarm plan defining budget, agents, and required outputs.
+type: object
+properties:
+  id:
+    type: string
+  brief_id:
+    type: string
+  intent_id:
+    type: string
+  created_at:
+    type: string
+  status:
+    enum:
+      - planned
+      - running
+      - completed
+      - failed
+      - cancelled
+  budget:
+    type: object
+    properties:
+      max_cost_usd:
+        type: number
+      max_runtime_minutes:
+        type: number
+      extraction_model_profile:
+        type: string
+      synthesis_model_profile:
+        type: string
+      verification_model_profile:
+        type: string
+    additionalProperties: true
+  agents:
+    type: array
+    items:
+      type: object
+      properties:
+        role:
+          type: string
+        posture:
+          type: string
+        tool:
+          type: string
+        model_profile:
+          type: string
+        task:
+          type: string
+      additionalProperties: true
+  required_outputs:
+    type: array
+    items:
+      type: string
+required:
+  - id
+  - brief_id
+  - intent_id
+additionalProperties: true

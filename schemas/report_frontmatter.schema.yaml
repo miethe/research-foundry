@@ -1,0 +1,51 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/report_frontmatter.schema.yaml"
+title: Report Front Matter
+description: Front-matter schema for a research report Markdown document.
+type: object
+properties:
+  schema_version:
+    type: string
+  type:
+    const: research_report
+  report_id:
+    type: string
+  title:
+    type: string
+  intent_id:
+    type: string
+  evidence_bundle_id:
+    type: string
+  created_at:
+    type: string
+  status:
+    enum:
+      - draft
+      - verified
+      - published
+      - archived
+  audience:
+    enum:
+      - self
+      - technical
+      - executive
+      - public
+      - client
+  sensitivity:
+    enum:
+      - public
+      - personal
+      - work_sensitive
+      - client_sensitive
+  claim_policy:
+    type: string
+  verification_status:
+    enum:
+      - pending
+      - passed
+      - failed
+required:
+  - report_id
+  - type
+  - title
+additionalProperties: true

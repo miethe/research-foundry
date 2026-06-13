@@ -1,0 +1,28 @@
+schema_version: 0.1
+foundry:
+  id: rf_nick_research_foundry
+  name: "Nick's Research Foundry"
+  owner: "Nick Miethe"
+  default_profile: personal
+  storage_mode: markdown_yaml_first
+  timezone: America/New_York
+
+  systems:
+    meatywiki_path: meatywiki/
+    skillmeat_path: skillmeat/
+    ccdash_path: ccdash/
+    intenttree_path: intenttree/research_foundry_tree.yaml
+
+  defaults:
+    claim_policy: config/claim_policy.yaml
+    governance_policy: config/governance.yaml
+    model_profiles: config/model_profiles.yaml
+    routing_rules: config/routing_rules.yaml
+
+  adapters:
+    claude_agent_sdk: enabled
+    claude_code: enabled
+    opencode: optional
+    gpt_researcher: optional
+    paperqa2: optional
+    litellm: optional

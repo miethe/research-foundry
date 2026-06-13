@@ -1,0 +1,104 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/ibom.schema.yaml"
+title: I-BOM
+description: An Intent Bill of Materials snapshot for a research intent.
+type: object
+properties:
+  id:
+    type: string
+  intent_id:
+    type: string
+  created_at:
+    type: string
+  snapshot_status:
+    enum:
+      - draft
+      - locked
+      - superseded
+  context_snapshot:
+    type: string
+  sources_seeded:
+    type: array
+    items:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          enum:
+            - url
+            - pdf
+            - note
+            - book
+            - paper
+            - repo
+            - conversation
+            - unknown
+        locator:
+          type: string
+        sensitivity:
+          enum:
+            - public
+            - personal
+            - work_sensitive
+            - client_sensitive
+        notes:
+          type: string
+      additionalProperties: true
+  assumptions:
+    type: array
+    items:
+      type: object
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        risk:
+          enum:
+            - low
+            - medium
+            - high
+        should_verify:
+          type: boolean
+      additionalProperties: true
+  known_constraints:
+    type: array
+    items:
+      type: string
+  tools_available:
+    type: array
+    items:
+      type: string
+  model_policy:
+    type: object
+    properties:
+      extraction_profile:
+        type: string
+      synthesis_profile:
+        type: string
+      verification_profile:
+        type: string
+    additionalProperties: true
+  relevant_memory:
+    type: array
+    items:
+      type: object
+      properties:
+        meatywiki_ref:
+          type: string
+        reason:
+          type: string
+      additionalProperties: true
+  open_questions:
+    type: array
+    items:
+      type: string
+  security_boundaries:
+    type: array
+    items:
+      type: string
+required:
+  - id
+  - intent_id
+additionalProperties: true

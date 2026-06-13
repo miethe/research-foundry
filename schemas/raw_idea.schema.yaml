@@ -1,0 +1,88 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/raw_idea.schema.yaml"
+title: Raw Idea
+description: A captured raw idea prior to triage into a research intent.
+type: object
+properties:
+  id:
+    type: string
+  created_at:
+    type: string
+  captured_from:
+    enum:
+      - chat
+      - voice
+      - note
+      - clip
+      - email
+      - meeting
+      - manual
+  title:
+    type: string
+  body:
+    type: string
+  tags:
+    type: array
+    items:
+      type: string
+  sensitivity:
+    enum:
+      - public
+      - personal
+      - work_sensitive
+      - client_sensitive
+  urgency:
+    enum:
+      - low
+      - medium
+      - high
+  research_potential:
+    enum:
+      - unknown
+      - low
+      - medium
+      - high
+  suggested_project:
+    enum:
+      - Research Foundry
+      - Agentic OS
+      - unassigned
+  initial_questions:
+    type: array
+    items:
+      type: string
+  attachments:
+    type: array
+    items:
+      type: object
+      properties:
+        path_or_uri:
+          type: string
+        type:
+          enum:
+            - url
+            - pdf
+            - markdown
+            - image
+            - audio
+            - other
+      additionalProperties: true
+  triage:
+    type: object
+    properties:
+      status:
+        enum:
+          - untriaged
+          - converted_to_intent
+          - archived
+          - duplicate
+      intent_id:
+        type:
+          - string
+          - "null"
+    additionalProperties: true
+required:
+  - id
+  - title
+  - body
+additionalProperties: true

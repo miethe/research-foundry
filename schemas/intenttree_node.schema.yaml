@@ -1,0 +1,69 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/intenttree_node.schema.yaml"
+title: IntentTree Node
+description: A research node in the IntentTree preserving abstraction levels.
+type: object
+properties:
+  node_id:
+    type: string
+  level:
+    type: string
+  title:
+    type: string
+  parent:
+    type: string
+  intent_id:
+    type: string
+  status:
+    enum:
+      - ready
+      - active
+      - blocked
+      - completed
+      - archived
+  priority:
+    enum:
+      - low
+      - medium
+      - high
+  dependencies:
+    type: array
+    items:
+      type: object
+      properties:
+        node_id:
+          type: string
+      additionalProperties: true
+  blockers:
+    type: array
+    items:
+      type: string
+  required_agent_postures:
+    type: array
+    items:
+      type: string
+  required_skill_stack:
+    type: array
+    items:
+      type: string
+  required_context:
+    type: array
+    items:
+      type: string
+  expected_artifacts:
+    type: array
+    items:
+      type: string
+  success_criteria:
+    type: array
+    items:
+      type: string
+  reusable_output_candidates:
+    type: array
+    items:
+      type: string
+required:
+  - node_id
+  - title
+  - intent_id
+additionalProperties: true

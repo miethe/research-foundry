@@ -1,0 +1,75 @@
+# Research Foundry claim policy
+# See spec sections 12.1 (material claim types), 12.2 (allowed_claim_statuses),
+# and 12.3 (verifier_checks). The claim ledger is the authority for every
+# material claim in a report.
+
+# Claim types considered "material": each must map to a source card or carry an
+# explicit inference/speculation label (section 12.1).
+material_claim_types:
+  - factual
+  - quantitative
+  - comparative
+  - causal
+  - attribution
+  - recommendation
+  - prediction
+
+# Allowed claim statuses and their report-labeling requirements (section 12.2).
+allowed_claim_statuses:
+  supported:
+    meaning: "Directly supported by one or more source cards."
+    report_label_required: false
+
+  mixed:
+    meaning: "Sources disagree or support only part of the claim."
+    report_label_required: true
+    label: "Mixed evidence"
+
+  contradicted:
+    meaning: "Evidence contradicts the claim."
+    report_label_required: true
+    label: "Contradicted / do not use as finding"
+
+  inference:
+    meaning: "Reasonable synthesis from supported claims, but not directly stated by sources."
+    report_label_required: true
+    label: "Inference"
+
+  speculation:
+    meaning: "Forward-looking or insufficiently evidenced idea."
+    report_label_required: true
+    label: "Speculation"
+
+  unsupported:
+    meaning: "Material claim lacks source or proper label."
+    report_label_required: true
+    build_status: fail
+
+# Report verifier checks (section 12.3). severity: error | warning.
+verifier_checks:
+  - id: report_has_frontmatter
+    severity: error
+
+  - id: all_claim_ids_exist
+    severity: error
+
+  - id: material_claims_have_claim_ids
+    severity: error
+
+  - id: supported_claims_have_source_cards
+    severity: error
+
+  - id: source_cards_have_locators
+    severity: warning
+
+  - id: inferences_have_basis
+    severity: error
+
+  - id: speculation_is_labeled
+    severity: error
+
+  - id: unsupported_claims_block_publish
+    severity: error
+
+  - id: work_sensitive_claims_block_public_report
+    severity: error

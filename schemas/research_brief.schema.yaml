@@ -1,0 +1,92 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/research_brief.schema.yaml"
+title: Research Brief
+description: A research brief defining questions, source strategy, and output requirements.
+type: object
+properties:
+  id:
+    type: string
+  intent_id:
+    type: string
+  title:
+    type: string
+  audience:
+    enum:
+      - self
+      - technical
+      - executive
+      - public
+      - client
+  research_depth:
+    enum:
+      - skim
+      - standard
+      - deep
+      - exhaustive
+  questions:
+    type: object
+    properties:
+      primary:
+        type: array
+        items:
+          type: object
+          properties:
+            id:
+              type: string
+            question:
+              type: string
+          additionalProperties: true
+      secondary:
+        type: array
+        items:
+          type: object
+          properties:
+            id:
+              type: string
+            question:
+              type: string
+          additionalProperties: true
+    additionalProperties: true
+  source_strategy:
+    type: object
+    properties:
+      include_source_types:
+        type: array
+        items:
+          type: string
+      exclude_source_types:
+        type: array
+        items:
+          type: string
+      freshness:
+        type: object
+        properties:
+          required:
+            type: boolean
+          max_age_days:
+            type: integer
+          exceptions:
+            type: array
+            items:
+              type: string
+        additionalProperties: true
+    additionalProperties: true
+  output_requirements:
+    type: object
+    properties:
+      format:
+        type: string
+      include_claim_ledger:
+        type: boolean
+      include_source_cards:
+        type: boolean
+      include_inference_log:
+        type: boolean
+      include_open_questions:
+        type: boolean
+    additionalProperties: true
+required:
+  - id
+  - intent_id
+  - title
+additionalProperties: true

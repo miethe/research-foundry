@@ -1,0 +1,53 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/routing_decision.schema.yaml"
+title: Routing Decision
+description: A control-plane routing decision selecting node, postures, skills, tools, and writebacks.
+type: object
+properties:
+  id:
+    type: string
+  intent_id:
+    type: string
+  active_node_id:
+    type: string
+  selected_abstraction_level:
+    type: string
+  selected_posture_chain:
+    type: array
+    items:
+      type: string
+  selected_skillbom:
+    type: string
+  selected_context_packs:
+    type: array
+    items:
+      type: string
+  selected_tools:
+    type: array
+    items:
+      type: string
+  human_required:
+    type: boolean
+  rationale:
+    type: string
+  expected_output:
+    type: string
+  validation:
+    type: array
+    items:
+      type: string
+  writebacks:
+    type: array
+    items:
+      type: object
+      properties:
+        target:
+          type: string
+        type:
+          type: string
+      additionalProperties: true
+required:
+  - id
+  - intent_id
+  - active_node_id
+additionalProperties: true

@@ -1,158 +1,222 @@
-# SkillMeat Instance Starter Bundle
+# Research Foundry
 
-The Instance Starter Bundle packages SkillMeat's AI-assisted development methodology — rules, skills, agents, commands, configuration, and specs — into a single deployable artifact for new Claude Code projects. Deploy it once to any project directory and your agents arrive pre-configured with orchestration patterns, delegation modes, progress tracking, debugging workflows, and more.
+**An evidence-first, Markdown/YAML-first research control plane.** Research Foundry captures raw
+ideas, converts them into structured research intents, plans and runs research swarms, collects
+normalized source cards, extracts evidence, builds an auditable **claim ledger**, synthesizes
+reports, and verifies that every material claim traces back to a source — before anything is
+published or fed downstream into **MeatyWiki**, **SkillMeat/SAM**, and **CCDash**. Claim
+traceability is the core value: a report may contain only supported claims mapped to source cards,
+plus explicitly labeled inference, speculation, mixed, or contradicted claims. Nothing else passes.
 
-The bundle is assembled by `scripts/build-starter-bundle.py` using `scripts/starter-bundle-manifest.yaml` as its inclusion list. Two template files (`CLAUDE.md` and `intents/intent.md`) are parameterized with project-specific values at build time; all other files are copied verbatim.
+Everything is human-readable on disk. Every intent, source card, extraction, claim, report,
+writeback, SkillBOM candidate, and telemetry event is plain Markdown/YAML — no database required,
+deterministic, and diff-friendly.
 
-## What's Included
+---
 
-The manifest organizes artifacts into three tiers. The build script defaults to including all tiers.
+## Why it's different
 
-### Core Tier (always deployed)
+- **The claim ledger is the authority, not the model.** The synthesis step can only cite claim IDs
+  that already exist in `claims/claim_ledger.yaml`, or it must label a sentence as inference or
+  speculation. `rf verify` fails the build on any unsupported material claim. The durable asset is
+  the **evidence bundle** (source cards, extractions, claim ledger, report, reviews, telemetry) —
+  the swarm that produced it is disposable and rerunnable.
+- **Cheap models extract; expensive models synthesize.** Extraction, source-card creation,
+  deduplication, tagging, and formatting run on local/free/cheap model profiles. Higher-reasoning
+  models are reserved for synthesis, contradiction analysis, and executive framing — controlled by
+  named model profiles (e.g. `rf_extract_cheap`, `rf_synthesize_deep`).
+- **Governance is a runtime gate, not a memo.** Work-provided keys, sensitive source material,
+  model routing, and writeback targets are checked *before* execution. Key profiles
+  (`personal`, `work_approved`, `client_approved`, `offline_only`) are enforced by `rf guard`, and
+  work/personal key mixing is blocked deterministically.
 
-Portable methodology essentials that work for any project type:
+---
 
-- **5 methodology rules** — context budget invariants, debugging invariants, delegation modes, LSP diagnostic handling, progress CLI-only policy
-- **9 core skill frameworks** — `dev-execution`, `artifact-tracking`, `planning`, `debugging`, `symbols`, `confidence-check`, `recovering-sessions`, `skill-builder`, `skill-creator`
-- **~47 agent definitions** — architects, reviewers, AI/orchestration agents, PM agents, fix-team, tech writers, scaffolding agents
-- **Workflow commands** — `/dev:*`, `/plan:*`, `/fix:*`, `/review:*`, `/analyze:*`, `/test:*`, `/artifacts:*`, `/pm:*`, `/release:pr`
-- **Multi-model config** — `multi-model.toml`, `subagents.json`, config index and README
-- **PM templates** — feature-request, implementation-plan, spike-document, task-breakdown
-- **Methodology specs** — changelog spec, doc policy, version-bump procedure, project-tracking spec, multi-model usage spec, Claude fundamentals spec, artifact-structure conventions, skills index
-- **Key-context playbooks** — context loading, debugging patterns, agent-teams patterns, layered-context governance, testing patterns
-- **Utility scripts** — file, git, validation, contract, architecture, artifact, story, CI, JSON, and report utils
-- **Hooks** — Python/JS auto-formatters, test runner, git-add, pre-compact state capture, staleness check
-- **Example templates** — implementation plan, phase progress, bug-fix tracking, observation log, phase context
-- **Parameterized files** — `CLAUDE.md` and `intents/intent.md` (project-specific values substituted at build time)
+## Status: MVP
 
-**Estimated size**: ~342 files, ~3.5 MB
+This is the 7-day MVP described in the spec. Source of truth:
 
-### Recommended Tier (deployed by default)
+- Spec: [`docs/projects/research-foundry/research-foundry-mvp-spec.md`](docs/projects/research-foundry/research-foundry-mvp-spec.md)
+- Plan: [`docs/projects/research-foundry/IMPLEMENTATION_PLAN.md`](docs/projects/research-foundry/IMPLEMENTATION_PLAN.md)
 
-Domain-specific supplements for UI/design, advanced tooling, and integrations:
+The MVP runs **fully offline and deterministic by default**. The governance guard, schema
+validation, claim verification, and the full demo loop require no network and no LLM. Live model
+adapters (Claude Agent SDK, GPT Researcher, PaperQA2, OpenCode, LiteLLM router) are **opt-in
+extras**, enabled at init time and only used when you ask for them.
 
-- **~29 additional skill directories** — aesthetic, frontend-design, cognitive-design, design-system-patterns, interface-design, README management, session continuity, context distillation, plan review, Claude Code patterns, changelog generation, DevOps, PostgreSQL, Docker Compose, auth patterns (Better Auth, Clerk), Chrome DevTools references, Gemini CLI, Codex, Bob Shell, Nano Banana, Sora, NotebookLM, project-scaffolder
-- **11 additional agent files** — UI engineer (enhanced), mobile app builder, vector database engineer, full UI/UX team, web optimization team, API designer, content curator
-- **6 supplementary commands** — integration commands (GitHub, Linear, Trello), AI meta-commands, story loader, animation command
-- **6 additional key-context playbooks** — React/shadcn patterns, Next.js patterns, FastAPI router patterns, repository architecture, project onboarding, spec-backed skills convention
-- **2 supplementary specs** — README build system spec, bug automation scripts reference
-- **4 parameterizable hooks** — symbol graph auto-update, style check, Python test runner, web test runner (all require path substitution for the target project)
-- **1 supplementary doc** — claudectl quickstart guide
+---
 
-**Estimated size**: ~93 files, ~1.8 MB
+## Install & quickstart
 
-### Excluded Tier (never packaged)
-
-SkillMeat product-specific content (collection management, marketplace, demo workflows, internal API/web patterns), ephemeral artifacts (progress files, worknotes, worktrees, capsules), and historical plans/analyses. See `scripts/starter-bundle-manifest.yaml` for the full list with reasons.
-
-## Quick Start
-
-### Deploy via SkillMeat Scaffold (recommended)
-
-```bash
-# Full scaffolding: interactive init + starter deployment
-skillmeat scaffold --full
-
-# Deploy starters only (project already initialized)
-skillmeat scaffold --standard
-```
-
-All enabled org starters deploy automatically. The bundle is registered as a template via:
+Install with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-skillmeat template list --kind project-starter
+uv venv
+uv pip install -e ".[dev]"
 ```
 
-### Build Manually
-
-Use the build script when you need to generate a customized bundle:
+Initialize a foundry (folder structure, schemas, templates, governance policy, default model
+profiles, `.env.example`, `.gitignore`):
 
 ```bash
-python scripts/build-starter-bundle.py \
-  --project-name "MyProject" \
-  --project-description "AI-assisted Python backend with React frontend" \
-  --author "Your Team" \
-  --architecture-description "FastAPI + PostgreSQL + Next.js 15" \
-  --output dist/starter-bundle/
+rf init ./research-foundry --profile personal
+rf doctor
 ```
 
-**Preview without writing files:**
+### The demo loop, end to end
+
+A self-referential, bounded, work-data-free demo:
+*"What is the minimum viable architecture for an evidence-backed research swarm inside Agentic OS?"*
+This loop is deterministic and offline by default.
 
 ```bash
-python scripts/build-starter-bundle.py \
-  --project-name "MyProject" \
-  --project-description "..." \
-  --author "..." \
-  --architecture-description "..." \
-  --dry-run
+# 1. Capture a raw idea -> inbox/raw_ideas/raw_*.md
+rf capture "Research how agentic research workflows should handle evidence bundles" \
+  --from manual --sensitivity personal --tag agentic-os --tag research-foundry
+
+# 2. Triage into intent + I-BOM + IntentTree node
+rf triage inbox/raw_ideas/raw_*.md --create-intent --create-ibom --create-tree-node
+
+# 3. Plan the swarm -> research brief, swarm plan, routing decision
+rf plan intent_research_20260612_agentic_research_workflows \
+  --depth deep --audience technical --max-cost 5 --freshness 180d
+
+# 4. Ingest sources (mixed types) -> source cards in the run's sources/
+rf ingest ./examples/source.pdf --source-type paper --sensitivity personal \
+  --run rf_run_20260612_agentic_research_workflows
+rf ingest "https://example.com/source" --source-type official_doc --sensitivity public \
+  --run rf_run_20260612_agentic_research_workflows
+
+# 5. Extract evidence -> extraction cards (cheap model profile)
+rf extract rf_run_20260612_agentic_research_workflows --model-profile rf_extract_cheap
+
+# 6. Build the claim ledger -> claims/claim_ledger.yaml
+rf claim-map rf_run_20260612_agentic_research_workflows \
+  --from extractions --out claims/claim_ledger.yaml
+
+# 7. Synthesize the report (deep model profile; may only cite ledger claim IDs)
+rf synthesize rf_run_20260612_agentic_research_workflows \
+  --report reports/report_draft.md --model-profile rf_synthesize_deep
+
+# 8. Verify every material claim -> fails the build on anything unsupported
+rf verify rf_run_20260612_agentic_research_workflows \
+  --report reports/report_draft.md \
+  --claim-ledger claims/claim_ledger.yaml --fail-on-unsupported
+
+# 9. Publish the durable evidence bundle -> evidence_bundle.yaml
+rf bundle rf_run_20260612_agentic_research_workflows --verify --out evidence_bundle.yaml
+
+# 10. Write back to MeatyWiki, SkillMeat, and CCDash
+rf writeback rf_run_20260612_agentic_research_workflows \
+  --targets meatywiki,skillmeat,ccdash --require-review
+
+# 11. Summarize CCDash telemetry for the day
+rf ccdash summarize --period daily
 ```
 
-**Include recommended tier only:**
+Optional review and promotion steps:
 
 ```bash
-python scripts/build-starter-bundle.py \
-  --tier recommended \
-  ...
+rf council rf_run_20260612_agentic_research_workflows \
+  --roles critic,domain_reviewer,governance_officer,executive_translator \
+  --vote approve-concern-block
+rf skillbom propose rf_run_20260612_agentic_research_workflows
 ```
 
-After building, register the bundle with SkillMeat:
+---
+
+## Folder map
+
+Condensed from the spec's MVP folder structure:
+
+```
+research-foundry/
+  foundry.yaml            # foundry config
+  .env.example            # secrets template (.env* always gitignored)
+  config/                 # governance.yaml, model_profiles.yaml, routing_rules.yaml,
+                          #   tools.yaml, claim_policy.yaml
+  schemas/                # YAML schemas: raw_idea, research_intent, ibom, source_card,
+                          #   extraction_card, claim_ledger, evidence_bundle, ccdash_event, ...
+  templates/              # Markdown/YAML templates for ideas, briefs, cards, reports, writebacks
+  inbox/                  # raw_ideas/, clips/, imports/, voice_transcripts/
+  intents/                # active/, paused/, completed/, archived/
+  iboms/                  # active/, snapshots/
+  intenttree/             # research_foundry_tree.yaml, nodes/
+  runs/                   # rf_run_YYYYMMDD_slug/  (append-first, mostly immutable)
+    rf_run_*/
+      run.yaml  routing_decision.yaml  research_brief.md  swarm_plan.yaml
+      sources/        # src_*.md (normalized source cards)
+      extractions/    # ext_*.yaml
+      claims/         # claim_ledger.yaml, contradiction_log.yaml, inference_log.yaml
+      reports/        # report_draft.md, report_final.md
+      reviews/        # critic_review.yaml, council_review.yaml, governance_review.yaml
+      evidence_bundle.yaml
+      writebacks/     # meatywiki_writeback.md, skillbom_candidate.md, ccdash_event.yaml
+      telemetry/      # token_costs.yaml, tool_calls.yaml, run_trace.jsonl
+  registries/             # indexes (source, claim, skillbom, report, run) over the artifacts
+  meatywiki/              # local mirror: concepts/, sources/, decisions/, patterns/
+  skillmeat/              # local mirror: skillboms/, prompts/, context_packs/, evals/
+  ccdash/                 # local mirror: events/, daily/, summaries/
+  src/research_foundry/   # cli.py, config.py, schemas.py, validators/, adapters/, services/
+  tests/                  # schema validation, claim verifier, governance, writebacks
+```
+
+Folder rules: `runs/` is append-first and mostly immutable for reproducibility; `registries/`
+index artifacts but never replace them; `meatywiki/`, `skillmeat/`, and `ccdash/` are local mirrors
+for later sync; `.env*` files are always gitignored; work-sensitive runs do not write to a personal
+MeatyWiki by default.
+
+---
+
+## Claim-status model
+
+A **material claim** is any statement a reader could reasonably rely on as true (factual,
+quantitative, comparative, causal, attribution, recommendation, or prediction). Every material
+claim in a report must carry one of these statuses:
+
+| Status | Meaning | Report label required | Build effect |
+| --- | --- | --- | --- |
+| `supported` | Directly supported by one or more source cards | no | passes |
+| `mixed` | Sources disagree or support only part of the claim | yes (`Mixed evidence`) | passes |
+| `contradicted` | Evidence contradicts the claim | yes (`Contradicted / do not use as finding`) | passes |
+| `inference` | Reasonable synthesis from supported claims, not directly stated | yes (`Inference`) | passes |
+| `speculation` | Forward-looking or insufficiently evidenced idea | yes (`Speculation`) | passes |
+| `unsupported` | Material claim lacks a source or a proper label | yes | **fail** |
+
+`rf verify --fail-on-unsupported` enforces this. Its exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Pass |
+| 2 | Schema validation failed |
+| 3 | Governance policy blocked |
+| 4 | Unsupported material claim |
+| 5 | Budget exceeded |
+| 6 | Adapter/tool failure |
+| 7 | Human review required |
+
+---
+
+## Governance & key profiles
+
+Governance is enforced at runtime, before any model or tool runs. Each run executes under a key
+profile that scopes which keys, providers, and writeback targets are allowed:
+
+- **`personal`** — personal research; forbids employer/client confidential data. Uses `.env.personal`.
+- **`work_approved`** — approved work-internal research and tools; requires an explicit profile
+  flag; forbids personal cost-avoidance, unreviewed personal publication, and non-approved
+  endpoints. Uses `.env.work`.
+- **`client_approved`** — explicit client-authorized research only; requires human review; forbids
+  cross-client reuse and public/personal writeback. Uses `.env.client`.
+- **`offline_only`** — local documents and local models only; no external LLM calls or search.
+
+Non-negotiable rules are enforced deterministically (no LLM required): for example, work-provided
+keys cannot be used for personal runs. Check a profile before running:
 
 ```bash
-skillmeat add dist/starter-bundle/
-skillmeat template create \
-  --kind project-starter \
-  --name "instance-starter-bundle" \
-  --source dist/starter-bundle/ \
-  --enable
+rf guard check --profile personal
+rf doctor
 ```
 
-## Variable Substitution
-
-Two files are parameterized at build time using `{{VAR}}` tokens. All other files copy verbatim.
-
-| Variable | File(s) | Description |
-|----------|---------|-------------|
-| `PROJECT_NAME` | `CLAUDE.md`, `intents/intent.md` | Short project identifier (e.g., `MyApp`) |
-| `PROJECT_DESCRIPTION` | `CLAUDE.md`, `intents/intent.md` | One-line description of the project's purpose |
-| `AUTHOR` | `CLAUDE.md` | Primary author name or org (e.g., `Platform Team`) |
-| `ARCHITECTURE_DESCRIPTION` | `CLAUDE.md` | Short paragraph describing the tech stack |
-| `DATE` | `intents/intent.md` | ISO-8601 creation date (auto-set to today if omitted) |
-
-Unresolved tokens (`{{VAR}}`) remain as-is if a variable is not provided. The build script warns for any missing templates but does not fail.
-
-## Customization
-
-To add, remove, or recategorize artifacts in the bundle:
-
-1. **Edit the manifest** — `scripts/starter-bundle-manifest.yaml` controls the full inclusion list. Each entry specifies `path`, `type` (`file` or `directory`), and an optional `comment`.
-
-2. **Add a template file** — Place a `.tmpl` file in `scripts/templates/` (e.g., `myconfig.toml.tmpl`). Add the target path to `parameterized_templates` in the manifest.
-
-3. **Rebuild** — Re-run the build script with your project variables.
-
-4. **Re-register** — Run `skillmeat add` and `skillmeat template configure` to update the registered bundle.
-
-For the complete manifest format, field reference, and validation rules, see the [Starter Bundle Manifest Guide](../../docs/user/dev/features/starter-bundle-manifest-guide.md).
-
-## Security
-
-The build script runs a pre-flight check before writing any files. It rejects bundles containing:
-
-- `.env` files and variant patterns
-- `*.token`, `*.key`, credential, or secret files
-- `settings.local.*` overrides
-
-Build fails with a clear error if any matched files are detected. The allowlist (`*.example`, `*.sample`, `*.template`, `no-secrets.md`) covers common placeholder files that are safe to include.
-
-## Version and Compatibility
-
-| Field | Value |
-|-------|-------|
-| Bundle version | `1.0.0` (set in `bundle_metadata.version` in the manifest) |
-| Bundle kind | `project_starter` |
-| Source project | `skillmeat` |
-| Minimum SkillMeat | `v0.50.1` |
-| Python (build script) | 3.9+ |
-| YAML dependency | PyYAML (optional; falls back to built-in minimal parser) |
-
-The bundle version in `bundle-manifest.toml` is separate from the SkillMeat application version. Increment `bundle_metadata.version` in the manifest when the bundle contents change significantly.
+Utility commands: `rf status`, `rf cost runs/rf_run_*/`, `rf redact runs/rf_run_*/ --target public`,
+`rf index rebuild`.
