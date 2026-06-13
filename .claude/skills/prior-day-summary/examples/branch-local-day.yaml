@@ -1,0 +1,39 @@
+repo: skillmeat
+target_date: 2026-05-18
+reporting_window: prior day
+mode: expanded
+image_count: 2
+release_context:
+  version: v0.47.0
+  shipped: true
+  branch: mixed
+change_groups:
+  user_facing:
+    - title: Recipe tab
+      impact: Users can preview and apply recipe-backed artifacts
+      surface: web
+      refs: v0.47.0
+  fixes:
+    - title: Deployment-set creation bug
+      impact: Avoid enterprise 500 on missing created_by
+      surface: enterprise
+      refs: CHANGELOG
+  refactors:
+    - title: Workflow capability utilization waves 5-9
+      impact: Internal orchestration improvements
+      surface: internal
+      refs: plan-completion
+  infra_ops:
+    - title: Release v0.47.0
+      impact: Version bump, changelog roll, SDK regen
+      surface: release
+      refs: tag v0.47.0
+ledger:
+  - item: Enterprise analytics parity
+    type: feature
+    created: false
+    started: true
+    completed: true
+    shipped: false
+    surface: api
+    refs: Unreleased

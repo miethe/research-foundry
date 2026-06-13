@@ -1,0 +1,44 @@
+repo: skillmeat
+target_date: 2026-05-18
+reporting_window: prior day
+mode: compact
+image_count: 1
+release_context:
+  version: v0.47.0
+  shipped: true
+  branch: main
+visual_surfaces:
+  - label: Recipe tab
+    kind: web
+    priority: high
+    caption: Artifact recipe preview and actions
+  - label: Enterprise deploy pull
+    kind: cli
+    priority: high
+    caption: Auth and pull pending deployments locally
+change_groups:
+  user_facing:
+    - title: Recipe bootstrap flows
+      impact: Preview, apply, and uninstall recipes
+      surface: web + cli
+      refs: PR #228
+  fixes:
+    - title: Enterprise deployment fixes
+      impact: Reliability fixes shipped with the release
+      surface: enterprise
+      refs: CHANGELOG
+  refactors: []
+  infra_ops:
+    - title: Release cut
+      impact: Version bump, changelog roll, SDK refresh
+      surface: release
+      refs: v0.47.0
+ledger:
+  - item: Bootstrap-on-install
+    type: feature
+    created: false
+    started: true
+    completed: true
+    shipped: true
+    surface: web + cli
+    refs: PR #228

@@ -1,0 +1,10 @@
+[bundle]
+name = "skillmeat-instance-starter"
+version = "1.0.0"
+description = "SkillMeat development methodology artifacts for Claude Code projects"
+bundle_kind = "project_starter"
+source_version = "0.51.0"
+build_date = "2026-05-27"
+tier = "all"
+file_count = 618
+total_size_bytes = 5228755

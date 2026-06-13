@@ -1,0 +1,25 @@
+{
+  "description": "Automatically update symbol graph when code files are modified. This hook runs the unified symbols pipeline with --changed-only and --skip-validate flags for fast incremental updates. Triggers on Edit and Write operations for Python files in skillmeat/api/ (updates api domain) and TypeScript/TSX files in skillmeat/web/ (updates web domain). Includes graceful failure handling to not block Claude's workflow if the symbols pipeline encounters errors.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [[ \"$CLAUDE_TOOL_FILE_PATH\" == */skillmeat/api/*.py ]]; then python .claude/skills/symbols/scripts/__main__.py --domain api --changed-only --skip-validate 2>/dev/null || true; elif [[ \"$CLAUDE_TOOL_FILE_PATH\" == */skillmeat/web/*.ts ]] || [[ \"$CLAUDE_TOOL_FILE_PATH\" == */skillmeat/web/*.tsx ]]; then python .claude/skills/symbols/scripts/__main__.py --domain web --changed-only --skip-validate 2>/dev/null || true; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [[ \"$CLAUDE_TOOL_FILE_PATH\" == */skillmeat/api/*.py ]]; then python .claude/skills/symbols/scripts/__main__.py --domain api --changed-only --skip-validate 2>/dev/null || true; elif [[ \"$CLAUDE_TOOL_FILE_PATH\" == */skillmeat/web/*.ts ]] || [[ \"$CLAUDE_TOOL_FILE_PATH\" == */skillmeat/web/*.tsx ]]; then python .claude/skills/symbols/scripts/__main__.py --domain web --changed-only --skip-validate 2>/dev/null || true; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

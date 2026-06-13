@@ -1,0 +1,115 @@
+{
+  "_comment": "Subagent configuration for SkillMeat. Customize 'domains' and 'invocation_rules' to match your project's technology stack and workflow patterns.",
+  "_template_variables": {
+    "PROJECT_NAME": "Replace with your project name (e.g., MeatyPrompts, AcmeApp)",
+    "PROJECT_STANDARDS": "Replace with your project's coding standards and patterns",
+    "BACKEND_DOMAINS": "Customize based on your backend tech stack (python/fastapi or node/express, etc.)",
+    "FRONTEND_DOMAINS": "Customize based on your frontend tech stack (react/nextjs or vue/nuxt, etc.)",
+    "UI_DOMAINS": "Customize based on your UI library (radix, material-ui, chakra, etc.)",
+    "TEST_DOMAINS": "Customize based on your testing framework (pytest/jest or mocha/vitest, etc.)"
+  },
+  "subagents": {
+    "backend-architect": {
+      "description": "Analyzes backend architecture and proposes implementation approaches",
+      "capabilities": ["analyze", "design", "review"],
+      "domains": ["Python 3.9+", "Click (CLI), FastAPI (Phase 3 web interface)", "SQLite (Phase 3 web interface, currently file-based TOML)", "{{ORM}}"],
+      "_domains_examples": {
+        "python_fastapi": ["python", "fastapi", "sqlalchemy", "postgresql"],
+        "node_express": ["typescript", "express", "prisma", "postgresql"],
+        "go_gin": ["go", "gin", "gorm", "postgresql"]
+      },
+      "invocation": "@backend-architect <command> <args>"
+    },
+    "backend-developer": {
+      "description": "Implements backend code following SkillMeat standards",
+      "capabilities": ["implement", "refactor", "optimize"],
+      "domains": ["Python 3.9+", "Click (CLI), FastAPI (Phase 3 web interface)", "{{ORM}}", "{{MIGRATION_TOOL}}"],
+      "_domains_examples": {
+        "python_fastapi": ["python", "fastapi", "sqlalchemy", "alembic"],
+        "node_express": ["typescript", "express", "prisma", "migrations"],
+        "django": ["python", "django", "django-orm", "migrations"]
+      },
+      "invocation": "@backend-developer <command> <args>"
+    },
+    "frontend-developer": {
+      "description": "Implements frontend code using React 18+ with TypeScript (Phase 3 only, currently CLI-only)",
+      "capabilities": ["implement", "refactor", "optimize"],
+      "domains": ["{{FRONTEND_LANGUAGE}}", "{{FRONTEND_LIBRARY}}", "React 18+ with TypeScript (Phase 3 only, currently CLI-only)", "{{CSS_FRAMEWORK}}"],
+      "_domains_examples": {
+        "react_nextjs": ["typescript", "react", "nextjs", "tailwind"],
+        "vue_nuxt": ["typescript", "vue", "nuxt", "tailwind"],
+        "svelte": ["typescript", "svelte", "sveltekit", "scss"]
+      },
+      "invocation": "@frontend-developer <command> <args>"
+    },
+    "ui-designer": {
+      "description": "Creates and reviews UI components following design system",
+      "capabilities": ["create-component", "review", "design"],
+      "domains": ["{{FRONTEND_LIBRARY}}", "{{CSS_FRAMEWORK}}", "Shadcn/ui (Phase 3, currently CLI-only with Rich)", "{{COMPONENT_DOCS}}"],
+      "_domains_examples": {
+        "radix_storybook": ["react", "tailwind", "radix", "storybook"],
+        "material_ui": ["react", "mui", "emotion", "storybook"],
+        "chakra_ui": ["react", "chakra", "emotion", "storybook"]
+      },
+      "invocation": "@ui-designer <command> <args>"
+    },
+    "test-engineer": {
+      "description": "Creates comprehensive test suites",
+      "capabilities": ["create-tests", "review-coverage", "e2e"],
+      "domains": ["{{BACKEND_TEST_FRAMEWORK}}", "{{FRONTEND_TEST_FRAMEWORK}}", "{{E2E_FRAMEWORK}}", "{{FRONTEND_TEST_LIBRARY}}"],
+      "_domains_examples": {
+        "pytest_jest": ["pytest", "jest", "playwright", "vitest"],
+        "mocha_jest": ["mocha", "jest", "cypress", "testing-library"],
+        "pytest_vitest": ["pytest", "vitest", "playwright", "testing-library"]
+      },
+      "invocation": "@test-engineer <command> <args>"
+    },
+    "code-reviewer": {
+      "description": "Reviews code for standards, security, and best practices",
+      "capabilities": ["review", "security-check", "performance-check"],
+      "domains": ["all"],
+      "invocation": "@code-reviewer <command> <args>"
+    }
+  },
+  "invocation_rules": {
+    "_comment": "Customize these rules based on your project workflow. Conditions should match your file structure and naming patterns.",
+    "always_use": [
+      {
+        "condition": "implementing backend file",
+        "subagent": "backend-developer",
+        "_condition_examples": [
+          "implementing backend file (*.py in services/api/)",
+          "implementing backend file (*.ts in src/server/)",
+          "implementing backend file (*.go in cmd/ or pkg/)"
+        ]
+      },
+      {
+        "condition": "implementing frontend file",
+        "subagent": "frontend-developer",
+        "_condition_examples": [
+          "implementing frontend file (*.tsx in apps/web/)",
+          "implementing frontend file (*.vue in src/pages/)",
+          "implementing frontend file (*.svelte in src/routes/)"
+        ]
+      },
+      {
+        "condition": "creating UI component",
+        "subagent": "ui-designer",
+        "_condition_examples": [
+          "creating UI component (in packages/ui/)",
+          "creating UI component (in src/components/ui/)",
+          "creating UI component (in lib/components/)"
+        ]
+      },
+      {
+        "condition": "final review",
+        "subagent": "code-reviewer"
+      }
+    ],
+    "fallback": {
+      "on_failure": "proceed_directly",
+      "max_retries": 1,
+      "log_errors": true
+    }
+  }
+}

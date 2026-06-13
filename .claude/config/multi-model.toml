@@ -1,0 +1,118 @@
+# Multi-Model SDLC Configuration
+# Controls model routing, effort policies, and opt-in checkpoints.
+# All external model integrations are opt-in by default.
+
+[models]
+codex_enabled = true
+gemini_enabled = true
+nano_banana_enabled = true
+sora_enabled = true
+local_llm_enabled = false
+claude_teams_enabled = true
+
+[models.defaults]
+implementation = "claude-sonnet-4-6"
+review = "claude-sonnet-4-6"
+exploration = "claude-haiku-4-5"
+orchestration = "claude-opus-4-6"
+documentation = "claude-haiku-4-5"
+image_generation = "nano-banana-2"   # nb2 = Gemini 3.1 Flash Image (default); use nano-banana-pro for max quality
+svg_generation = "gemini-3.1-pro"
+video_generation = "sora-2"
+web_research = "gemini-3.1-pro"
+
+[models.effort_policy]
+# Claude: "adaptive" (default) | "extended" (deep reasoning)
+# Codex: "none" | "low" | "medium" | "high" | "xhigh"
+# Gemini: model selection handles this (Pro vs Flash)
+architecture_decisions = { claude = "adaptive", codex = "xhigh" }
+plan_generation = { claude = "adaptive", codex = "high" }
+plan_review = { claude = "adaptive", codex = "medium" }
+implementation = { claude = "adaptive", codex = "medium" }
+code_review = { claude = "adaptive", codex = "medium" }
+debugging = { claude = "adaptive", codex = "high" }
+debugging_escalated = { claude = "extended", codex = "xhigh" }
+simple_search = { claude = "adaptive", codex = "low" }
+documentation = { claude = "adaptive", codex = "low" }
+formatting = { claude = "adaptive", codex = "none" }
+escalation_requires_artifacts = true
+
+[models.codex]
+default_model = "gpt-5.3-codex"
+fast_model = "gpt-5.3-codex-spark"
+general_model = "gpt-5.2"
+default_reasoning = "medium"
+sandbox_default = "read-only"
+debug_escalation_threshold = 2
+
+[models.gemini]
+default_model = "gemini-3.1-pro"
+fast_model = "gemini-3-flash"
+flash_threshold = "simple"
+max_output_tokens = 65536
+chunking_threshold = 32000
+
+[models.nano_banana]
+# nano-banana-2 = Gemini 3.1 Flash Image (fast, cheap ~$0.067/1K image)
+# nano-banana-pro = Gemini 3 Pro Image (highest quality ~$0.134/1K image)
+default_model = "nb2"          # alias: flash, nb2
+quality_model = "pro"          # alias: pro, nb-pro
+default_size = "1K"
+ui_mockup_size = "2K"
+# Usage: nano-banana "prompt" -m nb2 -s 2K -a 16:9 -d assets/ai-gen/{date}/nano-banana-2/
+
+[models.local_llm]
+endpoint = "http://localhost:11434"
+model = "qwen2.5-coder:32b"
+always_local = []
+require_eval = true
+
+[models.claude_teams]
+max_parallel_threads = 3
+use_for = []
+
+[models.effort_levels.claude]
+# Claude uses adaptive thinking by default; budget_tokens deprecated on Opus 4.6
+levels = ["adaptive", "extended"]
+default = "adaptive"
+note = "Escalate to extended only when blocked with concrete artifacts"
+
+[models.effort_levels.codex]
+# GPT-5.3-Codex graduated reasoning
+levels = ["none", "low", "medium", "high", "xhigh"]
+default = "medium"
+note = "Graduate based on task complexity; xhigh for deep analysis only"
+
+[models.effort_levels.gemini]
+# Gemini 3.1 Pro/Flash thinking config
+levels = ["none", "low", "medium", "high"]
+default = "medium"
+note = "Flash defaults to low; Pro defaults to medium"
+
+[models.effort_levels.nano_banana]
+# Nano Banana Pro — image/asset generation
+levels = ["standard", "quality"]
+default = "standard"
+note = "Quality mode for final assets; standard for drafts/iterations"
+
+[checkpoints]
+plan_review = "ask"
+pr_cross_review = "ask"
+debug_escalation = "ask"
+creative_model_selection = "ask"
+
+[thresholds]
+files_changed_suggest_review = 10
+security_sensitive_patterns = [
+    "auth", "crypto", "token", "password", "secret",
+    "injection", "sanitiz", "escap"
+]
+suggest_gemini_for_context_above = 150000
+suggest_codex_debug_after_cycles = 2
+
+[asset_pipeline]
+output_dir = "assets/ai-gen"
+structure = "{date}/{model}/{filename}"
+store_prompts = true
+store_seeds = true
+store_metadata = true

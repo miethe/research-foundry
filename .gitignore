@@ -1,0 +1,51 @@
+# --- Secrets & environment ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+.secrets/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.python-version
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+*.so
+
+# --- uv ---
+# uv.lock is committed; caches are not
+.uv-cache/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*~
+
+# --- Research Foundry runtime artifacts ---
+# Local tool working dirs & adapter caches (runs/ is durable & committed)
+.rf_cache/
+*.tmp
+node_modules/
+
+# --- Local model / vector caches ---
+.paperqa/
+.gpt_researcher/
