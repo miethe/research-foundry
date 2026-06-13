@@ -1,0 +1,217 @@
+---
+name: research-foundry-swarm
+description: Installs and initializes a Research Foundry workspace from scratch, then orchestrates a Claude Code agent swarm to produce a claim-verified evidence bundle. Covers the uv-tool install, `rf init`, `rf doctor` bootstrap sequence; the two swarm-drive patterns (RF-native `rf swarm run` vs. Claude-Code-orchestrated discovery feeding `rf ingest`); the deterministic tail that converts raw sources into a verified, governance-gated report; and key-profile governance. Cross-links the `research-foundry` skill for the full 21-step pipeline loop and per-command reference. Use when an agent needs to stand up a Research Foundry workspace from scratch or orchestrate a Claude Code agent swarm into a claim-verified evidence bundle.
+---
+
+# Research Foundry Swarm
+
+This skill covers **workspace bootstrap** and **swarm orchestration**. It is the "set up and drive" companion to the `research-foundry` skill, which owns the per-command pipeline reference and the full 21-step execution loop. Do not repeat content from that skill here — cross-link instead.
+
+> For the intent → command route table, the 21-step loop, claim-traceability discipline, and per-command syntax, load the `research-foundry` skill.
+
+---
+
+## 1. Install & Init
+
+### Ensure `rf` is on PATH
+
+`rf` is distributed as a uv tool. Install it once per environment:
+
+```bash
+# Minimal install (offline/deterministic pipeline only)
+uv tool install --editable .
+
+# With live model adapters (gpt_researcher, paperqa2, claude_agent_sdk, opencode, litellm)
+uv tool install --editable ".[research,llm]"
+```
+
+Verify:
+
+```bash
+rf version
+```
+
+### Bootstrap a workspace
+
+```bash
+rf init ./my-foundry --profile personal
+```
+
+`rf init` scaffolds the full folder tree (`inbox/`, `intents/`, `runs/`, `schemas/`, `config/`, `templates/`, etc.), writes `foundry.yaml`, `.env.example`, and a default `config/governance.yaml` with your chosen key profile as the default.
+
+Key profiles: `personal` | `work_approved` | `client_approved` | `offline_only`. Choose once at init; override per-run with `--profile`.
+
+### Confirm readiness
+
+```bash
+rf doctor
+```
+
+`rf doctor` checks: workspace structure, schema validity, governance rules loaded, model profiles present, and adapter availability (reports N/5 live adapters). Fix any red items before continuing. A fully offline, deterministic workspace shows green with 0/5 live adapters — that is normal and sufficient for the deterministic tail.
+
+---
+
+## 2. Two Ways to Drive a Swarm
+
+### Path A — RF-native swarm (opt-in adapters)
+
+Use when one or more live adapters are installed and enabled.
+
+```bash
+# Governance preflight first — always
+rf guard check --profile personal
+
+# Then run enabled discovery adapters
+rf swarm run <run_id> --adapters gpt_researcher,paperqa2 --profile personal
+```
+
+**What `rf swarm run` does and does NOT do:**
+- Reads `runs/<run_id>/research_brief.md`
+- Calls each adapter's `run()` in sequence
+- Writes `runs/<run_id>/source_candidates.yaml`
+- It does NOT create source cards and does NOT coordinate subagents
+
+`source_candidates.yaml` is a ranked list of candidates — it is not ingestible downstream. After `rf swarm run`, you must convert candidates to source cards via `rf ingest` (one call per source you accept) before the deterministic tail can proceed.
+
+**Adapter degradation:** All five adapters (`gpt_researcher`, `paperqa2`, `claude_agent_sdk`, `opencode`, `litellm`) degrade to deterministic stubs unless their extra is installed AND opt-in real mode is enabled. Real mode for `claude_agent_sdk` targets the Claude Agent SDK Python package, not the Claude Code CLI harness. Stubs are safe and sufficient for testing the pipeline shape.
+
+### Path B — Claude Code-orchestrated swarm (works today, recommended)
+
+This is the clean integration pattern: the Claude Code agent (or a multi-agent workflow) performs discovery using its own tools and subagents, then feeds findings into the RF run as source cards. RF stays the governance + claim-ledger + verifier spine; the swarm is disposable discovery muscle.
+
+**Step-by-step:**
+
+1. **Preflight** (mandatory before any discovery):
+   ```bash
+   rf guard check --profile personal
+   ```
+
+2. **Create the run context** (capture → triage → plan):
+   ```bash
+   rf capture "<research question>" --from manual --sensitivity personal --tag <tag>
+   rf triage inbox/raw_ideas/raw_*.md --create-intent --create-ibom --create-tree-node
+   rf plan <intent_id> --depth deep --audience technical --max-cost 5 --freshness 180d
+   ```
+   This produces `runs/<run_id>/research_brief.md` and `runs/<run_id>/swarm_plan.yaml`.
+
+3. **Agent-driven discovery:** The Claude Code agent (or subagents it spawns) uses web search, document reads, API calls, or any available tool to locate sources. Each located source is a candidate to feed in.
+
+4. **Ingest each accepted source into the run:**
+   ```bash
+   rf ingest <url_or_file_path> \
+     --run <run_id> \
+     --source-type <paper|web_page|official_doc|other> \
+     --sensitivity <personal|public|work_internal|client_confidential>
+   ```
+   `rf ingest` writes a schema-valid `runs/<run_id>/sources/src_*.md` source card. Alternatively, write source cards directly to that path following the `source_card` schema in `schemas/`.
+
+5. **Run the deterministic tail** (Section 3 below).
+
+**Key architectural fact:** The Claude Code multi-agent workflow is the outer orchestrator. `rf` is never the caller of Claude Code — it is the governance and evidence spine that the orchestrator feeds into.
+
+---
+
+## 3. The Deterministic Tail & the Verify Gate
+
+Once source cards exist in `runs/<run_id>/sources/`, the pipeline is fully deterministic and offline-safe:
+
+```bash
+# Extract evidence from source cards (cheap model profile)
+rf extract <run_id> --model-profile rf_extract_cheap
+
+# Build the claim ledger from extractions
+rf claim-map <run_id> --from extractions --out claims/claim_ledger.yaml
+
+# Synthesize the report (may only cite ledger claim IDs or label as inference/speculation)
+rf synthesize <run_id> \
+  --report reports/report_draft.md \
+  --model-profile rf_synthesize_deep
+
+# Verify — this is the build gate; exit 4 on any unsupported material claim
+rf verify <run_id> \
+  --report reports/report_draft.md \
+  --claim-ledger claims/claim_ledger.yaml \
+  --fail-on-unsupported
+
+# Publish the durable evidence bundle
+rf bundle <run_id> --verify --out evidence_bundle.yaml
+
+# Write back to downstream targets
+rf writeback <run_id> --targets meatywiki,skillmeat,ccdash --require-review
+```
+
+### Publishing into MeatyWiki (live vault)
+
+`rf writeback ... --targets meatywiki` only generates a **source-note candidate** (`writebacks/meatywiki_writeback.md`) and mirrors it into the local `meatywiki/` tree — it does **not** push to a running MeatyWiki vault. To publish for real, hand off to the dedicated skills:
+
+1. Author the artifact with engine-honored frontmatter routing hints → load the **`meatywiki-author`** skill.
+2. Ingest + compile it into the vault via the MeatyWiki CLI → load the **`meatywiki`** skill (or **`meatywiki-suite`** for Portal REST API / MCP).
+
+These skills drive the MeatyWiki application (the `meatywiki` CLI lives in the sibling `../meatywiki` repo) and assume it is installed; their internal doc references resolve there, not in RF. Respect the run's key profile — only `personal`-tier data may go to a personal vault.
+
+### Exit-code table (treat any non-zero as a stop)
+
+| Code | Meaning | Fix |
+|------|---------|-----|
+| 0 | Pass | — |
+| 2 | Schema validation failed | Fix malformed source card or extraction |
+| 3 | Governance policy blocked | Switch profile or redact sensitive data |
+| 4 | Unsupported material claim | Label claim as `inference`/`speculation` or add a source card |
+| 5 | Budget exceeded | Reduce run scope or increase budget ceiling |
+| 6 | Adapter/tool failure | Check adapter config or switch to stub mode |
+| 7 | Human review required | Run `rf council` and obtain sign-off |
+
+Do not override or retry with `--no-fail`. Fix the cause, then re-run.
+
+> For the full per-command reference, optional steps (`rf council`, `rf skillbom propose`, `rf cost`, `rf redact`, `rf index rebuild`, `rf ccdash summarize`), and the complete 21-step loop narrative, load the `research-foundry` skill.
+
+---
+
+## 4. Governance & Guardrails
+
+### Run the preflight before anything
+
+```bash
+rf guard check --profile <profile>
+```
+
+This is mandatory before any source discovery, model call, or privileged action. Deterministic checks run without LLM involvement: key/tier compatibility, writeback-target permissions, and work/personal isolation.
+
+### Key profiles
+
+| Profile | Permitted data | Permitted writebacks | Env file |
+|---------|---------------|---------------------|----------|
+| `personal` | Personal, public | Personal MeatyWiki | `.env.personal` |
+| `work_approved` | Work-internal (explicitly approved) | Work targets only | `.env.work` |
+| `client_approved` | Client-authorized only; human review required | No cross-client or personal | `.env.client` |
+| `offline_only` | Local documents and local models only | None | — |
+
+### Non-negotiable rules
+
+- Work-provided keys cannot be used for personal runs. This is enforced deterministically, not by policy memo.
+- A key or model must not touch data above its tier.
+- A writeback target must not receive data above its permitted tier.
+- `rf guard` fails closed when a rule is ambiguous.
+
+### Never ship unsupported claims
+
+The synthesizer may only cite claim IDs already present in `claim_ledger.yaml`, or label a sentence as `inference` or `speculation`. `rf verify --fail-on-unsupported` enforces this. An exit code 4 means the report has a material claim with no ledger entry and no label — stop, label or add the source, and re-run verify. The claim ledger, not the model, is the authority.
+
+---
+
+## Cross-References
+
+- **Per-command reference + 21-step loop**: `.claude/skills/research-foundry/SKILL.md`
+- **Folder map + claim-status model**: `README.md`
+- **MVP spec (commands §10, loop §11, adapters §13, Day-2 §16)**: `docs/projects/research-foundry/research-foundry-mvp-spec.md`
+- **Service contract**: `docs/projects/research-foundry/SERVICE_CONTRACT.md`
+- **Source card schema**: `schemas/source_card.schema.yaml` (inside initialized workspace)
+- **Author artifacts for MeatyWiki ingestion**: `.claude/skills/meatywiki-author/SKILL.md`
+- **Drive the MeatyWiki CLI (ingest → compile → lint)**: `.claude/skills/meatywiki/SKILL.md` — full lifecycle incl. Portal API/MCP: `.claude/skills/meatywiki-suite/SKILL.md` (require the MeatyWiki app from `../meatywiki`)
+- **Agent Review Council (offline gate over report + ledger)**: `.claude/skills/council-review/SKILL.md` — backs `rf council` (exit code 7 path, step 16 of the 21-step loop); vendored reviewer agents live in `.claude/agents/council/` (`council-coordinator.md`, `architecture-reviewer.md`, `correctness-reviewer.md`, `domain-research-reviewer.md`, and the full roster)
+- **council-run** (reference/arc-server path only): the ARC server variant of council execution — note this is an arc-server-dependent path and is NOT the offline `council-review` skill used here; prefer the offline skill for all RF pipeline runs
+- **intenttree-cli**: `.claude/skills/intenttree-cli/SKILL.md` — live IntentTree server interface for intent/tree management; note that `rf intent` and `rf tree` (used in step 2 of this skill's Path B) are the offline RF-native subset of this capability; load `intenttree-cli` only when a live IntentTree server is available and required
+- **Workflow authoring for RF swarm/council scripts**: `.claude/skills/workflow-authoring/SKILL.md` — use when authoring or extending `.claude/workflows/research-foundry-swarm.js` or `.claude/workflows/research-foundry-council.js`
+- **research-foundry-swarm Workflow script**: `.claude/workflows/research-foundry-swarm.js` — Claude Code-orchestrated Path B discovery swarm; registered in `.claude/specs/workflows/workflow-registry.md`
+- **research-foundry-council Workflow script**: `.claude/workflows/research-foundry-council.js` — offline council gate over a run's report and claim ledger; registered in `.claude/specs/workflows/workflow-registry.md`
+- **RF discovery swarm agents**: `rf_discovery_lead` (swarm orchestrator), `rf_deep_reader` (full-text extraction), `rf_domain_researcher` (domain-specific source location) — used by `research-foundry-swarm.js`; definitions under `.claude/agents/research/`
