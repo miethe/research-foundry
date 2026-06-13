@@ -75,6 +75,11 @@ policy_rules:
     condition: "writeback.target contains personal_meatywiki AND source.sensitivity == work_sensitive"
     message: "Work-sensitive content requires sanitization and approval before personal MeatyWiki writeback."
 
+  - id: intenttree_writeback_requires_review
+    severity: require_approval
+    condition: "writeback.target contains intenttree AND source.sensitivity in [work_sensitive, client_sensitive]"
+    message: "Work/client-sensitive content requires human review before IntentTree writeback."
+
   - id: material_claims_must_be_mapped
     severity: block
     condition: "report contains material claim without claim_id OR claim.status == unsupported"
@@ -110,3 +115,42 @@ secret_patterns:
   - "-----BEGIN[ A-Z]*PRIVATE KEY-----"                    # PEM private keys
   - "-----BEGIN OPENSSH PRIVATE KEY-----"                  # OpenSSH private keys
   - "eyJ[A-Za-z0-9_\\-]+\\.[A-Za-z0-9_\\-]+\\.[A-Za-z0-9_\\-]+"  # JWTs
+
+# Governable writeback targets and their permitted key profiles.
+# offline_only profiles are NEVER permitted for live network writebacks.
+writeback_targets:
+  meatywiki:
+    permitted_profiles:
+      - personal
+      - work_approved
+      - client_approved
+    requires_review_for:
+      - work_sensitive
+      - client_sensitive
+
+  skillmeat:
+    permitted_profiles:
+      - personal
+      - work_approved
+      - client_approved
+
+  ccdash:
+    permitted_profiles:
+      - personal
+      - work_approved
+      - client_approved
+
+  intenttree:
+    permitted_profiles:
+      - personal
+      - work_approved
+      - client_approved
+    requires_review_for:
+      - work_sensitive
+      - client_sensitive
+
+  arc:
+    permitted_profiles:
+      - personal
+      - work_approved
+      - client_approved

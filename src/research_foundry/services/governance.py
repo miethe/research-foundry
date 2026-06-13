@@ -264,7 +264,7 @@ def guard_check(
     # 4. no_secret_in_markdown (block) — scan provided artifact paths.
     violations.extend(scan_paths(list(ctx.artifact_paths or ()), config=cfg))
 
-    # 5. work_writeback_requires_review (require_approval)
+    # 5. work_writeback_requires_review (require_approval) — meatywiki
     personal_mw_target = any("meatywiki" in t and "personal" in t for t in targets) or (
         "meatywiki" in targets
     )
@@ -281,6 +281,23 @@ def guard_check(
                     "work_writeback_requires_review",
                     "Work-sensitive content requires sanitization and approval "
                     "before personal MeatyWiki writeback.",
+                ),
+                detail=f"targets={targets}, sensitivity={ctx.sensitivity}",
+            )
+        )
+
+    # 5b. intenttree_writeback_requires_review (require_approval) — intenttree
+    intenttree_target = "intenttree" in targets
+    if intenttree_target and work_source:
+        violations.append(
+            Violation(
+                rule_id="intenttree_writeback_requires_review",
+                severity=_REQUIRE_APPROVAL,
+                message=_rule_message(
+                    cfg,
+                    "intenttree_writeback_requires_review",
+                    "Work/client-sensitive content requires human review before "
+                    "IntentTree writeback.",
                 ),
                 detail=f"targets={targets}, sensitivity={ctx.sensitivity}",
             )

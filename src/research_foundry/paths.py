@@ -229,6 +229,10 @@ class RunPaths:
         return self.writebacks / "ccdash_event.yaml"
 
     @property
+    def intenttree_update(self) -> Path:
+        return self.writebacks / "intenttree_update.yaml"
+
+    @property
     def telemetry(self) -> Path:
         return self.run / "telemetry"
 

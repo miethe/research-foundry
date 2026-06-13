@@ -343,4 +343,66 @@ def summarize(period: str = "daily", *, paths: FoundryPaths | None = None) -> Pa
     return summary_path
 
 
-__all__ = ["emit_ccdash_event", "emit_latest_or_noop", "summarize"]
+_MILESTONE_STAGES = frozenset({
+    "discovery_started",
+    "sources_ingested",
+    "verify_passed",
+    "bundle_written",
+})
+
+
+def push_status(
+    run_id: str,
+    stage: str,
+    *,
+    paths: FoundryPaths | None = None,
+) -> bool:
+    """Best-effort PATCH of IntentTree node progress at milestone stages.
+
+    Only fires at the four defined milestone stages
+    (``discovery_started``, ``sources_ingested``, ``verify_passed``,
+    ``bundle_written``). No-ops silently for any other stage. Returns ``True``
+    when the push succeeded, ``False`` when offline, skipped, or errored.
+    Never raises.
+    """
+
+    if stage not in _MILESTONE_STAGES:
+        return False
+
+    try:
+        paths = paths or FoundryPaths.discover()
+        rp = paths.run_paths(run_id)
+
+        # Resolve node_id from run.yaml → intent.
+        meta = _run_meta(rp)
+        intent_id = str(meta.get("intent_id") or "")
+        node_id = str(meta.get("task_node_id") or meta.get("intenttree_node_id") or "")
+        if not node_id and intent_id:
+            # Try loading from the active intent.
+            intent_path = paths.intents_active / f"{intent_id}.yaml"
+            if intent_path.exists():
+                intent = _safe_load(intent_path) or {}
+                node_id = str(intent.get("intenttree_node_ref") or "")
+
+        if not node_id:
+            return False
+
+        from ..integrations.intenttree import IntentTreeClient
+
+        client = IntentTreeClient.from_config()
+        if not client.available():
+            return False
+
+        payload = {
+            "progress_stage": stage,
+            "run_id": run_id,
+            "timestamp": now_iso(),
+        }
+        result = client.patch_node(node_id, payload)
+        _trace(rp, f"status_push_{stage}", run_id=run_id, node_id=node_id, pushed=result is not None)
+        return result is not None
+    except Exception:  # noqa: BLE001 — best-effort, never fail pipeline
+        return False
+
+
+__all__ = ["emit_ccdash_event", "emit_latest_or_noop", "summarize", "push_status"]

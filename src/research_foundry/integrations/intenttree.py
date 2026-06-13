@@ -113,11 +113,17 @@ class IntentTreeClient(IntegrationClient):
     ) -> dict[str, Any] | None:
         """PATCH status/progress fields on an IntentTree node.
 
-        Returns the updated node record or ``None`` when offline.
-        **Phase 1 stub — currently a no-op.**
+        Sends a PATCH request to ``/api/nodes/{node_id}`` with ``payload`` as
+        the JSON body. Returns the updated node record on success, or ``None``
+        on any error (offline, auth failure, timeout, unexpected response). Never
+        raises — all errors are silently swallowed (fail-soft contract).
         """
 
-        return None  # pragma: no cover (Phase 1)
+        return self._patch(
+            f"/api/nodes/{node_id}",
+            payload,
+            headers=self._auth_headers(),
+        )
 
     def add_node_artifact(
         self,
@@ -126,11 +132,15 @@ class IntentTreeClient(IntegrationClient):
     ) -> dict[str, Any] | None:
         """POST a new artifact link to ``/api/nodes/{node_id}/artifacts``.
 
-        Returns the created artifact record or ``None`` when offline.
-        **Phase 1 stub — currently a no-op.**
+        Returns the created artifact record on success, or ``None`` on any
+        error. Never raises — fail-soft contract mirrors ``patch_node``.
         """
 
-        return None  # pragma: no cover (Phase 1)
+        return self._post(
+            f"/api/nodes/{node_id}/artifacts",
+            artifact,
+            headers=self._auth_headers(),
+        )
 
 
 # ---------------------------------------------------------------------------

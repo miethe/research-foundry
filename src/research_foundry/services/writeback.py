@@ -263,6 +263,7 @@ class WritebackResult:
     meatywiki_path: Path | None
     skillbom_path: Path | None
     ccdash_path: Path | None
+    intenttree_update_path: Path | None
     requires_review: bool
 
 
@@ -418,6 +419,124 @@ def _render_skillbom(
     return rp.skillbom_candidate
 
 
+def _render_intenttree_update(
+    rp,
+    paths: FoundryPaths,
+    *,
+    bundle_ident: str,
+    node_id: str,
+    ledger: dict[str, Any],
+    requires_review: bool,
+    profile: str = "personal",
+) -> Path:
+    """Write writebacks/intenttree_update.yaml (schema-valid candidate).
+
+    Always writes the candidate. When IntentTree is reachable AND node_id
+    resolves AND NOT requires_review AND profile is not offline_only, performs
+    the live PATCH + artifact POST. Any error during the live push is silently
+    swallowed — the candidate file is the authoritative record.
+    """
+
+    from ..ids import now_iso
+
+    status_counts = _claim_status_counts(ledger)
+    claims_total = status_counts.get("claims_total", 0)
+    claims_supported = status_counts.get("claims_supported", 0)
+
+    # Derive verification result from bundle (best-effort).
+    bundle = _safe_load(rp.evidence_bundle) or {}
+    verification_passed = bundle.get("governance", {}).get("approved_for_writeback", False)
+
+    # Build the list of blocking issues from the verification review.
+    blocked_by: list[str] = []
+    verification_doc = _safe_load(rp.verification) or {}
+    if isinstance(verification_doc.get("checks"), list):
+        for check in verification_doc["checks"]:
+            if isinstance(check, dict) and check.get("status") == "fail":
+                blocked_by.append(str(check.get("id") or "unknown_check"))
+
+    # Build artifact links: evidence bundle, report, and meatywiki candidate.
+    artifact_links: list[dict[str, Any]] = [
+        {"type": "evidence_bundle", "path": f"runs/{rp.run.name}/evidence_bundle.yaml", "label": "Evidence Bundle"},
+    ]
+    report_path = rp.report_final if rp.report_final.exists() else rp.report_draft
+    if report_path.exists():
+        artifact_links.append({
+            "type": "report",
+            "path": f"runs/{rp.run.name}/{report_path.relative_to(rp.run)}",
+            "label": "Research Report",
+        })
+    if rp.meatywiki_writeback.exists():
+        artifact_links.append({
+            "type": "meatywiki_writeback",
+            "path": f"runs/{rp.run.name}/writebacks/meatywiki_writeback.md",
+            "label": "MeatyWiki Writeback Candidate",
+        })
+
+    reusable_output_candidates: list[str] = ["evidence_bundle"]
+    if claims_supported > 0:
+        reusable_output_candidates.append("meatywiki_writeback")
+    if verification_passed:
+        reusable_output_candidates.append("report")
+
+    # Determine the push status before the live attempt.
+    if not node_id:
+        push_status = "skipped_no_node"
+    elif requires_review:
+        push_status = "skipped_requires_review"
+    else:
+        push_status = "proposed"
+
+    node_status = "completed" if verification_passed else "in_progress"
+
+    candidate: dict[str, Any] = {
+        "node_id": node_id or "",
+        "evidence_bundle_id": bundle_ident,
+        "run_id": rp.run.name,
+        "update_timestamp": now_iso(),
+        "status": node_status,
+        "claims_total": claims_total,
+        "claims_supported": claims_supported,
+        "verification_passed": bool(verification_passed),
+        "reusable_output_candidates": reusable_output_candidates,
+        "artifact_links": artifact_links,
+        "blocked_by": blocked_by,
+        "push_status": push_status,
+    }
+    _schema_or_raise(candidate, "intenttree_update")
+    dump_yaml(candidate, rp.intenttree_update)
+
+    # Live push: only when conditions are met (all errors silently swallowed).
+    _offline_profiles = {"offline_only"}
+    if node_id and not requires_review and profile not in _offline_profiles:
+        try:
+            from ..integrations.intenttree import IntentTreeClient
+
+            client = IntentTreeClient.from_config()
+            if client.available():
+                patch_payload: dict[str, Any] = {
+                    "status": node_status,
+                    "progress": {
+                        "claims_total": claims_total,
+                        "claims_supported": claims_supported,
+                        "verification_passed": bool(verification_passed),
+                    },
+                }
+                client.patch_node(node_id, patch_payload)
+                for art in artifact_links:
+                    client.add_node_artifact(node_id, art)
+                # Update candidate to reflect successful push.
+                candidate = {**candidate, "push_status": "pushed"}
+                dump_yaml(candidate, rp.intenttree_update)
+            else:
+                candidate = {**candidate, "push_status": "skipped_offline"}
+                dump_yaml(candidate, rp.intenttree_update)
+        except Exception:  # noqa: BLE001 — live push is best-effort, never fails pipeline
+            pass
+
+    return rp.intenttree_update
+
+
 def writeback(
     run_id: str,
     *,
@@ -451,6 +570,7 @@ def writeback(
     meatywiki_path: Path | None = None
     skillbom_path: Path | None = None
     ccdash_path: Path | None = None
+    intenttree_update_path: Path | None = None
     ccdash_event_id_value = ""
 
     if "ccdash" in targets:
@@ -477,6 +597,17 @@ def writeback(
             requires_review=requires_review,
         )
 
+    if "intenttree" in targets:
+        _, _, node_id, _ = _intent_ibom_node(rp, paths)
+        intenttree_update_path = _render_intenttree_update(
+            rp,
+            paths,
+            bundle_ident=bundle_ident,
+            node_id=node_id,
+            ledger=ledger,
+            requires_review=requires_review,
+        )
+
     report_meta, report_path = _report_meta(rp)
     report_id = report_meta.get("report_id")
     if report_id:
@@ -499,6 +630,7 @@ def writeback(
         meatywiki_path=meatywiki_path,
         skillbom_path=skillbom_path,
         ccdash_path=ccdash_path,
+        intenttree_update_path=intenttree_update_path,
         requires_review=requires_review,
     )
 
@@ -659,4 +791,5 @@ __all__ = [
     "council_review",
     "skillbom_propose",
     "skillbom_promote",
+    "_render_intenttree_update",
 ]

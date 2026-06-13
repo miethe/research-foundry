@@ -271,10 +271,11 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
     @app.command()
     def writeback(
         run: str = typer.Argument(...),
-        targets: str = typer.Option("meatywiki,skillmeat,ccdash", "--targets"),
+        targets: str = typer.Option("meatywiki,skillmeat,ccdash", "--targets",
+                                    help="Comma-separated targets: meatywiki,skillmeat,ccdash,intenttree"),
         require_review: bool = typer.Option(False, "--require-review/--no-require-review"),
     ) -> None:
-        """Generate writebacks to MeatyWiki / SkillMeat / CCDash (spec §10.13)."""
+        """Generate writebacks to MeatyWiki / SkillMeat / CCDash / IntentTree (spec §10.13)."""
 
         from .services import writeback as svc
 
@@ -285,7 +286,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             )
         except RFError as e:
             _fail(e)
-        for p in (r.meatywiki_path, r.skillbom_path, r.ccdash_path):
+        for p in (r.meatywiki_path, r.skillbom_path, r.ccdash_path, r.intenttree_update_path):
             if p:
                 console.print(f"  {p}")
         if r.requires_review:
@@ -447,9 +448,14 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
     app.add_typer(swarm_app, name="swarm")
 
     # ----- status -----
-    @app.command()
-    def status() -> None:
+    status_app = typer.Typer(help="Status commands.")
+
+    @status_app.callback(invoke_without_command=True)
+    def status(ctx: typer.Context) -> None:
         """Show foundry status: runs, intents, sources (spec §10.15)."""
+
+        if ctx.invoked_subcommand is not None:
+            return
 
         from .config import FoundryConfig
 
@@ -462,6 +468,29 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         table.add_row("runs", str(_count(p.runs, "rf_run_*", dirs=True)))
         table.add_row("raw ideas", str(_count(p.raw_ideas, "*.md")))
         console.print(table)
+
+    @status_app.command("push")
+    def status_push(
+        run: str = typer.Option(..., "--run", help="run id"),
+        to: str = typer.Option("intenttree", "--to", help="integration target (intenttree)"),
+        stage: str = typer.Option("bundle_written", "--stage",
+                                  help="milestone stage: discovery_started, sources_ingested, verify_passed, bundle_written"),
+    ) -> None:
+        """Push run status to an integration target (best-effort)."""
+
+        from .services import telemetry as svc
+
+        if to != "intenttree":
+            err_console.print(f"[yellow]unknown target {to!r}; only 'intenttree' supported[/yellow]")
+            raise typer.Exit(1)
+
+        pushed = svc.push_status(run, stage)
+        if pushed:
+            console.print(f"[green]pushed[/green] stage={stage} to {to} for run {run}")
+        else:
+            console.print(f"[yellow]skipped[/yellow] stage={stage} to {to} (offline or no node linked)")
+
+    app.add_typer(status_app, name="status")
 
     # ----- cost -----
     @app.command()
