@@ -1,0 +1,256 @@
+"""Filesystem layout resolution for a Research Foundry workspace.
+
+``FoundryPaths`` is the single source of truth for *where things live* so no
+service hard-codes directory names. It locates the workspace root by walking up
+from a starting directory until it finds ``foundry.yaml`` (falling back to a
+``.skillmeat`` or ``.git`` marker, then the start dir itself).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+_ROOT_MARKERS = ("foundry.yaml",)
+_FALLBACK_MARKERS = (".skillmeat", ".git")
+
+
+def find_workspace_root(start: str | Path | None = None) -> Path:
+    """Walk up from ``start`` (default cwd) to find the foundry workspace root."""
+
+    cur = Path(start or Path.cwd()).resolve()
+    candidates = [cur, *cur.parents]
+    for marker in (_ROOT_MARKERS, _FALLBACK_MARKERS):
+        for d in candidates:
+            if any((d / m).exists() for m in marker):
+                return d
+    return cur
+
+
+def distribution_root() -> Path:
+    """Root of the installed distribution (for ``rf init`` to copy templates).
+
+    In an editable/dev checkout this resolves to the repo root (``src``'s
+    parent's parent). It is where the canonical ``schemas/``, ``config/``, and
+    ``templates/`` directories live.
+    """
+
+    # src/research_foundry/paths.py -> parents[0]=research_foundry, [1]=src, [2]=repo root
+    return Path(__file__).resolve().parents[2]
+
+
+@dataclass(frozen=True)
+class FoundryPaths:
+    """Resolved paths for a foundry workspace rooted at :attr:`root`."""
+
+    root: Path
+
+    @classmethod
+    def discover(cls, start: str | Path | None = None) -> "FoundryPaths":
+        return cls(root=find_workspace_root(start))
+
+    # --- top-level directories (spec §5) ---
+    @property
+    def config(self) -> Path:
+        return self.root / "config"
+
+    @property
+    def schemas(self) -> Path:
+        return self.root / "schemas"
+
+    @property
+    def templates(self) -> Path:
+        return self.root / "templates"
+
+    @property
+    def inbox(self) -> Path:
+        return self.root / "inbox"
+
+    @property
+    def raw_ideas(self) -> Path:
+        return self.inbox / "raw_ideas"
+
+    @property
+    def intents(self) -> Path:
+        return self.root / "intents"
+
+    @property
+    def intents_active(self) -> Path:
+        return self.intents / "active"
+
+    @property
+    def iboms(self) -> Path:
+        return self.root / "iboms"
+
+    @property
+    def iboms_active(self) -> Path:
+        return self.iboms / "active"
+
+    @property
+    def intenttree(self) -> Path:
+        return self.root / "intenttree"
+
+    @property
+    def intenttree_nodes(self) -> Path:
+        return self.intenttree / "nodes"
+
+    @property
+    def runs(self) -> Path:
+        return self.root / "runs"
+
+    @property
+    def registries(self) -> Path:
+        return self.root / "registries"
+
+    @property
+    def meatywiki(self) -> Path:
+        return self.root / "meatywiki"
+
+    @property
+    def skillmeat(self) -> Path:
+        return self.root / "skillmeat"
+
+    @property
+    def ccdash(self) -> Path:
+        return self.root / "ccdash"
+
+    @property
+    def foundry_yaml(self) -> Path:
+        return self.root / "foundry.yaml"
+
+    # --- run sub-tree (spec §5 runs/rf_run_*/...) ---
+    def run_dir(self, run_id: str) -> Path:
+        return self.runs / run_id
+
+    def run_paths(self, run_id: str) -> "RunPaths":
+        return RunPaths(run=self.run_dir(run_id))
+
+
+@dataclass(frozen=True)
+class RunPaths:
+    """Resolved paths within a single ``runs/<run_id>/`` directory (spec §5)."""
+
+    run: Path
+
+    @property
+    def run_yaml(self) -> Path:
+        return self.run / "run.yaml"
+
+    @property
+    def routing_decision(self) -> Path:
+        return self.run / "routing_decision.yaml"
+
+    @property
+    def research_brief(self) -> Path:
+        return self.run / "research_brief.md"
+
+    @property
+    def swarm_plan(self) -> Path:
+        return self.run / "swarm_plan.yaml"
+
+    @property
+    def source_candidates(self) -> Path:
+        return self.run / "source_candidates.yaml"
+
+    @property
+    def sources(self) -> Path:
+        return self.run / "sources"
+
+    @property
+    def extractions(self) -> Path:
+        return self.run / "extractions"
+
+    @property
+    def claims(self) -> Path:
+        return self.run / "claims"
+
+    @property
+    def claim_ledger(self) -> Path:
+        return self.claims / "claim_ledger.yaml"
+
+    @property
+    def contradiction_log(self) -> Path:
+        return self.claims / "contradiction_log.yaml"
+
+    @property
+    def inference_log(self) -> Path:
+        return self.claims / "inference_log.yaml"
+
+    @property
+    def reports(self) -> Path:
+        return self.run / "reports"
+
+    @property
+    def report_draft(self) -> Path:
+        return self.reports / "report_draft.md"
+
+    @property
+    def report_final(self) -> Path:
+        return self.reports / "report_final.md"
+
+    @property
+    def reviews(self) -> Path:
+        return self.run / "reviews"
+
+    @property
+    def critic_review(self) -> Path:
+        return self.reviews / "critic_review.yaml"
+
+    @property
+    def council_review(self) -> Path:
+        return self.reviews / "council_review.yaml"
+
+    @property
+    def governance_review(self) -> Path:
+        return self.reviews / "governance_review.yaml"
+
+    @property
+    def verification(self) -> Path:
+        return self.reviews / "verification.yaml"
+
+    @property
+    def evidence_bundle(self) -> Path:
+        return self.run / "evidence_bundle.yaml"
+
+    @property
+    def writebacks(self) -> Path:
+        return self.run / "writebacks"
+
+    @property
+    def meatywiki_writeback(self) -> Path:
+        return self.writebacks / "meatywiki_writeback.md"
+
+    @property
+    def skillbom_candidate(self) -> Path:
+        return self.writebacks / "skillbom_candidate.md"
+
+    @property
+    def ccdash_event(self) -> Path:
+        return self.writebacks / "ccdash_event.yaml"
+
+    @property
+    def telemetry(self) -> Path:
+        return self.run / "telemetry"
+
+    @property
+    def token_costs(self) -> Path:
+        return self.telemetry / "token_costs.yaml"
+
+    @property
+    def tool_calls(self) -> Path:
+        return self.telemetry / "tool_calls.yaml"
+
+    @property
+    def run_trace(self) -> Path:
+        return self.telemetry / "run_trace.jsonl"
+
+    def ensure_scaffold(self) -> "RunPaths":
+        """Create the standard run sub-directories (idempotent)."""
+
+        for d in (self.sources, self.extractions, self.claims, self.reports,
+                  self.reviews, self.writebacks, self.telemetry):
+            d.mkdir(parents=True, exist_ok=True)
+        return self
+
+
+__all__ = ["find_workspace_root", "distribution_root", "FoundryPaths", "RunPaths"]
