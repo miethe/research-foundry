@@ -6,7 +6,7 @@ title: "Research Foundry MVP — Implementation Plan"
 project: "Research Foundry"
 owner: "Nick Miethe"
 created_at: "2026-06-13"
-status: in_progress
+status: completed
 source_spec: docs/projects/research-foundry/research-foundry-mvp-spec.md
 ---
 

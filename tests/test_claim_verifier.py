@@ -15,8 +15,11 @@ the documented exit-code precedence (research_foundry.errors.ExitCode):
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 
-from research_foundry.errors import ExitCode
+import pytest
+
+from research_foundry.errors import ExitCode, RFError
 from research_foundry.frontmatter import dump_md, load_md
 from research_foundry.paths import FoundryPaths
 from research_foundry.services.synthesis import synthesize_report
@@ -344,3 +347,54 @@ def test_human_review_flag_surfaced(tmp_foundry):
     # Service exposes the flag; it does NOT change the exit code (CLI maps that).
     assert result.human_review_required is True
     assert result.exit_code == int(ExitCode.OK)
+
+
+# --- Regression tests: Fix 1 — relative path resolution --------------------
+
+
+def test_relative_report_path_resolves_against_run_dir(tmp_foundry):
+    """--report <relative-path> must resolve against the run dir, not CWD.
+
+    Regression for the footgun where ``--report reports/report_draft.md`` from
+    repo root failed with 'no report file found for run' because the resolution
+    was CWD-only.
+    """
+    _seed_happy_run(tmp_foundry)
+    synth = synthesize_report(RUN_ID, paths=tmp_foundry)
+    assert synth.report_path.exists()
+
+    # Pass the run-relative path as the CLI would (e.g. "reports/report_draft.md").
+    rp = tmp_foundry.run_paths(RUN_ID)
+    relative = synth.report_path.relative_to(rp.run)
+
+    # verify_report must find the file and pass.
+    result = verify_report(RUN_ID, report_path=relative, paths=tmp_foundry)
+    assert result.passed is True
+    assert result.exit_code == int(ExitCode.OK)
+    by_id = {c.id: c for c in result.checks}
+    assert by_id["report_has_frontmatter"].status == "pass"
+
+
+def test_missing_explicit_report_path_raises_clearly(tmp_foundry):
+    """An explicit --report pointing to a nonexistent file must raise RFError,
+    not silently fail with report_has_frontmatter: fail and overwrite verification.yaml.
+    """
+    _seed_happy_run(tmp_foundry)
+    synthesize_report(RUN_ID, paths=tmp_foundry)
+
+    rp = tmp_foundry.run_paths(RUN_ID)
+    # Pre-write a 'good' verification so we can confirm it is NOT clobbered.
+    from research_foundry.yamlio import dump_yaml as _dump_yaml
+    _dump_yaml({"passed": True, "sentinel": True}, rp.verification)
+
+    with pytest.raises(RFError, match="report path not found"):
+        verify_report(
+            RUN_ID,
+            report_path=Path("reports/no_such_file.md"),
+            paths=tmp_foundry,
+        )
+
+    # verification.yaml must NOT be overwritten by a malformed-path invocation.
+    from research_foundry.yamlio import load_yaml as _load_yaml
+    saved = _load_yaml(rp.verification)
+    assert isinstance(saved, dict) and saved.get("sentinel") is True

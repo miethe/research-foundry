@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import FoundryConfig
-from ..errors import ExitCode
+from ..errors import ExitCode, RFError
 from ..frontmatter import load_md
 from ..ids import now_iso
 from ..paths import FoundryPaths
@@ -289,10 +289,32 @@ def _severity_for(check_id: str, checks: list[dict[str, Any]]) -> str:
     return "error"
 
 
-def _resolve_report_path(rp, report_path: Path | None) -> Path | None:
-    if report_path is not None:
-        p = Path(report_path)
-        return p if p.exists() else None
+def _resolve_explicit_path(rp, given: Path | None, label: str) -> Path | None:
+    """Resolve an explicitly-provided path: run-dir first, then CWD.
+
+    When *given* is ``None`` the caller uses auto-discovery (not this function).
+    When *given* is not ``None`` and cannot be found anywhere, raise ``RFError``
+    with a clear message so the caller aborts *before* writing any output files.
+    """
+    if given is None:
+        return None
+    p = Path(given)
+    if p.is_absolute():
+        if p.exists():
+            return p
+        raise RFError(f"{label} path not found: {p}")
+    # Relative path: try run directory first, then CWD.
+    run_relative = rp.run / p
+    if run_relative.exists():
+        return run_relative
+    cwd_relative = Path.cwd() / p
+    if cwd_relative.exists():
+        return cwd_relative
+    raise RFError(f"{label} path not found: {p} (tried {run_relative} and {cwd_relative})")
+
+
+def _resolve_report_path(rp) -> Path | None:
+    """Auto-discover the report path within the run directory."""
     if rp.report_draft.exists():
         return rp.report_draft
     if rp.report_final.exists():
@@ -347,7 +369,12 @@ def verify_report(
         )
 
     # 1) Resolve & parse the report front matter -----------------------------
-    rpath = _resolve_report_path(rp, report_path)
+    # Explicit path: resolve against run dir first, CWD second; missing → RFError.
+    # Bare invocation (no --report): auto-discover within the run directory.
+    if report_path is not None:
+        rpath: Path | None = _resolve_explicit_path(rp, report_path, "report")
+    else:
+        rpath = _resolve_report_path(rp)
     front: dict[str, Any] = {}
     body = ""
     frontmatter_ok = False
@@ -373,7 +400,11 @@ def verify_report(
         )
 
     # 2) Load the claim ledger ----------------------------------------------
-    lpath = Path(claim_ledger_path) if claim_ledger_path else rp.claim_ledger
+    # Explicit path: same run-dir-first resolution. Missing explicit path → RFError.
+    if claim_ledger_path is not None:
+        lpath: Path = _resolve_explicit_path(rp, claim_ledger_path, "claim-ledger") or rp.claim_ledger
+    else:
+        lpath = rp.claim_ledger
     ledger: dict[str, Any] = {}
     if lpath.exists():
         data = load_yaml(lpath)

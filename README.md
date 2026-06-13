@@ -99,9 +99,12 @@ rf synthesize rf_run_20260612_agentic_research_workflows \
   --report reports/report_draft.md --model-profile rf_synthesize_deep
 
 # 8. Verify every material claim -> fails the build on anything unsupported
-rf verify rf_run_20260612_agentic_research_workflows \
-  --report reports/report_draft.md \
-  --claim-ledger claims/claim_ledger.yaml --fail-on-unsupported
+#    Auto-discovers the run's report + claim ledger (preferred form):
+rf verify rf_run_20260612_agentic_research_workflows --fail-on-unsupported
+#    Or with explicit relative paths (resolved against the run directory):
+#    rf verify rf_run_20260612_agentic_research_workflows \
+#      --report reports/report_draft.md \
+#      --claim-ledger claims/claim_ledger.yaml --fail-on-unsupported
 
 # 9. Publish the durable evidence bundle -> evidence_bundle.yaml
 rf bundle rf_run_20260612_agentic_research_workflows --verify --out evidence_bundle.yaml
