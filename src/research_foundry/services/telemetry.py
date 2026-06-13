@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..ids import ccdash_event_id, now_iso, today_compact
+from ..ids import ccdash_event_id, disambiguate_id, now_iso, today_compact
 from ..paths import FoundryPaths
 from ..schemas import default_registry, validate
 from ..yamlio import append_jsonl, dump_yaml, load_yaml
@@ -56,9 +56,13 @@ def _ledger_counts(run_paths) -> dict[str, int]:
 
     ledger = _safe_load(run_paths.claim_ledger) or {}
     claims = ledger.get("claims") or []
+    # Count all six schema-valid statuses so the per-status metrics sum to
+    # claims_total (mixed/contradicted were previously dropped).
     counts = {
         "claims_total": len(claims),
         "claims_supported": 0,
+        "claims_mixed": 0,
+        "claims_contradicted": 0,
         "claims_inference": 0,
         "claims_speculation": 0,
         "claims_unsupported": 0,
@@ -144,7 +148,22 @@ def emit_ccdash_event(run_id: str, *, paths: FoundryPaths | None = None) -> Path
     key_profile_used = _KEY_PROFILE_BY_SENSITIVITY.get(sensitivity, "personal")
     requires_review = sensitivity in {"work_sensitive", "client_sensitive"}
 
-    event_id = ccdash_event_id(intent_id or run_id)
+    # Disambiguate on actual collision only: ccdash_event_id re-truncates the
+    # intent slug to 6 words, so two distinct runs sharing a slug would mint the
+    # same event id and overwrite each other's mirror. An existing mirror for the
+    # SAME run is a re-emit (id stays stable); a different run's mirror collides.
+    def _event_id_taken(candidate: str) -> bool:
+        mirror = paths.ccdash / "events" / f"{candidate}.yaml"
+        if not mirror.exists():
+            return False
+        existing = _safe_load(mirror)
+        return isinstance(existing, dict) and existing.get("run_id") != run_id
+
+    event_id = disambiguate_id(
+        ccdash_event_id(intent_id or run_id),
+        seed=run_id,
+        exists=_event_id_taken,
+    )
     event: dict[str, Any] = {
         "event_id": event_id,
         "timestamp": now_iso(),
@@ -169,6 +188,8 @@ def emit_ccdash_event(run_id: str, *, paths: FoundryPaths | None = None) -> Path
             "source_cards_created": source_cards_created,
             "claims_total": counts["claims_total"],
             "claims_supported": counts["claims_supported"],
+            "claims_mixed": counts["claims_mixed"],
+            "claims_contradicted": counts["claims_contradicted"],
             "claims_inference": counts["claims_inference"],
             "claims_speculation": counts["claims_speculation"],
             "unsupported_claims": counts["claims_unsupported"],

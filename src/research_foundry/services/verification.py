@@ -114,11 +114,11 @@ _MATERIAL_HEURISTICS: dict[str, re.Pattern[str]] = {
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 
-# A standalone line wholly wrapped in a single emphasis marker (*...* or _..._,
-# but NOT the **Label:** double-marker form) is an editorial/placeholder note —
-# e.g. the synthesizer's "*No speculation was recorded.*" for an empty section —
-# and is never a material claim about the subject.
-_EMPHASIS_LINE = re.compile(r"^([*_])(?!\1).*\1$")
+# HTML comment span. The synthesizer emits empty-section placeholders as whole-line
+# comments (e.g. ``<!-- No supported findings for this run. -->``). We strip comment
+# spans rather than dropping the whole line, so a real claim after an inline comment
+# is still classified (closes the "<!-- note --> <claim>" laundering hole).
+_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -177,9 +177,10 @@ def _segment_sentences(body: str) -> list[_Sentence]:
         if line.startswith("#"):
             heading = line.lstrip("#").strip().lower()
             continue
-        if line.startswith("<!--"):  # synthesis notes / comments
-            continue
-        if _EMPHASIS_LINE.match(line):  # editorial/placeholder note, not a claim
+        # Strip any HTML comment spans (a whole-line comment becomes empty and is
+        # skipped; a trailing real claim after an inline comment is preserved).
+        line = _HTML_COMMENT.sub("", line).strip()
+        if not line:
             continue
         # Bullet markers are content lines too; strip a leading list marker.
         content = re.sub(r"^[-*+]\s+", "", line).strip()
@@ -210,14 +211,19 @@ def _segment_sentences(body: str) -> list[_Sentence]:
     return out
 
 
-# Headings whose sentences are never treated as material report claims.
-_NON_MATERIAL_HEADINGS = {"open questions", "sources", "references"}
+# Citation-list headings whose lines are never material report claims.
+_CITATION_HEADINGS = {"sources", "references"}
 
 
 def _is_material(sentence: _Sentence, material_types: list[str]) -> bool:
     """Heuristically decide if a sentence is a material claim of an active type."""
 
-    if sentence.heading in _NON_MATERIAL_HEADINGS:
+    # Sources/references are citation lists, never claims.
+    if sentence.heading in _CITATION_HEADINGS:
+        return False
+    # Under "open questions", only genuine questions are exempt; a declarative
+    # material assertion relocated here is still checked (closes the laundering hole).
+    if sentence.heading == "open questions" and sentence.text.rstrip().endswith("?"):
         return False
     text = sentence.text
     # Strip the claim tag and any label marker before pattern-matching so the
@@ -374,7 +380,6 @@ def verify_report(
         ledger = data if isinstance(data, dict) else {}
     claims = list(ledger.get("claims", []) or [])
     ledger_ids = {c.get("claim_id") for c in claims if c.get("claim_id")}
-    claims_by_id = {c.get("claim_id"): c for c in claims if c.get("claim_id")}
 
     source_index = _index_source_cards(rp)
     report_sensitivity = front.get("sensitivity") if isinstance(front, dict) else None
@@ -400,11 +405,28 @@ def verify_report(
     else:
         add("all_claim_ids_exist", "skip", "skipped: report front matter missing")
 
+    # 3b) claim_ids_unique — duplicate ids let one entry silently mask another.
+    all_ids = [c.get("claim_id") for c in claims if c.get("claim_id")]
+    dup_ids = sorted({cid for cid in all_ids if all_ids.count(cid) > 1})
+    if dup_ids:
+        add(
+            "claim_ids_unique",
+            "fail",
+            "ledger has duplicate claim_id(s): " + ", ".join(dup_ids),
+            dup_ids,
+        )
+    else:
+        add("claim_ids_unique", "pass", "all ledger claim ids are unique")
+
     # 4) material_claims_have_claim_ids -> unsupported (exit 4) --------------
     if frontmatter_ok:
+        # A material sentence must carry a [claim:] tag. A bold label alone does
+        # NOT exempt it (otherwise any untagged claim could be laundered by
+        # prefixing "**Inference:**"). The synthesizer always tags its labeled
+        # lines, so legitimate output is unaffected.
         unsupported_sentences: list[str] = []
         for s in sentences:
-            if s.has_tag or s.labeled:
+            if s.has_tag:
                 continue
             if _is_material(s, material_types):
                 unsupported_sentences.append(s.text)
@@ -427,26 +449,31 @@ def verify_report(
         add("material_claims_have_claim_ids", "skip", "skipped: report front matter missing")
 
     # 5) supported_claims_have_source_cards ---------------------------------
-    no_source = [
-        cid
-        for cid, c in claims_by_id.items()
-        if c.get("status") == "supported"
-        and not [
-            s for s in (c.get("sources") or []) if s.get("source_card_id")
-        ]
-    ]
+    # A supported claim must cite at least one source card that ACTUALLY EXISTS in
+    # the run (a dangling source_card_id string is not evidence). Iterate the raw
+    # claims list so duplicate claim_ids cannot mask a bad entry.
+    no_source: list[str] = []
+    for c in claims:
+        if c.get("status") != "supported":
+            continue
+        cited = [s.get("source_card_id") for s in (c.get("sources") or []) if s.get("source_card_id")]
+        resolved = [sid for sid in cited if sid in source_index]
+        if not resolved:
+            cid = c.get("claim_id") or "<no-id>"
+            detail = "no source_card_id" if not cited else "source_card_id(s) do not resolve to a card"
+            no_source.append(f"{cid} ({detail})")
     if no_source:
         add(
             "supported_claims_have_source_cards",
             "fail",
-            "supported claims without any source_card_id: " + ", ".join(sorted(no_source)),
+            "supported claims without a resolvable source card: " + ", ".join(sorted(no_source)),
             sorted(no_source),
         )
     else:
         add(
             "supported_claims_have_source_cards",
             "pass",
-            "all supported claims reference at least one source card",
+            "all supported claims reference at least one existing source card",
         )
 
     # 6) source_cards_have_locators (warning) -------------------------------
@@ -477,13 +504,13 @@ def verify_report(
 
     # 7) inferences_have_basis ----------------------------------------------
     no_basis = []
-    for cid, c in claims_by_id.items():
+    for c in claims:
         if c.get("status") != "inference":
             continue
         basis = c.get("inference_basis") or {}
         from_claims = basis.get("from_claims") if isinstance(basis, dict) else None
         if not from_claims:
-            no_basis.append(cid)
+            no_basis.append(c.get("claim_id") or "<no-id>")
     if no_basis:
         add(
             "inferences_have_basis",
@@ -499,55 +526,56 @@ def verify_report(
             "all inference claims declare an inference basis",
         )
 
-    # 8) speculation_is_labeled ---------------------------------------------
-    spec_ids = [cid for cid, c in claims_by_id.items() if c.get("status") == "speculation"]
-    if frontmatter_ok and spec_ids:
-        # Map claim id -> whether the sentence(s) carrying it are speculation-labeled.
-        unlabeled_spec: list[str] = []
-        for cid in spec_ids:
+    # 8) <status>_is_labeled (inference / mixed / contradicted / speculation) -
+    # spec §12.2 marks all four statuses report_label_required: true. A claim of
+    # one of these statuses cited in the body MUST carry the corresponding bold
+    # label, else it is presented to the reader as an unqualified finding. The
+    # most dangerous case is a 'contradicted' claim (evidence disproves it) shown
+    # without the "Contradicted / do not use as finding" caveat.
+    for status, label_key in (
+        ("inference", "inference"),
+        ("mixed", "mixed"),
+        ("contradicted", "contradicted"),
+        ("speculation", "speculation"),
+    ):
+        check_id = f"{status}_is_labeled"
+        status_claims = [c.get("claim_id") for c in claims if c.get("status") == status and c.get("claim_id")]
+        if not frontmatter_ok:
+            add(check_id, "skip", "skipped: report front matter missing")
+            continue
+        unlabeled: list[str] = []
+        for cid in status_claims:
             carrying = [s for s in sentences if cid in s.tag_ids]
             if not carrying:
-                # The speculation claim is not in the body at all -> nothing to mislabel.
-                continue
-            if not any(_LABEL_PATTERNS["speculation"].search(s.text) for s in carrying):
-                unlabeled_spec.append(cid)
-        if unlabeled_spec:
+                continue  # claim not rendered in the body -> nothing to mislabel
+            if not any(_LABEL_PATTERNS[label_key].search(s.text) for s in carrying):
+                unlabeled.append(cid)
+        if unlabeled:
             add(
-                "speculation_is_labeled",
+                check_id,
                 "fail",
-                "speculation claims not carrying the Speculation label: "
-                + ", ".join(sorted(unlabeled_spec)),
-                sorted(unlabeled_spec),
+                f"{status} claims rendered without the required label: " + ", ".join(sorted(unlabeled)),
+                sorted(unlabeled),
             )
         else:
-            add(
-                "speculation_is_labeled",
-                "pass",
-                "speculation claims in the report are labeled",
-            )
-    else:
-        add(
-            "speculation_is_labeled",
-            "pass" if frontmatter_ok else "skip",
-            "no speculation claims to label"
-            if frontmatter_ok
-            else "skipped: report front matter missing",
-        )
+            add(check_id, "pass", f"{status} claims in the report are labeled (or absent)")
 
     # 9) unsupported_claims_block_publish -> exit 4 -------------------------
-    unsupported_ledger = [
-        cid for cid, c in claims_by_id.items() if c.get("status") == "unsupported"
-    ]
-    if unsupported_ledger:
+    # Iterate the RAW claims list (not the deduped map) so a duplicate claim_id
+    # cannot overwrite and hide an unsupported entry.
+    unsupported_ledger_claims = [c for c in claims if c.get("status") == "unsupported"]
+    unsupported_ledger = sorted({c.get("claim_id") or "<no-id>" for c in unsupported_ledger_claims})
+    if unsupported_ledger_claims:
         add(
             "unsupported_claims_block_publish",
             "fail",
-            "ledger contains unsupported claims: " + ", ".join(sorted(unsupported_ledger)),
-            sorted(unsupported_ledger),
+            "ledger contains unsupported claims: " + ", ".join(unsupported_ledger),
+            unsupported_ledger,
         )
         # Record them in unsupported[] for the result summary.
-        for cid in unsupported_ledger:
-            txt = claims_by_id[cid].get("text") or cid
+        for c in unsupported_ledger_claims:
+            cid = c.get("claim_id") or "<no-id>"
+            txt = c.get("text") or cid
             unsupported.append(f"[{cid}] {txt}")
     else:
         add(

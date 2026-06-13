@@ -53,6 +53,9 @@ verifier_checks:
   - id: all_claim_ids_exist
     severity: error
 
+  - id: claim_ids_unique
+    severity: error
+
   - id: material_claims_have_claim_ids
     severity: error
 
@@ -63,6 +66,18 @@ verifier_checks:
     severity: warning
 
   - id: inferences_have_basis
+    severity: error
+
+  # spec §12.2: inference, mixed, contradicted, and speculation all require a
+  # report label. A claim of one of these statuses rendered without its label is
+  # presented to the reader as an unqualified finding and must be blocked.
+  - id: inference_is_labeled
+    severity: error
+
+  - id: mixed_is_labeled
+    severity: error
+
+  - id: contradicted_is_labeled
     severity: error
 
   - id: speculation_is_labeled

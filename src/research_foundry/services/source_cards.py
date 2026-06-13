@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from ..errors import SchemaError
+from ..errors import NotFoundError, SchemaError
 from ..frontmatter import dump_md
 from ..ids import now_iso, source_card_id
 from ..paths import FoundryPaths
@@ -168,6 +168,9 @@ def ingest_source(
 
     paths = paths or FoundryPaths.discover()
     run_paths = paths.run_paths(run_id)
+    if not run_paths.run.exists():
+        raise NotFoundError(f"run not found: {run_id} ({run_paths.run})")
+    run_paths.sources.mkdir(parents=True, exist_ok=True)
 
     local_path = Path(locator)
     is_local_file = local_path.exists() and local_path.is_file()

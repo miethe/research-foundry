@@ -19,6 +19,7 @@ from ..errors import NotFoundError, SchemaError
 from ..frontmatter import dump_md
 from ..ids import (
     brief_id,
+    disambiguate_id,
     now_iso,
     routing_id,
     slugify,
@@ -243,7 +244,14 @@ def plan_run(
 
     title = str(intent.get("title") or intent_id)
     intent_slug = slugify(title)
-    run_id = make_run_id(intent_slug)
+    # Disambiguate on actual collision only: two distinct intents whose titles share
+    # a first-6-word slug would otherwise mint the same run id and overwrite the
+    # prior run directory. Seed the per-run suffix from the intent id (stable).
+    run_id = disambiguate_id(
+        make_run_id(intent_slug),
+        seed=intent_id,
+        exists=lambda r: (paths.runs / r).exists(),
+    )
     b_id = brief_id(intent_slug)
     s_id = swarm_id(intent_slug)
     r_id = routing_id(intent_slug)

@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from ..errors import SchemaError
+from ..errors import NotFoundError, SchemaError
 from ..frontmatter import load_md
 from ..ids import now_iso, short_hash
 from ..paths import FoundryPaths
@@ -88,9 +88,17 @@ def extract_run(
 
     paths = paths or FoundryPaths.discover()
     run_paths = paths.run_paths(run_id)
+    if not run_paths.run.exists():
+        raise NotFoundError(f"run not found: {run_id} ({run_paths.run})")
     sources_dir = run_paths.sources
     extractions_dir = run_paths.extractions
     extractions_dir.mkdir(parents=True, exist_ok=True)
+
+    # Clean overwrite: clear pre-existing extraction cards so a removed/replaced
+    # source card cannot leave an orphan card behind. Regeneration below is
+    # deterministic, so re-running with the same sources is idempotent.
+    for stale in extractions_dir.glob("*.yaml"):
+        stale.unlink()
 
     card_ids: list[str] = []
     for src_file in sorted(sources_dir.glob("*.md")):

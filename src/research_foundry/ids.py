@@ -98,6 +98,31 @@ def make_id(prefix: str, slug: str, *, date: bool = True, suffix: str | None = N
     return "_".join(p for p in parts if p)
 
 
+def disambiguate_id(
+    base_id: str,
+    *,
+    seed: str,
+    exists: Callable[[str], bool],
+) -> str:
+    """Return ``base_id`` unless ``exists(base_id)``, else a collision-free variant.
+
+    On collision (distinct ideas sharing a 6-word slug mint the same id), append a
+    short 4-char hash of ``seed`` — and, only if that also collides, an incrementing
+    numeric suffix — so the new artifact does not silently overwrite an existing one.
+    Returns ``base_id`` unchanged when there is no collision.
+    """
+
+    if not exists(base_id):
+        return base_id
+    candidate = f"{base_id}_{short_hash(seed, length=4)}"
+    if not exists(candidate):
+        return candidate
+    n = 2
+    while exists(f"{candidate}_{n}"):
+        n += 1
+    return f"{candidate}_{n}"
+
+
 def raw_idea_id(title: str) -> str:
     return f"raw_{stamp_compact()}_{slugify(title)}"
 
@@ -163,6 +188,7 @@ __all__ = [
     "slugify",
     "short_hash",
     "make_id",
+    "disambiguate_id",
     "raw_idea_id",
     "intent_id",
     "ibom_id",

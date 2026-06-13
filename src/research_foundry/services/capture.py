@@ -15,13 +15,14 @@ from ..config import FoundryConfig
 from ..errors import NotFoundError, SchemaError
 from ..frontmatter import dump_md, load_md
 from ..ids import (
+    disambiguate_id,
+    now_iso,
+)
+from ..ids import (
     ibom_id as make_ibom_id,
 )
 from ..ids import (
     intent_id as make_intent_id,
-)
-from ..ids import (
-    now_iso,
 )
 from ..ids import (
     raw_idea_id as make_raw_idea_id,
@@ -233,14 +234,43 @@ def triage_idea(
     idea_path = _resolve_raw_idea(raw_idea_ref, paths)
     meta, body = load_md(idea_path)
 
+    raw_idea_id = str(meta.get("id") or idea_path.stem)
     title = str(meta.get("title") or _default_title(str(meta.get("body") or body)))
     sensitivity = str(meta.get("sensitivity") or "personal")
     idea_body = str(meta.get("body") or body or "").strip()
     initial_questions = [q for q in (meta.get("initial_questions") or []) if q]
 
-    intent_id = make_intent_id(title) if create_intent else None
-    ibom_id = make_ibom_id(title) if (create_intent and create_ibom) else None
-    node_id = make_tree_node_id(title) if (create_intent and create_tree_node) else None
+    # Disambiguate on actual collision only: two distinct ideas whose first-6-word
+    # slugs match would otherwise mint identical ids and silently overwrite each
+    # other. The raw_idea_id seeds a stable per-idea suffix shared across the three
+    # linked artifacts so they remain consistent.
+    intent_id = (
+        disambiguate_id(
+            make_intent_id(title),
+            seed=raw_idea_id,
+            exists=lambda i: (paths.intents_active / f"{i}.yaml").exists(),
+        )
+        if create_intent
+        else None
+    )
+    ibom_id = (
+        disambiguate_id(
+            make_ibom_id(title),
+            seed=raw_idea_id,
+            exists=lambda i: (paths.iboms_active / f"{i}.yaml").exists(),
+        )
+        if (create_intent and create_ibom)
+        else None
+    )
+    node_id = (
+        disambiguate_id(
+            make_tree_node_id(title),
+            seed=raw_idea_id,
+            exists=lambda i: (paths.intenttree_nodes / f"{i}.yaml").exists(),
+        )
+        if (create_intent and create_tree_node)
+        else None
+    )
 
     intent_path: Path | None = None
     ibom_path: Path | None = None
@@ -255,6 +285,7 @@ def triage_idea(
             initial_questions=initial_questions,
             ibom_id=ibom_id,
             node_id=node_id,
+            raw_idea_id=raw_idea_id,
             paths=paths,
         )
         if ibom_id is not None:
@@ -309,9 +340,14 @@ def _build_intent(
     initial_questions: list[str],
     ibom_id: str | None,
     node_id: str | None,
+    raw_idea_id: str,
     paths: FoundryPaths,
 ) -> dict:
-    """Assemble a ``research_intent`` dict (top-level fields, spec §6.3)."""
+    """Assemble a ``research_intent`` dict (top-level fields, spec §6.3).
+
+    Records the originating ``raw_idea_id`` so the idea->intent->bundle lineage
+    can be traced (``research_intent`` schema is additionalProperties:true).
+    """
 
     cfg = FoundryConfig(paths=paths)
     primary = list(initial_questions) or [f"What does the evidence say about {title}?"]
@@ -323,6 +359,7 @@ def _build_intent(
         "created_at": now_iso(),
         "status": "active",
         "type": "research",
+        "raw_idea_ids": [raw_idea_id] if raw_idea_id else [],
         "objective": objective,
         "motivation": "",
         "desired_output": {

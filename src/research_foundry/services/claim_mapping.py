@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..errors import SchemaError
+from ..errors import NotFoundError, SchemaError
 from ..ids import now_iso, slugify, today_compact
 from ..paths import FoundryPaths
 from ..registry import CLAIM_INDEX, Registry
@@ -86,6 +86,8 @@ def build_claim_ledger(
 
     paths = paths or FoundryPaths.discover()
     run_paths = paths.run_paths(run_id)
+    if not run_paths.run.exists():
+        raise NotFoundError(f"run not found: {run_id} ({run_paths.run})")
     run_paths.claims.mkdir(parents=True, exist_ok=True)
 
     if intent_id is None:

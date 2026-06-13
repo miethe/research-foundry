@@ -77,9 +77,14 @@ def _count_files(directory: Path, pattern: str) -> int:
 
 def _claim_status_counts(ledger: dict[str, Any]) -> dict[str, int]:
     claims = ledger.get("claims") or []
+    # All six schema-valid statuses are counted so the per-status fields sum to
+    # claims_total (claims_mixed/claims_contradicted are extra keys; the bundle
+    # schema is additionalProperties:true so they validate).
     counts = {
         "claims_total": len(claims),
         "claims_supported": 0,
+        "claims_mixed": 0,
+        "claims_contradicted": 0,
         "claims_inference": 0,
         "claims_speculation": 0,
         "claims_unsupported": 0,
@@ -169,6 +174,10 @@ def build_bundle(run_id: str, *, verify: bool = True, paths: FoundryPaths | None
 
     paths = paths or FoundryPaths.discover()
     rp = paths.run_paths(run_id)
+    if not rp.run.exists():
+        from ..errors import NotFoundError
+
+        raise NotFoundError(f"run not found: {run_id} ({rp.run})")
     rp.ensure_scaffold()
 
     ledger = _ledger(rp)
@@ -424,6 +433,10 @@ def writeback(
 
     paths = paths or FoundryPaths.discover()
     rp = paths.run_paths(run_id)
+    if not rp.run.exists():
+        from ..errors import NotFoundError
+
+        raise NotFoundError(f"run not found: {run_id} ({rp.run})")
     rp.ensure_scaffold()
 
     bundle = _load_bundle(rp)

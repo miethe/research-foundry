@@ -148,9 +148,9 @@ def _build_body(
     if findings:
         lines.extend(findings)
     else:
-        # Editorial placeholder for an empty section: wrapped in a single emphasis
-        # marker so the verifier treats it as a note, not an untagged claim.
-        lines.append("*No supported findings were established for this run.*")
+        # Empty-section placeholder as a whole-line HTML comment: the verifier
+        # strips comment spans, so this is an editorial note, never a claim.
+        lines.append("<!-- No supported findings were established for this run. -->")
     lines.append("")
 
     lines.append("## Inferences")
@@ -158,7 +158,7 @@ def _build_body(
     if inferences:
         lines.extend(inferences)
     else:
-        lines.append("*No analytic inferences were drawn for this run.*")
+        lines.append("<!-- No analytic inferences were drawn for this run. -->")
     lines.append("")
 
     lines.append("## Speculation")
@@ -166,7 +166,7 @@ def _build_body(
     if speculations:
         lines.extend(speculations)
     else:
-        lines.append("*No speculation was recorded for this run.*")
+        lines.append("<!-- No speculation was recorded for this run. -->")
     lines.append("")
 
     lines.append("## Open questions")
