@@ -15,12 +15,16 @@ import argparse
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import NoReturn, Optional
+from typing import Any, Dict, NoReturn, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
-    from .config import MAPPING_PATH
+    from .config import (
+        CORRELATION_REGISTRY_PATH,
+        MAPPING_PATH,
+        NOTEBOOK_RESOLVER_ENABLED,
+    )
     from .utils import (
         NotebookLMAuthError,
         get_display_name,
@@ -32,7 +36,11 @@ try:
         upload_file_with_display_name,
     )
 except ImportError:
-    from config import MAPPING_PATH
+    from config import (
+        CORRELATION_REGISTRY_PATH,
+        MAPPING_PATH,
+        NOTEBOOK_RESOLVER_ENABLED,
+    )
     from utils import (
         NotebookLMAuthError,
         get_display_name,
@@ -43,6 +51,97 @@ except ImportError:
         save_mapping,
         upload_file_with_display_name,
     )
+
+
+def _load_registry(registry_path: Path) -> Optional[Dict[str, Any]]:
+    """Load the RF correlation registry YAML.
+
+    Returns None (fail-soft) if the file is absent, unreadable, or malformed.
+
+    Args:
+        registry_path: Absolute path to registries/notebooklm/notebooks.yaml.
+
+    Returns:
+        Parsed registry dict, or None on any error.
+    """
+    if not registry_path.exists():
+        return None
+    try:
+        import yaml  # type: ignore[import]
+        with open(registry_path, "r") as fh:
+            data = yaml.safe_load(fh)
+        if isinstance(data, dict):
+            return data
+        return None
+    except Exception:
+        return None
+
+
+def resolve_notebook_id(filepath: Path) -> Optional[str]:
+    """Resolve the NotebookLM notebook ID for *filepath* via the RF registry.
+
+    Resolution is skipped (returns None) when:
+    - ``NOTEBOOK_RESOLVER_ENABLED`` is False, OR
+    - the correlation registry file is absent or malformed, OR
+    - no ``runs/<run_id>/`` segment appears in *filepath*, OR
+    - the run/project is not recorded in the registry.
+
+    When enabled, the resolution order is:
+    1. **Run mode** – look up ``runs[run_id].notebook_id`` directly.
+    2. **Project mode** – look up ``runs[run_id].project`` then
+       ``projects[project].notebook_id``.
+
+    All errors are swallowed; callers must treat None as "use the default
+    mapping" and never raise.
+
+    Args:
+        filepath: Relative path of the file being synced (e.g.
+            ``runs/rf_run_20260613_foo/report.md``).
+
+    Returns:
+        Resolved notebook ID string, or None if resolution is unavailable.
+    """
+    if not NOTEBOOK_RESOLVER_ENABLED:
+        return None
+
+    try:
+        # Extract run_id from a 'runs/<run_id>/' path segment
+        parts = filepath.parts
+        run_id: Optional[str] = None
+        for i, part in enumerate(parts):
+            if part == "runs" and i + 1 < len(parts):
+                run_id = parts[i + 1]
+                break
+
+        if not run_id:
+            return None
+
+        registry = _load_registry(CORRELATION_REGISTRY_PATH)
+        if not registry:
+            return None
+
+        runs: Dict[str, Any] = registry.get("runs", {}) or {}
+        run_entry: Optional[Dict[str, Any]] = runs.get(run_id)
+
+        if run_entry:
+            # Run-mode: notebook recorded directly on the run entry
+            nb_id: Optional[str] = run_entry.get("notebook_id")
+            if nb_id:
+                return nb_id
+
+            # Project-mode: traverse via project slug
+            project_slug: Optional[str] = run_entry.get("project")
+            if project_slug:
+                projects: Dict[str, Any] = registry.get("projects", {}) or {}
+                project_entry: Optional[Dict[str, Any]] = projects.get(project_slug)
+                if project_entry:
+                    return project_entry.get("notebook_id")
+
+        return None
+
+    except Exception:
+        # Fail-soft: never propagate exceptions from resolution
+        return None
 
 
 def log_verbose(msg: str, verbose: bool) -> None:
@@ -123,25 +222,34 @@ def update_source(
             log_verbose(f"File not in sync scope, skipping: {norm_path}", verbose)
             return 0
 
-        # 3. Load mapping from disk
-        mapping = load_mapping()
+        # 3. Attempt RF correlation registry resolution (opt-in, fail-soft).
+        #    When a notebook_id is resolved here, the per-notebook mapping file
+        #    is used instead of the default MAPPING_PATH.
+        resolved_notebook_id: Optional[str] = resolve_notebook_id(norm_path)
+        if resolved_notebook_id:
+            log_verbose(
+                f"RF registry resolved notebook: {resolved_notebook_id}", verbose
+            )
 
-        # 4. Check if mapping exists (notebook initialized)
-        notebook_id = mapping.get("notebook_id")
+        # 4. Load mapping from disk (per-notebook file when resolved, else default)
+        mapping = load_mapping(notebook_id=resolved_notebook_id)
+
+        # 5. Check if mapping exists (notebook initialized)
+        notebook_id = resolved_notebook_id or mapping.get("notebook_id")
         if not notebook_id:
             log_verbose("No notebook initialized. Run init.py first.", verbose)
             return 0
 
         log_verbose(f"Using notebook: {notebook_id}", verbose)
 
-        # 5. Set active notebook
+        # 6. Set active notebook
         if not dry_run:
             returncode, _ = run_notebooklm_cmd(["use", notebook_id])
             if returncode != 0:
                 log_error(f"Failed to set active notebook: {notebook_id}", verbose)
                 return 0  # Don't fail the hook
 
-        # 6. Check if file is already tracked
+        # 7. Check if file is already tracked
         sources = mapping.get("sources", {})
         filepath_str = str(norm_path)
         existing_source = sources.get(filepath_str)
@@ -176,13 +284,13 @@ def update_source(
 
                 log_verbose(f"Added new source: {new_source_id}", verbose)
 
-                # Update mapping entry
+                # Update mapping entry and persist to the correct file
                 mapping["sources"][filepath_str] = {
                     "source_id": new_source_id,
                     "display_name": display_name,
                     "last_synced": datetime.now(timezone.utc).isoformat(),
                 }
-                save_mapping(mapping)
+                save_mapping(mapping, notebook_id=resolved_notebook_id)
         else:
             # NEW FILE: Add source
             log_verbose(f"Adding new source: {filepath_str}", verbose)
@@ -210,7 +318,7 @@ def update_source(
                     "display_name": display_name,
                     "last_synced": datetime.now(timezone.utc).isoformat(),
                 }
-                save_mapping(mapping)
+                save_mapping(mapping, notebook_id=resolved_notebook_id)
 
         log_verbose("Sync complete", verbose)
         return 0

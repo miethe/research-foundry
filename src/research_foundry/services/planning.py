@@ -226,6 +226,7 @@ def plan_run(
     max_runtime_minutes: int = 60,
     freshness_days: int = 180,
     profile: str | None = None,
+    project: str | None = None,
     paths: FoundryPaths | None = None,
 ) -> PlanResult:
     """Plan a research run for ``intent_id``.
@@ -241,6 +242,36 @@ def plan_run(
     ``governance.key_profile_allowed`` or ``personal``). A blocking violation
     (e.g. a ``work_approved`` profile against a personal-only intent) raises
     :class:`GovernanceError`; a normal personal run plans cleanly.
+
+    The ``project`` slug is threaded through to ``run.yaml`` (``project`` field)
+    and to the NotebookLM correlation registry
+    (``registries/notebooklm/notebooks.yaml``) so that project→run associations
+    are recorded without any network access.  ``notebook_id`` in ``run.yaml``
+    starts as ``None`` and is filled in later by the writeback or sourcing layer.
+
+    Parameters
+    ----------
+    intent_id:
+        Active intent identifier.
+    depth:
+        Research depth profile (``skim`` | ``standard`` | ``deep`` |
+        ``exhaustive``).
+    audience:
+        Target audience.
+    max_cost_usd:
+        Budget ceiling in USD.
+    max_runtime_minutes:
+        Wall-clock budget in minutes.
+    freshness_days:
+        Maximum source age in days.
+    profile:
+        Runtime key profile for the governance preflight.
+    project:
+        Project slug.  Resolved from (in priority order): the ``project``
+        argument, the intent's ``project`` field, the intent's
+        ``raw_idea.suggested_project`` field, or ``'unassigned'``.
+    paths:
+        FoundryPaths override (defaults to ``FoundryPaths.discover()``).
     """
 
     paths = paths or FoundryPaths.discover()
@@ -249,6 +280,14 @@ def plan_run(
     intent = load_intent(intent_id, paths=paths)
     ibom = _load_ibom(intent, paths)
     policy = _model_policy(ibom)
+
+    # Resolve project slug: explicit arg → intent.project → raw_idea suggested_project → 'unassigned'.
+    effective_project: str = (
+        project
+        or str(intent.get("project") or "").strip()
+        or str(intent.get("suggested_project") or "").strip()
+        or "unassigned"
+    )
 
     title = str(intent.get("title") or intent_id)
     intent_slug = slugify(title)
@@ -420,6 +459,8 @@ def plan_run(
         "status": "planned",
         "sensitivity": sensitivity,
         "human_required": human_required,
+        "project": effective_project,
+        "notebook_id": None,
         "profile": {
             "depth": depth,
             "audience": audience,
@@ -447,6 +488,22 @@ def plan_run(
             "run_dir": str(run.run),
         }
     )
+
+    # Record project→run association in the NotebookLM correlation registry.
+    # notebook_id=None because no notebook exists yet; this is a pure local
+    # registration that never touches the network.
+    try:
+        from . import notebook_correlation as _nb_corr
+
+        _nb_corr.record_run_notebook(
+            run_id,
+            notebook_id="",
+            project=effective_project,
+            paths=paths,
+        )
+    except Exception:  # noqa: BLE001 — fail-soft; never block planning
+        pass
+
     _trace(run, {"stage": "plan", "ts": created_at, "run_id": run_id})
 
     return PlanResult(

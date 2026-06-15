@@ -237,6 +237,10 @@ class RunPaths:
         return self.writebacks / "arc_review_request.yaml"
 
     @property
+    def notebooklm_update(self) -> Path:
+        return self.writebacks / "notebooklm_update.yaml"
+
+    @property
     def telemetry(self) -> Path:
         return self.run / "telemetry"
 

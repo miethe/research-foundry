@@ -35,3 +35,7 @@ foundry:
       base_url: http://127.0.0.1:8910   # ARC (Agent Review Council)
     intenttree:
       base_url: http://localhost:8000   # IntentTree task dispatcher
+    notebooklm:
+      correlation_mode: project         # 'project' | 'run' | 'explicit'
+      notebook_title_template: "RF — {project}"
+      base_url: null                    # unused; CLI is the transport

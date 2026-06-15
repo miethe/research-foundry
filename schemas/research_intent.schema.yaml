@@ -124,6 +124,17 @@ properties:
     type: string
   intenttree_node_ref:
     type: string
+  notebooklm_notebook_ref:
+    type: string
+    description: NotebookLM notebook id back-linked when intake originated from NLM.
+  project:
+    type: string
+    description: Project slug associating this intent with a named research project.
+  notebook_id:
+    type:
+      - string
+      - "null"
+    description: NotebookLM notebook id resolved for this intent; null until the writeback or sourcing layer creates/links a notebook.
 required:
   - id
   - title

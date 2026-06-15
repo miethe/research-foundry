@@ -340,6 +340,65 @@ Edit this file to:
 
 After edits, run `python scripts/notebooklm_sync/init.py --refresh` to reconcile.
 
+## RF Correlation Mode
+
+When this skill is deployed in a **Research Foundry** project, the auto-sync
+hook can route each file to the correct per-project or per-run NotebookLM
+notebook automatically, rather than always using the single default notebook.
+
+### How it works
+
+1. Enable the feature in `scripts/notebooklm_sync/config.py`:
+
+   ```python
+   NOTEBOOK_RESOLVER_ENABLED = True
+   ```
+
+2. The hook's `update.py` inspects the changed file's path for a
+   `runs/<run_id>/` segment and queries the RF correlation registry at
+   `registries/notebooklm/notebooks.yaml`.
+
+3. Resolution order:
+   - **Run mode** — `runs[run_id].notebook_id` (notebook recorded directly on
+     the run entry).
+   - **Project mode** — `runs[run_id].project` → `projects[slug].notebook_id`
+     (notebook shared across all runs in a project).
+
+4. When a notebook is resolved, a **per-notebook mapping file** is used
+   (`~/.notebooklm/{notebook_id}-sources.json`) instead of the project-wide
+   default, so each notebook tracks its own sources independently.
+
+5. If resolution fails for any reason (registry absent, run not listed, YAML
+   parse error), the hook silently falls back to the default mapping — it never
+   raises or fails the Write/Edit operation.
+
+### Registry file shape
+
+`registries/notebooklm/notebooks.yaml` (managed by `rf notebooklm` commands):
+
+```yaml
+projects:
+  my-project:
+    notebook_id: "abc123..."
+    notebook_title: "RF — my-project"
+    runs:
+      - rf_run_20260613_foo
+runs:
+  rf_run_20260613_foo:
+    notebook_id: "abc123..."
+    notebook_title: "RF — my-project"
+    project: my-project
+    created_at: "2026-06-13T10:00:00Z"
+```
+
+### Security note
+
+Files under `work_sensitive` or `client_sensitive` run directories **must** be
+listed in `EXCLUDE_PATTERNS` to prevent the silent hook from bypassing the
+writeback governance review gate.  The hook fires on every Write/Edit without
+governance checks; the RF writeback pipeline's `requires_review_for` setting
+does not apply here.
+
 ## Mapping File Format
 
 The mapping file at `~/.notebooklm/<project>-sources.json` tracks which local files map to which NotebookLM sources:

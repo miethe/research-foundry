@@ -2,9 +2,9 @@
   "_comment": "Project-specific state reference for NotebookLM sync skill. Updated by installer when deploying to new projects.",
   "config_path": "scripts/notebooklm_sync/config.py",
   "state_dir": "~/.notebooklm",
-  "mapping_file": "~/.notebooklm/skillmeat-sources.json",
-  "project_slug": "skillmeat",
-  "notebook_title": "SkillMeat",
+  "mapping_file": "~/.notebooklm/research-foundry-sources.json",
+  "project_slug": "research-foundry",
+  "notebook_title": "RF — research-foundry",
   "hook_path": ".claude/hooks/notebooklm-sync-hook.sh",
   "sync_log": "~/.notebooklm/sync.log",
   "installer_note": "When installing to a new project, the installer updates project_slug, notebook_title, and mapping_file to reflect the target project."

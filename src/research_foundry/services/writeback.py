@@ -265,6 +265,7 @@ class WritebackResult:
     ccdash_path: Path | None
     intenttree_update_path: Path | None
     arc_review_path: Path | None
+    notebooklm_update_path: Path | None
     requires_review: bool
 
 
@@ -639,6 +640,158 @@ def _render_arc_council(
     return rp.arc_review_request
 
 
+def _render_notebooklm_update(
+    rp,
+    paths: FoundryPaths,
+    *,
+    bundle_ident: str,
+    ledger: dict[str, Any],
+    requires_review: bool,
+    profile: str = "personal",
+) -> Path:
+    """Write writebacks/notebooklm_update.yaml (schema-valid candidate).
+
+    Always writes the deterministic candidate with push_status 'proposed'.
+    Resolves (or creates) the target notebook via
+    ``services.notebook_correlation.resolve_notebook``.  When NotebookLM is
+    reachable AND notebook_id resolved AND NOT requires_review AND profile is
+    not offline_only: pushes the report path + source cards as NLM sources and
+    updates push_status to 'pushed'.  Any exception during the live push is
+    silently swallowed — the candidate file is the authoritative record.
+    Never raises into the pipeline.
+    """
+
+    from ..ids import now_iso
+    from ..integrations import get_notebooklm_client
+
+    run_meta = _run_meta(rp)
+    run_id = rp.run.name
+    project = str(run_meta.get("project") or "")
+
+    # Build artifact links for this run (mirrors _render_intenttree_update).
+    artifact_links: list[dict[str, Any]] = [
+        {
+            "type": "evidence_bundle",
+            "path": f"runs/{run_id}/evidence_bundle.yaml",
+            "label": "Evidence Bundle",
+        },
+    ]
+    report_path = rp.report_final if rp.report_final.exists() else rp.report_draft
+    if report_path.exists():
+        artifact_links.append({
+            "type": "report",
+            "path": f"runs/{run_id}/{report_path.relative_to(rp.run)}",
+            "label": "Research Report",
+        })
+
+    # Resolve IntentTree node back-link (best-effort).
+    _, _, node_id, _ = _intent_ibom_node(rp, paths)
+
+    # Resolve notebook correlation (best-effort; never raises).
+    notebook_id: str | None = None
+    notebook_title: str | None = None
+    _offline_profiles = {"offline_only"}
+    client = get_notebooklm_client()
+
+    try:
+        from . import notebook_correlation
+
+        correlation = notebook_correlation.resolve_notebook(
+            run_id,
+            project=project or None,
+            mode=None,
+            create=True,
+            client=client,
+            paths=paths,
+        )
+        if isinstance(correlation, dict):
+            notebook_id = correlation.get("notebook_id") or None
+            notebook_title = correlation.get("notebook_title") or None
+    except Exception:  # noqa: BLE001 — correlation is best-effort
+        pass
+
+    # Determine initial push_status before the live attempt.
+    if not notebook_id:
+        push_status = "skipped_no_notebook"
+    elif requires_review:
+        push_status = "skipped_requires_review"
+    else:
+        push_status = "proposed"
+
+    candidate: dict[str, Any] = {
+        "run_id": run_id,
+        "update_timestamp": now_iso(),
+        "status": "proposed",
+        "push_status": push_status,
+        "notebook_id": notebook_id,
+        "notebook_title": notebook_title,
+        "project": project or None,
+        "evidence_bundle_id": bundle_ident,
+        "pushed_source_ids": [],
+        "artifact_links": artifact_links,
+        "node_id": node_id or None,
+    }
+    _schema_or_raise(candidate, "notebooklm_update")
+    dump_yaml(candidate, rp.notebooklm_update)
+
+    # Live push: only when conditions are met (all exceptions silently swallowed).
+    if notebook_id and not requires_review and profile not in _offline_profiles:
+        try:
+            if client.available():
+                pushed_source_ids: list[dict[str, str]] = []
+
+                # Push the report as the primary source.
+                if report_path.exists():
+                    src_resp = client.add_source(notebook_id, str(report_path), title="Research Report")
+                    if isinstance(src_resp, dict) and src_resp.get("source_id"):
+                        pushed_source_ids.append({
+                            "nlm_source_id": str(src_resp["source_id"]),
+                            "rf_source_card_id": "report",
+                        })
+
+                # Push individual source cards.
+                if rp.sources.exists():
+                    for sc_path in sorted(rp.sources.glob("*.md")):
+                        try:
+                            sc_meta, _ = load_md(sc_path)
+                            sc_id = str(sc_meta.get("source_card_id") or sc_path.stem)
+                            sc_resp = client.add_source(notebook_id, str(sc_path), title=sc_id)
+                            if isinstance(sc_resp, dict) and sc_resp.get("source_id"):
+                                pushed_source_ids.append({
+                                    "nlm_source_id": str(sc_resp["source_id"]),
+                                    "rf_source_card_id": sc_id,
+                                })
+                        except Exception:  # noqa: BLE001 — per-card failure is best-effort
+                            pass
+
+                candidate = {
+                    **candidate,
+                    "status": "live_pushed",
+                    "push_status": "pushed",
+                    "pushed_source_ids": pushed_source_ids,
+                }
+                dump_yaml(candidate, rp.notebooklm_update)
+
+                # Record lineage in the evidence bundle (best-effort).
+                try:
+                    bundle = _safe_load(rp.evidence_bundle) or {}
+                    if isinstance(bundle, dict):
+                        lineage = dict(bundle.get("lineage") or {})
+                        lineage["notebooklm_notebook_id"] = notebook_id
+                        lineage["notebooklm_source_ids"] = pushed_source_ids
+                        bundle = {**bundle, "lineage": lineage}
+                        dump_yaml(bundle, rp.evidence_bundle)
+                except Exception:  # noqa: BLE001 — lineage update is best-effort
+                    pass
+            else:
+                candidate = {**candidate, "push_status": "skipped_offline"}
+                dump_yaml(candidate, rp.notebooklm_update)
+        except Exception:  # noqa: BLE001 — live push is best-effort, never fails pipeline
+            pass
+
+    return rp.notebooklm_update
+
+
 def writeback(
     run_id: str,
     *,
@@ -650,6 +803,11 @@ def writeback(
 
     Governance: if ``require_review`` or the run is work/client-sensitive, the
     MeatyWiki writeback is marked ``proposed`` and NOT mirrored into the wiki.
+
+    Additional opt-in targets (not in the default tuple):
+    - ``intenttree``: patch the originating IntentTree node + upload artifacts.
+    - ``arc``: scaffold an ARC council review for evidence bundle quality.
+    - ``notebooklm``: push the report + source cards to a NotebookLM notebook.
     """
 
     paths = paths or FoundryPaths.discover()
@@ -674,6 +832,7 @@ def writeback(
     ccdash_path: Path | None = None
     intenttree_update_path: Path | None = None
     arc_review_path: Path | None = None
+    notebooklm_update_path: Path | None = None
     ccdash_event_id_value = ""
 
     if "ccdash" in targets:
@@ -721,6 +880,15 @@ def writeback(
             requires_review=requires_review,
         )
 
+    if "notebooklm" in targets:
+        notebooklm_update_path = _render_notebooklm_update(
+            rp,
+            paths,
+            bundle_ident=bundle_ident,
+            ledger=ledger,
+            requires_review=requires_review,
+        )
+
     report_meta, report_path = _report_meta(rp)
     report_id = report_meta.get("report_id")
     if report_id:
@@ -745,6 +913,7 @@ def writeback(
         ccdash_path=ccdash_path,
         intenttree_update_path=intenttree_update_path,
         arc_review_path=arc_review_path,
+        notebooklm_update_path=notebooklm_update_path,
         requires_review=requires_review,
     )
 
@@ -907,4 +1076,5 @@ __all__ = [
     "skillbom_promote",
     "_render_intenttree_update",
     "_render_arc_council",
+    "_render_notebooklm_update",
 ]
