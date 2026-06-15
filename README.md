@@ -231,3 +231,26 @@ Live integrations (degrade to file candidates when servers offline):
 - `rf writeback <run_id> --targets intenttree,arc,meatywiki,skillmeat,ccdash [--require-review]` — link results back to IntentTree node and request ARC review when servers reachable.
 - `rf swarm run --adapters arc_council` — use ARC reviewers to critique discovery/synthesis; degrades to stub when ARC offline.
 - `rf doctor` — reports ARC and IntentTree reachability alongside adapter status.
+
+### NotebookLM (NLM)
+
+NLM integrates across four use cases via the `notebooklm` CLI (no REST API). All paths are
+fail-soft: with no live `notebooklm login` session they degrade to file candidates / `skip`,
+never breaking a run. Runs map to notebooks through a configurable **correlation mode** set in
+`foundry.yaml → integrations.notebooklm.correlation_mode`:
+
+- **`project`** (default) — every run sharing a `--project <slug>` reuses one notebook.
+- **`run`** — each run gets its own notebook.
+- explicit `--notebook-id <id>` on a run overrides both.
+
+Commands:
+- `rf swarm run … --adapters notebooklm --project <slug> [--notebook-mode project|run] [--notebook-id ID]` — sourcing: emit RF source cards from NLM synthesis, resolving/creating the run's notebook.
+- `rf notebooklm resolve --run <id> [--project S] [--create]` / `status` / `sync --run <id>` — inspect or create the run↔notebook mapping (registry: `registries/notebooklm/notebooks.yaml`); workflows call `resolve --create`.
+- `rf writeback <run_id> --targets notebooklm` — render an upload-back candidate and (when a notebook exists, not review-gated, profile online) push RF output back as NLM sources; lineage records notebook + source ids. Not a default target — opt in explicitly.
+- `rf intake notebooklm <id> [--project S]` — inbound: ingest an NLM notebook as a new RF idea/intent (mirrors `rf intake intenttree`).
+- Auto-sync: the `notebooklm-sync` skill resolves notebooks from the same registry when `NOTEBOOK_RESOLVER_ENABLED=true` (opt-in); `work_sensitive`/`client_sensitive` runs are excluded from silent sync.
+
+Workflows (`.claude/workflows/`): `notebooklm-sourcing`, `notebooklm-report`, `notebooklm-extended`.
+Governance: writeback target `notebooklm` permits `personal`/`work_approved`/`client_approved`;
+`work_sensitive`/`client_sensitive` are review-gated. The claim ledger stays authoritative — NLM
+artifacts are never spliced into report bodies. Full design: `docs/projects/research-foundry/notebooklm-integration-plan.md`.
