@@ -1,0 +1,109 @@
+id: ext_20260615_182ba4ac_001
+source_card_id: src_20260614_rib034_03
+created_at: '2026-06-15T09:55:29-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The benchmark spans 23,088 question-context-answer triples over 7,318 unique financial documents
+    (drawn from FinQA, ConvFinQA, and TAT-DQA) averaging ~920 tokens each.
+  locator: Section III-A (Dataset / T2-RAGBench)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Sparse BM25 outperforms dense text-embedding-3-large retrieval on nearly all metrics (Recall@5
+    0.644 vs 0.587), contradicting the assumption that semantic embeddings dominate sparse lexical retrieval.
+  locator: Section IV / Table I (first-stage retrievers)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Adding a Cohere reranker to the hybrid BM25+dense RRF pipeline lifts Recall@5 from 0.695 to 0.816,
+    a +17.4% improvement over unreranked hybrid retrieval.
+  locator: Discussion / Results (reranking)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Cross-encoder reranking is the single largest quality lift in the pipeline, raising MRR@3 from
+    0.433 to 0.605 (+39.7% relative).
+  locator: Section IV-A (Main Results, reranking)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Contextual Retrieval (document enrichment) yields modest gains, improving dense retrieval by +2.8pp
+    and hybrid retrieval by +2.2pp Recall@5.
+  locator: Section IV-A (Main Results, contextual retrieval)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: HyDE-style query expansion hurts retrieval on this corpus, underperforming even vanilla dense
+    retrieval (Recall@5 0.544 vs 0.587) because generated hypothetical documents hallucinate plausible-but-wrong
+    financial figures.
+  locator: Discussion (HyDE / query expansion)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Hybrid fusion delivers its largest absolute gain on the table-heavy TAT-DQA subset, adding +8.1
+    percentage points Recall@5 over BM25 alone, showing neither sparse nor dense retrieval suffices alone
+    on table-heavy questions.
+  locator: Section IV-A (Per-Subset Analysis, TAT-DQA)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Section III-A (Dataset / T2-RAGBench)
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Section IV / Table I (first-stage retrievers)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Discussion / Results (reranking)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Section IV-A (Main Results, reranking)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section IV-A (Main Results, contextual retrieval)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Discussion (HyDE / query expansion)
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Section IV-A (Per-Subset Analysis, TAT-DQA)
+contradictions_or_cautions:
+- text: Domain-specific to financial text-and-table QA; generalization to other domains untested
+  locator: card/trust
+- text: Single dense embedding model (text-embedding-3-large) and single reranker (Cohere) evaluated as
+    primary configs
+  locator: card/trust
+- text: Domain-specific to financial text-and-table QA; generalization to other domains is not established
+    by this benchmark.
+  locator: card/limitations
+- text: Primary configurations use a single dense embedding model (text-embedding-3-large) and a single
+    reranker (Cohere); results may shift with other models.
+  locator: card/limitations
+- text: The source's restated "+17.2pp MRR@3" framing was not found verbatim; the paper reports the MRR@3
+    lift as "+39.7% relative" (0.433 to 0.605), which is the figure recorded here.
+  locator: card/limitations

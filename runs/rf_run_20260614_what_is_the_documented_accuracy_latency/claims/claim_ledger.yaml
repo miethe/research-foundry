@@ -1,0 +1,1788 @@
+id: claims_20260615_rf_run_20260614_what_is_the
+intent_id: intent_research_20260614_what_is_the_documented_accuracy_latency
+report_ref: reports/report_draft.md
+verification_status: passed
+claims:
+- claim_id: clm_001
+  text: PaddleOCR-VL is a 0.9B-parameter vision-language model combining a NaViT-style dynamic-resolution
+    visual encoder with the ERNIE-4.5-0.3B language model.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_03
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_002
+  text: The model supports 109 languages and is designed to recognize complex document elements including
+    text, tables, formulas, and charts.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_03
+    evidence_id: ev_002
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_003
+  text: On OmniDocBench v1.5 it reports an overall score of 92.56, text edit distance 0.035, Table TEDS
+    89.76 / TEDS-S 93.52, formula CDM 91.43, and reading-order edit distance 0.043.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_03
+    evidence_id: ev_003
+    relation: supports
+    locator: Section 4.1 / Table 2 (OmniDocBench v1.5)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_004
+  text: The authors claim state-of-the-art performance on both page-level document parsing and element-level
+    recognition, reportedly surpassing much larger general VLMs.
+  materiality: background
+  claim_type: attribution
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_03
+    evidence_id: ev_004
+    relation: supports
+    locator: Abstract (final paragraph)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_005
+  text: 'Reported throughput is server-side: 1.2241 pages/s and 1881.2 tokens/s via the vLLM backend on
+    a single NVIDIA A100, using about 43.7 GB of GPU memory.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_03
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 4.3 / Table 13 (Inference Performance)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_006
+  text: The paper claims PaddleOCR-VL has consistent advantages in both processing speed and memory efficiency
+    relative to compared systems.
+  materiality: background
+  claim_type: attribution
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_03
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 4.3 (Inference Performance)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_007
+  text: 'It emits structured outputs per element type: tables in a structured (OTSL/HTML-style) representation,
+    formulas as LaTeX, and charts as Markdown tables, with reading-order prediction.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_03
+    evidence_id: ev_007
+    relation: supports
+    locator: Section 2.2.2 (element-level recognition)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_008
+  text: On project-level crochet-to-CrochetPARADE program synthesis, even the strongest VLMs produce only
+    5-8% executable programs and most models fall below 3%.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_00
+    evidence_id: ev_001
+    relation: supports
+    locator: Experiments / Task D (Project-Level Translation)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_009
+  text: Natural-language instruction generation is weak, with the best system (Gemini 2.5 Flash-Lite)
+    reaching only 4.93% BLEU and 30.50% ChrF.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_00
+    evidence_id: ev_002
+    relation: supports
+    locator: Experiments / Task C (Instruction Generation)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_010
+  text: Stitch recognition from images is the strongest task for the models, with Claude Sonnet 4 achieving
+    the highest F1 score of 60.94%.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_00
+    evidence_id: ev_003
+    relation: supports
+    locator: Experiments / Task A (Stitch Recognition)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_011
+  text: Instruction-selection accuracy is modest, with most large and closed-source models clustering
+    around 55-60% accuracy.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_00
+    evidence_id: ev_004
+    relation: supports
+    locator: Experiments / Task B (Instruction Selection)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_012
+  text: Errors made in early steps propagate irreversibly, with later correctness occurring mainly when
+    the initial state happens to be valid, indicating reliance on continuation heuristics rather than
+    genuine procedural reasoning.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_00
+    evidence_id: ev_005
+    relation: supports
+    locator: Experiments / Early-step instability
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_013
+  text: Image grounding particularly aids interpretation of repeated motifs, symmetry, shaping, and termination
+    conditions that are under-specified in text alone.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_00
+    evidence_id: ev_006
+    relation: supports
+    locator: Experiments / Project-Level Translation (image grounding)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_014
+  text: Larger models exhibit substantially higher rates of undefined-stitch errors, suggesting a tendency
+    toward uncontrolled symbolic invention rather than disciplined DSL use.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_00
+    evidence_id: ev_007
+    relation: supports
+    locator: Experiments / DSL error analysis
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_015
+  text: The benchmark evaluates nine VLMs spanning ~3B-72B parameters - open models BLIP-2 Flan-T5 XL
+    (3B), Gemma 3 (4B/27B), DeepSeek-VL (7B), Qwen2-VL (7B/72B) plus closed GPT-4o, Gemini 2.5 Flash-Lite,
+    and Claude Sonnet 4 - from Li et al., University of Notre Dame (arXiv 2511.09483v2).
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_00
+    evidence_id: ev_008
+    relation: supports
+    locator: Models evaluated (setup) + author/affiliation metadata
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_016
+  text: AmiGo generates human-executable crochet instructions from a closed triangle mesh plus a single
+    user-specified point, producing a toy that approximates the input geometry.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_06
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_017
+  text: The method's inputs are precisely a 3D mesh, a seed point, and a stitch width (gauge), bounding
+    the problem with explicit parameters.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_06
+    evidence_id: ev_002
+    relation: supports
+    locator: Section 3 (method overview) / Section 2.1 (problem inputs)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_018
+  text: The input mesh is required to be a closed triangle mesh together with a seed vertex and a real-valued
+    stitch width, formalizing a watertight-topology precondition.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_06
+    evidence_id: ev_003
+    relation: supports
+    locator: Section 2.1 (problem definition)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_019
+  text: The shape is automatically segmented into crochetable components joined by the join-as-you-go
+    method, requiring no additional sewing.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_06
+    evidence_id: ev_004
+    relation: supports
+    locator: Abstract / Section 1.2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_020
+  text: The output is a structured pattern restricted to a fixed, small instruction set (single crochet,
+    increase, decrease), i.e. deterministic structured output rather than free-form text.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_06
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 2.2 (Observation 2.3)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_021
+  text: The work frames inverse mesh-to-pattern design as a computationally grounded approach producing
+    patterns, not general free-form generation.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_06
+    evidence_id: ev_006
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_022
+  text: SmolVLM (2B) reports the best memory usage among vision language models in transformers, requiring
+    a minimum of 5.02 GB GPU RAM.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_07
+    evidence_id: ev_001
+    relation: supports
+    locator: Performance > Memory
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_023
+  text: SmolVLM uses SmolLM2 1.7B as its language backbone, replacing the larger Llama 3.1 8B.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_07
+    evidence_id: ev_002
+    relation: supports
+    locator: Architecture / Performance > Memory
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_024
+  text: SmolVLM encodes each 384x384 image patch to 81 visual tokens.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_07
+    evidence_id: ev_003
+    relation: supports
+    locator: Performance > Memory
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_025
+  text: Encoding a test prompt plus a single image takes ~1.2k tokens with SmolVLM versus ~16k tokens
+    with Qwen2-VL.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_07
+    evidence_id: ev_004
+    relation: supports
+    locator: Performance > Memory
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_026
+  text: Compared with Qwen2-VL, SmolVLM achieves 3.3-4.5x faster prefill throughput and 7.5-16x faster
+    generation throughput.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_07
+    evidence_id: ev_005
+    relation: supports
+    locator: Performance > Throughput
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_027
+  text: 'SmolVLM benchmark accuracy: DocVQA 81.6, TextVQA 72.7, MMMU (val) 38.8, MathVista 44.6, MMStar
+    42.1.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_07
+    evidence_id: ev_006
+    relation: supports
+    locator: Performance > Benchmarks (table)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_028
+  text: All SmolVLM model checkpoints, datasets, training recipes, and tools are released under the Apache
+    2.0 license.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_07
+    evidence_id: ev_007
+    relation: supports
+    locator: TLDR
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_029
+  text: The CYC list is the canonical published abbreviation reference used by yarn-industry designers
+    and publishers, and its definitions reflect U.S. crochet terminology.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_01
+    evidence_id: ev_001
+    relation: supports
+    locator: Page intro paragraph ('Crochet Abbreviations Master List')
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_030
+  text: Core stitch tokens are defined as ch=chain stitch, sc=single crochet, hdc=half double crochet,
+    dc=double crochet, tr=treble crochet, dtr=double treble crochet, and sl st=slip stitch.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_01
+    evidence_id: ev_002
+    relation: supports
+    locator: Main abbreviation table (Abbreviation | Description)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_031
+  text: 'The ''2tog'' decrease tokens are defined explicitly: sc2tog, hdc2tog, dc2tog, and tr2tog each
+    mean working two stitches together of the named stitch type.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_01
+    evidence_id: ev_003
+    relation: supports
+    locator: Main abbreviation table — decrease entries
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_032
+  text: 'Repeat and grouping notation is standardized: a single asterisk marks instructions to repeat,
+    paired asterisks repeat the span between them, and brackets, braces, and parentheses enclose instructions
+    worked a given number of times — with parentheses additionally signaling stitches worked all in the
+    same stitch or space.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_01
+    evidence_id: ev_004
+    relation: supports
+    locator: Terms & Common Measurements table — repeat/grouping notation
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_033
+  text: 'The same stitch token denotes different stitches across locales: U.S. single crochet = U.K. double
+    crochet, U.S. double crochet = U.K. treble, and U.S. treble = U.K. double treble — a one-step naming
+    offset that makes US/UK tokens collide.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_01
+    evidence_id: ev_005
+    relation: supports
+    locator: Abbreviation & Term Differences between the U.S., United Kingdom (U.K.) and Canada — stitch
+      table
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_034
+  text: 'Terminology divergence extends beyond stitches: U.S. ''gauge'' corresponds to U.K./Canada ''tension'',
+    and U.S. ''yarn over (yo)'' corresponds to ''yarn over hook (yoh)''.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_01
+    evidence_id: ev_006
+    relation: supports
+    locator: Abbreviation & Term Differences — U.S. vs U.K./Canada terminology table
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_035
+  text: Measurement abbreviations a parser must normalize are standardized as in/" (inch), cm (centimeter),
+    m (meter), mm (millimeter), g (gram), oz (ounce), and yd (yard).
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_01
+    evidence_id: ev_007
+    relation: supports
+    locator: Terms & Common Measurements table — Measurement | Description
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_036
+  text: ChartMuseum is a chart-QA benchmark of 1,162 expert-annotated image-question-answer tuples drawn
+    from 928 unique real-world charts across 184 websites.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_09
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract / Introduction
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_037
+  text: On ChartMuseum, humans reach 93% accuracy while the best proprietary model Gemini-2.5-Pro attains
+    only 63.0% and the leading open-source LVLM Qwen2.5-VL-72B-Instruct reaches only 38.5%.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_09
+    evidence_id: ev_002
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_038
+  text: There is a 24.5-point accuracy gap between the best open-source model (Qwen2.5-VL-72B-Instruct,
+    38.5%) and the best proprietary model (Gemini-2.5-Pro, 63.0%).
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_09
+    evidence_id: ev_003
+    relation: supports
+    locator: Results / Section 5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_039
+  text: On questions requiring primarily visual reasoning, all evaluated models drop 35%-55% relative
+    to their performance on text-reasoning-heavy questions.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_09
+    evidence_id: ev_004
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_040
+  text: Humans remain near-perfect on the sampled visual-reasoning set, scoring 56/57 correct (98.2%),
+    unlike models.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_09
+    evidence_id: ev_005
+    relation: supports
+    locator: Results / visual reasoning analysis
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_041
+  text: Unlike prior chart benchmarks where frontier models cluster near saturation, ChartMuseum exposes
+    a substantial model-vs-human gap while differentiating model capabilities.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_09
+    evidence_id: ev_006
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_042
+  text: The hardest visual skill category is visual comparison, defined as comparing multiple objects
+    or groups by size, height, or spatial placement.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_09
+    evidence_id: ev_007
+    relation: supports
+    locator: Section 5.1 Visual Task Taxonomy
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_043
+  text: MagicVL-2B uses a SigLIP2-base ViT visual encoder with 93M parameters at 384x384 input resolution,
+    paired with Qwen2.5-1.5B or Qwen3-1.7B as the LLM backbone.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_08
+    evidence_id: ev_001
+    relation: supports
+    locator: Model Architecture > Overall Architecture
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_044
+  text: On Snapdragon 8 Elite, MagicVL-2B reports 0.09s ViT latency, 1.7s LLM latency and 23.9 token/s
+    throughput, versus InternVL2.5-2B's 0.90s ViT latency and 14.3 token/s.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_08
+    evidence_id: ev_002
+    relation: supports
+    locator: Experiments > Deployment Efficiency Evaluation, Table 2 (Snapdragon 8 Elite)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_045
+  text: Among <=2B-class models, MagicVL-2B (Qwen3-1.7B) scores DocVQA 89.0, OCRBench 828, AI2D 77.4,
+    MMBench-V1.1_en 73.7, and MMStar 57.9.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_08
+    evidence_id: ev_003
+    relation: supports
+    locator: Experiments > Comparison with State-of-the-art, Table 1 (MagicVL-2B Qwen3-1.7B row)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_046
+  text: The dynamic high-resolution token resizing scheme reduces total visual tokens by ~37.8% (0.52M
+    vs 0.81M) while slightly improving accuracy (74.5% vs 74.3%).
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_08
+    evidence_id: ev_004
+    relation: supports
+    locator: Ablation Study > Effectiveness of Dynamic High Resolution, Table 3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_047
+  text: MagicVL-2B matches state-of-the-art accuracy while reducing on-device power consumption by 41.1%,
+    positioning it as a practical mobile VLM.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_08
+    evidence_id: ev_005
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_048
+  text: MagicVL-2B is a sub-100M-parameter-encoder VLM optimized for flagship smartphones, using a redesigned
+    dynamic resolution scheme plus a multimodal curriculum learning strategy that incrementally increases
+    task difficulty and data density during training.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_08
+    evidence_id: ev_006
+    relation: supports
+    locator: Abstract / Method
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_049
+  text: The method takes a written crochet pattern as input, translates it into a graph, and computes
+    a force-directed graph layout to produce a 3D representation.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_05
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_050
+  text: The resulting 3D model matches the hand-crocheted piece in shape and size, letting designers adjust
+    the digital model instead of physically crocheting.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_05
+    evidence_id: ev_002
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_051
+  text: The intended audience is both professional designers and beginners, and the application is oriented
+    toward amigurumi but could extend to clothing or similar crochet styles.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_05
+    evidence_id: ev_003
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_052
+  text: Each crochet stitch is a node in the graph and physical connections between stitches are edges,
+    with sequential, working, and constraint edge types.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_05
+    evidence_id: ev_004
+    relation: supports
+    locator: Section 4 (graph construction)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_053
+  text: The layout reimplements the force-directed graph layout of Isenburg et al. [IGG01] as a non-linear
+    least-squares optimization minimizing two energy functions (edge length and local curvature), solved
+    with the Ceres Solver and a static blend parameter lambda = 0.65 for most pieces.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_05
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 4.2 The graph layout
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_054
+  text: 'Performance scales poorly with pattern size: small patterns converge in a few seconds while large/high-curvature
+    pieces are slow; the bunny head (798 stitches) and body (708 stitches) did not converge even after
+    over two minutes.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_05
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 5.3 Performance
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_055
+  text: Models were accurate in shape and size to their real-world counterparts but not identical; some
+    discrepancies (e.g. raindrop height) trace to the uniform edge-length assumption of 1, not yarn-specific
+    stitch dimensions.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_05
+    evidence_id: ev_007
+    relation: supports
+    locator: Section 5.1 / 6 Conclusion
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_056
+  text: A formulation limitation is that least-squares minimization is incompatible with the goal of maximizing
+    volume, so the method minimizes curvature instead and yields sub-maximal volume; testing was limited
+    to simple beginner-level patterns and single-crochet-like stitches.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_05
+    evidence_id: ev_008
+    relation: supports
+    locator: Section 5.4 Limitations
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_057
+  text: PaddleOCR-VL's core component is a compact 0.9B vision-language model that pairs a NaViT-style
+    dynamic-resolution visual encoder with the ERNIE-4.5-0.3B language model and supports 109 languages.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_10
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_058
+  text: The model targets document parsing and recognizes complex elements such as text, tables, formulas,
+    and charts while minimizing resource consumption.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_10
+    evidence_id: ev_002
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_059
+  text: On OmniDocBench v1.5, PaddleOCR-VL achieves a top overall score of 92.86, surpassing the next-best
+    model MinerU2.5-1.2B at 90.67.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_10
+    evidence_id: ev_003
+    relation: supports
+    locator: Results, text following Table 2 (OmniDocBench v1.5)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_060
+  text: PaddleOCR-VL reports leading per-task metrics including Text-Edit distance 0.035, Formula-CDM
+    91.22, Table-TEDS 90.89 / Table-TEDS-S 94.76, and reading-order edit distance 0.043.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_10
+    evidence_id: ev_004
+    relation: supports
+    locator: Results, text following Table 2 (OmniDocBench v1.5)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_061
+  text: The architecture combines a NaViT-style dynamic high-resolution visual encoder with the lightweight
+    ERNIE-4.5-0.3B language model to improve recognition and decoding efficiency.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_10
+    evidence_id: ev_005
+    relation: supports
+    locator: Architecture / model design section
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_062
+  text: The technical report was first submitted Oct 16, 2025 (v1) with the latest revision v4 dated Nov
+    25, 2025, authored by Cheng Cui, Ting Sun, and colleagues.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_10
+    evidence_id: ev_006
+    relation: supports
+    locator: arXiv metadata header
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_063
+  text: The project rebranded dots.ocr-1.5 as dots.mocr on 2026-03-19, with technical details in an arXiv
+    paper.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_04
+    evidence_id: ev_001
+    relation: supports
+    locator: README - intro / News (rebrand notice, 2026.03.19)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_064
+  text: dots.mocr is a single multilingual document-parsing vision-language model built on a 1.7b-parameter
+    LLM and described as a 3B-parameter VLM.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_04
+    evidence_id: ev_002
+    relation: supports
+    locator: README - model overview / parameter description
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_065
+  text: On olmOCR-Bench, dots.mocr reports an overall score of 83.9 plus or minus 0.9.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_04
+    evidence_id: ev_003
+    relation: supports
+    locator: README - Benchmark Results (olmOCR-Bench)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_066
+  text: On OmniDocBench, dots.mocr reports a text-edit distance of 0.031, lower (better) than Gemini-2.5
+    Pro at 0.075 and Qwen3-VL-235B-A22B-Instruct at 0.069.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_04
+    evidence_id: ev_004
+    relation: supports
+    locator: README - Benchmark Results (OmniDocBench, TextEdit distance)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_067
+  text: The model parses eleven layout categories and sorts all detected elements in human reading order.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_04
+    evidence_id: ev_005
+    relation: supports
+    locator: README - Layout Categories / output format
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_068
+  text: The project claims the model can recognize virtually any human script and reaches state-of-the-art
+    multilingual document parsing among models of comparable size.
+  materiality: background
+  claim_type: attribution
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_04
+    evidence_id: ev_006
+    relation: supports
+    locator: README - capabilities / multilingual SOTA claim
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_069
+  text: The documentation reports no explicit latency or throughput metrics, leaving on-device inference
+    cost unquantified.
+  materiality: background
+  claim_type: attribution
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_04
+    evidence_id: ev_007
+    relation: supports
+    locator: README - whole document (absence of perf benchmarks)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_070
+  text: Apple's on-device model is a roughly 3B-parameter model optimized for Apple silicon using KV-cache
+    sharing and 2-bit quantization-aware training.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_11
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_071
+  text: The on-device model is split into two blocks; Block 2 (37.5% of layers) drops its key/value projections
+    and shares Block 1's KV cache, cutting KV-cache memory usage by 37.5%.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_11
+    evidence_id: ev_002
+    relation: supports
+    locator: Section 2.1, KV Cache Sharing
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_072
+  text: Because Block 2 produces no keys or values, prefill can bypass its computation, reducing time-to-first-token
+    by about 37.5%.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_11
+    evidence_id: ev_003
+    relation: supports
+    locator: Section 2.1, KV Cache Sharing
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_073
+  text: The on-device model is compressed to 2 bits-per-weight via QAT, with the embedding table jointly
+    quantized to 4 bits and the KV-cache quantized to 8 bits, plus low-rank adapters for quality recovery.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_11
+    evidence_id: ev_004
+    relation: supports
+    locator: Quantization section (compression)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_074
+  text: The models support additional languages and can understand images and execute tool calls, while
+    the server model uses a Parallel-Track Mixture-of-Experts (PT-MoE) transformer on Private Cloud Compute.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_11
+    evidence_id: ev_005
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_075
+  text: Apple reports its on-device model beats Qwen-2.5-3B, Gemma-3-4B, and Gemma-3n-E4B on MMLU/MMMLU
+    but performs lower than the larger Qwen-3-4B model.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_11
+    evidence_id: ev_006
+    relation: supports
+    locator: Evaluation, Text benchmarks (Table 1/Table 2 discussion)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_076
+  text: CrochetPARADE is explicitly designed as an unambiguous DSL whose grammar aims for accuracy and
+    precision, avoiding the ambiguities of plain-English crochet instructions.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_02
+    evidence_id: ev_001
+    relation: supports
+    locator: 'Section: OVERVIEW'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_077
+  text: The grammar supports compact repeat syntax where a stitch is multiplied by an integer, e.g. 10*sc,
+    10 sc, or 10sc all mean ten single crochet stitches.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_02
+    evidence_id: ev_002
+    relation: supports
+    locator: 'Section: Basics (repetition syntax)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_078
+  text: Stitch modifications are expressed as token suffixes, including front-loop/back-loop variants
+    formed by appending 'fl' or 'bl' to a stitch name (e.g. scbl, dcfl).
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_02
+    evidence_id: ev_003
+    relation: supports
+    locator: 'Section: Basics (loop-selection modifications)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_079
+  text: The DSL supports explicit attachment points, including direct attachment to a stitch coordinate
+    given as an integer pair such as @[2,10].
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_02
+    evidence_id: ev_004
+    relation: supports
+    locator: 'Section: Specifying attachment points'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_080
+  text: 'Turns are handled automatically by reversing attachment direction: an even count of preceding
+    turn directives attaches to the next stitch, an odd count attaches to the previous stitch (reverse
+    order).'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_02
+    evidence_id: ev_005
+    relation: supports
+    locator: 'Section: Direction of sequential stitch attachment (turns)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_081
+  text: Exporting to SVG produces multiple files, including a chart using standard crochet symbols (optionally
+    with yarn colors) and a stitch-connection/view diagram.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_02
+    evidence_id: ev_006
+    relation: supports
+    locator: 'Section: Save/Export options (SVG)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_082
+  text: All computation runs locally on the user's device, with no data collected to a server or transmitted
+    over the internet.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_02
+    evidence_id: ev_007
+    relation: supports
+    locator: 'Section: OVERVIEW (local computation)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_083
+  text: The tool analyzes stitch tension, identifying overly loose or tight stitches so users can swap
+    them before crocheting and reduce the need for blocking.
+  materiality: background
+  claim_type: causal
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw015_02
+    evidence_id: ev_008
+    relation: supports
+    locator: 'Section: The 3D visualization canvas (stitch tension)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf01
+  text: Real-world crochet pattern text is structurally ambiguous in ways that defeat naive tokenization,
+    because the same surface token denotes different stitches across US/UK locales (sc/dc/tr offset) and
+    parentheses are overloaded to mean both 'repeat N times' and 'all worked in one stitch', so a parser
+    that does not first resolve a declared terminology context will systematically mis-decode the most
+    common stitch ops.
+  materiality: material
+  claim_type: causal
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_033
+    - clm_032
+    - clm_030
+    - clm_034
+    reasoning_summary: clm_033/034 establish the US/UK one-step naming collision (US sc = UK dc), clm_032
+      the overloaded parenthesis semantics, and clm_030 the core token set; together these mean token
+      identity is context-dependent, so locale must be resolved before op decoding.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf02
+  text: The CYC abbreviation list and CrochetPARADE's compact syntax map almost one-to-one onto the Crochet
+    IR v0.1 op enum (mr/ch/slst/sc/hdc/dc/tr/inc/dec/repeat), so the deterministic core of pattern parsing
+    is a finite token-to-op normalization plus a count/repeat expander, not an open-ended NLP problem.
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_030
+    - clm_031
+    - clm_032
+    - clm_077
+    reasoning_summary: clm_030 core stitch tokens and clm_031 the 2tog decreases align to sc/hdc/dc/tr/dec;
+      clm_032 standardized repeat/grouping maps to the repeat op; clm_077 shows CrochetPARADE's integer-multiplied
+      stitch syntax (10*sc) is exactly count-based op expansion. The IR enum covers these directly.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf03
+  text: For clean machine-readable pattern text (typed body copy, not scanned), a rule-based tokenizer
+    plus a deterministic stitch-count validator is the highest-accuracy and lowest-cost extractor available
+    and should own the parse path, because the IR's expected_stitch_count field provides a closed-form
+    correctness check that no current LLM/VLM can match on procedural fidelity.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_031
+    - clm_032
+    - clm_008
+    - clm_012
+    - clm_076
+    reasoning_summary: Tokens/repeats are standardized (clm_031/032) so rules suffice for clean text;
+      CrochetBench shows LLMs collapse on executable synthesis (clm_008) and propagate early errors irreversibly
+      (clm_012); CrochetPARADE (clm_076) confirms a deterministic grammar is the precision path. The IR
+      expected_stitch_count gives a deterministic validator.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf04
+  text: 'The on-device-vs-cloud boundary for document/layout parsing falls between text-layout extraction
+    (cloud-grade today) and on-device deployment: the strongest open document parsers (PaddleOCR-VL 0.9B
+    at OmniDocBench 92.86; dots.mocr 3B at olmOCR-Bench 83.9) publish only server-side cost (PaddleOCR-VL
+    needs ~43.7 GB A100 memory at 1.22 pages/s), and dots.mocr publishes no latency at all, so neither
+    is documented to run within a mid-range phone''s memory budget.'
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_059
+    - clm_005
+    - clm_065
+    - clm_069
+    - clm_064
+    reasoning_summary: PaddleOCR-VL tops OmniDocBench (clm_059) but its only reported throughput is A100/43.7GB
+      server-side (clm_005); dots.mocr scores well (clm_065) but is a 3B model (clm_064) with no latency
+      reported (clm_069). Mobile RAM is far below 43.7GB, so these are cloud-side by evidence.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf05
+  text: 'Among documented candidates, MagicVL-2B is the only model with measured mid-to-high-end phone
+    parsing performance (Snapdragon 8 Elite: 0.09 s ViT + 1.7 s LLM, 23.9 tok/s, DocVQA 89.0, OCRBench
+    828), making it the strongest evidence that on-device text-document extraction is feasible at near-cloud
+    DocVQA accuracy, while SmolVLM (5.02 GB, DocVQA 81.6) demonstrates the memory floor but reports no
+    on-phone latency.'
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_044
+    - clm_045
+    - clm_022
+    - clm_027
+    reasoning_summary: clm_044/045 give MagicVL-2B's on-device latency and DocVQA 89.0/OCRBench 828; clm_022/027
+      give SmolVLM's 5.02GB floor and DocVQA 81.6 but no phone latency. MagicVL-2B is the only candidate
+      with both on-device latency and high doc accuracy.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf06
+  text: MagicVL-2B's published latency is for a flagship Snapdragon 8 Elite, not the spec's mid-range-phone
+    constraint, so its 1.7 s/inference figure is an optimistic upper bound; on a mid-range SoC with less
+    NPU throughput and thermal headroom, on-device VLM document parsing should be treated as plausible
+    but unproven for the target device class.
+  materiality: material
+  claim_type: prediction
+  status: speculation
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_044
+    - clm_047
+    reasoning_summary: clm_044 explicitly measures on Snapdragon 8 Elite (a flagship); clm_047 frames
+      it as practical but reports a power reduction, not absolute mid-range numbers. Extrapolating downward
+      to mid-range silicon is forward-looking and not in evidence, hence speculation.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf07
+  text: Stitch-chart and symbol-diagram parsing is the hardest sub-problem and the clearest cloud-only
+    boundary, because chart understanding requires visual-comparison reasoning where ChartMuseum shows
+    the best open model reaches only 38.5% and even the best proprietary model 63.0% (vs 93% human), and
+    all models drop 35-55% on visually-grounded questions.
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_037
+    - clm_038
+    - clm_039
+    - clm_042
+    reasoning_summary: ChartMuseum (clm_037/038) shows a 24.5-pt open-vs-proprietary gap and a large human
+      gap; clm_039 the 35-55% visual-reasoning drop; clm_042 names visual comparison (spatial size/placement)
+      as hardest - exactly the skill a crochet stitch chart demands.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf08
+  text: 'The viable KnitWit import architecture is a three-tier cascade: (1) on-device deterministic tokenizer
+    + stitch-count validator for clean text patterns of known templates, (2) on-device small VLM (MagicVL-2B-class)
+    or cloud OCR for typed/scanned text-layout, and (3) cloud VLM only for stitch charts and ambiguous
+    diagrams - because deterministic rules dominate where notation is standardized, small VLMs handle
+    layout, and only charts demand the highest-capability proprietary models.'
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_031
+    - clm_044
+    - clm_059
+    - clm_037
+    - clm_008
+    reasoning_summary: Standardized tokens (clm_031) justify tier 1; MagicVL-2B on-device (clm_044) and
+      PaddleOCR-VL doc parsing (clm_059) justify tier 2; ChartMuseum's chart gap (clm_037) and CrochetBench's
+      synthesis collapse (clm_008) justify reserving tier 3 cloud VLMs for charts only.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf09
+  text: Because LLM/VLM crochet errors propagate irreversibly from early steps (CrochetBench) and the
+    IR carries a per-round expected_stitch_count, the architecture should run the deterministic stitch-count
+    validator as a hard gate on every model-produced round and force human confirmation wherever the count
+    check fails, converting an open-ended generation-error risk into a bounded, locatable confirmation
+    task.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_012
+    - clm_031
+    - clm_008
+    reasoning_summary: clm_012 shows early errors propagate irreversibly with later correctness accidental;
+      clm_031 standardized decreases make stitch arithmetic deterministic; clm_008 the low executable
+      rate. A per-round count validator (IR expected_stitch_count) catches drift early and routes low-confidence
+      rows to human review.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf10
+  text: 'The design-spec ''PDF importer trap'' is empirically justified: a single end-to-end VLM PDF-to-pattern
+    importer would inherit CrochetBench''s 5-8% executable-program ceiling and ChartMuseum''s chart-reasoning
+    gap simultaneously, so attempting full free-form PDF/chart ingestion in v1 is the highest-risk path
+    and should be explicitly de-scoped in favor of templated/clean-text import plus assisted chart entry.'
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_008
+    - clm_037
+    - clm_039
+    reasoning_summary: An end-to-end PDF importer must do both program synthesis (CrochetBench 5-8%, clm_008)
+      and chart visual reasoning (ChartMuseum, clm_037/039). Compounding two low-accuracy steps yields
+      an unacceptable product success rate, validating the spec's PDF-trap warning.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf11
+  text: Mapping to the Crochet IR v0.1, the reliably-extractable-today fields are op (sc/hdc/dc/tr/slst/ch/mr),
+    count, repeat, and expected_stitch_count for clean text; the ambiguous-today fields are visual_hint.shape_role,
+    assembly[] attachment_points, and any field that requires chart geometry or free-text 'do what feels
+    right' notes - because the former map to standardized tokens while the latter require visual or pragmatic
+    inference current models do poorly.
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_030
+    - clm_031
+    - clm_032
+    - clm_013
+    - clm_037
+    reasoning_summary: Tokens/repeats/counts (clm_030/031/032) map deterministically to IR op/count/repeat/expected_stitch_count.
+      shape_role and assembly need shaping/termination cues that clm_013 says are under-specified in text
+      and clm_037 shows charts read poorly, so those IR fields stay ambiguous.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf12
+  text: Constraining model output to the closed IR op enum (rather than free text) is a documented error-reduction
+    lever, because CrochetBench shows larger models invent undefined stitches when unconstrained while
+    AmiGo achieves reliable structured patterns precisely by restricting output to a fixed small instruction
+    set - so KnitWit should require any model extractor to emit IR ops and reject out-of-enum tokens.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_014
+    - clm_020
+    - clm_076
+    reasoning_summary: clm_014 shows undefined-stitch invention rises with model size when unconstrained;
+      clm_020 AmiGo's fixed small instruction set yields deterministic structured output; clm_076 CrochetPARADE's
+      unambiguous grammar. Constraining decoding to the IR enum directly suppresses the invention failure
+      mode.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf13
+  text: Human-in-the-loop confirmation should be triggered by three documented low-confidence signals
+    - (a) a failed per-round stitch-count check, (b) any out-of-enum/undefined token emitted by a model,
+    and (c) any content originating from a stitch chart or symbol diagram - because each corresponds to
+    an evidenced failure mode (count drift, symbolic invention, and the chart visual-reasoning gap respectively).
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_012
+    - clm_014
+    - clm_037
+    reasoning_summary: 'Maps each HITL trigger to evidence: count drift (clm_012), undefined-stitch invention
+      (clm_014), chart visual-reasoning gap (clm_037). These are the three places automated extraction
+      is documented to be unreliable.'
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf14
+  text: 'There is an apparent contradiction between document-parsing optimism (PaddleOCR-VL/dots.mocr
+    reporting 83-93 on OmniDocBench/olmOCR) and crochet-task pessimism (CrochetBench 5-8% executable),
+    and the resolution is that the benchmarks measure different things - generic text/table/formula transcription
+    versus domain procedural synthesis - so strong OCR scores justify trusting text-layout transcription
+    but not trusting any model to produce a correct executable pattern; decision impact: high.'
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_003
+    - clm_065
+    - clm_008
+    - clm_009
+    reasoning_summary: OmniDocBench/olmOCR (clm_003/065) reward transcription fidelity; CrochetBench (clm_008/009)
+      measures executable synthesis and NL generation, which collapse. The two are not in tension once
+      the task distinction is named - OCR layer trustworthy, synthesis layer not.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf15
+  text: Academic feasibility is established for OCR/layout transcription (PaddleOCR-VL, dots.mocr, MagicVL-2B
+    all publish strong document benchmarks) but product-readiness for an amigurumi-first mobile importer
+    is NOT, because no source documents (i) a mid-range-phone latency/memory figure for these parsers,
+    (ii) crochet-pattern-specific extraction accuracy, or (iii) chart-symbol recognition above the ~38-63%
+    ChartMuseum ceiling - so the import feature is research-feasible but product-unproven without a dedicated
+    evaluation.
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_059
+    - clm_065
+    - clm_044
+    - clm_069
+    - clm_037
+    reasoning_summary: Strong doc benchmarks (clm_059/065/044) = academic feasibility; absence of mid-range-phone
+      figures (clm_069 notes dots.mocr reports none), no crochet-specific accuracy, and the chart ceiling
+      (clm_037) = product gaps. Separates 'shown in paper' from 'ready for product' per spec.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf16
+  text: 'Mobile-performance risk for on-device VLM import is medium-severity / medium-likelihood: the
+    only on-phone latency evidence (MagicVL-2B) is on flagship silicon, mid-range NPUs are weaker, and
+    OCR-grade parsers need tens of GB of memory server-side; concrete mitigation is to ship the deterministic
+    text tokenizer on-device and route VLM/OCR and all chart work to cloud, keeping the on-device footprint
+    to rules plus an optional small text-only model.'
+  materiality: material
+  claim_type: prediction
+  status: speculation
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_044
+    - clm_005
+    - clm_022
+    reasoning_summary: On-device latency only on flagship (clm_044); doc parsers need 43.7GB server-side
+      (clm_005); SmolVLM floor 5.02GB (clm_022). The forward-looking severity/likelihood and mitigation
+      are a risk judgment, hence speculation, but grounded in these footprints.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_spec01
+  text: The pattern-parsing findings most de-risk decision gate G2 (Crochet-IR viability) and recommend
+    prioritizing the EXP-002 stitch-count validator and EXP-003 repeat-expansion experiments first, because
+    these exercise exactly the deterministic core this evidence shows is reliable and provide the count-check
+    gate that makes downstream model-assisted extraction safe.
+  materiality: material
+  claim_type: recommendation
+  status: speculation
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims: []
+    reasoning_summary: Forward-looking experiment-prioritization tying the parsing evidence (deterministic
+      tokens reliable, models unreliable) to spec gate G2 and the EXP-002/EXP-003 backlog items; a planning
+      recommendation rather than a directly-sourced fact.
+  report_locations: []
+  reviewer_notes: ''
+unresolved_questions: []

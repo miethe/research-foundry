@@ -1,0 +1,55 @@
+id: ext_20260614_ca73550e_001
+source_card_id: src_20260614_rib037_07
+created_at: '2026-06-14T15:55:25-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: PostgreSQL maintains data consistency via a multiversion model (MVCC) in which each SQL statement
+    sees a snapshot of data (a database version) as it was at an earlier point, regardless of the current
+    underlying data state.
+  locator: Chapter 13. Concurrency Control / 13.1. Introduction (definition paragraph)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The per-statement snapshot prevents statements from viewing inconsistent data produced by concurrent
+    updating transactions, providing transaction isolation for each database session.
+  locator: Chapter 13. Concurrency Control / 13.1. Introduction (isolation paragraph)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Under MVCC, locks acquired for reading do not conflict with locks acquired for writing, so reading
+    never blocks writing and writing never blocks reading.
+  locator: Chapter 13. Concurrency Control / 13.1. Introduction (advantage paragraph)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: By avoiding traditional locking methodologies, MVCC minimizes lock contention to allow reasonable
+    performance in multiuser environments.
+  locator: Chapter 13. Concurrency Control / 13.1. Introduction (contention paragraph)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The documentation asserts qualitatively that proper use of MVCC will generally provide better
+    performance than locks, without benchmark figures.
+  locator: Chapter 13. Concurrency Control / 13.1. Introduction (performance caveat)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: PostgreSQL preserves the MVCC snapshot guarantee even at the strictest isolation level via Serializable
+    Snapshot Isolation (SSI).
+  locator: Chapter 13. Concurrency Control / 13.1. Introduction (isolation guarantee)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: The performance comparison ("better performance than locks") is qualitative and not accompanied
+    by benchmark data; it should be cited as a documented design assertion, not a measured result.
+  locator: card/limitations

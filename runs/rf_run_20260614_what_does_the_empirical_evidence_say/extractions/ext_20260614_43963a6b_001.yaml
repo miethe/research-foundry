@@ -1,0 +1,64 @@
+id: ext_20260614_43963a6b_001
+source_card_id: src_20260614_kw003_08
+created_at: '2026-06-14T20:46:24-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The author reports that LLM-generated JSON for crochet patterns is frequently invalid (e.g., a
+    missing closing brace) and is token-expensive and slow because patterns contain many rows and stitches.
+  locator: 'Section: Why not using JSON?'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The author created CROML, a custom minimal data representation, specifically so the output can
+    be easily and locally parsed rather than relying on the LLM to emit JSON directly.
+  locator: 'Section: CROML'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: CROML is indentation-agnostic and is parsed with simple regex then converted to JSON locally,
+    which the author says is faster than waiting for the LLM to generate JSON.
+  locator: 'Section: How About The Parser?'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The author concludes that instructing the LLM to emit CROML (a compact DSL) instead of JSON significantly
+    reduces token usage and speeds up generation time.
+  locator: 'Section: Conclusion'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The author argues the DSL is more robust than JSON because a single missing character does not
+    cause a fatal parse error the way it would with JSON.
+  locator: 'Section: Conclusion'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The author rejected existing minimal formats like TOML and YAML for crochet patterns because they
+    felt too indentation-heavy and not readable for the pattern context, motivating a purpose-built authoring
+    surface.
+  locator: 'Section: Why not using JSON?'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: No quantified token/latency measurements
+  locator: card/trust
+- text: Single author, anecdotal
+  locator: card/trust
+- text: Crochet-domain-specific, generalization is inferred not proven
+  locator: card/trust
+- text: Secondary, single-author, first-person anecdotal source with no quantified token/latency benchmarks;
+    gains are claimed, not measured.
+  locator: card/limitations
+- text: Crochet-domain-specific; the general principle (compact DSL plus deterministic expansion beats
+    freeform JSON IR) is inferred corroboration, not a controlled result.
+  locator: card/limitations

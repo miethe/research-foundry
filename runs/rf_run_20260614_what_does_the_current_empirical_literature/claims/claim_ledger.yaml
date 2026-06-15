@@ -1,0 +1,1822 @@
+id: claims_20260615_rf_run_20260614_what_does_the
+intent_id: intent_research_20260614_what_does_the_current_empirical_literature
+report_ref: reports/report_draft.md
+verification_status: passed
+claims:
+- claim_id: clm_001
+  text: AmiGo takes a closed manifold triangle mesh, a seed vertex, and a stitch width as input and outputs
+    human-readable crochet instructions for the model.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_02
+    evidence_id: ev_001
+    relation: supports
+    locator: Section 2.1 Background and Notations
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_002
+  text: Crochet rows are defined as isolines of the geodesic distance from the seed (f(v)=d(v,s)), with
+    a second function g ordering within rows; vertices are sampled on a 2D grid of width w.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_02
+    evidence_id: ev_002
+    relation: supports
+    locator: Section 4.1 Geometry
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_003
+  text: Patterns use only the standard amigurumi stitch set (single crochet, increase, decrease) and deliberately
+    avoid short rows to appeal to beginner crocheters.
+  materiality: background
+  claim_type: causal
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_02
+    evidence_id: ev_003
+    relation: supports
+    locator: Sections 2.1 and 1.1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_004
+  text: 'Crochetability is enforced through curvature preprocessing: Conformal Mean Curvature Flow is
+    applied locally where mean curvature is not positive, and the sampling rate is modulated in negative-Gaussian-curvature
+    regions via h(x)=tanh(-x/alpha)/2+1 with alpha=10.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_02
+    evidence_id: ev_004
+    relation: supports
+    locator: Sections 7.1.1 and 7.1.2 Crochetability / Curvature
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_005
+  text: Branching shapes are split into segments that are crocheted onto the previous segment's last row
+    using a join-as-you-go method, so no sewing is required.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_02
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 7.2 Branching
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_006
+  text: 'Table 2 reports per-model statistics (e.g., Teddy: 60 rows, 6 segments, 3670 stitches, 2.5 min)
+    with instruction generation taking a few minutes on a desktop Intel Core i7.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_02
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 9.1 / Table 2 Statistics for the crocheted models
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_007
+  text: The method only handles closed (stuffed) surfaces, reflecting its amigurumi target domain.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_02
+    evidence_id: ev_007
+    relation: supports
+    locator: Section 8 Limitations
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_008
+  text: CrochetBench is a benchmark of 6,085 crochet patterns spanning 55 distinct project categories,
+    built from publicly available Yarnspirations patterns.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_00
+    evidence_id: ev_001
+    relation: supports
+    locator: Section 2 Dataset Description
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_009
+  text: The dataset is sourced from Yarnspirations patterns originally distributed as PDFs and normalized
+    via a GPT-4o-mini conversion pipeline.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_00
+    evidence_id: ev_002
+    relation: supports
+    locator: Section 2 Dataset Description
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_010
+  text: The benchmark uses the CrochetPARADE DSL as an intermediate representation to enable structural
+    validation and functional evaluation by execution, rather than text-similarity scoring.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_00
+    evidence_id: ev_003
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_011
+  text: Nine state-of-the-art vision-language models were evaluated, including GPT-4o, Gemini 2.5 Flash-Lite,
+    Claude Sonnet 4, and open-source models spanning 3B to 72B parameters.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_00
+    evidence_id: ev_004
+    relation: supports
+    locator: Section 4 Experiments
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_012
+  text: On stitch recognition the best model, Claude Sonnet 4, reaches an F1 of 60.94%; instruction selection
+    plateaus, with large and closed-source models clustering around 55-60% accuracy.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_00
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 4 Experiments ('Perception and grounding improve with scale')
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_013
+  text: 'Performance collapses from recognition/retrieval to synthesis: models that can recognize stitches
+    or retrieve plausible text still fail to synthesize coherent multi-step procedures.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_00
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 4 Experiments ('Perception and grounding improve with scale')
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_014
+  text: 'Project-level DSL synthesis is severely limited: even the strongest models (Claude, Gemini, and
+    Qwen2-VL-7B) produce only 5-8% executable programs.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_00
+    evidence_id: ev_007
+    relation: supports
+    locator: Section 4 Experiments ('Project-level DSL synthesis reveals severe')
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_015
+  text: 'Linguistic plausibility is decoupled from structural validity: models generate fluent, crochet-like
+    descriptions while failing to preserve the algorithmic structure needed for faithful pattern synthesis,
+    revealing limits in long-range symbolic reasoning that scaling and finetuning do not close.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_00
+    evidence_id: ev_008
+    relation: supports
+    locator: Section 4 Experiments ('Surface-level fluency does not imply') / Conclusion
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_016
+  text: The study created the first structured, open-source collection of crochet patterns designed for
+    machine-learning applications, pairing user-generated patterns with their CrochetPARADE translations.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_05
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_017
+  text: The authors evaluated baseline, few-shot, and fine-tuning approaches with LLMs for translating
+    crochet patterns into CrochetPARADE syntax.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_05
+    evidence_id: ev_002
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_018
+  text: The best result was fine-tuning DeepSeek-R1-Distill-Llama8b, which reached 74% accuracy on pattern-to-CrochetPARADE
+    translation.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_05
+    evidence_id: ev_003
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_019
+  text: The work frames LLM-assisted translation as a way to bridge the gap between standard crochet notation
+    and CrochetPARADE's non-intuitive syntax, lowering the barrier for novice crocheters.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_05
+    evidence_id: ev_004
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_020
+  text: The paper motivates the work by noting that crochet pattern creation and modification is challenging
+    for novices because of the spatial reasoning and structural stitch understanding it requires.
+  materiality: background
+  claim_type: causal
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_05
+    evidence_id: ev_005
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_021
+  text: The paper is a peer-reviewed AAAI Symposium Series publication (Vol.6 No.1, pp.200-208, published
+    2025-08-01, DOI 10.1609/aaaiss.v6i1.36054) in the Human-AI Collaboration track.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_05
+    evidence_id: ev_006
+    relation: supports
+    locator: Citation / metadata (AAAI OJS landing page)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_022
+  text: The plan splits the work into two research tracks - a forward Pattern->3D preview and an inverse
+    3D-object->pattern synthesizer - and treats the 3D preview as structural geometry first (not yarn-physics)
+    and the inverse track as amigurumi-first.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_06
+    evidence_id: ev_001
+    relation: supports
+    locator: Section 0) TL;DR
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_023
+  text: The plan explicitly scopes the 3D preview as structural geometry (graph/mesh) before yarn-physics
+    and the inverse generator as amigurumi-first with watertight mesh, seed point, and stitch size.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_06
+    evidence_id: ev_002
+    relation: supports
+    locator: Section 0) TL;DR (track framing)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_024
+  text: 'The Crochet IR validation spec names three explicit rule classes: stitch-count invariants per
+    round, increase/decrease legality, and piece-closure constraints.'
+  materiality: background
+  claim_type: causal
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_06
+    evidence_id: ev_003
+    relation: supports
+    locator: Section B2) Workstream 2 - Crochet IR (Validation rules)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_025
+  text: Inverse-engine preconditions are a closed (watertight) triangle mesh plus a user-selected seed
+    point and target stitch size/gauge assumptions.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_06
+    evidence_id: ev_004
+    relation: supports
+    locator: 'Section A2) End state: 3D Object -> Pattern (Inputs)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_026
+  text: The inverse generator must guarantee no impossible stitch-count transitions and a bounded (manageable)
+    increase/decrease rate per round as a hard output constraint.
+  materiality: background
+  claim_type: causal
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_06
+    evidence_id: ev_005
+    relation: supports
+    locator: Section A2) Outputs - Guaranteed constraints
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_027
+  text: 'Proposed inverse-engine acceptance metrics are shape distance versus the target mesh plus pattern-complexity
+    metrics: max inc/dec rate per round, total rounds, and stitch-count variance.'
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_06
+    evidence_id: ev_006
+    relation: supports
+    locator: Section B4) Workstream 4 - Evaluation plan (Score)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_028
+  text: Topological-correctness acceptance for the forward visualizer requires a consistent stitch graph
+    with no broken loops and correct stitch counts per round.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_06
+    evidence_id: ev_007
+    relation: supports
+    locator: Section A1) Acceptance criteria - Topological correctness
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_029
+  text: The plan flags the 'PDF importer trap' (general NL parsing is a quagmire, so restrict to structured
+    authoring/import templates) and gauge/tension variability as primary risks, reinforcing a narrow validator-gated
+    structured-IR approach.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_06
+    evidence_id: ev_008
+    relation: supports
+    locator: Section 6) Risks / Limits
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_030
+  text: 'The spec decomposes the 3D ambition into a four-level capability ladder: L0 (2D + counters +
+    highlighting), L1 (structural 3D preview), L2 (editable 3D with consistent stitch semantics), and
+    L3 (3D object to pattern synthesis).'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_07
+    evidence_id: ev_001
+    relation: supports
+    locator: Section 3 (Approach / Rationale), item 3 — capability levels
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_031
+  text: The spec states the differentiation wedge must be interactive 3D plus guided assembly, because
+    the market already has strong pattern-and-tracking apps such as Ribblr and My Row Counter.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_07
+    evidence_id: ev_002
+    relation: supports
+    locator: Section 0 (TL;DR) / Section 4.A (What already exists)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_032
+  text: The spec scopes the first 3D as structural geometry rather than yarn-physics realism, and warns
+    the product must be messaged as a structural preview because users may otherwise expect perfect realism.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_07
+    evidence_id: ev_003
+    relation: supports
+    locator: Section 4.B (The 3D visualizer) and Section 6 (Risks / Limits), '3D expectations'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_033
+  text: The Crochet intermediate representation sketch specifies units/gauge/hook/yarn-weight, pieces[],
+    rows[] as stitch ops with counts (e.g. sc x6, inc, dec, repeat), end-of-row stitch-count constraints
+    and checkpoints, and assembly join/placement markers.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_07
+    evidence_id: ev_004
+    relation: supports
+    locator: Section 5 (Supporting Details) — Crochet IR (sketch)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_034
+  text: Pattern IP/copyright is flagged as the number-one business landmine, arguing for designer opt-in,
+    licensing, or user-private imports rather than scrape-from-anywhere ingestion.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_07
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 6 (Risks / Limits), 'IP/copyright'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_035
+  text: The spec recommends amigurumi-first positioning (pieces, assembly, shaping, safety eyes, stuffing,
+    symmetry checks) as where 3D guidance delivers the most user value.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_07
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 7 (Next Actions / Alts) — 'Alt' positioning
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_036
+  text: The spec defers the inverse 3D-object-to-pattern generator to Phase 3, noting peer-reviewed work
+    generates amigurumi instructions from a closed 3D model, seed point, and stitch size, but warns 'works
+    in a paper' does not mean it delights in an app.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_07
+    evidence_id: ev_007
+    relation: supports
+    locator: Section 4.D (3D object to crochet pattern generator) and Section 7 Phase 3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_037
+  text: CrochetBench is a benchmark for evaluating multimodal LLMs on fine-grained, low-level procedural
+    reasoning in crochet, shifting emphasis from describing to doing.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_08
+    evidence_id: ev_001
+    relation: supports
+    locator: About section
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_038
+  text: The benchmark requires models to recognize stitches, select appropriate instructions, generate
+    pattern instructions, and produce compilable crochet procedures.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_08
+    evidence_id: ev_002
+    relation: supports
+    locator: About section (describing to doing)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_039
+  text: CrochetBench adopts the CrochetPARADE DSL as an intermediate representation and enables functional
+    evaluation through program execution.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_08
+    evidence_id: ev_003
+    relation: supports
+    locator: Key Features — Domain-Specific Language (DSL)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_040
+  text: Task A (CrochetBench-A) is stitch recognition, scored by F1/Precision/Recall, with a test size
+    of 6,009.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_08
+    evidence_id: ev_004
+    relation: supports
+    locator: Benchmark Tasks table — Task A (CrochetBench-A)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_041
+  text: Task D requires models to output a compilable program in the CrochetPARADE DSL, scored by Compilation
+    Success Rate against the validator, enabling executable evaluation rather than only generative training.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_08
+    evidence_id: ev_005
+    relation: supports
+    locator: 'Task D: Instruction-to-DSL Translation'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_042
+  text: Data is released as structured JSON test files (e.g., multiple-choice and project/step-level DSL
+    test sets) plus crochet patterns organized by project type.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_08
+    evidence_id: ev_006
+    relation: supports
+    locator: Data Collection — Using Pre-collected Data
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_043
+  text: The repository includes a Copyright Permission section (an email screenshot), indicating use of
+    the original pattern sources required explicit permission rather than carrying an open redistribution
+    license.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_08
+    evidence_id: ev_007
+    relation: supports
+    locator: Copyright Permission section
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_044
+  text: Task D validation requires cloning the external CrochetPARADE repository, and data is collected
+    via a CLI scraper keyed by project type (e.g., Hats).
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_08
+    evidence_id: ev_008
+    relation: supports
+    locator: Setup — Installation (CrochetPARADE) and Data Collection CLI
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_045
+  text: The method takes a written crochet pattern as input, translates it into a graph, and obtains a
+    force-directed graph layout that yields a 3D model matching the hand-crocheted result in shape and
+    size.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_03
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_046
+  text: The stated benefit is that designers can preview and adjust a pattern digitally without physically
+    crocheting it; the work is oriented toward amigurumi but could be extended to clothing or similar
+    crochet styles.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_03
+    evidence_id: ev_002
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_047
+  text: Each stitch is modeled as a graph node; horizontal edges encode sequential connections between
+    consecutive stitches and vertical edges encode working connections (a stitch worked into a stitch
+    below).
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_03
+    evidence_id: ev_003
+    relation: supports
+    locator: Section 4 (graph construction)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_048
+  text: 'The layout adapts Isenburg et al.''s force-directed algorithm: a non-linear least-squares optimization
+    minimizing two energy functions (edge length and local curvature), since stuffing a crocheted shell
+    is treated as equivalent to inflating the planar graph.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_03
+    evidence_id: ev_004
+    relation: supports
+    locator: Section 4.2 The graph layout
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_049
+  text: The implementation uses the Ceres Solver library with a static blend weight λ = 0.65 for most
+    pieces (λ = 0.9 for the bunny head and body), and the linear solver is the most time-expensive part
+    of the application.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_03
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 4.2 (implementation parameters)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_050
+  text: 'Performance is limited: small patterns converge in seconds (bunny legs at 318 stitches and arms
+    at 264 stitches in under 5s), but the bunny head (798 stitches) and body (708 stitches) failed to
+    converge even after more than two minutes.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_03
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 5.3 Performance
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_051
+  text: The authors released their source code as an open repository, providing a usable reference implementation
+    of a stitch-graph plus force-directed embedding forward engine.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_03
+    evidence_id: ev_007
+    relation: supports
+    locator: Section 3 Background (footnote / repo link)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_052
+  text: Crochet remains largely manual and, unlike knitting or weaving, is barely supported by domain-specific
+    digital tooling for authoring new pattern instructions.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_11
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract, opening
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_053
+  text: Existing crochet tools are constrained by underlying pattern languages that are either ambiguous
+    or limited in expressiveness, so authoring requires substantial manual effort and can yield incomplete
+    or ambiguous instructions.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_11
+    evidence_id: ev_002
+    relation: supports
+    locator: Abstract, problem statement
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_054
+  text: The paper proposes a first visual, domain-specific, graph-based language for representing crochet
+    patterns.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_11
+    evidence_id: ev_003
+    relation: supports
+    locator: Abstract, contribution
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_055
+  text: The language is realized in a prototype editor that supports authoring patterns in 2D and viewing
+    them in 3D, demonstrating domain-specific tool support.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_11
+    evidence_id: ev_004
+    relation: supports
+    locator: Abstract, tooling
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_056
+  text: A user study showed the proposed language lets designers express both 2D and 3D patterns and removes
+    ambiguities present in current standard crochet notations.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_11
+    evidence_id: ev_005
+    relation: supports
+    locator: Abstract, evaluation
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_057
+  text: The work was published at the 2022 ACM SIGPLAN International Symposium on New Ideas, New Paradigms,
+    and Reflections on Programming and Software (Onward!/SPLASH 2022), framing crochet pattern representation
+    as a programming-language design problem.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_11
+    evidence_id: ev_006
+    relation: supports
+    locator: ACM landing page / SPLASH 2022 program metadata
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_058
+  text: Crochet fabricates a 3D surface from yarn by interlacing loops formed with a special hook.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_10
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract, para 1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_059
+  text: Standard abstract pictorial crochet notation does not directly show the yarn layout of stitches,
+    hindering parsing, visualization, and computational design.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_10
+    evidence_id: ev_002
+    relation: supports
+    locator: Abstract, para 1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_060
+  text: The paper represents a crochet pattern in the stitch-mesh paradigm as a library of tiles where
+    each tile holds yarn geometry and tiles connect along their edges.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_10
+    evidence_id: ev_003
+    relation: supports
+    locator: Abstract, para 2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_061
+  text: To adapt stitch meshes to crochet, the authors introduce a special edge type capturing the 'current
+    loop' held on the hook during fabrication.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_10
+    evidence_id: ev_004
+    relation: supports
+    locator: Abstract, para 2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_062
+  text: The authors build a library of mesh face types that model commonly-used crochet stitches.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_10
+    evidence_id: ev_005
+    relation: supports
+    locator: Abstract, para 2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_063
+  text: The richness of crochet stitch faces is illustrated with examples including patterns generated
+    from 3D models, in a peer-reviewed SCF '20 paper by Guo, Lin, Narayanan, and McCann.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_10
+    evidence_id: ev_006
+    relation: supports
+    locator: Abstract, para 2 (closing) / Citation
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_064
+  text: AmiGo takes a closed manifold triangle mesh, a single user-specified seed vertex, and a stitch
+    width w, and outputs human-readable crochet instructions for the model.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_09
+    evidence_id: ev_001
+    relation: supports
+    locator: Section 2.1 Background and Notations (Representation)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_065
+  text: The method builds a Crochet Graph G=(S, R union C) whose vertices are stitch tops/bases, with
+    column edges C as stitch stems connecting rows and row edges R ordering bases within a row.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_09
+    evidence_id: ev_002
+    relation: supports
+    locator: Section 2.2 The Crochet Graph (Representation)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_066
+  text: Row ordering is induced by the geodesic distance function f(v)=d(v,s) from the seed (isolines
+    of f are rows), and an optimized perpendicular function g orders stitches within each row.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_09
+    evidence_id: ev_003
+    relation: supports
+    locator: Section 4 (Mesh to Crochet Graph), row-ordering paragraph; geodesic seed function
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_067
+  text: AmiGo uses only three simple stitches - single crochet (sc), increase inc(x), and decrease dec(x)
+    - and compresses instructions via loop folding into notation such as (sc, inc, 2sc)*3.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_09
+    evidence_id: ev_004
+    relation: supports
+    locator: Section 2.1 Background; Observation 2.3; Section 5 (loop folding)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_068
+  text: Branching shapes are segmented automatically by slicing along the isolines of the saddle points
+    of the seed distance function, and segments are joined with the join-as-you-go method so no additional
+    sewing is required.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_09
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 7.2 Branching (Obstructions to crochetability); Section 8 segmentation
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_069
+  text: AmiGo was evaluated on 11 models ranging 30-60 rows, 1-8 segments, and 365-3,670 stitches, with
+    running times of 0.2-6.9 minutes measured on a desktop with an Intel Core i7.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_09
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 9.1 Implementation Details, Table 2 (Statistics for the crocheted models)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_070
+  text: On the 4-way instruction-selection task, weaker VLMs sit near the 25% chance level (BLIP-2 0.2562,
+    Gemma 3 0.2494) while top open-source Qwen2-VL reaches 0.4196 and GPT-4o leads at 0.5811.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_01
+    evidence_id: ev_001
+    relation: supports
+    locator: Table 4 / Section 3.2 Results (Instruction Selection, 4-way multiple choice)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_071
+  text: At step-level DSL compilation, Claude achieves the highest valid (compilation success) rate at
+    52.1%, with DeepSeek-VL and Qwen2-VL the strongest open-source models.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_01
+    evidence_id: ev_002
+    relation: supports
+    locator: Section 3.4.1 / Table 6 (Step-level DSL compilation, Task D, 119 examples)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_072
+  text: At project-level compilation, open-source Qwen2-VL leads with a 21.0% valid rate and strong partial-executable
+    rate, surpassing all closed-source systems.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_01
+    evidence_id: ev_003
+    relation: supports
+    locator: Section 3.4.2 Results / Table 7 (Project-level verification, 100 examples)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_073
+  text: 'The two model families fail differently: open models commit syntax errors such as undefined stitches
+    and malformed brackets, while closed models emit syntactically valid but semantically inconsistent
+    programs.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_01
+    evidence_id: ev_004
+    relation: supports
+    locator: Section 4 Discussion (failure-mode analysis); Table 8 project-level error distribution
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_074
+  text: The authors conclude that gains on this task may come from architecture or training that captures
+    long-range dependencies and stateful operations, not from raw scaling.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_01
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 4 Discussion (concluding paragraph)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_075
+  text: Instruction-generation absolute scores are uniformly low, with the best model (Gemini 2.5 Flash-Lite)
+    scoring BLEU 0.0482, ROUGE-L 0.2583, and ChrF 30.20.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_01
+    evidence_id: ev_006
+    relation: supports
+    locator: Table 5 (Instruction Generation; BLEU / ROUGE-L / ChrF)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_076
+  text: CrochetPARADE is a platform for creating, visualizing, and analyzing both 2D and 3D crochet patterns.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_04
+    evidence_id: ev_001
+    relation: supports
+    locator: Introduction > Overview
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_077
+  text: It uses a custom language grammar (DSL) to define stitches and stitch patterns, aiming to avoid
+    the ambiguities of plain-English crochet instructions.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_04
+    evidence_id: ev_002
+    relation: supports
+    locator: Introduction > Overview
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_078
+  text: The system parses and checks any user-provided pattern for correctness, then builds a virtual
+    model that is rendered in 3D.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_04
+    evidence_id: ev_003
+    relation: supports
+    locator: Introduction > Overview
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_079
+  text: It provides structural validation feedback by identifying overly loose or tight stitches so users
+    can swap them before crocheting, reducing the need for blocking.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_04
+    evidence_id: ev_004
+    relation: supports
+    locator: Introduction > Overview
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_080
+  text: Interactive 3D features include rotate/zoom/pan, animating the pattern-creation process, per-stitch
+    info on hover, and export to 3D files for Blender.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_04
+    evidence_id: ev_005
+    relation: supports
+    locator: Introduction > Overview
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_081
+  text: All calculations run locally on the user's device with no data collected to a central server or
+    transmitted over the internet, supporting privacy and on-device runtime feasibility.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw016_04
+    evidence_id: ev_006
+    relation: supports
+    locator: Introduction > Overview
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf01
+  text: 'CrochetBench''s headline empirical result is a monotonic capability collapse along its four-task
+    ladder: best stitch recognition F1 ~60.94% (Claude Sonnet 4) and instruction selection ~55-60% degrade
+    to near-zero usable output at project-level DSL synthesis, where even the strongest models (Claude,
+    Gemini, Qwen2-VL-7B) emit only 5-8% executable programs.'
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_008
+    - clm_012
+    - clm_013
+    - clm_014
+    - clm_037
+    - clm_038
+    - clm_040
+    - clm_070
+    - clm_071
+    - clm_072
+    reasoning_summary: Aligning the per-task scores (recognition F1 60.94%, selection 55-60%, step-level
+      compile 52.1% Claude, project-level 5-8% best / 21% Qwen2-VL) across the recognition->selection->generation->synthesis
+      ladder shows performance falling sharply precisely as the task requires multi-step procedural state,
+      which is the documented benchmark finding.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf02
+  text: 'CrochetBench''s most decision-relevant finding for KnitWit is that linguistic fluency is decoupled
+    from structural validity: models produce crochet-like prose while violating the very stitch-count,
+    transition, and closure invariants the app must guarantee, so generation quality cannot be judged
+    by reading the output and must be judged by execution against a validator.'
+  materiality: material
+  claim_type: causal
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_010
+    - clm_015
+    - clm_039
+    - clm_041
+    - clm_073
+    - clm_075
+    reasoning_summary: The fluency/validity decoupling (clm_015) plus uniformly low generation BLEU/ROUGE
+      (clm_075) plus the divergent failure modes where closed models emit syntactically valid but semantically
+      inconsistent programs (clm_073) directly imply that text-similarity inspection is insufficient and
+      only execution-based DSL evaluation (clm_010, clm_041) discriminates valid from invalid patterns.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf03
+  text: 'The enumerated generative failure-mode taxonomy for amigurumi maps to two empirically distinct
+    families documented by CrochetBench: open-model syntactic failures (undefined/illegal stitches, malformed
+    brackets/repeats) and closed-model semantic failures (compilable but state-inconsistent programs that
+    break stitch-count continuity, unbounded inc/dec, broken loop topology, and non-closing pieces), and
+    the KnitWit IR validation rule classes target the second, harder family.'
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_024
+    - clm_026
+    - clm_028
+    - clm_073
+    reasoning_summary: CrochetBench's two-family failure split (clm_073) is matched against the three
+      IR rule classes (clm_024) and the inverse-engine hard constraints (clm_026, clm_028); syntactic
+      errors are caught by a grammar/parser, but semantic state violations (the closed-model failure mode)
+      require exactly the stitch-count/inc-dec/closure invariants the spec names.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf04
+  text: 'The single most de-risking finding is that the recognition-to-synthesis gap is an architecture/training
+    problem, not a scaling problem: closed-source scale does not win project-level synthesis (open-source
+    Qwen2-VL leads at ~21% vs 5-8% for the strongest closed models), so an amigurumi-first app cannot
+    expect a near-term larger general model to deliver end-to-end pattern generation that satisfies structural
+    rules.'
+  materiality: material
+  claim_type: causal
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_014
+    - clm_015
+    - clm_072
+    - clm_074
+    reasoning_summary: Qwen2-VL (open, smaller) leading project-level compilation over closed frontier
+      models (clm_072), combined with the authors' explicit conclusion that gains come from long-range/stateful
+      modeling rather than scale (clm_074) and that finetuning does not close the gap (clm_015), implies
+      waiting for a bigger general model is not a viable product strategy.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf05
+  text: 'Viable near-term role recommendation: ML/VLM generation should be positioned as assist-then-deterministic-validator
+    (drafting plus author-in-the-loop), never as autonomous end-to-end synthesis, because a 5-8% executable
+    rate at project level means roughly 92-95% of unvalidated raw generations would be structurally broken
+    if shipped directly to a crocheter.'
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_014
+    - clm_015
+    - clm_026
+    - clm_029
+    - clm_036
+    reasoning_summary: A 5-8% project-level executable rate (clm_014) plus the PDF-importer-trap risk
+      and validator-gated structured-IR posture (clm_029) plus the hard inverse-engine constraints (clm_026)
+      and Phase-3 deferral (clm_036) jointly imply the only safe deployment is generation gated behind
+      a deterministic validator, matching the spec's Phase-3 'works in a paper does not mean delights
+      in an app' caution.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf06
+  text: 'Recommendation: the deterministic mesh-to-pattern engine (AmiGo''s geodesic-isoline plus sc/inc/dec
+    plus curvature-preprocessing pipeline) should be KnitWit''s primary inverse generator, with VLM generation
+    reserved for the LLM-translation and authoring-assist surfaces, because AmiGo provably restricts output
+    to legal sc/inc/dec transitions on closed meshes whereas no learned model yet produces structurally
+    valid project-level patterns reliably.'
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_001
+    - clm_003
+    - clm_004
+    - clm_014
+    - clm_026
+    - clm_064
+    - clm_067
+    reasoning_summary: AmiGo's input/output contract (clm_001, clm_064), its restriction to sc/inc/dec
+      and beginner-friendly construction (clm_003, clm_067), and curvature-based crochetability enforcement
+      (clm_004) deliver structurally valid patterns by construction, which the failure-mode evidence (clm_014)
+      shows learned generation cannot, so the deterministic engine is the lower-risk primitive for the
+      spec's hard constraints (clm_026).
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf07
+  text: 'Dataset/benchmark inventory verdict: for an amigurumi app, CrochetBench (6,085 patterns / 55
+    categories, JSON plus DSL, permission-gated, no open redistribution license) is best as a validator-and-evaluation
+    harness rather than a generator training corpus, the Dias-Karim CrochetPARADE-paired collection is
+    the most usable open generator-finetuning set, and the Greer-Mould force-directed repo (CC-BY, code
+    released) is the most reusable forward-engine reference.'
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_008
+    - clm_016
+    - clm_041
+    - clm_043
+    - clm_044
+    - clm_051
+    reasoning_summary: CrochetBench's permission-gated status and execution-based Task D (clm_008, clm_043,
+      clm_044, clm_041) suit evaluation more than training redistribution; the Dias-Karim first open structured
+      collection paired with CrochetPARADE (clm_016) is the open finetuning candidate; the Greer-Mould
+      released source (clm_051) is the reusable forward-engine code.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf08
+  text: 'Licensing decision rule: KnitWit must treat the CMU stitch-mesh work (Guo 2020, ''Not licensed
+    for use with or for AI'') and CrochetBench/Yarnspirations data (explicit copyright-permission gate,
+    no open license) as study-only / non-ingestible, and may only build training or product pipelines
+    on CC-BY or explicitly open assets such as the Greer-Mould repo and the Dias-Karim open collection.'
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_043
+    - clm_051
+    - clm_063
+    - clm_034
+    reasoning_summary: The CrochetBench copyright-permission gate (clm_043), the CMU AI-use restriction
+      noted on the stitch-mesh source (clm_063), the released Greer-Mould code (clm_051), and the spec's
+      IP-as-number-one-landmine posture (clm_034) jointly produce a clear adopt/study/avoid licensing
+      rule that protects the product from the top business risk.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf09
+  text: 'Academic-feasibility vs product-readiness verdict: deterministic mesh-to-amigurumi (AmiGo) and
+    pattern-to-3D forward preview (Greer-Mould, Digital Crochet, CrochetPARADE) are demonstrated in peer-reviewed/open
+    work and are on the ''shown to work'' side, but none is shown product-ready for a mobile app, since
+    AmiGo and Greer-Mould run multi-minute desktop solves and Greer-Mould failed to converge on ~700-800-stitch
+    pieces after 2+ minutes.'
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_006
+    - clm_050
+    - clm_055
+    - clm_069
+    - clm_078
+    reasoning_summary: AmiGo's 0.2-6.9 min desktop i7 runtimes (clm_006, clm_069) and Greer-Mould's non-convergence
+      on large pieces (clm_050) show desktop-research feasibility but not mobile/interactive readiness,
+      while the editor prototypes (clm_055, clm_078) are demos, not shipped mobile products.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf10
+  text: 'Contradiction (decision impact: medium): the AAAI Dias-Karim result reports 74% accuracy for
+    fine-tuned DeepSeek-R1-Distill-Llama8b on pattern-to-CrochetPARADE translation, which looks far rosier
+    than CrochetBench''s 5-8% project-level executable rate; the likely resolution is task-difference
+    (constrained translation of an existing well-formed pattern vs end-to-end synthesis from images/specs),
+    so the optimistic figure does NOT license autonomous generation.'
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_014
+    - clm_017
+    - clm_018
+    - clm_019
+    reasoning_summary: The 74% figure (clm_018) is for translating an already-authored pattern into DSL
+      (clm_017, clm_019), a far narrower task than CrochetBench's synthesis from scratch (clm_014); reconciling
+      the two means translation-assist is tractable but generation-from-nothing is not, which is the load-bearing
+      distinction for product scope.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf11
+  text: 'Implication: KnitWit should adopt CrochetPARADE-style execution-based validation (parse, build
+    virtual model, check stitch tightness/looseness and closure) as the deterministic gate behind any
+    generation, because CrochetBench''s choice of compilation-success-rate as its primary metric and CrochetPARADE''s
+    own correctness-checking demonstrate execution is the only reliable correctness signal for crochet
+    structure.'
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_010
+    - clm_041
+    - clm_078
+    - clm_079
+    reasoning_summary: CrochetBench's execution/compilation metric (clm_010, clm_041) and CrochetPARADE's
+      parse-check-build-validate loop with loose/tight stitch feedback (clm_078, clm_079) converge on
+      execution-based validation as the product's correctness gate.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf12
+  text: 'IR alignment recommendation: the spec''s Crochet IR v0.1 (op enum mr|ch|slst|sc|hdc|dc|tr|inc|dec|repeat|color_change|fasten_off|attach,
+    expected_stitch_count per round, visual_hint.shape_role, assembly[]) is the right shared baseline
+    because expected_stitch_count operationalizes CrochetBench''s failed stitch-count invariant, the inc/dec
+    ops match AmiGo''s minimal sc/inc/dec stitch set, and shape_role maps onto AmiGo''s curvature/geodesic
+    round semantics; the only addition needed is an explicit per-round inc/dec-rate bound field to encode
+    the hard crochetability constraint.'
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_024
+    - clm_026
+    - clm_027
+    - clm_033
+    - clm_067
+    reasoning_summary: The IR's expected_stitch_count and ops enum (clm_033) directly encode the spec's
+      three rule classes (clm_024) and AmiGo's sc/inc/dec set (clm_067); adding a per-round inc/dec-rate
+      bound makes the bounded-shaping hard constraint (clm_026) and acceptance metric (clm_027) machine-checkable.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf13
+  text: 'Decision-gate framing: the gathered B1 evidence (CrochetBench, AmiGo, Greer-Mould, Digital Crochet/Seitz,
+    stitch meshes/Guo, CrochetPARADE) is sufficient to pass G1 (evidence quality) and supports a conditional
+    G2 (Crochet-IR viability), but G3 (pattern-to-3D), G4 (mesh-to-pattern primitive), and G5 (MVP) cannot
+    be cleared by literature alone and require the prototype experiments, since every G3/G4 claim rests
+    on desktop-research artifacts with unmeasured mobile behavior.'
+  materiality: material
+  claim_type: prediction
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_008
+    - clm_024
+    - clm_045
+    - clm_050
+    - clm_064
+    - clm_069
+    reasoning_summary: Strong primary sources across all workstreams satisfy G1; the IR rule classes plus
+      CrochetPARADE/Greer-Mould evidence (clm_024, clm_045) make G2 conditionally passable; but desktop-only
+      runtimes and non-convergence (clm_050, clm_069) mean G3/G4/G5 need empirical prototypes, not more
+      reading.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf14
+  text: 'Experiment-prioritization recommendation: the two highest-leverage next prototypes are EXP-002
+    stitch-count validator and EXP-003 repeat expansion, because they directly instrument the exact invariant
+    CrochetBench shows models violating; IR-to-stitch-graph (EXP-004) and primitive-mesh-to-rounds (EXP-008)
+    then de-risk the AmiGo-style inverse primitive that the literature only proves on desktop.'
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_014
+    - clm_024
+    - clm_026
+    - clm_028
+    - clm_064
+    reasoning_summary: Because the documented failures are stitch-count/transition/closure violations
+      (clm_014, clm_024, clm_026, clm_028), a validator plus repeat-expansion prototype reduces the most
+      uncertainty fastest; mesh-to-rounds then tests whether the AmiGo primitive (clm_064) survives outside
+      a desktop research setting.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf15
+  text: 'Risk (mobile performance/crochetability, severity: high, likelihood: medium): a faithful pattern-to-3D
+    preview or mesh-to-pattern solve may be infeasible at interactive mobile speed, since Greer-Mould''s
+    force-directed layout failed to converge on 700-800-stitch pieces after 2+ minutes on a desktop and
+    AmiGo took up to 6.9 minutes; mitigation is server-side or precomputed solves plus a coarse on-device
+    structural-graph approximation messaged explicitly as a structural preview, not realtime physics.'
+  materiality: material
+  claim_type: prediction
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_032
+    - clm_050
+    - clm_069
+    - clm_081
+    reasoning_summary: Greer-Mould non-convergence (clm_050) and AmiGo 6.9-min runtimes (clm_069) signal
+      heavy compute; the spec's structural-preview messaging (clm_032) and CrochetPARADE's on-device locality
+      (clm_081) inform the precompute/approximate mitigation.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf16
+  text: 'Risk (UX trust, severity: high, likelihood: high): because models emit fluent-but-wrong patterns
+    and the preview is only structural geometry, an amigurumi user could follow a confidently-rendered
+    pattern that does not close or whose stitch counts are illegal; mitigation is to never surface an
+    unvalidated generation, attach per-round validator status and confidence indicators, and message previews
+    as approximate, aligning with the spec''s structural-preview and validation-feedback posture.'
+  materiality: material
+  claim_type: prediction
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_015
+    - clm_026
+    - clm_028
+    - clm_032
+    - clm_079
+    reasoning_summary: Fluent-but-invalid generation (clm_015) plus structural-not-realistic preview (clm_032)
+      creates a trust hazard; the mitigation reuses the hard closure/stitch-count constraints (clm_026,
+      clm_028) and CrochetPARADE-style loose/tight feedback (clm_079) as visible per-round status.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf17
+  text: 'B1 baseline framing: the six anchor sources cleanly partition the problem space and let KnitWit
+    skip re-surveying forward/inverse rendering prior art - CrochetBench supplies the empirical limits
+    of learned generation, AmiGo the deterministic inverse mesh-to-pattern primitive, Greer-Mould the
+    open forward pattern-to-3D engine, Digital Crochet/Seitz and CrochetPARADE the DSL/visual-language
+    design baseline, and stitch meshes/Guo the yarn-geometry representation ceiling that the spec deliberately
+    defers.'
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_008
+    - clm_045
+    - clm_054
+    - clm_057
+    - clm_060
+    - clm_064
+    - clm_076
+    reasoning_summary: Each anchor occupies a distinct role - benchmark limits (clm_008), inverse primitive
+      (clm_064), forward engine (clm_045), visual/DSL language (clm_054, clm_057, clm_076), and yarn-mesh
+      ceiling (clm_060) - so together they form a complete literature baseline without needing additional
+      rendering-prior-art surveying.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_spec01
+  text: 'Speculation: a domain-tuned small model fine-tuned on a CrochetPARADE-paired open corpus, constrained
+    to emit only the IR op-enum and gated by an execution validator, could plausibly lift product-usable
+    amigurumi generation well above the current 5-8% project-level rate within 1-2 years - but this remains
+    unproven for an interactive mobile product and is forward-looking.'
+  materiality: material
+  claim_type: prediction
+  status: speculation
+  confidence: low
+  sources: []
+  inference_basis:
+    from_claims: []
+    reasoning_summary: Extrapolates from the Dias-Karim 74% finetuned-translation result and CrochetBench's
+      architecture-not-scale conclusion toward constrained-decoding plus validator gating; speculative
+      because no such combined mobile system has been evaluated and the project has built no prototypes.
+  report_locations: []
+  reviewer_notes: ''
+unresolved_questions: []

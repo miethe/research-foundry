@@ -1,0 +1,70 @@
+id: ext_20260614_8aa78aa3_001
+source_card_id: src_20260614_rib003_07
+created_at: '2026-06-14T23:56:53-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The paper targets the under-explored problem of LLM-based document inconsistency detection by
+    investigating LLMs' evidence-extraction capabilities, not just binary contradiction yes/no.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The two core contributions are new comprehensive evidence-extraction metrics and a redact-and-retry
+    framework with constrained filtering that substantially improves evidence-extraction performance over
+    other prompting methods.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The authors release a new semi-synthetic dataset built for evaluating evidence extraction, alongside
+    strong experimental results.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The inconsistency-detection task is framed as both classifying whether an inconsistency is present
+    and identifying the specific set of inconsistent sentences (evidence localization).
+  locator: Section 3 — Metrics for Evidence Extraction
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The released semi-synthetic dataset, ContraDocPaired, is constructed from ContraDoc and adds datapoints
+    with an evidence set of size two, addressing ContraDoc's limitation of only containing size-one evidence
+    sets.
+  locator: Section 5.1 — ContraDocPaired
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Experiments use two LLMs at temperature 0 — GPT-4o (designated strong) and LLaMA3.2-90B (designated
+    weak).
+  locator: Section 5.1 — Dataset and Models
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The proposed redact-and-retry with constrained filtering (RnR+CF) is reported as the best-performing
+    method across both datasets, both LLMs, and all metrics.
+  locator: Section 5.2 — Comparison of different methods
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section 5.1 — Dataset and Models
+contradictions_or_cautions:
+- text: Specific quantitative result numbers (precision/recall/hit-rate tables) could not be confirmed
+    verbatim from the compressed PDF body and are therefore omitted; only metric directions and the qualitative
+    "best performer" claim are recorded. Source is an arXiv preprint (v2, revised April 2026), not a final
+    venue-published version.
+  locator: card/limitations

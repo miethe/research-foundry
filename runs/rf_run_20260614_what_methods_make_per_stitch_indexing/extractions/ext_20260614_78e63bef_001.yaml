@@ -1,0 +1,88 @@
+id: ext_20260614_78e63bef_001
+source_card_id: src_20260614_kw005_08
+created_at: '2026-06-14T21:46:07-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'The stitch graph encodes two distinct connection types: yarn connections (loops sequentially
+    adjacent on the needle) and loop connections (loops pulled through each other), which is the structural
+    basis for per-stitch indexing.'
+  locator: Section 3, Converting Knitting Patterns to Graphs
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: A Hamiltonian path encodes the stitch-creation order and the yarn's physical flow is recovered
+    as an Eulerian path derived from it, linking logical stitch index to physical yarn traversal.
+  locator: Section 3.1, Knittable Graphs
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The paper proposes a Desired Edge Length (DEL) metric defined as the root-mean-square of the relative
+    edge-length error, where 0 means perfect preservation of target lengths, giving a candidate per-stitch
+    correctness/drift measure.
+  locator: Section 6.2, Comparison Techniques
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Layout refinement uses three forces — an attractive/repulsive edge-length force, a collision force,
+    and a universal electrostatic repulsion — and any move that introduces an edge crossing is rejected
+    (the node is kept in place).
+  locator: Section 5.2, Safe Force-Directed Improvement
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Across seven real knitting patterns (90 to 1183 nodes) the proposed method beat SFDP, ImPrEd,
+    and KnitGrid on DEL; on Antique Diamonds it scored 0.07 versus 0.33 (SFDP), 0.55 (ImPrEd), and 0.20
+    (KnitGrid).
+  locator: Section 6, Evaluation / Table 3
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The exact-length layout is far slower than baselines (Antique Diamonds 25s vs SFDP 0.074s; Triangle-5
+    at 1539 nodes took 40,906s vs SFDP 1.01s), evidence it does not scale to interactive mobile use without
+    approximation.
+  locator: Section 6 / Table 4, Comparison of runtimes (seconds)
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_007
+  text: 'The authors'' stated motivation is to expedite error detection and pattern validation: visualizing
+    the generated pattern helps catch too many/too few stitches, adornments in the wrong spot, or an unintended
+    shape.'
+  locator: Introduction
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Section 6.2, Comparison Techniques
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section 6, Evaluation / Table 3
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section 6 / Table 4, Comparison of runtimes (seconds)
+contradictions_or_cautions:
+- text: A single-team arXiv preprint (v1, not stated as peer-reviewed); the DEL metric is proposed by
+    the authors, not an external standard.
+  locator: card/limitations
+- text: Runtime figures (e.g., 40,906s) come from the authors' own benchmark table and reflect their unoptimized
+    exact-length implementation, not a productized/interactive system.
+  locator: card/limitations
+- text: The ev_006 numeric runtimes are sourced from Table 4 but no single short verbatim sentence captures
+    them, so its quote is null (values are transcribed from the table, not paraphrased prose).
+  locator: card/limitations

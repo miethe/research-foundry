@@ -1,0 +1,24 @@
+id: ibom_research_20260614_sensitivity_aware_ai_routing_tier_policy
+intent_id: intent_research_20260614_sensitivity_aware_ai_routing_tier_policy
+created_at: '2026-06-14T20:50:46-04:00'
+snapshot_status: draft
+context_snapshot: 'Initial I-BOM for: Sensitivity-aware AI routing & tier policy for RF writeback targets'
+sources_seeded: []
+assumptions: []
+known_constraints: []
+tools_available:
+- claude_code
+- claude_agent_sdk
+- opencode
+- gpt_researcher
+- paperqa2
+- litellm
+model_policy:
+  extraction_profile: rf_extract_cheap
+  synthesis_profile: rf_synthesize_deep
+  verification_profile: rf_verify_balanced
+relevant_memory: []
+open_questions: []
+security_boundaries:
+- Do not mix personal and work-provided API keys in one run.
+- Do not send work-sensitive source content to non-approved providers.

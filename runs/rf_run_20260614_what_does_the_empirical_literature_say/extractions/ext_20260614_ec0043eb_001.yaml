@@ -1,0 +1,74 @@
+id: ext_20260614_ec0043eb_001
+source_card_id: src_20260614_rib002_08
+created_at: '2026-06-14T14:17:15-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Citations grounds Claude's answers in user-provided source documents, returning references to
+    the exact sentences and passages used to generate each response (sentence-level granularity).
+  locator: Lead / feature overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: When enabled, the API chunks user-provided source documents into sentences upfront and passes
+    those chunks plus context to the model with the query, so citations are produced at generation time
+    rather than retrofit.
+  locator: How it works / document processing
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Anthropic's internal evaluations report that built-in Citations increases recall accuracy by up
+    to 15% compared with most custom citation implementations.
+  locator: Internal evaluations
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Customer Endex reported that adopting Citations reduced source hallucinations and formatting issues
+    from 10% to 0% and increased references per response by 20%.
+  locator: Customer testimonial (Endex)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Citations is generally available (June 23, 2025) for Claude 3.5 Sonnet and Claude 3.5 Haiku on
+    the Anthropic API and Google Cloud Vertex AI, with Amazon Bedrock support added June 30, 2025.
+  locator: Availability
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Users are not charged for the output tokens that return the quoted source text itself.
+  locator: Pricing
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Internal evaluations
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Customer testimonial (Endex)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Availability
+contradictions_or_cautions:
+- text: Internal evaluation methodology not disclosed
+  locator: card/trust
+- text: Customer-reported figures are anecdotal
+  locator: card/trust
+- text: 'Vendor (first-party) announcement with product/marketing framing; the internal-evaluation methodology
+    behind the "up to 15%" recall figure is not disclosed, and the Endex 10%->0% figure is a single anecdotal
+    customer report. Recency: published mid-2025; model/platform availability may have evolved since.'
+  locator: card/limitations

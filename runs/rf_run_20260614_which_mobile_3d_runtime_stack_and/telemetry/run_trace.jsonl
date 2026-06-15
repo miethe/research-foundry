@@ -1,0 +1,13 @@
+{"stage": "plan", "ts": "2026-06-14T17:08:38-04:00", "run_id": "rf_run_20260614_which_mobile_3d_runtime_stack_and"}
+{"ts": "2026-06-14T22:59:33-04:00", "stage": "extract", "run_id": "rf_run_20260614_which_mobile_3d_runtime_stack_and", "count": 12}
+{"ts": "2026-06-14T22:59:36-04:00", "stage": "claim_map", "run_id": "rf_run_20260614_which_mobile_3d_runtime_stack_and", "claims_total": 72}
+{"ts": "2026-06-14T23:04:55-04:00", "stage": "synthesize", "run_id": "rf_run_20260614_which_mobile_3d_runtime_stack_and", "report_id": "report_20260614_which_mobile_3d_runtime_stack_and", "claims_cited": 89}
+{"ts": "2026-06-14T23:13:06-04:00", "stage": "verify", "run_id": "rf_run_20260614_which_mobile_3d_runtime_stack_and", "exit_code": 2, "passed": false}
+{"ts": "2026-06-14T23:13:06-04:00", "stage": "verify", "run_id": "rf_run_20260614_which_mobile_3d_runtime_stack_and", "exit_code": 2, "passed": false}
+{"ts": "2026-06-14T23:13:37-04:00", "stage": "verify", "run_id": "rf_run_20260614_which_mobile_3d_runtime_stack_and", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T23:13:37-04:00", "stage": "verify", "run_id": "rf_run_20260614_which_mobile_3d_runtime_stack_and", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T23:14:07-04:00", "stage": "verify", "run_id": "rf_run_20260614_which_mobile_3d_runtime_stack_and", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T23:14:56-04:00", "stage": "verify", "run_id": "rf_run_20260614_which_mobile_3d_runtime_stack_and", "exit_code": 0, "passed": true}
+{"stage": "bundle", "ts": "2026-06-14T23:14:56-04:00", "run_id": "rf_run_20260614_which_mobile_3d_runtime_stack_and", "bundle_id": "bundle_20260614_intent_research_20260614_which_mobile_3d", "verified": true}
+{"stage": "ccdash_event", "ts": "2026-06-14T23:15:06-04:00", "run_id": "rf_run_20260614_which_mobile_3d_runtime_stack_and", "event_id": "exec_20260614_intent_research_20260614_which_mobile_3d"}
+{"stage": "writeback", "ts": "2026-06-14T23:15:06-04:00", "run_id": "rf_run_20260614_which_mobile_3d_runtime_stack_and", "requires_review": false}

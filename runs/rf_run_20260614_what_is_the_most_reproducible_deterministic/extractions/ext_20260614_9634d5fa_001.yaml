@@ -1,0 +1,96 @@
+id: ext_20260614_9634d5fa_001
+source_card_id: src_20260614_kw006_07
+created_at: '2026-06-14T22:09:16-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The program's inputs are a function f(x) (positive on (a,b), with f'(x) defined on [a,b]) rotated
+    about the x-axis, x-bounds a and b, stitch gauge S (stitches per 4 in), row gauge R (rows per 4 in),
+    and a scale (inches per unit), confining scope to axially symmetric shapes.
+  locator: Inputs & Crochet Terminology
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Row landmarks are placed by dividing the total arclength, computed as L = (scale*R/4) * integral_a^b
+    sqrt(1 + (f'(x))^2) dx (measured in rows), with the worked example yielding L ~= 16.162 rows.
+  locator: Identifying Row Landmarks
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Each row landmark x_i is found by solving the cumulative-arclength equation with a 'guess and
+    check' protocol accurate to two decimal places, always measuring arclength from x0 = a to mitigate
+    rounding error.
+  locator: Identifying Row Landmarks (landmark-solving)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'Stitch count per row is deterministic: s(i) = round(2*pi * scale * (S/4) * f(x_i)), i.e., the
+    circumference at that height times the stitch gauge.'
+  locator: Calculating Number of Stitches in Each Row
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The program flags an error at the top of the pattern when the stitch count between rows more than
+    doubles or more than halves (so Inc/Dec cannot accomplish the move), and recommends adding a positive
+    constant to f(x) or changing scale/multiplying the function.
+  locator: Program Limitations > Steep Increases or Decreases
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Output is standard human crochet notation with per-row counts and totals; the worked example f(x)=x^3+2x^2-2x+4
+    over [-3,1], S=22, R=25, scale=0.18 produces rows 0-16 (17 rows) with stitch counts ranging from 6
+    up to 51 and back to 31.
+  locator: Output
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: 'The code is published and runnable: written in a Sage worksheet, freely accessible via CoCalc,
+    with the source in the GitHub repository github.com/meganmartinez/math_crochet.'
+  locator: Accessing the Code
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Inputs & Crochet Terminology
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Identifying Row Landmarks
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Identifying Row Landmarks (landmark-solving)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Calculating Number of Stitches in Each Row
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Output
+contradictions_or_cautions:
+- text: No explicit software license is stated in the paper text (AGPL-3.0 not confirmed from this source).
+  locator: card/trust
+- text: Scope limited to axially symmetric surfaces of revolution; no general mesh.
+  locator: card/trust
+- text: Scope is restricted to surfaces of revolution (circular cross-sections); no general mesh or segmentation.
+    The paper text does not state an explicit software license (the AGPL-3.0 claim from the original key
+    points could not be confirmed from this source). Numeric landmark solving is "guess and check" to
+    0.01, so features closer than 0.01 are not resolved.
+  locator: card/limitations

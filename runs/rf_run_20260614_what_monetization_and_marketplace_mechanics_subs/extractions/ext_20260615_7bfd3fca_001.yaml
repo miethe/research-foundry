@@ -1,0 +1,82 @@
+id: ext_20260615_7bfd3fca_001
+source_card_id: src_20260614_kw014_06
+created_at: '2026-06-15T10:22:36-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Ribblr's pattern sale fee ranges from FREE to 4% per sale, with the standard tier starting at
+    4%.
+  locator: RIBBLR FEES section, Sale fee line item
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Ribblr applies a minimum sale fee of 25 cents on patterns and 50 cents on finished makes (or local-currency
+    equivalent).
+  locator: RIBBLR FEES section, minimum sale fee sentence
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: A 50-cent designer royalty is collected on each finished-make sale and paid to the designer whose
+    pattern was used.
+  locator: RIBBLR FEES section, designer royalty sentence
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Through the $elFee program, sellers may be able to reduce their pattern sale fee to nil (0%).
+  locator: RIBBLR FEES section, $elFee sentence
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Tips carry a 5% tip service fee, and Stripe payment processing fees may be charged separately
+    on top.
+  locator: RIBBLR FEES section, Tip service fee line; PAYMENT PROCESSING
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Listing and the Ribbuild pattern-creation tool are free, as are US/UK pattern translation, smart
+    sizing, unit conversion, and photo/video uploads.
+  locator: RIBBLR FEES section, free-feature line items
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: RIBBLR FEES section, Sale fee line item
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: RIBBLR FEES section, minimum sale fee sentence
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: RIBBLR FEES section, designer royalty sentence
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: RIBBLR FEES section, $elFee sentence
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: RIBBLR FEES section, Tip service fee line; PAYMENT PROCESSING
+contradictions_or_cautions:
+- text: Fee tiers and amounts may change without notice
+  locator: card/trust
+- text: Stripe processing fees stated only as 'may charge' without exact rate
+  locator: card/trust
+- text: Vendor self-reported policy page; fee tiers and amounts may change without notice, and the exact
+    Stripe processing rate is not stated (only that Stripe "may charge" a fee).
+  locator: card/limitations

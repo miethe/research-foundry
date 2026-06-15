@@ -1,0 +1,63 @@
+id: ext_20260614_66f134f2_001
+source_card_id: src_20260614_rib018_02
+created_at: '2026-06-14T14:36:17-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: OWASP defines MCP scope creep as narrowly scoped agent/tool permissions expanding over time—via
+    convenience or configuration drift—until the agent holds broad or administrative privileges.
+  locator: Threat description (MCP02:2025)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The standard prescribes defining minimal per-agent permissions before deployment and mapping documented
+    intended actions to explicit scopes.
+  locator: Remediation control — Least Privilege by Design
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The control requires unique per-agent identities with credentials bound to the agent and session
+    context, explicitly disallowing shared global service accounts.
+  locator: Remediation control — Per-Agent Identity & Credential Binding
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The standard recommends issuing time-limited scopes/tokens per session and requiring revalidation
+    for long-running or recurring tasks.
+  locator: Remediation control — Expiry-Based & Just-in-Time (JIT) Access
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The control prescribes encoding permission policies as code (Rego, OPA, Terraform IAM) and enforcing
+    them in CI/CD pipelines.
+  locator: Remediation control — Policy-as-Code & Automated Enforcement
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The standard calls for periodic entitlement audits to detect scope expansions and alerting on
+    permission increases.
+  locator: Remediation control — Automated Entitlement Reviews & Drift Detection
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The control separates the authority to grant permissions from the authority to deploy or change
+    production, and requires human-in-the-loop approvals for non-routine privilege grants.
+  locator: Remediation control — Separation of Duties & Approval Flows
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Controls are stated at policy level without reference implementations or empirical efficacy data.
+  locator: card/trust
+- text: Controls are specified at the policy/standard level without reference implementations or empirical
+    efficacy data; this page is a threat-and-control taxonomy, not a measurement study.
+  locator: card/limitations

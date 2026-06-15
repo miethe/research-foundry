@@ -1,0 +1,138 @@
+run_id: rf_run_20260614_what_is_the_right_evaluation_protocol
+generated_at: '2026-06-14T22:38:34-04:00'
+contradictions:
+- source_card_id: src_20260614_kw007_01
+  text: Card built from the arXiv abstract + metadata; full PDF body not parsed.
+  locator: card/trust
+- source_card_id: src_20260614_kw007_01
+  text: Abstract makes qualitative claims of applicability without numeric fidelity metrics.
+  locator: card/trust
+- source_card_id: src_20260614_kw007_01
+  text: Card is built from the arXiv abstract and metadata only; the full PDF body (any in-paper quantitative
+    evaluation) was not parsed.
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_01
+  text: The abstract's success criterion is qualitative resemblance to the rigid input mesh ("similar
+    to the input geometry"), not a deformed/stuffed-state simulation or a numeric fidelity score; treat
+    applicability and "easily crochetable" as author claims, not measured metrics.
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_00
+  text: Evaluation is qualitative only; no quantitative shape-distance metric reported.
+  locator: card/trust
+- source_card_id: src_20260614_kw007_00
+  text: Method handles only closed surfaces (must be stuffable); segmentation can produce hard-to-crochet
+    thin segments; single-seed setup gives limited design freedom and does not account for model symmetry,
+    so low-resolution patterns may be non-symmetric. Evaluation is qualitative only -- no quantitative
+    shape-distance scoring is provided, which is an open gap for an evaluation protocol to add.
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_03
+  text: 'The source''s supplied key_points (F-score with tau=0.005/0.03, 200k/1,500k sampled points, precision/recall-within-tau
+    definitions) could NOT be confirmed in this v4 PDF; that F-score protocol is from a different paper
+    lineage. Those unverifiable claims were omitted. This card reports only the metrics actually present:
+    IoU, symmetric Chamfer distance (CD), and normal consistency (NC), all computed on 100,000 sampled
+    points.'
+  locator: card/trust
+- source_card_id: src_20260614_kw007_03
+  text: 'The source key_points supplied to this card (an F-score protocol with tau=0.005 for objects /
+    tau=0.03 for scenes, 200k/1,500k sampled points, and precision/recall-within-tau definitions) were
+    NOT found in this v4 PDF and could not be verified; that F-score-with-tau protocol belongs to a different
+    paper lineage. Those claims were omitted per the no-invention rule. This card reports only what the
+    actual source states: IoU, symmetric Chamfer distance, and normal consistency, all on 100,000 sampled
+    points.'
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_03
+  text: Quotes are reconstructed from a two-column PDF layout; equation in ev_003 is transcribed into
+    linear notation from the rendered formula. Numbers and metric names are verbatim-confirmed against
+    the source text.
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_04
+  text: Full text behind Wiley paywall; only the abstract was directly readable
+  locator: card/trust
+- source_card_id: src_20260614_kw007_04
+  text: Quantitative results and the explicit weighting equation are in the paywalled body and are not
+    quoted here
+  locator: card/trust
+- source_card_id: src_20260614_kw007_04
+  text: Full text is behind the Wiley paywall; only the abstract and bibliographic metadata were directly
+    readable, so the exact weighting equation and quantitative result tables could not be quoted verbatim.
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_04
+  text: Quantitative magnitudes (e.g., specific accuracy deltas vs. baselines) are not captured here and
+    should be confirmed against the full paper before citing numbers.
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_06
+  text: Preprint, not yet formally peer-reviewed
+  locator: card/trust
+- source_card_id: src_20260614_kw007_06
+  text: Benchmark uses a single source site (Yarnspirations) and a GPT-4o-mini conversion pipeline that
+    may introduce normalization noise
+  locator: card/trust
+- source_card_id: src_20260614_kw007_06
+  text: Preprint (not formally peer-reviewed); dataset is sourced from a single site (Yarnspirations)
+    and normalized via a GPT-4o-mini conversion pipeline that may introduce noise. ev_005 and ev_007 carry
+    summaries without short verbatim quotes because the exact figures appear in tables/figures rather
+    than as quotable sentences; the numbers were confirmed against the full HTML (v2).
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_08
+  text: README makes no mention of CrochetBench or a 'Valid Pattern Rate' metric; that linkage is external
+    and not verifiable from this source.
+  locator: card/trust
+- source_card_id: src_20260614_kw007_08
+  text: Self-reported capabilities from the project's own README (primary but not independently verified).
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_08
+  text: The README does NOT mention CrochetBench or a "Valid Pattern Rate" metric; any claim that CrochetPARADE
+    is the reference harness for CrochetBench's Valid Pattern Rate is external and unverifiable from this
+    source.
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_08
+  text: The canonical repository is hosted at codeberg.org/crochetparade/CrochetPARADE (the GitHub README
+    points there); GitHub is a mirror.
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_05
+  text: Prototype/proof-of-concept, not a shipped product
+  locator: card/trust
+- source_card_id: src_20260614_kw007_05
+  text: Qualitative user study with only 6 designers
+  locator: card/trust
+- source_card_id: src_20260614_kw007_05
+  text: Several techniques (yarn color switching, copy-paste) not yet supported at time of writing
+  locator: card/trust
+- source_card_id: src_20260614_kw007_05
+  text: Proof-of-concept editor prototype, not a production tool; force-based 3D layout is only a first
+    approximation and lacks physical yarn modeling.
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_05
+  text: Qualitative evaluation is small (6 professional designers recruited via myboshi); findings are
+    experiential, not quantitative.
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_05
+  text: Some techniques (yarn/color switching, copy-and-paste, non-linear editing) were unsupported at
+    publication; layer counts and stitch-count-per-layer metrics were requested features, not yet implemented.
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_02
+  text: Paper's protocol uses geometric metrics (IoU, CD, NC) plus topologic metrics (component/boundary/non-manifold
+    edge counts); it does NOT define F-score, precision/recall-at-tolerance, or Hausdorff distance, so
+    those metrics cannot be sourced from this paper.
+  locator: card/trust
+- source_card_id: src_20260614_kw007_02
+  text: This paper's protocol covers geometric metrics (IoU, CD, NC) and topologic metrics (component/boundary/non-manifold-edge
+    counts). It does NOT define F-score, precision/recall at a tolerance tau, or Hausdorff distance; those
+    metrics asserted in the upstream brief are not present in this source and must be cited from elsewhere.
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_02
+  text: Quotes are transcribed from arXiv's experimental HTML rendering; mathematical symbols/subscripts
+    in formulas were simplified to plain text for readability (the verbatim wording of sentences is preserved).
+  locator: card/limitations
+- source_card_id: src_20260614_kw007_07
+  text: Short-paper overview, not the full algorithmic treatment (defers detail to AmiGo, ref [2])
+  locator: card/trust
+- source_card_id: src_20260614_kw007_07
+  text: Method joins-and-turns rather than crocheting in a spiral, so output does not look like classic
+    amigurumi
+  locator: card/trust
+- source_card_id: src_20260614_kw007_07
+  text: Short-paper overview; full algorithmic detail is deferred to the AmiGo SCF 2022 paper (ref [2]).
+    The system joins-and-turns rather than crocheting in a spiral, so outputs do not look like "classic"
+    amigurumi, and higher stitches / color / yarn estimation are listed as future work.
+  locator: card/limitations

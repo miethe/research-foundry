@@ -1,0 +1,76 @@
+id: ext_20260614_aa59c863_001
+source_card_id: src_20260614_kw003_06
+created_at: '2026-06-14T20:46:24-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: KnitScript is a domain-specific machine-knitting scripting language that provides a comprehensive
+    virtual model of knitting machines and automates tedious, error-prone details.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: KnitScript is a higher-level language that interprets into low-level Knitout instructions, demonstrating
+    the layered DSL-to-IR compilation pattern.
+  locator: Section 4 System Overview, para 1
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Knitout is an assembly-like low-level language (analogous to g-code) operating on individual machine
+    operations, lacking higher-level control structures, parameters, or a model of machine state.
+  locator: Section 1 Introduction, para 2
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: KnitScript builds on general-purpose languages by maintaining a virtual model of the knitting
+    machine and introducing new abstractions (carriage passes, yarn management, stitch tracking, lateral
+    transfers) beyond individual instructions.
+  locator: Section 1 Introduction, para 3 (contribution)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The KnitScript interpreter validates each operation against a virtual machine model and knit graph,
+    raising errors and warnings to prevent machine damage or unstable fabric before recording valid operations
+    as Knitout.
+  locator: Section 4 System Overview, para 2
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Because Knitout code is specific to a single instance of a knitted object, it cannot be reused,
+    and reimplementing methods per-instance is likely to introduce errors and inefficiencies (motivating
+    native structured authoring over per-instance code).
+  locator: Section 2.1 Methods for Machine Knitting
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The paper was published at UIST '23, the 36th Annual ACM Symposium on User Interface Software
+    and Technology, October 2023, San Francisco, CA, USA, anchoring a 2023 methodological reference.
+  locator: ACM Reference Format / venue line
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: ACM Reference Format / venue line
+contradictions_or_cautions:
+- text: Scrape truncated mid-System-Overview (section 4); evaluation, demonstrations, and conclusion sections
+    not captured in extracted text.
+  locator: card/trust
+- text: The scrape was truncated mid-Section 4 (System Overview); the evaluation (user study with nine
+    knit-programmers), demonstrations, discussion, and conclusion sections were not captured in the extracted
+    text, so claims from those sections are not supported by this card.
+  locator: card/limitations
+- text: Analogy to KnitWit's IR + authoring-layer split is the carder's interpretive framing; the paper
+    itself addresses machine knitting tooling, not KnitWit.
+  locator: card/limitations

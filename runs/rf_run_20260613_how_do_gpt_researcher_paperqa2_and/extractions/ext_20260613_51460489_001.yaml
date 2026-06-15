@@ -1,0 +1,94 @@
+id: ext_20260613_51460489_001
+source_card_id: src_20260613_rib010_03
+created_at: '2026-06-13T23:52:39-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: PaperQA2 is a package for high-accuracy retrieval-augmented generation (RAG) over PDFs, text files,
+    Microsoft Office documents, and source code files, with a focus on scientific literature.
+  locator: README — project description (intro)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: A PaperQA2 answer object exposes formatted_answer, answer (the answer alone), question, and context
+    (summaries of the passages found for the answer).
+  locator: README — Library Usage / answer object
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: PaperQA2 emits in-text citations that reference specific source passages using keys formatted
+    like (pqac-abcd1234).
+  locator: README — Customizing Prompts (citations)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: PaperQA2 provides a customization interface with default support for all LiteLLM-compatible models.
+  locator: README — model customization
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: By default PaperQA2 uses OpenAI's gpt-4o-2024-11-20 model for the summary_llm, llm, and agent_llm
+    roles.
+  locator: README — default models
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: PaperQA2 relies on external paper search and metadata services including Semantic Scholar, Crossref,
+    and Unpaywall.
+  locator: README — dependencies/acknowledgements
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The Python API entry point imports Settings and ask from paperqa, and an async agent_query() function
+    is also provided for agentic querying.
+  locator: README — Library Usage (Python API)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: README — project description (intro)
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: README — Library Usage / answer object
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: README — Customizing Prompts (citations)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: README — model customization
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: README — default models
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: README — dependencies/acknowledgements
+contradictions_or_cautions:
+- text: README documents stated behavior/defaults, not independently benchmarked; accuracy claims trace
+    to a separate 2024 paper, not the README itself.
+  locator: card/trust
+- text: The README documents stated behavior, defaults, and feature claims for the package; it is not
+    an independent benchmark. Reported "superhuman" accuracy claims trace to a separate 2024 paper rather
+    than the README text itself, so accuracy assertions should be cited to that paper, not this card.
+  locator: card/limitations

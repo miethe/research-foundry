@@ -1,0 +1,90 @@
+id: ext_20260615_5423aec6_001
+source_card_id: src_20260614_rib034_10
+created_at: '2026-06-15T09:55:29-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The choice of chunking strategy materially affects retrieval performance, with the best strategies
+    outperforming others by up to 9% in recall on a fixed retriever.
+  locator: Introduction
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The report evaluates chunkers with token-level Recall, Precision, Precision-Omega (precision when
+    all chunks containing excerpt tokens are retrieved), and IoU.
+  locator: Metrics
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Precision-Omega is defined as the precision achieved under the assumption that every chunk containing
+    excerpt tokens was successfully retrieved (a max-precision-under-perfect-recall ceiling).
+  locator: Metrics
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The LLMSemanticChunker (GPT-4o) achieved the highest recall at 91.9%, but with very low precision
+    (3.9%) reflecting low retrieval efficiency.
+  locator: Results (text-embedding-3-large table)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The ClusterSemanticChunker is an embedding-aware splitter that uses dynamic programming to maximize
+    pairwise cosine similarity within each chunk up to a user-specified maximum length.
+  locator: Methods / ClusterSemanticChunker description
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The ClusterSemanticChunker at 400 tokens reached 91.3% recall with 4.5% precision, nearly matching
+    the top recall while remaining an embedding-model-aware splitter.
+  locator: Results (text-embedding-3-large table), Cluster 400 row
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_007
+  text: The authors conclude the embedding-model-aware ClusterSemanticChunker produced consistently strong
+    results across the evaluation.
+  locator: Conclusion
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: 'Recall plateaus and then degrades as chunk size changes: overly large chunks dilute relevant
+    information while overly small chunks fail to capture necessary context, framing the recall-vs-completeness
+    tradeoff.'
+  locator: Results (discussion of chunk size)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Introduction
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Results (text-embedding-3-large table)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Results (text-embedding-3-large table), Cluster 400 row
+contradictions_or_cautions:
+- text: Benchmark numbers are reported with large standard deviations (e.g. Recall 91.9 ± 26.5), indicating
+    high per-query variance
+  locator: card/trust
+- text: First-party vendor report whose authors propose and benchmark their own ClusterSemanticChunker,
+    so framing may favor it.
+  locator: card/limitations
+- text: Reported metrics carry large standard deviations (e.g. Recall 91.9 ± 26.5), indicating high per-query
+    variance.
+  locator: card/limitations

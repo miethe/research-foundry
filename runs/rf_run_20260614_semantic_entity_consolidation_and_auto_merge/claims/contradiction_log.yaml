@@ -1,0 +1,145 @@
+run_id: rf_run_20260614_semantic_entity_consolidation_and_auto_merge
+generated_at: '2026-06-15T10:14:29-04:00'
+contradictions:
+- source_card_id: src_20260614_rib035_06
+  text: No author byline or precise publish date visible on page; year inferred from source metadata.
+  locator: card/trust
+- source_card_id: src_20260614_rib035_06
+  text: No author byline or precise publication date is visible on the page; the year (2025) is taken
+    from supplied source metadata. As vendor documentation, the specific threshold values are illustrative
+    defaults for the Agent Memory tooling rather than independently validated benchmarks.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_04
+  text: GPT-3.5-Turbo zero-shot F1 reported across multiple model snapshots (Turbo03/Turbo06) rather than
+    a single value, so the exact per-dataset GPT-3.5 figures depend on which snapshot is cited.
+  locator: card/trust
+- source_card_id: src_20260614_rib035_04
+  text: Hosted-LLM results subject to model drift across API versions.
+  locator: card/trust
+- source_card_id: src_20260614_rib035_04
+  text: GPT-3.5-Turbo zero-shot F1 is reported across multiple API snapshots (Turbo03/Turbo06) rather
+    than a single value, so cited GPT-3.5 numbers depend on the snapshot; hosted-LLM results are subject
+    to model drift across API versions.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_01
+  text: Pedagogical example values (m, u, lambda) are illustrative, not empirically measured
+  locator: card/trust
+- source_card_id: src_20260614_rib035_01
+  text: Conditional-independence across features is a stated modeling assumption that may not hold for
+    correlated fields
+  locator: card/trust
+- source_card_id: src_20260614_rib035_01
+  text: The m, u, and lambda values shown are illustrative pedagogical examples, not empirically measured
+    parameters.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_01
+  text: Additive combination of match weights relies on a conditional-independence assumption across comparison
+    features, which may not hold for correlated fields.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_03
+  text: Self-described capabilities (not independent benchmarks).
+  locator: card/trust
+- source_card_id: src_20260614_rib035_03
+  text: Page scoped to research / small-to-medium files per its own framing.
+  locator: card/trust
+- source_card_id: src_20260614_rib035_03
+  text: Self-described capabilities from the project's own documentation, not independent benchmarks;
+    the page explicitly frames the toolkit as "developed for research and the linking of small or medium
+    sized files."
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_00
+  text: Performance figures (million records/minute; 100M+ records) are vendor/maintainer claims from
+    the README, not independently benchmarked here; actual throughput depends on hardware, backend, and
+    blocking configuration. PostgreSQL backend support is listed via installation options in the README
+    rather than restated in the Key Features list.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_11
+  text: Inference-level claims are RF-authored synthesis, not external primary evidence.
+  locator: card/trust
+- source_card_id: src_20260614_rib035_11
+  text: evidence_bundle and verification_status were pending at draft time.
+  locator: card/trust
+- source_card_id: src_20260614_rib035_11
+  text: Inference- and speculation-level points (clm_inf*, clm_spec*) are RF-authored synthesis, not external
+    primary evidence; treat them as derived analysis that traces to upstream source cards rather than
+    as independent authority.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_11
+  text: The report was a draft with evidence_bundle_id and verification_status both pending at the captured
+    time.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_05
+  text: Preprint (v3, 2024-12-12); not confirmed as a final venue publication.
+  locator: card/trust
+- source_card_id: src_20260614_rib035_05
+  text: F1 numbers transcribed from arXiv HTML rendering of Table 4, not from a typeset PDF.
+  locator: card/trust
+- source_card_id: src_20260614_rib035_05
+  text: This is an arXiv preprint (v3, 2024-12-12), not confirmed as a final peer-reviewed venue publication;
+    numeric F1 results were transcribed from the arXiv HTML rendering of Table 4 rather than a typeset
+    PDF, so exact per-cell figures should be re-verified against the official PDF before publication-grade
+    citation.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_02
+  text: Fellegi-Sunter framing and agglomerative-clustering/centroid-linkage details live on the separate
+    'How it works' page, not this API reference page; not quotable from here.
+  locator: card/trust
+- source_card_id: src_20260614_rib035_02
+  text: published_at reflects the page copyright year (2024), not a precise release date.
+  locator: card/trust
+- source_card_id: src_20260614_rib035_02
+  text: The Fellegi-Sunter framework and "hierarchical agglomerative clustering with centroid linkage"
+    claims from the upstream source hint are NOT stated on this API page; they appear on the separate
+    `how-it-works/How-it-works.html` page and are therefore not quoted here. Evidence here is grounded
+    only in the API reference text.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_02
+  text: '`published_at` is the page copyright year (2024), not a precise package release date.'
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_09
+  text: Single-domain (international sanctions) data may limit generalization to other entity-matching
+    settings.
+  locator: card/trust
+- source_card_id: src_20260614_rib035_09
+  text: Reported F1 numbers and claims are from the authors' own preprint and have not been independently
+    reproduced here; the benchmark is single-domain (international sanctions), which may limit generalization
+    to other entity-consolidation settings.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_10
+  text: Single-author preprint, not peer-reviewed
+  locator: card/trust
+- source_card_id: src_20260614_rib035_10
+  text: Benchmarks re-implement baselines under the author's own standardized methodology rather than
+    reusing original reported metrics
+  locator: card/trust
+- source_card_id: src_20260614_rib035_10
+  text: Source-brief framing (Fellegi-Sunter ensemble of string comparators with named confidence bands)
+    does not match the actual method, which is dense+sparse retrieval plus cross-encoder rerank
+  locator: card/trust
+- source_card_id: src_20260614_rib035_10
+  text: Single-author arXiv preprint (v2, March 2026), not peer-reviewed.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_10
+  text: Baselines were re-implemented under the author's own standardized 40% test-split / top-1 methodology
+    rather than reusing original published metrics, so cross-paper comparisons are not apples-to-apples.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_10
+  text: The source brief's framing (a Fellegi-Sunter ensemble of string-similarity comparators with named
+    auto-match/review-queue/auto-reject confidence bands) does not match the actual paper; EnsembleLink
+    is a dense+sparse retrieval plus cross-encoder rerank system, and the Fellegi-Sunter framework appears
+    only as the baseline method fastLink implements.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_10
+  text: Assumes a reference corpus of moderate size (thousands to hundreds of thousands of records); very
+    large corpora may need additional filtering and very small corpora may not benefit.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_08
+  text: First-party author/maintainer blog (primary but self-reported); scale and capability claims are
+    the author's and not independently benchmarked here. Originally written 2020 and last updated 2022-08-04,
+    so specific API surface (e.g. method signatures) may have changed in later Splink versions.
+  locator: card/limitations
+- source_card_id: src_20260614_rib035_07
+  text: Page carries no explicit author or publication date; "2025" reflects the supplied source metadata,
+    not an on-page datestamp. Guidance is specific to Splink's labelled-pairs evaluation workflow rather
+    than a general threshold-selection standard.
+  locator: card/limitations

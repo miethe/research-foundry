@@ -1,0 +1,67 @@
+id: ext_20260614_438d00e3_001
+source_card_id: src_20260614_rib045_03
+created_at: '2026-06-14T16:31:44-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: A selective classifier is formally a pair (f, g) combining a predictor f with a selection function
+    g that decides whether to predict or abstain.
+  locator: Section 2, Problem Setting
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Coverage is the probability mass of the region of inputs the classifier does not reject (the fraction
+    of inputs accepted).
+  locator: Section 2, Problem Setting
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Selective risk is the expected loss over accepted (non-rejected) instances, normalized by coverage.
+  locator: Section 2, Problem Setting
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The SGR algorithm constructs a selection function so the selective risk exceeds the user-specified
+    target r* with probability at most delta (i.e. the desired risk is guaranteed with high probability).
+  locator: Section 3, Selection with Guaranteed Risk Control
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The full performance profile of a selective classifier is captured by the risk-coverage curve,
+    which plots risk as a function of coverage.
+  locator: Section 2, Problem Setting
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Empirically, the method guarantees ~2% top-5 ImageNet error with probability 99.9% at almost 60%
+    test coverage, demonstrating the coverage-versus-risk trade-off in practice.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Abstract
+contradictions_or_cautions:
+- text: The 'area under the RC curve' summary metric could not be confirmed as verbatim text in this paper;
+    omitted as a quoted claim.
+  locator: card/trust
+- text: Empirical numbers (CIFAR/ImageNet) date to 2017 architectures (e.g. VGG/RESNET-class); absolute
+    error rates are not current SOTA.
+  locator: card/trust
+- text: The "area under the RC curve as the summary metric" framing could not be confirmed as verbatim
+    in this paper, so it is not asserted as a quoted claim here.
+  locator: card/limitations
+- text: Empirical numbers reflect 2017-era architectures; absolute error/coverage figures are not current
+    state of the art and should be cited as historical/foundational.
+  locator: card/limitations

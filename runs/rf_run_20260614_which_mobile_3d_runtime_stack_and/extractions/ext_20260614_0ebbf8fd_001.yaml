@@ -1,0 +1,83 @@
+id: ext_20260614_0ebbf8fd_001
+source_card_id: src_20260614_kw008_04
+created_at: '2026-06-14T22:59:33-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Apple officially deprecated SceneKit across all platforms at WWDC25.
+  locator: Start (0:00)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The deprecation is a soft deprecation — existing SceneKit apps keep working and no rewrite is
+    required, but SceneKit is not recommended for new apps or significant updates.
+  locator: Start (0:00)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: 'SceneKit is entering maintenance mode: Apple will only fix critical bugs, with no new features
+    or optimizations expected going forward.'
+  locator: Start (0:00)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: RealityKit is supported on visionOS, iOS, macOS, and iPadOS, and as of WWDC25 it is newly supported
+    on tvOS.
+  locator: Start (0:00)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: RealityKit is designed around the open USD standard introduced by Pixar in 2012, whereas SceneKit
+    serializes assets into proprietary SCN files that are not a unified industry standard.
+  locator: Core differences (5:03)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: SceneKit uses a node-based scene graph with predefined node properties, while RealityKit uses
+    an Entity Component System where behavior is added by attaching components to entities.
+  locator: Core differences (5:03)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: SceneKit/SCN and other DCC-tool assets must be converted to USD/USDZ for RealityKit, via Xcode
+    export to a Universal Scene Description Package or via the xcrun scntool CLI.
+  locator: Asset conversion (8:59)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Start (0:00)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Start (0:00)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Core differences (5:03)
+contradictions_or_cautions:
+- text: glTF is NOT mentioned anywhere in this session; the source key-point claim about "no glTF support"
+    and the need to convert glTF to USD is not supported by the transcript and was omitted.
+  locator: card/limitations
+- text: The source key-point about "per-entity components for highlight/recolor" is not stated in the
+    transcript (the session lists components such as AnimationLibraryComponent, DirectionalLightComponent,
+    AudioLibraryComponent, and ParticleEmitterComponent, but does not discuss highlight/recolor components);
+    that claim was omitted.
+  locator: card/limitations
+- text: This is a vendor (Apple) developer session; positioning of RealityKit as the recommended successor
+    reflects Apple's first-party perspective.
+  locator: card/limitations

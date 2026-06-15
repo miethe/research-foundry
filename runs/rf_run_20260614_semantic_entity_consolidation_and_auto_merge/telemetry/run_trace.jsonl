@@ -1,0 +1,12 @@
+{"stage": "plan", "ts": "2026-06-14T20:50:48-04:00", "run_id": "rf_run_20260614_semantic_entity_consolidation_and_auto_merge"}
+{"ts": "2026-06-15T10:14:26-04:00", "stage": "extract", "run_id": "rf_run_20260614_semantic_entity_consolidation_and_auto_merge", "count": 12}
+{"ts": "2026-06-15T10:14:29-04:00", "stage": "claim_map", "run_id": "rf_run_20260614_semantic_entity_consolidation_and_auto_merge", "claims_total": 83}
+{"ts": "2026-06-15T10:18:57-04:00", "stage": "synthesize", "run_id": "rf_run_20260614_semantic_entity_consolidation_and_auto_merge", "report_id": "report_20260615_semantic_entity_consolidation_and_auto_merge", "claims_cited": 102}
+{"ts": "2026-06-15T10:24:13-04:00", "stage": "verify", "run_id": "rf_run_20260614_semantic_entity_consolidation_and_auto_merge", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T10:24:38-04:00", "stage": "verify", "run_id": "rf_run_20260614_semantic_entity_consolidation_and_auto_merge", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T10:25:26-04:00", "stage": "verify", "run_id": "rf_run_20260614_semantic_entity_consolidation_and_auto_merge", "exit_code": 0, "passed": true}
+{"stage": "bundle", "ts": "2026-06-15T10:25:26-04:00", "run_id": "rf_run_20260614_semantic_entity_consolidation_and_auto_merge", "bundle_id": "bundle_20260615_intent_research_20260614_semantic_entity_consoli", "verified": true}
+{"stage": "ccdash_event", "ts": "2026-06-15T10:25:34-04:00", "run_id": "rf_run_20260614_semantic_entity_consolidation_and_auto_merge", "event_id": "exec_20260615_intent_research_20260614_semantic_entity_consoli"}
+{"stage": "writeback", "ts": "2026-06-15T10:25:35-04:00", "run_id": "rf_run_20260614_semantic_entity_consolidation_and_auto_merge", "requires_review": false}
+{"ts": "2026-06-15T10:25:54-04:00", "stage": "verify", "run_id": "rf_run_20260614_semantic_entity_consolidation_and_auto_merge", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T10:55:06-04:00", "stage": "verify", "run_id": "rf_run_20260614_semantic_entity_consolidation_and_auto_merge", "exit_code": 0, "passed": true}

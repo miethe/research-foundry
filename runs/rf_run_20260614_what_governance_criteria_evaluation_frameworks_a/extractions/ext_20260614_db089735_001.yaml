@@ -1,0 +1,71 @@
+id: ext_20260614_db089735_001
+source_card_id: src_20260614_rib051_08
+created_at: '2026-06-14T16:50:31-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: A model alias is a mutable, user-named reference to a model version that is unique within a model
+    resource; it is mutable because aliases can be moved between versions.
+  locator: Intro paragraph 1 ('A model alias is...')
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Aliases let you fetch or deploy a particular model version by reference without needing to know
+    that version's ID, operating similarly to Docker tags or Git branch references.
+  locator: Intro paragraph 1 ('Model aliases are helpful...')
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: When a new model is created in Model Registry, the first version is automatically assigned the
+    default alias, which references the version used when a command runs without specifying a version.
+  locator: Intro paragraph 2 ('When you create a new model...')
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Exactly one version of a model must carry the default alias at all times; otherwise the default
+    alias behaves like any other user-defined alias.
+  locator: Intro paragraph 2 / Note callout
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The version alias must match the format [a-z][a-z0-9-]{0,126}[a-z0-9] to distinguish it from version_id,
+    and there must be exactly one default version alias per model (created for the first version).
+  locator: Note callout ('The required format...')
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Version aliases must be unique and can only be assigned to a single version per model at a time;
+    applying an existing alias to a new version removes it from the prior version.
+  locator: Considerations bullet list
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The console alias marker helps stakeholders see at a glance which model version is the stable
+    version ready for deployment, and users can create and assign custom aliases in addition to the default.
+  locator: Intro paragraph 3 ('From the Google Cloud console...')
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Note callout ('The required format...')
+contradictions_or_cautions:
+- text: The source establishes custom aliases and the "stable/ready for deployment" framing, but the page
+    text does not contain the specific suggested review-stage labels (e.g., "not started/in progress/under
+    review/approved") or lifecycle labels (e.g., "experimental/staging/production") referenced in some
+    summaries; those naming conventions are not asserted verbatim by this page and were not cited.
+  locator: card/limitations
+- text: Documentation is product-specific to Google Cloud Vertex AI Model Registry (Gemini Enterprise
+    Agent Platform); behavior may change. Last updated 2026-06-12 UTC.
+  locator: card/limitations

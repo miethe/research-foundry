@@ -1,0 +1,75 @@
+id: ext_20260614_b42db688_001
+source_card_id: src_20260614_rib051_00
+created_at: '2026-06-14T16:50:31-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: In Langfuse, every prompt version is automatically assigned a version ID, and users can additionally
+    attach labels to follow their own versioning scheme.
+  locator: 'Section: Versions & Labels'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Labels serve as deployment pointers that map prompt versions to environments (staging, production),
+    tenants, or experiments.
+  locator: 'Section: Versions & Labels'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Deploying a prompt version in Langfuse is accomplished by assigning the production label (or another
+    environment label) to that version.
+  locator: 'Section: Fetching by Label or Version'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: When a prompt is fetched without specifying a label, Langfuse serves the version carrying the
+    production label by default.
+  locator: 'Section: Fetching by Label or Version'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The reserved 'latest' label always points to the most recently created prompt version.
+  locator: 'Section: Fetching by Label or Version'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Rollback is performed by reassigning the production label to a previous version in the Langfuse
+    UI, after which the production-labeled version is served by default in the SDKs.
+  locator: 'Section: Rollbacks'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Protected prompt labels let admins/owners prevent labels like production from being modified or
+    deleted by viewer/member roles, governing prompt deployment via RBAC.
+  locator: 'Section: Protected prompt labels'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: 'Labels are assignable programmatically: on creation via the SDK ''labels'' parameter, and on
+    existing versions via update_prompt''s ''new_labels'' (Python) or update''s ''newLabels'' (JS/TS).'
+  locator: 'Section: Versions & Labels (Python SDK / JS-TS SDK tabs)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: No author or precise publication date shown on page; year inferred from source metadata.
+  locator: card/trust
+- text: Describes Langfuse's specific implementation, not a general governance standard.
+  locator: card/trust
+- text: The page shows no named author and no precise publication date; the year (2025) is taken from
+    the supplied source metadata rather than an on-page byline.
+  locator: card/limitations
+- text: The content describes Langfuse's specific product implementation of prompt version control, not
+    a vendor-neutral governance standard; some features (e.g., protected labels) are gated to Enterprise/Teams
+    tiers.
+  locator: card/limitations

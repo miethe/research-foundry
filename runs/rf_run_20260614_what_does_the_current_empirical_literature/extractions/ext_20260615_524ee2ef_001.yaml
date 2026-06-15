@@ -1,0 +1,86 @@
+id: ext_20260615_524ee2ef_001
+source_card_id: src_20260614_kw016_06
+created_at: '2026-06-15T11:03:20-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The plan splits the work into two research tracks - a forward Pattern->3D preview and an inverse
+    3D-object->pattern synthesizer - and treats the 3D preview as structural geometry first (not yarn-physics)
+    and the inverse track as amigurumi-first.
+  locator: Section 0) TL;DR
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The plan explicitly scopes the 3D preview as structural geometry (graph/mesh) before yarn-physics
+    and the inverse generator as amigurumi-first with watertight mesh, seed point, and stitch size.
+  locator: Section 0) TL;DR (track framing)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: 'The Crochet IR validation spec names three explicit rule classes: stitch-count invariants per
+    round, increase/decrease legality, and piece-closure constraints.'
+  locator: Section B2) Workstream 2 - Crochet IR (Validation rules)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Inverse-engine preconditions are a closed (watertight) triangle mesh plus a user-selected seed
+    point and target stitch size/gauge assumptions.
+  locator: 'Section A2) End state: 3D Object -> Pattern (Inputs)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The inverse generator must guarantee no impossible stitch-count transitions and a bounded (manageable)
+    increase/decrease rate per round as a hard output constraint.
+  locator: Section A2) Outputs - Guaranteed constraints
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'Proposed inverse-engine acceptance metrics are shape distance versus the target mesh plus pattern-complexity
+    metrics: max inc/dec rate per round, total rounds, and stitch-count variance.'
+  locator: Section B4) Workstream 4 - Evaluation plan (Score)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Topological-correctness acceptance for the forward visualizer requires a consistent stitch graph
+    with no broken loops and correct stitch counts per round.
+  locator: Section A1) Acceptance criteria - Topological correctness
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: The plan flags the 'PDF importer trap' (general NL parsing is a quagmire, so restrict to structured
+    authoring/import templates) and gauge/tension variability as primary risks, reinforcing a narrow validator-gated
+    structured-IR approach.
+  locator: Section 6) Risks / Limits
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Section 0) TL;DR
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Section 0) TL;DR (track framing)
+contradictions_or_cautions:
+- text: Planning/strategy document, not an experimental result
+  locator: card/trust
+- text: AI-authored; external claims rely on cited third-party papers
+  locator: card/trust
+- text: This is an internal AI-authored planning/strategy document, not peer-reviewed empirical evidence;
+    its forward-looking acceptance criteria and metrics are proposed, not validated, and its external
+    technical claims rely on cited third-party academic anchors (EG Digital Library, ACM, Bridges) rather
+    than original results.
+  locator: card/limitations

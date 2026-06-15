@@ -1,0 +1,120 @@
+- claim_id: clm_inf01
+  text: "A four-layer machine-checkable pattern acceptance suite is assemblable from the literature: (1) per-round stitch-count invariants where expected_stitch_count equals the previous round count plus inc minus dec; (2) inc/dec legality restricting shaping ops to the sc|inc(x)|dec(x) alphabet AmiGo proves sufficient; (3) attachment resolvability requiring every stitch to attach unambiguously to a consecutive previous-round stitch; and (4) closure validation that the final round resolves to a closed piece."
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis: {from_claims: [clm_010, clm_016, clm_024, clm_026, clm_036], reasoning_summary: "CrochetPARADE one-by-one attachment to consecutive previous stitches (clm_010) and its mismatched-count/impossible-attachment checks (clm_036), AmiGo's sc/inc/dec alphabet and transducer degree rule (clm_024, clm_026), and the KnitWit plan's mandated IR rules (clm_016) collectively specify the same four invariant families, which compose into one suite."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf02
+  text: "AmiGo's coupling theorem (Observation 2.3) is the single strongest literature-grounded crochetability acceptance criterion available: it gives a decidable, per-row-pair predicate (consecutive rows coupled => valid sc/inc/dec instructions exist) that is constructively checkable via the finite-state transducer, making it the recommended formal backbone of the inverse-engine acceptance gate rather than heuristic shaping-rate caps alone."
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis: {from_claims: [clm_024, clm_026, clm_019], reasoning_summary: "The coupling theorem (clm_024) is a proven sufficiency condition decidable by the transducer's degree test (clm_026); it strictly subsumes the KnitWit plan's looser 'no impossible transitions / bounded inc-dec rate' guarantee (clm_019), so it should anchor the acceptance gate."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf03
+  text: "Acceptance scoring should be tiered: deterministic execution-grounded checks (Compilation Success Rate via a CrochetPARADE-style validator, stitch-count/attachment consistency, coupling) must be the hard pass/fail gate, while any LLM/VLM judge is advisory only, because CrochetBench shows model performance collapses moving from surface metrics (BLEU/ROUGE) to structural compilation - i.e., string-similarity scoring systematically overstates correctness for spatial-instruction tasks."
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis: {from_claims: [clm_034, clm_036, clm_038], reasoning_summary: "CSR via the CrochetPARADE validator is execution-grounded (clm_034, clm_036), and the documented sharp decay from BLEU/ROUGE to compilation (clm_038) is direct evidence that surface/model-judge scoring is unreliable, so deterministic checks must backstop it."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf04
+  text: "The mesh shape-match metric set should pair a global surface-distance metric (Hausdorff distance or volumetric/approximate-volume difference, as the KnitWit plan specifies) with a topology-fidelity metric (stitch-graph correctness: correct stitch count per round and no broken loops); the force-directed-layout finding that simple amigurumi models were 'accurate in shape and size' establishes that unit-edge geometry plus topological correctness is sufficient signal for plausible-match on beginner forms."
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_017, clm_056, clm_041], reasoning_summary: "The KnitWit plan names Hausdorff/volumetric distance plus topological correctness (clm_017); Greer-Mould report shape/size accuracy on simple forms with a per-stitch node/edge graph (clm_056, clm_041), justifying the combined distance+topology metric set."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf05
+  text: "No source provides empirically validated numeric tolerance bands (no published Hausdorff or volumetric thresholds distinguishing 'plausible match' from 'failure' for amigurumi exist in this evidence set); KnitWit must therefore derive tolerance bands empirically from its own primitive-mesh corpus, and any band quoted in v1 must be labeled an engineering assumption rather than a literature-cited constant."
+  materiality: material
+  claim_type: factual
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis: {from_claims: [clm_017, clm_020, clm_057], reasoning_summary: "The plan names the distance metrics and a 20-50 mesh scoring set (clm_017, clm_020) but cites no numeric thresholds; the force-directed work's unit-edge limitation and trial-and-error tuning (clm_057) confirm geometry is uncalibrated, so tolerance bands are unestablished in the literature."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf06
+  text: "A reproducible mesh->pattern->preview round-trip benchmark is constructible by composing existing pieces: use AmiGo's mesh->Crochet-Graph->pattern generator as the forward leg and a force-directed-graph-layout reconstruction as the preview leg, scoring the loop on (a) crochetability via the coupling/CSR gate, (b) round-trip visual/shape similarity, and (c) pattern-complexity metrics (max inc/dec rate per round, total rounds, stitch-count variance) over the sphere/egg/pear/animal-primitive corpus."
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_039, clm_045, clm_020, clm_024], reasoning_summary: "AmiGo generates patterns from meshes (clm_039), the force-directed method reconstructs 3D from patterns (clm_045), the KnitWit plan defines the corpus and complexity metrics (clm_020), and coupling supplies the crochetability gate (clm_024) - together a closed forward-and-back protocol."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf07
+  text: "CrochetBench 2025 is directly reusable as a KnitWit acceptance harness for the DSL/IR layer - its Compilation Success Rate metric, four-category error taxonomy (syntax, stitch-definition, labeling/reference, structural), and CrochetPARADE validator transfer with minimal adaptation - but it has a hard scope gap: CrochetBench evaluates text/image->instruction tasks and contains no mesh inputs or geometric shape-fidelity metrics, so KnitWit must build the entire mesh->pattern shape-match half of the harness itself."
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis: {from_claims: [clm_033, clm_034, clm_035, clm_036], reasoning_summary: "CrochetBench's task ladder, CSR, error taxonomy, and validator (clm_033-clm_036) are instruction-level acceptance tools with no mesh or geometric-distance component, so they cover the IR-validity half but leave the shape-fidelity half unfilled."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf08
+  text: "The acceptance signals map cleanly onto a tiered user-facing confidence meter: GREEN = coupling/CSR pass AND all per-round stitch counts validate AND shape distance within band; YELLOW = pattern compiles and closes but shape distance is marginal OR the validator flags over/under-stretched (tension) stitches; RED = any unresolvable attachment, impossible stitch-count transition, or compilation failure; each tier is backed by a deterministic machine check, so the meter never depends on a model judge alone."
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_012, clm_017, clm_018, clm_036], reasoning_summary: "Tension flagging (clm_012, clm_036), topological/stitch-count correctness and shape-match-within-tolerance (clm_017, clm_018) are exactly the discrete machine signals that bucket into green/yellow/red, giving a deterministic trust meter."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf09
+  text: "There is a real terminology/representation contradiction to resolve before building the harness: AmiGo and the force-directed-layout paper both call their structure a 'crochet/stitch graph' but encode it differently - AmiGo's graph rows are geodesic isolines with column/row edges for a generator, while Greer-Mould add horizontal/vertical/constraint edges and model only increases as multiple nodes for a renderer; KnitWit should adopt the IR v0.1 rounds/ops schema as the neutral interchange layer and treat both graphs as derived views, a low-to-medium decision-impact choice that prevents a forward/preview representation mismatch."
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_041, clm_048, clm_053, clm_016], reasoning_summary: "AmiGo's column/row-edge generator graph (clm_041) and Greer-Mould's horizontal/vertical/constraint-edge renderer graph with increase-only multi-node encoding (clm_048, clm_053) are different graph dialects; the IR's rounds/ops schema (clm_016) is the neutral layer that reconciles them."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf10
+  text: "Gauge/tension variability is the highest-severity validity risk for the shape-fidelity half of the harness (severity high, likelihood high): both the force-directed layout's constant unit-edge-length assumption and AmiGo's fixed stitch width mean geometric distances are computed on uncalibrated geometry, so a mesh can pass topology checks yet diverge in real stuffed size; the concrete mitigation is to require a user gauge swatch (e.g., a 10x10 stitch/row rectangle) feeding per-edge lengths before any shape-distance band is asserted."
+  materiality: material
+  claim_type: causal
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis: {from_claims: [clm_057, clm_023, clm_022], reasoning_summary: "Greer-Mould flag constant unit edge length as the primary accuracy limit and propose gauge swatches (clm_057), AmiGo uses a single fixed stitch width (clm_023), and the KnitWit plan names gauge/tension as a top risk (clm_022), so uncalibrated geometry threatens shape-distance validity."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf11
+  text: "Academic feasibility vs product readiness verdict for the acceptance harness: the crochetability/IR-validity gate is academically PROVEN and near-product-ready (coupling theorem + CrochetPARADE/CrochetBench validators are executable today), whereas the mesh shape-fidelity gate is only DEMONSTRATED in research on simple closed forms - it lacks calibrated tolerance bands, a mobile-performance profile, and any test on non-watertight or thin meshes - so KnitWit should ship the deterministic crochetability suite first and treat shape-match scoring as an experimental, clearly-labeled v1 signal."
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_024, clm_034, clm_056, clm_014], reasoning_summary: "Coupling and CSR are executable proofs of crochetability acceptance (clm_024, clm_034); shape fidelity is only shown on simple forms (clm_056) and CrochetPARADE's poor scaling to tens of thousands of stitches (clm_014) flags an unproven performance/mobile gap, separating the two readiness levels."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_spec01
+  text: "An LLM/VLM judge will likely add value only as a tie-breaker for the YELLOW band (e.g., rating human-readability or whether decreases cluster awkwardly) and should be capped at advisory weight; given the documented surface-vs-structural performance gap, a model judge used as a hard gate would probably admit a non-trivial fraction of non-crochetable patterns, so its outputs should never override a deterministic RED."
+  materiality: material
+  claim_type: prediction
+  status: speculation
+  confidence: low
+  sources: []
+  inference_basis: {from_claims: [], reasoning_summary: "Forward-looking extrapolation from the BLEU/ROUGE-to-compilation decay (clm_038) and the structured error taxonomy (clm_035): deterministic checks catch structural faults a model judge misses, so the judge's safe role is bounded human-readability tie-breaking - an assumption not directly tested in the sources."}
+  report_locations: []
+  reviewer_notes: ""

@@ -1,0 +1,77 @@
+id: ext_20260615_27cdd398_001
+source_card_id: src_20260614_rib017_09
+created_at: '2026-06-15T00:16:10-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: By default, data sent to the OpenAI API is not used to train or improve OpenAI models unless the
+    customer explicitly opts in, a policy in effect since March 1, 2023.
+  locator: Introduction / Types of data stored with the OpenAI API
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: By default OpenAI generates abuse-monitoring logs for all API feature usage and retains them for
+    up to 30 days, unless a longer period is legally required.
+  locator: Data retention controls for abuse monitoring
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Zero Data Retention forces the `store` parameter for /v1/responses and /v1/chat/completions to
+    be treated as false even if a request sets it to true.
+  locator: Zero Data Retention
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Zero Data Retention excludes customer content from abuse-monitoring logs in the same way that
+    Modified Abuse Monitoring does.
+  locator: Zero Data Retention
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: These abuse-monitoring retention controls are not self-serve; they require prior approval by OpenAI
+    and acceptance of additional requirements.
+  locator: Data retention controls for abuse monitoring
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Customers must contact OpenAI's sales team to learn about the offerings and inquire about eligibility
+    for the data-retention controls.
+  locator: Configuring data retention controls
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Once approved, an organization configures retention via a Data Retention tab under Settings ->
+    Organization -> Data controls.
+  locator: Configuring data retention controls
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Introduction / Types of data stored with the OpenAI API
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Data retention controls for abuse monitoring
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Zero Data Retention
+contradictions_or_cautions:
+- text: No explicit page-publish or last-updated date is shown on the page; the "2026-01" published_at
+    is the access-period estimate supplied with the source metadata and is unverified from page text.
+    The March 1, 2023 date applies to the training-data policy itself, not the page.
+  locator: card/limitations

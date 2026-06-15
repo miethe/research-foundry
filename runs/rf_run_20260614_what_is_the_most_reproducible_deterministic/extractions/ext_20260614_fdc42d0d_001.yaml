@@ -1,0 +1,91 @@
+id: ext_20260614_fdc42d0d_001
+source_card_id: src_20260614_kw006_04
+created_at: '2026-06-14T22:09:16-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The core method computes geodesic distance on the surface from a seed point, then samples the
+    equidistant curves non-uniformly under curvature guidance, with mean curvature at crease lines selecting
+    stitch types.
+  locator: Abstract (p.369)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: 'This Bridges 2024 short paper is positioned as a brief introduction to the authors'' fuller SCF
+    publication ''AmiGo: Computational Design of Amigurumi Crochet Patterns.'''
+  locator: Abstract (p.369)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Because amigurumi are crocheted in the round from a starting circle with constant row height equal
+    to a single-crochet (SC) stitch width, every stitch in a row is equidistant from the start, making
+    surface geodesic distance the natural model for crochet rows.
+  locator: Why Geodesic Distances for Crochet? (p.370)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Equidistant curves spaced by the stitch height define the pattern rows; stitch locations are computed
+    by flattening the model (vertical = distance from seed/row number, horizontal = distance along the
+    curve/stitch number) and evenly sampling, then mapping points back to form the crochet graph.
+  locator: Rows, stitches and connecting the dots (p.370)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Saddle-like regions (negative Gaussian and mean curvature) trigger reduced stitch counts in the
+    row sampling, while creases are reproduced via BLO/FLO stitches applied where maximal absolute curvature
+    is high and its direction is orthogonal to the crocheting direction; both adaptations are automatic.
+  locator: Curvature based inflating, sampling and creasing (p.371)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Models with 'craters' (negative mean curvature and positive Gaussian curvature) are not realizable
+    as maximally-stuffed crochet, so the input is pre-processed by 'inflating' it to remove craters before
+    pattern generation.
+  locator: Curvature based inflating, sampling and creasing (p.371)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Multi-component equidistant curves (e.g., a two-legged human-like model seeded at the head) require
+    partitioning the model into separately-crochetable parts with pick-up connection instructions, and
+    assembly is seamless with no sewing.
+  locator: Segmentation and visualization (p.371)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: The authors acknowledge results do not look like classic amigurumi because they join-and-turn
+    each round (to avoid spiral slanting incompatible with their shortest-vertical-edge optimization),
+    and plan future support for spiral crocheting, higher stitches, color, and yarn-quantity reporting.
+  locator: Caveats and What's Next? (p.372)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Abstract (p.369)
+contradictions_or_cautions:
+- text: 'Short paper (pp. 369-372): overview only, not full method.'
+  locator: card/trust
+- text: No code/software link or formal DOI in this PDF; Bridges Archive PDF only.
+  locator: card/trust
+- text: Results acknowledged not to look like classic amigurumi (join-and-turn vs spiral).
+  locator: card/trust
+- text: Short paper (4 pages) presenting an overview only; the full method/details live in the AmiGo SCF
+    2022 publication.
+  locator: card/limitations
+- text: No code/software link or formal DOI is provided in this PDF; available via the Bridges Archive
+    PDF only.
+  locator: card/limitations
+- text: Authors acknowledge output does not look like "classic" amigurumi due to the join-and-turn construction.
+  locator: card/limitations

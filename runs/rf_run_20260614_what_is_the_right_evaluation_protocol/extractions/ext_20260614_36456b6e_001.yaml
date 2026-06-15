@@ -1,0 +1,80 @@
+id: ext_20260614_36456b6e_001
+source_card_id: src_20260614_kw007_03
+created_at: '2026-06-14T22:38:28-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'The benchmark evaluates reconstructed surfaces against ground truth using three geometric metrics:
+    volumetric IoU, symmetric Chamfer distance (CD), and normal consistency (NC).'
+  locator: Sec. 5.5 Evaluation metrics - 'Geometric metrics' paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Symmetric Chamfer distance is computed by sampling equal-size point sets on the facets of both
+    the ground-truth mesh and the reconstructed mesh, with each set fixed at 100,000 points.
+  locator: Sec. 5.5 - Chamfer distance bullet
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The symmetric Chamfer distance averages, in both directions, the squared nearest-neighbor distance
+    from each sampled point on one mesh to the closest point on the other mesh.
+  locator: Sec. 5.5 - Chamfer distance equation
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Volumetric IoU is approximated by sampling 100,000 points in the union of the bounding boxes of
+    the ground-truth and reconstructed volumes and computing the inside-intersection over inside-union
+    ratio.
+  locator: Sec. 5.5 - Volumetric IoU bullet
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The stated evaluation goal is for the reconstructed surface to be as close as possible to the
+    ground-truth surface in both geometry and topology, motivating the multi-metric protocol.
+  locator: Sec. 5.5 - opening paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: All benchmark surfaces are single-component, closed, and manifold, which lets the benchmark add
+    topology indices (number of components, boundary edges, non-manifold edges) on top of the geometric
+    metrics.
+  locator: Sec. 5.5 - 'Topologic metrics' paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Sec. 5.5 - Chamfer distance bullet
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Sec. 5.5 - Volumetric IoU bullet
+contradictions_or_cautions:
+- text: 'The source''s supplied key_points (F-score with tau=0.005/0.03, 200k/1,500k sampled points, precision/recall-within-tau
+    definitions) could NOT be confirmed in this v4 PDF; that F-score protocol is from a different paper
+    lineage. Those unverifiable claims were omitted. This card reports only the metrics actually present:
+    IoU, symmetric Chamfer distance (CD), and normal consistency (NC), all computed on 100,000 sampled
+    points.'
+  locator: card/trust
+- text: 'The source key_points supplied to this card (an F-score protocol with tau=0.005 for objects /
+    tau=0.03 for scenes, 200k/1,500k sampled points, and precision/recall-within-tau definitions) were
+    NOT found in this v4 PDF and could not be verified; that F-score-with-tau protocol belongs to a different
+    paper lineage. Those claims were omitted per the no-invention rule. This card reports only what the
+    actual source states: IoU, symmetric Chamfer distance, and normal consistency, all on 100,000 sampled
+    points.'
+  locator: card/limitations
+- text: Quotes are reconstructed from a two-column PDF layout; equation in ev_003 is transcribed into
+    linear notation from the rendered formula. Numbers and metric names are verbatim-confirmed against
+    the source text.
+  locator: card/limitations

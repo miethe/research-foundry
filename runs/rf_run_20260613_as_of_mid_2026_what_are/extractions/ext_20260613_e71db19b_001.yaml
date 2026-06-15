@@ -1,0 +1,59 @@
+id: ext_20260613_e71db19b_001
+source_card_id: src_20260613_rib009_05
+created_at: '2026-06-13T22:57:43-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: GPT Researcher is distributed under the Apache License, Version 2.0 (January 2004).
+  locator: File title / header line
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Apache 2.0 grants a perpetual, worldwide, royalty-free, irrevocable copyright license to reproduce,
+    prepare derivative works of, and distribute the work in source or object form.
+  locator: Section 2 — Grant of Copyright License
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Redistribution requires giving recipients a copy of the license and marking any modified files
+    with prominent notices stating they were changed.
+  locator: Section 4 — Redistribution, conditions (a) and (b)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The work is provided 'AS IS' without warranties or conditions of any kind, express or implied,
+    including merchantability or fitness for a particular purpose.
+  locator: Section 7 — Disclaimer of Warranty
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: File title / header line
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Section 2 — Grant of Copyright License
+contradictions_or_cautions:
+- text: License governs the gpt-researcher code only; underlying LLM/retriever providers impose their
+    own separate terms.
+  locator: card/trust
+- text: LICENSE file carries no project-specific copyright date; '2004-01' is the Apache 2.0 text date,
+    not the repo's adoption date.
+  locator: card/trust
+- text: The Apache 2.0 license governs the GPT Researcher code only; automated/programmatic use is unrestricted
+    by the license, but the underlying LLM and retriever providers impose their own separate terms of
+    service that still apply.
+  locator: card/limitations
+- text: The LICENSE file carries no project-specific copyright date; "2004-01" reflects the Apache 2.0
+    text's own date, not the repository's adoption date.
+  locator: card/limitations

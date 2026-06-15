@@ -1,0 +1,144 @@
+run_id: rf_run_20260614_contradiction_detection_across_heterogeneous_sou
+generated_at: '2026-06-14T23:56:58-04:00'
+contradictions:
+- source_card_id: src_20260614_rib003_10
+  text: Quantitative claim quality validated via LLM and human review, not gold-standard fact-checks
+  locator: card/trust
+- source_card_id: src_20260614_rib003_10
+  text: Experiments used no metadata context; relies on a single source dataset (BingCheck)
+  locator: card/trust
+- source_card_id: src_20260614_rib003_10
+  text: Claim-quality results were validated via LLM and human review (one annotator is a paper author),
+    not against an external gold-standard fact-check ledger; experiments used a single source dataset
+    (BingCheck) and no metadata context.
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_02
+  text: Numerical results read from abstract only; full-text tables not inspected.
+  locator: card/trust
+- source_card_id: src_20260614_rib003_02
+  text: 9-12 point gains are on FactKG; HoVer/FEVEROUS results stated as zero-shot generalizability without
+    specific magnitudes in the abstract.
+  locator: card/trust
+- source_card_id: src_20260614_rib003_02
+  text: Numerical gains (9-12 points) are read from the abstract only; specific per-category tables and
+    HoVer/FEVEROUS magnitudes were not inspected in full text.
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_02
+  text: The small-model-for-grounding / large-model-for-verdict cost framing is an inference relevant
+    to KG claim flagging; the abstract does not quantify cost or latency directly.
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_09
+  text: ACM DL full text gated behind Premium; abstract + Zenodo dataset description used for extraction
+    (full-text body not read).
+  locator: card/trust
+- source_card_id: src_20260614_rib003_09
+  text: ACM DL full text is gated behind Premium; extraction used the ACM Open Access abstract plus the
+    authors' Zenodo dataset description (record 15680977). The full-text body, exact metrics, and per-model
+    results were not read. The Zenodo page notes the article was "under review at CIKM'2025" at archival
+    time; the paper was subsequently published (10 Nov 2025).
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_08
+  text: Numeric deltas (+3.71, +2.84, +2.43, +3.78) are computed from the paper's reported before/after
+    Table 1 values rather than quoted as standalone strings; ev_007/ev_008 quotes for the exact per-cell
+    numbers are set to null or to a summary sentence because the arXiv HTML table cells do not yield a
+    clean short verbatim excerpt. Results are specific to ICEWS event-based TKG benchmarks and may not
+    generalize to other domains or graph types.
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_01
+  text: 'Caution on a common misstatement: although the alignment model includes a regression head, the
+    production AlignScore metric computes consistency from the 3-way classification head''s ALIGNED probability
+    (per ablation), not from a continuous regression output — so it is not accurately described as "a
+    continuous score instead of 3-way NLI labels."'
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_01
+  text: Results are 2023-era; comparisons to "ChatGPT and GPT-4" reflect mid-2023 model versions and prompting,
+    which have since changed.
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_01
+  text: Due to resource constraints only the first 500k samples per dataset were used (4.7M total), so
+    training is capped rather than exhaustive.
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_07
+  text: Specific quantitative result numbers (precision/recall/hit-rate tables) could not be confirmed
+    verbatim from the compressed PDF body and are therefore omitted; only metric directions and the qualitative
+    "best performer" claim are recorded. Source is an arXiv preprint (v2, revised April 2026), not a final
+    venue-published version.
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_05
+  text: Survey synthesizes prior work; specific behavioral findings (e.g., receptiveness to external evidence)
+    are attributed to cited studies, not original experiments.
+  locator: card/trust
+- source_card_id: src_20260614_rib003_05
+  text: Survey synthesizes prior literature; behavioral findings (e.g., ev_005, ev_006) are attributed
+    to cited studies, not original experiments, and the two findings qualify each other (model preference
+    depends on conflict type and setup).
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_03
+  text: The claim/covariate extraction (ev_002) carries the structured description/type/temporal-validity
+    detail per the paper's element-instance design, but the verbatim quote captured here covers the factual-statement
+    definition rather than the full schema. Win-rate figures (ev_006) are LLM-as-judge head-to-head preferences,
+    not ground-truth accuracy. Results are from the authors' own evaluation on two ~1M-token datasets
+    (Podcast transcripts, News articles); generalization beyond these conditions is not established. Quotes
+    drawn from the arXiv HTML v2 (revised Feb 2025).
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_04
+  text: Generator model is GPT-4o-mini (not gpt-3.5-turbo); headline metric is G-BERTScore-F1 (G-BS-F1),
+    a soft semantic match, not exact-match F1.
+  locator: card/trust
+- source_card_id: src_20260614_rib003_04
+  text: Evaluated on 2000-point samples per dataset; SCIERC is the only domain-specific general benchmark
+    in the headline three.
+  locator: card/trust
+- source_card_id: src_20260614_rib003_04
+  text: The generator is GPT-4o-mini (the upstream brief's "gpt-3.5-turbo" is incorrect and was not used),
+    and the headline metric is G-BERTScore-F1 (a soft semantic match), not exact-match F1 — so reported
+    deltas are larger and not directly comparable to strict-match scores. Baseline values cited here are
+    GPT-4o-mini / GPT-4o, not gpt-3.5-turbo. Evaluation used 2000-point samples per dataset.
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_11
+  text: Synthetic dataset generated by Claude-3 Sonnet from HotpotQA, not naturally occurring RAG conflicts
+  locator: card/trust
+- source_card_id: src_20260614_rib003_11
+  text: 'Models evaluated: Claude-3 Sonnet/Haiku and Llama3.3-70B/3.1-8B only'
+  locator: card/trust
+- source_card_id: src_20260614_rib003_11
+  text: Dataset is synthetic (generated by Claude-3 Sonnet from HotpotQA), so it may not reflect naturally
+    occurring RAG conflicts; only four model variants (Claude-3 Sonnet/Haiku, Llama3.3-70B, Llama3.1-8B)
+    were tested.
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_06
+  text: Experiments limited to Claude 3 (Sonnet/Haiku) and Llama (8B/70B); authors note GPT-4 might follow
+    a different pattern
+  locator: card/trust
+- source_card_id: src_20260614_rib003_06
+  text: Synthetic data generation framework lacks an automated quality-control mechanism and relies on
+    human annotation, limiting scalability
+  locator: card/trust
+- source_card_id: src_20260614_rib003_06
+  text: Experiments are limited to Claude 3 (Sonnet/Haiku) and Llama (8B/70B); the authors explicitly
+    note GPT-4 might follow a different pattern, so findings may not generalize across model families.
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_06
+  text: The synthetic data generation framework lacks an automated quality-control mechanism and depends
+    on human annotation, limiting scalability.
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_00
+  text: Cost/speed claims (e.g., 400x cheaper, 29K examples in 30 min) are author-reported under their
+    own evaluation conditions.
+  locator: card/trust
+- source_card_id: src_20260614_rib003_00
+  text: Some operational throughput figures come from the project GitHub README rather than the paper
+    body.
+  locator: card/trust
+- source_card_id: src_20260614_rib003_00
+  text: The paper states LLM-AggreFact aggregates 10 datasets (not 11 as sometimes summarized); use the
+    source figure.
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_00
+  text: Cost (400x), accuracy-parity, and throughput claims are author-reported under their own evaluation
+    setup.
+  locator: card/limitations
+- source_card_id: src_20260614_rib003_00
+  text: Throughput/variant details (ev_006, ev_007) are sourced from the project GitHub README, not the
+    paper body.
+  locator: card/limitations

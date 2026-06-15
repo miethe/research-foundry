@@ -1,0 +1,96 @@
+id: ext_20260615_50ba234f_001
+source_card_id: src_20260614_kw015_07
+created_at: '2026-06-15T10:42:00-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: SmolVLM (2B) reports the best memory usage among vision language models in transformers, requiring
+    a minimum of 5.02 GB GPU RAM.
+  locator: Performance > Memory
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: SmolVLM uses SmolLM2 1.7B as its language backbone, replacing the larger Llama 3.1 8B.
+  locator: Architecture / Performance > Memory
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: SmolVLM encodes each 384x384 image patch to 81 visual tokens.
+  locator: Performance > Memory
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Encoding a test prompt plus a single image takes ~1.2k tokens with SmolVLM versus ~16k tokens
+    with Qwen2-VL.
+  locator: Performance > Memory
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Compared with Qwen2-VL, SmolVLM achieves 3.3-4.5x faster prefill throughput and 7.5-16x faster
+    generation throughput.
+  locator: Performance > Throughput
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'SmolVLM benchmark accuracy: DocVQA 81.6, TextVQA 72.7, MMMU (val) 38.8, MathVista 44.6, MMStar
+    42.1.'
+  locator: Performance > Benchmarks (table)
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_007
+  text: All SmolVLM model checkpoints, datasets, training recipes, and tools are released under the Apache
+    2.0 license.
+  locator: TLDR
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Performance > Memory
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Architecture / Performance > Memory
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Performance > Memory
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Performance > Memory
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Performance > Throughput
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Performance > Benchmarks (table)
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: TLDR
+contradictions_or_cautions:
+- text: Benchmarks are self-reported by the model authors and not independently reproduced.
+  locator: card/trust
+- text: Benchmark and throughput numbers are self-reported by the model authors/vendor and have not been
+    independently reproduced; treat as first-party claims.
+  locator: card/limitations

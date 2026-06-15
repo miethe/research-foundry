@@ -1,0 +1,85 @@
+id: ext_20260614_3c895b4d_001
+source_card_id: src_20260614_rib018_05
+created_at: '2026-06-14T14:36:17-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The OWASP Multi-Agentic System Threat Modelling Guide is Version 1.0, was released on April 22,
+    2025, and is published by the OWASP GenAI Security Project's Agentic Security Initiative.
+  locator: Cover page (p.1) / title block
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The guide does not propose a new taxonomy but applies the OWASP 'Agentic AI - Threats and Mitigations'
+    master agentic threat taxonomy to real-world multi-agent systems.
+  locator: Executive Summary (p.3)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The guide's objective is to apply the MAESTRO (Multi-Agent Environment, Security, Threat, Risk,
+    and Outcome) layered, architectural methodology as a companion to the OWASP Agentic Security Initiative
+    (ASI) threat taxonomy for structured threat modeling.
+  locator: Executive Summary (p.3)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The guide focuses on previously OWASP-defined agentic threats - Tool Misuse, Intent Manipulation,
+    and Privilege Compromise - and how they manifest within complex multi-agent deployments.
+  locator: Executive Summary (p.3) / agentic threats in scope
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The guide identifies identity sprawl and access complexity as a novel MAS risk, where managing
+    identity and access control becomes highly complex due to the large number of interacting agents.
+  locator: Section 1.2 limitations of MAS (p.6) / Identity Sprawl
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Identity Spoofing is listed as a core MAS threat in which adversaries impersonate agents to inject
+    false data or hijack decision-making.
+  locator: Section 1.3 MAS Threat Overview (p.8) / sample threat list
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: MAESTRO outlines security threats across architectural layers of the agentic AI reference architecture
+    (foundation models up to the agent ecosystem) plus cross-layer threats, and references the Cloud Security
+    Alliance MAESTRO blog as its origin.
+  locator: Section 2 Overview of MAESTRO Framework (p.8) / framework definition + CSA reference
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: The guide is positioned as an extension of the ASI 'Agentic AI - Threats and Mitigations' document,
+    intended to be used in tandem with it and the OWASP Top 10 for LLM Applications.
+  locator: Section 1 Introduction (p.4)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Cover page (p.1) / title block
+- metric_name: evidence_point
+  value: ev_008
+  unit: null
+  date_context: null
+  locator: Section 1 Introduction (p.4)
+contradictions_or_cautions:
+- text: Cross-layer threat tables are column-formatted in the PDF and do not yield clean verbatim quotes;
+    quotes here are drawn from running prose sections.
+  locator: card/trust
+- text: Cross-layer threat tables (e.g., delegated/cross-agent Tool Misuse, Cross-Layer Privilege Compromise,
+    Identity Spoofing/Impersonation) are rendered as multi-column layouts in the PDF; their cell text
+    fragments under extraction, so verbatim quotes here are drawn only from clean running-prose sections
+    rather than those tables.
+  locator: card/limitations

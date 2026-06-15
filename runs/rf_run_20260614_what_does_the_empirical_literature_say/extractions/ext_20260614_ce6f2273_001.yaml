@@ -1,0 +1,89 @@
+id: ext_20260614_ce6f2273_001
+source_card_id: src_20260614_rib002_00
+created_at: '2026-06-14T14:17:15-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: SAFE (Search-Augmented Factuality Evaluator) uses an LLM to break a long-form response into individual
+    atomic facts and verify each via a multi-step reasoning process that issues Google Search queries,
+    the same decompose-then-verify pattern as a claim ledger.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The paper extends F1 as an aggregated long-form-factuality metric by balancing precision (percentage
+    of supported facts) against recall, where recall is measured relative to a hyperparameter representing
+    the user's preferred response length.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: On ~16,000 individual facts SAFE agrees with crowdsourced human annotators 72% of the time, and
+    on a random subset of 100 disagreement cases SAFE wins 76% of the time.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: SAFE is more than 20 times cheaper than human annotators for evaluating long-form factuality.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: LongFact is a benchmark of thousands of fact-seeking questions spanning 38 topics, generated using
+    GPT-4.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Thirteen language models across four families (Gemini, GPT, Claude, and PaLM-2) were benchmarked
+    on LongFact, and larger models generally achieved better long-form factuality.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Abstract
+contradictions_or_cautions:
+- text: Body-text section-level locators not independently confirmed (PDF body not fully parsed); locators
+    given at abstract granularity.
+  locator: card/trust
+- text: SAFE's 72% human-agreement figure is on crowdsourced (not expert) annotators.
+  locator: card/trust
+- text: Section-level locators for body-text claims were not independently confirmed (PDF body not fully
+    parsed); all quotes here are verified verbatim from the arXiv abstract, so locators are given at abstract
+    granularity.
+  locator: card/limitations
+- text: The 72% agreement figure is against crowdsourced (not expert) annotators; "wins 76%" reflects
+    researcher-adjudicated disagreement cases.
+  locator: card/limitations

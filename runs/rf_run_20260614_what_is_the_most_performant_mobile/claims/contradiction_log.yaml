@@ -1,0 +1,94 @@
+run_id: rf_run_20260614_what_is_the_most_performant_mobile
+generated_at: '2026-06-14T23:22:02-04:00'
+contradictions:
+- source_card_id: src_20260614_kw009_05
+  text: General-purpose WebGL guidance, not specific to any particular engine, framework, or mobile GPU;
+    benchmarks/quantified speedups are not provided, so claimed performance gains are directional rather
+    than measured.
+  locator: card/limitations
+- source_card_id: src_20260614_kw009_07
+  text: Page covers blending mechanics on Arm GPUs only; some commonly-paired guidance (explicit front-to-back/back-to-front
+    draw order, discard/alpha-test effects) lives on other pages of the same guide, not this page.
+  locator: card/trust
+- source_card_id: src_20260614_kw009_07
+  text: This specific page documents blending mechanics; it does not itself spell out the explicit opaque-front-to-back
+    / transparent-back-to-front draw order or the discard/alpha-test hidden-surface-removal statements
+    (those appear on adjacent pages of the same guide). Evidence here is limited to claims verbatim on
+    this page. Published date (2025-02) and version 3.4 are taken from the document/URL revision metadata.
+  locator: card/limitations
+- source_card_id: src_20260614_kw009_00
+  text: The fetched documentation did not contain explicit text confirming that instance matrices are
+    stored in a texture and read in-shader; that claim is omitted from this card. Documented behavior
+    reflects the three.js version current at access time (page dated 2026-01).
+  locator: card/limitations
+- source_card_id: src_20260614_kw009_02
+  text: Describes Mali-specific hardware; energy/bandwidth figures are order-of-magnitude estimates that
+    vary by system design
+  locator: card/trust
+- source_card_id: src_20260614_kw009_02
+  text: Published 2014; predates newer Mali/Immortalis generations
+  locator: card/trust
+- source_card_id: src_20260614_kw009_02
+  text: Published 2014 and Mali-specific; energy and bandwidth figures are order-of-magnitude estimates
+    that vary by system design, and the post predates newer Mali/Immortalis generations. Marked tertiary-stable
+    (foundational architecture, older than the 180-day recency window). Source metadata listed "2019-08"
+    but the article text states a February 20, 2014 publication date, which is used here.
+  locator: card/limitations
+- source_card_id: src_20260614_kw009_06
+  text: No mobile/low-power benchmarks reported; all timings on desktop RTX 3090.
+  locator: card/trust
+- source_card_id: src_20260614_kw009_06
+  text: Speedup is vs the authors' own path-traced fiber-level reference, not a third-party baseline.
+  locator: card/trust
+- source_card_id: src_20260614_kw009_06
+  text: All performance numbers are on a single high-end desktop GPU (RTX 3090); the source reports no
+    mobile or low-power benchmarks, so mobile-viability conclusions (ev_006) are inference, not stated
+    by the authors.
+  locator: card/limitations
+- source_card_id: src_20260614_kw009_06
+  text: The 120,000x speedup is measured against the authors' own path-traced fiber-level reference, not
+    an independent third-party baseline.
+  locator: card/limitations
+- source_card_id: src_20260614_kw009_08
+  text: Vendor-published performance figures may reflect favorable test scenes; not independently verified.
+  locator: card/trust
+- source_card_id: src_20260614_kw009_08
+  text: Vendor-published performance figures from Arm's own blog; benchmark scenes are vendor-selected
+    and not independently verified. Page metadata lists the publish date as 2024-11-28, which differs
+    from the harness-supplied "2025-05" hint.
+  locator: card/limitations
+- source_card_id: src_20260614_kw009_01
+  text: Author-reported benchmarks (n=1 machine)
+  locator: card/trust
+- source_card_id: src_20260614_kw009_01
+  text: No published CodePen-result dataset reproduced here
+  locator: card/trust
+- source_card_id: src_20260614_kw009_01
+  text: Benchmark numbers are author-reported from a single machine (n=1), not independently reproduced;
+    treat the ~1.5x/~2x figures as indicative rather than definitive. Issue is open/unresolved, so it
+    reflects a proposal, not shipped three.js behavior.
+  locator: card/limitations
+- source_card_id: src_20260614_kw009_03
+  text: PDF body is FlateDecode-compressed binary; verbatim quotes confirmed via Arm's HTML developer-portal
+    mirror of the same guide and indexed excerpts, not the raw PDF stream.
+  locator: card/trust
+- source_card_id: src_20260614_kw009_03
+  text: The source PDF body is FlateDecode-compressed binary; verbatim quotes were confirmed against Arm's
+    HTML developer-portal mirror of the same guide and search-indexed excerpts, not the raw PDF stream.
+    The draw-call batching point (ev_008) is supported by the guide's stated key points but lacks a confirmable
+    short verbatim excerpt, so its quote is null.
+  locator: card/limitations
+- source_card_id: src_20260614_kw009_04
+  text: No author byline
+  locator: card/trust
+- source_card_id: src_20260614_kw009_04
+  text: Quantitative claims on the page are coarse (e.g. 'over 10% frametime'); detailed empirical percentages
+    live on a separate spec-sheets page not captured here
+  locator: card/trust
+- source_card_id: src_20260614_kw009_04
+  text: The page's quantitative claims are coarse ("gains of over 10% frametime"); it does not state the
+    specific ~45% read / ~56% write reductions referenced in the originating prompt — those numbers were
+    NOT found on this page and are omitted to avoid invention. Detailed empirical results are referenced
+    as living on a separate Qualcomm spec-sheets page not captured here. No author byline; the page is
+    vendor documentation (Qualcomm Technologies, Inc.), Last Published Mar 03, 2026.
+  locator: card/limitations

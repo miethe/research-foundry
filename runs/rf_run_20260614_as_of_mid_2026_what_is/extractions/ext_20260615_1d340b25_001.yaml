@@ -1,0 +1,73 @@
+id: ext_20260615_1d340b25_001
+source_card_id: src_20260614_kw012_04
+created_at: '2026-06-15T09:31:13-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Stitch Fiddle's free tier caps usage at 15 charts, 50 unique colors/symbols per chart, and a maximum
+    grid of 300x300 (90,000 stitches).
+  locator: Plan comparison table — Free tier
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Premium raises limits to unlimited charts, 250 unique colors/symbols per chart, and a maximum
+    grid of 1,000x1,000 (1,000,000 stitches).
+  locator: Plan comparison table — Premium tier
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Premium costs $5.50 for one month or $33.00 per year, an annual price the vendor frames as a 50%
+    discount equal to $2.75 per month.
+  locator: Pricing section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Subscriptions are one-off payments with no automatic renewal and expire automatically at the end
+    of the chosen period.
+  locator: Pricing / billing terms
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Premium unlocks image upload, multi-user collaboration, QR-coded charts, vector/Word/Excel exports,
+    automatic knitting-chart error checking, and conversion of charts into written knitting/crochet instructions.
+  locator: Premium-only feature list
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Stitch Fiddle is browser-based across Windows, Mac, Android, iOS, Linux, and Chromebook, with
+    charts automatically synced across a user's devices and no install required.
+  locator: Supported platforms / sync section
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Plan comparison table — Free tier
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Plan comparison table — Premium tier
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Pricing section
+contradictions_or_cautions:
+- text: No publication date visible; pricing/features may change without notice
+  locator: card/trust
+- text: No publication/last-updated date is visible on the page, so pricing and feature lists are point-in-time
+    (accessed 2026-06-14) and may change. As a vendor pricing page it is authoritative for plan structure
+    but inherently promotional. The page describes 2D grid charting only — no 3D visualization or assembly
+    guidance is offered, consistent with the 3D-preview whitespace.
+  locator: card/limitations

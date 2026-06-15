@@ -1,0 +1,85 @@
+id: ext_20260614_d95a4a70_001
+source_card_id: src_20260614_kw009_03
+created_at: '2026-06-14T23:21:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Every Arm GPU since the Mali-T620 includes Forward Pixel Kill (FPK), which automatically removes
+    occluded fragments that early ZS testing does not kill.
+  locator: Fragment shading / Forward Pixel Kill
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Arm advises minimizing overdraw by rendering opaque objects front-to-back and limiting blended
+    transparent layers, since front-to-back order maximizes the early depth/stencil test's effectiveness.
+  locator: Fragment shading / Efficient render order
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Arm warns developers not to depend on FPK alone, because an early-ZS test is always more energy-efficient
+    and consistent and also works on older Mali GPUs without hidden surface removal.
+  locator: Fragment shading / Forward Pixel Kill (caveat)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: From Mali-G725 / Immortalis-G925 onward, Fragment Prepass reliably removes overdrawn fragments
+    independent of draw order, letting apps disable software front-to-back sorting and cut the CPU cost
+    of issuing draw calls.
+  locator: Fragment shading / Fragment Prepass (Mali-G725, Immortalis-G925)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Arm recommends splitting large UI elements into separate opaque and transparent portions so early
+    ZS or FPK can remove the overdraw beneath the opaque parts.
+  locator: Fragment shading / Blending (overdraw mitigation)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Arm explicitly prohibits blending on floating-point framebuffers (including multisampled ones),
+    as it disables overdraw-removal optimizations such as early ZS and FPK.
+  locator: Fragment shading / Blending (floating-point framebuffers)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Arm advises monitoring the per-pixel blended-layer count because high layer counts quickly consume
+    GPU cycles even when individual blend shaders are simple.
+  locator: Fragment shading / Blending (blended layer budget)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: Arm's guidance favors batching geometry and avoiding many small draw calls to reduce per-draw
+    CPU and tiling/binning overhead, though no short verbatim batching excerpt could be confirmed from
+    the binary PDF body.
+  locator: General / draw-call batching (key point; PDF body binary-encoded)
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Fragment shading / Forward Pixel Kill
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Fragment shading / Fragment Prepass (Mali-G725, Immortalis-G925)
+contradictions_or_cautions:
+- text: PDF body is FlateDecode-compressed binary; verbatim quotes confirmed via Arm's HTML developer-portal
+    mirror of the same guide and indexed excerpts, not the raw PDF stream.
+  locator: card/trust
+- text: The source PDF body is FlateDecode-compressed binary; verbatim quotes were confirmed against Arm's
+    HTML developer-portal mirror of the same guide and search-indexed excerpts, not the raw PDF stream.
+    The draw-call batching point (ev_008) is supported by the guide's stated key points but lacks a confirmable
+    short verbatim excerpt, so its quote is null.
+  locator: card/limitations

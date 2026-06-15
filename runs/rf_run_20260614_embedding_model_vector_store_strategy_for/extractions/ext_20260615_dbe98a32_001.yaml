@@ -1,0 +1,82 @@
+id: ext_20260615_dbe98a32_001
+source_card_id: src_20260614_rib033_02
+created_at: '2026-06-15T09:33:08-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: nomic-embed-text-v1.5 uses Matryoshka Representation Learning to let developers trade off embedding
+    size for a negligible reduction in performance.
+  locator: Model overview (intro paragraph)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Matryoshka training supports embedding dimensions of 768, 512, 256, 128, and 64, with MTEB averages
+    of 62.28, 61.96, 61.04, 59.34, and 56.10 respectively.
+  locator: Performance table (MTEB by embedding dimension)
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_003
+  text: Truncating from 768 to 512 dimensions costs roughly 0.32 MTEB points (62.28 to 61.96) and to 256
+    dimensions roughly 1.24 points (62.28 to 61.04), confirming the negligible-degradation tradeoff.
+  locator: Performance / truncation discussion
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_004
+  text: The model natively supports scaling the sequence length past 2048 tokens (up to 8192).
+  locator: Architecture / context-length section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The model is built starting from a long-context BERT base (nomic-bert-2048), then trained with
+    unsupervised contrastive stages on weakly related text pairs.
+  locator: Training Details (contrastive pretraining)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Embeddings are resized to a target Matryoshka dimension by layer-normalizing and slicing to matryoshka_dim,
+    enabling client-side dimension reduction without re-embedding.
+  locator: Usage examples (Sentence Transformers / Transformers code snippets)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Model overview (intro paragraph)
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Performance table (MTEB by embedding dimension)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Performance / truncation discussion
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Architecture / context-length section
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Training Details (contrastive pretraining)
+contradictions_or_cautions:
+- text: MTEB scores are author-reported, not independently audited
+  locator: card/trust
+- text: Performance figures are aggregate MTEB averages; per-task results vary
+  locator: card/trust
+- text: MTEB scores are author-reported on the official model card, not independently audited; per-task
+    results vary and the 64d setting (56.10) shows materially larger degradation than the 256/512 settings.
+  locator: card/limitations

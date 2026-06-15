@@ -1,0 +1,83 @@
+id: ext_20260615_32fb5b35_001
+source_card_id: src_20260614_rib033_06
+created_at: '2026-06-15T09:33:08-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: MMTEB is a large-scale, community-driven expansion of MTEB covering over 500 quality-controlled
+    evaluation tasks across 250+ languages.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: 'MMTEB adds novel task categories beyond standard retrieval/classification: instruction following,
+    long-document retrieval, and code retrieval.'
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The best-performing publicly available model on MMTEB is multilingual-e5-large-instruct at only
+    560M parameters, outperforming much larger billion-parameter LLMs (which lead only on certain subsets/categories).
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: To reduce compute cost, MMTEB introduces an inter-task-correlation downsampling method that preserves
+    relative model rankings while selecting a diverse task subset.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Retrieval tasks are optimized by sampling hard negatives to create smaller but effective splits,
+    yielding benchmarks that drastically reduce computational demands.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The new zero-shot English benchmark preserves a ranking order similar to the full-scale version
+    at a fraction of the computational cost.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The paper was submitted to arXiv on 19 Feb 2025 (v1) and accepted as a conference paper at ICLR
+    2025.
+  locator: arXiv listing / submission metadata
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: arXiv listing / submission metadata
+contradictions_or_cautions:
+- text: Abstract-level reading; full methodology/tables not extracted
+  locator: card/trust
+- text: Benchmark rankings reflect publicly available models as of early 2025
+  locator: card/trust
+- text: Extraction is abstract-level; full methodology, exact task counts per category, and leaderboard
+    tables were not read in detail.
+  locator: card/limitations
+- text: Rankings reflect publicly available models around early 2025 and may shift as newer embedding
+    models ship.
+  locator: card/limitations

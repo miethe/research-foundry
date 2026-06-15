@@ -1,0 +1,11 @@
+{"stage": "plan", "ts": "2026-06-14T15:48:02-04:00", "run_id": "rf_run_20260614_what_is_the_evidence_grounded_design"}
+{"ts": "2026-06-14T15:58:57-04:00", "stage": "extract", "run_id": "rf_run_20260614_what_is_the_evidence_grounded_design", "count": 12}
+{"ts": "2026-06-14T15:59:06-04:00", "stage": "claim_map", "run_id": "rf_run_20260614_what_is_the_evidence_grounded_design", "claims_total": 87}
+{"ts": "2026-06-14T16:04:56-04:00", "stage": "synthesize", "run_id": "rf_run_20260614_what_is_the_evidence_grounded_design", "report_id": "report_20260614_what_is_the_evidence_grounded_design", "claims_cited": 107}
+{"ts": "2026-06-14T16:14:48-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_evidence_grounded_design", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T16:14:57-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_evidence_grounded_design", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T16:15:27-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_evidence_grounded_design", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T16:16:38-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_evidence_grounded_design", "exit_code": 0, "passed": true}
+{"stage": "bundle", "ts": "2026-06-14T16:16:38-04:00", "run_id": "rf_run_20260614_what_is_the_evidence_grounded_design", "bundle_id": "bundle_20260614_intent_research_20260614_what_is_the", "verified": true}
+{"stage": "ccdash_event", "ts": "2026-06-14T16:16:49-04:00", "run_id": "rf_run_20260614_what_is_the_evidence_grounded_design", "event_id": "exec_20260614_intent_research_20260614_what_is_the"}
+{"stage": "writeback", "ts": "2026-06-14T16:16:49-04:00", "run_id": "rf_run_20260614_what_is_the_evidence_grounded_design", "requires_review": false}

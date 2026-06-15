@@ -1,0 +1,63 @@
+id: ext_20260615_2d62477d_001
+source_card_id: src_20260614_rib017_06
+created_at: '2026-06-15T00:16:10-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: OWASP scopes sensitive information disclosure in LLM apps to cover PII, financial details, health
+    records, confidential business data, security credentials, legal documents, and proprietary models,
+    training methods, and source code.
+  locator: Overview / Types of sensitive information
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: OWASP recommends restricting access to sensitive data on a least-privilege basis, granting only
+    the data necessary for the specific user or process.
+  locator: Prevention and Mitigation Strategies > Access Controls
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: OWASP advises limiting model access to external data sources and securely managing runtime data
+    orchestration to avoid unintended data leakage, providing the direct basis for gating which sinks
+    a task may reach.
+  locator: Prevention and Mitigation Strategies > Access Controls
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: OWASP recommends data sanitization to prevent user data from entering the training model, including
+    scrubbing or masking sensitive content before training, plus strict input validation.
+  locator: Prevention and Mitigation Strategies > Sanitization
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: OWASP names federated learning over decentralized data and differential privacy as privacy-preserving
+    controls that reduce centralized-data exposure and resist reverse-engineering of individual data points.
+  locator: Prevention and Mitigation Strategies > Federated Learning and Privacy Techniques
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: OWASP lists homomorphic encryption for privacy-preserving analysis and tokenization with pattern-matching
+    redaction to detect and redact confidential content before processing.
+  locator: Prevention and Mitigation Strategies > Advanced Techniques
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: No named individual author or precise publication month on the page
+  locator: card/trust
+- text: Guidance is prescriptive/qualitative, not benchmarked or measured
+  locator: card/trust
+- text: The page carries no named individual author and no precise publication month (version is the "2025"
+    list designation).
+  locator: card/limitations
+- text: Guidance is prescriptive and qualitative; it provides no benchmarks, measured efficacy, or quantitative
+    thresholds.
+  locator: card/limitations

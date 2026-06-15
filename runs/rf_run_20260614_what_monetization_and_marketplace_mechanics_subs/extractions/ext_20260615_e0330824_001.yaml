@@ -1,0 +1,68 @@
+id: ext_20260615_e0330824_001
+source_card_id: src_20260614_kw014_04
+created_at: '2026-06-15T10:22:36-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The App Store Small Business Program offers a reduced 15% commission rate on paid apps and In-App
+    Purchases.
+  locator: 'Section: How it works'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Existing developers who earned up to 1 million USD in proceeds in the prior calendar year, plus
+    developers new to the App Store, qualify for the program and reduced commission.
+  locator: 'Section: The basics'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Eligibility requires no more than 1 million USD in total proceeds (sales net of Apple's commission
+    and certain taxes/adjustments) during the 12 fiscal months within the previous calendar year, and
+    no more than 1 million USD during the current year, including Associated Developer Accounts.
+  locator: 'Section: Proceeds eligibility'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: If a participating developer exceeds the 1 million USD threshold during the current calendar year,
+    the standard commission rate applies to future sales.
+  locator: 'Section: The basics'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: 'Section: How it works'
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: 'Section: The basics'
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: 'Section: Proceeds eligibility'
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: 'Section: The basics'
+contradictions_or_cautions:
+- text: Standard (30%) commission rate is not stated on this page
+  locator: card/trust
+- text: No specific program/enrollment dates published; copyright reads 2026
+  locator: card/trust
+- text: The standard (30%) commission rate is not explicitly stated on this page; the 30% figure must
+    be sourced separately.
+  locator: card/limitations
+- text: The page lists no specific program or enrollment dates; the site copyright reads 2026 while the
+    program itself dates to 2020-2021.
+  locator: card/limitations

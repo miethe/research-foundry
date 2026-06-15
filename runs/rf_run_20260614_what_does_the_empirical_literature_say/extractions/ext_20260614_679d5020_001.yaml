@@ -1,0 +1,56 @@
+id: ext_20260614_679d5020_001
+source_card_id: src_20260614_rib002_06
+created_at: '2026-06-14T14:17:15-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: FacTool is a task- and domain-agnostic framework for detecting factual errors in texts generated
+    by large language models such as ChatGPT.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: A core motivation is that LLM-generated texts are lengthy and lack a clearly defined granularity
+    for individual facts, which necessitates claim decomposition before verification.
+  locator: Abstract (challenge 2)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: 'FacTool is evaluated across four distinct tasks: knowledge-based QA, code generation, mathematical
+    reasoning, and scientific literature review.'
+  locator: Abstract (experiments)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The framework targets the problem that explicit evidence is scarce during the fact-checking process,
+    motivating a tool-augmented evidence-collection approach.
+  locator: Abstract (challenge 3)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: FacTool is released as open-source code on GitHub (GAIR-NLP/factool) together with a ChatGPT plugin
+    interface.
+  locator: Abstract (release statement)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The paper frames generative models as expanding the range of tasks now at increasing risk of containing
+    factual errors.
+  locator: Abstract (challenge 1)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Evidence here is drawn from the arXiv abstract and release statement; the detailed pipeline mechanics
+    (claim extraction -> query generation -> evidence collection -> verification) and per-task accuracy
+    numbers are described in the full paper body and are not quoted verbatim in this card. Findings reflect
+    a July 2023 preprint and may have been updated in later versions or the published proceedings.
+  locator: card/limitations

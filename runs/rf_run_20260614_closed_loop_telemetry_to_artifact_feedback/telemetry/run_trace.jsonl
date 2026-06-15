@@ -1,0 +1,12 @@
+{"stage": "plan", "ts": "2026-06-14T20:50:48-04:00", "run_id": "rf_run_20260614_closed_loop_telemetry_to_artifact_feedback"}
+{"ts": "2026-06-15T11:34:47-04:00", "stage": "extract", "run_id": "rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "count": 12}
+{"ts": "2026-06-15T11:34:50-04:00", "stage": "claim_map", "run_id": "rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "claims_total": 79}
+{"ts": "2026-06-15T11:40:33-04:00", "stage": "synthesize", "run_id": "rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "report_id": "report_20260615_closed_loop_telemetry_to_artifact_feedback", "claims_cited": 98}
+{"ts": "2026-06-15T11:48:45-04:00", "stage": "verify", "run_id": "rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T11:48:53-04:00", "stage": "verify", "run_id": "rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T11:49:11-04:00", "stage": "verify", "run_id": "rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T11:49:59-04:00", "stage": "verify", "run_id": "rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "exit_code": 0, "passed": true}
+{"stage": "bundle", "ts": "2026-06-15T11:49:59-04:00", "run_id": "rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "bundle_id": "bundle_20260615_intent_research_20260614_closed_loop_telemetry", "verified": true}
+{"stage": "ccdash_event", "ts": "2026-06-15T11:50:08-04:00", "run_id": "rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "event_id": "exec_20260615_intent_research_20260614_closed_loop_telemetry"}
+{"stage": "writeback", "ts": "2026-06-15T11:50:08-04:00", "run_id": "rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "requires_review": false}
+{"ts": "2026-06-15T11:50:39-04:00", "stage": "verify", "run_id": "rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "exit_code": 0, "passed": true}

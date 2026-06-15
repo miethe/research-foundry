@@ -1,0 +1,55 @@
+id: ext_20260614_4c700f63_001
+source_card_id: src_20260614_kw009_05
+created_at: '2026-06-14T23:21:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Collapsing many objects into fewer, larger draw calls generally improves performance; e.g. paint
+    1000 sprites with a single drawArrays() or drawElements() call.
+  locator: Batch draw calls
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Drawing from static, unchanging VAOs is faster than mutating a VAO per draw because browsers can
+    cache fetch limits for unchanged VAOs but must revalidate and recalculate limits when VAOs change.
+  locator: Avoid changing VAO attachments (vertexAttribPointer, disable/enableVertexAttribArray)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Almost any change to a framebuffer object's attachment bindings invalidates its framebuffer completeness,
+    so hot framebuffers should be set up ahead of time.
+  locator: Avoid invalidating FBO attachment bindings
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Delete GPU objects eagerly rather than waiting for the garbage collector, because at the API level
+    'deleting' only releases the handle that refers to the underlying object, which is freed only once
+    unused in the implementation.
+  locator: Delete objects eagerly
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Texture atlasing (packing multiple images into one texture) and degenerate triangles (zero-area
+    triangles that get skipped) let discontinuous geometry stay in a single drawArrays(TRIANGLE_STRIP)
+    batch.
+  locator: Batch draw calls
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Batch draw calls
+contradictions_or_cautions:
+- text: General-purpose WebGL guidance, not specific to any particular engine, framework, or mobile GPU;
+    benchmarks/quantified speedups are not provided, so claimed performance gains are directional rather
+    than measured.
+  locator: card/limitations

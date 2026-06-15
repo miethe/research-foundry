@@ -1,0 +1,16 @@
+{"stage": "plan", "ts": "2026-06-14T20:50:47-04:00", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for"}
+{"ts": "2026-06-15T09:33:08-04:00", "stage": "extract", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "count": 12}
+{"ts": "2026-06-15T09:33:12-04:00", "stage": "claim_map", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "claims_total": 72}
+{"ts": "2026-06-15T09:38:05-04:00", "stage": "synthesize", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "report_id": "report_20260615_embedding_model_vector_store_strategy_for", "claims_cited": 90}
+{"ts": "2026-06-15T09:41:57-04:00", "stage": "verify", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "exit_code": 4, "passed": false}
+{"ts": "2026-06-15T09:42:01-04:00", "stage": "verify", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "exit_code": 4, "passed": false}
+{"ts": "2026-06-15T09:42:43-04:00", "stage": "verify", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "exit_code": 4, "passed": false}
+{"ts": "2026-06-15T09:43:18-04:00", "stage": "verify", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T09:43:23-04:00", "stage": "verify", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T09:43:45-04:00", "stage": "verify", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T09:44:14-04:00", "stage": "verify", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "exit_code": 0, "passed": true}
+{"stage": "bundle", "ts": "2026-06-15T09:44:14-04:00", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "bundle_id": "bundle_20260615_intent_research_20260614_embedding_model_vector", "verified": true}
+{"stage": "ccdash_event", "ts": "2026-06-15T09:44:22-04:00", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "event_id": "exec_20260615_intent_research_20260614_embedding_model_vector"}
+{"stage": "writeback", "ts": "2026-06-15T09:44:22-04:00", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "requires_review": false}
+{"ts": "2026-06-15T09:44:45-04:00", "stage": "verify", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T10:55:06-04:00", "stage": "verify", "run_id": "rf_run_20260614_embedding_model_vector_store_strategy_for", "exit_code": 0, "passed": true}

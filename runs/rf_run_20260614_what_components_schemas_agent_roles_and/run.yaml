@@ -1,0 +1,21 @@
+schema_version: 0.1
+type: run
+run_id: rf_run_20260614_what_components_schemas_agent_roles_and
+intent_id: intent_research_20260614_what_components_schemas_agent_roles_and
+ibom_id: ibom_research_20260614_what_components_schemas_agent_roles_and
+brief_id: brief_20260614_what_components_schemas_agent_roles_and
+swarm_id: swarm_20260614_what_components_schemas_agent_roles_and
+routing_id: route_20260614_what_components_schemas_agent_roles_and
+created_at: '2026-06-14T14:07:30-04:00'
+status: planned
+sensitivity: personal
+human_required: false
+profile:
+  depth: deep
+  audience: technical
+  max_cost_usd: 8.0
+  max_runtime_minutes: 60
+  freshness_days: 365
+  extraction_model_profile: rf_extract_cheap
+  synthesis_model_profile: rf_synthesize_deep
+  verification_model_profile: rf_verify_balanced

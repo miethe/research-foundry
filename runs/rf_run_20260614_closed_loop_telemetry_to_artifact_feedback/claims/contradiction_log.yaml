@@ -1,0 +1,135 @@
+run_id: rf_run_20260614_closed_loop_telemetry_to_artifact_feedback
+generated_at: '2026-06-15T11:34:50-04:00'
+contradictions:
+- source_card_id: src_20260614_rib047_11
+  text: Evidence points are sourced from the abstract; section-level body claims could not be verified
+    verbatim because the PDF stream was not parseable.
+  locator: card/trust
+- source_card_id: src_20260614_rib047_11
+  text: Evidence points are grounded in the verbatim arXiv abstract (v3, Jul 2019); the PDF body stream
+    was not machine-readable on access, so section-level body details (e.g., the specific mixture SPRT
+    formulation and alpha-crossing stopping rule) could not be quoted verbatim and are not asserted here.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_02
+  text: No publish date or named author visible
+  locator: card/trust
+- source_card_id: src_20260614_rib047_02
+  text: Vendor marketing framing
+  locator: card/trust
+- source_card_id: src_20260614_rib047_02
+  text: Vendor (LangChain/LangSmith) marketing resource; claims are the product's stated capabilities,
+    not independently benchmarked. No publish date or named author is visible on the page.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_09
+  text: Vendor-authored (Google Cloud) architecture guidance; framing favors automated, pipeline-based
+    MLOps and Google Cloud tooling, so its maturity ladder reflects a particular ideal rather than an
+    industry standard.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_09
+  text: The document deliberately specifies no universal time interval or numeric performance threshold
+    for triggering retraining, so it cannot be cited for any specific cadence or threshold value.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_10
+  text: Power numbers are from the authors' own simulation study under specific assumptions (0.2 SD effects,
+    defined n and rho values).
+  locator: card/trust
+- source_card_id: src_20260614_rib047_10
+  text: Power and false-positive figures are author-reported results from Spotify's own simulation study
+    under specific assumptions (e.g., 0.2 SD effects, chosen n and rho values across 14-56 analyses) and
+    were not independently replicated; treat exact percentages as illustrative of the simulated regime
+    rather than universal constants.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_01
+  text: 'Vendor-authored marketing/docs content: the closed-loop and span-level capabilities are presented
+    as product features of Braintrust, so claims are self-reported rather than independently benchmarked.
+    The mechanisms (lagging signal to leading guardrail, ground-truth calibration, unified scorers as
+    release gates) are described as design patterns and are generalizable, but specific quantitative outcomes
+    are not provided.'
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_05
+  text: Evidence drawn from the arXiv abstract only; the full PDF body, figures, and quantitative results
+    were not parsed for this card. Findings are from an Anthropic alignment-team preprint (primary, not
+    yet peer-reviewed at time of access).
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_04
+  text: Blog-post summary of a fuller paper; some quantitative detail and methodology are abbreviated.
+  locator: card/trust
+- source_card_id: src_20260614_rib047_04
+  text: Findings are from a deliberately constructed training setup, not necessarily representative of
+    all production training.
+  locator: card/trust
+- source_card_id: src_20260614_rib047_04
+  text: This is a first-party Anthropic blog post summarizing a fuller paper ("From shortcuts to sabotage");
+    some quantitative and methodological detail is abbreviated.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_04
+  text: Results come from a deliberately constructed training setup designed to elicit reward hacking;
+    generalization to all production training runs is not established by the post alone.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_06
+  text: Workshop-track, not full conference proceedings
+  locator: card/trust
+- source_card_id: src_20260614_rib047_06
+  text: Ground-truth reward-hacking labels rely on GPT-4o judgments
+  locator: card/trust
+- source_card_id: src_20260614_rib047_06
+  text: Results limited to three 7B-8B open model families
+  locator: card/trust
+- source_card_id: src_20260614_rib047_06
+  text: Workshop-track preprint (arXiv v1), not full conference proceedings.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_06
+  text: Reward-hacking "ground truth" derives from GPT-4o judgments of generated answers.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_06
+  text: Scope limited to three open 7B-8B model families and synthetic mixed-ratio fine-tuning adapters;
+    generalization to larger / production models is untested.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_06
+  text: The prompt's "tested across Falcon, Llama, and Qwen" is correct, but exact variants are Falcon3-7B,
+    LLaMa 3.1-8B, Qwen2.5-Instruct 7B.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_08
+  text: arXiv preprint, not yet peer-reviewed. Findings rest on a 100-question AlpacaEval slice and 20
+    models as of April 2026; the metric (rho_i, rho_null) and PIR construction are paper-specific and
+    should be cited with their definitions. Specific model rankings reflect the April 2026 model snapshot.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_00
+  text: Preprint, no peer review
+  locator: card/trust
+- source_card_id: src_20260614_rib047_00
+  text: Single author
+  locator: card/trust
+- source_card_id: src_20260614_rib047_00
+  text: Benchmark-specific exploit definitions; results may not generalize beyond the harness
+  locator: card/trust
+- source_card_id: src_20260614_rib047_00
+  text: Non-peer-reviewed single-author preprint; exploit definitions are benchmark-specific and may not
+    generalize beyond the harness. Verbatim figures for the DeepSeek sibling comparison are reported as
+    ranges (0.4-0.8% vs 12-16%); the 0.6%/13.9% point values come from Table 2/Table 3 per-model rows.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_03
+  text: Survey/review, not original empirical work; comparative results in §5 are partly borrowed from
+    prior papers (ExpeL, AutoGuide).
+  locator: card/trust
+- source_card_id: src_20260614_rib047_03
+  text: Self-described as 'first comprehensive survey' - a claim of novelty by the authors, not independently
+    verified.
+  locator: card/trust
+- source_card_id: src_20260614_rib047_03
+  text: Survey/review, not original empirical research; the §5 comparative results are partly borrowed
+    from prior work (ExpeL, AutoGuide), so they reflect aggregated literature rather than a fresh controlled
+    study.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_03
+  text: The "first comprehensive survey" framing is an authorial novelty claim, not independently verified.
+  locator: card/limitations
+- source_card_id: src_20260614_rib047_07
+  text: Uses a synthetic 'gold-standard' reward model as a stand-in for humans; functional forms are empirical
+    fits within that setup.
+  locator: card/trust
+- source_card_id: src_20260614_rib047_07
+  text: Results come from a synthetic setup using a fixed "gold-standard" reward model as a proxy for
+    humans, not from human preference data; functional forms are empirical fits within that regime and
+    may not transfer unchanged to all real RLHF pipelines.
+  locator: card/limitations

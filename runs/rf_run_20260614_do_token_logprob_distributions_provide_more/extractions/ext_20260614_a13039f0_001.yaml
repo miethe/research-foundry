@@ -1,0 +1,94 @@
+id: ext_20260614_a13039f0_001
+source_card_id: src_20260614_rib045_09
+created_at: '2026-06-14T16:31:44-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: vLLM's v1 engine implements logprobs handling through a LogprobsProcessor dataclass that carries
+    both per-output sample logprobs and prompt logprobs for a request.
+  locator: 'Class header: vllm.v1.engine.logprobs > LogprobsProcessor (dataclass)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The LogprobsProcessor holds separate optional fields for sample logprobs and prompt logprobs (SampleLogprobs
+    and PromptLogprobs), confirming vLLM tracks both the chosen-token output logprobs and input-prompt
+    logprobs as distinct structures.
+  locator: LogprobsProcessor dataclass fields
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: 'Whether sample logprobs and prompt logprobs are produced is driven by the request''s sampling
+    parameters: num_logprobs comes from sampling_params.num_logprobs and num_prompt_logprobs from sampling_params.prompt_logprobs,
+    and each logprobs structure is only created when its count is not None.'
+  locator: LogprobsProcessor.from_new_request classmethod
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: For each generated position, vLLM's sampler places the actually-sampled token's logprob first
+    in the logprobs list, and the processor accumulates it into the running cumulative_logprob.
+  locator: LogprobsProcessor._update_sample_logprobs docstring + body comment
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Prompt logprobs are aggregated across one or more prefill chunks and returned all at once at the
+    end of prefill; pop_prompt_logprobs returns None if prompt logprobs are disabled for the request,
+    otherwise the full list.
+  locator: LogprobsProcessor.pop_prompt_logprobs docstring
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The token IDs returned at a given logprobs position are alternatives at the same position (sampled
+    token plus top-k alternatives such as [sampled, top1, top2]), not sequential tokens, clarifying that
+    vLLM returns the chosen token alongside its top-ranked alternatives per position.
+  locator: 'LogprobsProcessor._verify_tokens docstring (Args: tokens)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: 'vLLM applies UTF-8 correction when detokenizing logprob tokens: byte-fallback tokenization can
+    split multi-byte UTF-8 characters across tokens, producing the U+FFFD replacement character, and the
+    processor uses preceding sampled tokens as context to reconstruct correct text.'
+  locator: LogprobsProcessor._correct_decoded_token docstring
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: 'Class header: vllm.v1.engine.logprobs > LogprobsProcessor (dataclass)'
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: 'LogprobsProcessor._verify_tokens docstring (Args: tokens)'
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: LogprobsProcessor._correct_decoded_token docstring
+contradictions_or_cautions:
+- text: This page is an auto-generated API/source dump for the LogprobsProcessor dataclass, NOT conceptual
+    prose; it does not itself state the logprobs/prompt_logprobs sampling-parameter semantics, the max-logprobs
+    cap, the -1 no-cap behavior, OOM risk, or the native-vs-OpenAI endpoint exposure attributed to vLLM
+    (those belong to other vLLM docs). Only the docstrings and code shown on this page are quoted here.
+  locator: card/trust
+- text: This page is an auto-generated API/source dump for `LogprobsProcessor`, NOT conceptual prose.
+    It does NOT itself state the higher-level claims attributed to vLLM in the task brief (the `logprobs`
+    sampling param returning the N most likely tokens, `prompt_logprobs` echo-equivalence, a configurable
+    `max-logprobs` cap, `-1` meaning no cap allowing `output_length * vocab_size` logprobs, OOM risk from
+    uncapped logprobs, or exposure via both native and OpenAI-compatible endpoints). Those facts must
+    be sourced from other vLLM docs (e.g. sampling params / OpenAI-compatible server pages) and are deliberately
+    NOT quoted here to avoid fabrication.
+  locator: card/limitations
+- text: No publish date or named authors are shown; version inferred from the docs banner (v0.23.0). The
+    page reflects the "stable" docs at access time and may change across releases.
+  locator: card/limitations

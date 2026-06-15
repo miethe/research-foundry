@@ -1,0 +1,41 @@
+id: ext_20260614_baa43733_001
+source_card_id: src_20260614_rib045_07
+created_at: '2026-06-14T16:31:44-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: In the Responses API, logprobs are requested by adding the value 'message.output_text.logprobs'
+    to the include array on the create-response request.
+  locator: Request body / include parameter
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Each returned logprobs object contains a token (string), bytes (array of number), logprob (number),
+    and a top_logprobs array.
+  locator: Response object / output / ResponseOutputText.logprobs
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Each nested entry in the top_logprobs array carries its own token, bytes, and logprob fields.
+  locator: Response object / output / logprobs[].top_logprobs[]
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Logprobs are attached to the assistant message's output_text content (the ResponseOutputText object)
+    rather than to a top-level choices.logprobs field as in Chat Completions.
+  locator: Response object / output / ResponseOutputText
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: The reference page is a live, undated API document; the `published_at` field could not be confirmed
+    and is recorded as null. Field structures reflect the Responses API as accessed 2026-06-14 and may
+    evolve; the `choices.logprobs` contrast is drawn from the differing Responses-vs-Chat-Completions
+    request shapes documented by OpenAI.
+  locator: card/limitations

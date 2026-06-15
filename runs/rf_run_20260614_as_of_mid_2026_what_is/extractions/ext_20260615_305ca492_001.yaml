@@ -1,0 +1,85 @@
+id: ext_20260615_305ca492_001
+source_card_id: src_20260614_kw012_06
+created_at: '2026-06-15T09:31:13-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: knitCompanion is published by Create2Thrive Inc. and is positioned as a multi-craft project tracker
+    spanning knitting, crochet, and cross-stitch.
+  locator: App title / subtitle
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The free kCBasics tier provides row and along-the-row progress tracking, per-project counters,
+    and iCloud sync.
+  locator: Description — free tier (kCBasics)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The free tier can import patterns by linking to Ravelry and Dropbox and supports adding any PDF
+    pattern.
+  locator: Description — free tier (kCBasics)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: knitCompanion works with any pattern, including adding PDFs, and is pitched for mystery knit-a-longs.
+  locator: Description — pattern support
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Paid tiers add Magic Markers for counting, highlighting, and coloring stitches over the pattern.
+  locator: Description — paid features (Setup + Essentials)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Paid tiers add Intelligent Chart Recognition to speed up chart setup.
+  locator: Description — paid features (Setup + Essentials)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Paid tiers add Scribble annotation and hands-free voice command control.
+  locator: Description — paid features (Setup + Essentials)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: knitCompanion runs on iPhone, iPad, and Mac (iOS/iPadOS 16.4+, macOS 13.3+), rated 4+ in the Lifestyle
+    category, with the listing reflecting version 3.0.20 (Dec 2025).
+  locator: Compatibility / Information
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: App title / subtitle
+- metric_name: evidence_point
+  value: ev_008
+  unit: null
+  date_context: null
+  locator: Compatibility / Information
+contradictions_or_cautions:
+- text: Pricing observed on the listing (in-app purchases at $29.99) differs from third-party reviews
+    and the run's prior key_points (~$0.99/month or $9.99/year); subscription/IAP pricing is volatile
+    and tier-dependent, so dollar figures are not asserted here.
+  locator: card/trust
+- text: Feature descriptions are first-party marketing copy from the developer, not independent verification.
+  locator: card/limitations
+- text: 'Pricing is not asserted: the live App Store listing showed in-app purchases at \$29.99, which
+    conflicts with the run''s prior key_points (~\$0.99/month or \$9.99/year) and a third-party review
+    (Essentials \$9.99/yr). Subscription/IAP pricing is volatile and tier/region-dependent, so no specific
+    dollar figure is treated as confirmed.'
+  locator: card/limitations
+- text: Android availability is stated by the developer/store ecosystem; this card was sourced from the
+    iOS App Store listing.
+  locator: card/limitations

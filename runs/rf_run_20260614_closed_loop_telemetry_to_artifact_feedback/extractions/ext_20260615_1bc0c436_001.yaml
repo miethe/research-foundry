@@ -1,0 +1,78 @@
+id: ext_20260615_1bc0c436_001
+source_card_id: src_20260614_rib047_02
+created_at: '2026-06-15T11:34:47-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'Agent observability captures tool-call provenance: which tools were selected, the arguments passed,
+    the results returned, and how long each call took.'
+  locator: 'Section: What to instrument in multi-step agents / Instrumentation categories'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Per-trace cost and latency attribution can identify a specific sub-task consuming 80% of input/output
+    tokens or adding 3 seconds of tool-call latency.
+  locator: 'Section: Where observability delivers value (cost/latency attribution)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Per-trace signals include models and inputs, output completions, input/output token counts, and
+    tool-call latency for every model invocation.
+  locator: 'Section: Instrumentation categories (per-trace signals)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: For stateful agents, observability records what memory was read, what memory was written, and
+    how state influenced subsequent decisions.
+  locator: 'Section: What to instrument in multi-step agents (stateful agents / memory)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Production traces flow into an Insights Agent that analyzes usage patterns and surfaces key insights
+    about agent behavior.
+  locator: 'Section: From traces to improvements: The agent improvement loop (Insights Agent)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Rules can automatically add traces matching specific criteria to evaluation datasets and route
+    problematic cases to Annotation Queues for domain-expert review or trigger online evaluations on quality
+    breaches.
+  locator: 'Section: From traces to improvements / Evaluating agent performance'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Regression testing locks in gains by ensuring that once a bug is fixed it stays fixed.
+  locator: 'Section: From traces to improvements (regression testing)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: 'The fastest teams operate a closed loop: capture production traces, analyze them for patterns,
+    build test datasets from real usage, run evaluations to measure quality, and use results to drive
+    improvements.'
+  locator: Opening summary paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: 'Section: Where observability delivers value (cost/latency attribution)'
+contradictions_or_cautions:
+- text: No publish date or named author visible
+  locator: card/trust
+- text: Vendor marketing framing
+  locator: card/trust
+- text: Vendor (LangChain/LangSmith) marketing resource; claims are the product's stated capabilities,
+    not independently benchmarked. No publish date or named author is visible on the page.
+  locator: card/limitations

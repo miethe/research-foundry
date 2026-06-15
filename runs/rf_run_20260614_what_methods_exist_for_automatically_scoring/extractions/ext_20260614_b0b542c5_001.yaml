@@ -1,0 +1,82 @@
+id: ext_20260614_b0b542c5_001
+source_card_id: src_20260614_rib042_10
+created_at: '2026-06-14T16:13:03-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: DeepResearch Bench is a benchmark of 100 PhD-level research tasks, each crafted by domain experts
+    across 22 distinct fields, for systematically evaluating Deep Research Agents.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: 'The benchmark proposes two evaluation methodologies that the authors report achieve strong alignment
+    with human judgment: a reference-based report-quality method and a citation-evaluation framework.'
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The first methodology (RACE) is a reference-based method with adaptive criteria that scores the
+    quality of generated research reports against a high-quality reference report.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The second methodology (FACT) evaluates a Deep Research Agent's information retrieval and collection
+    capability by assessing its effective citation count and overall citation accuracy.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: 'RACE (Reference-based Adaptive Criteria-driven Evaluation) scores reports across four dimensions:
+    Comprehensiveness, Insight/Depth, Instruction-Following, and Readability, using dynamic task-specific
+    criteria and reference-based scoring.'
+  locator: Project README (Ayanami0730/deep_research_bench) — RACE framework
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: FACT (Framework for Factual Abundance and Citation Trustworthiness) evaluates information gathering
+    by extracting statement-URL pairs and verifying citation accuracy via web scraping and LLM judgment
+    of whether cited sources actually support each claim.
+  locator: Project README (Ayanami0730/deep_research_bench) — FACT framework
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The 100 tasks are split evenly 50 English / 50 Chinese and are distributed across 22 fields spanning
+    science and technology, finance and business, software/internet, and arts/humanities domains.
+  locator: Benchmark composition (Abstract + README)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Benchmark composition (Abstract + README)
+contradictions_or_cautions:
+- text: arXiv preprint (not formally peer-reviewed)
+  locator: card/trust
+- text: PDF body is binary-encoded; some verbatim quotes for the FACT formula and agreement statistics
+    could not be confirmed from rendered text and are summarized without quote
+  locator: card/trust
+- text: arXiv preprint (not formally peer-reviewed). The PDF body is binary-encoded; the exact FACT formula
+    (Citation Accuracy = supported / total citations), the count of 70+ expert annotators, the 72.56%
+    vs 60.46% human-agreement statistics, and the specific list of evaluated agents (OpenAI / Gemini /
+    Grok / Perplexity plus 10 LLMs with search) are consistent with the source's stated scope but could
+    not be confirmed as verbatim rendered text, so they are not quoted here. Verify those specific figures
+    against the rendered PDF or HTML before asserting them with citation.
+  locator: card/limitations

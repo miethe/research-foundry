@@ -1,0 +1,85 @@
+id: ext_20260614_213229ac_001
+source_card_id: src_20260614_kw002_09
+created_at: '2026-06-14T15:58:57-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The paper represents crochet patterns in the stitch-mesh paradigm as a library of tiles where
+    each tile contains yarn geometry and tiles connect along their edges.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: To adapt stitch meshes to crochet, the authors introduce a special edge type capturing the 'current
+    loop' - the loop of yarn held on the crochet hook during fabrication.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Faces use short-term (orange) edge types crossed by the leading loop and free yarn and long-term
+    (purple) edge types crossed only by loops, encoding crochet's construction dependencies.
+  locator: Section 4 METHOD / Figure 7 caption
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Four edge labels - Next/Previous (consecutive-stitch leading-loop dependencies) and Future/Past
+    (loop-through-fabric dependencies) - connect as previous-next and past-future pairs to cover a surface.
+  locator: Section 4 METHOD (four edge labels)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Decreases use multi-past-edge faces (sc2tog uses two past loop edges to make one future loop edge;
+    sc3tog three), while the 'inc' utility face splits a future edge into two future edges, and 'turn'/'cap'/'ch_edge'
+    utility faces enable partial-width rows and variants.
+  locator: Section 4 METHOD (decrease/increase/utility faces)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: An automatic pipeline (a variant of Narayanan et al. 2019) turns a manifold triangulated 3D mesh
+    into a stitch mesh of quad faces (sc/turn), pentagons (sc2tog), and increase triangles (inc).
+  locator: Section 5 RESULTS (automatic pipeline)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The pattern-generation system (a variant of Narayanan et al. 2019) uses a single stitch 'aspect
+    ratio' to drive the remeshing process, a gauge-like parameter that limits accuracy across varied stitch
+    types.
+  locator: Section 6 DISCUSSION (Pattern Modeling)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section 4 METHOD (decrease/increase/utility faces)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section 5 RESULTS (automatic pipeline)
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Section 6 DISCUSSION (Pattern Modeling)
+contradictions_or_cautions:
+- text: 'Tile set explicitly incomplete: only ch, ss, sc, sc2tog, sc3tog modeled; double/treble crochet
+    and post stitches not implemented.'
+  locator: card/trust
+- text: Single fixed stitch aspect ratio in the automatic pipeline causes shaping/gap artifacts.
+  locator: card/trust
+- text: 'The modeled tile set is explicitly incomplete: only chain, slip stitch, single crochet, sc2tog,
+    and sc3tog are implemented; double/treble crochet and post stitches (e.g., front-post double crochet)
+    are not representable. The automatic pipeline uses a single fixed stitch aspect ratio, producing shaping
+    artifacts and gaps for varied stitch types and tensioning styles.'
+  locator: card/limitations

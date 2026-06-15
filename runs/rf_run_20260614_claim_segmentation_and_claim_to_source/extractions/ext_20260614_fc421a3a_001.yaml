@@ -1,0 +1,104 @@
+id: ext_20260614_fc421a3a_001
+source_card_id: src_20260614_rib001_06
+created_at: '2026-06-14T20:58:33-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: LongCite defines the citation unit as fine-grained sentence-level, where each cited snippet references
+    a specific sentence or a span of sentences in the source document.
+  locator: Section 2.1 (Task Definition)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: On LongBench-Cite, LongCite-8B achieves citation F1 72.0 (recall 62.0, precision 79.7) and LongCite-9B
+    achieves F1 69.2 (recall 57.6, precision 78.1).
+  locator: Table 2 (Evaluation Results on LongBench-Cite)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: 'The trained LongCite models surpass proprietary baselines on citation quality: GPT-4o scores
+    F1 65.6 (recall 46.7, precision 53.5) and Claude-3-Sonnet scores F1 67.2 (recall 52.0, precision 67.8).'
+  locator: Table 2 / Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Citation recall scores each cited statement 1 / 0.5 / 0 for full / partial / no support of the
+    statement by its concatenated cited snippets, judged by GPT-4o.
+  locator: Section 2.3.2 (Citation Recall)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: A cited snippet is marked relevant for precision if it at least partially entails a key point
+    of the statement it supports.
+  locator: Section 2.3.2 (Citation Precision)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The GPT-4o-as-judge evaluator aligns with human annotators at Cohen's kappa 0.593 for recall and
+    0.655 for precision.
+  locator: Table 7 (Human-judge agreement)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The Coarse-to-Fine (CoF) pipeline uses off-the-shelf LLMs to auto-generate the LongCite-45k SFT
+    dataset (44,600 instances) via a four-stage query/answer, coarse chunk-citation, fine sentence-citation,
+    and filtering process.
+  locator: Section 3 (CoF Pipeline) / Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: Citation F1 is the harmonic mean of citation precision (P) and citation recall (R), computed as
+    F1 = 2*P*R / (P+R).
+  locator: Section 2.3.1 (Metrics) / Equation 2
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Table 2 (Evaluation Results on LongBench-Cite)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Table 2 / Abstract
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Section 2.3.2 (Citation Recall)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Table 7 (Human-judge agreement)
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Section 3 (CoF Pipeline) / Abstract
+- metric_name: evidence_point
+  value: ev_008
+  unit: null
+  date_context: null
+  locator: Section 2.3.1 (Metrics) / Equation 2
+contradictions_or_cautions:
+- text: Citation quality measured by GPT-4o-as-judge with imperfect human agreement (kappa 0.593-0.655)
+  locator: card/trust
+- text: Results specific to LongBench-Cite benchmark
+  locator: card/trust
+- text: Citation quality is assessed primarily by a GPT-4o-as-judge evaluator whose agreement with human
+    annotators is only moderate (Cohen's kappa 0.593 recall, 0.655 precision); reported scores are benchmark-specific
+    to LongBench-Cite and may not transfer directly to other domains.
+  locator: card/limitations

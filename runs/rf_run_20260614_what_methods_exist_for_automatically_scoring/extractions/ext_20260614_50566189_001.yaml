@@ -1,0 +1,63 @@
+id: ext_20260614_50566189_001
+source_card_id: src_20260614_rib042_03
+created_at: '2026-06-14T16:13:03-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'ARES is an automated RAG evaluation system that scores RAG systems along three dimensions: context
+    relevance, answer faithfulness, and answer relevance.'
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: ARES fine-tunes lightweight LM judges to assess the quality of individual RAG components rather
+    than relying on full hand annotation.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: ARES generates its own synthetic training data and uses a small set of human-annotated datapoints
+    for prediction-powered inference (PPI) to bound prediction error.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: ARES judges remain accurate under domain shift, staying effective even when the queries and/or
+    documents in the evaluated RAG system change.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: ARES performs across eight knowledge-intensive tasks drawn from KILT, SuperGLUE, and AIS while
+    requiring only a few hundred human annotations during evaluation.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: ARES was authored by Saad-Falcon, Khattab, Potts, and Zaharia, submitted to arXiv 2023-11-16,
+    revised 2024-03-31, and published at NAACL 2024 (arXiv 2311.09476).
+  locator: Header / publication metadata
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Header / publication metadata
+contradictions_or_cautions:
+- text: Abstract-level read; full-paper numeric results (e.g., Kendall's tau, exact annotation counts
+    per task) not captured here.
+  locator: card/trust
+- text: Evidence here is drawn from the abstract and publication metadata; full-paper quantitative results
+    (e.g., correlation metrics, exact per-task annotation counts) were not captured and should be verified
+    against the full PDF before citing specific numbers.
+  locator: card/limitations

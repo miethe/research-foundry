@@ -1,0 +1,67 @@
+id: ext_20260614_3c6b61b5_001
+source_card_id: src_20260614_rib001_08
+created_at: '2026-06-14T20:58:33-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Attributed QA (AQA) is framed as a key first step toward attributed LLMs, with the dataset comprising
+    human-rated system outputs for the task.
+  locator: README — Task / dataset overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: In the AQA task the input is a question and the output is an (answer, attribution) pair where
+    the answer is a string.
+  locator: README — Task definition
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Attribution is defined as a pointer into a fixed underlying corpus, making claim-to-source linking
+    the core mechanism.
+  locator: README — Task definition (attribution)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The attribution must supply supporting evidence for the answer and satisfy the AIS (Attributable
+    to Identified Sources) conditions.
+  locator: README — Attribution / AIS requirement
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The release contains 83,030 instances (3,610 examples x 23 systems) over a fixed Wikipedia snapshot
+    taken on 2021-10-13.
+  locator: README — Dataset statistics; corpus
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The accompanying paper treats human attribution annotations as the gold standard and shows that
+    a correlated automatic metric (AutoAIS) is suitable for development, validating automatic AIS scoring
+    against gold labels.
+  locator: Accompanying paper arXiv:2212.08037 — Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: README — Dataset statistics; corpus
+contradictions_or_cautions:
+- text: 'License signal is ambiguous: README/citation metadata reference CC-BY-4.0 while the GitHub repo
+    surface may indicate Apache-2.0 for code — confirm per-artifact license before redistribution.'
+  locator: card/trust
+- text: README provides headings but limited prose describing ratings.csv internals.
+  locator: card/trust
+- text: License signal is ambiguous between CC-BY-4.0 (data/citation metadata) and a possible Apache-2.0
+    code license on the repo surface; confirm per artifact before redistribution. Dataset reflects a 2021-10-13
+    Wikipedia corpus and 23 systems from the 2022 study era, so coverage predates current attribution-model
+    generations.
+  locator: card/limitations

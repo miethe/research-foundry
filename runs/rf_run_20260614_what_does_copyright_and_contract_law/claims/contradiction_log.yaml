@@ -1,0 +1,154 @@
+run_id: rf_run_20260614_what_does_copyright_and_contract_law
+generated_at: '2026-06-15T09:54:37-04:00'
+contradictions:
+- source_card_id: src_20260614_kw013_02
+  text: The dedicated Intellectual Property Policy at https://www.etsy.com/legal/ip (notice-and-takedown
+    specifics, repeat-infringer discipline, resale-of-downloads guidance, June 2025 Creativity Standards)
+    is JavaScript/bot-gated and did not render through automated fetch on access date; those specific
+    claims are NOT verified here and were intentionally omitted.
+  locator: card/trust
+- source_card_id: src_20260614_kw013_02
+  text: A successor Prohibited Items Policy with updated Section 2 takes effect 2026-08-11.
+  locator: card/trust
+- source_card_id: src_20260614_kw013_02
+  text: The dedicated Intellectual Property Policy at https://www.etsy.com/legal/ip - which would carry
+    the notice-and-takedown mechanics, repeat-infringer discipline (shop closure), the "reselling downloaded
+    designs/templates/patterns is usually illegal" guidance, and any June 2025 Creativity Standards change
+    regarding scanned vintage patterns - is JavaScript/bot-gated and did not render through automated
+    fetch on the access date. Those SOURCE key points could not be verified from primary text and were
+    intentionally NOT asserted in this card; verify them directly against https://www.etsy.com/legal/ip
+    before any report relies on them.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_02
+  text: A successor Prohibited Items Policy (updated Section 2) takes effect 2026-08-11; recency-check
+    before citing as current after that date.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_03
+  text: Directive sets a floor; actual rights depend on each Member State's national transposition
+  locator: card/trust
+- source_card_id: src_20260614_kw013_03
+  text: Quoted text is the directive itself, not implementing national law
+  locator: card/trust
+- source_card_id: src_20260614_kw013_03
+  text: The directive sets a minimum standard; enforceable rights depend on each EU Member State's national
+    transposition, which can vary in detail.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_03
+  text: Quoted text is the directive itself, not implementing national legislation or case law interpreting
+    it.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_11
+  text: This is the official summary, not the binding directive text; for legal precision consult the
+    directive (OJ L 77, 27.3.1996, pp. 20-28).
+  locator: card/trust
+- source_card_id: src_20260614_kw013_11
+  text: This is the official EUR-Lex summary, not the binding directive text; for legally precise wording
+    (e.g., "substantial part," exact exceptions) consult the directive itself (OJ L 77, 27.3.1996, pp.
+    20-28). The sui generis right is an EU-specific construct and the summary notes protection is granted
+    to EU-national/EU-resident makers; non-EU jurisdictions may not recognize an equivalent right.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_01
+  text: Last updated Feb 1, 2017; may not reflect current policy.
+  locator: card/trust
+- source_card_id: src_20260614_kw013_01
+  text: Single fetch; full clause numbering not independently re-verified.
+  locator: card/trust
+- source_card_id: src_20260614_kw013_01
+  text: Terms last updated February 1, 2017; current platform policy may have changed since.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_01
+  text: Section numbers reflect the page structure observed at fetch time and were not independently re-verified
+    clause-by-clause.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_06
+  text: No public effective/last-updated date visible on the rendered page
+  locator: card/trust
+- source_card_id: src_20260614_kw013_06
+  text: Arbitration provisions (Section 11) apply only to users in North and South America
+  locator: card/trust
+- source_card_id: src_20260614_kw013_06
+  text: These are Etsy's contractual terms, not a statement of copyright or contract law itself; they
+    establish platform-imposed obligations, not statutory rights.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_06
+  text: No public effective/last-updated date is rendered on the page; the arbitration provisions (Section
+    11) apply only to users in North and South America.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_00
+  text: Circular is an overview, not the authoritative legal source; the Copyright Act and Compendium
+    control.
+  locator: card/trust
+- source_card_id: src_20260614_kw013_00
+  text: Addresses U.S. law only.
+  locator: card/trust
+- source_card_id: src_20260614_kw013_00
+  text: This circular is an overview only; the authoritative sources are the Copyright Act (Title 17,
+    U.S. Code) and the Compendium of U.S. Copyright Office Practices. It addresses U.S. law only.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_05
+  text: AI-authored, no legal review
+  locator: card/trust
+- source_card_id: src_20260614_kw013_05
+  text: competitor claims cited to ChatGPT-tagged web links not independently verified here
+  locator: card/trust
+- source_card_id: src_20260614_kw013_05
+  text: AI-authored project seed (ChatGPT 5.2) with no legal review; its IP/licensing framing is product-strategy
+    intuition, not a legal authority. Competitor and market claims are cited to ChatGPT-tagged web links
+    that are not independently verified in this card.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_07
+  text: The terms page does not display an explicit "last updated" or effective date; the document references
+    an Enterprise Tier and arbitration agreement (Section 11 of Etsy Terms) but version/date metadata
+    was not visible on the page at access time.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_10
+  text: Page itself disclaims it is information, not legal advice; may be updated periodically.
+  locator: card/trust
+- source_card_id: src_20260614_kw013_10
+  text: Counter-notice procedures stated to apply only to US-based copyright infringement reports.
+  locator: card/trust
+- source_card_id: src_20260614_kw013_10
+  text: The page explicitly disclaims being legal advice and notes it "may be updated periodically"; counter-notice
+    procedures are stated to apply only to US-based copyright infringement reports.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_04
+  text: This Federal Register notice summarizes and explains the Compendium update; the full text of Chapter
+    900 itself is a separate document on copyright.gov.
+  locator: card/trust
+- source_card_id: src_20260614_kw013_04
+  text: The notice paraphrases the Star Athletica two-step test rather than restating the full Chapter
+    900 text.
+  locator: card/trust
+- source_card_id: src_20260614_kw013_04
+  text: This is the Federal Register notice announcing and explaining the update, not the full verbatim
+    text of Chapter 900 itself (which resides as a separate document on copyright.gov); the notice paraphrases
+    the two-step separability test.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_04
+  text: The notice does not, in this text, separately restate the 17 U.S.C. 102(b) exclusion of "methods,
+    systems, or processes" as a quoted line; that exclusion is a broader Copyright Act principle inferable
+    but not verbatim-quoted in this particular notice.
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_08
+  text: No explicit publication/last-updated date (footer only shows © 2021).
+  locator: card/trust
+- source_card_id: src_20260614_kw013_08
+  text: The live page (accessed 2026-06-14) does NOT state explicit default public-auth limits (e.g.,
+    10 QPS / 10,000 QPD), an Enterprise tier of ~3 million calls/day, the API Terms-of-Use 6-hour display
+    / minimal-retention storage limits, or a "creating additional API keys is strictly prohibited" clause;
+    those claims from upstream notes could not be verified against the current page text and are omitted.
+    The 150 QPS / 100000 QPD figures are documented only as header *example values*, not as guaranteed
+    tier limits. The page carries no explicit publication/last-updated date (footer shows © 2021).
+  locator: card/limitations
+- source_card_id: src_20260614_kw013_09
+  text: Describes Etsy's own platform policy, not statutory law itself
+  locator: card/trust
+- source_card_id: src_20260614_kw013_09
+  text: Page is behind a cookie-consent wall; body content retrieved via interactive browser session
+  locator: card/trust
+- source_card_id: src_20260614_kw013_09
+  text: This is Etsy's platform policy, not statutory law; it describes Etsy's own enforcement procedure
+    (which mirrors but is not identical to the DMCA statute). Page body sits behind a cookie-consent wall
+    and was retrieved via an interactive browser session; published 2023-06-15, last updated Jun 15, 2023,
+    so recency is bounded to that date.
+  locator: card/limitations

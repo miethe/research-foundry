@@ -1,0 +1,72 @@
+id: ext_20260614_02d0bf09_001
+source_card_id: src_20260614_rib001_03
+created_at: '2026-06-14T20:58:33-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Factuality metrics like FActScore are sensitive to the decomposition step, so an error attributed
+    to the generating model can actually originate in the metric's decomposition.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: FActScore can change for the same underlying generated text depending on the characteristics (e.g.,
+    atomicity) of the decomposition method used.
+  locator: Section 1 (Introduction)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Decomposition quality requires subclaims to be coherent/faithful to the original claim (supported
+    or entailed by it).
+  locator: Section 3.1 (Qualitative Evaluation)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: For localizing discrepancies against a trusted reference, subclaims should cover all parts of
+    the claim and be as atomic as possible (coverage + atomicity).
+  locator: Section 3.1 (Qualitative Evaluation)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: DecompScore is defined as the average number of supported subclaims per passage produced by a
+    decomposition method, validated against the original passage rather than external knowledge.
+  locator: 'Section 3.2 (Quantitative Evaluation: DecompScore)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'Atomic-fact yield per biography varies widely by decomposition method: Russellian/Neo-Davidsonian
+    42.3, FActScore/Chen et al. ~32, PredPatt 29.2, CoNLL-U 27.1, WiCE 20.0, showing the splitter materially
+    changes claim yield on identical text.'
+  locator: Section 8 / Figure 3 (Results)
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section 8 / Figure 3 (Results)
+contradictions_or_cautions:
+- text: DecompScore validates subclaim support against the original passage, not external truth, so it
+    measures coherence/yield not factual correctness
+  locator: card/trust
+- text: Atomic-fact yields are measured on a static set of biographies and may not generalize to other
+    domains
+  locator: card/trust
+- text: DecompScore measures subclaim coherence/yield against the original passage, not external factual
+    correctness; high yield does not imply higher factual accuracy.
+  locator: card/limitations
+- text: Atomic-fact yields are measured on a static set of biographies; generalization to other domains
+    is not established.
+  locator: card/limitations
+- text: The ev_006 numeric values are reported from Figure 3 / Results; no short verbatim sentence captures
+    them, so the quote is null while the figures are cited from the source's results table.
+  locator: card/limitations

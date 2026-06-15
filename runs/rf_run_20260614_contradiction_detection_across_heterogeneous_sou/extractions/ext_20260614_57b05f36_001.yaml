@@ -1,0 +1,101 @@
+id: ext_20260614_57b05f36_001
+source_card_id: src_20260614_rib003_01
+created_at: '2026-06-14T23:56:53-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: AlignScore reframes factual-consistency evaluation as a general information-alignment function
+    between two arbitrary text pieces, applicable across diverse inconsistency scenarios (contradictions,
+    hallucinations) and input/output granularities.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: 'The alignment function is trained on 4.7M examples drawn from 7 well-established task types:
+    NLI, QA, paraphrasing, fact verification, information retrieval, semantic similarity, and summarization.'
+  locator: Abstract / Section 4.1 Implementation
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: AlignScore is evaluated on 22 datasets, 19 of which were never seen during alignment training,
+    demonstrating zero-shot generalization.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The 355M-parameter AlignScore matches or outperforms factual-consistency metrics built on ChatGPT
+    and GPT-4 despite those models being orders of magnitude larger.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: AlignScore is implemented by finetuning RoBERTa models at two sizes (125M and 355M), denoted AlignScore-base
+    (RoBERTa-base) and AlignScore-large (RoBERTa-large).
+  locator: Section 1 Introduction; Section 4.1 Implementation Details
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The alignment model has three heads (3-way classification, binary classification, and regression),
+    and for inference the production metric uses the probability of the ALIGNED label from the 3-way classification
+    head, which ablations show outperforms the binary and regression heads.
+  locator: Section 3 (model architecture)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Evaluation uses the TRUE benchmark (11 datasets across diverse domains) and the SummaC benchmark
+    (6 large summarization datasets), plus additional latest factual-consistency testbeds.
+  locator: Section 4.2 Benchmarks
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Abstract / Section 4.1 Implementation
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section 1 Introduction; Section 4.1 Implementation Details
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section 3 (model architecture)
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Section 4.2 Benchmarks
+contradictions_or_cautions:
+- text: 'Caution on a common misstatement: although the alignment model includes a regression head, the
+    production AlignScore metric computes consistency from the 3-way classification head''s ALIGNED probability
+    (per ablation), not from a continuous regression output — so it is not accurately described as "a
+    continuous score instead of 3-way NLI labels."'
+  locator: card/limitations
+- text: Results are 2023-era; comparisons to "ChatGPT and GPT-4" reflect mid-2023 model versions and prompting,
+    which have since changed.
+  locator: card/limitations
+- text: Due to resource constraints only the first 500k samples per dataset were used (4.7M total), so
+    training is capped rather than exhaustive.
+  locator: card/limitations

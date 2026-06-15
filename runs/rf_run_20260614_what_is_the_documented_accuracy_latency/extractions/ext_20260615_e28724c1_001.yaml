@@ -1,0 +1,87 @@
+id: ext_20260615_e28724c1_001
+source_card_id: src_20260614_kw015_10
+created_at: '2026-06-15T10:42:00-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: PaddleOCR-VL's core component is a compact 0.9B vision-language model that pairs a NaViT-style
+    dynamic-resolution visual encoder with the ERNIE-4.5-0.3B language model and supports 109 languages.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The model targets document parsing and recognizes complex elements such as text, tables, formulas,
+    and charts while minimizing resource consumption.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: On OmniDocBench v1.5, PaddleOCR-VL achieves a top overall score of 92.86, surpassing the next-best
+    model MinerU2.5-1.2B at 90.67.
+  locator: Results, text following Table 2 (OmniDocBench v1.5)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: PaddleOCR-VL reports leading per-task metrics including Text-Edit distance 0.035, Formula-CDM
+    91.22, Table-TEDS 90.89 / Table-TEDS-S 94.76, and reading-order edit distance 0.043.
+  locator: Results, text following Table 2 (OmniDocBench v1.5)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The architecture combines a NaViT-style dynamic high-resolution visual encoder with the lightweight
+    ERNIE-4.5-0.3B language model to improve recognition and decoding efficiency.
+  locator: Architecture / model design section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The technical report was first submitted Oct 16, 2025 (v1) with the latest revision v4 dated Nov
+    25, 2025, authored by Cheng Cui, Ting Sun, and colleagues.
+  locator: arXiv metadata header
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Results, text following Table 2 (OmniDocBench v1.5)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Results, text following Table 2 (OmniDocBench v1.5)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Architecture / model design section
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: arXiv metadata header
+contradictions_or_cautions:
+- text: Benchmark scores are author-reported
+  locator: card/trust
+- text: Source key_points listed Formula-CDM 91.43 and an overall range 92.56-92.86; the v4 paper text
+    states a single overall of 92.86 and Formula-CDM 91.22
+  locator: card/trust
+- text: Benchmark scores are self-reported by the authors and not independently audited. The dispatched
+    key_points listed Formula-CDM 91.43 and an overall range of 92.56-92.86; the v4 paper text states
+    a single overall of 92.86 and Formula-CDM 91.22, so the paper's verbatim values are used here. "Handwriting"
+    as a distinct output category is described as a recognition capability rather than an explicitly enumerated
+    output element in the verified text.
+  locator: card/limitations

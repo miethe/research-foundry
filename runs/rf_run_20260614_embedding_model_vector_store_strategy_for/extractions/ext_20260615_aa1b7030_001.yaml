@@ -1,0 +1,84 @@
+id: ext_20260615_aa1b7030_001
+source_card_id: src_20260614_rib033_08
+created_at: '2026-06-15T09:33:08-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The latest sqlite-vec releases are the v0.1.10-alpha series (alpha.4 dated 2026-05-18), while
+    the last stable line is v0.1.9, released 2026-03-31.
+  locator: Releases list / v0.1.10-alpha.4 and v0.1.9 tags
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: 'The v0.1.10 alpha series introduces three new ANN index approaches in sqlite-vec: rescore, IVF
+    (experimental and not enabled), and DiskANN.'
+  locator: Release notes / v0.1.10-alpha.1
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: ANN support via DiskANN was announced in v0.1.7 as the project's biggest upcoming update, indicating
+    that prior stable releases were brute-force KNN only.
+  locator: Release notes / v0.1.7
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: sqlite-vec is a loadable SQLite extension written in pure C with no dependencies that runs anywhere
+    SQLite runs, including Linux, macOS, Windows, WASM in the browser, and Raspberry Pis.
+  locator: README / overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Vectors are stored and queried inside SQLite vec0 virtual tables, supporting float, int8, and
+    binary vector types, so the vector store lives entirely within the SQLite database file.
+  locator: README / vec0 virtual tables
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The DiskANN/IVF ANN features remain under active development through the v0.1.10 alpha series,
+    with ongoing bug fixes and integration tests across flat and ANN indexes.
+  locator: Release notes / v0.1.10-alpha.4 and alpha.2
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Releases list / v0.1.10-alpha.4 and v0.1.9 tags
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Release notes / v0.1.10-alpha.1
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Release notes / v0.1.7
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: README / vec0 virtual tables
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Release notes / v0.1.10-alpha.4 and alpha.2
+contradictions_or_cautions:
+- text: Release-note descriptions are terse; some claims (data-in-DB-file) are general SQLite extension
+    behavior, not always restated per release.
+  locator: card/trust
+- text: Release-note descriptions are terse; the "data lives inside the SQLite database file" property
+    follows from sqlite-vec being a SQLite extension using virtual tables rather than being restated verbatim
+    per release. IVF is explicitly experimental and disabled; DiskANN is still alpha (pre-stable) as of
+    v0.1.10-alpha.4.
+  locator: card/limitations

@@ -1,0 +1,85 @@
+id: ext_20260615_cb7c24ba_001
+source_card_id: src_20260614_rib041_00
+created_at: '2026-06-15T10:32:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The primary root cause of LLM inference nondeterminism is that server load (and thus batch size)
+    varies nondeterministically, changing reduction order rather than GPU concurrency or floating point
+    alone.
+  locator: 'Section: "Batch invariance and \"determinism\""'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The common hypothesis that concurrency plus floating-point arithmetic explains nondeterminism
+    is incomplete; atomic adds are usually absent from an LLM forward pass.
+  locator: 'Section: "Why don''t kernels always add numbers in the same order?"'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Running Qwen3-235B at temperature 0 across 1000 runs produced 80 unique completions, with the
+    first divergence occurring at the 103rd token.
+  locator: 'Section: "How nondeterministic are completions?"'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Enabling batch-invariant kernels made all 1000 completions identical.
+  locator: 'Section: "How nondeterministic are completions?"'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: 'Batch invariance need only be enforced on the three reduction operations: RMSNorm, matrix multiplication,
+    and attention.'
+  locator: 'Section: "How do we make kernels batch-invariant?"'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'Floating-point non-associativity is the underlying mathematical residual: adding the same numbers
+    in a different order can yield a different result.'
+  locator: 'Section: "The original sin: floating-point non-associativity"'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: 'Deterministic vLLM on Qwen-8B was slower than the default: 26s baseline vs 55s unoptimized deterministic
+    and 42s with improved attention (roughly 1.6x-2.1x slowdown).'
+  locator: 'Section: "Performance" (Qwen-8B, 1000 sequences)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: 'Section: "How nondeterministic are completions?"'
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: 'Section: "How nondeterministic are completions?"'
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: 'Section: "Performance" (Qwen-8B, 1000 sequences)'
+contradictions_or_cautions:
+- text: Engineering blog, not peer-reviewed
+  locator: card/trust
+- text: Performance numbers are from a single hardware/model configuration (Qwen-8B)
+  locator: card/trust
+- text: Engineering blog, not peer-reviewed; presents the authors' own experiments and implementation.
+  locator: card/limitations
+- text: Performance numbers come from a single model/hardware configuration (Qwen-8B, 1000 sequences)
+    and may not generalize.
+  locator: card/limitations
+- text: The technique addresses greedy/temperature-0 determinism; sampling at temperature > 0 remains
+    intentionally nondeterministic.
+  locator: card/limitations

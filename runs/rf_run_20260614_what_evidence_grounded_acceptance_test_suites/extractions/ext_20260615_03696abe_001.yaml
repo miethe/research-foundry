@@ -1,0 +1,81 @@
+id: ext_20260615_03696abe_001
+source_card_id: src_20260614_kw011_06
+created_at: '2026-06-15T00:08:46-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The paper proposes the first visual, domain-specific, graph-based language for representing crochet
+    patterns, intended as the foundation for rich domain-specific tool support.
+  locator: Abstract / Contributions (sec. 1)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The paper establishes ambiguity and limited expressiveness in existing crochet pattern languages
+    as a defined defect class that constrains current digital tools.
+  locator: Abstract (para 1)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: A user study showed the proposed language lets pattern designers express both 2D and 3D patterns
+    and removes ambiguities present in current standard crochet notations.
+  locator: Abstract (para 2) / Conclusion (sec. 6)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The contribution is demonstrated via a prototype editor that lets users author patterns in 2D
+    and view them in 3D — the same author-then-preview loop KnitWit targets.
+  locator: Abstract / Contributions (sec. 1)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Existing graphical crochet notations (such as crochet charts) lack a formal, structured representation
+    of relations between individual stitches, which limits domain-specific tool support.
+  locator: Introduction (sec. 1)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Even standardized crochet charts can be ambiguous because insertion points are only conveyed by
+    the visual direction of stitch symbols, a defect the authors demonstrate in the user study.
+  locator: Related Work — Crochet Pattern Instructions and Notations (sec. 2)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The qualitative think-aloud user study was conducted with six professional crochet designers recruited
+    from a formative survey of designers from the myboshi pattern company.
+  locator: Evaluation — User Study (sec. 4)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: In the study, participants confirmed that even a small, well-arranged state-of-the-art crochet
+    chart contained three concrete ambiguities (unspecified closing methods and a missing insertion point),
+    evidencing ambiguity as a real defect.
+  locator: 'Evaluation — Task 1: Evaluation of an Existing Chart (sec. 4.2)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Abstract (para 2) / Conclusion (sec. 6)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Abstract / Contributions (sec. 1)
+contradictions_or_cautions:
+- text: Evaluation is a small (n=6) qualitative think-aloud user study with professional designers, not
+    a quantitative benchmark; findings are about expressiveness and disambiguation, not measured accuracy
+    or speed. The language and editor are described as a prototype/foundation ("Toward"), with some generation
+    features (e.g., repetitions across layers, absolute insertion-point references) not yet supported.
+  locator: card/limitations

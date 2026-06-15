@@ -1,0 +1,106 @@
+id: ext_20260615_d37785e0_001
+source_card_id: src_20260614_rib035_10
+created_at: '2026-06-15T10:14:26-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: EnsembleLink achieves high-accuracy record linkage with zero labeled training data by leveraging
+    pre-trained language models that have learned semantic relationships from large text corpora.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: 'The pipeline is a three-stage retrieve-and-rerank: union of dense embeddings and sparse character
+    n-grams for high-recall candidate retrieval, then a cross-encoder reranks each query-candidate pair,
+    then the top-scoring candidate is selected.'
+  locator: Section 2 Method / 2.2 Retrieval
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Because the pre-trained cross-encoder generalizes across domains, no task-specific training or
+    threshold tuning is required and the method can be applied immediately to new linkage tasks without
+    labeled data.
+  locator: Section 2.2 Retrieval
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Unlike traditional exact-match blocking, hierarchical blocking fuzzy-matches the blocking variable
+    itself (e.g. matching a misspelled state before searching within it), making blocking robust to the
+    same errors that motivate fuzzy matching.
+  locator: Section 2.3 Hierarchical Blocking
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Without any labeled data, EnsembleLink outperforms both the fastLink (Fellegi-Sunter probabilistic)
+    and supervised fuzzylink baselines on all four political-science benchmark tasks.
+  locator: Section 4 Results / Table 1
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: On DBLP-Scholar, EnsembleLink reaches 89.0 pair-level F1 at threshold tau=0.8 (matching GPT-4
+    zero-shot, approaching supervised Ditto 94.3 and DeepMatcher 94.7) and 97.9% top-1 accuracy, all with
+    no training data.
+  locator: Section 5.3 Scalability / Table 6
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Task-specific fine-tuning of a smaller cross-encoder on 25-300 labeled pairs provides no consistent
+    improvement over the zero-shot pre-trained model, which generalizes effectively without adaptation.
+  locator: Section 5.2 Fine-Tuning / Table 4
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: The method runs locally on small open-source models (Qwen3-Embedding-0.6B + Jina Reranker v2 Multilingual)
+    with no external API calls, giving deterministic reproducible results, with accuracy stable at 0.98-0.99
+    across DBLP-Scholar corpus sizes from 5,000 to 64,263 records.
+  locator: Section 5.3 Scalability / Section 2.1 Implementation
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section 5.3 Scalability / Table 6
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Section 5.2 Fine-Tuning / Table 4
+- metric_name: evidence_point
+  value: ev_008
+  unit: null
+  date_context: null
+  locator: Section 5.3 Scalability / Section 2.1 Implementation
+contradictions_or_cautions:
+- text: Single-author preprint, not peer-reviewed
+  locator: card/trust
+- text: Benchmarks re-implement baselines under the author's own standardized methodology rather than
+    reusing original reported metrics
+  locator: card/trust
+- text: Source-brief framing (Fellegi-Sunter ensemble of string comparators with named confidence bands)
+    does not match the actual method, which is dense+sparse retrieval plus cross-encoder rerank
+  locator: card/trust
+- text: Single-author arXiv preprint (v2, March 2026), not peer-reviewed.
+  locator: card/limitations
+- text: Baselines were re-implemented under the author's own standardized 40% test-split / top-1 methodology
+    rather than reusing original published metrics, so cross-paper comparisons are not apples-to-apples.
+  locator: card/limitations
+- text: The source brief's framing (a Fellegi-Sunter ensemble of string-similarity comparators with named
+    auto-match/review-queue/auto-reject confidence bands) does not match the actual paper; EnsembleLink
+    is a dense+sparse retrieval plus cross-encoder rerank system, and the Fellegi-Sunter framework appears
+    only as the baseline method fastLink implements.
+  locator: card/limitations
+- text: Assumes a reference corpus of moderate size (thousands to hundreds of thousands of records); very
+    large corpora may need additional filtering and very small corpora may not benefit.
+  locator: card/limitations

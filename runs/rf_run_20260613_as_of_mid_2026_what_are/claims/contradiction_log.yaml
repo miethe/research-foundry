@@ -1,0 +1,104 @@
+run_id: rf_run_20260613_as_of_mid_2026_what_are
+generated_at: '2026-06-13T22:57:47-04:00'
+contradictions:
+- source_card_id: src_20260613_rib009_03
+  text: Defaults (e.g., gpt-5 / gpt-5-mini) are versioned to the documentation snapshot accessed 2026-06-13
+    and may shift as the project updates; verify against the live docs for current values.
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_06
+  text: Pricing and limits are subject to change without notice; no published date visible on the page.
+  locator: card/trust
+- source_card_id: src_20260613_rib009_06
+  text: Pricing and rate details on vendor docs are subject to change without notice; no explicit published
+    date is visible on the page, so the "2026-01" date is approximate (access-based).
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_04
+  text: Self-reported performance/cost figures (~3 min, ~$0.1) are vendor claims, not independently benchmarked
+  locator: card/trust
+- source_card_id: src_20260613_rib009_04
+  text: Introduction page omits some detail (e.g., report_source web/local/hybrid/MCP modes) present elsewhere
+    in the docs/repo
+  locator: card/trust
+- source_card_id: src_20260613_rib009_04
+  text: Performance and cost figures (~3 min, ~$0.10 per run) are vendor self-reported claims from project
+    documentation, not independently benchmarked, and may vary with model choice, query, and number of
+    sources.
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_04
+  text: The introduction page does not document the report_source web/local/hybrid (custom context) modes
+    or MCP server support; those details live elsewhere in the docs/repo and were not confirmed verbatim
+    from this page.
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_02
+  text: No author/date byline on page; published date inferred from source metadata.
+  locator: card/trust
+- source_card_id: src_20260613_rib009_02
+  text: No author byline or explicit publication date on the page; published_at ("2026-01") is inferred
+    from supplied source metadata, not visible page text.
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_02
+  text: Cost/time figures are vendor-stated estimates tied to a specific model (o3-mini) and reasoning
+    effort; actual figures vary with model choice, query, and config.
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_00
+  text: README is marketing-adjacent self-description; capability claims not independently benchmarked.
+  locator: card/trust
+- source_card_id: src_20260613_rib009_00
+  text: Some downstream-reported specifics (e.g., explicit report_type enum names, CSV/JSON export) not
+    confirmed in current README text and were omitted.
+  locator: card/trust
+- source_card_id: src_20260613_rib009_00
+  text: README content is the project's own self-description and capability claims are not independently
+    benchmarked.
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_00
+  text: Some downstream-reported specifics (explicit `report_type` enum names such as outline_report,
+    and CSV/JSON export) were not confirmable in the current README text and were intentionally omitted
+    from this card.
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_00
+  text: Star/fork counts and exact release dating shift over time; values reflect the mid-2026 snapshot
+    and release v3.5.0 (May 28, 2026).
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_08
+  text: Vendor documentation is subject to change without notice; figures reflect the page as accessed
+    on 2026-06-13 and a stated publication period of 2026-01. Exact per-tier numbers for sonar-deep-research
+    and the shared sonar models were captured from the tier tables but lack a single short verbatim excerpt
+    (quote set to null for ev_003 and ev_004).
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_05
+  text: License governs the gpt-researcher code only; underlying LLM/retriever providers impose their
+    own separate terms.
+  locator: card/trust
+- source_card_id: src_20260613_rib009_05
+  text: LICENSE file carries no project-specific copyright date; '2004-01' is the Apache 2.0 text date,
+    not the repo's adoption date.
+  locator: card/trust
+- source_card_id: src_20260613_rib009_05
+  text: The Apache 2.0 license governs the GPT Researcher code only; automated/programmatic use is unrestricted
+    by the license, but the underlying LLM and retriever providers impose their own separate terms of
+    service that still apply.
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_05
+  text: The LICENSE file carries no project-specific copyright date; "2004-01" reflects the Apache 2.0
+    text's own date, not the repository's adoption date.
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_07
+  text: Vendor list prices are subject to change without notice; the page itself is dated to its access/publication
+    window and exact citation/reasoning/search-query charges apply specifically to Sonar Deep Research,
+    not the other models.
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_01
+  text: Release notes describe self-reported changes; impact/quality not independently benchmarked
+  locator: card/trust
+- source_card_id: src_20260613_rib009_01
+  text: Body text emphasizes headline features and may omit smaller changes
+  locator: card/trust
+- source_card_id: src_20260613_rib009_01
+  text: Release notes are self-reported by the project; feature claims describe intent/headline changes
+    and are not independently benchmarked for quality or impact.
+  locator: card/limitations
+- source_card_id: src_20260613_rib009_01
+  text: Dates and tag names were cross-checked against the GitHub Releases API; body text quotes headline
+    features and may omit smaller changes within each release.
+  locator: card/limitations

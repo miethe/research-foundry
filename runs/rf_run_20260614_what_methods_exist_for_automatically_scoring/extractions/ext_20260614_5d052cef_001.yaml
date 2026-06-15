@@ -1,0 +1,70 @@
+id: ext_20260614_5d052cef_001
+source_card_id: src_20260614_rib042_05
+created_at: '2026-06-14T16:13:03-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: G-Eval is an LLM-as-a-judge framework using chain-of-thought to evaluate LLM outputs against any
+    custom criteria, originating from the paper 'NLG Evaluation using GPT-4 with Better Human Alignment'.
+  locator: 'Section: What is G-Eval?'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: When only criteria are supplied, G-Eval first auto-generates a series of evaluation_steps via
+    chain-of-thought before scoring.
+  locator: 'Section: How Is It Calculated?'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: G-Eval asks the judge LLM to produce an integer score from 1 to 5, where 5 is better than 1.
+  locator: 'Section: How Is It Calculated? (scoring step)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: G-Eval normalizes the raw score using the probabilities of the LLM's output tokens, taking their
+    weighted summation as the result.
+  locator: 'Section: How Is It Calculated? (probability normalization step)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: DeepEval states the probability-weighting step was introduced in the original paper because it
+    minimizes bias in LLM scoring.
+  locator: 'Section: How Is It Calculated? (Did You Know? callout)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: G-Eval is positioned as DeepEval's most versatile, custom, subjective metric, used alongside system-specific
+    metrics such as ContextualRelevancyMetric for RAG and TaskCompletionMetric for agents.
+  locator: 'Section: Usage'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: 'Section: What is G-Eval?'
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: 'Section: How Is It Calculated? (scoring step)'
+contradictions_or_cautions:
+- text: No publication date shown on page
+  locator: card/trust
+- text: Documents the DeepEval implementation, which may diverge from the original paper
+  locator: card/trust
+- text: No publication/last-updated date is visible on the page, so recency cannot be confirmed.
+  locator: card/limitations
+- text: This documents the DeepEval implementation of G-Eval, which may differ from the original paper;
+    the explicit "divide by 10" normalization detail was paraphrased by the fetch and should be re-verified
+    verbatim if cited precisely.
+  locator: card/limitations

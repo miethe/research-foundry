@@ -1,0 +1,98 @@
+id: ext_20260614_bf80672c_001
+source_card_id: src_20260614_rib002_03
+created_at: '2026-06-14T14:17:15-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Even the best-performing model fabricates answers 1.19% of the time at 32K context, with top-tier
+    models in the 5-7% range, and fabrication rises steeply with context length.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The single best model on this benchmark, GLM 4.5, still fabricates answers 1.19% of the time at
+    32K context.
+  locator: Section 5.4 (32K results)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The median model fabricates answers at roughly 25%, far above the best-case rate, indicating model
+    selection dominates fabrication risk.
+  locator: Results discussion (median model fabrication)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: At 128K context, only 5 of 26 tested models keep their fabrication rate under 10%.
+  locator: Section 5.3.1 (128K results)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: At 200K context no model stays below 10% fabrication; even the best performer, Qwen3 Next 80B-A3B,
+    fabricates answers to 10.25% of questions.
+  locator: Results discussion (200K results)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Fabrication is measured with probe questions that ask about content deliberately absent from the
+    documents, so any specific answer is definitively a fabrication.
+  locator: Section 3.1 (probe methodology, L11-L12)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: 'Temperature effects are nuanced: T=0.0 gives best overall accuracy in ~60% of cases, but higher
+    temperatures reduce fabrication for most models and sharply cut coherence loss (infinite loops), which
+    can reach 48x higher rates at T=0.0 than T=1.0.'
+  locator: Abstract / Section 5.6 (temperature effects)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Section 5.4 (32K results)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Results discussion (median model fabrication)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Section 5.3.1 (128K results)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Results discussion (200K results)
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Abstract / Section 5.6 (temperature effects)
+contradictions_or_cautions:
+- text: Open-weight models only (no closed/proprietary frontier models)
+  locator: card/trust
+- text: Preprint, not confirmed peer-reviewed
+  locator: card/trust
+- text: Probe-based fabrication metric measures one failure mode, not all hallucination
+  locator: card/trust
+- text: Evaluates open-weight models only (no closed/proprietary frontier models); arXiv preprint with
+    unverified peer-review status; the probe-based fabrication metric captures one specific failure mode
+    (answering about absent entities) rather than all hallucination behavior.
+  locator: card/limitations

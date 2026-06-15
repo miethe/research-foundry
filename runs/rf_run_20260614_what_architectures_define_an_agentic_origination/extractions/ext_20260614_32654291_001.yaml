@@ -1,0 +1,66 @@
+id: ext_20260614_32654291_001
+source_card_id: src_20260614_rib026_07
+created_at: '2026-06-14T15:40:07-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Microsoft Agent Framework reached version 1.0 GA for both .NET and Python on April 3, 2026 as
+    a production-ready release with stable APIs and long-term support.
+  locator: Opening / Introduction
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Agent Framework was built to unify Semantic Kernel's enterprise foundations with AutoGen's orchestrations
+    into a single open-source SDK.
+  locator: Introduction
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: 'The framework supports five multi-agent orchestration patterns: sequential, concurrent, handoff,
+    group chat, and Magentic-One.'
+  locator: Multi-Agent Orchestration
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: A graph-based workflow engine composes agents and functions into deterministic, repeatable processes
+    and is now marked stable.
+  locator: Agent Workflows
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Checkpointing and hydration let long-running agentic processes survive interruptions.
+  locator: Agent Workflows
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Agent Framework ships first-party service connectors for multiple model providers including Microsoft
+    Foundry, Azure OpenAI, OpenAI, Anthropic Claude, Amazon Bedrock, Google Gemini, and Ollama.
+  locator: Single Agent and Service Connectors
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Agents and workflows can be defined declaratively in version-controlled YAML files (instructions,
+    tools, memory, orchestration topology) and loaded/run with a single API call.
+  locator: Declarative Agents and Workflows
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Opening / Introduction
+contradictions_or_cautions:
+- text: 'Vendor-authored product announcement: capability claims (e.g., "production-ready," "stable,"
+    durability guarantees) are promotional and not independently benchmarked; treat performance/reliability
+    assertions as the vendor''s framing rather than verified evidence.'
+  locator: card/limitations

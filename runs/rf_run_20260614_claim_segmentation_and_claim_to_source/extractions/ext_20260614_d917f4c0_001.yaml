@@ -1,0 +1,76 @@
+id: ext_20260614_d917f4c0_001
+source_card_id: src_20260614_rib001_04
+created_at: '2026-06-14T20:58:33-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The paper introduces 'atomicity' as a novel metric quantifying the information density of a decomposed
+    claim.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Existing decomposition policies, typically hand-crafted demonstrations, misalign with downstream
+    verifiers in atomicity, yielding suboptimal verification.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The authors frame finding the optimal decomposition policy for optimal verification as a strongly
+    NP-hard bilevel optimization problem.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: '''Dynamic decomposition'' is a reinforcement learning framework that uses verifier feedback to
+    learn a policy for decomposing claims to verifier-preferred atomicity.'
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Dynamic decomposition improves verification confidence by 0.07 and accuracy by 0.12 (0-1 scale)
+    on average across varying verifiers, datasets, and input atomicities.
+  locator: Abstract (Experimental results)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The official implementation is released publicly as the ACL 2025 paper's experiment repository.
+  locator: GitHub README (yining610/dynamic-decomposition)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The work is published in the ACL 2025 Long Papers proceedings, pages 5095-5114, with DOI 10.18653/v1/2025.acl-long.254.
+  locator: ACL Anthology (2025.acl-long.254)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Abstract (Experimental results)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: GitHub README (yining610/dynamic-decomposition)
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: ACL Anthology (2025.acl-long.254)
+contradictions_or_cautions:
+- text: Reported gains (0.07 confidence, 0.12 accuracy) are averages "across varying verifiers, datasets,
+    and atomicities" from the paper's own experiments; per-condition variance and external replication
+    are not captured here. Scope is the Decompose-Then-Verify factuality paradigm, not claim verification
+    generally.
+  locator: card/limitations

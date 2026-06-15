@@ -1,0 +1,76 @@
+id: ext_20260614_ec6c796e_001
+source_card_id: src_20260614_rib045_08
+created_at: '2026-06-14T16:31:44-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: A logprob is the natural logarithm of the probability the model assigned to a token, with values
+    closer to 0 indicating higher model confidence.
+  locator: 'Section: What exactly are logprobs?'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: A logprob score closer to zero signals higher model confidence in its chosen token.
+  locator: 'Section: What exactly are logprobs?'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Setting response_logprobs=True instructs the Gemini model to return the log probabilities of the
+    tokens it selected for its output.
+  locator: 'Section: Enabling and processing logprobs'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The logprobs parameter requests log probabilities for a specified number of top alternative tokens
+    at each step, accepting an integer value between 1 and 20.
+  locator: 'Section: Enabling and processing logprobs'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The tutorial demonstrates logprobs using the gemini-2.5-flash model.
+  locator: 'Section: Getting started: Setting up your environment'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: A small gap between the top two log probabilities is a signal of classification ambiguity that
+    can be used to flag low-confidence outputs.
+  locator: 'Section: Use case 1: Smarter classification'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Averaging the log probabilities of a generated answer yields a grounding or confidence score for
+    retrieval-augmented generation systems.
+  locator: 'Section: Use case 3: Quantitative RAG evaluation'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: 'Section: What exactly are logprobs?'
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: 'Section: Enabling and processing logprobs'
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: 'Section: Getting started: Setting up your environment'
+contradictions_or_cautions:
+- text: Vendor-authored tutorial; demonstrates capabilities on Vertex AI specifically and uses gemini-2.5-flash,
+    so parameter behavior and ranges may differ across other Gemini surfaces or model versions. Claims
+    about confidence/ambiguity reflect the author's recommended interpretation, not an independent empirical
+    benchmark.
+  locator: card/limitations

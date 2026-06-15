@@ -1,0 +1,71 @@
+id: ext_20260615_eac37c14_001
+source_card_id: src_20260614_kw016_04
+created_at: '2026-06-15T11:03:20-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: CrochetPARADE is a platform for creating, visualizing, and analyzing both 2D and 3D crochet patterns.
+  locator: Introduction > Overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: It uses a custom language grammar (DSL) to define stitches and stitch patterns, aiming to avoid
+    the ambiguities of plain-English crochet instructions.
+  locator: Introduction > Overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The system parses and checks any user-provided pattern for correctness, then builds a virtual
+    model that is rendered in 3D.
+  locator: Introduction > Overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: It provides structural validation feedback by identifying overly loose or tight stitches so users
+    can swap them before crocheting, reducing the need for blocking.
+  locator: Introduction > Overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Interactive 3D features include rotate/zoom/pan, animating the pattern-creation process, per-stitch
+    info on hover, and export to 3D files for Blender.
+  locator: Introduction > Overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: All calculations run locally on the user's device with no data collected to a central server or
+    transmitted over the internet, supporting privacy and on-device runtime feasibility.
+  locator: Introduction > Overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Introduction > Overview
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Introduction > Overview
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Introduction > Overview
+contradictions_or_cautions:
+- text: Self-described capabilities; no quantitative accuracy or performance metrics in the cited Overview
+    section
+  locator: card/trust
+- text: These are self-described capabilities from the project's own manual (primary author source); the
+    cited Overview section provides no independent benchmarks or quantitative accuracy/performance metrics.
+  locator: card/limitations

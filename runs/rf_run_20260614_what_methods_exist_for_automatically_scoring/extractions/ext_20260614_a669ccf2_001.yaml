@@ -1,0 +1,65 @@
+id: ext_20260614_a669ccf2_001
+source_card_id: src_20260614_rib042_04
+created_at: '2026-06-14T16:13:03-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: TruLens defines the RAG triad as three evaluations — context relevance, groundedness, and answer
+    relevance — whose satisfactory scores together give confidence the LLM app is free from hallucination.
+  locator: The RAG Triad (intro)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The RAG triad was created to evaluate hallucinations along each edge of the RAG architecture,
+    motivated by the fact that retrieval can fail to fetch sufficient context or retrieve irrelevant context
+    that is woven into the LLM's response.
+  locator: The RAG Triad (intro)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Context Relevance verifies retrieval quality by checking that each retrieved chunk of context
+    is relevant to the input query, since irrelevant context could be woven into a hallucination.
+  locator: Context Relevance section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Groundedness is measured by separating the LLM response into individual claims and independently
+    searching the retrieved context for evidence supporting each claim.
+  locator: Groundedness section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Answer Relevance verifies that the final response actually answers the original question by evaluating
+    the relevance of the response to the user input.
+  locator: Answer Relevance section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'TruLens frames the triad''s guarantee as bounded: passing all three only verifies the app is
+    hallucination-free up to the limit of its knowledge base — accurate answers depend on the vector database
+    containing only accurate information.'
+  locator: Putting it together section
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Conceptual overview only; this page does not contain code, GroundednessConfigs tunables, or NLI/LLM
+    provider details (those live on other reference/cookbook pages).
+  locator: card/trust
+- text: No author or publication date is shown on the page.
+  locator: card/trust
+- text: This is a conceptual overview page only. It does NOT contain the code implementation (e.g. `Feedback(provider.groundedness_measure_with_cot_reasons,
+    ...)`), the choice between LLM-provider vs NLI auxiliary judges, or `GroundednessConfigs` tunables
+    (sentence tokenization, trivial-statement filtering) — those claims from the upstream seed could not
+    be confirmed on this page and were omitted. They live on separate TruLens reference/cookbook pages.
+  locator: card/limitations
+- text: No author or publication date is displayed; page captured at TruLens version trulens-2.8.1.
+  locator: card/limitations

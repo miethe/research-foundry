@@ -1,0 +1,82 @@
+id: ext_20260614_262b30df_001
+source_card_id: src_20260614_rib003_09
+created_at: '2026-06-14T23:56:53-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Traditional Knowledge Graphs treat facts as static and timeless, ignoring the temporal nature
+    of many truths, which leads to outdated or incorrect inferences.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The paper introduces what the authors describe as the first benchmark designed to evaluate temporal
+    fact validation methods, addressing an underexplored gap distinct from predicting missing temporal
+    facts.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The benchmark is derived from Wikidata and supports systematic, quantitative, and qualitative
+    comparisons across varying assumptions about temporal data and KG structures.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The dataset is derived from the Wikidata dump of May 2023 and transformed into a temporal-validation
+    task.
+  locator: Zenodo record 15680977 — Description
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Negative samples are produced by corrupting only the temporal context of true facts (keeping subject,
+    predicate, and object fixed) so that models are evaluated specifically on temporal reasoning.
+  locator: Zenodo record 15680977 — Description
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The dataset ships in multiple configurations varying temporal scope, including a reduced dense
+    scope (1900-2023) and a full sparser scope (-1000-2023).
+  locator: Zenodo record 15680977 — Configurations
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The benchmark artifacts are archived on Zenodo (record 15680977) with source code on GitHub (SoulardThibaut/WhenFactExpire);
+    the paper is an ACM Open Access CIKM '25 short paper, pages 6534-6538.
+  locator: ACM DL header / Zenodo links
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Zenodo record 15680977 — Description
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Zenodo record 15680977 — Configurations
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: ACM DL header / Zenodo links
+contradictions_or_cautions:
+- text: ACM DL full text gated behind Premium; abstract + Zenodo dataset description used for extraction
+    (full-text body not read).
+  locator: card/trust
+- text: ACM DL full text is gated behind Premium; extraction used the ACM Open Access abstract plus the
+    authors' Zenodo dataset description (record 15680977). The full-text body, exact metrics, and per-model
+    results were not read. The Zenodo page notes the article was "under review at CIKM'2025" at archival
+    time; the paper was subsequently published (10 Nov 2025).
+  locator: card/limitations

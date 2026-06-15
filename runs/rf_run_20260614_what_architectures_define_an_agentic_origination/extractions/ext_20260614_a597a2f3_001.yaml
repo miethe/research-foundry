@@ -1,0 +1,52 @@
+id: ext_20260614_a597a2f3_001
+source_card_id: src_20260614_rib026_04
+created_at: '2026-06-14T15:40:07-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: In a swarm architecture agents dynamically hand off control to one another based on their specializations,
+    with no central coordinator.
+  locator: README — Introduction / overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The swarm remembers which agent was last active so that subsequent interactions resume the multi-turn
+    conversation with that same agent.
+  locator: README — Memory
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: By default, swarm agents use handoff tools built with the prebuilt create_handoff_tool helper.
+  locator: README — Customizing Handoff Tools
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Handoff tools can be customized by changing the tool name and/or description and by adding tool-call
+    arguments for the LLM to populate, such as a task description for the next agent.
+  locator: README — Customizing Handoff Tools
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: create_swarm() builds the workflow from a list of agents and accepts a default_active_agent argument
+    (e.g. create_swarm([alice, bob], default_active_agent="Alice")).
+  locator: README — Quickstart (create_swarm usage)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Multi-turn state requires always compiling the swarm with a checkpointer (e.g. workflow.compile(checkpointer=checkpointer)).
+  locator: README — Memory
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: README does not benchmark performance or scale; claims are architectural/API descriptions, not
+    empirical results. Version 0.1.0 indicates an early-stage release; APIs may change.
+  locator: card/limitations

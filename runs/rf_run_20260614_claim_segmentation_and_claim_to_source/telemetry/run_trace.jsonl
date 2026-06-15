@@ -1,0 +1,12 @@
+{"stage": "plan", "ts": "2026-06-14T20:50:02-04:00", "run_id": "rf_run_20260614_claim_segmentation_and_claim_to_source"}
+{"ts": "2026-06-14T20:58:33-04:00", "stage": "extract", "run_id": "rf_run_20260614_claim_segmentation_and_claim_to_source", "count": 12}
+{"ts": "2026-06-14T20:58:37-04:00", "stage": "claim_map", "run_id": "rf_run_20260614_claim_segmentation_and_claim_to_source", "claims_total": 79}
+{"ts": "2026-06-14T21:02:34-04:00", "stage": "synthesize", "run_id": "rf_run_20260614_claim_segmentation_and_claim_to_source", "report_id": "report_20260614_claim_segmentation_and_claim_to_source", "claims_cited": 96}
+{"ts": "2026-06-14T21:10:43-04:00", "stage": "verify", "run_id": "rf_run_20260614_claim_segmentation_and_claim_to_source", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T21:11:04-04:00", "stage": "verify", "run_id": "rf_run_20260614_claim_segmentation_and_claim_to_source", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T21:12:22-04:00", "stage": "verify", "run_id": "rf_run_20260614_claim_segmentation_and_claim_to_source", "exit_code": 0, "passed": true}
+{"stage": "bundle", "ts": "2026-06-14T21:12:22-04:00", "run_id": "rf_run_20260614_claim_segmentation_and_claim_to_source", "bundle_id": "bundle_20260614_intent_research_20260614_claim_segmentation_and", "verified": true}
+{"stage": "ccdash_event", "ts": "2026-06-14T21:12:35-04:00", "run_id": "rf_run_20260614_claim_segmentation_and_claim_to_source", "event_id": "exec_20260614_intent_research_20260614_claim_segmentation_and"}
+{"stage": "writeback", "ts": "2026-06-14T21:12:35-04:00", "run_id": "rf_run_20260614_claim_segmentation_and_claim_to_source", "requires_review": false}
+{"ts": "2026-06-14T21:13:11-04:00", "stage": "verify", "run_id": "rf_run_20260614_claim_segmentation_and_claim_to_source", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T10:55:05-04:00", "stage": "verify", "run_id": "rf_run_20260614_claim_segmentation_and_claim_to_source", "exit_code": 0, "passed": true}

@@ -1,0 +1,81 @@
+id: ext_20260613_c0b8d0c9_001
+source_card_id: src_20260613_rib010_00
+created_at: '2026-06-13T23:52:39-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: GPT Researcher aggregates more than 20 sources per research run to form objective conclusions.
+  locator: README — Features / overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Deep Research mode takes about 5 minutes and costs about $0.40 per run using o3-mini at high reasoning
+    effort.
+  locator: README — Deep Research section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: GPT Researcher is distributed under the Apache 2 license, supporting self-hosted use.
+  locator: README — License / acknowledgements
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The Python API instantiates a GPTResearcher with a query, then awaits conduct_research() and write_report()
+    to produce a report.
+  locator: README — PIP Package / Python usage example
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: GPT Researcher supports MCP integration to connect specialized data sources such as GitHub repos,
+    databases, and custom APIs.
+  locator: README — MCP integration section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The retriever is configurable to run a hybrid of web search (Tavily default) and MCP retrievers
+    via the RETRIEVER environment variable.
+  locator: README — Retriever configuration
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The tool is LLM-agnostic and can target custom OpenAI-compatible APIs by setting the OPENAI_BASE_URL
+    environment variable.
+  locator: README — LLM configuration
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: README — Features / overview
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: README — Deep Research section
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: README — License / acknowledgements
+contradictions_or_cautions:
+- text: Cost/time figures are vendor-reported, not independently benchmarked
+  locator: card/trust
+- text: README is marketing-adjacent and may overstate (e.g., 'first open deep research agent')
+  locator: card/trust
+- text: Cost and time figures (~5 min, ~$0.40/run) are maintainer-reported in the README, not independently
+    benchmarked, and depend on the specific model (o3-mini, high reasoning effort) and run configuration.
+  locator: card/limitations
+- text: README framing is promotional in places (e.g., "first open deep research agent") and should be
+    treated as a vendor self-description.
+  locator: card/limitations

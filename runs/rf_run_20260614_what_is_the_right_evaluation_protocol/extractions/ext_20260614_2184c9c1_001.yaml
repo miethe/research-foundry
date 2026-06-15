@@ -1,0 +1,72 @@
+id: ext_20260614_2184c9c1_001
+source_card_id: src_20260614_kw007_01
+created_at: '2026-06-14T22:38:28-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: AmiGo generates crochet instructions (patterns) from an input 3D model, focusing specifically
+    on Amigurumi (knitted stuffed toys).
+  locator: Abstract (sentence 1-2)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Input to the method is a closed triangle mesh plus a single user-specified point, and the output,
+    when knitted and stuffed, yields a toy similar to the input geometry.
+  locator: Abstract (sentence 3)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The core artifact is a 'Crochet Graph' encoding geometry and connectivity that is then translated
+    into a human-readable crochet pattern.
+  locator: Abstract (sentence 4)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The shape is automatically segmented into crochetable components joined via the join-as-you-go
+    method, eliminating any additional sewing.
+  locator: Abstract (sentence 5)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The authors claim applicability to a large variety of shapes and geometries yielding 'easily crochetable'
+    patterns, but state no numeric fidelity score in the abstract.
+  locator: Abstract (sentence 6)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The paper is an 11-page, 10-figure work published at SCF 2022, submitted 2 Nov 2022, classified
+    under Graphics (cs.GR).
+  locator: arXiv metadata (Comments / Subjects)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Abstract (sentence 1-2)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: arXiv metadata (Comments / Subjects)
+contradictions_or_cautions:
+- text: Card built from the arXiv abstract + metadata; full PDF body not parsed.
+  locator: card/trust
+- text: Abstract makes qualitative claims of applicability without numeric fidelity metrics.
+  locator: card/trust
+- text: Card is built from the arXiv abstract and metadata only; the full PDF body (any in-paper quantitative
+    evaluation) was not parsed.
+  locator: card/limitations
+- text: The abstract's success criterion is qualitative resemblance to the rigid input mesh ("similar
+    to the input geometry"), not a deformed/stuffed-state simulation or a numeric fidelity score; treat
+    applicability and "easily crochetable" as author claims, not measured metrics.
+  locator: card/limitations

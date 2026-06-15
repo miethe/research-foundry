@@ -1,0 +1,87 @@
+id: ext_20260613_88bde61e_001
+source_card_id: src_20260613_rib008_09
+created_at: '2026-06-13T23:32:52-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Telemetry is enabled with CLAUDE_CODE_ENABLE_TELEMETRY=1, with optional exporters OTEL_METRICS_EXPORTER
+    (otlp/prometheus/console/none) and OTEL_LOGS_EXPORTER (otlp/console/none).
+  locator: Quick start (code block, steps 1-2)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Default export intervals are 60 seconds for metrics and 5 seconds for logs, with shorter intervals
+    recommended only for debugging.
+  locator: Quick start (Note callout)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Distributed tracing is a beta feature requiring CLAUDE_CODE_ENABLE_TELEMETRY=1 plus CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1
+    and OTEL_TRACES_EXPORTER, with spans linking each prompt to API requests and tool executions.
+  locator: Traces (beta)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: When tracing is active, Bash and PowerShell subprocesses automatically inherit a TRACEPARENT env
+    var carrying the W3C trace context of the active tool execution span, enabling end-to-end distributed
+    tracing through scripts.
+  locator: Traces (beta) - subprocess propagation paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: In Agent SDK and non-interactive (-p) sessions, Claude Code reads TRACEPARENT and TRACESTATE from
+    its environment so its spans become children of the caller's distributed trace; interactive sessions
+    ignore inbound TRACEPARENT.
+  locator: Traces (beta) - Agent SDK / non-interactive paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: OTLP endpoint is configured via OTEL_EXPORTER_OTLP_PROTOCOL (e.g. grpc), OTEL_EXPORTER_OTLP_ENDPOINT,
+    and OTEL_EXPORTER_OTLP_HEADERS for authentication.
+  locator: Quick start (code block, steps 3-4)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Claude Code exports metrics as time series via the standard metrics protocol, events via the logs/events
+    protocol, and optionally distributed traces via the traces protocol; exported metrics include cost
+    and token usage.
+  locator: Introduction (lead paragraph)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Quick start (code block, steps 1-2)
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Quick start (Note callout)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Traces (beta)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Traces (beta) - subprocess propagation paragraph
+contradictions_or_cautions:
+- text: Distributed traces are a beta feature; behavior/flags may change.
+  locator: card/trust
+- text: Distributed traces (and detailed beta tracing) are explicitly a beta feature; flags, gating (e.g.,
+    org allowlisting for some detailed spans), and behavior may change. Some env vars are documented as
+    "also accepted" aliases.
+  locator: card/limitations

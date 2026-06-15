@@ -1,0 +1,90 @@
+id: ext_20260614_bc7e8e1d_001
+source_card_id: src_20260614_kw004_01
+created_at: '2026-06-14T21:11:45-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Both the 2D and 3D views use force-based layouting as a heuristic, and the 3D view is built on
+    Vasco Asturiano's 3D force-directed graph library, which uses Three.js and WebGL for rendering with
+    a variant of D3 as the physics engine.
+  locator: Section 3.4 Domain-Specific Tool Support (p.56)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The authors scope the 3D force-based layout as approximate, useful as a first approximation of
+    a pattern's 3D appearance, whereas an exact model would require modeling the physical properties of
+    stitches and yarn as is done for knitting.
+  locator: Section 3.4 Domain-Specific Tool Support (p.56)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Movement of the pattern caused by the force-based layout made it difficult for users to orient
+    themselves, and the authors state a stable layout algorithm for 2D/3D crochet visualization is desirable,
+    framing it as an open problem.
+  locator: Section 5.1 Scope of Language and Editor (p.59)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: In the graph IR, nodes are insertion points (the connected loops), which do not correspond one-to-one
+    to stitches; a stitch such as a slip stitch may not produce a loop that serves as an insertion point.
+  locator: Section 3.1 Core Principles of the Language; Insertion Points and Transitions (p.52)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Increases and decreases are encoded structurally as multiple incoming versus multiple outgoing
+    insertion edges on a node, and rows and rounds are unified into one concept (layers) carried as a
+    node property, since either method depends only on where stitches continue.
+  locator: Section 3.2 Support for Particular Techniques; Increasing and Decreasing / Rows, Rounds (p.54)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Designers expressed amazement at the live 3D visualization while editing, but the prototype suffered
+    from force-layout instability and rotation of the chart as the main usability complaints.
+  locator: 'Section 4.4 Task 3: Creating a Bowl in 3D / Section 4.3 (p.58-59)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The language removes ambiguities observed in current standard crochet notations, but the work
+    is a prototype illustrating potential features rather than a released tool.
+  locator: Abstract / Section 1 Introduction (p.48, p.51)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Section 3.4 Domain-Specific Tool Support (p.56)
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Section 3.4 Domain-Specific Tool Support (p.56)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Section 5.1 Scope of Language and Editor (p.59)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: 'Section 4.4 Task 3: Creating a Bowl in 3D / Section 4.3 (p.58-59)'
+contradictions_or_cautions:
+- text: Editor prototype was not publicly released
+  locator: card/trust
+- text: User study n=6 professional designers
+  locator: card/trust
+- text: Prototype editor was not publicly released; findings are from a qualitative think-aloud study
+    with only six professional designers recruited via the myboshi pattern company. The 3D layout is acknowledged
+    by the authors as an approximation, not a physical simulation of the crocheted form.
+  locator: card/limitations

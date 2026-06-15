@@ -1,0 +1,39 @@
+id: intent_research_20260614_what_components_schemas_agent_roles_and
+title: What components, schemas, agent roles, and execution loop
+owner: Nick Miethe
+created_at: '2026-06-14T14:07:30-04:00'
+status: active
+type: research
+raw_idea_ids:
+- raw_20260614_1407_what_components_schemas_agent_roles_and
+objective: What components, schemas, agent roles, and execution loop are truly required for a functional
+  evidence-backed, claim-traceable research swarm inside an Agentic OS, what can be safely deferred post-MVP,
+  and how does a deep scan of agentic-research literature validate or challenge RF's current architecture
+  choices?
+motivation: ''
+desired_output:
+  artifact_type: report
+  audience: technical
+  depth: standard
+scope:
+  in: []
+  out: []
+research_questions:
+  primary:
+  - What does the evidence say about What components, schemas, agent roles, and execution loop?
+  secondary: []
+constraints:
+  hard:
+  - Every material claim must map to source_card_id or be labeled inference/speculation.
+  soft: []
+success_criteria: []
+governance:
+  sensitivity: personal
+  key_profile_allowed: personal
+  requires_human_review: false
+  allowed_writebacks:
+  - meatywiki_personal
+  - skillmeat_personal
+  - ccdash_local
+ibom_ref: ibom_research_20260614_what_components_schemas_agent_roles_and
+intenttree_node_ref: tree_rf_20260614_what_components_schemas_agent_roles_and

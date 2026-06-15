@@ -1,0 +1,166 @@
+run_id: rf_run_20260614_which_mobile_3d_runtime_stack_and
+generated_at: '2026-06-14T22:59:36-04:00'
+contradictions:
+- source_card_id: src_20260614_kw008_04
+  text: glTF is NOT mentioned anywhere in this session; the source key-point claim about "no glTF support"
+    and the need to convert glTF to USD is not supported by the transcript and was omitted.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_04
+  text: The source key-point about "per-entity components for highlight/recolor" is not stated in the
+    transcript (the session lists components such as AnimationLibraryComponent, DirectionalLightComponent,
+    AudioLibraryComponent, and ParticleEmitterComponent, but does not discuss highlight/recolor components);
+    that claim was omitted.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_04
+  text: This is a vendor (Apple) developer session; positioning of RealityKit as the recommended successor
+    reflects Apple's first-party perspective.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_03
+  text: The standalone doc page reflects an older 1.0.0-era framing ('Compose coming next'); the live
+    GitHub repo reflects the current Compose-native state (e.g. sceneview 4.x).
+  locator: card/trust
+- source_card_id: src_20260614_kw008_03
+  text: No published date on the doc page; version state must be cross-checked against the repo.
+  locator: card/trust
+- source_card_id: src_20260614_kw008_03
+  text: The standalone doc page reflects an older 1.0.0-era framing ("Compose coming next"); the live
+    GitHub repo shows the current Compose-native state (sceneview 4.x). No published date is on the doc
+    page, so version/recency claims must be cross-checked against the repository. Some current-state quotes
+    (ev_005–ev_007) are sourced from the project's canonical GitHub README rather than the legacy doc
+    page.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_08
+  text: Article is iOS/tvOS-focused; does not cover Android APK baseline sizes
+  locator: card/trust
+- source_card_id: src_20260614_kw008_08
+  text: Updated '2 years ago' with no exact date; references Unity 4.6.x-5.4.x and XCode 6-7 era
+  locator: card/trust
+- source_card_id: src_20260614_kw008_08
+  text: Does not mention 'Strip Engine Code' option, glTF/glTFast, or Filament comparisons
+  locator: card/trust
+- source_card_id: src_20260614_kw008_08
+  text: 'Source is iOS/tvOS-focused: it covers Apple binary slices and submission limits, not Android
+    APK baseline sizes, and never mentions a "Strip Engine Code" option, glTF/glTFast runtime ingestion,
+    or Filament comparisons. The prompt''s supplied key points about Android baselines (~6-17MB), react-native-filament
+    (~4MB), and glTFast are NOT supported by this article''s text and were omitted.'
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_08
+  text: Undated ("2 years ago Updated"); references Unity 4.6.x-5.4.x and XCode 6-7, so figures and behavior
+    are dated relative to current Unity releases.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_07
+  text: Latest release is v1.11.0 (2026-05-27) per the GitHub repo, not v1.9.0 as some ecosystem summaries
+    report.
+  locator: card/trust
+- source_card_id: src_20260614_kw008_07
+  text: Production-usage and threading claims are vendor self-reported.
+  locator: card/trust
+- source_card_id: src_20260614_kw008_07
+  text: Production-usage, stability, and threading statements are vendor self-reported (primary but promotional).
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_07
+  text: 'Version note: ecosystem summaries cite v1.9.0, but the live GitHub repo shows v1.11.0 (2026-05-27)
+    at access time; the ~4MB figure is the maintainer''s stated number, not an independent measurement.'
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_07
+  text: 'Format support is narrow: direct loading is limited to .glb; the "compatible with glTF and other
+    standard formats" framing requires conversion in practice.'
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_11
+  text: Page does not display an explicit version/changelog; API wording reflects current docs at access
+    time.
+  locator: card/trust
+- source_card_id: src_20260614_kw008_11
+  text: The page does not surface an explicit version/changelog; wording reflects the current docs at
+    access time. The legacy single \`updateRange\` object is not described on this page version, so the
+    "updateRanges replaced updateRange" framing is an inference beyond the quoted text.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_01
+  text: Single short Q&A from 2019; APIs may have evolved in later Filament releases
+  locator: card/trust
+- source_card_id: src_20260614_kw008_01
+  text: Issue confirms setBufferAt mutation but does NOT itself document setGeometryAt or per-renderable
+    material-instance mutation
+  locator: card/trust
+- source_card_id: src_20260614_kw008_01
+  text: Single short Q&A from 2019; later Filament releases may have added/changed APIs (e.g., RenderableManager::setGeometryAt)
+    — those specific APIs are NOT documented by this issue and must be sourced elsewhere before being
+    asserted.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_01
+  text: The issue confirms vertex-buffer mutation only; per-renderable material-instance recolor/highlight
+    claims are not supported by this source.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_06
+  text: No publication date visible on the docs site.
+  locator: card/trust
+- source_card_id: src_20260614_kw008_06
+  text: Web support self-described as experimental.
+  locator: card/trust
+- source_card_id: src_20260614_kw008_06
+  text: Could not confirm in source text the flutter_filament-supersession or interactive_3d/SceneKit
+    claims, so they are omitted.
+  locator: card/trust
+- source_card_id: src_20260614_kw008_06
+  text: No publication/last-updated date is visible on the docs site; version pinned to Filament v1.56.4
+    at access time.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_06
+  text: Web support is self-described as experimental and not turnkey (manual WASM compile required).
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_06
+  text: The source-brief claims that Thermion "supersedes flutter_filament" and the related "interactive_3d"
+    plugin (Filament/Android, SceneKit/iOS) could NOT be confirmed in the actual source text and are therefore
+    omitted from this card.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_00
+  text: README documents stated capabilities, not independently benchmarked performance
+  locator: card/trust
+- source_card_id: src_20260614_kw008_00
+  text: README documents stated design goals and capabilities, not independently measured performance;
+    "small and efficient" is a vendor posture claim, not a benchmark. Backend/platform support matrices
+    may shift between releases.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_05
+  text: No published_at date exposed; versioned only by platform availability floor.
+  locator: card/trust
+- source_card_id: src_20260614_kw008_05
+  text: Describes the API contract, not real-world performance numbers.
+  locator: card/trust
+- source_card_id: src_20260614_kw008_05
+  text: No publication date is exposed by the page; recency is implied only by the platform availability
+    floor (iOS 18 era).
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_05
+  text: The doc describes the API contract and intended usage, not measured per-frame performance or device-specific
+    numbers; "low-cost per-frame dynamic updates" is an inference from the CPU/GPU update model, not a
+    quoted benchmark.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_02
+  text: Self-described maintenance status; not actively releasing
+  locator: card/trust
+- source_card_id: src_20260614_kw008_02
+  text: 'Self-described, primary-source maintenance status: the README itself states the framework "isn''t
+    updated anymore," and the latest release (1.23.0) dates to 2023-08-04, so capability claims reflect
+    a maturity/abandonment-risk state rather than an actively maintained library.'
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_10
+  text: This is interface-level documentation from header comments; precise tangent-computation responsibility
+    (e.g., mikktspace via AssetConfigurationExtended) is referenced but its full behavior is not exhaustively
+    documented in the excerpts captured here. Source reflects the `main` branch as accessed 2026-06-14;
+    API surface may evolve.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_09
+  text: main branch is a moving target; exact signatures may drift between releases
+  locator: card/trust
+- source_card_id: src_20260614_kw008_09
+  text: Header doc comments describe intent but full semantics live in the .cpp and backend
+  locator: card/trust
+- source_card_id: src_20260614_kw008_09
+  text: Tracks the `main` branch, which is a moving target; exact signatures and defaults may drift between
+    Filament releases.
+  locator: card/limitations
+- source_card_id: src_20260614_kw008_09
+  text: Header doc comments describe API intent; full runtime semantics (alignment enforcement, backend
+    behavior) live in the .cpp and backend layers, not this header.
+  locator: card/limitations

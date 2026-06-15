@@ -1,0 +1,64 @@
+id: ext_20260613_6e0744bf_001
+source_card_id: src_20260613_rib008_08
+created_at: '2026-06-13T23:32:52-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The Python SDK supports PreToolUse, PostToolUse, PostToolUseFailure, UserPromptSubmit, Stop, SubagentStart,
+    SubagentStop, PreCompact, PermissionRequest, and Notification, while PostToolBatch, MessageDisplay,
+    SessionStart, SessionEnd, Setup, and several others are TypeScript-only.
+  locator: Available hooks (hook events table)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: SessionStart and SessionEnd cannot be registered as Python SDK callback hooks (HookEvent omits
+    them) and in Python work only as shell-command hooks defined in settings files loaded via setting_sources.
+  locator: Fix common issues > Session hooks not available in Python
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The tool-use ID correlates PreToolUse and PostToolUse events for the same tool call, and agent_id/agent_type
+    are populated inside subagents (in Python only on PreToolUse, PostToolUse, and PostToolUseFailure).
+  locator: Callback functions > Inputs
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: PreToolUse callbacks set permissionDecision of allow, deny, ask, or defer, and the precedence
+    is deny over defer over ask over allow, with any deny blocking the operation regardless of other hooks.
+  locator: Callback functions > Outputs (Note callout)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Hooks can block dangerous operations, audit-log every tool call, transform inputs via updatedInput
+    and tool outputs via updatedToolOutput, and forward Notifications (permission_prompt, idle_prompt,
+    auth_success) to external services like Slack or PagerDuty.
+  locator: Intro / Callback functions > Outputs
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Hooks may not fire when the agent hits the max_turns limit because the session ends before hooks
+    can execute.
+  locator: Fix common issues > Hook not firing
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Async hook outputs (async_=True in Python) let side-effect logging run without blocking the agent,
+    which proceeds immediately, but such outputs cannot block, modify, or inject context into the operation.
+  locator: Callback functions > Asynchronous output
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Documentation reflects SDK behavior as of June 2026; Python/TypeScript hook parity and the available-events
+    table may change in future SDK releases. Page is undated beyond the published month inferred from
+    the source metadata.
+  locator: card/limitations

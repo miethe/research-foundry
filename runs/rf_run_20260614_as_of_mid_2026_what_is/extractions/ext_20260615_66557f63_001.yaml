@@ -1,0 +1,79 @@
+id: ext_20260615_66557f63_001
+source_card_id: src_20260614_kw012_01
+created_at: '2026-06-15T09:31:13-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Ribblr's core differentiator is interactive ePatterns offering cross-device crafting, per-user
+    progress tracking, custom-size views, and built-in video tutorials.
+  locator: Key Features list, 'Interactive ePatterns' bullet
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Ribblr's Ribbuild tooling lets users personalize patterns and convert PDFs into interactive ePatterns.
+  locator: Key Features list, 'Advanced Tools' bullet
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Ribblr operates a buy/sell pattern marketplace where any user can open a shop quickly.
+  locator: Key Features list, 'Shop & Sell' bullet
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'Ribblr ships across the Apple ecosystem: iPhone/iPad/iPod touch (iOS/iPadOS 14.5+), Mac (macOS
+    11.3+ with Apple M1+), and Apple Vision (visionOS 1.0+).'
+  locator: Compatibility section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Ribblr version 3.02 was released April 13 (2025), the app is rated 4.2 out of 5 from 468 ratings,
+    and the download is approximately 4 MB.
+  locator: Version History / app metadata header
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Ribblr is free to download with free and premium patterns plus in-app purchases.
+  locator: App header / pricing
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The listing advertises no 3D visualization or guided-assembly feature, indicating the strongest
+    pattern+tracking incumbent does not contest that whitespace as of this version.
+  locator: Full Key Features list (absence of feature)
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Compatibility section
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Version History / app metadata header
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Full Key Features list (absence of feature)
+contradictions_or_cautions:
+- text: Marketing description may overstate capabilities
+  locator: card/trust
+- text: Absence of a feature in the listing does not prove the app lacks it
+  locator: card/trust
+- text: 'This is first-party vendor marketing copy: feature bullets are promotional and may overstate
+    capabilities. Platform/version/rating/size fields are Apple-published and reliable. Absence of a feature
+    (ev_007) in marketing copy is suggestive, not conclusive proof the app lacks it. "Apr 13" year (2025)
+    is inferred from the supplied source metadata; the listing displays month/day only.'
+  locator: card/limitations

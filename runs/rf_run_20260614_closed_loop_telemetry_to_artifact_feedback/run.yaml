@@ -1,0 +1,21 @@
+schema_version: 0.1
+type: run
+run_id: rf_run_20260614_closed_loop_telemetry_to_artifact_feedback
+intent_id: intent_research_20260614_closed_loop_telemetry_to_artifact_feedback
+ibom_id: ibom_research_20260614_closed_loop_telemetry_to_artifact_feedback
+brief_id: brief_20260614_closed_loop_telemetry_to_artifact_feedback
+swarm_id: swarm_20260614_closed_loop_telemetry_to_artifact_feedback
+routing_id: route_20260614_closed_loop_telemetry_to_artifact_feedback
+created_at: '2026-06-14T20:50:48-04:00'
+status: planned
+sensitivity: personal
+human_required: false
+profile:
+  depth: deep
+  audience: technical
+  max_cost_usd: 8.0
+  max_runtime_minutes: 60
+  freshness_days: 180
+  extraction_model_profile: rf_extract_cheap
+  synthesis_model_profile: rf_synthesize_deep
+  verification_model_profile: rf_verify_balanced

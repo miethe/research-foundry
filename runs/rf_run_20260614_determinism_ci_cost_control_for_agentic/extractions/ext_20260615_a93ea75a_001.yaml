@@ -1,0 +1,98 @@
+id: ext_20260615_a93ea75a_001
+source_card_id: src_20260614_rib041_01
+created_at: '2026-06-15T10:32:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: SGLang's deterministic inference integrates batch-invariant kernels (mean, log-softmax, matrix
+    multiplication) from Thinking Machines Lab.
+  locator: 'Section: Key enhancements / Introduction'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: In deterministic mode every subtest produced 1 unique output across trials, versus 2-18 unique
+    outputs in normal mode (e.g., the prefix test reported 5/8/18/2 in normal FlashInfer).
+  locator: 'Section: Verifying Deterministic Behavior'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: SGLang reports an average deterministic-mode slowdown of 34.35% on FlashInfer and FlashAttention
+    3 backends, versus the 61.5% slowdown reported in Thinking Machines Lab's blog.
+  locator: 'Section: Measuring Offline Inference Performance / Results'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Enabling CUDA Graphs yields at least a 2.79x speedup across all attention kernels in deterministic
+    mode.
+  locator: 'Section: CUDA Graph Acceleration'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Only TP1 and TP2 are deterministic (consistent floating-point addition order); larger tensor-parallel
+    setups require modifications to reduce kernels to achieve determinism.
+  locator: 'Section: Future Work'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Deterministic inference currently supports only dense models such as Qwen3-8B or LLaMa-3.1-8B;
+    MoE models are not yet supported, though planned.
+  locator: 'Section: Future Work'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Deterministic multinomial sampling perturbs logits with Gumbel noise from a seeded hash function,
+    so the same (inputs, seed) pair yields the same sample even when temperature > 0.
+  locator: 'Section: Reproducible Non-Greedy Sampling'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: 'Section: Verifying Deterministic Behavior'
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: 'Section: Measuring Offline Inference Performance / Results'
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: 'Section: CUDA Graph Acceleration'
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: 'Section: Future Work'
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: 'Section: Future Work'
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: 'Section: Reproducible Non-Greedy Sampling'
+contradictions_or_cautions:
+- text: Self-reported benchmarks not independently reproduced
+  locator: card/trust
+- text: Updated 2025-09-24 after initial publication
+  locator: card/trust
+- text: Self-reported, first-party benchmarks not independently reproduced; the post was updated 2025-09-24
+    after initial publication.
+  locator: card/limitations
+- text: 'Determinism scope is narrow: dense-only, TP1/TP2-only, with MoE and larger tensor-parallel configurations
+    explicitly out of scope at time of writing.'
+  locator: card/limitations

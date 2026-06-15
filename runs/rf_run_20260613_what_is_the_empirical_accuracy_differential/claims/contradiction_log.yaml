@@ -1,0 +1,92 @@
+run_id: rf_run_20260613_what_is_the_empirical_accuracy_differential
+generated_at: '2026-06-13T23:14:42-04:00'
+contradictions:
+- source_card_id: src_20260613_rib007_01
+  text: Marketing/announcement framing
+  locator: card/trust
+- source_card_id: src_20260613_rib007_01
+  text: Some benchmarks attributed to partner Augment rather than neutral third party
+  locator: card/trust
+- source_card_id: src_20260613_rib007_01
+  text: This is a first-party vendor product announcement (marketing framing); the headline coding/speed
+    numbers are vendor- or partner-reported (Augment), not independently audited. The 90% and 4-5x figures
+    derive from Augment's evaluation/quotes rather than a neutral third-party benchmark.
+  locator: card/limitations
+- source_card_id: src_20260613_rib007_09
+  text: Card evidence is from the abstract; per-model scores and methodology details not extracted from
+    full text.
+  locator: card/trust
+- source_card_id: src_20260613_rib007_09
+  text: Evidence here is extracted from the abstract and arXiv metadata only; per-model leaderboard scores
+    and full CoV-Eval methodology details were not pulled from the full text.
+  locator: card/limitations
+- source_card_id: src_20260613_rib007_00
+  text: List prices only; excludes negotiated volume/enterprise discounts
+  locator: card/trust
+- source_card_id: src_20260613_rib007_00
+  text: Partner-cloud (Bedrock/Vertex) pricing is independent and not covered here
+  locator: card/trust
+- source_card_id: src_20260613_rib007_00
+  text: List prices only; excludes negotiated volume/enterprise discounts and academic/research pricing.
+  locator: card/limitations
+- source_card_id: src_20260613_rib007_00
+  text: Partner-operated clouds (Amazon Bedrock, Vertex AI) have independent pricing not covered by these
+    figures.
+  locator: card/limitations
+- source_card_id: src_20260613_rib007_00
+  text: Prices are time-sensitive; the page itself directs readers to claude.com/pricing for the most
+    current rates.
+  locator: card/limitations
+- source_card_id: src_20260613_rib007_00
+  text: The new-tokenizer note (ev_007) means headline per-MTok parity does not always equal per-text
+    cost parity across Opus versions.
+  locator: card/limitations
+- source_card_id: src_20260613_rib007_04
+  text: Prices change frequently; page last updated 2026-06-09 UTC
+  locator: card/trust
+- source_card_id: src_20260613_rib007_04
+  text: Preview model prices may change at GA
+  locator: card/trust
+- source_card_id: src_20260613_rib007_04
+  text: Prices are list/published values as of the page's last-updated date (2026-06-09 UTC) and change
+    frequently; preview-model prices may change at GA. The source did not surface a verbatim launch date
+    for Gemini 3.5 Flash, so the claimed 2026-05-19 launch is not corroborated by this card.
+  locator: card/limitations
+- source_card_id: src_20260613_rib007_07
+  text: Preprint, not peer-reviewed
+  locator: card/trust
+- source_card_id: src_20260613_rib007_07
+  text: Benchmark and scoring methodology defined by the authors
+  locator: card/trust
+- source_card_id: src_20260613_rib007_07
+  text: arXiv preprint (v1), not yet peer-reviewed; benchmark design and scoring are defined by the authors,
+    so reported scores are self-reported. The Qwen3.5-35B figure (ev_007) is read from a results table
+    and is recorded without a short verbatim quote.
+  locator: card/limitations
+- source_card_id: src_20260613_rib007_08
+  text: Survey/synthesis (no original benchmark runs)
+  locator: card/trust
+- source_card_id: src_20260613_rib007_08
+  text: 10x-100x cost claim is a range, not a single measured datapoint
+  locator: card/trust
+- source_card_id: src_20260613_rib007_08
+  text: This is a survey/synthesis preprint, not an original benchmark study; the 10x-100x cost-reduction
+    and parity figures are aggregated claims over a range rather than a single measured result, and the
+    paper itself delineates cases (open-domain reasoning, long-horizon planning) where SLMs are inadequate.
+  locator: card/limitations
+- source_card_id: src_20260613_rib007_06
+  text: Numbers verified from abstract only; full body/table figures could not be reliably extracted from
+    the compressed PDF.
+  locator: card/trust
+- source_card_id: src_20260613_rib007_06
+  text: Single-corpus study (SEC filings); generalization to other document classes unverified.
+  locator: card/trust
+- source_card_id: src_20260613_rib007_06
+  text: Numbers are verified from the abstract only; the compressed PDF body and Tables 1-12 (cost-per-document
+    dollar figures, latency in seconds, specific model names) could not be reliably extracted, so per-architecture
+    detail beyond the abstract headline figures is unconfirmed here.
+  locator: card/limitations
+- source_card_id: src_20260613_rib007_06
+  text: Peer-unreviewed arXiv preprint; results are single-corpus (SEC filings), so generalization to
+    other document classes is not established.
+  locator: card/limitations

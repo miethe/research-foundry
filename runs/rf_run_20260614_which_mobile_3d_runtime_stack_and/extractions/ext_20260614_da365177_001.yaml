@@ -1,0 +1,72 @@
+id: ext_20260614_da365177_001
+source_card_id: src_20260614_kw008_02
+created_at: '2026-06-14T22:59:33-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Sceneform Maintained is an ARCore Android SDK that uses Google Filament as its 3D engine, and
+    is presented as the continuation of the archived Sceneform project.
+  locator: README intro / project description
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The SDK ingests glTF and GLB 3D model files natively from assets, res/raw, local file, or http/https
+    URL, replacing the older sfa/sfb/fbx/obj plugin pipeline.
+  locator: README feature list ('No plugin needed')
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The maintainers explicitly state the framework is no longer updated and recommend using SceneView
+    instead, signaling maturity/abandonment risk for the Android-native path.
+  locator: README deprecation banner
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'Two successor lineages are documented: a Java continuation (Sceneform Maintained, this repo)
+    and a Kotlin successor (SceneView/sceneview-android), both built on Filament + ARCore.'
+  locator: README successor / lineage note
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The latest release is version 1.23.0 (dated 2023-08-04), with no newer releases, consistent with
+    the stated 'not actively updated' status.
+  locator: README dependencies / release info
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_006
+  text: Sceneform Maintained tracks the latest versions of the ARCore SDK and Google Filament, and supports
+    animations on loaded glTF/GLB models.
+  locator: README technology note
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: README intro / project description
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: README feature list ('No plugin needed')
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: README dependencies / release info
+contradictions_or_cautions:
+- text: Self-described maintenance status; not actively releasing
+  locator: card/trust
+- text: 'Self-described, primary-source maintenance status: the README itself states the framework "isn''t
+    updated anymore," and the latest release (1.23.0) dates to 2023-08-04, so capability claims reflect
+    a maturity/abandonment-risk state rather than an actively maintained library.'
+  locator: card/limitations

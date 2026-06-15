@@ -1,0 +1,88 @@
+id: ext_20260615_5d04611f_001
+source_card_id: src_20260614_kw012_11
+created_at: '2026-06-15T09:31:13-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: AmiGo takes a closed triangle mesh plus a single user-specified point and generates crochet instructions
+    that, when knitted and stuffed, produce an Amigurumi toy resembling the input geometry.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The pipeline works by constructing a 'Crochet Graph' (geometry plus connectivity) that is then
+    translated into a human-readable crochet pattern.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The shape is automatically segmented into crochetable components joined via the join-as-you-go
+    method, eliminating any need for sewing.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The full input is a closed 3D model, a seed point, and a stitch size; the generated instructions
+    use only simple crochet stitches and are join-as-you-go, so no sewing is required.
+  locator: Section 1.2 Contribution
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The authors claim the crocheted-and-stuffed output resembles the input 3D shape more closely than
+    any previous approach to crochet instruction generation.
+  locator: Section 1.2 Contribution
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Crochet cannot be easily automated and, unlike machine knitting, there exists no crochet machine
+    to date, motivating a computational pattern-generation method.
+  locator: Section 1 Introduction
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The crochet graph is converted to a program using standard code-synthesis tools, then loop-unrolled
+    into a human-readable pattern, confirming a deterministic algorithmic (not ML-based) pipeline.
+  locator: Section 3 Overview / Section 5.1
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: 'The method has inherent geometric limits: surfaces with negative mean curvature and positive
+    Gaussian curvature (''craters'') cannot be realized by crocheting and stuffing alone and must be preprocessed
+    away.'
+  locator: Section 2.3 Crochetable Models
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Section 1.2 Contribution
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section 1.2 Contribution
+contradictions_or_cautions:
+- text: Method has documented geometric obstructions (negative mean curvature, branching) and is sampling-rate
+    dependent; results are 'similar' to the input, not exact.
+  locator: card/trust
+- text: Output is "similar" to the input, not exact, and the method is sampling-rate dependent (too few
+    rows loses geometric detail).
+  locator: card/limitations
+- text: 'Documented geometric obstructions to crochetability: negative mean curvature ("craters") and
+    branching require preprocessing/segmentation; not all shapes are handled directly.'
+  locator: card/limitations
+- text: The paper conjectures (but does not prove) that the f,g parameterization is bijective, leaving
+    the proof to future work.
+  locator: card/limitations

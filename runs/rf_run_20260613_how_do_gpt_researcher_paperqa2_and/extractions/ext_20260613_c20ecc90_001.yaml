@@ -1,0 +1,84 @@
+id: ext_20260613_c20ecc90_001
+source_card_id: src_20260613_rib010_05
+created_at: '2026-06-13T23:52:39-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: PaperQA2 is presented as the first AI agent to achieve superhuman performance on a variety of
+    scientific literature search tasks, optimized for retrieving and summarizing information over the
+    scientific literature.
+  locator: Opening paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: PaperQA2 achieves higher accuracy than PhD- and postdoc-level biology researchers at retrieving
+    information from the scientific literature, as measured using LitQA2, part of the LAB-Bench eval set.
+  locator: Opening paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: WikiCrow, an agent built on top of PaperQA2, produces scientific summaries judged more accurate
+    on average than human-written Wikipedia articles by blinded PhD- and postdoc-level researchers.
+  locator: Opening paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: An older version (PaperQA) was used to generate Wikipedia-style articles for all 20,000 human
+    genome genes by combining information from 1 million distinct scientific papers, though those earlier
+    articles were on average less accurate than existing Wikipedia articles.
+  locator: Second paragraph (scale of literature analysis)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: ContraCrow, an agent built on PaperQA2, evaluates every claim in a paper to find contradicting
+    papers and detected an average of 2.34 contradicted statements per paper in a random subset of biology
+    papers.
+  locator: Third paragraph (contradiction detection / ContraCrow)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Opening paragraph
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Opening paragraph
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Opening paragraph
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Second paragraph (scale of literature analysis)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Third paragraph (contradiction detection / ContraCrow)
+contradictions_or_cautions:
+- text: Promotional first-party framing
+  locator: card/trust
+- text: Quantitative LitQA2 metrics not stated on this page itself
+  locator: card/trust
+- text: First-party promotional announcement from the developing org (FutureHouse); accuracy claims are
+    vendor self-report against their own LitQA2/LAB-Bench eval.
+  locator: card/limitations
+- text: The headline quantitative LitQA2 metrics in the run's key_points (85.2% precision, 66.0% accuracy,
+    248 questions, ~70% human-validated contradictions) are NOT stated verbatim on this announcement page;
+    they belong to the linked arXiv paper (arxiv.org/abs/2409.13740) and should be cited from that source,
+    not this card.
+  locator: card/limitations

@@ -1,0 +1,13 @@
+{"stage": "plan", "ts": "2026-06-14T20:50:48-04:00", "run_id": "rf_run_20260614_determinism_ci_cost_control_for_agentic"}
+{"ts": "2026-06-15T10:32:58-04:00", "stage": "extract", "run_id": "rf_run_20260614_determinism_ci_cost_control_for_agentic", "count": 12}
+{"ts": "2026-06-15T10:33:02-04:00", "stage": "claim_map", "run_id": "rf_run_20260614_determinism_ci_cost_control_for_agentic", "claims_total": 80}
+{"ts": "2026-06-15T10:38:49-04:00", "stage": "synthesize", "run_id": "rf_run_20260614_determinism_ci_cost_control_for_agentic", "report_id": "report_20260615_determinism_ci_cost_control_for_agentic", "claims_cited": 99}
+{"ts": "2026-06-15T10:43:28-04:00", "stage": "verify", "run_id": "rf_run_20260614_determinism_ci_cost_control_for_agentic", "exit_code": 4, "passed": false}
+{"ts": "2026-06-15T10:44:57-04:00", "stage": "verify", "run_id": "rf_run_20260614_determinism_ci_cost_control_for_agentic", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T10:45:12-04:00", "stage": "verify", "run_id": "rf_run_20260614_determinism_ci_cost_control_for_agentic", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T10:46:57-04:00", "stage": "verify", "run_id": "rf_run_20260614_determinism_ci_cost_control_for_agentic", "exit_code": 0, "passed": true}
+{"stage": "bundle", "ts": "2026-06-15T10:46:57-04:00", "run_id": "rf_run_20260614_determinism_ci_cost_control_for_agentic", "bundle_id": "bundle_20260615_intent_research_20260614_determinism_ci_cost", "verified": true}
+{"stage": "ccdash_event", "ts": "2026-06-15T10:47:02-04:00", "run_id": "rf_run_20260614_determinism_ci_cost_control_for_agentic", "event_id": "exec_20260615_intent_research_20260614_determinism_ci_cost"}
+{"stage": "writeback", "ts": "2026-06-15T10:47:02-04:00", "run_id": "rf_run_20260614_determinism_ci_cost_control_for_agentic", "requires_review": false}
+{"ts": "2026-06-15T10:47:54-04:00", "stage": "verify", "run_id": "rf_run_20260614_determinism_ci_cost_control_for_agentic", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T10:55:06-04:00", "stage": "verify", "run_id": "rf_run_20260614_determinism_ci_cost_control_for_agentic", "exit_code": 0, "passed": true}

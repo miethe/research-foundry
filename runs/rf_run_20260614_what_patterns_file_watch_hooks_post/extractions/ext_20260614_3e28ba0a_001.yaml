@@ -1,0 +1,74 @@
+id: ext_20260614_3e28ba0a_001
+source_card_id: src_20260614_rib024_10
+created_at: '2026-06-14T14:59:41-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Lefthook is a Git hooks manager that targets Node.js, Ruby, Python, and many other types of projects.
+  locator: README — title/tagline
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Lefthook is distributed as a single dependency-free binary written in Go that can run in any environment.
+  locator: README — feature bullets
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Lefthook supports parallel execution of hook commands to increase speed.
+  locator: README — 'Why Lefthook?' (Parallel Execution)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Lefthook can filter the list of files a hook command runs against using glob and regexp filters.
+  locator: README — 'Why Lefthook?' (Glob and Regexp Filters)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The latest lefthook release is v2.1.9, dated May 29, 2026, with 217 prior releases listed.
+  locator: GitHub sidebar — Releases
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The lefthook codebase is approximately 86% Go (Go 86.2%, JavaScript 5.2%, Raku 4.5%, Shell 1.4%,
+    Python 1.4%, Ruby 0.5%).
+  locator: GitHub sidebar — Languages
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Hook command groups can be invoked directly, e.g. running the pre-commit group via the CLI.
+  locator: README — 'Your own tasks' / Direct Control
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: Lefthook can run commands inside a Docker container by specifying a runner that wraps the command.
+  locator: README — 'Support Docker' section
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: GitHub sidebar — Releases
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: GitHub sidebar — Languages
+contradictions_or_cautions:
+- text: Marketing-style README claims (e.g. speed) are self-reported, not independently benchmarked.
+  locator: card/trust
+- text: README-level claims (especially relative speed/"more speed") are self-reported by the upstream
+    project, not independently benchmarked. Release/version and language-percentage figures are GitHub
+    metadata captured at access time (2026-06-14) and will drift as the project evolves.
+  locator: card/limitations

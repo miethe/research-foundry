@@ -1,0 +1,61 @@
+id: ext_20260615_584f2aea_001
+source_card_id: src_20260614_rib041_02
+created_at: '2026-06-15T10:32:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: OpenAI Chat Completions are non-deterministic by default, meaning identical requests can yield
+    different model outputs.
+  locator: Reproducible outputs (intro)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Setting an integer seed and reusing the same value across requests yields (mostly) deterministic
+    outputs.
+  locator: Reproducible outputs (bullet 1)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Determinism also requires that all other request parameters (such as prompt and temperature) be
+    identical across requests.
+  locator: Reproducible outputs (bullet 2)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Determinism can be broken by OpenAI's own backend model-configuration changes, which it surfaces
+    via the system_fingerprint field.
+  locator: Reproducible outputs (system_fingerprint paragraph)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: A change in the system_fingerprint value signals that outputs may differ even when seed and other
+    parameters are held constant.
+  locator: Reproducible outputs (system_fingerprint paragraph)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: OpenAI characterizes seed-based reproducibility as only (mostly) deterministic, not guaranteed
+    bit-for-bit identical output.
+  locator: Reproducible outputs (heading framing)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: No publication date visible
+  locator: card/trust
+- text: Section is brief; describes intended behavior, not measured guarantees
+  locator: card/trust
+- text: No publication date is visible on the page; OpenAI may revise the guidance over time.
+  locator: card/limitations
+- text: The section is brief and describes intended/best-effort behavior, not a measured or contractual
+    guarantee; the source does not quantify the residual non-determinism rate, nor explicitly list `top_p`
+    among the parameters to hold constant.
+  locator: card/limitations

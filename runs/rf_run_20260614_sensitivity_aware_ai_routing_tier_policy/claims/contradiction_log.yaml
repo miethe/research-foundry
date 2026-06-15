@@ -1,0 +1,117 @@
+run_id: rf_run_20260614_sensitivity_aware_ai_routing_tier_policy
+generated_at: '2026-06-15T00:16:13-04:00'
+contradictions:
+- source_card_id: src_20260614_rib017_08
+  text: Unified billing and other features noted as Closed Beta at publication; availability/specifics
+    may have changed since 2025-08.
+  locator: card/trust
+- source_card_id: src_20260614_rib017_08
+  text: Vendor first-party announcement (promotional framing); unified billing and several features were
+    Closed Beta at publication, so availability and exact behavior may have changed since 2025-08.
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_07
+  text: The page carries no individual author byline and no precise publication date beyond the 2025 OWASP
+    Top 10 release cycle; published_at is approximated as 2025-01. Root-cause definitions are drawn from
+    the page's descriptive/example text rather than a single canonical one-line definition per cause.
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_09
+  text: No explicit page-publish or last-updated date is shown on the page; the "2026-01" published_at
+    is the access-period estimate supplied with the source metadata and is unverified from page text.
+    The March 1, 2023 date applies to the training-data policy itself, not the page.
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_10
+  text: Help-center article without explicit publication date; page shows only a relative 'Updated this
+    week' timestamp.
+  locator: card/trust
+- source_card_id: src_20260614_rib017_10
+  text: Applies to commercial customers, not consumer plans (Free, Pro, Max).
+  locator: card/trust
+- source_card_id: src_20260614_rib017_10
+  text: Help-center article shows only a relative "Updated this week" timestamp, not an explicit publication
+    date; published_at (2026-03) is taken from the supplied source metadata, not a visible on-page date.
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_10
+  text: Scope is commercial customers; does not apply to consumer plans (Claude Free, Pro, Max).
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_06
+  text: No named individual author or precise publication month on the page
+  locator: card/trust
+- source_card_id: src_20260614_rib017_06
+  text: Guidance is prescriptive/qualitative, not benchmarked or measured
+  locator: card/trust
+- source_card_id: src_20260614_rib017_06
+  text: The page carries no named individual author and no precise publication month (version is the "2025"
+    list designation).
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_06
+  text: Guidance is prescriptive and qualitative; it provides no benchmarks, measured efficacy, or quantitative
+    thresholds.
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_11
+  text: The full set of likelihood enum values (POSSIBLE, UNLIKELY) and the complete de-identification
+    technique descriptions are referenced or shown in tables/links rather than enumerated in a single
+    prose sentence on this page; quotes were captured only where a short verbatim excerpt was confirmed.
+    The de-identification transformation list (ev_006) is linked from this page to a transformations reference.
+    Content is product documentation and reflects the product's stated behavior as of the 2026-06-11 update.
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_01
+  text: News announcement summarizes the change set; it does not itself enumerate the full control count.
+  locator: card/trust
+- source_card_id: src_20260614_rib017_01
+  text: The 110->97 control-count reduction is asserted elsewhere (the SP 800-171r3 document/change analysis),
+    not in this announcement text.
+  locator: card/trust
+- source_card_id: src_20260614_rib017_01
+  text: This is a NIST news announcement summarizing the change set; it does not enumerate the full control
+    count, so the widely cited 110->97 control reduction must be sourced from the SP 800-171r3 document
+    itself or its change analysis, not this page.
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_05
+  text: Page documents the classic version of DSPM for AI, now replaced by a new version; behavior may
+    differ in the successor product.
+  locator: card/trust
+- source_card_id: src_20260614_rib017_05
+  text: This page documents the classic version of DSPM for AI, which Microsoft states is replaced by
+    a new version with broader reach and different management; enforcement details may differ in the successor
+    product. Page last updated 2026-05-01.
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_02
+  text: Documentation reflects the April 2026 product state and Microsoft's recommended/example taxonomy;
+    specific category names (General/Confidential/Highly Confidential definitions) are organization-customizable
+    and not mandated. Justification-on-downgrade applies to files, emails, and meetings but not to sublabels
+    sharing a parent's priority, data assets, or container-protecting labels.
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_03
+  text: The infoTypes reference page enumerates detectors and sensitivity values but does not itself define
+    what HIGH/MODERATE/LOW mean; that definition lives on the companion sensitivity/data-risk page.
+  locator: card/trust
+- source_card_id: src_20260614_rib017_03
+  text: The infoTypes reference page itself enumerates detectors and sensitivity values but does not define
+    HIGH/MODERATE/LOW; those definitions are drawn from the companion "Sensitivity and data risk levels"
+    documentation page (ev_005–ev_008), which is cited in the locators.
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_03
+  text: The page references that new infoType detectors and groups are added periodically; the exact total
+    detector count is not stated as a single verbatim number on the page, so the "400+/500+" figure is
+    not quoted here.
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_03
+  text: Sensitivity scores are an editable default; an organization's effective tiering may differ from
+    the documented defaults after user overrides.
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_00
+  text: Scoped to U.S. federal non-national-security systems; impact-level semantics are domain-specific
+    to that regime.
+  locator: card/trust
+- source_card_id: src_20260614_rib017_00
+  text: Scope is U.S. federal non-national-security systems; the LOW/MODERATE/HIGH semantics are normative
+    within that regime and are not a general-purpose classification scheme. NOT APPLICABLE applies only
+    to confidentiality for information types and cannot be assigned at the system level (low-water-mark
+    floor of LOW).
+  locator: card/limitations
+- source_card_id: src_20260614_rib017_04
+  text: The framework is explicitly voluntary; the "de-facto contractual pressure via federal procurement"
+    interpretation in the source brief is editorial context and is not asserted verbatim in this NIST
+    publication. Risk-count and core-function detail are drawn from the official NIST.AI.600-1 PDF linked
+    from this landing page, not from the landing page body text itself.
+  locator: card/limitations

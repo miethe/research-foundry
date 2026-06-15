@@ -1,0 +1,58 @@
+id: ext_20260614_7ac4e9ef_001
+source_card_id: src_20260614_kw008_11
+created_at: '2026-06-14T22:59:33-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: addUpdateRange(start, count) queues a sub-range of the data array to be updated on the GPU, where
+    start is the position to begin and count is the number of components to update.
+  locator: addUpdateRange() method
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The updateRanges array lets you re-upload only some components of stored vectors (e.g., just the
+    color component), with ranges added via addUpdateRange().
+  locator: updateRanges property
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: clearUpdateRanges() resets the queued update ranges.
+  locator: clearUpdateRanges() method
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Setting needsUpdate = true flags the attribute as changed so it is re-sent to the GPU; it defaults
+    to false and should be set after modifying the array.
+  locator: needsUpdate property
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The usage property defines the intended usage pattern for optimization (default StaticDrawUsage;
+    DynamicDrawUsage is among valid values) and setUsage(value) sets it, though usage cannot be changed
+    after a buffer's initial use.
+  locator: usage property / setUsage()
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: BufferAttribute stores per-attribute geometry data (positions, indices, normals, colors, UVs,
+    custom attributes) for efficient passing to the GPU.
+  locator: Class description (top of page)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Page does not display an explicit version/changelog; API wording reflects current docs at access
+    time.
+  locator: card/trust
+- text: The page does not surface an explicit version/changelog; wording reflects the current docs at
+    access time. The legacy single \`updateRange\` object is not described on this page version, so the
+    "updateRanges replaced updateRange" framing is an inference beyond the quoted text.
+  locator: card/limitations

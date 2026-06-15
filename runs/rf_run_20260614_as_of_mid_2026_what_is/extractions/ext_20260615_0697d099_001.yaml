@@ -1,0 +1,86 @@
+id: ext_20260615_0697d099_001
+source_card_id: src_20260614_kw012_05
+created_at: '2026-06-15T09:31:13-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Pattern Keeper costs $9.00 as a one-time in-app purchase granting permanent (use-forever) access.
+  locator: Pricing / 'How much does it cost?'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The app offers a one-month free trial that includes access to all features.
+  locator: Free trial / 'How long is the trial?'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Core features include viewing the chart as one continuous pattern across page breaks, symbol search/highlight,
+    and stitch selection by clicking or dragging in any direction including diagonally.
+  locator: Features overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Progress tracking marks finished stitches (coloring them with the thread color) and the thread
+    list shows the number of stitches left per color.
+  locator: Features overview / progress tracking
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Pattern Keeper works with PDF charts from designers including Heaven and Earth Designs, Paine
+    Free Crafts, Charting Creations, and Artecy, plus other compatible-charting-software designers.
+  locator: Compatibility / supported designers
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'Photographed paper patterns can be imported but lose key functionality: you cannot search or
+    add thread numbers.'
+  locator: Paper patterns FAQ
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Android support requires version 4.1 or later with Google Play Store; at least 2GB RAM is recommended
+    and Android 8.1 should be avoided as unstable.
+  locator: Platform support / device requirements
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: An iOS version is in early development and not yet available; users can sign up for an iOS newsletter
+    to be notified about the first test version.
+  locator: iOS FAQ / newsletter signup
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Pricing / 'How much does it cost?'
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Platform support / device requirements
+contradictions_or_cautions:
+- text: Self-reported feature/pricing claims
+  locator: card/trust
+- text: No third-party verification of stated capabilities
+  locator: card/trust
+- text: 'Self-reported vendor/marketing source: feature, pricing, and platform claims are the developer''s
+    own and are not independently verified.'
+  locator: card/limitations
+- text: Scope is cross-stitch chart tracking only; the site documents no row-by-row 3D rendering, garment/amigurumi
+    assembly, or non-counted-thread craft tooling.
+  locator: card/limitations
+- text: Published/copyright year recorded as 2026; specific feature-version dating is not given on the
+    page.
+  locator: card/limitations

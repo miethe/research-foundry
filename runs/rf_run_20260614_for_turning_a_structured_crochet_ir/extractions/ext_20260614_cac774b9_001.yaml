@@ -1,0 +1,88 @@
+id: ext_20260614_cac774b9_001
+source_card_id: src_20260614_kw004_10
+created_at: '2026-06-14T21:11:45-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'A crochet pattern is represented as a stitch mesh: a library of tiles where each tile contains
+    yarn geometry and tiles connect along their edges.'
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The representation introduces a special edge type capturing the 'current loop' - the loop of yarn
+    held on the crochet hook during fabrication.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Crochet stitch faces use four edge labels - Next/Previous (short-term, consecutive stitches) and
+    Future/Past (long-term, loop-through-fabric to a prior stitch) - connected as previous-next and past-future
+    pairs to cover a surface.
+  locator: Sec. 4 Method (edge labels list)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Faces use short-term (orange) and long-term (purple) edge types; the leading loop and free yarn
+    cross the short-term edges while long-term edges are crossed only by loops.
+  locator: Sec. 4 Method (Figure 7 caption)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Only the chain stitch, slip stitch, single crochet, sc2tog, and sc3tog were modeled; the tile
+    set is explicitly described as far from complete, with double/treble crochet left as future work.
+  locator: Sec. 6 Discussion (Stitch (Face) Modeling)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Patterns are generated from 3D models via the Narayanan et al. 2019 pipeline, which maps quad
+    faces to single crochet/turn, pentagons to sc2tog, and increase triangles to inc, demonstrated on
+    a cube, sphere, and Stanford bunny.
+  locator: Sec. 5 Results (automatic pipeline)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Because remeshing produced lower stitch density in the bunny body than the ears, the simulated
+    fabric became more 'lacy' with larger holes and less detailed shaping - a documented fidelity failure
+    of the approach.
+  locator: Sec. 5 Results (Stanford bunny)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: The ad-hoc yarn-relaxation/simulation approach produces visible artifacts such as dense stitches
+    and large gaps, and the stitch-mesh generation yields small holes and non-ideal shaping.
+  locator: Sec. 5 Results (SCF letters / yarn relaxation)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Sec. 6 Discussion (Stitch (Face) Modeling)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Sec. 5 Results (automatic pipeline)
+contradictions_or_cautions:
+- text: Models only a subset of stitches; double/treble crochet left as future work.
+  locator: card/trust
+- text: Yarn-relaxation/simulation step is ad-hoc and produces fidelity artifacts.
+  locator: card/trust
+- text: 'Scope: only a subset of crochet stitches (chain, slip, single crochet, sc2tog, sc3tog) plus utility
+    faces (inc, turn, cap, ch_edge) were modeled; double/treble crochet, post stitches, and many variations
+    are unmodeled. The yarn-relaxation/simulation step is explicitly described as ad-hoc and produces
+    shape-instability and fidelity artifacts; automatic pattern generation relies on a single stitch aspect
+    ratio. 2020 work; no quantitative accuracy metrics reported.'
+  locator: card/limitations

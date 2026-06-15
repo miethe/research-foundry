@@ -1,0 +1,54 @@
+id: ext_20260614_27a12c2d_001
+source_card_id: src_20260614_rib051_06
+created_at: '2026-06-14T16:50:31-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The SageMaker Model Registry lets users catalog models for production, manage model versions,
+    manage approval status, and deploy models.
+  locator: Model Registration Deployment with Model Registry - capability bullet list
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The Model Registry supports defining a staging construct that models progress through across the
+    model lifecycle, and automating deployment with CI/CD.
+  locator: Model Registration Deployment with Model Registry - capability bullet list
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Models are cataloged by creating Model (Package) Groups, and each trained model is registered
+    into a Model Group as a new model version.
+  locator: Model Registration Deployment with Model Registry - cataloging paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Model Groups can be further organized into higher-level categories called Model Registry Collections.
+  locator: Model Registration Deployment with Model Registry - cataloging paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: A typical Model Registry workflow integrates with SageMaker ML pipelines, registering a model
+    version in the Model Group for each pipeline run.
+  locator: Model Registration Deployment with Model Registry - typical workflow list
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The Model Registry can associate metadata such as training metrics with a model and surface model
+    lineage for traceability and reproducibility.
+  locator: Model Registration Deployment with Model Registry - capability bullet list
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Page describes capabilities at a conceptual level; specific approval-workflow mechanics and CI/CD
+    wiring are documented on linked sub-pages not captured here. Publication shown as 2025; AWS docs are
+    continuously updated, so exact "last updated" date is not surfaced on the page.
+  locator: card/limitations

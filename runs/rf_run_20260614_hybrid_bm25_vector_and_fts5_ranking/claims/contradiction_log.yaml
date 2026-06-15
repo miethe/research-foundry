@@ -1,0 +1,136 @@
+run_id: rf_run_20260614_hybrid_bm25_vector_and_fts5_ranking
+generated_at: '2026-06-15T09:55:34-04:00'
+contradictions:
+- source_card_id: src_20260614_rib034_03
+  text: Domain-specific to financial text-and-table QA; generalization to other domains untested
+  locator: card/trust
+- source_card_id: src_20260614_rib034_03
+  text: Single dense embedding model (text-embedding-3-large) and single reranker (Cohere) evaluated as
+    primary configs
+  locator: card/trust
+- source_card_id: src_20260614_rib034_03
+  text: Domain-specific to financial text-and-table QA; generalization to other domains is not established
+    by this benchmark.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_03
+  text: Primary configurations use a single dense embedding model (text-embedding-3-large) and a single
+    reranker (Cohere); results may shift with other models.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_03
+  text: The source's restated "+17.2pp MRR@3" framing was not found verbatim; the paper reports the MRR@3
+    lift as "+39.7% relative" (0.433 to 0.605), which is the figure recorded here.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_04
+  text: Short paper (2 pages); experiments limited to TREC ad hoc/Robust and LETOR 3 with MAP as the primary
+    reported measure
+  locator: card/trust
+- source_card_id: src_20260614_rib034_04
+  text: Short paper (2 pages); experiments are confined to TREC ad hoc/Robust tasks and the LETOR 3 dataset,
+    and report MAP as the primary measure (P@k, R-precision, NDCG noted as "comparable" but not tabulated).
+    The ACM DL canonical landing page is paywalled/Cloudflare-gated; full text here was verified against
+    the authors' University of Waterloo open PDF copy.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_02
+  text: Page does not surface an explicit publish date/version; published_at taken from source metadata.
+  locator: card/trust
+- source_card_id: src_20260614_rib034_02
+  text: Per-column BM25 weighting is documented only by its absence from this API, not by an affirmative
+    statement.
+  locator: card/trust
+- source_card_id: src_20260614_rib034_02
+  text: The page does not display an explicit publish date or version; published_at is taken from the
+    provided source metadata.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_02
+  text: The per-column BM25 weighting point (ev_006) is established by the absence of such a parameter
+    in the documented API, not by an affirmative statement, so no verbatim quote is available for it.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_00
+  text: Vendor-published results; corpus sizes not disclosed
+  locator: card/trust
+- source_card_id: src_20260614_rib034_00
+  text: Metrics are first-party, not independently reproduced
+  locator: card/trust
+- source_card_id: src_20260614_rib034_00
+  text: Vendor-published, first-party benchmarks; results are not independently reproduced and exact corpus
+    sizes are not disclosed in the post.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_10
+  text: Benchmark numbers are reported with large standard deviations (e.g. Recall 91.9 ± 26.5), indicating
+    high per-query variance
+  locator: card/trust
+- source_card_id: src_20260614_rib034_10
+  text: First-party vendor report whose authors propose and benchmark their own ClusterSemanticChunker,
+    so framing may favor it.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_10
+  text: Reported metrics carry large standard deviations (e.g. Recall 91.9 ± 26.5), indicating high per-query
+    variance.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_06
+  text: The page body does not itself describe the separate score-ranker-processor / RRF alternative;
+    the sidebar only links to a distinct "Score ranker" page, so that claim is not evidenced here and
+    was omitted.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_06
+  text: 'Page carries no author byline and no explicit publish date in the body (it states "Introduced
+    2.10"); the `published_at: 2025-03` value comes from the ingest metadata, not the page text.'
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_09
+  text: Abstract-level extraction; full experimental detail not read
+  locator: card/trust
+- source_card_id: src_20260614_rib034_09
+  text: Results specific to TREC DL passage ranking; generalization to other corpora not established here
+  locator: card/trust
+- source_card_id: src_20260614_rib034_09
+  text: Extraction is abstract-level; full experimental setup and ablations were not read in detail.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_09
+  text: Reported numbers are specific to TREC DL passage ranking (DL 2019); generalization to other corpora/domains
+    is not established by this card.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_11
+  text: Preprint (v1), not formally peer-reviewed at time of access
+  locator: card/trust
+- source_card_id: src_20260614_rib034_11
+  text: Results conditioned on chosen embedding model and chunkers; high-topic-diversity advantage relies
+    on artificially stitched documents
+  locator: card/trust
+- source_card_id: src_20260614_rib034_11
+  text: v1 preprint, not formally peer-reviewed at access time; semantic chunking's measured advantage
+    depends on artificially stitched high-topic-diversity documents and the specific chunkers/embedding
+    model used, so results may not generalize to all RAG pipelines.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_05
+  text: 'Vendor product documentation: defaults (e.g., k=60) and parameter semantics describe Elasticsearch''s
+    specific implementation; other RRF implementations may differ. The page attributes the underlying
+    method to the Cormack et al. (Waterloo) RRF paper but does not itself argue RRF combines rankings
+    vs. raw scores in explicit comparative terms.'
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_07
+  text: Performance/"SOTA" claims are vendor-asserted in a release note with no benchmark tables or methodology
+    shown on this page; treat as marketing-grade evidence pending independent benchmark confirmation.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_07
+  text: The page did not surface an explicit publication date or named author; published_at (2024-12)
+    is taken from the provided source metadata, not a date string on the page.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_01
+  text: Publication/version date is not stated on the page; SQLite documentation tracks the current release,
+    so behavior should be confirmed against the FTS5 version in use. Per-column weighting (the mechanism
+    behind heading/frontmatter-field boosting) is an inference about application usage, not a verbatim
+    claim from the source.
+  locator: card/limitations
+- source_card_id: src_20260614_rib034_08
+  text: Marketing-adjacent claims ('strong multilingual', 'fast inference') are author-stated, not independently
+    benchmarked here
+  locator: card/trust
+- source_card_id: src_20260614_rib034_08
+  text: Card cites parameter size as 0.6B; other secondary sources cite a 278-568M range
+  locator: card/trust
+- source_card_id: src_20260614_rib034_08
+  text: 'Author-published model card: capability claims ("strong multilingual", "fast inference") are
+    author-stated and not independently verified within this source. Parameter count is given as 0.6B
+    here, while some secondary sources cite a 278-568M range; benchmark tables (BEIR/MIRACL reranking
+    top-100) are described qualitatively rather than reproduced with full numbers in this card.'
+  locator: card/limitations

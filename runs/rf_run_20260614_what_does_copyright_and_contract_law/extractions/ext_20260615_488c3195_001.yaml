@@ -1,0 +1,60 @@
+id: ext_20260615_488c3195_001
+source_card_id: src_20260614_kw013_01
+created_at: '2026-06-15T09:54:32-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Users posting patterns must represent and warrant that they hold the copyright and other necessary
+    IP rights in every pattern they list.
+  locator: Section 8 (Pattern Listing Service)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Posting a pattern grants Ravelry only a non-exclusive, revocable license to list and advertise
+    the pattern and its associated media, not ownership.
+  locator: Section 8 (Pattern Listing Service)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Users may not modify, distribute, or create derivative works based on any pattern they do not
+    own without an explicit separate license from the owner.
+  locator: Section 8 (Pattern Listing Service)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Pattern sellers must grant buyers at minimum a non-commercial, perpetual license for personal
+    use of the pattern.
+  locator: Section 8 (Pattern Listing Service)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Users are prohibited from collecting or storing personal data about other users except as explicitly
+    provided for in applicable agreements or guidelines.
+  locator: Section 5 (Acceptable Behavior)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Copyright infringement complaints are routed to Ravelry's Copyright Agent at legal@ravelry.com
+    under a DMCA-style notice process.
+  locator: Section 17 (Copyright)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Last updated Feb 1, 2017; may not reflect current policy.
+  locator: card/trust
+- text: Single fetch; full clause numbering not independently re-verified.
+  locator: card/trust
+- text: Terms last updated February 1, 2017; current platform policy may have changed since.
+  locator: card/limitations
+- text: Section numbers reflect the page structure observed at fetch time and were not independently re-verified
+    clause-by-clause.
+  locator: card/limitations

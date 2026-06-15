@@ -1,0 +1,38 @@
+id: intent_research_20260614_what_governance_criteria_evaluation_frameworks_a
+title: What governance criteria, evaluation frameworks, and promotion gates
+owner: Nick Miethe
+created_at: '2026-06-14T14:07:32-04:00'
+status: active
+type: research
+raw_idea_ids:
+- raw_20260614_1407_what_governance_criteria_evaluation_frameworks_a
+objective: What governance criteria, evaluation frameworks, and promotion gates should define the candidate
+  → evaluated → human-reviewed → promoted SkillBOM lifecycle, what prior art exists for reusable prompt/agent-component
+  governance, and how is premature reuse of unvalidated workflows prevented?
+motivation: ''
+desired_output:
+  artifact_type: report
+  audience: technical
+  depth: standard
+scope:
+  in: []
+  out: []
+research_questions:
+  primary:
+  - What does the evidence say about What governance criteria, evaluation frameworks, and promotion gates?
+  secondary: []
+constraints:
+  hard:
+  - Every material claim must map to source_card_id or be labeled inference/speculation.
+  soft: []
+success_criteria: []
+governance:
+  sensitivity: personal
+  key_profile_allowed: personal
+  requires_human_review: false
+  allowed_writebacks:
+  - meatywiki_personal
+  - skillmeat_personal
+  - ccdash_local
+ibom_ref: ibom_research_20260614_what_governance_criteria_evaluation_frameworks_a
+intenttree_node_ref: tree_rf_20260614_what_governance_criteria_evaluation_frameworks_a

@@ -1,0 +1,164 @@
+run_id: rf_run_20260614_what_is_the_documented_accuracy_latency
+generated_at: '2026-06-15T10:42:03-04:00'
+contradictions:
+- source_card_id: src_20260614_kw015_03
+  text: Vendor self-reported metrics
+  locator: card/trust
+- source_card_id: src_20260614_kw015_03
+  text: Throughput figures are server-side (A100/vLLM), not edge/phone
+  locator: card/trust
+- source_card_id: src_20260614_kw015_03
+  text: All benchmark and throughput numbers are vendor self-reported (primary source authored by the
+    model creators); not independently reproduced.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_03
+  text: Throughput (1.2241 pages/s, 1881.2 tokens/s, 43.7 GB) is measured on a single NVIDIA A100 via
+    vLLM - a datacenter GPU budget, not an on-device/phone budget relevant to a mobile crochet-PDF use
+    case.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_03
+  text: Quotes for ev_003 and ev_005 are set to null because the figures appear as table values rather
+    than a short verbatim prose sentence; numbers are transcribed from Table 2 and Table 13.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_00
+  text: Preprint (arXiv v2), not yet formally peer-reviewed; results are for the specific CrochetPARADE
+    DSL and the 2025 model lineup, so absolute scores will shift as models evolve. One key_point claim
+    about "long-range stitch-count drift" and "unbalanced bracket syntax" as named failure modes could
+    not be confirmed verbatim against the fetched HTML text (the source describes undefined-stitch/bracket
+    DSL-control errors and early-step instability), so those specifics are recorded conservatively.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_06
+  text: ACM canonical PDF not directly accessible; body quotes drawn from author arXiv preprint of same
+    work.
+  locator: card/trust
+- source_card_id: src_20260614_kw015_06
+  text: The ACM canonical PDF is paywalled (HTTP 403); body-section quotes were verified against the authors'
+    open-access arXiv preprint (arXiv:2211.01178) of the same work, while the Abstract quote is confirmed
+    verbatim against arXiv. Strong preconditions (closed/watertight mesh, seed point, fixed gauge) bound
+    the problem and limit generality to inputs satisfying those constraints.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_07
+  text: Benchmarks are self-reported by the model authors and not independently reproduced.
+  locator: card/trust
+- source_card_id: src_20260614_kw015_07
+  text: Benchmark and throughput numbers are self-reported by the model authors/vendor and have not been
+    independently reproduced; treat as first-party claims.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_01
+  text: Definitions reflect U.S. crochet terminology; no machine-readable schema or formal grammar is
+    provided.
+  locator: card/trust
+- source_card_id: src_20260614_kw015_01
+  text: No explicit revision date on the page (site copyright ©2009–2026).
+  locator: card/trust
+- source_card_id: src_20260614_kw015_01
+  text: Definitions reflect U.S. crochet terminology only; the page is a human-readable table, not a machine-readable
+    schema or formal grammar.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_01
+  text: No explicit page revision date is shown (site carries a ©2009–2026 copyright); treat "published_at"
+    as approximate.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_01
+  text: Designers/publishers may use special, pattern-local abbreviations not on this master list (the
+    source notes these are typically defined at the start of a book or pattern).
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_09
+  text: Benchmark self-reported by authors
+  locator: card/trust
+- source_card_id: src_20260614_kw015_09
+  text: Model scores depend on prompting/eval harness used in the paper
+  locator: card/trust
+- source_card_id: src_20260614_kw015_09
+  text: Benchmark numbers (dataset construction and model scores) are self-reported by the authors of
+    an arXiv preprint and depend on the paper's prompting and evaluation harness; scores reflect models
+    available as of the May 2025 (v3) snapshot and may not generalize to later model versions.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_08
+  text: Specific mAh power values (0.689 vs 1.170) and the 91.7% vision-encoder power figure were not
+    surfaced in the verbatim text fetched; only the abstract's 41.1% total reduction is verbatim-confirmed.
+  locator: card/trust
+- source_card_id: src_20260614_kw015_08
+  text: Self-reported results from the model's creators; on-device latency/power and benchmark figures
+    are vendor-measured and may be framed favorably.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_08
+  text: The specific power mAh values (0.689 vs 1.170) and the 91.7% vision-encoder power reduction cited
+    in some summaries were not surfaced in the verbatim text fetched; only the 41.1% total reduction is
+    verbatim-confirmed here. The token-reduction figure in the source body reads 0.52M (not 0.51M).
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_05
+  text: Method tested only on beginner-level amigurumi patterns and single-crochet-like stitches; no yarn
+    texture/physics.
+  locator: card/trust
+- source_card_id: src_20260614_kw015_05
+  text: Tested only on simple beginner-level amigurumi patterns and single-crochet-like stitches; flattened
+    (2D) pieces excluded. Models structural geometry only, not yarn physics, texture, or fuzziness. Force-directed
+    layout is slow and may not converge on large patterns. Piece-to-piece attachment was specified ad
+    hoc. The similar web app "Crochet Parade" is undocumented, limiting comparison.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_10
+  text: Benchmark scores are author-reported
+  locator: card/trust
+- source_card_id: src_20260614_kw015_10
+  text: Source key_points listed Formula-CDM 91.43 and an overall range 92.56-92.86; the v4 paper text
+    states a single overall of 92.86 and Formula-CDM 91.22
+  locator: card/trust
+- source_card_id: src_20260614_kw015_10
+  text: Benchmark scores are self-reported by the authors and not independently audited. The dispatched
+    key_points listed Formula-CDM 91.43 and an overall range of 92.56-92.86; the v4 paper text states
+    a single overall of 92.86 and Formula-CDM 91.22, so the paper's verbatim values are used here. "Handwriting"
+    as a distinct output category is described as a recognition capability rather than an explicitly enumerated
+    output element in the verified text.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_04
+  text: Self-reported scores from the project maintainers
+  locator: card/trust
+- source_card_id: src_20260614_kw015_04
+  text: No latency/throughput benchmarks published
+  locator: card/trust
+- source_card_id: src_20260614_kw015_04
+  text: Parameter count stated inconsistently (1.7b LLM base vs 3B VLM)
+  locator: card/trust
+- source_card_id: src_20260614_kw015_04
+  text: Benchmarks are self-reported by the project maintainers (primary source, no independent verification).
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_04
+  text: Parameter count is stated inconsistently in the README (1.7b LLM base vs 3B VLM); both phrasings
+    are captured.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_04
+  text: No latency/throughput data is published, so runtime cost remains unquantified. The OmniDocBench
+    Gemini-2.5 Pro text-edit figure in the README (0.075) differs from the 0.066 value circulating in
+    some secondary summaries; the README value is used here.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_11
+  text: Benchmark numbers are vendor-reported
+  locator: card/trust
+- source_card_id: src_20260614_kw015_11
+  text: Evaluation restricted to AFM-supported languages and instruct/non-thinking model variants
+  locator: card/trust
+- source_card_id: src_20260614_kw015_11
+  text: Benchmark figures are vendor-reported (first-party) and not independently verified; evaluation
+    was limited to AFM-supported languages and instruct/non-thinking model variants. The summary landing
+    page only carries abstract-level claims; the detailed quantization and benchmark quotes are drawn
+    from the full report (arXiv:2507.13575v3).
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_02
+  text: Self-published vendor documentation; performance/accuracy claims are unbenchmarked
+  locator: card/trust
+- source_card_id: src_20260614_kw015_02
+  text: Manual is a living document (last updated 2026-01-07), so specifics may change
+  locator: card/trust
+- source_card_id: src_20260614_kw015_02
+  text: Self-published vendor/author documentation (Svetlin Tassev); feature and accuracy claims are descriptive
+    and unbenchmarked.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_02
+  text: Manual is a living document (last updated 2026-01-07); exact grammar tokens and export details
+    may change over time.
+  locator: card/limitations
+- source_card_id: src_20260614_kw015_02
+  text: No published latency/accuracy metrics in the manual, so quantitative performance claims cannot
+    be sourced here.
+  locator: card/limitations

@@ -1,0 +1,58 @@
+id: ext_20260614_9ab4e6d4_001
+source_card_id: src_20260614_rib003_05
+created_at: '2026-06-14T23:56:53-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'The survey organizes knowledge conflicts in LLMs into three categories: context-memory, inter-context,
+    and intra-memory conflict.'
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Context-memory conflict is defined as contextual (input) knowledge conflicting with the parametric
+    knowledge stored in the LLM's parameters.
+  locator: Section 2 (Context-Memory Conflict, intro)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Inter-context conflict is defined as conflict among different pieces of contextual knowledge,
+    i.e., contradictions among retrieved or source documents.
+  locator: Section 3 (Inter-Context Conflict, intro)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Intra-memory conflict is defined as conflicting knowledge within the LLM's own parameters, arising
+    from inconsistencies in pre-training data.
+  locator: Section 4 (Intra-Memory Conflict, intro)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The survey reports that LLMs tend to be highly receptive to external evidence even when it conflicts
+    with their parametric memory.
+  locator: Section 2.2 (Model behaviors, General subsection; attributing Xie et al. 2023)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Under inter-context conflict, the survey notes LLMs can favor evidence that aligns with their
+    parametric memory, qualifying the simple over-trust narrative.
+  locator: Section 3.2 (Inter-context conflict, model behaviors)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Survey synthesizes prior work; specific behavioral findings (e.g., receptiveness to external evidence)
+    are attributed to cited studies, not original experiments.
+  locator: card/trust
+- text: Survey synthesizes prior literature; behavioral findings (e.g., ev_005, ev_006) are attributed
+    to cited studies, not original experiments, and the two findings qualify each other (model preference
+    depends on conflict type and setup).
+  locator: card/limitations

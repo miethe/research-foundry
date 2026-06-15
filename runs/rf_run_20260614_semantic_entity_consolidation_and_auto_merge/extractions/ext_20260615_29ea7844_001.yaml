@@ -1,0 +1,81 @@
+id: ext_20260615_29ea7844_001
+source_card_id: src_20260614_rib035_04
+created_at: '2026-06-15T10:14:26-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The best LLMs need no or only a few training examples to match the entity-matching accuracy of
+    PLMs fine-tuned on thousands of examples, and are more robust to unseen entities.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: GPT-4 zero-shot achieves F1 of 95.78 (Abt-Buy), 89.67 (Walmart-Amazon), 76.38 (Amazon-Google),
+    89.61 (WDC Products), 89.82 (DBLP-Scholar), and 98.41 (DBLP-ACM).
+  locator: Section 5 (zero-shot results) / Table 2
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_003
+  text: Zero-shot GPT-4, using no task-specific training data, reaches comparable or better results than
+    PLMs fine-tuned on thousands of training pairs.
+  locator: Section 5 (zero-shot vs fine-tuned PLMs)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Fine-tuned PLM baselines reach F1 of 91.21 (RoBERTa) and 91.31 (Ditto) on Abt-Buy, and 87.02 (RoBERTa)
+    and 86.39 (Ditto) on Walmart-Amazon, which GPT-4 zero-shot beats on the product datasets.
+  locator: Section 5 / Table 4 (fine-tuned PLM baselines)
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_005
+  text: There is no single best prompt; the optimal prompt depends on the specific model/dataset combination
+    and must be tuned per combination.
+  locator: Section on prompt design
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: On unseen (out-of-distribution) entities, fine-tuned PLM matchers degrade sharply (Ditto 36-56%
+    and RoBERTa 22-61% F1 drops) while LLMs remain robust, with GPT-4 outperforming the best transferred
+    PLM by 34% F1.
+  locator: Section on robustness / unseen entities
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Section 5 (zero-shot results) / Table 2
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Section 5 (zero-shot vs fine-tuned PLMs)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Section 5 / Table 4 (fine-tuned PLM baselines)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section on robustness / unseen entities
+contradictions_or_cautions:
+- text: GPT-3.5-Turbo zero-shot F1 reported across multiple model snapshots (Turbo03/Turbo06) rather than
+    a single value, so the exact per-dataset GPT-3.5 figures depend on which snapshot is cited.
+  locator: card/trust
+- text: Hosted-LLM results subject to model drift across API versions.
+  locator: card/trust
+- text: GPT-3.5-Turbo zero-shot F1 is reported across multiple API snapshots (Turbo03/Turbo06) rather
+    than a single value, so cited GPT-3.5 numbers depend on the snapshot; hosted-LLM results are subject
+    to model drift across API versions.
+  locator: card/limitations

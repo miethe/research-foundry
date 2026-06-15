@@ -1,0 +1,64 @@
+id: ext_20260614_9c830aba_001
+source_card_id: src_20260614_rib024_05
+created_at: '2026-06-14T14:59:41-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'Watchexec''s default debounce window is 50 milliseconds: it waits up to that long after an event
+    before handling it (e.g., running the command), and setting it to 0 is discouraged.'
+  locator: OPTIONS — --debounce
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: 'Rename handling is fundamentally unreliable: it is impossible to portably know which path is
+    old vs new, ''half'' and ''unknown'' renames can appear, and a rename can split across two debouncing
+    boundaries.'
+  locator: EVENTS — --emit-events-to (rename discussion)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The --poll flag forces filesystem polling instead of native OS watching, with a default polling
+    interval of 30 seconds when none is specified.
+  locator: OPTIONS — --poll
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The --delay-run option makes Watchexec sleep for a specified duration before running the command
+    after an event is detected.
+  locator: OPTIONS — --delay-run
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The graceful stop timeout defaults to 10 seconds; setting it to 0 immediately force-kills the
+    command.
+  locator: OPTIONS — --stop-timeout
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: OPTIONS — --debounce
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: OPTIONS — --poll
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: OPTIONS — --stop-timeout
+contradictions_or_cautions:
+- text: Behavior and defaults are version-specific (captured from v2.5.1); later releases may change defaults
+    or option semantics. The rename-tracking caveat is inherent to OS-level filesystem watching, not a
+    watchexec-specific bug.
+  locator: card/limitations

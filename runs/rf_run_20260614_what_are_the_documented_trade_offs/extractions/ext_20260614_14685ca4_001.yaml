@@ -1,0 +1,48 @@
+id: ext_20260614_14685ca4_001
+source_card_id: src_20260614_rib037_04
+created_at: '2026-06-14T15:55:25-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Logical replication replicates data objects and their changes based on a replication identity
+    (usually a primary key), in contrast to physical block-level replication.
+  locator: Chapter 29. Logical Replication (intro)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Logical replication uses a publish/subscribe model in which subscribers pull from publications
+    and may re-publish data to enable cascading replication.
+  locator: Chapter 29. Logical Replication (intro)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: On start it snapshots the publisher table and copies it to the subscriber, then continually sends
+    subsequent changes.
+  locator: Chapter 29. Logical Replication (intro)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The subscriber applies changes in the same order as the publisher, guaranteeing transactional
+    consistency for publications within a single subscription.
+  locator: Chapter 29. Logical Replication (intro)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Documented use cases include sending incremental changes as they occur and firing triggers for
+    individual changes as they arrive on the subscriber (the basis for CDC/audit patterns).
+  locator: Chapter 29. Logical Replication (intro) — 'The typical use-cases for logical replication are:'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Reflects documented behavior of PostgreSQL 18 specifically; behavior and feature set differ across
+    major versions (PostgreSQL 19 Beta 1 was noted as released 2026-06-04). The "current" docs URL tracks
+    the latest release and may diverge from this snapshot over time.
+  locator: card/limitations

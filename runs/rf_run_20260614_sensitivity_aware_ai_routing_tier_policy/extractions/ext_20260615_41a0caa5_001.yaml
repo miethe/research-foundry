@@ -1,0 +1,57 @@
+id: ext_20260615_41a0caa5_001
+source_card_id: src_20260614_rib017_11
+created_at: '2026-06-15T00:16:10-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Classification returns a list of findings organized by InfoType, Likelihood, and Offset (where
+    in the string the potential InfoType was found).
+  locator: Text classification (findings structure)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Findings carry a Likelihood/confidence rating, with values such as VERY_LIKELY, LIKELY, and VERY_UNLIKELY
+    shown in the example output table.
+  locator: Text classification (example output table)
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_003
+  text: Built-in infoType detectors span US and international identifiers, including US_HEALTHCARE_NPI,
+    EMAIL_ADDRESS, US_DRIVERS_LICENSE_NUMBER, CANADA_BC_PHN, UK_TAXPAYER_REFERENCE, and CANADA_PASSPORT.
+  locator: Text classification (built-in infoType detectors / example table)
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_004
+  text: Automatic redaction produces output with sensitive matches replaced by a placeholder such as '***',
+    removing the detected values from the text.
+  locator: Automatic text redaction
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Classification scan results can be saved to a new BigQuery table or published to a Pub/Sub topic,
+    enabling downstream label-then-route actions before transformation.
+  locator: Storage classification (results destinations)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Beyond redaction, the product documents de-identification transformations including date shifting,
+    generalization and bucketing, and pseudonymization, referenced via its transformation methods reference.
+  locator: Mask and de-identify data (transformation methods)
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: The full set of likelihood enum values (POSSIBLE, UNLIKELY) and the complete de-identification
+    technique descriptions are referenced or shown in tables/links rather than enumerated in a single
+    prose sentence on this page; quotes were captured only where a short verbatim excerpt was confirmed.
+    The de-identification transformation list (ev_006) is linked from this page to a transformations reference.
+    Content is product documentation and reflects the product's stated behavior as of the 2026-06-11 update.
+  locator: card/limitations

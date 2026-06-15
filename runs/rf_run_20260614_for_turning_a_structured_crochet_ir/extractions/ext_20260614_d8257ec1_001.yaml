@@ -1,0 +1,125 @@
+id: ext_20260614_d8257ec1_001
+source_card_id: src_20260614_kw004_00
+created_at: '2026-06-14T21:11:45-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The method translates a written amigurumi pattern into a stitch graph and applies the Isenburg
+    et al. [IGG01] 'Connectivity Shapes' force-directed layout, where stuffing the crocheted shell is
+    treated as inflating the graph.
+  locator: Abstract / Sec 4.2 The graph layout
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The resulting 3D models reproduce shape and size but are explicitly 'similar, though not identical'
+    to the real-world crocheted objects.
+  locator: Sec 6 Conclusion
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The layout is solved as a non-linear least-squares minimization combining an edge-length energy
+    E_L (each edge target length 1) and a Laplacian curvature energy as (1-lambda)*E_L + lambda*C, using
+    a static lambda=0.65 for all pieces except the bunny head and body where lambda=0.9, via the Ceres
+    Solver library.
+  locator: Sec 4.2 (Equation 1) / Ceres paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'Convergence has a hard ceiling by node count: the bunny legs (318 stitches) and arms (264 stitches)
+    converged in under 5 seconds, but the head (798 stitches) and body (708 stitches) did not converge
+    even after well over two minutes.'
+  locator: Sec 5.3 Performance
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Larger or higher-curvature patterns such as the apple took 30 seconds or more to run, versus a
+    few seconds for small patterns.
+  locator: Sec 5.3 Performance (apple)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The authors note that convergence is often unnecessary—iterating beyond a point made no noticeable
+    difference—and propose raising the convergence threshold and letting users trade visual quality against
+    run-time.
+  locator: Sec 5.3 Performance (convergence threshold)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The proposed real-time workflow runs the Ceres solver for a small number of iterations after each
+    edit (and can target only the changed region, since Ceres allows stopping/restarting without re-setup)
+    to give the designer near-instant feedback.
+  locator: Sec 5.2 Iterative and incremental design workflow
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: A core limitation is that least-squares can only minimize cost, so the authors minimize curvature
+    as a proxy for the incompatible goal of maximizing volume, yielding a sub-maximal volume.
+  locator: Sec 5.4 Limitations
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_009
+  text: The method was validated only on beginner-level, stuffed, single-crochet-like amigurumi; flat/2D
+    row pieces were excluded, and the authors caution the two metrics (edge length, curvature) may not
+    be sufficient and that a one-size-fits-all layout is unlikely.
+  locator: Sec 5.1 / Sec 6 Conclusion
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Abstract / Sec 4.2 The graph layout
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Sec 6 Conclusion
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Sec 4.2 (Equation 1) / Ceres paragraph
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Sec 5.3 Performance
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Sec 5.3 Performance (apple)
+- metric_name: evidence_point
+  value: ev_009
+  unit: null
+  date_context: null
+  locator: Sec 5.1 / Sec 6 Conclusion
+contradictions_or_cautions:
+- text: Tested only on beginner-level, stuffed, single-crochet-like amigurumi patterns; no 2D/flat or
+    advanced patterns.
+  locator: card/trust
+- text: Quantitative results limited to a small set of example objects (apple, bunny pieces, raindrop,
+    elephant).
+  locator: card/trust
+- text: 'Scope: validated only on a small set of beginner-level, stuffed, single-crochet-like amigurumi
+    objects; flat/2D row pieces and intermediate/advanced patterns were explicitly excluded.'
+  locator: card/limitations
+- text: Performance figures ("under 5 seconds", "well over two minutes", "30 seconds or more") are reported
+    qualitatively for specific example objects, not as systematic benchmarks; exact hardware is not captured
+    in this card.
+  locator: card/limitations
+- text: An upfront global solve on a pre-written pattern carries an "unavoidable" run-time cost; the near-instant
+    feedback claim applies to the incremental edit workflow, not the cold global solve.
+  locator: card/limitations

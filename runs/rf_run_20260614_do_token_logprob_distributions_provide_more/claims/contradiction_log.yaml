@@ -1,0 +1,134 @@
+run_id: rf_run_20260614_do_token_logprob_distributions_provide_more
+generated_at: '2026-06-14T16:31:48-04:00'
+contradictions:
+- source_card_id: src_20260614_rib045_01
+  text: Benchmark covers LLMs up to a fixed model set (Gemma, Llama 3, Qwen, GPT-3.5, GPT-4o); results
+    may not generalize to newer/larger models.
+  locator: card/trust
+- source_card_id: src_20260614_rib045_01
+  text: Calibration metrics depend on the specific datasets and base-accuracy regime (0.5-0.9).
+  locator: card/trust
+- source_card_id: src_20260614_rib045_01
+  text: Results are bounded to the evaluated model set (Gemma, Llama 3, Qwen, GPT-3.5, GPT-4o) and a base-accuracy
+    regime of roughly 0.5-0.9; generalization to newer/larger models or other task distributions is not
+    established.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_01
+  text: This is an arXiv preprint (v2 dated 2026-05-05), not a venue-published paper; calibration metrics
+    are dataset- and prompt-dependent.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_03
+  text: The 'area under the RC curve' summary metric could not be confirmed as verbatim text in this paper;
+    omitted as a quoted claim.
+  locator: card/trust
+- source_card_id: src_20260614_rib045_03
+  text: Empirical numbers (CIFAR/ImageNet) date to 2017 architectures (e.g. VGG/RESNET-class); absolute
+    error rates are not current SOTA.
+  locator: card/trust
+- source_card_id: src_20260614_rib045_03
+  text: The "area under the RC curve as the summary metric" framing could not be confirmed as verbatim
+    in this paper, so it is not asserted as a quoted claim here.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_03
+  text: Empirical numbers reflect 2017-era architectures; absolute error/coverage figures are not current
+    state of the art and should be cited as historical/foundational.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_06
+  text: Published 2023-12-20; the parameter API surface and definitions reflect that date and may have
+    evolved. The documented `top_logprobs` range is 0-5 as of publication.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_06
+  text: Example models cited (gpt-4o, gpt-4o-mini, gpt-4) are illustrative of OpenAI models available
+    at/after publication, not an exhaustive support list.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_00
+  text: Single small open model (LLaMA 3.2 3B-Instruct) on four QA datasets; authors note their focus
+    is relative behavior of estimators and expect trends to transfer, but absolute numbers may shift across
+    model sizes/families. CoCoA's strength comes at high compute cost (M=10 samples via separate decoding).
+    Results table figures are rendered inline (digits doubled in scraped HTML, e.g. "0.3350.335"); confirmed
+    against the canonical Table 1 values.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_04
+  text: Evaluated on ImageNet classifiers only; generalization to LLM logprob/selective-generation settings
+    is not directly tested.
+  locator: card/trust
+- source_card_id: src_20260614_rib045_04
+  text: Experiments are confined to ImageNet image classifiers with softmax outputs; the paper does not
+    directly test transfer of the logit-based fix to LLM token-logprob or selective-generation settings,
+    so applicability to language-model vaults is an inference, not a demonstrated result.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_11
+  text: No visible published/updated date on the page; recency cannot be confirmed.
+  locator: card/trust
+- source_card_id: src_20260614_rib045_11
+  text: Documented support matrix may lag actual binary capabilities reported in versioned release notes.
+  locator: card/trust
+- source_card_id: src_20260614_rib045_11
+  text: No visible published or updated date on the page, so recency relative to specific Ollama releases
+    cannot be confirmed.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_11
+  text: The documented support matrix conflicts with v0.12.11 release notes claiming logprobs support,
+    so the OpenAI-compatible logprobs cell is version-dependent/contested and should be cross-checked
+    against the running binary's version.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_10
+  text: No publication date; pulled from master branch which changes over time
+  locator: card/trust
+- source_card_id: src_20260614_rib045_10
+  text: README tracks the `master` branch and carries no publication date, so wording and field names
+    may drift from any pinned release; verify against the server version actually deployed. The absence
+    of probability-field documentation under `/v1/chat/completions` is an inference from its omission
+    in that section, not an explicit statement that the feature is unavailable there.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_09
+  text: This page is an auto-generated API/source dump for the LogprobsProcessor dataclass, NOT conceptual
+    prose; it does not itself state the logprobs/prompt_logprobs sampling-parameter semantics, the max-logprobs
+    cap, the -1 no-cap behavior, OOM risk, or the native-vs-OpenAI endpoint exposure attributed to vLLM
+    (those belong to other vLLM docs). Only the docstrings and code shown on this page are quoted here.
+  locator: card/trust
+- source_card_id: src_20260614_rib045_09
+  text: This page is an auto-generated API/source dump for `LogprobsProcessor`, NOT conceptual prose.
+    It does NOT itself state the higher-level claims attributed to vLLM in the task brief (the `logprobs`
+    sampling param returning the N most likely tokens, `prompt_logprobs` echo-equivalence, a configurable
+    `max-logprobs` cap, `-1` meaning no cap allowing `output_length * vocab_size` logprobs, OOM risk from
+    uncapped logprobs, or exposure via both native and OpenAI-compatible endpoints). Those facts must
+    be sourced from other vLLM docs (e.g. sampling params / OpenAI-compatible server pages) and are deliberately
+    NOT quoted here to avoid fabrication.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_09
+  text: No publish date or named authors are shown; version inferred from the docs banner (v0.23.0). The
+    page reflects the "stable" docs at access time and may change across releases.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_07
+  text: The reference page is a live, undated API document; the `published_at` field could not be confirmed
+    and is recorded as null. Field structures reflect the Responses API as accessed 2026-06-14 and may
+    evolve; the `choices.logprobs` contrast is drawn from the differing Responses-vs-Chat-Completions
+    request shapes documented by OpenAI.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_08
+  text: Vendor-authored tutorial; demonstrates capabilities on Vertex AI specifically and uses gemini-2.5-flash,
+    so parameter behavior and ranges may differ across other Gemini surfaces or model versions. Claims
+    about confidence/ambiguity reflect the author's recommended interpretation, not an independent empirical
+    benchmark.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_02
+  text: Empirical findings (2017-era ResNets/DenseNets) predate modern LLMs and may not transfer to token-logprob
+    calibration in generative models.
+  locator: card/trust
+- source_card_id: src_20260614_rib045_02
+  text: Tertiary definitional anchor only. Empirical results are from 2017-era image/document classifiers
+    (ResNet/DenseNet etc.) and do not directly address token-logprob calibration in modern generative
+    LLMs; transfer of findings should be flagged as inference, not asserted from this source.
+  locator: card/limitations
+- source_card_id: src_20260614_rib045_05
+  text: arXiv v1 preprint, not yet peer-reviewed
+  locator: card/trust
+- source_card_id: src_20260614_rib045_05
+  text: Metric ranges vary by dataset (HLE/GPQA/GSM8K) and model; no single headline range
+  locator: card/trust
+- source_card_id: src_20260614_rib045_05
+  text: arXiv v1 preprint (not yet peer-reviewed); metric ranges differ across datasets (HLE/GPQA/GSM8K)
+    and models, so the headline "poorly calibrated" finding is strongest on hard benchmarks (HLE) and
+    weaker on easy ones (GSM8K). No single sentence in the paper states a cross-all-models headline range.
+  locator: card/limitations

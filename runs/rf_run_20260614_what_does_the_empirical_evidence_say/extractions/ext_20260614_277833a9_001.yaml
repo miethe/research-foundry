@@ -1,0 +1,81 @@
+id: ext_20260614_277833a9_001
+source_card_id: src_20260614_kw003_00
+created_at: '2026-06-14T20:46:23-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: CrochetBench reframes the evaluation of vision-language models from describing visual content
+    to generating executable crochet procedures, requiring stitch recognition, structurally appropriate
+    instruction selection, and compilable procedure generation.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The benchmark dataset comprises 6,085 real crochet patterns scraped from Yarnspirations, spanning
+    55 project categories with over 98% image coverage and ranging from beginner to expert difficulty.
+  locator: Dataset / Section 3
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Correctness is measured by functional executability using the CrochetPARADE DSL validator, which
+    checks whether predicted DSL programs are syntactically valid, structurally consistent, and fully
+    executable, rather than by textual similarity.
+  locator: Methodology / Evaluation
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Task D (NL-to-DSL translation) tests stateful procedural reasoning with step-level and project-level
+    variants, the latter providing the full natural-language instruction alongside the product image rather
+    than as an isolated image-to-DSL task.
+  locator: Tasks / Section 4 (Task D)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Across all tasks, model performance declines sharply as evaluation shifts from surface-level textual
+    similarity to executable correctness, exposing limits in long-range symbolic reasoning and 3D-aware
+    procedural synthesis.
+  locator: Abstract / Results
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Larger models hallucinate undefined or non-existent stitches at substantially higher rates than
+    smaller siblings, showing model scale does not fix structural validity (Qwen2-VL-72B 72.0% vs Qwen2-VL-7B
+    13.6%; Gemma-3-27B 42.6% vs Gemma-3-4B 27.4%).
+  locator: Results / Error Analysis
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Dataset / Section 3
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Abstract / Results
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Results / Error Analysis
+contradictions_or_cautions:
+- text: Preprint, not yet formally peer-reviewed
+  locator: card/trust
+- text: Dataset sourced from a single site (Yarnspirations)
+  locator: card/trust
+- text: Evaluation correctness depends on the CrochetPARADE compiler's coverage of valid stitch grammar
+  locator: card/trust
+- text: Preprint (not formally peer-reviewed); dataset is drawn from a single source (Yarnspirations);
+    executable-correctness scoring is only as complete as the CrochetPARADE compiler's stitch grammar
+    coverage.
+  locator: card/limitations

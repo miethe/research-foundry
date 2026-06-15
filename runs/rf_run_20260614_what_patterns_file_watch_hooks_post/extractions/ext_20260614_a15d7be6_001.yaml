@@ -1,0 +1,59 @@
+id: ext_20260614_a15d7be6_001
+source_card_id: src_20260614_rib024_02
+created_at: '2026-06-14T14:59:41-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: FSEvents notifies at directory granularity — it tells you that something in a given directory
+    changed, and the app must scan the directory to learn precisely which files changed.
+  locator: Building a Directory Hierarchy Snapshot
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Normally an FSEvents consumer scans only the exact directory named in the event path; three exceptions
+    (MustScanSubDirs, dropped events, root changed) require deviating from this.
+  locator: Handling Events
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Near-simultaneous events in a directory and its subdirectory may be coalesced into a single event
+    carrying kFSEventStreamEventFlagMustScanSubDirs, which obligates a recursive rescan of the listed
+    path.
+  locator: Handling Events
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: On a kernel/daemon communication error, kFSEventStreamEventFlagKernelDropped or kFSEventStreamEventFlagUserDropped
+    is set and you must do a full scan of monitored directories because there is no way to determine what
+    changed.
+  locator: Handling Events
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: When an event is dropped, MustScanSubDirs is also set, so checking the dropped-event flags is
+    unnecessary to decide on a full rescan; the dropped flags are purely informational.
+  locator: Handling Events (Note)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Document is archived (last updated 2012-12-13); reflects classic FSEvents API, not newer file-monitoring
+    APIs.
+  locator: card/trust
+- text: The 'no more often than once per latency window' coalescing wording is not stated in this page;
+    the latency parameter appears only in the code example here.
+  locator: card/trust
+- text: Archived document (last updated 2012-12-13); describes the classic FSEvents API and may not reflect
+    newer macOS file-monitoring APIs.
+  locator: card/limitations
+- text: The commonly cited "not notified more often than once per latency window" coalescing wording is
+    NOT stated on this page; here the latency parameter appears only in the code example, so that specific
+    claim should be sourced elsewhere.
+  locator: card/limitations

@@ -1,0 +1,87 @@
+id: ext_20260614_77ecffce_001
+source_card_id: src_20260614_rib001_00
+created_at: '2026-06-14T20:58:33-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Fact-checking LLM text commonly proceeds by claim extraction, breaking text into simple factual
+    statements that can be verified independently.
+  locator: Intro — what Claimify is / claim extraction in fact-checking
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Claimify's Selection stage uses an LLM to drop sentences without verifiable content, labeling
+    them 'No verifiable claims' and excluding them from later stages.
+  locator: Selection stage
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: In Disambiguation, if context cannot resolve all ambiguity the sentence is labeled 'Cannot be
+    disambiguated' rather than forced into a claim.
+  locator: Disambiguation stage
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The Decomposition stage has an LLM create standalone claims that preserve critical context from
+    the disambiguated sentences.
+  locator: Decomposition stage
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Claimify is described as the first claim extraction system that detects multiple possible interpretations
+    and extracts claims only when confident in the correct one.
+  locator: Principles — high-confidence interpretation / abstention
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: A core Claimify principle is that each extracted claim must be fully supported (entailed) by the
+    source text.
+  locator: Principles — entailment requirement
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Evaluation found that 99% of claims extracted by Claimify are entailed by their source sentence,
+    indicating high decontextualization fidelity.
+  locator: Results — decontextualization fidelity
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: The work was accepted to ACL 2025 in a paper titled 'Towards Effective Extraction and Evaluation
+    of Factual Claims', which also shows Claimify outperforms existing LLM-based methods.
+  locator: Companion paper — ACL 2025
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Results — decontextualization fidelity
+- metric_name: evidence_point
+  value: ev_008
+  unit: null
+  date_context: null
+  locator: Companion paper — ACL 2025
+contradictions_or_cautions:
+- text: Blog framing of a research result; full method/eval detail is in the companion paper, not the
+    blog.
+  locator: card/trust
+- text: Blog does not state the arXiv number or dataset sentence counts referenced in the prompt's key_points.
+  locator: card/trust
+- text: This is a research blog summarizing a peer-reviewed result; full method/evaluation detail lives
+    in the companion ACL 2025 paper, not the blog.
+  locator: card/limitations
+- text: The blog itself does not state the arXiv identifier or the 6,490-sentence dataset / HuggingFace
+    link cited in the source brief; those claims would need the paper or dataset page as their own source
+    cards before being asserted.
+  locator: card/limitations

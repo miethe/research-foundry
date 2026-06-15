@@ -1,0 +1,137 @@
+run_id: rf_run_20260614_what_methods_exist_for_automatically_scoring
+generated_at: '2026-06-14T16:13:07-04:00'
+contradictions:
+- source_card_id: src_20260614_rib042_11
+  text: Deep Research is trained on data that specifically teaches the model to be good at BrowseComp
+    tasks (footnote 1)
+  locator: card/trust
+- source_card_id: src_20260614_rib042_11
+  text: Benchmark deliberately measures only short-answer correctness, not long-form report quality or
+    ambiguity resolution
+  locator: card/trust
+- source_card_id: src_20260614_rib042_11
+  text: 'Self-reported, first-party results: the headline 51.5% comes from OpenAI''s own Deep Research
+    model, which per footnote 1 is trained on data specifically teaching it to be good at BrowseComp tasks.'
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_11
+  text: 'Scope limit: by design it measures short verifiable answers only, so it cannot stand in for rubric-based
+    scoring of report coherence or citation quality and must be paired with such measures.'
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_00
+  text: arXiv preprint (v1 2023-09; later revised v2 2025-04)
+  locator: card/trust
+- source_card_id: src_20260614_rib042_00
+  text: Metrics validated on the authors' own WikiEval dataset; generalization beyond it not established
+    in v1
+  locator: card/trust
+- source_card_id: src_20260614_rib042_00
+  text: 'arXiv preprint: v1 dates to 2023-09; a revised v2 was posted 2025-04, so specific numbers may
+    differ between versions. Metrics in v1 were validated on the authors'' own WikiEval dataset; broad
+    generalization is not established within the paper.'
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_03
+  text: Abstract-level read; full-paper numeric results (e.g., Kendall's tau, exact annotation counts
+    per task) not captured here.
+  locator: card/trust
+- source_card_id: src_20260614_rib042_03
+  text: Evidence here is drawn from the abstract and publication metadata; full-paper quantitative results
+    (e.g., correlation metrics, exact per-task annotation counts) were not captured and should be verified
+    against the full PDF before citing specific numbers.
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_05
+  text: No publication date shown on page
+  locator: card/trust
+- source_card_id: src_20260614_rib042_05
+  text: Documents the DeepEval implementation, which may diverge from the original paper
+  locator: card/trust
+- source_card_id: src_20260614_rib042_05
+  text: No publication/last-updated date is visible on the page, so recency cannot be confirmed.
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_05
+  text: This documents the DeepEval implementation of G-Eval, which may differ from the original paper;
+    the explicit "divide by 10" normalization detail was paraphrased by the fetch and should be re-verified
+    verbatim if cited precisely.
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_08
+  text: Reported scores are scoped to people-biography generations and the specific LMs/knowledge source
+    evaluated
+  locator: card/trust
+- source_card_id: src_20260614_rib042_08
+  text: Automated-vs-human error figure is the authors' own estimate
+  locator: card/trust
+- source_card_id: src_20260614_rib042_08
+  text: Reported FActScores are scoped to people-biography generations and the specific LMs and knowledge
+    source used; the less-than-2% error figure is the authors' own automated-vs-human comparison rather
+    than an independent replication.
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_01
+  text: Page has no published/last-updated date visible
+  locator: card/trust
+- source_card_id: src_20260614_rib042_01
+  text: Describes the stable v0.4.3 docs; collections-based API shown, legacy API deprecated by v1.0
+  locator: card/trust
+- source_card_id: src_20260614_rib042_01
+  text: No published or last-updated date is visible on the page; documentation reflects the stable v0.4.3
+    docs and shows the collections-based API (legacy API slated for deprecation by v1.0).
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_02
+  text: Publication date not visible on the page; this reflects the "stable" docs channel as accessed
+    2026-06-14 and metric availability may evolve across versions.
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_04
+  text: Conceptual overview only; this page does not contain code, GroundednessConfigs tunables, or NLI/LLM
+    provider details (those live on other reference/cookbook pages).
+  locator: card/trust
+- source_card_id: src_20260614_rib042_04
+  text: No author or publication date is shown on the page.
+  locator: card/trust
+- source_card_id: src_20260614_rib042_04
+  text: This is a conceptual overview page only. It does NOT contain the code implementation (e.g. `Feedback(provider.groundedness_measure_with_cot_reasons,
+    ...)`), the choice between LLM-provider vs NLI auxiliary judges, or `GroundednessConfigs` tunables
+    (sentence tokenization, trivial-statement filtering) — those claims from the upstream seed could not
+    be confirmed on this page and were omitted. They live on separate TruLens reference/cookbook pages.
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_04
+  text: No author or publication date is displayed; page captured at TruLens version trulens-2.8.1.
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_10
+  text: arXiv preprint (not formally peer-reviewed)
+  locator: card/trust
+- source_card_id: src_20260614_rib042_10
+  text: PDF body is binary-encoded; some verbatim quotes for the FACT formula and agreement statistics
+    could not be confirmed from rendered text and are summarized without quote
+  locator: card/trust
+- source_card_id: src_20260614_rib042_10
+  text: arXiv preprint (not formally peer-reviewed). The PDF body is binary-encoded; the exact FACT formula
+    (Citation Accuracy = supported / total citations), the count of 70+ expert annotators, the 72.56%
+    vs 60.46% human-agreement statistics, and the specific list of evaluated agents (OpenAI / Gemini /
+    Grok / Perplexity plus 10 LLMs with search) are consistent with the source's stated scope but could
+    not be confirmed as verbatim rendered text, so they are not quoted here. Verify those specific figures
+    against the rendered PDF or HTML before asserting them with citation.
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_06
+  text: Page is undated (no published_at visible); reflects the documentation as accessed on 2026-06-14.
+    Default threshold value was not confirmed verbatim from the page, so it is omitted.
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_07
+  text: Self-reported correlation gains vs baselines (RAGAS); authors propose the metric they evaluate.
+  locator: card/trust
+- source_card_id: src_20260614_rib042_07
+  text: Metrics depend on an LLM-based claim extractor/checker (Llama3-70B via RefChecker), inheriting
+    that model's error modes.
+  locator: card/trust
+- source_card_id: src_20260614_rib042_07
+  text: 'Self-reported gains: the authors propose the very metric they meta-evaluate, and comparisons
+    against RAGAS are reported by them.'
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_07
+  text: Metric reliability is bounded by the LLM claim extractor/checker (Llama3-70B via RefChecker);
+    extraction or entailment errors propagate into every downstream score.
+  locator: card/limitations
+- source_card_id: src_20260614_rib042_09
+  text: Quotes/numbers drawn from the abstract only; full-text body methods not independently verified.
+  locator: card/trust
+- source_card_id: src_20260614_rib042_09
+  text: Quotes and numbers were extracted from the arXiv abstract; full-text methodology, the six exploit
+    categories, and per-task-family breakdowns were not independently verified from the paper body.
+  locator: card/limitations

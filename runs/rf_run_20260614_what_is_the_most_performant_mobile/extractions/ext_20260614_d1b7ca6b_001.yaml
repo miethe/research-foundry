@@ -1,0 +1,62 @@
+id: ext_20260614_d1b7ca6b_001
+source_card_id: src_20260614_kw009_01
+created_at: '2026-06-14T23:21:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: BatchedMesh used the multiDraw[Arrays|Elements]Instanced APIs in earlier versions, but that feature
+    was deprecated, removing the true-instanced multidraw path.
+  locator: Issue body — problem statement
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The current BatchedMesh emulates instancing by repeating the non-instanced multidraw parameters,
+    which is slower than the true instanced variant.
+  locator: Issue body — current implementation
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Author-reported benchmarks show the instanced multidraw approach gives roughly 1.5x speedup on
+    an integrated GPU and around 2x on a dedicated GPU versus plain multidrawElements.
+  locator: Issue body — performance benchmarks
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'Benchmarks were run on a single machine: AMD Ryzen 9 7940HS, 32 GB RAM, Radeon 780M integrated
+    GPU, and an NVIDIA GeForce RTX 4080 dedicated GPU.'
+  locator: Issue body — test system specifications
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Firefox lacks multiDraw*Instanced support, so the author requests that three.js provide the instanced
+    rendering mechanism plus a fallback for Firefox — a cross-browser portability constraint.
+  locator: Issue body — browser compatibility / proposed fallback
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Issue body — performance benchmarks
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Issue body — test system specifications
+contradictions_or_cautions:
+- text: Author-reported benchmarks (n=1 machine)
+  locator: card/trust
+- text: No published CodePen-result dataset reproduced here
+  locator: card/trust
+- text: Benchmark numbers are author-reported from a single machine (n=1), not independently reproduced;
+    treat the ~1.5x/~2x figures as indicative rather than definitive. Issue is open/unresolved, so it
+    reflects a proposal, not shipped three.js behavior.
+  locator: card/limitations

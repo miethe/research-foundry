@@ -1,0 +1,83 @@
+id: ext_20260614_ecd4b9b7_001
+source_card_id: src_20260614_kw006_10
+created_at: '2026-06-14T22:09:16-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The autoknit codebase is placed in the public domain, making its pipeline and intermediate formats
+    reusable for IP-safe work.
+  locator: License section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: autoknit is an open re-implementation of the paper 'Automatic Machine Knitting of 3D Meshes' that
+    does not exactly match the paper's original code.
+  locator: Top of README (intro line)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: 'Inputs are an OBJ mesh plus user-defined constraints: the interface loads an .obj model and saves
+    user-marked boundary/direction constraints to a .cons file.'
+  locator: 'Usage > Step 1: Constraints'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Constraints must cover all boundaries and can additionally be placed to control knitting direction,
+    with a region-cut option for meshes without boundaries.
+  locator: 'Usage > Step 1: Constraints (final paragraph)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Stitch geometry is parameterized by obj-scale, stitch-width, and stitch-height, giving stitch
+    size relative to the scaled object.
+  locator: 'Usage > Step 2: Peeling/Linking (Manual method)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'The pipeline runs Constraints -> Peeling/Linking -> Scheduling -> Knitout with a distinct intermediate
+    file format per stage: .cons constraints, .st traced stitches, .js scheduling/javascript, and .k knitout.'
+  locator: Usage > Steps 1-4 (pipeline + file formats)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Peeling/Linking converts the mesh into a row-column graph, and the implementation is described
+    as mostly working for peeling/tracing with working linking.
+  locator: Usage > Step 2 Peeling (g key) and Status By Pipeline Step
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: 'Scheduling is a concrete maturity caveat: it works for small cases only and lacks a greedy fallback
+    (only the optimal search is implemented).'
+  locator: Status By Pipeline Step
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Top of README (intro line)
+contradictions_or_cautions:
+- text: README documents the open-source re-implementation, which 'does not match the code used in the
+    paper exactly'; quantitative algorithm details belong to the underlying SIGGRAPH 2018 paper, not this
+    README.
+  locator: card/trust
+- text: README does not itself describe remeshing/quad-cell geometry; that mapping is in the paper, not
+    citable from this source.
+  locator: card/trust
+- text: This README describes the open re-implementation, which explicitly "does not match the code used
+    in the paper exactly"; algorithmic/quantitative details (and the helix-free quad-dominant remeshing
+    / stitch-cell geometry) live in the underlying ACM TOG 37(3) SIGGRAPH 2018 paper (Narayanan, Albaugh,
+    Hodgins, Coros, McCann) and are NOT directly citable from this source. The "working for small cases
+    only" scheduling note is a real maturity caveat to carry into any productization claim.
+  locator: card/limitations

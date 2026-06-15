@@ -1,0 +1,89 @@
+id: ext_20260614_700b569a_001
+source_card_id: src_20260614_kw005_00
+created_at: '2026-06-14T21:46:07-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The paper adapts the stitch-mesh tile paradigm to crochet by introducing a special edge type that
+    captures the 'current loop' — the loop held on the crochet hook during fabrication.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: All crochet stitches, despite differing in topology and texture, share the property that they
+    start and end with a single leading loop on the hook, giving a well-defined sequential yarn-path order.
+  locator: Section 3 Background, para 2
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: International crochet notation is inconvenient for computer-based authoring because its symbols
+    carry no explicit information on how yarn is used within each stitch.
+  locator: Section 1 Introduction, para 1
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'The method encodes crochet construction dependencies as four directed edge labels: Next and Previous
+    handle short-term consecutive-stitch dependencies, while Future and Past handle long-term loop-through-fabric
+    dependencies.'
+  locator: Section 4 Method, edge-label list
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Faces use short-term (orange) and long-term (purple) edge types, where the leading loop and free
+    yarn cross the short-term edges and the long-term edges are crossed only by loops.
+  locator: Section 4 Method, Figure 7 caption
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Increases are realized by an 'inc' utility face that splits one future edge into two future edges,
+    while decreases use sc2tog (two past edges to one future) and sc3tog (three past edges).
+  locator: Section 4 Method, para after Table 1
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Only five crochet stitches — chain, slip stitch, single crochet, sc2tog, and sc3tog — were actually
+    modeled by the method, making the tile set explicitly incomplete.
+  locator: Section 6 Discussion, Stitch (Face) Modeling
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: The crochet face set was used to generate stitch-mesh patterns for a cube, a sphere, and the Stanford
+    bunny, with the sphere and bunny derived from triangle meshes via the Narayanan et al. 2019 pipeline.
+  locator: Section 5 Results, Figure 11 caption
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section 4 Method, para after Table 1
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Section 6 Discussion, Stitch (Face) Modeling
+- metric_name: evidence_point
+  value: ev_008
+  unit: null
+  date_context: null
+  locator: Section 5 Results, Figure 11 caption
+contradictions_or_cautions:
+- text: Only a subset of crochet stitches modeled
+  locator: card/trust
+- text: Yarn-relaxation/simulation described as ad-hoc
+  locator: card/trust
+- text: The modeled stitch tile set is explicitly a subset of crochet (5 base stitches plus utility faces);
+    stitches such as front-post-double-crochet cannot be represented by the framework, and yarn-relaxation/simulation
+    is described by the authors as ad-hoc.
+  locator: card/limitations

@@ -1,0 +1,97 @@
+id: ext_20260615_e9fccf2b_001
+source_card_id: src_20260614_kw013_08
+created_at: '2026-06-15T09:54:32-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The Etsy Open API v3 enforces application-based rate limits composed of Queries Per Day (QPD)
+    and Queries Per Second (QPS), applied at the API key level for both public and private auth.
+  locator: 'Section: Rate Limits and Authentication Types'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The QPD limit does not reset on a fixed midnight-to-midnight cycle; Etsy uses a progressive Sliding
+    Window Rate Limiting Algorithm that calculates usage over the last rolling 24-hour period.
+  locator: 'Section: Daily Limit Mechanism (Sliding Window Structure)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Under the sliding window, as the oldest bucket exits the 24-hour window the quota consumed by
+    its requests is immediately freed and becomes available for reuse.
+  locator: 'Section: Daily Limit Mechanism > How the Sliding Window Works (item 3, Sliding)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Every successful response exposes usage headers including x-limit-per-second and x-limit-per-day,
+    with the documented example values of 150 QPS and 100000 QPD.
+  locator: 'Section: Rate Limit Headers > Successful Response (header table)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Rate limits are checked QPS-first then QPD, and exceeding either returns HTTP 429 with a retry-after
+    header indicating seconds to wait before retrying.
+  locator: 'Section: Rate Limit Headers > Response to Exceeded Limits and Warnings'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Applications needing higher limits must request an upgrade by emailing developer@etsy.com with
+    a detailed app description and an estimate of required QPD/QPS usage.
+  locator: 'Section: Requesting Higher Limits and Recommendations > Request for Increased Quota'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Etsy advises maximizing existing quota by implementing caching to reduce redundant API calls and
+    by using exponential backoff retry strategy on 429 responses rather than immediate retries.
+  locator: 'Section: Requesting Higher Limits and Recommendations > Optimization Recommendations'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: 'Section: Rate Limits and Authentication Types'
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: 'Section: Daily Limit Mechanism (Sliding Window Structure)'
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: 'Section: Daily Limit Mechanism > How the Sliding Window Works (item 3, Sliding)'
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: 'Section: Rate Limit Headers > Successful Response (header table)'
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: 'Section: Rate Limit Headers > Response to Exceeded Limits and Warnings'
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: 'Section: Requesting Higher Limits and Recommendations > Optimization Recommendations'
+contradictions_or_cautions:
+- text: No explicit publication/last-updated date (footer only shows © 2021).
+  locator: card/trust
+- text: The live page (accessed 2026-06-14) does NOT state explicit default public-auth limits (e.g.,
+    10 QPS / 10,000 QPD), an Enterprise tier of ~3 million calls/day, the API Terms-of-Use 6-hour display
+    / minimal-retention storage limits, or a "creating additional API keys is strictly prohibited" clause;
+    those claims from upstream notes could not be verified against the current page text and are omitted.
+    The 150 QPS / 100000 QPD figures are documented only as header *example values*, not as guaranteed
+    tier limits. The page carries no explicit publication/last-updated date (footer shows © 2021).
+  locator: card/limitations

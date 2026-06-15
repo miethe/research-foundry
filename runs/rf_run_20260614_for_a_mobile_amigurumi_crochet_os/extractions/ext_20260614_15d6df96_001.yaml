@@ -1,0 +1,79 @@
+id: ext_20260614_15d6df96_001
+source_card_id: src_20260614_kw010_06
+created_at: '2026-06-14T23:41:50-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Prior evaluations of transit uncertainty displays measured probability extraction, not decision
+    quality, which this study set out to assess directly.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: In a controlled incentivized experiment, subjects decided when to leave to catch a bus using textual
+    uncertainty, uncertainty visualizations, or a no-uncertainty control.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Frequency-based quantile dotplots, previously shown to aid probability extraction, yielded better
+    decisions than the alternatives.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Quantile dotplots with 50 outcomes produced decisions averaging 97% of optimal expected payoff,
+    5 percentage points above the control.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: CDF plots performed nearly as well as quantile dotplots, and both beat textual uncertainty, whose
+    effectiveness depended on the probability interval communicated.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Quantile dotplots reframe a probability density as countable discrete outcomes, letting non-experts
+    reason about probabilities as counts rather than areas, well suited to space-constrained mobile displays.
+  locator: Introduction (paras 4-5)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Decision quality with dotplots and CDFs was high from the start and improved with practice, reaching
+    about 95% of optimal by the final trial while becoming more consistent.
+  locator: Figure 4 caption (Results)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Figure 4 caption (Results)
+contradictions_or_cautions:
+- text: Task is bus-arrival timing decisions, not crochet UI; generalization to other domains is discussed
+    but not tested here.
+  locator: card/trust
+- text: Findings are stable design primitives from 2018, not a current-year result.
+  locator: card/trust
+- text: Domain is bus-arrival timing decisions, not a crochet/amigurumi UI; the paper discusses but does
+    not test generalization to other domains.
+  locator: card/limitations
+- text: A foundational, stable 2018 design result cited as a confidence-signaling primitive, not a current-year
+    finding.
+  locator: card/limitations

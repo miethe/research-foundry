@@ -1,0 +1,70 @@
+id: ext_20260613_56e81242_001
+source_card_id: src_20260613_rib009_06
+created_at: '2026-06-13T22:57:43-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The sonar-deep-research model is a research model that conducts exhaustive multi-source searches
+    and synthesizes expert-level insights into detailed reports.
+  locator: Features / model description
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Sonar Deep Research has a 128K-token context length.
+  locator: Features section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Pricing is $2 per 1M input tokens, $8 per 1M output tokens, $2 per 1M citation tokens, $3 per
+    1M reasoning tokens, and $5 per 1K search-query requests.
+  locator: Pricing table
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Each object in the response's search_results array exposes title, url, date, last_updated, and
+    snippet fields.
+  locator: Sample Response Metadata / search_results array
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The usage object reports prompt_tokens, completion_tokens, total_tokens, citation_tokens, num_search_queries,
+    and reasoning_tokens plus a per-component cost breakdown.
+  locator: Sample Response Metadata / usage object
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: A sample comprehensive query consumed 11,395 completion tokens, 21 search queries, and 193,947
+    reasoning tokens for a reported total cost of $0.816.
+  locator: Sample Response Metadata / usage.cost
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Features section
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Pricing table
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Sample Response Metadata / usage.cost
+contradictions_or_cautions:
+- text: Pricing and limits are subject to change without notice; no published date visible on the page.
+  locator: card/trust
+- text: Pricing and rate details on vendor docs are subject to change without notice; no explicit published
+    date is visible on the page, so the "2026-01" date is approximate (access-based).
+  locator: card/limitations

@@ -1,0 +1,39 @@
+id: intent_research_20260614_what_is_the_right_evaluation_protocol
+title: What is the right evaluation protocol and metric
+owner: Nick Miethe
+created_at: '2026-06-14T17:08:37-04:00'
+status: active
+type: research
+raw_idea_ids:
+- raw_20260614_1708_what_is_the_right_evaluation_protocol
+objective: What is the right evaluation protocol and metric set to judge an inverse amigurumi generator
+  - quantifying shape distance to the target mesh and pattern complexity/crochetability - and what evidence-backed
+  edit-loop controls (inflate/redistribute increases/seam placement/piece split) let users fix brittle
+  outputs?
+motivation: ''
+desired_output:
+  artifact_type: report
+  audience: technical
+  depth: standard
+scope:
+  in: []
+  out: []
+research_questions:
+  primary:
+  - What does the evidence say about What is the right evaluation protocol and metric?
+  secondary: []
+constraints:
+  hard:
+  - Every material claim must map to source_card_id or be labeled inference/speculation.
+  soft: []
+success_criteria: []
+governance:
+  sensitivity: personal
+  key_profile_allowed: personal
+  requires_human_review: false
+  allowed_writebacks:
+  - meatywiki_personal
+  - skillmeat_personal
+  - ccdash_local
+ibom_ref: ibom_research_20260614_what_is_the_right_evaluation_protocol
+intenttree_node_ref: tree_rf_20260614_what_is_the_right_evaluation_protocol

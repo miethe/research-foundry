@@ -1,0 +1,85 @@
+id: ext_20260615_fe7a3788_001
+source_card_id: src_20260614_kw015_11
+created_at: '2026-06-15T10:42:00-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Apple's on-device model is a roughly 3B-parameter model optimized for Apple silicon using KV-cache
+    sharing and 2-bit quantization-aware training.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The on-device model is split into two blocks; Block 2 (37.5% of layers) drops its key/value projections
+    and shares Block 1's KV cache, cutting KV-cache memory usage by 37.5%.
+  locator: Section 2.1, KV Cache Sharing
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Because Block 2 produces no keys or values, prefill can bypass its computation, reducing time-to-first-token
+    by about 37.5%.
+  locator: Section 2.1, KV Cache Sharing
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The on-device model is compressed to 2 bits-per-weight via QAT, with the embedding table jointly
+    quantized to 4 bits and the KV-cache quantized to 8 bits, plus low-rank adapters for quality recovery.
+  locator: Quantization section (compression)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The models support additional languages and can understand images and execute tool calls, while
+    the server model uses a Parallel-Track Mixture-of-Experts (PT-MoE) transformer on Private Cloud Compute.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Apple reports its on-device model beats Qwen-2.5-3B, Gemma-3-4B, and Gemma-3n-E4B on MMLU/MMMLU
+    but performs lower than the larger Qwen-3-4B model.
+  locator: Evaluation, Text benchmarks (Table 1/Table 2 discussion)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Section 2.1, KV Cache Sharing
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Section 2.1, KV Cache Sharing
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Quantization section (compression)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Evaluation, Text benchmarks (Table 1/Table 2 discussion)
+contradictions_or_cautions:
+- text: Benchmark numbers are vendor-reported
+  locator: card/trust
+- text: Evaluation restricted to AFM-supported languages and instruct/non-thinking model variants
+  locator: card/trust
+- text: Benchmark figures are vendor-reported (first-party) and not independently verified; evaluation
+    was limited to AFM-supported languages and instruct/non-thinking model variants. The summary landing
+    page only carries abstract-level claims; the detailed quantization and benchmark quotes are drawn
+    from the full report (arXiv:2507.13575v3).
+  locator: card/limitations

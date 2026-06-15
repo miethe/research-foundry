@@ -1,0 +1,76 @@
+id: ext_20260615_81a22bc1_001
+source_card_id: src_20260614_kw016_11
+created_at: '2026-06-15T11:03:20-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Crochet remains largely manual and, unlike knitting or weaving, is barely supported by domain-specific
+    digital tooling for authoring new pattern instructions.
+  locator: Abstract, opening
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Existing crochet tools are constrained by underlying pattern languages that are either ambiguous
+    or limited in expressiveness, so authoring requires substantial manual effort and can yield incomplete
+    or ambiguous instructions.
+  locator: Abstract, problem statement
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The paper proposes a first visual, domain-specific, graph-based language for representing crochet
+    patterns.
+  locator: Abstract, contribution
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The language is realized in a prototype editor that supports authoring patterns in 2D and viewing
+    them in 3D, demonstrating domain-specific tool support.
+  locator: Abstract, tooling
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: A user study showed the proposed language lets designers express both 2D and 3D patterns and removes
+    ambiguities present in current standard crochet notations.
+  locator: Abstract, evaluation
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The work was published at the 2022 ACM SIGPLAN International Symposium on New Ideas, New Paradigms,
+    and Reflections on Programming and Software (Onward!/SPLASH 2022), framing crochet pattern representation
+    as a programming-language design problem.
+  locator: ACM landing page / SPLASH 2022 program metadata
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Abstract, tooling
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Abstract, evaluation
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: ACM landing page / SPLASH 2022 program metadata
+contradictions_or_cautions:
+- text: Full text behind ACM paywall (HTTP 403); evidence extracted from the verbatim abstract published
+    on the SPLASH 2022 program page and ACM landing page, not from the full paper body.
+  locator: card/trust
+- text: Full paper text is behind the ACM paywall (returned HTTP 403); all quotes here are drawn from
+    the verbatim abstract published on the ACM landing page and the SPLASH 2022 program page, not from
+    the full paper body. Quantitative user-study details (participant counts, metrics) were not verifiable
+    from the abstract and are intentionally omitted.
+  locator: card/limitations

@@ -1,0 +1,61 @@
+id: ext_20260614_58b658a5_001
+source_card_id: src_20260614_rib045_06
+created_at: '2026-06-14T16:31:44-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The logprobs API parameter is a boolean that, when true, returns the log probabilities of each
+    output token in the message content.
+  locator: 'Parameter definition: logprobs'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: top_logprobs is an integer between 0 and 5 specifying how many most-likely tokens to return at
+    each position, each with an associated log probability, and it requires logprobs to be set to true.
+  locator: 'Parameter definition: top_logprobs'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: 'The notebook focuses on five logprobs use cases: classification tasks, retrieval (Q&A) evaluation,
+    autocomplete, token highlighting and outputting bytes, and calculating perplexity.'
+  locator: Introduction (use cases enumeration)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Each token entry includes a bytes field giving the ASCII encoding of each output character, which
+    is useful for reproducing emojis and special characters.
+  locator: Token entry fields (bytes)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: For classification, logprobs supply a probability per class prediction, letting users set their
+    own classification or confidence thresholds.
+  locator: 'Use case: classification / confidence scoring'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Perplexity is computed by exponentiating the negative of the average of the logprobs.
+  locator: 'Use case: calculating perplexity'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: 'Parameter definition: top_logprobs'
+contradictions_or_cautions:
+- text: Published 2023-12-20; the parameter API surface and definitions reflect that date and may have
+    evolved. The documented `top_logprobs` range is 0-5 as of publication.
+  locator: card/limitations
+- text: Example models cited (gpt-4o, gpt-4o-mini, gpt-4) are illustrative of OpenAI models available
+    at/after publication, not an exhaustive support list.
+  locator: card/limitations

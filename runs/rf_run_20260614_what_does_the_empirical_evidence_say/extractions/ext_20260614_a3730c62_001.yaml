@@ -1,0 +1,90 @@
+id: ext_20260614_a3730c62_001
+source_card_id: src_20260614_kw003_04
+created_at: '2026-06-14T20:46:24-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: CrochetPARADE defines a custom language grammar for specifying stitches and stitch patterns, intended
+    to remove the ambiguity of plain-English crochet instructions.
+  locator: README — grammar/DSL overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The grammar is explicitly designed to achieve precision and avoid the ambiguities of plain-English
+    instructions.
+  locator: README — grammar/DSL overview (precision rationale)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The tool parses and checks any user-provided pattern for correctness before building a virtual
+    model of the project, gating rendering behind validation.
+  locator: README — parsing and validation
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The validator flags overly loose or tight stitches so users can replace them with better-suited
+    stitches before crocheting.
+  locator: README — validation/debug capabilities
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The rendered virtual model supports interactive rotate/zoom/pan, animated pattern creation, and
+    highlighting or hiding selected stitches (relevant to KnitWit row/round highlighting and piece isolation).
+  locator: README — interactive 3D viewing
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The tool exports an automatically generated crochet chart using standard crochet symbols, identifying
+    stitches by type, row number, and position.
+  locator: README — export feature (charts)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Projects can be exported to 3D files that can be imported into Blender for further manipulation
+    and visualization.
+  locator: README — export feature (3D files)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: The software and computational components are free and open source under GPLv3, while the user
+    manual (including the grammar description) is under Creative Commons BY-NC-SA; GPLv3 carries copyleft
+    implications for direct code reuse.
+  locator: README — licensing
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: README — export feature (3D files)
+- metric_name: evidence_point
+  value: ev_008
+  unit: null
+  date_context: null
+  locator: README — licensing
+contradictions_or_cautions:
+- text: Stitch-count/attachment validation specifics are summarized from project description rather than
+    a quotable spec sentence
+  locator: card/trust
+- text: No empirical accuracy figures reported
+  locator: card/trust
+- text: README claims are self-reported by the tool's author and are not independently benchmarked; no
+    empirical accuracy figures are given.
+  locator: card/limitations
+- text: The precise stitch-count / impossible-attachment validation behavior is summarized from the project's
+    correctness-checking description rather than an exact quotable spec line.
+  locator: card/limitations
+- text: GPLv3 licensing constrains direct code reuse in non-GPL projects (relevant if KnitWit reuses code
+    rather than re-implementing concepts).
+  locator: card/limitations

@@ -1,0 +1,39 @@
+id: intent_research_20260614_what_does_the_empirical_literature_say
+title: What does the empirical literature say about unsupported-claim/hallucination
+owner: Nick Miethe
+created_at: '2026-06-14T14:05:43-04:00'
+status: active
+type: research
+raw_idea_ids:
+- raw_20260614_1405_what_does_the_empirical_literature_say
+objective: What does the empirical literature say about unsupported-claim/hallucination rates in multi-step
+  LLM synthesis, what existing frameworks implement claim-to-source traceability, and how does a claim-ledger
+  + verifier architecture compare to RAG, constitutional AI, and self-consistency for reducing material
+  unsupported claims?
+motivation: ''
+desired_output:
+  artifact_type: report
+  audience: technical
+  depth: standard
+scope:
+  in: []
+  out: []
+research_questions:
+  primary:
+  - What does the evidence say about What does the empirical literature say about unsupported-claim/hallucination?
+  secondary: []
+constraints:
+  hard:
+  - Every material claim must map to source_card_id or be labeled inference/speculation.
+  soft: []
+success_criteria: []
+governance:
+  sensitivity: personal
+  key_profile_allowed: personal
+  requires_human_review: false
+  allowed_writebacks:
+  - meatywiki_personal
+  - skillmeat_personal
+  - ccdash_local
+ibom_ref: ibom_research_20260614_what_does_the_empirical_literature_say
+intenttree_node_ref: tree_rf_20260614_what_does_the_empirical_literature_say

@@ -1,0 +1,13 @@
+{"stage": "plan", "ts": "2026-06-14T17:08:37-04:00", "run_id": "rf_run_20260614_what_is_the_right_evaluation_protocol"}
+{"ts": "2026-06-14T22:38:28-04:00", "stage": "extract", "run_id": "rf_run_20260614_what_is_the_right_evaluation_protocol", "count": 9}
+{"ts": "2026-06-14T22:38:34-04:00", "stage": "claim_map", "run_id": "rf_run_20260614_what_is_the_right_evaluation_protocol", "claims_total": 59}
+{"ts": "2026-06-14T22:42:50-04:00", "stage": "synthesize", "run_id": "rf_run_20260614_what_is_the_right_evaluation_protocol", "report_id": "report_20260614_what_is_the_right_evaluation_protocol", "claims_cited": 71}
+{"ts": "2026-06-14T22:49:51-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_right_evaluation_protocol", "exit_code": 4, "passed": false}
+{"ts": "2026-06-14T22:49:57-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_right_evaluation_protocol", "exit_code": 4, "passed": false}
+{"ts": "2026-06-14T22:50:25-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_right_evaluation_protocol", "exit_code": 4, "passed": false}
+{"ts": "2026-06-14T22:50:34-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_right_evaluation_protocol", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T22:50:59-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_right_evaluation_protocol", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T22:51:40-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_right_evaluation_protocol", "exit_code": 0, "passed": true}
+{"stage": "bundle", "ts": "2026-06-14T22:51:40-04:00", "run_id": "rf_run_20260614_what_is_the_right_evaluation_protocol", "bundle_id": "bundle_20260614_intent_research_20260614_what_is_the", "verified": true}
+{"stage": "ccdash_event", "ts": "2026-06-14T22:51:50-04:00", "run_id": "rf_run_20260614_what_is_the_right_evaluation_protocol", "event_id": "exec_20260614_intent_research_20260614_what_is_the_439f"}
+{"stage": "writeback", "ts": "2026-06-14T22:51:50-04:00", "run_id": "rf_run_20260614_what_is_the_right_evaluation_protocol", "requires_review": false}

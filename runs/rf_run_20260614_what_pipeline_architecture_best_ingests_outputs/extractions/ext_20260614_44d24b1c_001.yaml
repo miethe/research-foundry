@@ -1,0 +1,64 @@
+id: ext_20260614_44d24b1c_001
+source_card_id: src_20260614_rib053_03
+created_at: '2026-06-14T17:08:54-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The groundingMetadata.groundingChunks field is an array of objects, each carrying a web source's
+    uri and title.
+  locator: Understanding the grounding response
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The groundingSupports array connects model response text to the sources listed in groundingChunks.
+  locator: Understanding the grounding response
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Each grounding support links a text segment defined by startIndex and endIndex to one or more
+    groundingChunkIndices, which is the basis for building inline citations.
+  locator: Understanding the grounding response
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The searchEntryPoint field contains the HTML and CSS needed to render the required Search Suggestions,
+    with full usage requirements specified in the Terms of Service.
+  locator: Understanding the grounding response
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: For Gemini 3 models, the project is billed for each individual search query the model decides
+    to execute during grounding.
+  locator: Pricing
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Older Gemini models use a google_search_retrieval tool, whereas all current models use the google_search
+    tool to enable grounding.
+  locator: Supported models
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Pricing
+contradictions_or_cautions:
+- text: Exact Search-Suggestions display mandate lives in linked Terms of Service, not on this page
+  locator: card/trust
+- text: The exact mandate to display Search Suggestions resides in the linked Terms of Service rather
+    than verbatim on this page; this card cites the doc's pointer to those requirements.
+  locator: card/limitations
+- text: The source documentation notes example chunk `uri` values are `vertexaisearch.cloud.google.com`
+    redirect endpoints; resolving them to true publisher URLs requires a follow-the-redirect step not
+    captured as a standalone verbatim quote here.
+  locator: card/limitations

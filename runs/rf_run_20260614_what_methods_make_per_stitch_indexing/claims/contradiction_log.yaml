@@ -1,0 +1,106 @@
+run_id: rf_run_20260614_what_methods_make_per_stitch_indexing
+generated_at: '2026-06-14T21:46:13-04:00'
+contradictions:
+- source_card_id: src_20260614_kw005_04
+  text: Tested only on simple beginner-level amigurumi patterns and single-crochet-like stitches
+  locator: card/trust
+- source_card_id: src_20260614_kw005_04
+  text: Assumes uniform edge length of 1, not accurate for real stitch dimensions
+  locator: card/trust
+- source_card_id: src_20260614_kw005_04
+  text: Tested only on simple, beginner-level amigurumi patterns and single-crochet-like stitches; explicitly
+    too narrow for intermediate/advanced patterns.
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_04
+  text: Assumes uniform edge length of 1, which does not capture real stitch dimensions (yarn tension,
+    hook size, weight, stitch type), causing height/shape discrepancies.
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_04
+  text: Force-directed layout is computationally expensive and may not converge on large patterns; flattened
+    (non-stuffed) pieces are out of scope since the energy function maximizes volume.
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_05
+  text: The requested Manual.md path does not exist in the GitHub repo (the repo contains only README.md;
+    default branch 'main'); the README is the canonical project description and the full user manual lives
+    on crochetparade.org.
+  locator: card/trust
+- source_card_id: src_20260614_kw005_05
+  text: Several points in the upstream source brief (coordinate tuples after node names, edge length floats,
+    DOT-like save file, CrochetBench DSL, 6,000+ patterns) are NOT present in this README and were omitted
+    to avoid fabrication.
+  locator: card/trust
+- source_card_id: src_20260614_kw005_05
+  text: The brief's target path `Manual.md` does not exist in the GitHub repo (which contains only README.md
+    on default branch `main`); this card is sourced from the canonical README, the closest authoritative
+    artifact. The full grammar manual lives on crochetparade.org.
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_05
+  text: Points in the upstream brief about precalculated coordinate tuples after node names, edge-length
+    floats, DOT-like save files, the CrochetBench DSL, and 6,000+ patterns are NOT present in this README
+    and were deliberately omitted rather than fabricated. Repo last pushed 2025-02-23.
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_07
+  text: The ~15% and ~10% thresholds and inside/outside seed behavior reflect default settings and the
+    tool's physics engine; results may vary with non-default settings. The manual is a single-author official
+    doc (CC BY-NC-SA 4.0); no independent validation of accuracy claims is provided within it.
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_02
+  text: Qualitative user study with only six designers
+  locator: card/trust
+- source_card_id: src_20260614_kw005_02
+  text: Editor is an explicitly described prototype/proof-of-concept
+  locator: card/trust
+- source_card_id: src_20260614_kw005_02
+  text: Qualitative evaluation with only six professional crochet designers (recruited from a myboshi
+    designer survey); not a large quantitative study.
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_02
+  text: The editor is described explicitly as a prototype / proof-of-concept; 3D rendering is a force-directed-graph
+    approximation, not a physically accurate fabric model.
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_03
+  text: Scope is machine knitting (not crochet); the cross-craft transfer to crochet stitch-mesh work
+    is established by the later (2020) paper that adapts this pipeline, not by this source itself. The
+    landing-page URL is the canonical publication page; quotes were extracted from the author-hosted PDF
+    and the abstract was cross-checked against the ACM Digital Library record.
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_00
+  text: Only a subset of crochet stitches modeled
+  locator: card/trust
+- source_card_id: src_20260614_kw005_00
+  text: Yarn-relaxation/simulation described as ad-hoc
+  locator: card/trust
+- source_card_id: src_20260614_kw005_00
+  text: The modeled stitch tile set is explicitly a subset of crochet (5 base stitches plus utility faces);
+    stitches such as front-post-double-crochet cannot be represented by the framework, and yarn-relaxation/simulation
+    is described by the authors as ad-hoc.
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_08
+  text: A single-team arXiv preprint (v1, not stated as peer-reviewed); the DEL metric is proposed by
+    the authors, not an external standard.
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_08
+  text: Runtime figures (e.g., 40,906s) come from the authors' own benchmark table and reflect their unoptimized
+    exact-length implementation, not a productized/interactive system.
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_08
+  text: The ev_006 numeric runtimes are sourced from Table 4 but no single short verbatim sentence captures
+    them, so its quote is null (values are transcribed from the table, not paraphrased prose).
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_01
+  text: Describes a research proof-of-concept editor, not a production tool
+  locator: card/trust
+- source_card_id: src_20260614_kw005_01
+  text: 3D layout is a generic force-directed approximation, not a crochet-physics-accurate simulation
+  locator: card/trust
+- source_card_id: src_20260614_kw005_01
+  text: Describes a research proof-of-concept projectional editor and prototype, not a production tool;
+    the 3D layout is a generic force-directed approximation rather than a yarn-physics-accurate model.
+    Validity enforcement in the prototype is via UI restriction; the authors note a constraint solver
+    would be needed to verify arbitrary externally-built graphs.
+  locator: card/limitations
+- source_card_id: src_20260614_kw005_06
+  text: Source is a preprint (arXiv, not yet a verified peer-reviewed venue at time of access); evidence
+    drawn from the abstract, so per-section algorithmic details and exact complexity-class boundaries
+    are summarized rather than fully reproduced here.
+  locator: card/limitations

@@ -1,0 +1,79 @@
+id: ext_20260614_35d9f212_001
+source_card_id: src_20260614_rib053_04
+created_at: '2026-06-14T17:08:54-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The Deep Research agent ships in two preview versions with model IDs deep-research-preview-04-2026
+    (speed/efficiency) and deep-research-max-preview-04-2026 (maximum comprehensiveness).
+  locator: Supported Versions
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The agent autonomously plans, executes, and synthesizes multi-step research tasks, navigating
+    complex information to produce detailed, cited reports.
+  locator: Intro paragraph (Gemini Deep Research Agent)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The API returns a partial Interaction object immediately with an id for polling; the interaction
+    state transitions from in_progress to completed or failed.
+  locator: Handling long-running tasks
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Polling the interaction yields status, output_text (the final report), and error fields, accessed
+    via interaction.status, interaction.output_text, and interaction.error.
+  locator: Quickstart Python example (interactions.get poll loop)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The Interaction exposes a steps array of typed steps (e.g. model_output) whose content holds typed
+    items such as text and image.
+  locator: Visualization example (iterating result.steps)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Because the agent may encounter malicious web pages, Google recommends reviewing the citations
+    provided in the response to verify the sources.
+  locator: Safety considerations > Web content risks
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The Gemini Deep Research Agent is currently in preview and is accessible exclusively through the
+    Interactions API, not generate_content.
+  locator: Preview callout (top of page)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: By default the agent has access to Google Search, URL Context, and Code Execution, and can be
+    extended with MCP servers and File Search over uploaded corpora.
+  locator: Supported tools
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Supported Versions
+contradictions_or_cautions:
+- text: 'Preview/beta status: the doc explicitly marks the agent as in preview and the Interactions API
+    as in public beta, so model IDs, schemas, and field shapes may change.'
+  locator: card/limitations
+- text: This page does not mention the Gemini app (web) Deep Research export-to-Google-Docs/PDF or Workspace-file
+    grounding; that claim was not present in the source text and is not asserted here.
+  locator: card/limitations
+- text: Field names like `citations` are referenced in the safety section but the page does not provide
+    a full formal schema for the Interaction object beyond code examples.
+  locator: card/limitations

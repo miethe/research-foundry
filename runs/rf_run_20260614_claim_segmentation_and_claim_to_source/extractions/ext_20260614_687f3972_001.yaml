@@ -1,0 +1,80 @@
+id: ext_20260614_687f3972_001
+source_card_id: src_20260614_rib001_01
+created_at: '2026-06-14T20:58:33-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'Decomposition and decontextualization have conflicting purposes that create a tension a verification
+    system must resolve: decomposition isolates atomic facts while decontextualization re-inserts relevant
+    context.'
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: A decontextualized subclaim becomes less atomic and creates a verification ambiguity over which
+    of the multiple embedded atomic facts should actually be checked.
+  locator: Introduction
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The original FActScore (decompose-then-verify) method yields an average factuality score of 33.00%
+    on the benchmark, serving as the baseline.
+  locator: Section 5 / Table 3 (Fact verification results)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: DnDScore is highest under the Decontextualization-then-Decomposition configuration (decontextualized
+    claim used as context), reaching 61.51%.
+  locator: Section 5 / Table 3 (Fact verification results)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The Decontextualization-then-Decomposition pipeline generates the highest number of subclaims
+    yet lands near the same FActScore as Decomposition-then-Decontextualization, at 44.60%.
+  locator: Section 5 / Table 3 (Fact verification results)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Among judgments that switched from false to true after decontextualizing subclaims, 48.52% involved
+    a pronoun replacement, indicating entity disambiguation is a primary driver of corrected verifications.
+  locator: 'Section 6.1 (Verification Changes: Quantitative Evaluation)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Section 5 / Table 3 (Fact verification results)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Section 5 / Table 3 (Fact verification results)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section 5 / Table 3 (Fact verification results)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: 'Section 6.1 (Verification Changes: Quantitative Evaluation)'
+contradictions_or_cautions:
+- text: Scores are method-relative on a biography factuality benchmark; absolute factuality scores depend
+    on the underlying verifier and dataset, not directly comparable across studies.
+  locator: card/trust
+- text: Scores are method- and benchmark-relative (a biography factuality benchmark) and depend on the
+    underlying verifier; absolute percentages are not directly comparable to other studies. Exact percentage-point
+    "gain" framing in the originating brief is a derived comparison, not a single quoted figure — cite
+    the underlying configuration scores (33.00 / 41.53 / 44.60 / 61.51) directly.
+  locator: card/limitations

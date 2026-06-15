@@ -1,0 +1,72 @@
+id: ext_20260615_5879aabb_001
+source_card_id: src_20260614_rib017_05
+created_at: '2026-06-15T00:16:10-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The default DLP policy 'DSPM for AI - Block sensitive info from AI sites' uses Adaptive Protection
+    to give a block-with-override to elevated-risk users attempting to paste or upload sensitive information
+    to other AI apps in Edge, Chrome, and Firefox, scoped to all users in test mode.
+  locator: Default policies from data security to help you protect sensitive data used in generative AI
+    — DSPM for AI - Block sensitive info from AI sites
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The 'Block elevated risk users from submitting prompts' policy uses Adaptive Protection to block
+    elevated, moderate, and minor risk users from putting information into AI apps in Edge, and forces
+    use of protected browsers by treating others as unmanaged apps.
+  locator: Default policies from data security — DSPM for AI - Block elevated risk users from submitting
+    prompts to AI apps in Microsoft Edge
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The 'Protect sensitive data from Copilot processing' DLP policy blocks Microsoft 365 Copilot and
+    agents from processing items carrying the sensitivity labels selected in the policy, binding model
+    eligibility to a data label.
+  locator: Default policies from data security — DSPM for AI - Protect sensitive data from Copilot processing
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The 'Detect sensitive info shared with AI via network' collection policy requires manually adding
+    one or more SASE/SSE integrations, and detection of AI interactions depends on the network partner's
+    implementation.
+  locator: Default policies for data discovery — DSPM for AI - Detect sensitive info shared with AI via
+    network (Important callout)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: For default policies that use Adaptive Protection, the capability is turned on automatically if
+    not already enabled, using default risk levels for all users and groups to dynamically enforce protection
+    actions.
+  locator: One-click policies from Data Security Posture Management for AI (paragraph on Adaptive Protection)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'Endpoint DLP enforcement against third-party AI sites is risk-tier-aware: a user flagged as elevated
+    risk in Adaptive Protection is blocked with an override option when pasting sensitive data into a
+    site like ChatGPT, illustrating the per-user-risk-tier plus sensitive-info-type decision unit.'
+  locator: Prerequisites for Data Security Posture Management for AI (device onboarding bullet)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Default policies from data security — DSPM for AI - Protect sensitive data from Copilot processing
+contradictions_or_cautions:
+- text: Page documents the classic version of DSPM for AI, now replaced by a new version; behavior may
+    differ in the successor product.
+  locator: card/trust
+- text: This page documents the classic version of DSPM for AI, which Microsoft states is replaced by
+    a new version with broader reach and different management; enforcement details may differ in the successor
+    product. Page last updated 2026-05-01.
+  locator: card/limitations

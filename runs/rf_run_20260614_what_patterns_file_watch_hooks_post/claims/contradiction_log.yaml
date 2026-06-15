@@ -1,0 +1,80 @@
+run_id: rf_run_20260614_what_patterns_file_watch_hooks_post
+generated_at: '2026-06-14T14:59:46-04:00'
+contradictions:
+- source_card_id: src_20260614_rib024_08
+  text: Community-maintained reference (MDN) rather than a formal standard; authoritative for web platform
+    behavior but should be cross-checked against the WHATWG HTML/EventSource specification for normative
+    wording. The 6-connection limit is a browser implementation constraint (marked "Won't fix"), not a
+    protocol mandate.
+  locator: card/limitations
+- source_card_id: src_20260614_rib024_09
+  text: 'Page carries no visible author or explicit publication date; "published: 2026" reflects the source
+    metadata, not a dateline on the page. Documentation is living and may change; exact CLI behavior should
+    be verified against the installed pre-commit version.'
+  locator: card/limitations
+- source_card_id: src_20260614_rib024_06
+  text: Page reflects Git 2.54.0 (last updated 2026-04-20); exact parameter/behavior details can evolve
+    across Git versions, so version pinning matters for precise claims.
+  locator: card/limitations
+- source_card_id: src_20260614_rib024_10
+  text: Marketing-style README claims (e.g. speed) are self-reported, not independently benchmarked.
+  locator: card/trust
+- source_card_id: src_20260614_rib024_10
+  text: README-level claims (especially relative speed/"more speed") are self-reported by the upstream
+    project, not independently benchmarked. Release/version and language-percentage figures are GitHub
+    metadata captured at access time (2026-06-14) and will drift as the project evolves.
+  locator: card/limitations
+- source_card_id: src_20260614_rib024_04
+  text: Defaults and exact millisecond values are version-specific (current README reflects v5, Nov 2025)
+    and may differ in older installed versions; verify against the version in use.
+  locator: card/limitations
+- source_card_id: src_20260614_rib024_04
+  text: The README's troubleshooting text shows a typo ("ENOSP") in the EMFILE/ENOSPC sentence; quoted
+    verbatim.
+  locator: card/limitations
+- source_card_id: src_20260614_rib024_07
+  text: 'Living Standard: section numbering and exact wording can change over time; quotes captured as
+    of the 2026-06 access. The "few seconds" reconnection default is implementation-defined, so real values
+    vary across user agents.'
+  locator: card/limitations
+- source_card_id: src_20260614_rib024_03
+  text: Quotes are drawn from the project README (master branch as accessed 2026-06-14); exact wording
+    may drift across releases. Release version/date (6.0.0, 2024-11-01) is reported from the repo's release
+    listing rather than a verbatim README excerpt.
+  locator: card/limitations
+- source_card_id: src_20260614_rib024_05
+  text: Behavior and defaults are version-specific (captured from v2.5.1); later releases may change defaults
+    or option semantics. The rename-tracking caveat is inherent to OS-level filesystem watching, not a
+    watchexec-specific bug.
+  locator: card/limitations
+- source_card_id: src_20260614_rib024_02
+  text: Document is archived (last updated 2012-12-13); reflects classic FSEvents API, not newer file-monitoring
+    APIs.
+  locator: card/trust
+- source_card_id: src_20260614_rib024_02
+  text: The 'no more often than once per latency window' coalescing wording is not stated in this page;
+    the latency parameter appears only in the code example here.
+  locator: card/trust
+- source_card_id: src_20260614_rib024_02
+  text: Archived document (last updated 2012-12-13); describes the classic FSEvents API and may not reflect
+    newer macOS file-monitoring APIs.
+  locator: card/limitations
+- source_card_id: src_20260614_rib024_02
+  text: The commonly cited "not notified more often than once per latency window" coalescing wording is
+    NOT stated on this page; here the latency parameter appears only in the code example, so that specific
+    claim should be sourced elsewhere.
+  locator: card/limitations
+- source_card_id: src_20260614_rib024_01
+  text: Reflects Linux man-pages 6.18 (dated 2026-02-14); fanotify behavior is kernel-version dependent
+    and some features (e.g., FAN_REPORT_FID, FAN_MARK_FILESYSTEM) were introduced in specific kernel versions
+    noted elsewhere in the page (not all captured here).
+  locator: card/limitations
+- source_card_id: src_20260614_rib024_11
+  text: Page reflects current (2026) Lefthook docs; exact syntax may evolve across Lefthook releases.
+    No explicit author or version string captured from the page.
+  locator: card/limitations
+- source_card_id: src_20260614_rib024_00
+  text: Describes inotify-specific behavior on Linux only; macOS (FSEvents/kqueue) and Windows (ReadDirectoryChangesW)
+    have different semantics. Reflects Linux man-pages 6.18 (2026-02-14); some numeric defaults (e.g.,
+    max_queued_events default) are kernel/version dependent and not captured verbatim here.
+  locator: card/limitations

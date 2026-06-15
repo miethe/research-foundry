@@ -1,0 +1,75 @@
+id: ext_20260615_8722f0df_001
+source_card_id: src_20260614_kw012_00
+created_at: '2026-06-15T09:31:13-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Ravelry states there is no official first-party Ravelry app and that the page is a directory of
+    third-party apps built by Ravelers and other developers.
+  locator: Page intro (top of page)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: knitCompanion is listed as a Ravelry-connected pattern-tracking app for knitters and fiber artists,
+    and is one of the higher-traffic connectors on the directory.
+  locator: App listing — knitCompanion
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Multiple third-party row-counter and project-tracking connectors exist (Row Counter, YarnBuddy,
+    Pocket Knitting, Pocket Crochet, Loopsy), each syncing project tracking with Ravelry.
+  locator: App listing — Row Counter / YarnBuddy / Pocket Knitting / Pocket Crochet / Loopsy
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Pattern discovery and management is served by several connectors including kntd:discover, Pattrick,
+    Ravelgurumi (amigurumi-specific), and Ravit/Ravit 2, which browse the Ravelry pattern and yarn databases.
+  locator: App listing — kntd:discover / Pattrick / Ravelgurumi / Ravit / Ravit 2
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Yarn Squirrel is a connector that brings a user's full Ravelry library to iPhone/iPad and stores
+    their PDF patterns alongside it.
+  locator: App listing — Yarn Squirrel
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Stitch Fiddle is listed as a connected pattern-design tool spanning knitting, cross stitch, and
+    crochet.
+  locator: App listing — Stitch Fiddle
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Stash management is served by third-party connectors including Yarn Stasher (AI-powered Smart
+    Scan), YarnCat, and YarnBuddy, all integrating with Ravelry.
+  locator: App listing — Yarn Stasher / YarnCat / YarnBuddy (stash)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: App listing — kntd:discover / Pattrick / Ravelgurumi / Ravit / Ravit 2
+contradictions_or_cautions:
+- text: 30-day user counts are live and will drift over time
+  locator: card/trust
+- text: Page has no visible publication date
+  locator: card/trust
+- text: Page shows no explicit publication date; treat "as of accessed_at" framing for currency.
+  locator: card/limitations
+- text: 30-day active-user counts shown on the page are live metrics and will drift; not captured as verbatim
+    numeric claims here.
+  locator: card/limitations
+- text: The page text confirmed does not include the words "OCR" (for Yarn Squirrel) or "offline" (for
+    Ravelgurumi); those descriptors from the brief are not asserted as verbatim from this source.
+  locator: card/limitations

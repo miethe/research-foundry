@@ -1,0 +1,145 @@
+run_id: rf_run_20260614_for_turning_a_structured_crochet_ir
+generated_at: '2026-06-14T21:11:48-04:00'
+contradictions:
+- source_card_id: src_20260614_kw004_05
+  text: No author real name, publisher, or release date in README
+  locator: card/trust
+- source_card_id: src_20260614_kw004_05
+  text: Repo description references 'Connectivity Shapes force-directed graph layout' but README itself
+    does not cite a paper
+  locator: card/trust
+- source_card_id: src_20260614_kw004_05
+  text: 'Author-stated performance/scope caveats: poor layout quality on small patterns, slowness on large
+    patterns, and no support for joined limbs — material feasibility caveats for real-time/mobile use.'
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_05
+  text: README provides no real author name, publisher, or explicit release date; the "2025" / "Greer
+    & Mould reference implementation" framing in the task source comes from outside the README, which
+    itself contains no academic citation. Recorded as such; not independently verified here.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_11
+  text: arXiv preprint (v1); peer-review / venue status not stated in the retrieved text. The "2048 points"
+    and two-level local/global Graph-Attention details from the abstract summary could not be confirmed
+    as short verbatim excerpts at the visited HTML and are therefore not quoted here.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_08
+  text: Synthesis layer over external papers; citation superscripts in original are stripped in plaintext
+  locator: card/trust
+- source_card_id: src_20260614_kw004_08
+  text: Some claims about external tools are paraphrased, not quoted from the original tools
+  locator: card/trust
+- source_card_id: src_20260614_kw004_08
+  text: 'This source is a derived Deep Research synthesis: claims about external tools (CrochetPARADE,
+    AmiGo, Greer & Mould) are paraphrased from the original papers, not quoted from those primary sources,
+    and the original document''s citation superscripts are stripped in plaintext. It is primary only for
+    KnitWit''s own framing and recommendations; downstream claims about the external tools should ideally
+    be confirmed against the cited primary papers.'
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_02
+  text: README is self-descriptive/promotional; performance figures are author-stated, not independently
+    benchmarked.
+  locator: card/trust
+- source_card_id: src_20260614_kw004_02
+  text: The CrochetBench corpus claim (ev_006) originates in a separate arXiv paper, not the CrochetPARADE
+    README itself.
+  locator: card/trust
+- source_card_id: src_20260614_kw004_02
+  text: Self-descriptive primary source (the project's own README); performance numbers are author-stated,
+    not independently benchmarked.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_02
+  text: The "6,085 patterns encoded into the CrochetPARADE grammar" claim (CrochetBench validation at
+    scale) comes from a separate arXiv paper (arXiv:2511.09483), NOT from this repo's README; it is therefore
+    intentionally omitted from the verbatim evidence here and should be cited to its own source if used.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_03
+  text: Manual is marked "work in progress" (last updated 2026-01-07); parameter defaults and behavior
+    may change. Placement is stochastic (random seed) and only ~10%-accurate to requested lengths, so
+    it is not a closed-form deterministic geometry source.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_06
+  text: Quotes are taken from the ar5iv HTML rendering of arXiv preprint 2211.01178; plain-text transliterations
+    of mathematical notation (union as "u", inner products as <,>, gradients as "grad") replace the original
+    Unicode/LaTeX symbols. Scope is limited to amigurumi-style single-crochet toys; the paper does not
+    cover non-square stitches or flat/garment crochet.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_09
+  text: This is an internal project seed/planning doc authored by an LLM (ChatGPT 5.2). It asserts the
+    project's own intended architecture, contracts, and constraints; the named approaches and metrics
+    are proposed/to-be-evaluated, not independently benchmarked results. The external academic anchors
+    it cites are not validated within this card.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_07
+  text: The 3D force-directed layout is a heuristic approximation, not a physically accurate yarn/stitch
+    simulation; the authors note a more exact model would require modeling physical yarn and stitch properties.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_07
+  text: Evaluation is a small qualitative study (six professional designers, think-aloud), not a quantitative
+    accuracy benchmark.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_07
+  text: The ACM DL landing page is gated (HTTP 403); verbatim facts here were extracted from the authors'
+    open preprint PDF of the identical paper and corroborate the project B1 seed report.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_01
+  text: Editor prototype was not publicly released
+  locator: card/trust
+- source_card_id: src_20260614_kw004_01
+  text: User study n=6 professional designers
+  locator: card/trust
+- source_card_id: src_20260614_kw004_01
+  text: Prototype editor was not publicly released; findings are from a qualitative think-aloud study
+    with only six professional designers recruited via the myboshi pattern company. The 3D layout is acknowledged
+    by the authors as an approximation, not a physical simulation of the crocheted form.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_10
+  text: Models only a subset of stitches; double/treble crochet left as future work.
+  locator: card/trust
+- source_card_id: src_20260614_kw004_10
+  text: Yarn-relaxation/simulation step is ad-hoc and produces fidelity artifacts.
+  locator: card/trust
+- source_card_id: src_20260614_kw004_10
+  text: 'Scope: only a subset of crochet stitches (chain, slip, single crochet, sc2tog, sc3tog) plus utility
+    faces (inc, turn, cap, ch_edge) were modeled; double/treble crochet, post stitches, and many variations
+    are unmodeled. The yarn-relaxation/simulation step is explicitly described as ad-hoc and produces
+    shape-instability and fidelity artifacts; automatic pattern generation relies on a single stitch aspect
+    ratio. 2020 work; no quantitative accuracy metrics reported.'
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_00
+  text: Tested only on beginner-level, stuffed, single-crochet-like amigurumi patterns; no 2D/flat or
+    advanced patterns.
+  locator: card/trust
+- source_card_id: src_20260614_kw004_00
+  text: Quantitative results limited to a small set of example objects (apple, bunny pieces, raindrop,
+    elephant).
+  locator: card/trust
+- source_card_id: src_20260614_kw004_00
+  text: 'Scope: validated only on a small set of beginner-level, stuffed, single-crochet-like amigurumi
+    objects; flat/2D row pieces and intermediate/advanced patterns were explicitly excluded.'
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_00
+  text: Performance figures ("under 5 seconds", "well over two minutes", "30 seconds or more") are reported
+    qualitatively for specific example objects, not as systematic benchmarks; exact hardware is not captured
+    in this card.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_00
+  text: An upfront global solve on a pre-written pattern carries an "unavoidable" run-time cost; the near-instant
+    feedback claim applies to the incremental edit workflow, not the cold global solve.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_04
+  text: Marketing/self-description rather than independent evaluation
+  locator: card/trust
+- source_card_id: src_20260614_kw004_04
+  text: Codeberg/GitHub source mirrors not stated on this page
+  locator: card/trust
+- source_card_id: src_20260614_kw004_04
+  text: Source is the project's own landing page (self-description / marketing), not an independent evaluation.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_04
+  text: The page does not state Codeberg/GitHub source mirrors, so that claim is not supported by this
+    source.
+  locator: card/limitations
+- source_card_id: src_20260614_kw004_04
+  text: 'Performance caveat: large patterns (tens of thousands of stitches) can take minutes or more to
+    calculate; not designed for mobile.'
+  locator: card/limitations

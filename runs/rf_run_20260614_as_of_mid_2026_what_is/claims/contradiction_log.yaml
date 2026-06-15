@@ -1,0 +1,162 @@
+run_id: rf_run_20260614_as_of_mid_2026_what_is
+generated_at: '2026-06-15T09:31:17-04:00'
+contradictions:
+- source_card_id: src_20260614_kw012_05
+  text: Self-reported feature/pricing claims
+  locator: card/trust
+- source_card_id: src_20260614_kw012_05
+  text: No third-party verification of stated capabilities
+  locator: card/trust
+- source_card_id: src_20260614_kw012_05
+  text: 'Self-reported vendor/marketing source: feature, pricing, and platform claims are the developer''s
+    own and are not independently verified.'
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_05
+  text: Scope is cross-stitch chart tracking only; the site documents no row-by-row 3D rendering, garment/amigurumi
+    assembly, or non-counted-thread craft tooling.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_05
+  text: Published/copyright year recorded as 2026; specific feature-version dating is not given on the
+    page.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_04
+  text: No publication date visible; pricing/features may change without notice
+  locator: card/trust
+- source_card_id: src_20260614_kw012_04
+  text: No publication/last-updated date is visible on the page, so pricing and feature lists are point-in-time
+    (accessed 2026-06-14) and may change. As a vendor pricing page it is authoritative for plan structure
+    but inherently promotional. The page describes 2D grid charting only — no 3D visualization or assembly
+    guidance is offered, consistent with the 3D-preview whitespace.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_08
+  text: Self-published first-party landing page; all claims are the project's own and not independently
+    verified. Feature set and update date reflect the page as accessed 2026-06-14.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_06
+  text: Pricing observed on the listing (in-app purchases at $29.99) differs from third-party reviews
+    and the run's prior key_points (~$0.99/month or $9.99/year); subscription/IAP pricing is volatile
+    and tier-dependent, so dollar figures are not asserted here.
+  locator: card/trust
+- source_card_id: src_20260614_kw012_06
+  text: Feature descriptions are first-party marketing copy from the developer, not independent verification.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_06
+  text: 'Pricing is not asserted: the live App Store listing showed in-app purchases at \$29.99, which
+    conflicts with the run''s prior key_points (~\$0.99/month or \$9.99/year) and a third-party review
+    (Essentials \$9.99/yr). Subscription/IAP pricing is volatile and tier/region-dependent, so no specific
+    dollar figure is treated as confirmed.'
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_06
+  text: Android availability is stated by the developer/store ecosystem; this card was sourced from the
+    iOS App Store listing.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_10
+  text: Self-reported feature claims, not independently verified
+  locator: card/trust
+- source_card_id: src_20260614_kw012_10
+  text: No published release or versioning
+  locator: card/trust
+- source_card_id: src_20260614_kw012_10
+  text: No explicit open-source license
+  locator: card/trust
+- source_card_id: src_20260614_kw012_10
+  text: Self-reported feature claims from the project's own README; not independently verified or demoed.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_10
+  text: No published release, version, or explicit open-source license; hobbyist maturity (single-digit
+    stars, 36 commits) limits how much weight forward-visualization or pattern-fidelity claims should
+    carry.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_09
+  text: Marketing/self-description bias inherent to a project README
+  locator: card/trust
+- source_card_id: src_20260614_kw012_09
+  text: No quantitative performance or accuracy data provided
+  locator: card/trust
+- source_card_id: src_20260614_kw012_09
+  text: Self-description from a project README authored by the maintainer; feature claims are not independently
+    benchmarked and no quantitative accuracy/performance data is provided.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_11
+  text: Method has documented geometric obstructions (negative mean curvature, branching) and is sampling-rate
+    dependent; results are 'similar' to the input, not exact.
+  locator: card/trust
+- source_card_id: src_20260614_kw012_11
+  text: Output is "similar" to the input, not exact, and the method is sampling-rate dependent (too few
+    rows loses geometric detail).
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_11
+  text: 'Documented geometric obstructions to crochetability: negative mean curvature ("craters") and
+    branching require preprocessing/segmentation; not all shapes are handled directly.'
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_11
+  text: The paper conjectures (but does not prove) that the f,g parameterization is bijective, leaving
+    the proof to future work.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_01
+  text: Marketing description may overstate capabilities
+  locator: card/trust
+- source_card_id: src_20260614_kw012_01
+  text: Absence of a feature in the listing does not prove the app lacks it
+  locator: card/trust
+- source_card_id: src_20260614_kw012_01
+  text: 'This is first-party vendor marketing copy: feature bullets are promotional and may overstate
+    capabilities. Platform/version/rating/size fields are Apple-published and reliable. Absence of a feature
+    (ev_007) in marketing copy is suggestive, not conclusive proof the app lacks it. "Apr 13" year (2025)
+    is inferred from the supplied source metadata; the listing displays month/day only.'
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_07
+  text: README does not state formal release versions or development status
+  locator: card/trust
+- source_card_id: src_20260614_kw012_07
+  text: Feature claims are self-described and not independently benchmarked
+  locator: card/trust
+- source_card_id: src_20260614_kw012_07
+  text: README does not state formal release versions or a packaged consumer mobile product; feature claims
+    are self-described by maintainers and not independently benchmarked. Local-only computation is asserted
+    in the README, not verified by audit.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_00
+  text: 30-day user counts are live and will drift over time
+  locator: card/trust
+- source_card_id: src_20260614_kw012_00
+  text: Page has no visible publication date
+  locator: card/trust
+- source_card_id: src_20260614_kw012_00
+  text: Page shows no explicit publication date; treat "as of accessed_at" framing for currency.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_00
+  text: 30-day active-user counts shown on the page are live metrics and will drift; not captured as verbatim
+    numeric claims here.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_00
+  text: The page text confirmed does not include the words "OCR" (for Yarn Squirrel) or "offline" (for
+    Ravelgurumi); those descriptors from the brief are not asserted as verbatim from this source.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_03
+  text: Page did not surface the PDF/ePub/Word/Lovecrafts/YouTube import claims listed in the seed; those
+    are omitted as unverifiable from the page text.
+  locator: card/trust
+- source_card_id: src_20260614_kw012_03
+  text: This is a vendor-authored marketing/features page (primary for product claims, not independent
+    verification); no publication date is shown.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_03
+  text: The page as fetched did NOT surface the seed's claims about importing PDF/ePub/Word documents
+    or importing from Lovecrafts, web pages, or YouTube; those claims were omitted because no verbatim
+    text confirmed them on this page.
+  locator: card/limitations
+- source_card_id: src_20260614_kw012_02
+  text: No publication date shown; prices/terms may change without notice
+  locator: card/trust
+- source_card_id: src_20260614_kw012_02
+  text: Marketing-framed Gems dollar values ('worth up to $X') are vendor estimates
+  locator: card/trust
+- source_card_id: src_20260614_kw012_02
+  text: No publication date is shown on the page, so prices and terms may change without notice; this
+    is vendor-authored marketing copy, not an independently audited source. The page does not describe
+    a "Ribbuild PDF-to-ePattern conversion" feature, so that specific SOURCE key point is not asserted
+    here. The page labels Plus's 100 Gems a "joining gift" (one-time) rather than a recurring monthly
+    allowance, contrary to the SOURCE summary; the recurring monthly Gems wording applies to Gold (100/mo)
+    and Platinum (400/mo).
+  locator: card/limitations

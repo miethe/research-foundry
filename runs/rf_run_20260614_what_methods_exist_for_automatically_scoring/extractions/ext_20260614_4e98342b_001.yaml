@@ -1,0 +1,77 @@
+id: ext_20260614_4e98342b_001
+source_card_id: src_20260614_rib042_00
+created_at: '2026-06-14T16:13:03-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: RAGAS is a reference-free framework for evaluating Retrieval Augmented Generation pipelines without
+    ground-truth human annotations.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: 'RAGAS evaluates three dimensions of RAG: retrieval of relevant/focused passages, faithful exploitation
+    of those passages by the LLM, and generation quality.'
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The framework's purpose is to enable faster RAG evaluation cycles by removing the dependency on
+    ground-truth human annotations.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Faithfulness holds when every claim made in the answer can be inferred from the retrieved context.
+  locator: Faithfulness (metric definition)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Answer Relevance rewards answers that directly address the question and penalizes incomplete or
+    redundant answers.
+  locator: Answer Relevance (metric definition)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Context Relevance rewards retrieved context that exclusively contains information needed to answer
+    the question, penalizing redundant content.
+  locator: Context Relevance (metric definition)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: All RAGAS metrics are computed in a fully self-contained, reference-free way by prompting an LLM,
+    using the gpt-3.5-turbo-16k model in the paper.
+  locator: Methodology (metric computation)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: RAGAS ships integrations with LlamaIndex and LangChain and is released as open source.
+  locator: Tooling / availability
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Methodology (metric computation)
+contradictions_or_cautions:
+- text: arXiv preprint (v1 2023-09; later revised v2 2025-04)
+  locator: card/trust
+- text: Metrics validated on the authors' own WikiEval dataset; generalization beyond it not established
+    in v1
+  locator: card/trust
+- text: 'arXiv preprint: v1 dates to 2023-09; a revised v2 was posted 2025-04, so specific numbers may
+    differ between versions. Metrics in v1 were validated on the authors'' own WikiEval dataset; broad
+    generalization is not established within the paper.'
+  locator: card/limitations

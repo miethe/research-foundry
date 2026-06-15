@@ -1,0 +1,72 @@
+id: ext_20260614_a1ffd4e5_001
+source_card_id: src_20260614_kw009_08
+created_at: '2026-06-14T23:21:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Arm's Fragment Pre-pass is a Hidden Surface Removal technique that runs a first pass over fragments
+    to determine which ones will be visible in the final result before shading.
+  locator: Intro / definition of the Fragment Pre-pass
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: On a Fortnite parachute scene, Arm measured a 6.5% reduction in overall GPU cycles and a 16.1%
+    reduction in floating-point arithmetic operations with the Fragment Pre-pass enabled.
+  locator: 'Performance results table (Fortnite: Parachute scene row)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: On Justice Online Mobile, Arm measured a 4.6% reduction in GPU cycles and a 15.9% reduction in
+    floating-point arithmetic operations from the Fragment Pre-pass.
+  locator: Performance results table (Justice Online Mobile row)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The Fragment Pre-pass can perform Hidden Surface Removal on a useful subset of transparent draw
+    calls where a hardware prepass would normally give up, but not on all transparent primitives.
+  locator: Section on transparent geometry handling
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: When the Fragment Pre-pass does not apply, Arm's other Hidden Surface Removal technologies such
+    as Forward Pixel Kill remain active to provide some hidden-surface removal.
+  locator: Section describing test configuration / fallback HSR
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'The Fragment Pre-pass is supported on Arm''s 2024-2025 generation GPUs: Mali-G625, Mali-G725,
+    and Immortalis-G925.'
+  locator: GPU support statement
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: 'Performance results table (Fortnite: Parachute scene row)'
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Performance results table (Justice Online Mobile row)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: GPU support statement
+contradictions_or_cautions:
+- text: Vendor-published performance figures may reflect favorable test scenes; not independently verified.
+  locator: card/trust
+- text: Vendor-published performance figures from Arm's own blog; benchmark scenes are vendor-selected
+    and not independently verified. Page metadata lists the publish date as 2024-11-28, which differs
+    from the harness-supplied "2025-05" hint.
+  locator: card/limitations

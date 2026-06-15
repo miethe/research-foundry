@@ -1,0 +1,106 @@
+id: ext_20260614_5f5c3444_001
+source_card_id: src_20260614_rib045_00
+created_at: '2026-06-14T16:31:44-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The study evaluates four QA uncertainty-estimation methods (VCE, MSP, Sample Consistency, CoCoA)
+    on BoolQ, SQuAD 2.0, TriviaQA, and GSM8K using a LLaMA 3 / 3.2 3B-Instruct model.
+  locator: Experimental Setup - Resources and tooling
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The paper's headline finding is that the hybrid CoCoA approach (confidence plus consistency) yields
+    the best overall reliability, improving both calibration and discrimination.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Single-sample verbalized confidence (VCE) is severely overconfident, reporting ~97.6% mean confidence
+    on SQuAD and 98.8% on GSM8K despite far lower accuracy, producing large ECE.
+  locator: Results and Analysis - High-level takeaways (1)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'Token-probability MSP is far better calibrated than single-shot VCE: GSM8K ECE 0.104 (MSP) vs
+    0.335 (VCE single-sample), and TriviaQA ECE 0.147 (MSP) vs 0.309 (VCE single-sample).'
+  locator: Results and Analysis - Table 1 (GSM8K, TriviaQA rows)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: 'Multi-sample TOP-K aggregation sharply reduces VCE overconfidence: GSM8K VCE ECE falls from 0.335
+    (single-sample) to 0.129 (TOP-K).'
+  locator: Results and Analysis - Table 1 (GSM8K multi-sample rows)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Hybrid CoCoA is the best-calibrated method overall, achieving ECE 0.062 on SQuAD 2.0 and 0.081
+    on GSM8K with competitive AUROC.
+  locator: Results and Analysis - High-level takeaways (3) / Table 1
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: MSP gives strong ranking (highest AUROC on TriviaQA 0.841 and GSM8K 0.838) but weaker calibration
+    than CoCoA, making it a dependable ranker rather than a well-calibrated confidence source.
+  locator: Results and Analysis - MSP subsection
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: 'CoCoA leads discrimination/AUROC across benchmarks: SQuAD 0.844, TriviaQA 0.841 (tie with MSP),
+    GSM8K 0.786, and BoolQ 0.687 (best ranking on BoolQ).'
+  locator: Results and Analysis - Table 1 (AUROC column)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Experimental Setup - Resources and tooling
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Results and Analysis - High-level takeaways (1)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Results and Analysis - Table 1 (GSM8K, TriviaQA rows)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Results and Analysis - Table 1 (GSM8K multi-sample rows)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Results and Analysis - High-level takeaways (3) / Table 1
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Results and Analysis - MSP subsection
+- metric_name: evidence_point
+  value: ev_008
+  unit: null
+  date_context: null
+  locator: Results and Analysis - Table 1 (AUROC column)
+contradictions_or_cautions:
+- text: Single small open model (LLaMA 3.2 3B-Instruct) on four QA datasets; authors note their focus
+    is relative behavior of estimators and expect trends to transfer, but absolute numbers may shift across
+    model sizes/families. CoCoA's strength comes at high compute cost (M=10 samples via separate decoding).
+    Results table figures are rendered inline (digits doubled in scraped HTML, e.g. "0.3350.335"); confirmed
+    against the canonical Table 1 values.
+  locator: card/limitations

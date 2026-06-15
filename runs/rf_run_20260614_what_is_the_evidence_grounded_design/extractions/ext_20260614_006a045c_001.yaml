@@ -1,0 +1,89 @@
+id: ext_20260614_006a045c_001
+source_card_id: src_20260614_kw002_00
+created_at: '2026-06-14T15:58:57-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: CrochetPARADE does not distinguish rows from rounds with a keyword; each new line of the pattern
+    text is treated as a new row/round.
+  locator: Section 'tttttt' (row/round and repeat semantics)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Bracketed repeat blocks can have their last iteration ended early with `>` and their first iteration
+    started at a marked location with `<`, and `...` provides line continuation/wrap.
+  locator: Section 'tttttt' (angle markers and line continuation)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Stitches on a row are auto-attached one-by-one to consecutive stitches in the previous row, and
+    turning the work at the end of a row is accounted for automatically by the renderer.
+  locator: Section 'Specifying attachment points' (turn handling)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'The grammar has variable/counter machinery: a counter is initialized between two `$` signs (e.g.
+    `$k=0$`) and incremented/decremented with `++`, `--`, `prev k`, or `next k`, with algebra (e.g. mod)
+    permitted in indexing.'
+  locator: 'Section ''Labels with counters: @A[++k] and .A[++k]'''
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Increase stitches follow a `Ninc` shorthand whose raw definition packs multiple top nodes into
+    one insertion point, e.g. `sc2inc` is two single-crochet top nodes chained onto a shared base.
+  locator: Section 'Top Nodes' (raw stitch definitions); increase example
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Disjoint pieces are created by using a connection length of `skip`; the internally defined `start_anew`
+    stitch uses this so the next stitch has no connection to the previous one, like starting a new part
+    of the project.
+  locator: Section 'Connections' (raw stitch grammar); start_anew
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The CrochetPARADE manual is CC BY-NC-SA and the computational components are GPLv3, but the grammar
+    itself cannot be copyrighted and is in the public domain.
+  locator: Section 'LICENSE AND COPYRIGHT'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: 'Section ''Labels with counters: @A[++k] and .A[++k]'''
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section 'Top Nodes' (raw stitch definitions); increase example
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Section 'LICENSE AND COPYRIGHT'
+contradictions_or_cautions:
+- text: Manual is descriptive prose with informal section headings (e.g. a placeholder heading 'tttttt'),
+    not a formal grammar BNF.
+  locator: card/trust
+- text: Does not document a comprehensive built-in stitch keyword list, an explicit Ninc/Ntog naming rule,
+    nor 'start_a_new_chain'/'TRANSFORM_OBJECT' constructs in the text reviewed.
+  locator: card/trust
+- text: The manual is descriptive prose with informal/placeholder section headings (e.g. a section literally
+    titled "tttttt"), not a formal BNF grammar.
+  locator: card/limitations
+- text: The text reviewed does not contain a comprehensive built-in stitch keyword list, an explicit "Ninc/Ntog"
+    naming rule, nor `start_a_new_chain` / `TRANSFORM_OBJECT` constructs; only `sc2inc` and decrease examples
+    like `dc2tog` appear, so the increase/decrease convention is inferred from examples rather than a
+    stated rule.
+  locator: card/limitations

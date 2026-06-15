@@ -1,0 +1,55 @@
+id: ext_20260615_a06876e4_001
+source_card_id: src_20260614_kw013_07
+created_at: '2026-06-15T09:54:32-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: An Etsy API app must not display listing content more than six hours older than Etsy's live data,
+    and must not cache or store content longer than reasonably necessary to serve users.
+  locator: Section 5, 'Display of Data'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Etsy grants only a limited, non-sublicensable, non-transferable, non-exclusive and revocable license,
+    solely to develop applications that integrate with Etsy Services.
+  locator: Section 1, 'License to Use the Etsy API'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Developers must not support, encourage, or facilitate the unauthorized downloading, copying, reproduction,
+    or use of Etsy Members' products, photos or designs, or any infringement of IP rights.
+  locator: 'Section 5, ''Prohibited Behavior'' #6'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Apps must request no more than the minimum amount of data needed from the Etsy API to provide
+    sellers with the intended application (data minimization).
+  locator: 'Section 5, ''Prohibited Behavior'' #17'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Developers must not reverse engineer the API or access internal/legacy Etsy APIs or data feeds,
+    and must not create extra API keys to circumvent rate limits.
+  locator: 'Section 5, ''Prohibited Behavior'' #9; Section 2, ''API Rate Limits'''
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Etsy Members, not Etsy, own the content they create; the API conveys no license to redistribute
+    designers' content, so developers must secure rights independently.
+  locator: Section 5, 'Members' Content'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: The terms page does not display an explicit "last updated" or effective date; the document references
+    an Enterprise Tier and arbitration agreement (Section 11 of Etsy Terms) but version/date metadata
+    was not visible on the page at access time.
+  locator: card/limitations

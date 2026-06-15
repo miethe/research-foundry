@@ -1,0 +1,64 @@
+id: ext_20260614_e3701048_001
+source_card_id: src_20260614_kw008_09
+created_at: '2026-06-14T22:59:33-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: setBufferAt(Engine&, bufferIndex, BufferDescriptor&&, byteOffset=0) does a partial copy-init into
+    a single buffer slot at a byte offset, and byteOffset must be a multiple of 4.
+  locator: VertexBuffer::setBufferAt() method + @param byteOffset doc
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: A VertexBuffer set supports a maximum of 8 buffers, so attributes like position/color/uv can live
+    in separate, independently updatable buffer slots.
+  locator: VertexBuffer::Builder::bufferCount() doc
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Enabling buffer objects mode (enableBufferObjects(bool=true)) requires clients to call setBufferObjectAt
+    rather than setBufferAt, and allows sharing data between VertexBuffer objects.
+  locator: VertexBuffer::Builder::enableBufferObjects() doc
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: setBufferObjectAt() swaps in a whole GPU BufferObject (hot-swap), enabling recolor/restream by
+    buffer swap instead of re-uploading vertex data.
+  locator: VertexBuffer::setBufferObjectAt() doc
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: setBufferAtAsync() is a non-blocking asynchronous version of setBufferAt() that copy-initializes
+    the buffer and invokes a completion callback when the upload finishes.
+  locator: VertexBuffer::setBufferAtAsync() doc
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: VertexBuffer::setBufferAt() method + @param byteOffset doc
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: VertexBuffer::Builder::bufferCount() doc
+contradictions_or_cautions:
+- text: main branch is a moving target; exact signatures may drift between releases
+  locator: card/trust
+- text: Header doc comments describe intent but full semantics live in the .cpp and backend
+  locator: card/trust
+- text: Tracks the `main` branch, which is a moving target; exact signatures and defaults may drift between
+    Filament releases.
+  locator: card/limitations
+- text: Header doc comments describe API intent; full runtime semantics (alignment enforcement, backend
+    behavior) live in the .cpp and backend layers, not this header.
+  locator: card/limitations

@@ -1,0 +1,74 @@
+id: ext_20260615_8cbc3b6d_001
+source_card_id: src_20260614_rib033_00
+created_at: '2026-06-15T09:33:08-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: BGE-M3 produces dense embeddings of dimension 1024 and supports a maximum input sequence length
+    of 8192 tokens.
+  locator: Specs - Model table
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: 'BGE-M3 can simultaneously perform three retrieval functionalities: dense retrieval, multi-vector
+    (ColBERT) retrieval, and sparse (lexical) retrieval.'
+  locator: Introduction (Multi-Functionality)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: BGE-M3 supports more than 100 working languages.
+  locator: Introduction (Multi-Linguality)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: BGE-M3 can process inputs of varying granularity, from short sentences up to long documents of
+    up to 8192 tokens.
+  locator: Introduction (Multi-Granularity)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The model card recommends a RAG retrieval pipeline of hybrid retrieval (dense + sparse) followed
+    by re-ranking for higher accuracy and generalization.
+  locator: Some suggestions for retrieval pipeline in RAG
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Re-ranking with a cross-encoder is recommended because cross-encoder re-rankers achieve higher
+    accuracy than bi-encoder embedding models.
+  locator: Some suggestions for retrieval pipeline in RAG
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Specs - Model table
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Introduction (Multi-Functionality)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Introduction (Multi-Linguality)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Introduction (Multi-Granularity)
+contradictions_or_cautions:
+- text: This is the authors' own model card (primary but promotional); benchmark/accuracy claims reflect
+    the publisher's framing rather than independent evaluation. Spec values are as of the 2024-02 model
+    release and may differ from later checkpoints or community forks.
+  locator: card/limitations

@@ -1,0 +1,1217 @@
+id: claims_20260614_rf_run_20260614_what_methods_make
+intent_id: intent_research_20260614_what_methods_make_per_stitch_indexing
+report_ref: reports/report_draft.md
+verification_status: pending
+claims:
+- claim_id: clm_001
+  text: The method translates a written crochet pattern into a graph and obtains a force-directed graph
+    layout, producing a 3D model that matches the hand-crocheted pattern in shape and size without physically
+    crocheting.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_04
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_002
+  text: Each stitch becomes a node and physical connections between stitches become edges, with horizontal
+    edges marking stitches made one immediately after the other and vertical edges marking the stitch
+    worked into the one below.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_04
+    evidence_id: ev_002
+    relation: supports
+    locator: Section 4 (graph construction), para. 'Each stitch is represented as a node'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_003
+  text: The layout follows Isenburg et al.'s force-directed algorithm, which inflates a planar graph by
+    assigning each edge a length and minimizing overall curvature to maximize volume - analogous to stuffing
+    a crocheted shell.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_04
+    evidence_id: ev_003
+    relation: supports
+    locator: Section 4.2 The graph layout
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_004
+  text: The layout is a non-linear least-squares optimization minimizing two energy functions - one controlling
+    edge lengths (each edge assumed length one) and one measuring local curvature at each node (assumed
+    minimal).
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_04
+    evidence_id: ev_004
+    relation: supports
+    locator: Section 4.2 The graph layout, energy functions
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_005
+  text: On simple beginner-level patterns the models were accurate in shape and size to their real-world
+    counterparts, though similar rather than identical, with some differences attributed to the uniform
+    edge-length-of-1 assumption.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_04
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 5.1 Modeling complete patterns / Section 6 Conclusion
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_006
+  text: Shaping effects such as pulling tight to create a dimpling effect are modeled with additional
+    constraint edges, recreating a pulling-in effect by linking the first and last node, paralleling how
+    a crocheter pulls the yarn until satisfied with the shape.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_04
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 5.1, apple / constraint-edge passage
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_007
+  text: The application is oriented toward amigurumi - dense uniform stitches worked in continuous rounds
+    to make stuffed 3D figures - but the authors state it could be extended to clothing or other crochet
+    styles.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_04
+    evidence_id: ev_007
+    relation: supports
+    locator: Abstract / Section 3 Background
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_008
+  text: 'Force-directed layouts are slow: simple pieces (legs 318 stitches, arms 264 stitches) converged
+    in under 5 seconds, while larger pieces (bunny head 798 stitches, body 708 stitches) did not converge
+    even after running for over two minutes.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_04
+    evidence_id: ev_008
+    relation: supports
+    locator: Section 5.3 Performance
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_009
+  text: CrochetPARADE's website and all computational components are free and open source under GPLv3,
+    ensuring the platform stays free and open in perpetuity.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_05
+    evidence_id: ev_001
+    relation: supports
+    locator: 'Section: LICENSE AND COPYRIGHT'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_010
+  text: Showcase patterns are in the public domain while the user manual (including the grammar description)
+    is released under Creative Commons BY-NC-SA, and the grammar itself is uncopyrightable and public
+    domain.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_05
+    evidence_id: ev_002
+    relation: supports
+    locator: 'Section: LICENSE AND COPYRIGHT'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_011
+  text: The SVG export identifies each stitch by its type, row number, and position within a row, presenting
+    the same information as a standard crochet diagram so it can serve as an alternative crocheting guide.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_05
+    evidence_id: ev_003
+    relation: supports
+    locator: 'Section: OVERVIEW (export feature)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_012
+  text: Interactive 3D features include animating the pattern-creation process, highlighting and hiding
+    selected stitches, changing yarn thickness and color, and accessing per-stitch information by hovering.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_05
+    evidence_id: ev_004
+    relation: supports
+    locator: 'Section: OVERVIEW (interactive features)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_013
+  text: All calculations run locally on the user's device with no central-server collection or internet
+    transmission, at the cost of sluggish performance and multi-minute calculations for patterns of tens
+    of thousands of stitches.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_05
+    evidence_id: ev_005
+    relation: supports
+    locator: 'Section: OVERVIEW (privacy / computation locality)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_014
+  text: The project is dual-hosted, with the primary repository on Codeberg and a mirror on GitHub, and
+    the live platform at crochetparade.org.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_05
+    evidence_id: ev_006
+    relation: supports
+    locator: README header (repository hosting)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_015
+  text: CrochetPARADE uses a custom language grammar to define stitches and stitch patterns, parsing and
+    checking patterns for correctness before building and rendering a 3D virtual model, eliminating the
+    ambiguity of plain-English instructions.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_05
+    evidence_id: ev_007
+    relation: supports
+    locator: 'Section: OVERVIEW (grammar / correctness)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_016
+  text: CrochetPARADE indexes each stitch as (row, per-row stitch | global stitch number), e.g. (4,23|410),
+    with both row and stitch counters starting from 0.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_07
+    evidence_id: ev_001
+    relation: supports
+    locator: Stitch indexing notation
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_017
+  text: The global stitch counter counts non-stitches such as 'sk' but excludes internal stitches like
+    those inside bobbles or popcorns.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_07
+    evidence_id: ev_002
+    relation: supports
+    locator: Stitch indexing notation
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_018
+  text: Stitches on a row are automatically attached one-by-one to consecutive stitches in the previous
+    row/round, and turning at row end is accounted for automatically.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_07
+    evidence_id: ev_003
+    relation: supports
+    locator: Traversal-to-geometry / sequential attachment
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_019
+  text: When attaching to a base row A, an even stitch index attaches to the next stitch of A in A's crochet
+    direction, while an odd index attaches to the previous stitch on A.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_07
+    evidence_id: ev_004
+    relation: supports
+    locator: Even/odd attachment-direction rule
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_020
+  text: Stitches over- or under-stretched by more than ~15% relative to baseline height are flagged (blue=too
+    loose, red=too stretched), and the engine converges to within ~10% of requested stitch lengths under
+    default settings.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_07
+    evidence_id: ev_005
+    relation: supports
+    locator: Tension/drift detection and physics convergence
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_021
+  text: 'If the model looks inside-out or follows left-hand directions, the user changes the random start
+    seed via ''DOT: start=2'' (or other values) because inside/outside is picked at random.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_07
+    evidence_id: ev_006
+    relation: supports
+    locator: Inside-out / left-handed mirroring
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_022
+  text: The DSL uses sc2inc for two single crochets worked into one stitch and sc2tog for a decrease combining
+    two; each new line is a new row/round.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_07
+    evidence_id: ev_007
+    relation: supports
+    locator: DSL increase/decrease syntax and controls
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_023
+  text: Row/stitch highlighting is done via ctrl+f (entering a row number or row,stitch pair), and stitches
+    can be revealed one by one via the 'a' control.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_07
+    evidence_id: ev_008
+    relation: supports
+    locator: Navigation controls
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_024
+  text: The paper proposes a first visual, domain-specific, graph-based language for representing crochet
+    patterns.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_02
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract (p.48)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_025
+  text: A prototype editor lets designers create patterns in 2D and view them in 3D; a user study showed
+    the language expresses both 2D and 3D patterns and removes ambiguities of current notations.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_02
+    evidence_id: ev_002
+    relation: supports
+    locator: Abstract (p.48)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_026
+  text: 'Stitch connectivity carries the semantics: the increase method is encoded as multiple incoming
+    insert edges and the decrease method as multiple outgoing insert edges.'
+  materiality: background
+  claim_type: causal
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_02
+    evidence_id: ev_003
+    relation: supports
+    locator: Section 3.1, Figure 5 caption (p.52)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_027
+  text: Graph nodes are insertion points rather than stitches directly, decoupling stitch/loop identity
+    from a positional stitch sequence.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_02
+    evidence_id: ev_004
+    relation: supports
+    locator: Section 3.1, Insertion Points and Transitions (p.52)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_028
+  text: The editor requires patterns to be built linearly in the order they would be crocheted, so node
+    creation order equals the canonical work/traversal order.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_02
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 3.4, Domain-Specific Tool Support (p.55)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_029
+  text: In a think-aloud study with six professional crochet designers, all but one reproduced the test
+    pattern in the 2D editor, and four said reproducing it surfaced previously hidden ambiguities.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_02
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 4.1 Procedure / 4.3 Task 2 (pp.56-57)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_030
+  text: The paper is authored by Vidya Narayanan, Kui Wu, Cem Yuksel, and James McCann and was published
+    in ACM Transactions on Graphics (SIGGRAPH 2019), Volume 38, Issue 4, Article 63, on 12 July 2019.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_03
+    evidence_id: ev_001
+    relation: supports
+    locator: Front matter / byline; ACM DL publication history (TOG Vol. 38, Issue 4, Article 63)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_031
+  text: The augmented stitch mesh data structure stores low-level knitting operations per-face and encodes
+    the dependencies between faces using directed edge labels.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_03
+    evidence_id: ev_002
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_032
+  text: The system generates knittable augmented stitch meshes from 3D models, supports edits that preserve
+    knittability, and schedules the execution order and location of each face for production on a knitting
+    machine.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_03
+    evidence_id: ev_003
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_033
+  text: Each face is a fragment of a knitting program that operates on the yarns and loops from its in
+    edges to produce the yarns and loops indicated by its out edges.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_03
+    evidence_id: ev_004
+    relation: supports
+    locator: Section 'Face Programs' (Augmented Stitch Mesh representation)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_034
+  text: The directed edge labels provide a type signature -- the input and output loop and yarn counts
+    -- for each knitting program fragment.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_03
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 'Face Programs' (Augmented Stitch Mesh representation)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_035
+  text: The directed edge labels induce a directed graph on the faces, which is used to check for dependency
+    cycles; an in edge may connect only to an out edge of the same type.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_03
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 'Directed Edges' (Augmented Stitch Mesh representation)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_036
+  text: The paper adapts the stitch-mesh tile paradigm to crochet by introducing a special edge type that
+    captures the 'current loop' — the loop held on the crochet hook during fabrication.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_00
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_037
+  text: All crochet stitches, despite differing in topology and texture, share the property that they
+    start and end with a single leading loop on the hook, giving a well-defined sequential yarn-path order.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_00
+    evidence_id: ev_002
+    relation: supports
+    locator: Section 3 Background, para 2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_038
+  text: International crochet notation is inconvenient for computer-based authoring because its symbols
+    carry no explicit information on how yarn is used within each stitch.
+  materiality: background
+  claim_type: causal
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_00
+    evidence_id: ev_003
+    relation: supports
+    locator: Section 1 Introduction, para 1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_039
+  text: 'The method encodes crochet construction dependencies as four directed edge labels: Next and Previous
+    handle short-term consecutive-stitch dependencies, while Future and Past handle long-term loop-through-fabric
+    dependencies.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_00
+    evidence_id: ev_004
+    relation: supports
+    locator: Section 4 Method, edge-label list
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_040
+  text: Faces use short-term (orange) and long-term (purple) edge types, where the leading loop and free
+    yarn cross the short-term edges and the long-term edges are crossed only by loops.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_00
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 4 Method, Figure 7 caption
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_041
+  text: Increases are realized by an 'inc' utility face that splits one future edge into two future edges,
+    while decreases use sc2tog (two past edges to one future) and sc3tog (three past edges).
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_00
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 4 Method, para after Table 1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_042
+  text: Only five crochet stitches — chain, slip stitch, single crochet, sc2tog, and sc3tog — were actually
+    modeled by the method, making the tile set explicitly incomplete.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_00
+    evidence_id: ev_007
+    relation: supports
+    locator: Section 6 Discussion, Stitch (Face) Modeling
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_043
+  text: The crochet face set was used to generate stitch-mesh patterns for a cube, a sphere, and the Stanford
+    bunny, with the sphere and bunny derived from triangle meshes via the Narayanan et al. 2019 pipeline.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_00
+    evidence_id: ev_008
+    relation: supports
+    locator: Section 5 Results, Figure 11 caption
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_044
+  text: 'The stitch graph encodes two distinct connection types: yarn connections (loops sequentially
+    adjacent on the needle) and loop connections (loops pulled through each other), which is the structural
+    basis for per-stitch indexing.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_08
+    evidence_id: ev_001
+    relation: supports
+    locator: Section 3, Converting Knitting Patterns to Graphs
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_045
+  text: A Hamiltonian path encodes the stitch-creation order and the yarn's physical flow is recovered
+    as an Eulerian path derived from it, linking logical stitch index to physical yarn traversal.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_08
+    evidence_id: ev_002
+    relation: supports
+    locator: Section 3.1, Knittable Graphs
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_046
+  text: The paper proposes a Desired Edge Length (DEL) metric defined as the root-mean-square of the relative
+    edge-length error, where 0 means perfect preservation of target lengths, giving a candidate per-stitch
+    correctness/drift measure.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_08
+    evidence_id: ev_003
+    relation: supports
+    locator: Section 6.2, Comparison Techniques
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_047
+  text: Layout refinement uses three forces — an attractive/repulsive edge-length force, a collision force,
+    and a universal electrostatic repulsion — and any move that introduces an edge crossing is rejected
+    (the node is kept in place).
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_08
+    evidence_id: ev_004
+    relation: supports
+    locator: Section 5.2, Safe Force-Directed Improvement
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_048
+  text: Across seven real knitting patterns (90 to 1183 nodes) the proposed method beat SFDP, ImPrEd,
+    and KnitGrid on DEL; on Antique Diamonds it scored 0.07 versus 0.33 (SFDP), 0.55 (ImPrEd), and 0.20
+    (KnitGrid).
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_08
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 6, Evaluation / Table 3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_049
+  text: The exact-length layout is far slower than baselines (Antique Diamonds 25s vs SFDP 0.074s; Triangle-5
+    at 1539 nodes took 40,906s vs SFDP 1.01s), evidence it does not scale to interactive mobile use without
+    approximation.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_08
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 6 / Table 4, Comparison of runtimes (seconds)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_050
+  text: 'The authors'' stated motivation is to expedite error detection and pattern validation: visualizing
+    the generated pattern helps catch too many/too few stitches, adornments in the wrong spot, or an unintended
+    shape.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_08
+    evidence_id: ev_007
+    relation: supports
+    locator: Introduction
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_051
+  text: The model represents a crochet pattern as a graph in which stitch insertion points are nodes and
+    the connections between stitches are edges, so traversing the graph follows the yarn path through
+    every stitch.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_01
+    evidence_id: ev_001
+    relation: supports
+    locator: Section 3.3.1.1 Differentiating between Stitch Types (p.33)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_052
+  text: 'Edges are typed: a ''previous'' edge encodes stitch order while an ''insert'' edge encodes the
+    worked-into relationship from the current stitch to the insertion point it was crocheted into.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_01
+    evidence_id: ev_002
+    relation: supports
+    locator: Section 3.3.1.1 Differentiating between Stitch Types (p.33)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_053
+  text: 'Increases and decreases are modeled by edge multiplicity: a node with multiple out-going insert
+    edges is an increasing stitch, and a node receiving multiple incoming insert edges is the one being
+    increased (decrease being the inverse).'
+  materiality: background
+  claim_type: causal
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_01
+    evidence_id: ev_003
+    relation: supports
+    locator: Section 3.3.2.5 Increasing and Decreasing Stitches (p.38)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_054
+  text: Rows and rounds are unified into a single concept called 'layers,' requiring no structural change
+    in the graph, and the layer number is stored as a property on each node.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_01
+    evidence_id: ev_004
+    relation: supports
+    locator: Section 3.3.2.2 Working in Layers (p.36)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_055
+  text: 'Crochetability is enforced structurally: a slip-stitch / ''previous'' edge can only point at
+    a node that already existed when the connection was made, and the prototype UI only permits valid
+    stitch connections so every pattern produced is always crochetable.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_01
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 3.3.1.1 (p.33) and Sections 1.6 / 3.4.3 (p.6, p.37)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_056
+  text: 'The prototype lays out and positions stitch nodes in 3D using a force-directed graph layout:
+    the ''3D Force-Directed Graph'' library built on Three.js and WebGL with a D3 variant as physics engine,
+    applying Dwyer''s force layout algorithm.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_01
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 4.1 library choice (p.44)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_057
+  text: Each node carries explicit addressing/traversal properties — its layer integer, a 'start' boolean
+    marking the first node of its layer, plus previous/next references and an array of nodes it inserts
+    into — giving a layer-plus-position identity per stitch.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_01
+    evidence_id: ev_007
+    relation: supports
+    locator: Section 4.2.1 Properties of Nodes (p.45)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_058
+  text: 'The paper proposes three distinct graph models for any arbitrary knit object: a simple undirected
+    graph, a simple directed graph, and a directed multigraph, each carrying a knot-theoretic component.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_06
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_059
+  text: From these models the authors derive natural categories tied to the complexity of knitting structures,
+    providing a basis for bounding which structural classes are tractable to reason about.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_06
+    evidence_id: ev_002
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_060
+  text: Determining whether a knit object of a given class exists for a given graph is NP-hard in general,
+    but specific cases admit linear- and polynomial-time algorithms by exploiting properties of common
+    knitting techniques.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_06
+    evidence_id: ev_003
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_061
+  text: The framework is explicitly designed both to analyze existing knitting objects from their graphs
+    and to generate knitting objects from graphs, establishing a rigorous bidirectional mapping between
+    graph structure and knit structure.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_06
+    evidence_id: ev_004
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_062
+  text: The framework is authored by Kathryn Gray, Brian Bell, Diana Sieper, Stephen Kobourov, Falk Schreiber,
+    Karsten Klein, and Seokhee Hong, submitted to arXiv (2407.00511) on 29 June 2024.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_kw005_06
+    evidence_id: ev_005
+    relation: supports
+    locator: arXiv metadata / authorship
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf01
+  text: "Across the surveyed tools, three distinct stitch-identity schemes exist - positional (row,stitch|global) labels (CrochetPARADE), graph-node/insertion-point identity with layer+start+prev/next addressing (Seitz/HPI Digital Crochet), and current-loop/edge-typed stitch-mesh identity (Guo et al., Narayanan et al.) - and for an edit-tolerant interactive preview the graph-node insertion-point scheme is the most stable because identity is carried by structural connectivity rather than by a recomputed positional counter."
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_016, clm_027, clm_051, clm_057, clm_036, clm_044], reasoning_summary: "clm_016 defines CrochetPARADE's positional (row,stitch|global) index that is recomputed on any edit; clm_027/clm_051 show HPI/Digital Crochet identity is the node (insertion point), decoupled from positional sequence, and clm_057 gives each node persistent layer+start+prev/next addressing; clm_036/clm_044 show stitch-mesh identity is carried by typed current-loop/yarn-and-loop edges. Identity bound to structure survives renumbering better than a positional counter."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf02
+  text: "Positional (row,stitch|global) indices such as CrochetPARADE's (4,23|410) are provably unstable under inc/dec or insertion edits because the global counter renumbers every downstream stitch, so KnitWit must NOT use a recomputed positional integer as the persistent stitch key and should instead mint a stable per-op GUID at op-creation time, retaining the positional label only as a derived, display-time projection."
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis: {from_claims: [clm_016, clm_017, clm_022, clm_057, clm_028], reasoning_summary: "clm_016/clm_017 define a single monotonically increasing global counter that includes non-stitches; clm_022 shows inc/dec change the stitch population of a round, so any earlier insertion shifts all later global numbers. clm_057 (persistent node properties) and clm_028 (creation order == work order) show identity can instead be bound at creation. Therefore the positional label is a function of edit state, not a stable key."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf03
+  text: "The Crochet IR v0.1 starter schema (pattern/pieces/rounds/ops with op enum and expected_stitch_count) currently lacks any persistent per-op identifier field, which is the single highest-leverage schema gap for highlight stability; KnitWit should add a required immutable op-level stitch_id (UUID minted on op creation) plus a derived round_index/pos_in_round projection so that highlighting and round-trip key off the GUID while the human-readable label is recomputed on demand."
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis: {from_claims: [clm_057, clm_054, clm_016, clm_028], reasoning_summary: "clm_057 shows the HPI model already attaches stable per-node identity plus a layer property and start flag; clm_054 unifies rows/rounds into a per-node layer integer, mirroring IR rounds. clm_016 shows positional labels alone are edit-fragile, and clm_028 shows creation order is canonical. Adding a GUID + derived projection ports the proven HPI addressing onto the IR's op list, which today carries only op/count/expected_stitch_count."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf04
+  text: "IR traversal order can be mapped to rendered geometry without drift by treating the linear op-creation order as the canonical Hamiltonian traversal and emitting exactly one mesh instance (or vertex group) per op in that order, because every surveyed system that guarantees correct stitch-to-geometry correspondence (CrochetPARADE sequential attachment, HPI linear construction, Gray et al. Hamiltonian/Eulerian recovery) relies on a single deterministic 1:1 traversal rather than re-deriving positions independently."
+  materiality: material
+  claim_type: causal
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis: {from_claims: [clm_018, clm_028, clm_045, clm_002], reasoning_summary: "clm_018 (CrochetPARADE auto-attaches stitches one-by-one to consecutive previous-round stitches), clm_028 (HPI editor forces linear as-if-crocheting construction so node order == traversal order), clm_045 (Gray et al. encode creation order as a Hamiltonian path), and clm_002 (one node per stitch with horizontal=sequential edges) all converge on a single deterministic traversal generating both index and geometry, which is what prevents independent-recompute drift."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf05
+  text: "The dominant off-by-one / drift failure modes for the highlight map are: (a) the global counter including non-stitches like sk while excluding internal bobble/popcorn sub-stitches, (b) spiral-vs-joined-round numbering ambiguity at the round seam, and (c) inc/dec changing per-round population mid-traversal; each is mitigated cheaply at IR level by storing an explicit per-op boolean for counts_in_index, an explicit round-closure/seam op, and deriving pos_in_round from a running count keyed to GUIDs rather than to raw line position."
+  materiality: material
+  claim_type: causal
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_017, clm_018, clm_022, clm_054, clm_041], reasoning_summary: "clm_017 names the exact counting inconsistency (counts sk, skips internal stitches) that produces off-by-one between display index and geometry index; clm_018 plus clm_054 (rounds unified as layers, auto turn handling) is where spiral/joined seam ambiguity lives; clm_022/clm_041 show inc/dec alter round population. Each failure maps to an explicit IR field that removes the ambiguity."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf06
+  text: "A reproducible highlight-mapping correctness metric for KnitWit is a Highlight Index Agreement (HIA) rate - the fraction of (round,stitch) pattern steps whose highlighted geometry instance equals the ground-truth index-map entry - computed over a labeled reference pattern set, and the Desired Edge Length (DEL = RMS relative edge-length error) metric from Gray et al. is the right complementary geometry-fidelity gate; KnitWit should adopt HIA as the primary acceptance gate (recommended pass threshold 100% exact match on the reference set, since highlight mapping is discrete and any mismatch is a visible bug) and DEL as a secondary spatial-plausibility check."
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_046, clm_011, clm_016, clm_023, clm_050], reasoning_summary: "clm_046 gives DEL (RMS relative edge-length error, 0=perfect) as an existing per-stitch geometry metric; clm_011/clm_016/clm_023 establish that each stitch already has an unambiguous (type,row,position) ground-truth label and that highlight is invoked by exact (row,stitch) lookup, so an exact discrete agreement rate is computable; clm_050 frames the purpose as catching too-many/too-few stitches. Highlight correctness is discrete (right instance or wrong instance), warranting a 100% exact-match gate distinct from DEL's continuous geometry score."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf07
+  text: "The labeled reference pattern set for the HIA acceptance gate should be assembled from the public-domain CrochetPARADE showcase patterns plus the cube/sphere/Stanford-bunny stitch-mesh exemplars, because these are the only sources here with both a published deterministic stitch index (CrochetPARADE (row,stitch|global)) and reproducible generated geometry (stitch-mesh tiles), giving a ready ground-truth index map without KnitWit having to hand-author one from scratch."
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_010, clm_016, clm_043, clm_009], reasoning_summary: "clm_010 states CrochetPARADE showcase patterns are public domain (reusable) and clm_009 that the platform is GPLv3/open; clm_016 gives those patterns a deterministic published index to serve as ground truth; clm_043 gives concrete reproducible geometry exemplars (cube, sphere, Stanford bunny) from the stitch-mesh face set. Together they form a ready labeled reference set."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf08
+  text: "The 'ghost next row' overlay can be derived incrementally and cheaply from the index map - by projecting only the next round's ops onto the existing positions of their previous-round insertion targets - rather than re-running the full force-directed layout, because layout convergence is the documented bottleneck (CrochetPARADE multi-minute on tens-of-thousands of stitches; Greer/Mould 700-800-stitch pieces failing to converge after 2+ minutes; Gray et al. up to 40,906s), whereas the next-row attachment relation is already O(1) per stitch in the IR."
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_018, clm_019, clm_008, clm_013, clm_049, clm_057], reasoning_summary: "clm_018/clm_019 show the next round attaches one-by-one to known previous-round stitches via a deterministic even/odd rule, and clm_057 gives each node explicit insert-target references - so the next-row positions are derivable directly from the index map. clm_008/clm_013/clm_049 document that full force-directed re-layout is multi-minute-to-hours and non-convergent at scale, so re-deriving the whole model for a ghost row is infeasible; an incremental projection is the only viable path."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf09
+  text: "Left-handed mirroring and US/UK term differences should be handled as presentation-layer transforms over a single canonical right-handed, US-term IR rather than by reindexing, because CrochetPARADE already shows handedness is a downstream rendering choice (a random start seed flips inside/outside and left/right without changing the pattern) and the stitch-mesh leading-loop yarn-path order is direction-defined but term-agnostic; reindexing for handedness would break the persistent stitch IDs and the round-trip key."
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_021, clm_037, clm_016, clm_028], reasoning_summary: "clm_021 shows CrochetPARADE treats inside-out/left-handed as a render-time start-seed flip, not a structural change; clm_037 shows every stitch has a single leading-loop yarn-path order that is directional but independent of US/UK naming; clm_016/clm_028 show the index/creation order is canonical. Therefore handedness and terminology are best applied as a display transform, preserving stable IDs."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf10
+  text: "For persistent stitch identity that survives round-trip with the inverse (mesh-to-pattern) engine, KnitWit should adopt the stitch-mesh current-loop / typed-edge identity (Next/Previous short-term, Future/Past long-term) as the interchange key between the forward IR and the inverse engine, because that representation is the only surveyed scheme proven to support both pattern->geometry generation and geometry->pattern derivation and to be edit-preserving (Narayanan et al. knittability-preserving edits; Wooly Graphs' explicit bidirectional analyze/generate framework)."
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_036, clm_039, clm_031, clm_032, clm_061], reasoning_summary: "clm_036/clm_039 define the crochet current-loop and four-label (Next/Previous/Future/Past) typed-edge identity; clm_031/clm_032 show the parent stitch-mesh structure supports knittability-preserving edits and scheduling (forward generation), and clm_061 (Wooly Graphs) establishes an explicit bidirectional analyze-from-graph / generate-from-graph mapping. This is the only scheme here demonstrated to work in both directions and under edits, making it the natural round-trip interchange key."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_inf11
+  text: "There is a real contradiction between academic feasibility and product readiness for the indexing-and-highlight capability: the discrete stitch-index/highlight mapping is product-ready (CrochetPARADE ships exact (row,stitch) highlight and deterministic indexing today), but the underlying 3D layout it would highlight onto is NOT product-ready for an amigurumi-first mobile app (force-directed convergence is multi-minute to non-convergent at 700+ stitches), so KnitWit should de-risk by decoupling the highlight map from the layout solver - shipping correct highlighting on a fast approximate/precomputed geometry rather than gating it on an exact physics layout - decision impact high."
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis: {from_claims: [clm_023, clm_012, clm_008, clm_005, clm_049, clm_013], reasoning_summary: "clm_023/clm_012 show CrochetPARADE already ships working exact highlight and per-stitch interaction (capability shown in a product), while clm_008/clm_049/clm_013 show the force-directed layout is multi-minute-to-hours and non-convergent at moderate stitch counts and clm_005 that even converged results are only approximate. The two sit on opposite sides of the feasibility/readiness line, so coupling them is the risk; decoupling resolves it."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_spec01
+  text: "The highest-severity risk to KnitWit's highlight feature is UX-trust erosion (severity high, likelihood medium) from off-by-one drift introduced when an inc/dec edit silently renumbers positional labels mid-session; the concrete mitigation is to gate every parameter edit behind the HIA acceptance test against the stored ground-truth index map and to surface a stitch-count validator (expected_stitch_count vs realized) so a mismatch is caught before render, mirroring CrochetPARADE's blue/red tension flags as a precedent for inline correctness signalling."
+  materiality: material
+  claim_type: prediction
+  status: speculation
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_016, clm_020, clm_050, clm_022], reasoning_summary: "Forward-looking risk projection: clm_016 (renumber-on-edit positional labels) and clm_022 (inc/dec change population) are the drift source; clm_020 (CrochetPARADE blue/red over/under-stretch flags) is precedent for inline correctness signalling; clm_050 frames stitch-count validation as the core error-detection value. Severity/likelihood and the specific HIA-gate mitigation are forward-looking inferences not directly asserted by any source, hence speculation."}
+  report_locations: []
+  reviewer_notes: ""
+- claim_id: clm_spec02
+  text: "The two prototype experiments that most de-risk gates G2 (Crochet-IR viability) and G3 (pattern-to-3D viability) for highlighting are a row-highlight-export harness that emits the GUID-keyed index map plus the HIA evaluator over the CrochetPARADE/stitch-mesh reference set, and an IR->stitch-graph converter that mints the persistent op GUIDs; building these before any physics-accurate layout work is the recommended next step because they validate identity stability and highlight correctness independently of the unconverged layout solver."
+  materiality: material
+  claim_type: prediction
+  status: speculation
+  confidence: medium
+  sources: []
+  inference_basis: {from_claims: [clm_011, clm_023, clm_046, clm_057, clm_049], reasoning_summary: "Forward-looking experiment recommendation tying findings to G2/G3: clm_011/clm_023 (deterministic index + exact highlight) and clm_046 (DEL metric) make a row-highlight-export + HIA evaluator concretely buildable now; clm_057 supports the IR->stitch-graph GUID-minting converter; clm_049 (layout is slow/non-interactive) is the reason to sequence identity/highlight validation before layout. The specific experiment sequencing and gate mapping is a forward-looking judgment, hence speculation."}
+  report_locations: []
+  reviewer_notes: ""
+unresolved_questions: []

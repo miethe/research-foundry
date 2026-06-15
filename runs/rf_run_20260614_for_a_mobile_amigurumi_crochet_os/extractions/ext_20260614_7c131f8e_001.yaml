@@ -1,0 +1,77 @@
+id: ext_20260614_7c131f8e_001
+source_card_id: src_20260614_kw010_00
+created_at: '2026-06-14T23:41:50-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: CrochetBench evaluates whether multimodal models can shift from describing visual content to generating
+    executable crochet procedures via fine-grained procedural reasoning.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Model performance drops sharply when evaluation moves from surface-level similarity to executable
+    correctness, exposing gaps in long-range symbolic reasoning and 3D-aware procedural synthesis.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The benchmark adopts the CrochetPARADE DSL as an intermediate representation, enabling structural
+    validation and functional evaluation by executing the generated procedures.
+  locator: Abstract / Method
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: A range of vision-language models were benchmarked, including GPT-4o, Gemini 2.5 Flash-Lite, Claude
+    Sonnet 4, Qwen2-VL, DeepSeek-VL, BLIP-2, and Gemma 3.
+  locator: Section 4 — Experiments
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_005
+  text: One execution failure category is Turning Issues, where models misplace turning/orientation commands,
+    since turning is only valid at the end of a row.
+  locator: Appendix E — DSL Error Taxonomy (Turning Issue)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: A second failure category is Multiplier Issues, where repeat/scaling multipliers are improperly
+    formatted and not bound to a stitch.
+  locator: Appendix E — DSL Error Taxonomy (Multiplier Issue)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: 'Textual under-specification matters: valid human-written patterns can be penalized because the
+    DSL or rendering cannot capture implicit conventions experienced crafters apply.'
+  locator: Limitations / Section 3.4
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Section 4 — Experiments
+contradictions_or_cautions:
+- text: Preprint, not yet formally peer-reviewed
+  locator: card/trust
+- text: Crochet-domain-specific; generalization to amigurumi/3D claimed but bounded by DSL
+  locator: card/trust
+- text: Preprint (arXiv v2, accessed 2026-06-14), not formally peer-reviewed; the third failure category
+    "Runtime Errors" is described as low-level JavaScript parsing failures (e.g., null-read errors) and
+    is captured here only at summary level. Crochet-specific; amigurumi/3D applicability is bounded by
+    the CrochetPARADE DSL's expressiveness.
+  locator: card/limitations

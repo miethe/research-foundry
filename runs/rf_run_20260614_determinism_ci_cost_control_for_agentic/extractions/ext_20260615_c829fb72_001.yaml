@@ -1,0 +1,69 @@
+id: ext_20260615_c829fb72_001
+source_card_id: src_20260614_rib041_11
+created_at: '2026-06-15T10:32:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Phoenix defines an experiment as a structured comparison between versions of an application using
+    identical inputs and evaluation criteria.
+  locator: Intro, 'Optimize Your App with Experiments'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Running experiments in code against a stored dataset lets teams test changes and verify whether
+    they actually improve quality rather than assuming improvement.
+  locator: Intro paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Experiments rerun the same inputs through different application versions for side-by-side comparison
+    so improvements are measured, not assumed.
+  locator: 'Step 2: Define an Experiment'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: An experiment task is a function that takes each dataset example and produces an output by running
+    the application logic or model on the input.
+  locator: 'Step 2: Define an Experiment, ''The experiment task'''
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Pulling down the saved dataset and running the experiment over it tests the new version on the
+    exact same inputs that previously failed, enabling deterministic comparison.
+  locator: 'Step 3: Run the Experiment on the Dataset'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The experiment is launched via client.experiments.run_experiment(dataset=..., task=..., evaluators=...),
+    after which Phoenix logs the experiment results automatically.
+  locator: 'Step 3 code block / Step 4: View Experiment Results'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Beyond the basic flow, datasets/experiments support comparing multiple prompt or model variants
+    and tracking quality improvements over time as the application evolves.
+  locator: Learn More About Datasets and Experiments
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: 'dry_run= parameter and explicit open-source/self-hostable cost framing are NOT stated on this
+    quickstart page; only a ''Self-Hosting'' nav section is referenced. Those claims must be sourced from
+    the How-to: Experiments reference, not this card.'
+  locator: card/trust
+- text: 'The `dry_run=` parameter on `run_experiment()` / `evaluate_experiment()` and any explicit "open-source
+    / self-hostable, cost = underlying LLM API spend" framing are NOT present in this quickstart page''s
+    text; the page only references a "Self-Hosting" documentation section in its nav. Those two source
+    key points should be sourced from the Phoenix "How-to: Experiments" reference (where `run_experiment`
+    parameters are documented) rather than cited to this card. All seven evidence points above are verbatim
+    from the page as fetched 2026-06-14.'
+  locator: card/limitations

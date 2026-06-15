@@ -1,0 +1,1798 @@
+id: claims_20260615_rf_run_20260614_determinism_ci_cost
+intent_id: intent_research_20260614_determinism_ci_cost_control_for_agentic
+report_ref: reports/report_draft.md
+verification_status: passed
+claims:
+- claim_id: clm_001
+  text: Evals is a framework for evaluating LLMs or systems built using LLMs.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_05
+    evidence_id: ev_001
+    relation: supports
+    locator: README — overview
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_002
+  text: The Completion Function Protocol extends evals beyond plain model completions to advanced use
+    cases such as prompt chains or tool-using agents.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_05
+    evidence_id: ev_002
+    relation: supports
+    locator: README — Completion Function Protocol
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_003
+  text: A completion function standardizes inputs (a text string or Chat conversation) and outputs (a
+    list of text strings), generalizing model completions.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_05
+    evidence_id: ev_003
+    relation: supports
+    locator: docs/completion-fns.md — definition
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_004
+  text: Basic eval templates (Match, Includes, FuzzyMatch, JsonMatch) are intended for deterministic ground-truth
+    checks where the desired response has little variation.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_05
+    evidence_id: ev_004
+    relation: supports
+    locator: docs/eval-templates.md — Basic Eval Templates
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_005
+  text: Model-graded evals delegate judgment to a model when the desired response can vary significantly,
+    such as open-ended answers, by using the model to grade itself.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_05
+    evidence_id: ev_005
+    relation: supports
+    locator: docs/eval-templates.md — Model-Graded Eval Template
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_006
+  text: Completion functions are registered as YAML under evals/registry/completion_fns and invoked by
+    registered key via the oaieval CLI.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_05
+    evidence_id: ev_006
+    relation: supports
+    locator: docs/completion-fns.md — CLI usage / registration
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_007
+  text: The evals registry data is stored using Git-LFS and fetched via git lfs fetch/pull.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_05
+    evidence_id: ev_007
+    relation: supports
+    locator: README — Git-LFS
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_008
+  text: The Pytest and Vitest/Jest eval integrations shipped in beta with v0.3.0 of the LangSmith Python
+    and TypeScript SDKs (published Jan 22, 2025).
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_10
+    evidence_id: ev_001
+    relation: supports
+    locator: Introduction
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_009
+  text: In Python, a test is tracked in LangSmith by adding the @pytest.mark.langsmith decorator.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_10
+    evidence_id: ev_002
+    relation: supports
+    locator: Getting started with Pytest
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_010
+  text: In TypeScript, test cases are tracked in LangSmith by wrapping them in an ls.describe() block.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_10
+    evidence_id: ev_003
+    relation: supports
+    locator: Getting started with Vitest
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_011
+  text: Testing frameworks naturally support defining pass/fail criteria and raising assertion errors
+    in CI, enabling early regression detection when evals run in a CI pipeline.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_10
+    evidence_id: ev_004
+    relation: supports
+    locator: Testing frameworks vs. evaluate()
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_012
+  text: LangSmith lets teams log feedback and compare results over time to prevent regressions and keep
+    deploying the best version of an application.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_10
+    evidence_id: ev_005
+    relation: supports
+    locator: Why use testing frameworks
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_013
+  text: A dedicated GitHub Action to make configuring eval runs in CI easy was announced as forthcoming
+    at publish time.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_10
+    evidence_id: ev_006
+    relation: supports
+    locator: Testing frameworks vs. evaluate()
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_014
+  text: A concurrency group ensures only a single job or workflow using the same group runs at a time,
+    and the group key can be any string or expression.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_08
+    evidence_id: ev_001
+    relation: supports
+    locator: Using concurrency in different scenarios (intro paragraph)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_015
+  text: When another run in the same group is in progress, a newly queued run becomes pending, and by
+    default an existing pending run is canceled and replaced by the new one.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_08
+    evidence_id: ev_002
+    relation: supports
+    locator: 'Using concurrency in different scenarios (paragraph: ''This means that there can be at most
+      one...'')'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_016
+  text: 'Setting cancel-in-progress: true cancels any currently running job or workflow in the same concurrency
+    group, and it can also be given as an expression for conditional cancellation.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_08
+    evidence_id: ev_003
+    relation: supports
+    locator: 'Using concurrency in different scenarios (paragraph: ''To also cancel any currently running...'')'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_017
+  text: 'queue: single (the default) allows at most one pending run per group and cancels/replaces any
+    existing pending run, while queue: max allows up to 100 pending runs and cancels additional runs once
+    the queue is full.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_08
+    evidence_id: ev_004
+    relation: supports
+    locator: Using concurrency in different scenarios (queue property value list)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_018
+  text: 'Combining queue: max with cancel-in-progress: true is disallowed and produces a workflow validation
+    error.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_08
+    evidence_id: ev_005
+    relation: supports
+    locator: Using concurrency in different scenarios (sentence after queue value list)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_019
+  text: Runs in the same concurrency group are processed in FIFO order by the time each started waiting
+    on the group, but because actual start times vary, ordering is not guaranteed.
+  materiality: background
+  claim_type: causal
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_08
+    evidence_id: ev_006
+    relation: supports
+    locator: Using concurrency in different scenarios (Note callout, FIFO bullet)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_020
+  text: The recommended workflow-level group key combines github.workflow and github.ref so concurrency
+    is isolated per branch, and group expressions accept the github, inputs, vars, needs, strategy, and
+    matrix contexts.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_08
+    evidence_id: ev_007
+    relation: supports
+    locator: 'Example: Using concurrency and the default behavior (YAML snippet) / Allowed expression
+      contexts'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_021
+  text: The Messages API temperature parameter defaults to 1.0 and ranges from 0.0 to 1.0, with guidance
+    to use values closer to 0.0 for analytical / multiple-choice tasks and closer to 1.0 for creative
+    tasks.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_04
+    evidence_id: ev_001
+    relation: supports
+    locator: Request body -> temperature field description
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_022
+  text: The documentation explicitly warns that even at a temperature of 0.0 the results will not be fully
+    deterministic, establishing that low temperature alone does not guarantee reproducible Messages API
+    outputs.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_04
+    evidence_id: ev_002
+    relation: supports
+    locator: Request body -> temperature field description (note)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_023
+  text: top_p enables nucleus sampling by cutting off the cumulative token probability distribution at
+    a specified threshold, and the docs mark it as recommended for advanced use cases only.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_04
+    evidence_id: ev_003
+    relation: supports
+    locator: Request body -> top_p field description
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_024
+  text: top_k samples only from the top K options for each subsequent token to remove long-tail low-probability
+    responses, and like top_p is marked as recommended for advanced use cases only.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_04
+    evidence_id: ev_004
+    relation: supports
+    locator: Request body -> top_k field description
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_025
+  text: The Messages API request body exposes only temperature, top_p, and top_k as sampling controls
+    and documents no seed or deterministic-seeding parameter, so reproducibility cannot be requested at
+    the API level.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_04
+    evidence_id: ev_005
+    relation: supports
+    locator: 'Request body (sampling parameters: temperature, top_p, top_k)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_026
+  text: pytest-recording is a pytest plugin built on VCR.py that records and replays HTTP traffic for
+    tests.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_06
+    evidence_id: ev_001
+    relation: supports
+    locator: README — top description / tagline
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_027
+  text: The plugin exposes a pytest.mark.vcr marker that maps onto VCR.py's use_cassettes API for per-test
+    cassette control.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_06
+    evidence_id: ev_002
+    relation: supports
+    locator: README — Usage / pytest.mark.vcr
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_028
+  text: By default the plugin runs in VCR's 'none' record mode specifically to prevent unintentional live
+    network requests during tests.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_06
+    evidence_id: ev_003
+    relation: supports
+    locator: README — recording modes / defaults
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_029
+  text: Recording is enabled by passing the --record-mode CLI option (e.g. once) when invoking pytest.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_06
+    evidence_id: ev_004
+    relation: supports
+    locator: README — recording / --record-mode option
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_030
+  text: The plugin adds a 'rewrite' record mode that regenerates a cassette from scratch rather than extending
+    it as VCR.py's 'all' mode does.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_06
+    evidence_id: ev_005
+    relation: supports
+    locator: README — rewrite record mode
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_031
+  text: A pytest.mark.block_network mark blocks network access (socket-based transports and pycurl) to
+    give confidence tests do not go over the wire.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_06
+    evidence_id: ev_006
+    relation: supports
+    locator: README — network blocking / block_network
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_032
+  text: Specific hosts can be whitelisted during network blocking via allowed_hosts (regex), e.g. on the
+    mark or via --allowed-hosts on the CLI.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_06
+    evidence_id: ev_007
+    relation: supports
+    locator: README — network blocking / allowed_hosts
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_033
+  text: Cassettes are stored as per-test YAML files on disk (capturing the recorded HTTP request/response),
+    e.g. under cassettes/{module}/test_name.yaml.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_06
+    evidence_id: ev_008
+    relation: supports
+    locator: README — cassette storage path example
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_034
+  text: OpenAI Chat Completions are non-deterministic by default, meaning identical requests can yield
+    different model outputs.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_02
+    evidence_id: ev_001
+    relation: supports
+    locator: Reproducible outputs (intro)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_035
+  text: Setting an integer seed and reusing the same value across requests yields (mostly) deterministic
+    outputs.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_02
+    evidence_id: ev_002
+    relation: supports
+    locator: Reproducible outputs (bullet 1)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_036
+  text: Determinism also requires that all other request parameters (such as prompt and temperature) be
+    identical across requests.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_02
+    evidence_id: ev_003
+    relation: supports
+    locator: Reproducible outputs (bullet 2)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_037
+  text: Determinism can be broken by OpenAI's own backend model-configuration changes, which it surfaces
+    via the system_fingerprint field.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_02
+    evidence_id: ev_004
+    relation: supports
+    locator: Reproducible outputs (system_fingerprint paragraph)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_038
+  text: A change in the system_fingerprint value signals that outputs may differ even when seed and other
+    parameters are held constant.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_02
+    evidence_id: ev_005
+    relation: supports
+    locator: Reproducible outputs (system_fingerprint paragraph)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_039
+  text: OpenAI characterizes seed-based reproducibility as only (mostly) deterministic, not guaranteed
+    bit-for-bit identical output.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_02
+    evidence_id: ev_006
+    relation: supports
+    locator: Reproducible outputs (heading framing)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_040
+  text: Specifying the seed parameter makes the system attempt deterministic sampling so that repeated
+    requests with the same seed and parameters return the same result.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_03
+    evidence_id: ev_001
+    relation: supports
+    locator: Model level controls for consistent outputs - seed and system_fingerprint
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_041
+  text: To get consistent outputs, developers should set the seed parameter to any integer but reuse the
+    same value across requests.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_03
+    evidence_id: ev_002
+    relation: supports
+    locator: Implementing consistent outputs (step 1)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_042
+  text: All other request parameters (prompt, temperature, top_p, etc.) must also be held identical across
+    requests for consistent outputs.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_03
+    evidence_id: ev_003
+    relation: supports
+    locator: Implementing consistent outputs (step 2)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_043
+  text: When seed, request parameters, and system_fingerprint all match across requests, model outputs
+    will mostly be identical.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_03
+    evidence_id: ev_004
+    relation: supports
+    locator: Implementing consistent outputs (system_fingerprint monitoring)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_044
+  text: 'Determinism is best-effort, not guaranteed: outputs can still differ even when parameters and
+    system_fingerprint match, due to inherent model non-determinism.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_03
+    evidence_id: ev_005
+    relation: supports
+    locator: Implementing consistent outputs (non-determinism caveat)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_045
+  text: The seed feature delivers only '(mostly) consistent' outputs, framing determinism as best-effort
+    rather than a hard guarantee.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_03
+    evidence_id: ev_006
+    relation: supports
+    locator: TLDR
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_046
+  text: FakeListLLM is LangChain's fake LLM intended for testing purposes.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_07
+    evidence_id: ev_001
+    relation: supports
+    locator: Class summary heading (FakeListLLM)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_047
+  text: The responses attribute is a list[str] whose entries are returned in order, giving deterministic,
+    scripted outputs.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_07
+    evidence_id: ev_002
+    relation: supports
+    locator: Attributes > responses
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_048
+  text: FakeListLLM extends the LLM base class, so it conforms to the standard LangChain language-model
+    interface and can be substituted for a real LLM.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_07
+    evidence_id: ev_003
+    relation: supports
+    locator: Bases section
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_049
+  text: Through its BaseLLM inheritance FakeListLLM exposes the full Runnable surface including sync and
+    async variants (invoke/ainvoke, batch/abatch, stream/astream, generate/agenerate).
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_07
+    evidence_id: ev_004
+    relation: supports
+    locator: Inherited from BaseLLM > Methods
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_050
+  text: An internal index counter i is incremented after every model invocation, which advances through
+    the predefined responses and is exposed primarily for testing.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_07
+    evidence_id: ev_005
+    relation: supports
+    locator: Attributes > i
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_051
+  text: A sleep attribute (float | None) sets a per-response delay in seconds; it is ignored by FakeListLLM
+    itself but used by subclasses to simulate latency.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_07
+    evidence_id: ev_006
+    relation: supports
+    locator: Attributes > sleep
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_052
+  text: FakeListLLM is a long-standing part of langchain_core, available since v0.1 and present in the
+    current reference (labeled v1.4.7 latest).
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_07
+    evidence_id: ev_007
+    relation: supports
+    locator: Header / version badge
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_053
+  text: SGLang's deterministic inference integrates batch-invariant kernels (mean, log-softmax, matrix
+    multiplication) from Thinking Machines Lab.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_01
+    evidence_id: ev_001
+    relation: supports
+    locator: 'Section: Key enhancements / Introduction'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_054
+  text: In deterministic mode every subtest produced 1 unique output across trials, versus 2-18 unique
+    outputs in normal mode (e.g., the prefix test reported 5/8/18/2 in normal FlashInfer).
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_01
+    evidence_id: ev_002
+    relation: supports
+    locator: 'Section: Verifying Deterministic Behavior'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_055
+  text: SGLang reports an average deterministic-mode slowdown of 34.35% on FlashInfer and FlashAttention
+    3 backends, versus the 61.5% slowdown reported in Thinking Machines Lab's blog.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_01
+    evidence_id: ev_003
+    relation: supports
+    locator: 'Section: Measuring Offline Inference Performance / Results'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_056
+  text: Enabling CUDA Graphs yields at least a 2.79x speedup across all attention kernels in deterministic
+    mode.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_01
+    evidence_id: ev_004
+    relation: supports
+    locator: 'Section: CUDA Graph Acceleration'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_057
+  text: Only TP1 and TP2 are deterministic (consistent floating-point addition order); larger tensor-parallel
+    setups require modifications to reduce kernels to achieve determinism.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_01
+    evidence_id: ev_005
+    relation: supports
+    locator: 'Section: Future Work'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_058
+  text: Deterministic inference currently supports only dense models such as Qwen3-8B or LLaMa-3.1-8B;
+    MoE models are not yet supported, though planned.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_01
+    evidence_id: ev_006
+    relation: supports
+    locator: 'Section: Future Work'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_059
+  text: Deterministic multinomial sampling perturbs logits with Gumbel noise from a seeded hash function,
+    so the same (inputs, seed) pair yields the same sample even when temperature > 0.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_01
+    evidence_id: ev_007
+    relation: supports
+    locator: 'Section: Reproducible Non-Greedy Sampling'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_060
+  text: Phoenix defines an experiment as a structured comparison between versions of an application using
+    identical inputs and evaluation criteria.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_11
+    evidence_id: ev_001
+    relation: supports
+    locator: Intro, 'Optimize Your App with Experiments'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_061
+  text: Running experiments in code against a stored dataset lets teams test changes and verify whether
+    they actually improve quality rather than assuming improvement.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_11
+    evidence_id: ev_002
+    relation: supports
+    locator: Intro paragraph
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_062
+  text: Experiments rerun the same inputs through different application versions for side-by-side comparison
+    so improvements are measured, not assumed.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_11
+    evidence_id: ev_003
+    relation: supports
+    locator: 'Step 2: Define an Experiment'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_063
+  text: An experiment task is a function that takes each dataset example and produces an output by running
+    the application logic or model on the input.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_11
+    evidence_id: ev_004
+    relation: supports
+    locator: 'Step 2: Define an Experiment, ''The experiment task'''
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_064
+  text: Pulling down the saved dataset and running the experiment over it tests the new version on the
+    exact same inputs that previously failed, enabling deterministic comparison.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_11
+    evidence_id: ev_005
+    relation: supports
+    locator: 'Step 3: Run the Experiment on the Dataset'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_065
+  text: The experiment is launched via client.experiments.run_experiment(dataset=..., task=..., evaluators=...),
+    after which Phoenix logs the experiment results automatically.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_11
+    evidence_id: ev_006
+    relation: supports
+    locator: 'Step 3 code block / Step 4: View Experiment Results'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_066
+  text: Beyond the basic flow, datasets/experiments support comparing multiple prompt or model variants
+    and tracking quality improvements over time as the application evolves.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_11
+    evidence_id: ev_007
+    relation: supports
+    locator: Learn More About Datasets and Experiments
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_067
+  text: The primary root cause of LLM inference nondeterminism is that server load (and thus batch size)
+    varies nondeterministically, changing reduction order rather than GPU concurrency or floating point
+    alone.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_00
+    evidence_id: ev_001
+    relation: supports
+    locator: 'Section: "Batch invariance and \"determinism\""'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_068
+  text: The common hypothesis that concurrency plus floating-point arithmetic explains nondeterminism
+    is incomplete; atomic adds are usually absent from an LLM forward pass.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_00
+    evidence_id: ev_002
+    relation: supports
+    locator: 'Section: "Why don''t kernels always add numbers in the same order?"'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_069
+  text: Running Qwen3-235B at temperature 0 across 1000 runs produced 80 unique completions, with the
+    first divergence occurring at the 103rd token.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_00
+    evidence_id: ev_003
+    relation: supports
+    locator: 'Section: "How nondeterministic are completions?"'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_070
+  text: Enabling batch-invariant kernels made all 1000 completions identical.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_00
+    evidence_id: ev_004
+    relation: supports
+    locator: 'Section: "How nondeterministic are completions?"'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_071
+  text: 'Batch invariance need only be enforced on the three reduction operations: RMSNorm, matrix multiplication,
+    and attention.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_00
+    evidence_id: ev_005
+    relation: supports
+    locator: 'Section: "How do we make kernels batch-invariant?"'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_072
+  text: 'Floating-point non-associativity is the underlying mathematical residual: adding the same numbers
+    in a different order can yield a different result.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_00
+    evidence_id: ev_006
+    relation: supports
+    locator: 'Section: "The original sin: floating-point non-associativity"'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_073
+  text: 'Deterministic vLLM on Qwen-8B was slower than the default: 26s baseline vs 55s unoptimized deterministic
+    and 42s with improved attention (roughly 1.6x-2.1x slowdown).'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_00
+    evidence_id: ev_007
+    relation: supports
+    locator: 'Section: "Performance" (Qwen-8B, 1000 sequences)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_074
+  text: Setting LANGSMITH_TEST_CACHE caches all HTTP requests to disk so LLM evals do not re-hit the model
+    on every CI commit, addressing cost control for agentic CI.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_09
+    evidence_id: ev_001
+    relation: supports
+    locator: Caching
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_075
+  text: Cached requests are written to a cassettes directory and replayed on subsequent runs, and checking
+    the cache into the repo lets CI reuse it for deterministic, near-free reruns.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_09
+    evidence_id: ev_002
+    relation: supports
+    locator: Caching
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_076
+  text: In langsmith>=0.4.10 caching can be scoped to specific URLs or hostnames via the cached_hosts
+    argument to the langsmith pytest marker.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_09
+    evidence_id: ev_003
+    relation: supports
+    locator: Caching
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_077
+  text: The pytest plugin requires Python SDK langsmith>=0.3.4, with the langsmith[pytest] extra needed
+    for rich terminal output and test caching.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_09
+    evidence_id: ev_004
+    relation: supports
+    locator: Installation
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_078
+  text: The langsmith pytest marker is compatible with pytest-xdist, so evaluation tests can be parallelized
+    using the standard -n auto invocation.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_09
+    evidence_id: ev_005
+    relation: supports
+    locator: Parallelize with pytest-xdist
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_079
+  text: Each decorated test automatically logs a pass/fail boolean under the 'pass' feedback key, and
+    an assert in the test fails the run like a normal unit test so eval failures fail the CI job.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_09
+    evidence_id: ev_006
+    relation: supports
+    locator: Define and run tests
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_080
+  text: Beyond the default pass key, custom feedback (e.g. an LLM-as-judge score) can be recorded with
+    log_feedback and traced separately via the trace_feedback context manager.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260614_rib041_09
+    evidence_id: ev_007
+    relation: supports
+    locator: Log feedback
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf01
+  text: For agentic CI evals where tool-call patterns matter but exact text does not, output-text equality
+    assertions (Match/Includes/JsonMatch) are the wrong gating primitive against live Claude or OpenAI
+    models, because both vendors disclaim bit-for-bit reproducibility (Anthropic warns temperature 0.0
+    is still not fully deterministic and exposes no seed; OpenAI seed is only '(mostly) deterministic').
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_004
+    - clm_022
+    - clm_025
+    - clm_034
+    - clm_039
+    - clm_044
+    - clm_045
+    reasoning_summary: Deterministic templates assume low output variation, but both vendor APIs disclaim
+      reproducibility, so text-equality gates will flake; the eval must assert on tool-call structure
+      instead.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf02
+  text: Among API-level determinism strategies, OpenAI seed+identical-params is strictly stronger than
+    the Anthropic Messages API for reproducibility (OpenAI offers a seed knob and a system_fingerprint
+    drift signal, whereas Anthropic offers neither), but neither reaches the bit-identical output that
+    self-hosted batch-invariant kernels deliver.
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_025
+    - clm_035
+    - clm_037
+    - clm_038
+    - clm_044
+    - clm_070
+    reasoning_summary: OpenAI exposes seed and system_fingerprint; Anthropic exposes neither; only batch-invariant
+      kernels produced fully identical outputs, ranking the three tiers.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf03
+  text: Batch-invariant deterministic inference is the only strategy in the evidence base that empirically
+    eliminates output variance (1000/1000 identical completions; 1 unique output per SGLang subtest),
+    but it is unavailable to teams that consume Claude or OpenAI as hosted APIs because it requires self-hosting
+    vLLM/SGLang on dense models at TP1/TP2.
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_053
+    - clm_054
+    - clm_057
+    - clm_058
+    - clm_070
+    reasoning_summary: Batch-invariant kernels gave full determinism but only on self-hosted dense models
+      at TP1/TP2; hosted Claude/OpenAI users cannot reach into the serving stack, so this strategy is
+      infra-gated.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf04
+  text: The measured cost of true bit-identical determinism is a 34%-62% inference slowdown (SGLang 34.35%
+    average; Thinking Machines 61.5%; deterministic vLLM 1.6x-2.1x on Qwen-8B), which makes batch-invariant
+    determinism economically defensible only for offline regression suites or RL training, not for latency-sensitive
+    per-PR CI gates.
+  materiality: material
+  claim_type: quantitative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_055
+    - clm_056
+    - clm_073
+    reasoning_summary: Reported slowdowns of 34.35%/61.5%/1.6-2.1x quantify the determinism tax; that
+      overhead is acceptable for batch/offline runs but not for fast interactive PR gating.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf05
+  text: For RF's swarm harness, the most reliable CI-gating determinism strategy is to stub the model
+    leg entirely (FakeListLLM scripted responses or recorded VCR/pytest-recording cassettes) rather than
+    to chase API-level reproducibility, because stubs and cassettes are byte-deterministic and network-free
+    by construction whereas seed/temperature only reduce, not remove, live variance.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_028
+    - clm_044
+    - clm_047
+    - clm_048
+    - clm_075
+    reasoning_summary: FakeListLLM returns scripted responses in order and pytest-recording defaults to
+      'none' (no network); both are fully deterministic, unlike best-effort seed/temperature, so stubbing
+      is the more reliable gate.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf06
+  text: The recommended trajectory-assertion pattern is to wrap the agent in OpenAI evals' Completion
+    Function Protocol (which standardizes tool-using-agent I/O) and assert on the recorded tool-call sequence
+    and arguments captured by a VCR-style cassette, treating the cassette's ordered request log as the
+    canonical trajectory rather than asserting on final answer text.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_002
+    - clm_027
+    - clm_033
+    - clm_075
+    reasoning_summary: The Completion Function Protocol generalizes tool-using-agent I/O, and VCR cassettes
+      persist each HTTP request/response in ordered YAML; asserting on that ordered request log captures
+      the tool trajectory without depending on output prose.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf07
+  text: 'A two-leg split is the minimum viable RF determinism configuration: a deterministic leg (stubbed/cassette-backed
+    tool calls + tool-sequence assertions) that gates every PR with zero API spend, and a stochastic leg
+    (live model, rubric/model-graded judge) that runs nightly or on-demand and never blocks a PR on a
+    single live failure.'
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_005
+    - clm_044
+    - clm_074
+    - clm_075
+    - clm_079
+    reasoning_summary: Cached/stubbed requests give near-free deterministic reruns suitable for per-PR
+      gating; live model-graded judgment is inherently variable and best-effort, so it belongs on a non-blocking
+      nightly leg.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf08
+  text: LangSmith's LANGSMITH_TEST_CACHE (committed cassettes) is the lowest-friction per-PR cost-control
+    pattern for an agentic eval harness because it converts every repeat CI run into a near-free deterministic
+    replay, and from langsmith>=0.4.10 cached_hosts lets teams cache only the expensive model hosts (api.openai.com,
+    api.anthropic.com) while leaving other traffic live.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_074
+    - clm_075
+    - clm_076
+    reasoning_summary: Checked-in caches replay on later runs at near-zero cost, and host-scoped caching
+      targets exactly the priced model endpoints, maximizing spend reduction while preserving live signal
+      elsewhere.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf09
+  text: GitHub Actions concurrency groups keyed on github.workflow + github.ref with cancel-in-progress
+    true are the recommended cost ceiling for live (non-cached) agentic eval legs, because they cap a
+    branch to one in-flight run and auto-cancel superseded runs, preventing redundant API spend from rapid
+    pushes.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_014
+    - clm_016
+    - clm_020
+    reasoning_summary: A per-branch concurrency group with cancel-in-progress limits concurrent runs to
+      one and kills superseded runs, directly bounding live-API spend triggered by frequent pushes.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf10
+  text: 'The cached-replay leg and the pytest-xdist parallelism flag are complementary rather than competing
+    cost levers: caching removes per-run API spend while -n auto removes wall-clock time, so an RF deterministic
+    leg should combine committed cassettes with pytest -n auto to keep the gate both cheap and fast.'
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_075
+    - clm_078
+    reasoning_summary: Caching addresses spend and xdist addresses latency; LangSmith's marker is xdist-compatible,
+      so the two can be stacked on the same deterministic leg.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf11
+  text: For RF's stochastic leg, the pass/fail threshold should be a rubric-based model-graded score gated
+    as a score-delta against a committed baseline (regression gate) rather than a hard per-run pass/fail,
+    because model-graded judgment varies run to run and a fixed absolute threshold would convert judge
+    variance into flaky CI failures.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_005
+    - clm_012
+    - clm_044
+    - clm_080
+    reasoning_summary: Model-graded scores are variable and LangSmith supports comparing results over
+      time; a delta-vs-baseline gate absorbs judge noise while still catching genuine regressions, unlike
+      a brittle absolute pass mark.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf12
+  text: The Phoenix experiment pattern (rerun a fixed stored dataset through each app version with the
+    same evaluators) is the right harness for RF's nightly stochastic leg, because pinning inputs isolates
+    the variable under test to the agent/prompt change and lets a model-graded score-delta be attributed
+    to the code change rather than to input drift.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_060
+    - clm_062
+    - clm_064
+    - clm_066
+    reasoning_summary: Phoenix experiments hold inputs and criteria fixed across versions so improvement/regression
+      is measured not assumed, which is exactly what a score-delta gate needs to attribute change to code.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf13
+  text: Recorded tool fixtures (VCR cassettes, LANGSMITH_TEST_CACHE) break down when the recording drifts
+    from live behavior, and because pytest-recording defaults to 'none' mode a stale cassette silently
+    fails the test rather than re-hitting the network, so RF must schedule periodic cassette refreshes
+    via --record-mode=rewrite on the nightly live leg to detect and regenerate drift.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_028
+    - clm_030
+    - clm_037
+    - clm_038
+    - clm_075
+    reasoning_summary: '''none'' mode prevents live calls so drift surfaces as a failed replay; the ''rewrite''
+      mode regenerates cassettes from scratch, and system_fingerprint drift is a concrete upstream-change
+      trigger for refresh.'
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf14
+  text: OpenAI's system_fingerprint is the only available machine-readable signal in the evidence base
+    for deciding when to invalidate and re-record fixtures, so an RF cassette-refresh policy should treat
+    a changed system_fingerprint (or, for Claude where no such field exists, a fixed time cadence) as
+    the trigger to regenerate recordings.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_025
+    - clm_037
+    - clm_038
+    reasoning_summary: system_fingerprint changes flag backend config drift for OpenAI; Anthropic exposes
+      no equivalent field, so Claude-backed cassettes need a calendar-based refresh instead of a drift
+      signal.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf15
+  text: 'Mapping onto Claude Agent SDK primitives, the load-bearing gap for RF''s swarm harness is the
+    absence of any server-side seed or reproducibility parameter on the Anthropic Messages API: RF cannot
+    gate on Claude output determinism at all and must implement trajectory determinism entirely client-side
+    via stubbing, cassette replay, and tool-sequence assertions.'
+  materiality: material
+  claim_type: causal
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_022
+    - clm_025
+    reasoning_summary: The Messages API documents only temperature/top_p/top_k, warns temp 0 is non-deterministic,
+      and exposes no seed, so any determinism for a Claude-backed swarm must be built in the harness,
+      not requested from the API.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf16
+  text: On the comparison axes of stability, spend, and tool-call-signal preservation, recorded/cassette
+    replay dominates for per-PR gating (high stability, near-zero spend, full tool-sequence fidelity),
+    batch-invariant inference dominates for offline reproducibility (highest stability, high spend, full
+    fidelity), and live seed/temperature scores lowest on stability for hosted Claude/OpenAI while being
+    the only option that exercises real current model behavior.
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_044
+    - clm_055
+    - clm_070
+    - clm_073
+    - clm_075
+    - clm_076
+    reasoning_summary: Cassettes are near-free and deterministic with full request fidelity; batch-invariant
+      kernels are fully deterministic but carry a 34-62% tax; live seed remains best-effort, yielding
+      the three-way ranking across the matrix axes.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf17
+  text: An acceptable flakiness rate for a gating eval is effectively zero on the deterministic leg (stubs/cassettes
+    are byte-deterministic, so any flake is a real bug), and retries/quarantine should be confined to
+    the stochastic leg; auto-retrying a deterministic-leg failure would mask a genuine regression and
+    is an anti-pattern.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_028
+    - clm_047
+    - clm_075
+    - clm_079
+    reasoning_summary: Because stubbed/cached legs are fully deterministic, a failure there is signal
+      not noise, so retries belong only on the inherently variable live leg to avoid masking regressions.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_spec01
+  text: RF will likely need a hybrid gate in which the deterministic cassette leg blocks merges and a
+    quarantined stochastic leg posts an advisory score-delta comment, because the evidence shows no hosted-API
+    path to fully reliable live gating and the promised LangSmith CI GitHub Action (forthcoming as of
+    Jan 2025) had not shipped a stable cross-provider gating story in the captured sources.
+  materiality: material
+  claim_type: prediction
+  status: speculation
+  confidence: low
+  sources: []
+  inference_basis:
+    from_claims: []
+    reasoning_summary: 'Forward-looking: extrapolates from the best-effort nature of live determinism
+      (clm_044) and the still-forthcoming LangSmith GitHub Action (clm_013) to predict RF''s likely hybrid
+      blocking/advisory split; unverified against any shipped RF design.'
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_spec02
+  text: If Anthropic adds a seed parameter and a system_fingerprint-equivalent drift field to the Messages
+    API, RF could promote a thin slice of its stochastic leg into a per-PR gate; absent that, batch-invariant
+    determinism reaching MoE and TP greater than 2 (currently future work in SGLang) is the more probable
+    route to reproducible gating for large Claude-class models.
+  materiality: material
+  claim_type: prediction
+  status: speculation
+  confidence: low
+  sources: []
+  inference_basis:
+    from_claims: []
+    reasoning_summary: 'Speculative roadmap: conditioned on an unannounced Anthropic seed feature (absent
+      per clm_025) and on SGLang''s stated future MoE/larger-TP work (clm_057/clm_058); both are uncertain
+      future capabilities.'
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf00
+  text: Synthesizing the determinism strategies and CI cost-control patterns available to an agentic evaluation
+    harness, they can be ranked for Research Foundry's swarm-of-agents use case, with client-side stubbing/cassette
+    replay dominating per-PR gating and self-hosted batch-invariant inference dominating offline reproducibility.
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_025
+    - clm_028
+    - clm_047
+    - clm_070
+    - clm_075
+    reasoning_summary: The memo's scope-and-ranking thesis is an analytic synthesis over the surveyed
+      strategies (Anthropic exposes no seed clm_025; cassette/stub legs are byte-deterministic clm_028/clm_047;
+      committed caches give near-free deterministic reruns clm_075; only batch-invariant kernels reach
+      bit-identical output clm_070), not a single sourced fact.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf18
+  text: Neither extreme of the eval-template taxonomy fits a tool-using swarm well, because output-text
+    equality is too brittle against best-effort live determinism while a model-graded judge is itself
+    variable run to run.
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_004
+    - clm_005
+    - clm_044
+    - clm_045
+    reasoning_summary: Basic templates assume little output variation (clm_004) but live determinism is
+      only best-effort (clm_044/clm_045), so text-equality flakes; model-graded evals (clm_005) delegate
+      to a model whose judgment varies run to run, so neither template extreme is a stable gate for a
+      tool-using swarm.
+  report_locations: []
+  reviewer_notes: ''
+unresolved_questions: []

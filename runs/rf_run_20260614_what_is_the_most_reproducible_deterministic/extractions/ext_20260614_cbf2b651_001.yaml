@@ -1,0 +1,56 @@
+id: ext_20260614_cbf2b651_001
+source_card_id: src_20260614_kw006_01
+created_at: '2026-06-14T22:09:16-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: AmiGo takes a closed triangle mesh plus a single user-specified point as input and outputs crochet
+    instructions that, when crocheted and stuffed, approximate the input geometry.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The method's core representation is a 'Crochet Graph' whose geometry and connectivity are constructed
+    and then translated into a human-crochetable pattern.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The shape is segmented automatically into crochetable components that are joined with the 'join-as-you-go'
+    method, eliminating any additional sewing.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'Segmentation iterates over saddle points: for each saddle, the isoline of the geodesic field
+    is computed and a new segment is sliced for each resulting connected component.'
+  locator: Section 7.2.1 Mesh to Graph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The order in which the segments are crocheted is fixed by a topological sort of the directed segment
+    adjacency graph.
+  locator: Section 7.2.1 Mesh to Graph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The authors demonstrate the pipeline across a large variety of shapes and report that it yields
+    easily crochetable patterns.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: The ACM DL version of record (DOI 10.1145/3559400.3562005) returned HTTP 403 to automated fetch;
+    verbatim quotes were confirmed against the identical author copy on arXiv:2211.01178 / ar5iv full
+    text. Section locators for ev_004/ev_005 reflect the arXiv rendering and may differ in number from
+    the ACM camera-ready pagination.
+  locator: card/limitations

@@ -1,0 +1,62 @@
+id: ext_20260614_9ff0f93a_001
+source_card_id: src_20260614_rib053_00
+created_at: '2026-06-14T17:08:53-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: OpenAI's deep research API exposes two models, o3-deep-research and o4-mini-deep-research, that
+    synthesize many sources into a comprehensive research-analyst-level report via the Responses API.
+  locator: Deep research (intro paragraph)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The deep research output array lists the web search calls, code interpreter calls, and remote
+    MCP calls the model made to reach its answer, so consumers can inspect the full research trajectory.
+  locator: Output structure
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Responses contain typed output items including web_search_call (with an action like search/open_page/find_in_page),
+    code_interpreter_call, mcp_tool_call, file_search_call, and message (the final answer with inline
+    citations).
+  locator: Output structure (typed output items)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The message output item carries the model's final answer along with the inline citations.
+  locator: Output structure (message output item)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Each inline citation is an annotation object on the message output_text carrying url, title, start_index,
+    and end_index fields, where start_index/end_index are integer character offsets locating the cited
+    span in the answer text.
+  locator: Output structure (Example message annotations)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: OpenAI directs that inline citations from web results be rendered as clearly visible, clickable
+    links in the consuming UI.
+  locator: Output structure (after Example message)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Deep research (intro paragraph)
+contradictions_or_cautions:
+- text: No explicit publish/update date is shown on the page; "2026" is the source-supplied year. The
+    doc states `start_index`/`end_index` are character offsets via the annotation example rather than
+    a prose sentence asserting they map to `output_text` spans, so that mapping is inferred from the shown
+    structure.
+  locator: card/limitations

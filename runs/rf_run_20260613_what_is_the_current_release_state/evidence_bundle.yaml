@@ -1,0 +1,37 @@
+id: bundle_20260613_intent_research_20260613_what_is_the
+intent_id: intent_research_20260613_what_is_the_current_release_state
+run_id: rf_run_20260613_what_is_the_current_release_state
+created_at: '2026-06-13T23:46:23-04:00'
+status: verified
+artifacts:
+  research_brief: research_brief.md
+  swarm_plan: swarm_plan.yaml
+  source_cards_dir: sources/
+  extraction_cards_dir: extractions/
+  claim_ledger: claims/claim_ledger.yaml
+  report: reports/report_draft.md
+  verification: reviews/verification.yaml
+  ccdash_event: writebacks/ccdash_event.yaml
+counts:
+  source_cards: 10
+  extraction_cards: 10
+  claims_total: 91
+  claims_supported: 69
+  claims_mixed: 0
+  claims_contradicted: 0
+  claims_inference: 20
+  claims_speculation: 2
+  claims_unsupported: 0
+governance:
+  sensitivity: personal
+  approved_for_writeback: true
+  approved_by: null
+  approval_timestamp: null
+lineage:
+  raw_idea_ids:
+  - raw_20260613_2246_what_is_the_current_release_state
+  intent_id: intent_research_20260613_what_is_the_current_release_state
+  ibom_id: ibom_research_20260613_what_is_the_current_release_state
+  intenttree_node_id: tree_rf_20260613_what_is_the_current_release_state
+  skillbom_ids_used:
+  - skill_research_swarm_v0

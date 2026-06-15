@@ -1,0 +1,91 @@
+id: ext_20260614_07ca4bb6_001
+source_card_id: src_20260614_rib053_07
+created_at: '2026-06-14T17:08:54-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: A C2PA Manifest is the provenance information for an asset, composed of one or more assertions
+    (including content bindings), a single claim, and a claim signature.
+  locator: Section 2.3.4 - Glossary (Manifest)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: A Claim is a digitally signed, tamper-evident data structure that references the set of assertions
+    about an asset along with the content-binding information.
+  locator: Section 2.3.2 - Glossary (Claim)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Claim v2 split the single assertions list into created_assertions and gathered_assertions, clarifying
+    their roles within the C2PA Trust Model.
+  locator: Section 5.3.4 - Revision history (Claim v2)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The claim generator is the non-human (hardware or software) actor that produces both the claim
+    and the claim signature for an asset.
+  locator: Section 2.1.2 - Claim generator
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Version 2.4 (April 2026) introduced a new c2pa.ai-disclosure assertion providing machine-readable
+    AI transparency information.
+  locator: Section 5.3.1 - Revision history (2.4 - April 2026)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: AI/ML provenance is recorded via the digitalSourceType field, with values such as the URI for
+    trainedAlgorithmicData replacing the earlier c2pa.trainedAlgorithmicData token.
+  locator: Section 5.3.3 - Revision history (2.2 - May 2025), digitalSourceType
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Hard bindings are cryptographic hashes that uniquely identify the asset (or a portion of it),
+    enabling tamper detection at the bit level.
+  locator: Section 2.3.12 - Glossary (Hard Binding)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: Soft bindings are content identifiers that are not statistically unique (a fingerprint) or are
+    embedded as an invisible watermark, allowing matching of derived content even when bits differ.
+  locator: Section 2.3.13 - Glossary (Soft Binding)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Section 2.3.4 - Glossary (Manifest)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Section 5.3.4 - Revision history (Claim v2)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section 5.3.1 - Revision history (2.4 - April 2026)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section 5.3.3 - Revision history (2.2 - May 2025), digitalSourceType
+contradictions_or_cautions:
+- text: The fetched rendering did not expose the full verbatim definition contrasting created vs gathered
+    assertions by signer attribution; the split is confirmed via the revision history quote (ev_003).
+    The detailed c2pa.actions assertion body (Section 18.x) and the c2pa.ingredient.v3 assertion body
+    were not captured verbatim, so those mechanisms are not asserted here beyond the confirmed evidence
+    points.
+  locator: card/limitations

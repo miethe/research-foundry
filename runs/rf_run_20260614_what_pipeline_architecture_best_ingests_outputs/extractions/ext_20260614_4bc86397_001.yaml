@@ -1,0 +1,73 @@
+id: ext_20260614_4bc86397_001
+source_card_id: src_20260614_rib053_08
+created_at: '2026-06-14T17:08:54-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Each grounding chunk's web object carries a uri (string source URL) and a title (string page title),
+    used to provide a link to the source of the information.
+  locator: 'Section: Web (GroundingChunk subtype), Fields table'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: GroundingSupport.groundingChunkIndices is an integer array indexing into the GroundingMetadata.groundingChunks
+    field, specifying which chunks support the claim in a content segment.
+  locator: 'Section: GroundingSupport, Fields > groundingChunkIndices[]'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: confidenceScores is a float array parallel to groundingChunkIndices giving per-reference confidence
+    (0.0-1.0) that the chunk supports the claim; for Gemini 2.5+ it is empty and should be ignored.
+  locator: 'Section: GroundingSupport, Fields > confidenceScores[]'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: A GroundingSupport.segment carries byte-measured startIndex (inclusive) and endIndex (exclusive)
+    marking the span of content the support applies to.
+  locator: 'Section: Segment, Fields > startIndex / endIndex'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: GroundingMetadata also returns webSearchQueries (the web search queries used), a searchEntryPoint
+    for displaying search results, and retrievalMetadata about the retrieval grounding source.
+  locator: 'Section: GroundingMetadata, Fields (webSearchQueries / searchEntryPoint / retrievalMetadata)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The docs give a concrete example that groundingChunkIndices values [1, 3] mean groundingChunks[1]
+    and groundingChunks[3] are the sources for that segment's claim, evidencing the index->chunk->URL
+    citation pattern.
+  locator: 'Section: GroundingSupport > groundingChunkIndices[] (example)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: 'Section: GroundingSupport, Fields > confidenceScores[]'
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: 'Section: GroundingSupport > groundingChunkIndices[] (example)'
+contradictions_or_cautions:
+- text: No publication/last-updated date is shown on the page.
+  locator: card/trust
+- text: v1beta1 is a beta surface; field shapes may change before GA.
+  locator: card/trust
+- text: No publication or last-updated date is displayed on the page; published_at is recorded as null.
+  locator: card/limitations
+- text: This is the v1beta1 beta API surface; field names/shapes may change before GA.
+  locator: card/limitations
+- text: confidenceScores semantics differ by model generation (populated for Gemini 2.0 and earlier; empty
+    for 2.5+).
+  locator: card/limitations

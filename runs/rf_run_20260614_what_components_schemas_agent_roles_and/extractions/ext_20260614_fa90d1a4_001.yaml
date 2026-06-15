@@ -1,0 +1,110 @@
+id: ext_20260614_fa90d1a4_001
+source_card_id: src_20260614_rib025_06
+created_at: '2026-06-14T15:21:26-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Deep research is powered by a version of the upcoming OpenAI o3 model optimized for web browsing
+    and data analysis, using reasoning to search, interpret, and analyze text, images, and PDFs on the
+    internet.
+  locator: Intro paragraph (above 'Why we built deep research')
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Deep research finds, analyzes, and synthesizes hundreds of online sources into a comprehensive
+    report at the level of a research analyst from a single prompt.
+  locator: Intro paragraph (above 'Why we built deep research')
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Deep research was trained end-to-end with reinforcement learning on hard browsing and reasoning
+    tasks, and can cite specific sentences or passages from its sources.
+  locator: 'Section: How it works'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: On Humanity's Last Exam (over 3,000 questions across more than 100 subjects), the model powering
+    deep research scores a new high of 26.6% accuracy.
+  locator: 'Section: How it works > Humanity''s Last Exam'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: On the GAIA benchmark, deep research reaches a new state of the art with 67.36 avg (pass@1) and
+    72.57 avg (cons@64), with Level 1 scores of 74.29 (pass@1) and 78.66 (cons@64), topping the external
+    leaderboard.
+  locator: 'Section: How it works > GAIA (results table)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Deep research may take 5 to 30 minutes to complete a task and notifies the user once the research
+    is complete.
+  locator: 'Section: How to use deep research'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Per the February 10, 2026 update, deep research can connect to any MCP or app and restrict web
+    searches to trusted sites for authenticated, industry-standard sources, with real-time progress tracking
+    and follow-up refinement.
+  locator: Top-of-page update banner (February 10, 2026 update)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: Deep research launched first for Pro users (up to 100 queries/month) on February 2, 2025, and
+    a February 25, 2025 update made it available to all Plus users.
+  locator: 'Top-of-page update banner (February 25, 2025 update) / Section: Access'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Intro paragraph (above 'Why we built deep research')
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: 'Section: How it works > Humanity''s Last Exam'
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: 'Section: How it works > GAIA (results table)'
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: 'Section: How to use deep research'
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Top-of-page update banner (February 10, 2026 update)
+- metric_name: evidence_point
+  value: ev_008
+  unit: null
+  date_context: null
+  locator: 'Top-of-page update banner (February 25, 2025 update) / Section: Access'
+contradictions_or_cautions:
+- text: Vendor-reported benchmarks (HLE, GAIA) are self-evaluated, not independently audited
+  locator: card/trust
+- text: Capability/availability claims reflect OpenAI marketing framing
+  locator: card/trust
+- text: Benchmark figures (HLE 26.6%, GAIA SOTA) are vendor self-reported and not independently audited.
+  locator: card/limitations
+- text: The page is a marketing/announcement post; capability and availability claims reflect OpenAI's
+    framing.
+  locator: card/limitations
+- text: Update banners are dated layers (Feb 2025 through Feb 2026); the original o3-based model and later
+    lightweight (o4-mini) variant differ in capability.
+  locator: card/limitations

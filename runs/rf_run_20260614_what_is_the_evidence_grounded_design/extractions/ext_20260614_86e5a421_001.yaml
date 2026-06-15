@@ -1,0 +1,111 @@
+id: ext_20260614_86e5a421_001
+source_card_id: src_20260614_kw002_06
+created_at: '2026-06-14T15:58:57-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: CrochetPARADE is an open-source forward crochet visualizer whose engine is GPLv3 (copyleft) but
+    whose pattern-language grammar is public domain, making the grammar adoptable as a Crochet IR while
+    the engine carries integration risk.
+  locator: Annotated Bibliography — CrochetPARADE (Tassev) entry
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: CrochetBench compiled 6,085 real crochet patterns into the CrochetPARADE DSL and validates structural
+    correctness by compiling outputs in the CrochetPARADE interpreter, demonstrating the DSL is expressive
+    enough to capture thousands of real patterns.
+  locator: Annotated Bibliography — CrochetBench (Li et al.) entry
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The CrochetBench tooling is permissively licensed (MIT, assumed) but the underlying patterns are
+    copyrighted by Yarnspirations, so the corpus is usable for validation/testing rather than redistribution.
+  locator: Open-Source / Prototype Inventory — CrochetBench row
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'AmiGo (SCF 2022) is the state-of-art inverse mesh-to-pattern pipeline: it segments a closed mesh
+    into crochetable components, places increases on positive curvature and decreases on negative curvature,
+    and uses join-as-you-go to attach pieces without sewing; no public code (Matlab/C++).'
+  locator: Annotated Bibliography — AmiGo (Edelstein et al.) entry
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Digital Crochet (Onward! 2022) defines a graph-based crochet IR where increases are nodes with
+    multiple incoming edges and decreases nodes with multiple outgoing edges, and uses a force-directed
+    algorithm to lay out stitches in 3D as the pattern is built.
+  locator: Annotated Bibliography — Digital Crochet (Seitz et al.) entry
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Guo et al. 2020 (SCF) define a special 'current loop' edge type that tracks the live yarn loop
+    moving from stitch to stitch, providing the basis for guaranteeing one continuous yarn path in generated
+    patterns.
+  locator: Annotated Bibliography — Stitch Meshes (Guo et al.) entry
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The report's sequencing guidance is to ship the forward visualizer first on a CrochetPARADE-style
+    IR (lower risk, immediate value) and pursue the inverse (3D->pattern) generator, which is more complex,
+    as a longer-term payoff de-risked by focused experiments.
+  locator: Executive Summary — What We Can Ship First
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Annotated Bibliography — CrochetPARADE (Tassev) entry
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Annotated Bibliography — CrochetBench (Li et al.) entry
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Annotated Bibliography — AmiGo (Edelstein et al.) entry
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Annotated Bibliography — Digital Crochet (Seitz et al.) entry
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Annotated Bibliography — Stitch Meshes (Guo et al.) entry
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Executive Summary — What We Can Ship First
+contradictions_or_cautions:
+- text: AI-synthesized survey, not a primary research paper
+  locator: card/trust
+- text: Some tool maturity / license claims (e.g. CrochetPARADE GPLv3, CrochetBench MIT) are stated with
+    hedging ('assumed from research')
+  locator: card/trust
+- text: No formal metrics for several inverse-method fidelity claims
+  locator: card/trust
+- text: This is an AI-synthesized Deep Research survey, not a primary research paper; locator-level claims
+    about the cited papers are second-hand and should be re-confirmed against the primary sources before
+    any public-facing assertion.
+  locator: card/limitations
+- text: Several license/maturity claims are hedged in the source itself (e.g., CrochetPARADE GPLv3, CrochetBench
+    "MIT (assumed from research)"); treat license facts as provisional.
+  locator: card/limitations
+- text: Inverse-method fidelity claims (e.g., AmiGo shape similarity) are reported qualitatively with
+    no formal error metric (e.g., no stated Hausdorff distance).
+  locator: card/limitations

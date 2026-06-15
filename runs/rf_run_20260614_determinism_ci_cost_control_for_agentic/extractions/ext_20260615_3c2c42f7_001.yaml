@@ -1,0 +1,73 @@
+id: ext_20260615_3c2c42f7_001
+source_card_id: src_20260614_rib041_04
+created_at: '2026-06-15T10:32:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The Messages API temperature parameter defaults to 1.0 and ranges from 0.0 to 1.0, with guidance
+    to use values closer to 0.0 for analytical / multiple-choice tasks and closer to 1.0 for creative
+    tasks.
+  locator: Request body -> temperature field description
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The documentation explicitly warns that even at a temperature of 0.0 the results will not be fully
+    deterministic, establishing that low temperature alone does not guarantee reproducible Messages API
+    outputs.
+  locator: Request body -> temperature field description (note)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: top_p enables nucleus sampling by cutting off the cumulative token probability distribution at
+    a specified threshold, and the docs mark it as recommended for advanced use cases only.
+  locator: Request body -> top_p field description
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: top_k samples only from the top K options for each subsequent token to remove long-tail low-probability
+    responses, and like top_p is marked as recommended for advanced use cases only.
+  locator: Request body -> top_k field description
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The Messages API request body exposes only temperature, top_p, and top_k as sampling controls
+    and documents no seed or deterministic-seeding parameter, so reproducibility cannot be requested at
+    the API level.
+  locator: 'Request body (sampling parameters: temperature, top_p, top_k)'
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Request body -> temperature field description
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Request body -> temperature field description (note)
+contradictions_or_cautions:
+- text: No author or publication date is shown on the page (living API reference).
+  locator: card/trust
+- text: The page documents temperature, top_p, and top_k as independent optional parameters; it does NOT
+    contain any explicit prohibition on combining temperature and top_p, nor any note that newer models
+    reject specifying both (that seed claim could not be confirmed from the page text and was omitted).
+  locator: card/trust
+- text: No author or publication date is displayed; this is a living API reference captured on the accessed
+    date.
+  locator: card/limitations
+- text: The seed claim that "newer Claude models reject simultaneous temperature + top_p specification"
+    could NOT be confirmed from the page text (no such prohibition appears in the documented field descriptions)
+    and was therefore omitted.
+  locator: card/limitations
+- text: ev_005 is a negative observation (absence of a seed parameter in the documented request body);
+    quote is null because absence cannot be supported by a verbatim excerpt.
+  locator: card/limitations

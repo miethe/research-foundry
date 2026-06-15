@@ -1,0 +1,60 @@
+id: ext_20260614_25f890f1_001
+source_card_id: src_20260614_rib053_02
+created_at: '2026-06-14T17:08:53-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The Chat Completions response includes a top-level citations field that is an array of source
+    URLs used to generate the response.
+  locator: Response schema — citations field
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The response also returns a search_results field, an array of objects giving the search results
+    used for context in the response.
+  locator: Response schema — search_results field
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Each search_results object carries per-source provenance via a date (publication date) and last_updated
+    field, which supports dedup and freshness logic.
+  locator: Response schema — search_results sub-fields (date, last_updated)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Each search result includes a source field identifying whether the result came from the web or
+    from an attachment.
+  locator: Response schema — search_results.source field
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The model field selects which Sonar model to use, with allowed enum values sonar, sonar-pro, sonar-deep-research,
+    and sonar-reasoning-pro.
+  locator: Request schema — model field
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Each search result object exposes a snippet field containing a text excerpt from the search result
+    page.
+  locator: Response schema — search_results.snippet field
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Page text does not state per-model citation counts; the 'sonar-pro returns ~2x citations' claim
+    could not be verified from the documentation and was omitted.
+  locator: card/trust
+- text: The source brief claimed sonar-pro returns roughly double the citations of sonar; this per-model
+    citation count is not stated in the API reference page text and was omitted to avoid an unverifiable
+    claim.
+  locator: card/limitations
+- text: Documentation is undated beyond the year; exact field schema may evolve with API versions.
+  locator: card/limitations

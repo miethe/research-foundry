@@ -1,0 +1,12 @@
+{"stage": "plan", "ts": "2026-06-14T17:08:37-04:00", "run_id": "rf_run_20260614_what_is_the_most_reproducible_deterministic"}
+{"ts": "2026-06-14T22:09:16-04:00", "stage": "extract", "run_id": "rf_run_20260614_what_is_the_most_reproducible_deterministic", "count": 12}
+{"ts": "2026-06-14T22:09:20-04:00", "stage": "claim_map", "run_id": "rf_run_20260614_what_is_the_most_reproducible_deterministic", "claims_total": 82}
+{"ts": "2026-06-14T22:16:40-04:00", "stage": "synthesize", "run_id": "rf_run_20260614_what_is_the_most_reproducible_deterministic", "report_id": "report_20260614_what_is_the_most_reproducible_deterministic", "claims_cited": 100}
+{"ts": "2026-06-14T22:25:37-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_most_reproducible_deterministic", "exit_code": 4, "passed": false}
+{"ts": "2026-06-14T22:25:59-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_most_reproducible_deterministic", "exit_code": 4, "passed": false}
+{"ts": "2026-06-14T22:28:12-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_most_reproducible_deterministic", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T22:28:36-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_most_reproducible_deterministic", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T22:29:42-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_is_the_most_reproducible_deterministic", "exit_code": 0, "passed": true}
+{"stage": "bundle", "ts": "2026-06-14T22:29:42-04:00", "run_id": "rf_run_20260614_what_is_the_most_reproducible_deterministic", "bundle_id": "bundle_20260614_intent_research_20260614_what_is_the", "verified": true}
+{"stage": "ccdash_event", "ts": "2026-06-14T22:29:46-04:00", "run_id": "rf_run_20260614_what_is_the_most_reproducible_deterministic", "event_id": "exec_20260614_intent_research_20260614_what_is_the_cd52"}
+{"stage": "writeback", "ts": "2026-06-14T22:29:46-04:00", "run_id": "rf_run_20260614_what_is_the_most_reproducible_deterministic", "requires_review": false}

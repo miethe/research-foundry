@@ -1,0 +1,93 @@
+id: ext_20260614_71730c61_001
+source_card_id: src_20260614_kw009_02
+created_at: '2026-06-14T23:21:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Mali tile-based GPUs split the screen into 16x16 pixel tiles, build per-tile primitive lists in
+    a geometry pass, then shade each tile to completion before moving to the next in the fragment pass.
+  locator: The Mali Approach
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Each shader core processes one 16x16 pixel tile to completion before starting the next, the defining
+    characteristic of fragment-pass tile rendering.
+  locator: The Mali Approach
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: A typical 32bpp color + 32bpp packed depth/stencil framebuffer working set is ~16MB at 1080p and
+    ~64MB at 4K2K.
+  locator: The 'Traditional' Approach
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: External DRAM bandwidth costs roughly 120mW per 1GByte/s, whereas on-chip tile memory accesses
+    are about an order of magnitude cheaper energy-wise.
+  locator: The Mali Approach
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Because a whole 16x16 tile's color/depth/stencil working set is kept in fast on-chip RAM coupled
+    to the shader core, blending is fast and power-efficient since the destination color is readily available.
+  locator: The Mali Approach
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Transaction Elimination skips writing a tile's color back to main memory entirely when a CRC compare
+    shows the tile contents are unchanged from what is already in memory.
+  locator: The Mali Approach
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Depth and stencil tile contents are never written back to main memory if the application discards
+    them via glDiscardFramebufferEXT / glInvalidateFramebuffer (or driver inference).
+  locator: The Mali Approach
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: The Mali Approach
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: The Mali Approach
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: The 'Traditional' Approach
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: The Mali Approach
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: The Mali Approach
+contradictions_or_cautions:
+- text: Describes Mali-specific hardware; energy/bandwidth figures are order-of-magnitude estimates that
+    vary by system design
+  locator: card/trust
+- text: Published 2014; predates newer Mali/Immortalis generations
+  locator: card/trust
+- text: Published 2014 and Mali-specific; energy and bandwidth figures are order-of-magnitude estimates
+    that vary by system design, and the post predates newer Mali/Immortalis generations. Marked tertiary-stable
+    (foundational architecture, older than the 180-day recency window). Source metadata listed "2019-08"
+    but the article text states a February 20, 2014 publication date, which is used here.
+  locator: card/limitations

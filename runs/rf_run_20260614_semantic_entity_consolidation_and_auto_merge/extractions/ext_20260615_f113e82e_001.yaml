@@ -1,0 +1,88 @@
+id: ext_20260615_f113e82e_001
+source_card_id: src_20260614_rib035_08
+created_at: '2026-06-15T10:14:26-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Splink implements the Fellegi-Sunter / Expectation-Maximisation model as an unsupervised learning
+    algorithm that yields a match score for each pair of record comparisons.
+  locator: 'Section: Problem statement'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Splink requires no labeled training data because its models can be trained using an unsupervised
+    approach.
+  locator: 'Section: Summary'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Partial match weights can be computed for an arbitrary number of user-defined scenarios (e.g.
+    postcodes within 10 miles of each other), not just binary match or non-match.
+  locator: 'Section: How it works'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: A match on date of birth provides more evidence of a match than a match on gender, illustrating
+    that different attributes carry different evidential weight.
+  locator: 'Section: How it works'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The per-attribute partial match weights are combined into an overall match score representing
+    the total weight of evidence that two records are the same.
+  locator: 'Section: How it works'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The documented clustering call resolves pairwise predictions into clusters at a 0.95 match-probability
+    threshold.
+  locator: 'Section: Sample Code'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Splink is capable of linking very large datasets of over 100 million records using Spark or AWS
+    Athena backends.
+  locator: 'Section: Summary'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: The post was originally published on 2020-04-16 and last updated 2022-08-04.
+  locator: Page header / byline
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: 'Section: How it works'
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: 'Section: Sample Code'
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: 'Section: Summary'
+- metric_name: evidence_point
+  value: ev_008
+  unit: null
+  date_context: null
+  locator: Page header / byline
+contradictions_or_cautions:
+- text: First-party author/maintainer blog (primary but self-reported); scale and capability claims are
+    the author's and not independently benchmarked here. Originally written 2020 and last updated 2022-08-04,
+    so specific API surface (e.g. method signatures) may have changed in later Splink versions.
+  locator: card/limitations

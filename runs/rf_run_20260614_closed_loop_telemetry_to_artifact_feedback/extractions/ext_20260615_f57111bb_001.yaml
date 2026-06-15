@@ -1,0 +1,65 @@
+id: ext_20260615_f57111bb_001
+source_card_id: src_20260614_rib047_07
+created_at: '2026-06-15T11:34:47-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Optimizing a proxy reward model too hard hinders true (gold) performance, operationalizing Goodhart's
+    law in RLHF feedback loops.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The paper uses a synthetic setup where a fixed gold-standard reward model plays the role of humans
+    and labels data used to train a proxy reward model.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Best-of-n sampling overoptimization follows a quadratic-in-distance form, R_bon(d) = d(alpha_bon
+    - beta_bon * d), where d is the KL-based distance measure.
+  locator: Section 1 (Introduction); functional forms
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: RL overoptimization follows a different, logarithmic form, R_RL(d) = d(alpha_RL - beta_RL * log
+    d), so the functional form depends on the optimization method.
+  locator: Section 1 (Introduction); functional forms
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The coefficients of the overoptimization relationship scale smoothly (predictably) with the number
+    of reward-model parameters in both optimization methods.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: For RL, alpha_RL can be held constant across all reward-model sizes, leaving a clean scaling curve
+    in beta_RL, while best-of-n's coefficients change smoothly with RM size.
+  locator: Section 3.2 (Scaling with RM Parameter Count)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The study also measures how the relationship varies with reward-model dataset size, reward/policy
+    parameter counts, and the KL-penalty coefficient in the RL setup.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Uses a synthetic 'gold-standard' reward model as a stand-in for humans; functional forms are empirical
+    fits within that setup.
+  locator: card/trust
+- text: Results come from a synthetic setup using a fixed "gold-standard" reward model as a proxy for
+    humans, not from human preference data; functional forms are empirical fits within that regime and
+    may not transfer unchanged to all real RLHF pipelines.
+  locator: card/limitations

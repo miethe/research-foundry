@@ -1,0 +1,59 @@
+id: ext_20260614_fbf9fe9c_001
+source_card_id: src_20260614_rib024_11
+created_at: '2026-06-14T14:59:41-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Lefthook's `skip` option can suppress all or specific commands and scripts, including conditionally
+    on merge, rebase, or specific branches, with glob support for branch names.
+  locator: Page intro (opening description)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Hooks and commands can be skipped while in a git merge or rebase state by listing `merge` and/or
+    `rebase` as skip values.
+  locator: Possible skip values (list)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: 'Hooks can be skipped on a specific branch or ref using `ref:` (e.g. `ref: main`), and glob patterns
+    such as `ref: dev/*` are supported for branches.'
+  locator: Possible skip values / branch example (ref)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'Conditional skipping runs a shell command and skips the hook when that command exits successfully
+    (return code 0), e.g. `run: test ${SKIP_ME} -eq 1`.'
+  locator: Possible skip values / conditional run
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: 'An existence-guard pattern `skip: - run: "! which <tool>"` lets a command run only when a CLI
+    tool is installed, skipping when the tool is absent.'
+  locator: Tool-existence example
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Skip can be set at the hook level or per-command/per-script, giving fine-grained suppression of
+    otherwise-automatic triggers.
+  locator: Where skip applies (hook / command / script levels)
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Possible skip values / conditional run
+contradictions_or_cautions:
+- text: Page reflects current (2026) Lefthook docs; exact syntax may evolve across Lefthook releases.
+    No explicit author or version string captured from the page.
+  locator: card/limitations

@@ -1,0 +1,89 @@
+id: ext_20260615_80fded30_001
+source_card_id: src_20260614_kw011_02
+created_at: '2026-06-15T00:08:46-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: CrochetBench reframes crochet evaluation from describing to doing, requiring models to recognize
+    stitches, select structurally appropriate instructions, and generate compilable procedures rather
+    than mere descriptions.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The benchmark centers evaluation on instructional fidelity, asking whether models can output step-wise,
+    compilable instructions that respect symbolic, numerical, and topological structure.
+  locator: Section 1 Introduction (para 4)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: CrochetBench defines a four-task ladder (Tasks A-D) progressing from stitch recognition to comprehension,
+    generation, and executable instruction-to-DSL synthesis, forming an acceptance-style evaluation hierarchy.
+  locator: Section 3 Benchmark Tasks (Table 2)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Acceptance for DSL outputs is measured by Compilation Success Rate (CSR) via the CrochetPARADE
+    validator, directly testing whether generated programs are executable rather than surface-similar.
+  locator: Section 3.4.1 Evaluation
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: 'Beyond pass/fail compilation, CrochetBench runs a fine-grained error analysis over four failure
+    categories: syntax structure, stitch definition, labeling/reference, and structural/formatting errors.'
+  locator: Section 3.4.1 Evaluation
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The CrochetPARADE validator checks for syntactic and consistency errors such as mismatched stitch
+    counts and impossible attachments, and flags over- or under-stretched stitches - directly reusable
+    as acceptance checks.
+  locator: Appendix D CrochetPARADE - Validation and debugging
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Reference patterns are sourced from the Yarnspirations repository (6,085 patterns across 55 project
+    categories, 98.77% with product images), normalized into machine-readable JSON via a GPT-4o-mini pipeline.
+  locator: Section 2 Dataset Description (Table 1)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: Empirically, performance decays sharply when evaluation moves from surface-level fidelity (BLEU,
+    ROUGE) to structural validity (compilation), motivating execution-grounded acceptance metrics over
+    string-overlap scoring.
+  locator: Section 4 Discussion (para 6)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Section 2 Dataset Description (Table 1)
+contradictions_or_cautions:
+- text: Project-level DSL sample size small (100 items) with low absolute validity rates; authors caution
+    against fine-grained statistical comparisons.
+  locator: card/trust
+- text: Compilation metric does not assess visual fidelity unless paired with image-render verification.
+  locator: card/trust
+- text: 'Provided source brief contained inaccuracies corrected here: the paper does NOT name "four validation
+    check families," "dimensional accuracy," or a "CrochetParade" pattern repository - CrochetPARADE is
+    a DSL renderer/analyzer/debugger (crochetparade.org), and the pattern source is Yarnspirations (not
+    "YarnInspirations.com").'
+  locator: card/limitations
+- text: Project-level DSL evaluation uses a small sample (100 items) with low absolute validity rates;
+    authors caution against fine-grained statistical comparisons.
+  locator: card/limitations
+- text: Compilation-based acceptance cannot assess visual fidelity unless paired with image-render verification;
+    Task C metrics rely on string overlap and may underestimate semantically correct outputs.
+  locator: card/limitations

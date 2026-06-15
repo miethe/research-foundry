@@ -1,0 +1,17 @@
+{"stage": "plan", "ts": "2026-06-14T14:07:32-04:00", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a"}
+{"ts": "2026-06-14T16:50:31-04:00", "stage": "extract", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "count": 9}
+{"ts": "2026-06-14T16:50:34-04:00", "stage": "claim_map", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "claims_total": 54}
+{"ts": "2026-06-14T16:54:38-04:00", "stage": "synthesize", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "report_id": "report_20260614_what_governance_criteria_evaluation_frameworks_a", "claims_cited": 66}
+{"ts": "2026-06-14T16:58:06-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "exit_code": 4, "passed": false}
+{"ts": "2026-06-14T16:58:12-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "exit_code": 4, "passed": false}
+{"ts": "2026-06-14T16:58:16-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "exit_code": 2, "passed": false}
+{"ts": "2026-06-14T16:58:20-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "exit_code": 4, "passed": false}
+{"ts": "2026-06-14T17:00:44-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T17:00:50-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T17:01:09-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T17:02:18-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "exit_code": 0, "passed": true}
+{"stage": "bundle", "ts": "2026-06-14T17:02:18-04:00", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "bundle_id": "bundle_20260614_intent_research_20260614_what_governance_criteri", "verified": true}
+{"stage": "ccdash_event", "ts": "2026-06-14T17:02:28-04:00", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "event_id": "exec_20260614_intent_research_20260614_what_governance_criteri"}
+{"stage": "writeback", "ts": "2026-06-14T17:02:28-04:00", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "requires_review": false}
+{"ts": "2026-06-14T17:02:52-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "exit_code": 0, "passed": true}
+{"ts": "2026-06-14T17:20:47-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_governance_criteria_evaluation_frameworks_a", "exit_code": 0, "passed": true}

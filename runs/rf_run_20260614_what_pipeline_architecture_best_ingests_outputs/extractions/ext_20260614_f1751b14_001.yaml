@@ -1,0 +1,75 @@
+id: ext_20260614_f1751b14_001
+source_card_id: src_20260614_rib053_05
+created_at: '2026-06-14T17:08:54-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: An Audio Overview is exported from NotebookLM via a Download control in the audio player, with
+    no file-format specified in the article.
+  locator: 'Share an Audio Overview > Option 3: Download & share the Audio Overview'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: 'NotebookLM Audio Overviews offer four selectable formats: Deep Dive (default), The Brief, The
+    Critique, and The Debate.'
+  locator: Generate an Audio Overview (format options)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Audio Overviews can be generated in more than 80 languages, defaulting to the Google Account's
+    preferred language.
+  locator: Output language for Audio Overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Generating or deleting an Audio Overview requires edit access to the notebook.
+  locator: Generate an Audio Overview (step 1 note)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Public notebook sharing of Audio Overviews is limited to consumer accounts and is disabled for
+    Workspace Enterprise or Education accounts.
+  locator: Share an Audio Overview > Option 1 (Important note)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Interactive mode is currently English-only, and the user's voice and transcribed interactions
+    with the hosts are not stored or shared.
+  locator: Interact with an Audio Overview (Important note + Tips)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Audio Overview voices are AI-generated and may contain inaccuracies or audio glitches, and generation
+    can take a couple of minutes.
+  locator: Generate an Audio Overview (Important notes)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Output language for Audio Overview
+contradictions_or_cautions:
+- text: Live product feature, subject to change
+  locator: card/trust
+- text: Article scope is Audio Overview generation/sharing only
+  locator: card/trust
+- text: 'IMPORTANT SCOPE MISMATCH: This article (URL .../answer/16212820, "Generate Audio Overview in
+    NotebookLM") does NOT support the SOURCE intake''s stated key_points about WAV download format, Studio
+    Notes/Reports/Slide-Deck export via a three-dot menu (PDF/.pptx), the absence of a native "export
+    sources" button, full export via takeout.google.com, or supported source types and per-file word limits
+    (e.g., 500,000-word PDF). None of those claims appear in the actual page text, so they were omitted
+    to avoid fabrication. Evidence here reflects only what the page genuinely states.'
+  locator: card/limitations
+- text: This is a live product feature and the documentation is subject to change without notice.
+  locator: card/limitations

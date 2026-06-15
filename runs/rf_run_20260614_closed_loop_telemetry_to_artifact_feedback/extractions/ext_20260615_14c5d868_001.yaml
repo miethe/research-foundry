@@ -1,0 +1,51 @@
+id: ext_20260615_14c5d868_001
+source_card_id: src_20260614_rib047_11
+created_at: '2026-06-15T11:34:47-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Standard frequentist p-values and confidence intervals are unreliable when experimenters choose
+    sample sizes by continuously monitoring (peeking at) an A/B test.
+  locator: Abstract (sentence 1)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The paper defines 'always valid' p-values and confidence intervals that let users act on data
+    as it arrives while preserving valid statistical inference at any decision point.
+  locator: Abstract (sentence 2)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Always-valid inference serves as an interface to a sequential hypothesis test, letting each user
+    implement a test tailored to their own stopping preferences.
+  locator: Abstract (sentence 3)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Always-valid p-values are used to obtain multiple-hypothesis-testing control in the sequential
+    context, addressing error compounding from repeated peeking.
+  locator: Abstract (sentence 5)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The methodology was deployed in a large-scale commercial A/B testing platform analyzing hundreds
+    of thousands of experiments.
+  locator: Abstract (final sentence)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Evidence points are sourced from the abstract; section-level body claims could not be verified
+    verbatim because the PDF stream was not parseable.
+  locator: card/trust
+- text: Evidence points are grounded in the verbatim arXiv abstract (v3, Jul 2019); the PDF body stream
+    was not machine-readable on access, so section-level body details (e.g., the specific mixture SPRT
+    formulation and alpha-crossing stopping rule) could not be quoted verbatim and are not asserted here.
+  locator: card/limitations

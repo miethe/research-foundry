@@ -1,0 +1,91 @@
+id: ext_20260615_528723c7_001
+source_card_id: src_20260614_rib017_01
+created_at: '2026-06-15T00:16:10-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: On May 14, 2024, NIST released the final SP 800-171 Revision 3 governing protection of Controlled
+    Unclassified Information (CUI) in nonfederal systems and organizations, alongside the SP 800-171A
+    Revision 3 assessment companion.
+  locator: Headline / publication notice
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Rev 3 restructured its security requirements so they align directly with the SP 800-53 Revision
+    5 control catalog.
+  locator: Major Updates to SP 800-171r3 — bullet 1
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Rev 3 introduced organization-defined parameters (ODPs), allowing organizations to tailor handling
+    thresholds within the requirements.
+  locator: Major Updates to SP 800-171r3 — bullet 2
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Rev 3 added new tailoring criteria and recategorized controls accordingly to reduce redundancy
+    and improve clarity.
+  locator: Major Updates to SP 800-171r3 — bullet 3 / bullet 4
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Rev 3 provides additional outcome-oriented guidance intended to reduce ambiguity and better support
+    implementation by organizations handling CUI.
+  locator: Implementation guidance statement
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The companion SP 800-171A Revision 3 incorporates ODPs into its assessment procedures to support
+    traceability and usability when verifying CUI protections.
+  locator: Assessment Updates — SP 800-171Ar3
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Headline / publication notice
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Major Updates to SP 800-171r3 — bullet 1
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Major Updates to SP 800-171r3 — bullet 2
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Major Updates to SP 800-171r3 — bullet 3 / bullet 4
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Implementation guidance statement
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Assessment Updates — SP 800-171Ar3
+contradictions_or_cautions:
+- text: News announcement summarizes the change set; it does not itself enumerate the full control count.
+  locator: card/trust
+- text: The 110->97 control-count reduction is asserted elsewhere (the SP 800-171r3 document/change analysis),
+    not in this announcement text.
+  locator: card/trust
+- text: This is a NIST news announcement summarizing the change set; it does not enumerate the full control
+    count, so the widely cited 110->97 control reduction must be sourced from the SP 800-171r3 document
+    itself or its change analysis, not this page.
+  locator: card/limitations

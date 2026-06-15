@@ -1,0 +1,63 @@
+id: ext_20260614_9984f50b_001
+source_card_id: src_20260614_kw010_07
+created_at: '2026-06-14T23:41:50-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The paper frames appropriate reliance on AI as a human-centered problem and intervenes via 'human
+    self-confidence calibration,' structured as three studies.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Calibrating human self-confidence improved human-AI team performance and led to more rational
+    reliance on AI versus an uncalibrated baseline.
+  locator: Abstract (results)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: 'The paper treats trust and reliance as separable constructs: trust is a subjective self-reported
+    attitude toward the AI, while reliance is the objective behavior of acting on its recommendation.'
+  locator: Section 2.1, Appropriate Reliance in AI-Assisted Decision-Making
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Inappropriate reliance is split into over-reliance (agreeing with AI when it is wrong) and under-reliance
+    (rejecting AI when it is right), giving measurable behavioral targets.
+  locator: Section 2.1 (Outcome-Based Measurement)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: In study 3, self-confidence calibration produced more rational reliance and reduced under-reliance
+    and improved task performance, but did not reduce over-reliance.
+  locator: Section 1 (Study 3 findings)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Self-reported trust does not reliably track reliance behavior, so the authors study reliance behavior
+    as the more dependable indicator of appropriateness.
+  locator: Section 2.1 (trust vs reliance inconsistency)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section 1 (Study 3 findings)
+contradictions_or_cautions:
+- text: Single task domain (income prediction on the Adult Income dataset); non-expert crowd participants;
+    lab-style user study, generalization beyond this setting not established.
+  locator: card/trust
+- text: Findings come from a single task domain (income prediction on the Adult Income dataset) with non-expert
+    crowd participants in a lab-style user study; generalization to other domains and to a crochet/amigurumi
+    assistant context is not established. Over-reliance was not reduced by the intervention.
+  locator: card/limitations

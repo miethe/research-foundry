@@ -1,0 +1,84 @@
+id: ext_20260614_00c8f3f3_001
+source_card_id: src_20260614_rib045_01
+created_at: '2026-06-14T16:31:44-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: For LLMs with at least 70 billion parameters, verbalized-confidence expected calibration error
+    (ECE) is around 0.1, i.e. confidence deviates roughly 10% from true accuracy.
+  locator: Section 5.3 (Insights into models)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The best 'combo' prompt method extracts verbalized confidence scores with an average deviation
+    of about 7% from empirical accuracy for large LLMs.
+  locator: Section 5.4 (Insights into prompt methods)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The smallest evaluated model (gemma1.1-2b) produces verbalized confidence scores that are poorly
+    calibrated and almost independent of its actual accuracy.
+  locator: Section 5.3 (Insights into models)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Calibration of verbalized confidence is not intrinsic to the model but depends heavily on how
+    the confidence is elicited via prompt formulation.
+  locator: Section 5.4 (Insights into prompt methods)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The study benchmarks verbalized confidence reliability across 10 datasets, 11 LLMs, and 17 prompt
+    methods.
+  locator: Section 4 (Experiments)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Verbalized confidence is positioned as a prompt- and model-agnostic, low-overhead uncertainty
+    quantification method whose reliability strongly depends on prompting, but which can yield well-calibrated
+    scores with certain prompt methods.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Section 5.3 (Insights into models)
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Section 5.4 (Insights into prompt methods)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Section 5.3 (Insights into models)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section 4 (Experiments)
+contradictions_or_cautions:
+- text: Benchmark covers LLMs up to a fixed model set (Gemma, Llama 3, Qwen, GPT-3.5, GPT-4o); results
+    may not generalize to newer/larger models.
+  locator: card/trust
+- text: Calibration metrics depend on the specific datasets and base-accuracy regime (0.5-0.9).
+  locator: card/trust
+- text: Results are bounded to the evaluated model set (Gemma, Llama 3, Qwen, GPT-3.5, GPT-4o) and a base-accuracy
+    regime of roughly 0.5-0.9; generalization to newer/larger models or other task distributions is not
+    established.
+  locator: card/limitations
+- text: This is an arXiv preprint (v2 dated 2026-05-05), not a venue-published paper; calibration metrics
+    are dataset- and prompt-dependent.
+  locator: card/limitations

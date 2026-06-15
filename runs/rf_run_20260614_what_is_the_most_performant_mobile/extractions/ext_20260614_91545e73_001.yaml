@@ -1,0 +1,88 @@
+id: ext_20260614_91545e73_001
+source_card_id: src_20260614_kw009_06
+created_at: '2026-06-14T23:21:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: On an Nvidia RTX 3090, the system runs yarn-level simulation in 1.05 ms/frame and fiber-level
+    rendering in 23.6 ms/frame.
+  locator: Abstract / Performance summary
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The rendering pipeline reaches near-ground-truth quality while being ~120,000x faster than a path-traced
+    fiber-level reference.
+  locator: Abstract (final sentences)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The real-time method optimizes only ~100K yarn segments instead of the dense fiber geometry of
+    the reference.
+  locator: Results / geometry comparison
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The path-traced reference models contain 51M, 55M, and 61M fiber segments, illustrating the fiber-count
+    gap the method avoids.
+  locator: Results / reference geometry detail
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Knit geometry's intricate yarn-and-fiber structure (each yarn = plies of tens-to-hundreds of twisted
+    fibers) is the core obstacle to real-time high-fidelity knit rendering.
+  locator: Abstract (problem statement)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'INFERENCE: The pipeline is desktop-GPU-only (all timings on an RTX 3090, no mobile/low-power
+    numbers reported), indicating full yarn/fiber detail is out of mid-range-phone budget and approximate
+    stitch-graph meshes are the mobile-viable path.'
+  locator: Inference from reported hardware/benchmarks (no mobile data in source)
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Abstract / Performance summary
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Abstract (final sentences)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Results / geometry comparison
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Results / reference geometry detail
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Inference from reported hardware/benchmarks (no mobile data in source)
+contradictions_or_cautions:
+- text: No mobile/low-power benchmarks reported; all timings on desktop RTX 3090.
+  locator: card/trust
+- text: Speedup is vs the authors' own path-traced fiber-level reference, not a third-party baseline.
+  locator: card/trust
+- text: All performance numbers are on a single high-end desktop GPU (RTX 3090); the source reports no
+    mobile or low-power benchmarks, so mobile-viability conclusions (ev_006) are inference, not stated
+    by the authors.
+  locator: card/limitations
+- text: The 120,000x speedup is measured against the authors' own path-traced fiber-level reference, not
+    an independent third-party baseline.
+  locator: card/limitations

@@ -1,0 +1,77 @@
+id: ext_20260614_ac081cdd_001
+source_card_id: src_20260614_rib037_01
+created_at: '2026-06-14T15:55:25-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Git is at its core a content-addressable filesystem that uses the SHA-1 hash function to name
+    content such as files, directories, and revisions.
+  locator: Background
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Because a blob object refers to no other object, its SHA-1 content and SHA-256 content are identical.
+  locator: Object format
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The 2017 SHAttered attack demonstrated a practical SHA-1 collision; although Git moved to a hardened
+    SHA-1, SHA-1 is still considered weak, motivating the move to SHA-256.
+  locator: Background
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: An object's SHA-256 name is the SHA-256 of the concatenation of its type, length, a nul byte,
+    and the object's SHA-256 content, preserving the content-addressable naming model.
+  locator: Object names (Detailed Design)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: 'The transition is designed to be incremental and interoperable: it can be done one local repository
+    at a time and a SHA-256 repository can still push/fetch with SHA-1 Git servers.'
+  locator: Goals
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Background
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Object format
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Background
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Object names (Detailed Design)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Goals
+contradictions_or_cautions:
+- text: Design/specification document, not all stated transition goals are necessarily fully shipped in
+    stable Git.
+  locator: card/trust
+- text: This is a design/specification document; some stated transition goals describe the intended end
+    state and may not all be fully shipped in stable Git as of access. Two key_points supplied to the
+    carder (explicit "immutability"/"acyclicity guarantee" of the commit graph, and quick diffing by comparing
+    hashes/ignoring identical object names) could NOT be confirmed verbatim in this document and were
+    therefore omitted to avoid fabrication.
+  locator: card/limitations

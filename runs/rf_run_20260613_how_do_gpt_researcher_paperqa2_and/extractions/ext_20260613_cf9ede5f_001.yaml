@@ -1,0 +1,65 @@
+id: ext_20260613_cf9ede5f_001
+source_card_id: src_20260613_rib010_02
+created_at: '2026-06-13T23:52:39-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: GPT Researcher is installed from PyPi via pip with the command pip install gpt-researcher.
+  locator: Steps to Install GPT Researcher
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The pip package prerequisite is that Python 3.10 or newer is installed on the machine.
+  locator: Steps to Install GPT Researcher (Pre-requisite)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The get_research_sources() method retrieves a list of research sources, including their title,
+    content, and images fields.
+  locator: Get Research Sources
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The get_research_context() method returns all retrieved information from the research, combining
+    the sources with their corresponding content.
+  locator: Get Research Context
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The get_costs() method returns the number of tokens consumed during the research process.
+  locator: Get Research Costs
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The get_research_images() method retrieves a list of images found during the research process.
+  locator: Get Research Images
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The get_source_urls() method returns the list of URLs that were used to gather information for
+    the research.
+  locator: FastAPI/Flask examples (get_source_urls)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Steps to Install GPT Researcher (Pre-requisite)
+contradictions_or_cautions:
+- text: No explicit publication or last-updated date is visible on the page (it carries a 2026 copyright
+    notice), so the precise recency of the documented API cannot be dated.
+  locator: card/limitations
+- text: Vendor-authored documentation; method behavior reflects the documented state and may lag the actual
+    codebase.
+  locator: card/limitations

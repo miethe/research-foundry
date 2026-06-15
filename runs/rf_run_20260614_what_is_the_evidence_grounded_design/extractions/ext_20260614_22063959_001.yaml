@@ -1,0 +1,70 @@
+id: ext_20260614_22063959_001
+source_card_id: src_20260614_kw002_10
+created_at: '2026-06-14T15:58:57-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: CrochetBench adopts the CrochetPARADE DSL as its intermediate representation for crochet patterns.
+  locator: README — DSL / intermediate representation
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The benchmark vendors the CrochetPARADE repository by cloning it from Codeberg for validation.
+  locator: README — validation / setup instructions
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: 'Two JavaScript validators ship in the benchmark: verify_crochet_pattern.js and verify_crochet_pattern_with_history.js.'
+  locator: README — benchmark_task/ validators
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Data files include project-level and step-level DSL test sets plus a multiple-choice archive (project_level_test.json,
+    step_level_test_*.json, mc_data.json.zip).
+  locator: README — data/ directory
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Compilation Success Rate (CSR) is the proportion of generated DSL outputs that compile successfully
+    with the CrochetPARADE validator.
+  locator: README — Task D evaluation metric (CSR)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Partial Executable Rate (PER) is the average fraction of a program that compiles successfully
+    before failure.
+  locator: README — Task D evaluation metric (PER)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: 'The benchmark defines four tasks: A Stitch Recognition (6,009), B Instruction Selection (6,003),
+    C Instruction Generation (6,009), and D Instruction-to-DSL (119 step-level / 100 project-level).'
+  locator: README — task / dataset overview
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: README — task / dataset overview
+contradictions_or_cautions:
+- text: README does not surface a formal paper title, institutional affiliation, or explicit publication
+    date in the fetched content; published date inferred from source metadata.
+  locator: card/trust
+- text: Some metric phrasings are short paraphrase-length excerpts from the README rather than long-form
+    definitions.
+  locator: card/trust
+- text: README in the fetched content does not surface a formal paper title, institutional affiliation,
+    or an explicit publication date; the published month is inferred from source metadata. Metric definitions
+    are short README excerpts rather than long-form formal definitions.
+  locator: card/limitations

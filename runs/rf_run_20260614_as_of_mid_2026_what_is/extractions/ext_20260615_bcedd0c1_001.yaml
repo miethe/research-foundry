@@ -1,0 +1,87 @@
+id: ext_20260615_bcedd0c1_001
+source_card_id: src_20260614_kw012_02
+created_at: '2026-06-15T09:31:13-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Ribblr+ has three monthly USD tiers - Plus at $4.99/mo (listed $6.99), Gold at $6.99/mo (listed
+    $9.99), and Platinum at $9.99/mo (listed $13.99).
+  locator: Plan tiers / pricing cards
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Annual billing saves 30% across all Ribblr+ tiers.
+  locator: Pricing cards (year plan badge)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: A 14-day free trial precedes auto-renewal; on day 14 the membership auto-renews and the member
+    is charged.
+  locator: Free trial / billing terms
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: All tiers include unlimited daily free patterns, pinning/saving patterns in boards, adding external
+    (PDF) patterns, no ads, and Focus Mode.
+  locator: Feature list (all tiers)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: 'Monthly Gems allowance differs by tier: Plus''s 100 Gems is a joining gift, Gold grants 100 Gems
+    every month, and Platinum grants 400 Gems every month.'
+  locator: Gems allowance per tier
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Membership enables adding external PDF patterns to the user's library.
+  locator: Feature list / library
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Plans are cancel-anytime, and tier changes use pro-rata pricing so an upgrade only charges the
+    difference between tiers.
+  locator: Cancellation & upgrade/downgrade terms
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Plan tiers / pricing cards
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Pricing cards (year plan badge)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Free trial / billing terms
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Gems allowance per tier
+contradictions_or_cautions:
+- text: No publication date shown; prices/terms may change without notice
+  locator: card/trust
+- text: Marketing-framed Gems dollar values ('worth up to $X') are vendor estimates
+  locator: card/trust
+- text: No publication date is shown on the page, so prices and terms may change without notice; this
+    is vendor-authored marketing copy, not an independently audited source. The page does not describe
+    a "Ribbuild PDF-to-ePattern conversion" feature, so that specific SOURCE key point is not asserted
+    here. The page labels Plus's 100 Gems a "joining gift" (one-time) rather than a recurring monthly
+    allowance, contrary to the SOURCE summary; the recurring monthly Gems wording applies to Gold (100/mo)
+    and Platinum (400/mo).
+  locator: card/limitations

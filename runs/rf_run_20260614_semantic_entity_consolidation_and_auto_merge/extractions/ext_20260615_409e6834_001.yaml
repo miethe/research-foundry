@@ -1,0 +1,106 @@
+id: ext_20260615_409e6834_001
+source_card_id: src_20260614_rib035_01
+created_at: '2026-06-15T10:14:26-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'The Fellegi-Sunter model has three core parameters needed to compute a match probability between
+    two records: lambda (prior match probability), m, and u.'
+  locator: Parameters of the Fellegi-Sunter model (section intro)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Lambda is the prior probability that any two records match assuming no other knowledge, and it
+    depends on total record count, number of duplicates, and dataset overlap.
+  locator: λ probability
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The m probability is P(observation | records match) and is largely a measure of data quality;
+    e.g. for a true match on Date of Birth, exact agreement is almost 100%, say m approximately 0.98.
+  locator: m probability
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The u probability is P(observation | records do not match) and measures coincidence; e.g. for
+    non-matching records, surname agreeing by chance is under 1%, u approximately 0.005.
+  locator: u probability
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The total match weight equals log2(lambda/(1-lambda)) plus the sum over features of log2(m_i/u_i),
+    and match weights are additive because the model assumes features are conditionally independent.
+  locator: Match Weights — Deriving Match Weights from m and u
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: A worked waterfall example sums a prior of -6.67 with feature weights (forename 4.74, surname
+    6.49, dob -1.97, city -1.12, email 8.00) to a total match weight of 9.48.
+  locator: Match Weights — Interpreting Match Weights (waterfall example)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Match probability is recovered from total match weight via Pr(Match|Obs)=2^Mobs/(1+2^Mobs); a
+    match weight of 9.48 yields approximately 0.999.
+  locator: Match Probability — Deriving Match Probability from Match Weight
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: 'The non-linear weight-to-probability mapping has diminishing returns: a match weight of 0 gives
+    probability 0.5, weight 4 gives 0.95, and weight 7 gives 0.99.'
+  locator: Match Probability — Understanding the relationship between Match Probability and Match Weight
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: m probability
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: u probability
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Match Weights — Deriving Match Weights from m and u
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Match Weights — Interpreting Match Weights (waterfall example)
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Match Probability — Deriving Match Probability from Match Weight
+- metric_name: evidence_point
+  value: ev_008
+  unit: null
+  date_context: null
+  locator: Match Probability — Understanding the relationship between Match Probability and Match Weight
+contradictions_or_cautions:
+- text: Pedagogical example values (m, u, lambda) are illustrative, not empirically measured
+  locator: card/trust
+- text: Conditional-independence across features is a stated modeling assumption that may not hold for
+    correlated fields
+  locator: card/trust
+- text: The m, u, and lambda values shown are illustrative pedagogical examples, not empirically measured
+    parameters.
+  locator: card/limitations
+- text: Additive combination of match weights relies on a conditional-independence assumption across comparison
+    features, which may not hold for correlated fields.
+  locator: card/limitations

@@ -1,0 +1,86 @@
+id: ext_20260615_9abbbde9_001
+source_card_id: src_20260614_rib033_07
+created_at: '2026-06-15T09:33:08-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: On CPU, for the shortest-text dataset (stsb), ONNX with int8 quantization reaches a 3.08x speedup
+    over the PyTorch fp32 baseline, versus 1.39x for plain ONNX and 1.29x for OpenVINO.
+  locator: Benchmarks (CPU paragraph below the backend list)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: For Intel CPUs where a 0.4% accuracy loss is acceptable, the documentation recommends the openvino-qint8
+    backend; non-Intel CPUs are routed to plain onnx.
+  locator: Recommendations (backend-selection flowchart)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: On GPU, the flowchart recommends onnx-O4 when text is usually smaller than 500 characters and
+    PyTorch float16 otherwise.
+  locator: Recommendations (backend-selection flowchart)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: On GPU for the shortest-text dataset, ONNX-O4 reaches 1.83x speedup while fp16 and bf16 reach
+    only 1.54x and 1.53x, leading to the recommendation of ONNX on GPU for shorter texts.
+  locator: Benchmarks (GPU paragraph below the backend list)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The reported speedups are averaged across 4 models, 3 datasets, and many batch sizes, so aggressive
+    averaging hides finer patterns and results must be tested per model and data.
+  locator: Benchmarks (intro + caveat paragraph)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: For longer texts ONNX and OpenVINO can perform slightly worse than PyTorch, and the docs caution
+    that real backend choice should be measured on your specific model and data.
+  locator: Benchmarks (CPU paragraph) / Recommendations Note
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Benchmarks (CPU paragraph below the backend list)
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Recommendations (backend-selection flowchart)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Recommendations (backend-selection flowchart)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Benchmarks (GPU paragraph below the backend list)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Benchmarks (intro + caveat paragraph)
+contradictions_or_cautions:
+- text: Benchmark speedups are aggregate averages across 4 models, 3 datasets, and many batch sizes; not
+    a guarantee for any single model.
+  locator: card/trust
+- text: No explicit page byline or last-updated date shown on the page.
+  locator: card/trust
+- text: Benchmark speedups are aggregate averages across 4 models, 3 datasets, and numerous batch sizes
+    and are not guaranteed for any single model, text length, or batch size; the page itself repeatedly
+    directs readers to measure per their own workload. No explicit page byline or last-updated date is
+    shown.
+  locator: card/limitations

@@ -1,0 +1,84 @@
+id: ext_20260614_ab75c558_001
+source_card_id: src_20260614_kw004_07
+created_at: '2026-06-14T21:11:45-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The language models a crochet fabric as a directed graph in which stitches are nodes and edges
+    encode the structural relations (previous, insertion, slip-stitch) between insertion points, providing
+    an explicit IR for arbitrary topologies.
+  locator: Section 3.1 (Mapping Crochet to a Graph) / Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Each node has exactly one outgoing 'previous' edge pointing to the insertion point the yarn originates
+    from, while 'insertion' edges point to the insertion points worked into by the current stitch, ensuring
+    a single unambiguous yarn path.
+  locator: Section 3.1, 'Insertion points' / edge-types paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: 'Increases and decreases are encoded purely by edge multiplicity: an increase is several stitches
+    sharing one insertion target (multiple incoming insertion edges), and a decrease is a node with more
+    than one outgoing insertion edge.'
+  locator: Section 3.2, 'Increasing and Decreasing'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Rows and rounds are unified into a single concept called 'layers' with no special graph structure;
+    the layer number is stored as a property on each node, so a pattern can switch between row- and round-wise
+    work at any point.
+  locator: Section 3.2, 'Rows, Rounds'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The language enforces a valid-sequence (crochetability) constraint requiring a yarn track from
+    the initial node such that no step works into an insertion point that is only created later in the
+    pattern.
+  locator: Section 3.3, 'Crochetability'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The prototype editor renders patterns in 3D using a force-directed graph library (Three.js/WebGL
+    with a D3 physics engine) so the spatial layout of stitches is computed automatically as an approximation
+    of the crocheted shape.
+  locator: Section 3.4 (editor) / force-based layouting paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: A think-aloud user study with six professional crochet designers found the language removes ambiguities
+    present in standard chart notation, and most designers reacted positively to the 3D view for judging
+    shape (e.g., comparing proportions of amigurumi parts).
+  locator: Abstract / Section 4 (user study with six professional designers)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section 3.4 (editor) / force-based layouting paragraph
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Abstract / Section 4 (user study with six professional designers)
+contradictions_or_cautions:
+- text: The 3D force-directed layout is a heuristic approximation, not a physically accurate yarn/stitch
+    simulation; the authors note a more exact model would require modeling physical yarn and stitch properties.
+  locator: card/limitations
+- text: Evaluation is a small qualitative study (six professional designers, think-aloud), not a quantitative
+    accuracy benchmark.
+  locator: card/limitations
+- text: The ACM DL landing page is gated (HTTP 403); verbatim facts here were extracted from the authors'
+    open preprint PDF of the identical paper and corroborate the project B1 seed report.
+  locator: card/limitations

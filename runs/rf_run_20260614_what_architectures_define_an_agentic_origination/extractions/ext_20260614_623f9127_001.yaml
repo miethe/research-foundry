@@ -1,0 +1,55 @@
+id: ext_20260614_623f9127_001
+source_card_id: src_20260614_rib026_02
+created_at: '2026-06-14T15:40:07-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: An Agents SDK agent is an LLM equipped with instructions, tools, and handoffs, letting it autonomously
+    plan, take actions, and delegate to sub-agents for open-ended tasks.
+  locator: 'Section: Orchestrating via LLM'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Orchestrating agent flow via code rather than the LLM makes tasks more deterministic and predictable
+    in speed, cost, and performance.
+  locator: 'Section: Orchestrating via code'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Code-based orchestration patterns include using structured outputs, chaining one agent's output
+    into the next agent's input, running an agent in a while loop, and running multiple agents in parallel
+    via primitives like asyncio.gather.
+  locator: 'Section: Orchestrating via code (techniques list)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: In the agents-as-tools (manager) pattern, a manager agent keeps control of the conversation and
+    calls specialist agents through Agent.as_tool().
+  locator: 'Section: Core SDK patterns (Agents as tools)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: In the handoffs pattern, a triage agent routes the conversation to a specialist, and that specialist
+    becomes the active agent for the rest of the turn.
+  locator: 'Section: Core SDK patterns (Handoffs)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'The two patterns are composable: a triage agent can hand off to a specialist that itself still
+    calls other agents as tools for narrow subtasks.'
+  locator: 'Section: Core SDK patterns (combining patterns)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Publication date is not explicitly stated on the page; "2026-04" is taken from the supplied source
+    metadata rather than an on-page byline, and the page is living documentation subject to revision.
+  locator: card/limitations

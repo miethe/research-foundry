@@ -1,0 +1,64 @@
+id: ext_20260613_d0cdf8db_001
+source_card_id: src_20260613_rib008_04
+created_at: '2026-06-13T23:32:52-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The Agent SDK has no programmatic API for registering Skills; they must be created as filesystem
+    SKILL.md artifacts, unlike subagents which can be defined programmatically.
+  locator: How Skills Work with the SDK
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The `skills` option is a context filter that accepts 'all', a list of skill names, or [] to disable
+    all; it is not a sandbox, since unlisted skills' files remain on disk and reachable via Read and Bash.
+  locator: Using Skills with the SDK
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Skills are discovered only through the filesystem setting sources; if settingSources is set explicitly,
+    it must include 'user' or 'project' to keep skill discovery.
+  locator: How Skills Work with the SDK (Note callout)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Setting setting_sources=[] disables skill discovery entirely, because it excludes the user and
+    project sources that skills are loaded from.
+  locator: Troubleshooting > Skills Not Found
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Skill metadata is discovered at startup from user and project directories, with full SKILL.md
+    content loaded only when the skill is triggered (progressive disclosure).
+  locator: How Skills Work with the SDK
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Setting the `skills` option automatically adds the Skill tool to allowedTools; if an explicit
+    tools list is also passed, it must include 'Skill' so Claude can invoke skills.
+  locator: Using Skills with the SDK
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The allowed-tools frontmatter field in SKILL.md is only honored by the Claude Code CLI and does
+    not apply via the SDK, where tool access must be controlled through the main allowedTools option.
+  locator: Tool Restrictions (Note callout)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: No explicit author or last-updated date shown on page; published month inferred from source metadata.
+  locator: card/trust
+- text: Page shows no named author or explicit last-updated date; published month (2026-06) is taken from
+    source metadata, not a page-visible date. Content is version-current to access date and may change
+    as the SDK evolves.
+  locator: card/limitations

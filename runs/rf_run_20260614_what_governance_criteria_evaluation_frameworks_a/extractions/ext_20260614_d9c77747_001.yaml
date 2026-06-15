@@ -1,0 +1,55 @@
+id: ext_20260614_d9c77747_001
+source_card_id: src_20260614_rib051_01
+created_at: '2026-06-14T16:50:31-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Langfuse protected prompt labels let project admins and owners prevent labels from being modified
+    or deleted to control prompt deployment.
+  locator: Body, opening sentence
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Once a label such as 'production' is protected, viewer and member roles cannot modify or delete
+    it, preventing changes to the production prompt version.
+  locator: Body, role-restriction bullet (lower-privilege)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Admin and owner roles retain the ability to modify or delete a protected label, deliberately changing
+    the production prompt version.
+  locator: Body, role-restriction bullet (privileged)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: A label's protection status is managed by admins and owners through the project settings.
+  locator: Body, configuration sentence
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Released 2025-04-02 (author Hassieb), protected labels are available on all Team (Cloud) and Enterprise
+    (Cloud and Self-Hosted) plans.
+  locator: Body, availability sentence; entry metadata (date/author)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Body, availability sentence; entry metadata (date/author)
+contradictions_or_cautions:
+- text: Changelog entry is brief; full mechanics deferred to linked prompt-management docs.
+  locator: card/trust
+- text: Plan-tier gating means behavior may not apply to all deployments.
+  locator: card/trust
+- text: Brief changelog entry; full mechanics are deferred to Langfuse's prompt-management documentation,
+    and the feature is gated to Team/Enterprise plans so behavior may not apply to all deployments.
+  locator: card/limitations

@@ -1,0 +1,91 @@
+id: ext_20260614_3bf1d4dc_001
+source_card_id: src_20260614_kw008_08
+created_at: '2026-06-14T22:59:33-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The IL2CPP scripting backend always performs byte-code stripping regardless of the editor's Stripping
+    Level setting, so Unity recommends setting Stripping Level to Disabled because other levels add little
+    size benefit and can cause native-code registration problems.
+  locator: Resolution > Stripping
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: IL2CPP converts C# to C++ ahead-of-time and compiles it into the app binary, which can produce
+    larger universal binaries or per-architecture slices than the Mono backend.
+  locator: Resolution (intro)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: A Unity universal (fat) build bundles a 32-bit and a 64-bit slice containing the same executable
+    for two architectures, roughly doubling the binary size versus a single-architecture build.
+  locator: Why is the binary size of IL2CPP bigger than with mono?
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'Apple enforces binary size limits that vary by MinimumOSVersion: 80 MB total __TEXT for <7.0,
+    60 MB per architecture slice for 7.x-8.x, and 500 MB for the Mach-O file for 9.0+.'
+  locator: Which sizes limit does Apple check?
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Unity ships a MapFileParser utility that parses the Xcode-generated map file to attribute executable
+    size contributions to individual scripts, plugins, and engine code.
+  locator: Analysing scripts with MapFileParser
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The article is scoped to a dated Unity/XCode/iOS era, applying to Unity versions 5.2.0p1 and higher,
+    XCode 7 and higher, and iOS 9.0 and higher.
+  locator: Footer / applicability note
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Resolution > Stripping
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Resolution (intro)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Why is the binary size of IL2CPP bigger than with mono?
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Which sizes limit does Apple check?
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Footer / applicability note
+contradictions_or_cautions:
+- text: Article is iOS/tvOS-focused; does not cover Android APK baseline sizes
+  locator: card/trust
+- text: Updated '2 years ago' with no exact date; references Unity 4.6.x-5.4.x and XCode 6-7 era
+  locator: card/trust
+- text: Does not mention 'Strip Engine Code' option, glTF/glTFast, or Filament comparisons
+  locator: card/trust
+- text: 'Source is iOS/tvOS-focused: it covers Apple binary slices and submission limits, not Android
+    APK baseline sizes, and never mentions a "Strip Engine Code" option, glTF/glTFast runtime ingestion,
+    or Filament comparisons. The prompt''s supplied key points about Android baselines (~6-17MB), react-native-filament
+    (~4MB), and glTFast are NOT supported by this article''s text and were omitted.'
+  locator: card/limitations
+- text: Undated ("2 years ago Updated"); references Unity 4.6.x-5.4.x and XCode 6-7, so figures and behavior
+    are dated relative to current Unity releases.
+  locator: card/limitations

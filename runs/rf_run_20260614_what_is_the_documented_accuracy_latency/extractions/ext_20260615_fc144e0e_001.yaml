@@ -1,0 +1,91 @@
+id: ext_20260615_fc144e0e_001
+source_card_id: src_20260614_kw015_04
+created_at: '2026-06-15T10:42:00-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The project rebranded dots.ocr-1.5 as dots.mocr on 2026-03-19, with technical details in an arXiv
+    paper.
+  locator: README - intro / News (rebrand notice, 2026.03.19)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: dots.mocr is a single multilingual document-parsing vision-language model built on a 1.7b-parameter
+    LLM and described as a 3B-parameter VLM.
+  locator: README - model overview / parameter description
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: On olmOCR-Bench, dots.mocr reports an overall score of 83.9 plus or minus 0.9.
+  locator: README - Benchmark Results (olmOCR-Bench)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: On OmniDocBench, dots.mocr reports a text-edit distance of 0.031, lower (better) than Gemini-2.5
+    Pro at 0.075 and Qwen3-VL-235B-A22B-Instruct at 0.069.
+  locator: README - Benchmark Results (OmniDocBench, TextEdit distance)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The model parses eleven layout categories and sorts all detected elements in human reading order.
+  locator: README - Layout Categories / output format
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The project claims the model can recognize virtually any human script and reaches state-of-the-art
+    multilingual document parsing among models of comparable size.
+  locator: README - capabilities / multilingual SOTA claim
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The documentation reports no explicit latency or throughput metrics, leaving on-device inference
+    cost unquantified.
+  locator: README - whole document (absence of perf benchmarks)
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: README - intro / News (rebrand notice, 2026.03.19)
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: README - model overview / parameter description
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: README - Benchmark Results (olmOCR-Bench)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: README - Benchmark Results (OmniDocBench, TextEdit distance)
+contradictions_or_cautions:
+- text: Self-reported scores from the project maintainers
+  locator: card/trust
+- text: No latency/throughput benchmarks published
+  locator: card/trust
+- text: Parameter count stated inconsistently (1.7b LLM base vs 3B VLM)
+  locator: card/trust
+- text: Benchmarks are self-reported by the project maintainers (primary source, no independent verification).
+  locator: card/limitations
+- text: Parameter count is stated inconsistently in the README (1.7b LLM base vs 3B VLM); both phrasings
+    are captured.
+  locator: card/limitations
+- text: No latency/throughput data is published, so runtime cost remains unquantified. The OmniDocBench
+    Gemini-2.5 Pro text-edit figure in the README (0.075) differs from the 0.066 value circulating in
+    some secondary summaries; the README value is used here.
+  locator: card/limitations

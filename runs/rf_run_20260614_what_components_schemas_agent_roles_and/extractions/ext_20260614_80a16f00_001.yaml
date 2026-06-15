@@ -1,0 +1,74 @@
+id: ext_20260614_80a16f00_001
+source_card_id: src_20260614_rib025_03
+created_at: '2026-06-14T15:21:26-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: STORM is an LLM system that writes Wikipedia-like articles from scratch and splits long-form generation
+    into a pre-writing (Internet research + outline) stage and a writing (full article + citations) stage.
+  locator: Overview
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: 'The STORM engine is composed of four modules: Knowledge Curation, Outline Generation, Article
+    Generation, and Article Polishing.'
+  locator: Customization of the Pipeline - STORM
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: STORM's pre-writing discovers perspectives by surveying existing articles on similar topics and
+    simulates a conversation between a Wikipedia writer and a topic expert grounded in Internet sources
+    to drive follow-up questions.
+  locator: How STORM & Co-STORM works - STORM
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Co-STORM adds a collaborative discourse protocol with three roles — Co-STORM LLM experts, a Moderator
+    that surfaces information not yet used, and the Human user — to manage turns in the conversation.
+  locator: How STORM & Co-STORM works - CO-STORM
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Co-STORM maintains a dynamically updated mind map that organizes collected information into a
+    hierarchical concept structure to build a shared conceptual space between the human user and the system.
+  locator: How STORM & Co-STORM works - CO-STORM
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Both STORM and Co-STORM are implemented modularly using DSPy, and the system supports many retrievers
+    including YouRM, BingSearch, VectorRM, SerperRM, BraveRM, SearXNG, DuckDuckGoSearchRM, TavilySearchRM,
+    GoogleSearch, and AzureAISearch.
+  locator: How STORM & Co-STORM works / API (retrieval module components)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: LiteLLM integration for language and embedding models was added to knowledge-storm v1.1.0 (latest
+    release dated Jan 23, 2025), and Co-STORM was released and integrated into the package in v1.0.0 (Sept
+    2024).
+  locator: Latest News
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Latest News
+contradictions_or_cautions:
+- text: README is self-reported and promotional in tone
+  locator: card/trust
+- text: Release facts current as of v1.1.0 (Jan 2025); may be stale by mid-2026
+  locator: card/trust
+- text: README content is self-reported by the maintaining lab and may understate limitations; release
+    facts are current to v1.1.0 (Jan 2025) and may be stale or superseded by mid-2026. MIT license is
+    shown in the repo footer but not as a verbatim sentence in the README body.
+  locator: card/limitations

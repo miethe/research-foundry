@@ -1,0 +1,95 @@
+id: ext_20260615_69b4f261_001
+source_card_id: src_20260614_kw016_03
+created_at: '2026-06-15T11:03:20-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The method takes a written crochet pattern as input, translates it into a graph, and obtains a
+    force-directed graph layout that yields a 3D model matching the hand-crocheted result in shape and
+    size.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The stated benefit is that designers can preview and adjust a pattern digitally without physically
+    crocheting it; the work is oriented toward amigurumi but could be extended to clothing or similar
+    crochet styles.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Each stitch is modeled as a graph node; horizontal edges encode sequential connections between
+    consecutive stitches and vertical edges encode working connections (a stitch worked into a stitch
+    below).
+  locator: Section 4 (graph construction)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'The layout adapts Isenburg et al.''s force-directed algorithm: a non-linear least-squares optimization
+    minimizing two energy functions (edge length and local curvature), since stuffing a crocheted shell
+    is treated as equivalent to inflating the planar graph.'
+  locator: Section 4.2 The graph layout
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The implementation uses the Ceres Solver library with a static blend weight λ = 0.65 for most
+    pieces (λ = 0.9 for the bunny head and body), and the linear solver is the most time-expensive part
+    of the application.
+  locator: Section 4.2 (implementation parameters)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'Performance is limited: small patterns converge in seconds (bunny legs at 318 stitches and arms
+    at 264 stitches in under 5s), but the bunny head (798 stitches) and body (708 stitches) failed to
+    converge even after more than two minutes.'
+  locator: Section 5.3 Performance
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The authors released their source code as an open repository, providing a usable reference implementation
+    of a stitch-graph plus force-directed embedding forward engine.
+  locator: Section 3 Background (footnote / repo link)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section 4.2 (implementation parameters)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section 5.3 Performance
+contradictions_or_cautions:
+- text: Method tested only on simple, beginner-level patterns and single-crochet-like stitches; not validated
+    on intermediate/advanced patterns.
+  locator: card/trust
+- text: Assumes uniform edge length of 1, which the authors note is inaccurate in general.
+  locator: card/trust
+- text: Piece-joining and some shaping done by ad-hoc manual specification.
+  locator: card/trust
+- text: Tested only on simple, beginner-level patterns and single-crochet-like stitches; explicitly too
+    narrow for intermediate/advanced patterns.
+  locator: card/limitations
+- text: Assumes a uniform edge length of 1, which the authors acknowledge is inaccurate in general (real
+    stitch sizes vary with tension, hook, yarn weight, stitch type).
+  locator: card/limitations
+- text: Piece joining and certain shaping effects are specified ad hoc / by hand; force-directed layouts
+    are slow and large patterns may not converge.
+  locator: card/limitations

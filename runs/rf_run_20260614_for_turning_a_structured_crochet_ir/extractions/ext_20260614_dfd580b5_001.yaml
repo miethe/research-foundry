@@ -1,0 +1,89 @@
+id: ext_20260614_dfd580b5_001
+source_card_id: src_20260614_kw004_04
+created_at: '2026-06-14T21:11:45-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: CrochetPARADE defines stitches and stitch patterns via a custom language grammar designed to remove
+    the ambiguity of plain-English crochet instructions.
+  locator: About > OVERVIEW (para 1)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The tool parses and validates any user-provided pattern for correctness before building and rendering
+    a 3D virtual model.
+  locator: About > OVERVIEW (para 1)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: CrochetPARADE flags overly loose or tight stitches so users can replace them before crocheting,
+    reducing the need for blocking.
+  locator: About > OVERVIEW (para 2)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Interactive 3D features include rotate/zoom/pan, animating the pattern-creation process, highlighting/hiding
+    selected stitches, and changing yarn thickness and color.
+  locator: About > OVERVIEW (para 4, interactive features)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Projects can be exported to 3D files importable into Blender for further manipulation and visualization.
+  locator: About > OVERVIEW (para 3, export)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: CrochetPARADE was authored by Svetlin Tassev (2023) and its website and computational components
+    are free and open source under the GPLv3 license.
+  locator: License and Copyright (bullet 1) and Author
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: All calculations run locally on the user's device with no data sent to a central server, at the
+    cost of slow performance on old hardware and large patterns.
+  locator: About > OVERVIEW (para 5, local compute)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: About > OVERVIEW (para 1)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: About > OVERVIEW (para 4, interactive features)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: About > OVERVIEW (para 3, export)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: License and Copyright (bullet 1) and Author
+contradictions_or_cautions:
+- text: Marketing/self-description rather than independent evaluation
+  locator: card/trust
+- text: Codeberg/GitHub source mirrors not stated on this page
+  locator: card/trust
+- text: Source is the project's own landing page (self-description / marketing), not an independent evaluation.
+  locator: card/limitations
+- text: The page does not state Codeberg/GitHub source mirrors, so that claim is not supported by this
+    source.
+  locator: card/limitations
+- text: 'Performance caveat: large patterns (tens of thousands of stitches) can take minutes or more to
+    calculate; not designed for mobile.'
+  locator: card/limitations

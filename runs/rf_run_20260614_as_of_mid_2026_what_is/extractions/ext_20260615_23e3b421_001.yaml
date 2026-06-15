@@ -1,0 +1,90 @@
+id: ext_20260615_23e3b421_001
+source_card_id: src_20260614_kw012_08
+created_at: '2026-06-15T09:31:13-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: CrochetPARADE is a platform for creating, visualizing, and analyzing both 2D and 3D crochet patterns.
+  locator: Platform overview / intro
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The site was last updated February 13, 2026.
+  locator: Header / Updated date
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The platform is tested on latest Chrome, Brave, and Firefox, has Safari issues, and is not designed
+    for mobile devices.
+  locator: Device & browser support
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: All calculations run locally in the browser with no data collected to a central server or transmitted
+    over the internet.
+  locator: Local computation / privacy
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Users can export to a GLTF 3D file that is compatible with Blender.
+  locator: Export options
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Users can save the pattern as a Standard Crochet Chart in SVG format, and save the crochet instructions
+    as text.
+  locator: Export options
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The platform and its computational components are free and open source under GPLv3, intended to
+    remain free and open to all in perpetuity.
+  locator: License
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: Recent additions include a Remesher that turns a 3D model into crochet instructions and a new
+    STL export for resizing patterns and 3D-printing a model.
+  locator: Recent features / changelog
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Platform overview / intro
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Header / Updated date
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Export options
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: License
+- metric_name: evidence_point
+  value: ev_008
+  unit: null
+  date_context: null
+  locator: Recent features / changelog
+contradictions_or_cautions:
+- text: Self-published first-party landing page; all claims are the project's own and not independently
+    verified. Feature set and update date reflect the page as accessed 2026-06-14.
+  locator: card/limitations

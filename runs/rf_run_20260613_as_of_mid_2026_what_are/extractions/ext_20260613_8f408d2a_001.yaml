@@ -1,0 +1,94 @@
+id: ext_20260613_8f408d2a_001
+source_card_id: src_20260613_rib009_02
+created_at: '2026-06-13T22:57:43-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Each GPT Researcher deep research run takes about 5 minutes and costs about $0.40, using o3-mini
+    at 'high' reasoning effort.
+  locator: Intro / cost-and-time note
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Deep Research is invoked by passing report_type="deep" to the GPTResearcher constructor.
+  locator: Usage / constructor example
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: deep_research_breadth sets the number of parallel research paths at each level and defaults to
+    4.
+  locator: Configuration
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: deep_research_depth sets how many levels deep to explore and defaults to 2.
+  locator: Configuration
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: deep_research_concurrency sets the maximum number of concurrent research operations and defaults
+    to 4.
+  locator: Configuration
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Deep Research uses a tree-like exploration pattern where breadth fans out multiple search queries
+    per level and depth recursively dives deeper following leads.
+  locator: How It Works / tree-like exploration
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Concurrent processing uses async/await patterns to run multiple research paths simultaneously.
+  locator: How It Works / Concurrent Processing
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: The recommended total_words setting for a generated deep report is 2000 words.
+  locator: Configuration / total_words
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Intro / cost-and-time note
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Configuration
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Configuration
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Configuration
+- metric_name: evidence_point
+  value: ev_008
+  unit: null
+  date_context: null
+  locator: Configuration / total_words
+contradictions_or_cautions:
+- text: No author/date byline on page; published date inferred from source metadata.
+  locator: card/trust
+- text: No author byline or explicit publication date on the page; published_at ("2026-01") is inferred
+    from supplied source metadata, not visible page text.
+  locator: card/limitations
+- text: Cost/time figures are vendor-stated estimates tied to a specific model (o3-mini) and reasoning
+    effort; actual figures vary with model choice, query, and config.
+  locator: card/limitations

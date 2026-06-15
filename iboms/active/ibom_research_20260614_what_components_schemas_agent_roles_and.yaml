@@ -1,0 +1,24 @@
+id: ibom_research_20260614_what_components_schemas_agent_roles_and
+intent_id: intent_research_20260614_what_components_schemas_agent_roles_and
+created_at: '2026-06-14T14:07:30-04:00'
+snapshot_status: draft
+context_snapshot: 'Initial I-BOM for: What components, schemas, agent roles, and execution loop'
+sources_seeded: []
+assumptions: []
+known_constraints: []
+tools_available:
+- claude_code
+- claude_agent_sdk
+- opencode
+- gpt_researcher
+- paperqa2
+- litellm
+model_policy:
+  extraction_profile: rf_extract_cheap
+  synthesis_profile: rf_synthesize_deep
+  verification_profile: rf_verify_balanced
+relevant_memory: []
+open_questions: []
+security_boundaries:
+- Do not mix personal and work-provided API keys in one run.
+- Do not send work-sensitive source content to non-approved providers.

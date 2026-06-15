@@ -1,0 +1,55 @@
+id: ext_20260615_7ab832f6_001
+source_card_id: src_20260614_rib041_03
+created_at: '2026-06-15T10:32:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Specifying the seed parameter makes the system attempt deterministic sampling so that repeated
+    requests with the same seed and parameters return the same result.
+  locator: Model level controls for consistent outputs - seed and system_fingerprint
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: To get consistent outputs, developers should set the seed parameter to any integer but reuse the
+    same value across requests.
+  locator: Implementing consistent outputs (step 1)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: All other request parameters (prompt, temperature, top_p, etc.) must also be held identical across
+    requests for consistent outputs.
+  locator: Implementing consistent outputs (step 2)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: When seed, request parameters, and system_fingerprint all match across requests, model outputs
+    will mostly be identical.
+  locator: Implementing consistent outputs (system_fingerprint monitoring)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: 'Determinism is best-effort, not guaranteed: outputs can still differ even when parameters and
+    system_fingerprint match, due to inherent model non-determinism.'
+  locator: Implementing consistent outputs (non-determinism caveat)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The seed feature delivers only '(mostly) consistent' outputs, framing determinism as best-effort
+    rather than a hard guarantee.
+  locator: TLDR
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: The source frames reproducibility as best-effort ("mostly identical"), not a hard guarantee. Original
+    2023-11 article scoped the feature to beta models (gpt-4-1106-preview, gpt-3.5-turbo-1106); model
+    coverage has since broadened, so model-availability specifics are time-bound.
+  locator: card/limitations

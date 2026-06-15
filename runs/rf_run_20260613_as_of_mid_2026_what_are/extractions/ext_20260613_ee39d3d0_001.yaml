@@ -1,0 +1,80 @@
+id: ext_20260613_ee39d3d0_001
+source_card_id: src_20260613_rib009_07
+created_at: '2026-06-13T22:57:43-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Base Sonar charges $1 per 1M input tokens and $1 per 1M output tokens, the cheapest Sonar model
+    on a per-token basis.
+  locator: Sonar API Pricing > Token Pricing (table)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Sonar Pro costs $3 per 1M input tokens and $15 per 1M output tokens; Sonar Reasoning Pro costs
+    $2 input and $8 output per 1M tokens.
+  locator: Sonar API Pricing > Token Pricing (table)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Sonar Deep Research has $2/1M input and $8/1M output, plus additional charges of $2/1M citation
+    tokens, $3/1M reasoning tokens, and $5/1K search queries.
+  locator: Sonar API Pricing > Token Pricing (table)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Per-request fees per 1000 requests for base Sonar are $5 (low), $8 (medium), and $12 (high) search
+    context size.
+  locator: Sonar API Pricing > Request Pricing by Search Context Size (table)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Per 1000 requests, Sonar Pro and Sonar Reasoning Pro both charge $6 (low), $10 (medium), and $14
+    (high) for search context.
+  locator: Sonar API Pricing > Request Pricing by Search Context Size (table)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Total Sonar query cost equals token costs plus a request fee that varies by search context size
+    and applies only to Sonar, Sonar Pro, and Sonar Reasoning Pro models.
+  locator: Sonar API Pricing (intro line)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Sonar API Pricing > Token Pricing (table)
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Sonar API Pricing > Token Pricing (table)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Sonar API Pricing > Token Pricing (table)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Sonar API Pricing > Request Pricing by Search Context Size (table)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Sonar API Pricing > Request Pricing by Search Context Size (table)
+contradictions_or_cautions:
+- text: Vendor list prices are subject to change without notice; the page itself is dated to its access/publication
+    window and exact citation/reasoning/search-query charges apply specifically to Sonar Deep Research,
+    not the other models.
+  locator: card/limitations

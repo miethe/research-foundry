@@ -1,0 +1,82 @@
+id: ext_20260613_9dbab45b_001
+source_card_id: src_20260613_rib008_06
+created_at: '2026-06-13T23:32:52-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Effective June 15, 2026, Claude Agent SDK and claude -p usage no longer counts toward a Claude
+    plan's usage limits.
+  locator: 'Section: What''s changing'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Monthly Agent SDK credit is $20 for Pro, $100 for Max 5x, and $200 for Max 20x.
+  locator: 'Section: Monthly credit by plan'
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_003
+  text: Team Standard seats get a $20/month credit and Team Premium seats get a $100/month credit; Enterprise
+    ranges from $20 (usage-based) to $200 (seat-based Premium seats).
+  locator: 'Section: Monthly credit by plan'
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_004
+  text: The credit covers Agent SDK usage in the user's own Python/TypeScript projects, the claude -p
+    non-interactive command, the Claude Code GitHub Actions integration, and third-party apps that authenticate
+    via a Claude subscription.
+  locator: 'Section: What the credit covers'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Claude Platform accounts using an API key receive no credit; pay-as-you-go billing continues unchanged.
+  locator: 'Section: What''s changing'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Once the monthly credit runs out, additional Agent SDK usage flows to usage credits at standard
+    API rates, but only if usage credits are enabled.
+  locator: 'Section: How the credit works'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: If usage credits aren't enabled, Agent SDK requests stop until the credit refreshes; unused credits
+    do not roll over to the next billing cycle.
+  locator: 'Section: How the credit works'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: 'Section: What''s changing'
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: 'Section: Monthly credit by plan'
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: 'Section: Monthly credit by plan'
+contradictions_or_cautions:
+- text: Help-center page shows relative date ('Over 3 weeks ago'), not an exact publish date.
+  locator: card/trust
+- text: Billing article; no latency/throughput/rate-limit guarantees stated.
+  locator: card/trust
+- text: Help-center page shows only a relative timestamp ("Over 3 weeks ago"), not an exact publish date;
+    published_at recorded as the 2026-06 source month.
+  locator: card/limitations
+- text: 'This is a billing/policy article: it states no latency, throughput, or rate-limit guarantees
+    for Agent SDK usage under the credit.'
+  locator: card/limitations

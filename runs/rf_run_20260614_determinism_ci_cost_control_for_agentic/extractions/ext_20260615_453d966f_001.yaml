@@ -1,0 +1,73 @@
+id: ext_20260615_453d966f_001
+source_card_id: src_20260614_rib041_06
+created_at: '2026-06-15T10:32:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: pytest-recording is a pytest plugin built on VCR.py that records and replays HTTP traffic for
+    tests.
+  locator: README — top description / tagline
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The plugin exposes a pytest.mark.vcr marker that maps onto VCR.py's use_cassettes API for per-test
+    cassette control.
+  locator: README — Usage / pytest.mark.vcr
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: By default the plugin runs in VCR's 'none' record mode specifically to prevent unintentional live
+    network requests during tests.
+  locator: README — recording modes / defaults
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Recording is enabled by passing the --record-mode CLI option (e.g. once) when invoking pytest.
+  locator: README — recording / --record-mode option
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The plugin adds a 'rewrite' record mode that regenerates a cassette from scratch rather than extending
+    it as VCR.py's 'all' mode does.
+  locator: README — rewrite record mode
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: A pytest.mark.block_network mark blocks network access (socket-based transports and pycurl) to
+    give confidence tests do not go over the wire.
+  locator: README — network blocking / block_network
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Specific hosts can be whitelisted during network blocking via allowed_hosts (regex), e.g. on the
+    mark or via --allowed-hosts on the CLI.
+  locator: README — network blocking / allowed_hosts
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: Cassettes are stored as per-test YAML files on disk (capturing the recorded HTTP request/response),
+    e.g. under cassettes/{module}/test_name.yaml.
+  locator: README — cassette storage path example
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: No publication/release date visible on README
+  locator: card/trust
+- text: Record-mode catalog partly defers to upstream VCR.py docs rather than enumerating in-README
+  locator: card/trust
+- text: README carries no visible publication or release date (published_at unset); record-mode catalog
+    partly defers to upstream VCR.py documentation rather than enumerating every mode in-README, so the
+    full mode list (`none`/`once`/`new_episodes`/`all`) is corroborated by VCR.py rather than fully quoted
+    here.
+  locator: card/limitations

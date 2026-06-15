@@ -1,0 +1,54 @@
+id: ext_20260614_7aedcb27_001
+source_card_id: src_20260614_rib051_04
+created_at: '2026-06-14T16:50:31-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'MLflow Model Registry historically governed lifecycle via discrete stages a model version can
+    be transitioned to: Staging, Production, or Archived (plus None).'
+  locator: 'Section: Deprecated: Using Model Stages'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Stage transitions are performed via the client method transition_model_version_stage, whose accepted
+    stage values are Staging, Archived, Production, and None.
+  locator: 'Section: Deprecated: Using Model Stages (transition API)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: As of MLflow 2.9.0, the Model Stages mechanism is deprecated and slated for removal in a future
+    major release.
+  locator: 'Section: Migrating from Stages (deprecation warning)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The replacement deployment mechanism, model version aliases, are named references to specific
+    model versions and, unlike stages, allow multiple aliases per version to support A/B testing and rollout.
+  locator: 'Section: New model deployment tools (Model Version Aliases)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Model version tags are the second replacement mechanism, used to annotate a version's status (e.g.,
+    a validation_status tag moving from pending to passed).
+  locator: 'Section: New model deployment tools (Model Version Tags)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: 'Section: Migrating from Stages (deprecation warning)'
+contradictions_or_cautions:
+- text: This is the "latest" docs URL, so stage/alias semantics reflect a current (2025) MLflow release;
+    exact version-specific behavior may drift. The page does not verbatim state the "one stage per version
+    at a time" rule (implied, not quoted) and describes only direct stage updates with no documented approval/reject
+    transition-request workflow.
+  locator: card/limitations

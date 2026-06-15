@@ -1,0 +1,80 @@
+id: ext_20260615_bdb07106_001
+source_card_id: src_20260614_rib017_03
+created_at: '2026-06-15T00:16:10-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'InfoTypes are the unit of detection: Google Cloud Sensitive Data Protection uses information
+    types (infoTypes) to define what it scans for.'
+  locator: InfoType detector reference — opening / InfoType descriptions section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Built-in detectors are organized into named categories spanning Finance, Health, Communications,
+    PII, SPII, Demographic, Credential, Government ID, Document, and Contextual information.
+  locator: InfoType categories section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Each infoType carries a default sensitivity score, presented in a per-infoType table that drives
+    downstream treatment.
+  locator: Sensitivity scores section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Default sensitivity scores are configurable per infoType, so the content-derived tier is an editable
+    default rather than a fixed value.
+  locator: Sensitivity scores section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The HIGH sensitivity level is defined by the presence of highly sensitive data such as credit-card
+    numbers and certain national identifiers.
+  locator: 'Companion page: Sensitivity and data risk levels — High definition'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The MODERATE level is defined by sensitive-but-not-highly-sensitive PII such as email addresses
+    and phone numbers.
+  locator: 'Companion page: Sensitivity and data risk levels — Moderate definition'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The LOW level corresponds to data where no sensitive information was detected and no freeform/unstructured
+    text is present.
+  locator: 'Companion page: Sensitivity and data risk levels — Low definition'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: The aggregate sensitivity score combines each infoType's default sensitivity (plus user overrides)
+    with the likelihood that highly sensitive infoTypes are present, weighting HIGH-tier detectors most
+    heavily.
+  locator: 'Companion page: Sensitivity and data risk levels — sensitivity calculation'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: The infoTypes reference page enumerates detectors and sensitivity values but does not itself define
+    what HIGH/MODERATE/LOW mean; that definition lives on the companion sensitivity/data-risk page.
+  locator: card/trust
+- text: The infoTypes reference page itself enumerates detectors and sensitivity values but does not define
+    HIGH/MODERATE/LOW; those definitions are drawn from the companion "Sensitivity and data risk levels"
+    documentation page (ev_005–ev_008), which is cited in the locators.
+  locator: card/limitations
+- text: The page references that new infoType detectors and groups are added periodically; the exact total
+    detector count is not stated as a single verbatim number on the page, so the "400+/500+" figure is
+    not quoted here.
+  locator: card/limitations
+- text: Sensitivity scores are an editable default; an organization's effective tiering may differ from
+    the documented defaults after user overrides.
+  locator: card/limitations

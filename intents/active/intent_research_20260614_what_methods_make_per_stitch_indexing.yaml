@@ -1,0 +1,40 @@
+id: intent_research_20260614_what_methods_make_per_stitch_indexing
+title: What methods make per-stitch indexing and row-by-row highlight
+owner: Nick Miethe
+created_at: '2026-06-14T17:08:36-04:00'
+status: active
+type: research
+raw_idea_ids:
+- raw_20260614_1708_what_methods_make_per_stitch_indexing
+objective: What methods make per-stitch indexing and row-by-row highlight mapping provably correct and
+  stable for an interactive crochet 3D preview - i.e. how to assign stable stitch/round identifiers that
+  survive parameter edits, map IR traversal order to rendered geometry without drift, and verify (with
+  a measurable correctness metric) that the highlighted row/stitch in 3D corresponds exactly to the pattern
+  step a crocheter is on?
+motivation: ''
+desired_output:
+  artifact_type: report
+  audience: technical
+  depth: standard
+scope:
+  in: []
+  out: []
+research_questions:
+  primary:
+  - What does the evidence say about What methods make per-stitch indexing and row-by-row highlight?
+  secondary: []
+constraints:
+  hard:
+  - Every material claim must map to source_card_id or be labeled inference/speculation.
+  soft: []
+success_criteria: []
+governance:
+  sensitivity: personal
+  key_profile_allowed: personal
+  requires_human_review: false
+  allowed_writebacks:
+  - meatywiki_personal
+  - skillmeat_personal
+  - ccdash_local
+ibom_ref: ibom_research_20260614_what_methods_make_per_stitch_indexing
+intenttree_node_ref: tree_rf_20260614_what_methods_make_per_stitch_indexing

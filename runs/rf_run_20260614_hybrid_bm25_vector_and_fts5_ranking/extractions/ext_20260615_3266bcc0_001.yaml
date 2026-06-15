@@ -1,0 +1,98 @@
+id: ext_20260615_3266bcc0_001
+source_card_id: src_20260614_rib034_04
+created_at: '2026-06-15T09:55:29-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'RRF scores each document by summing reciprocal ranks across the input rankings: RRFscore(d) =
+    sum over r in R of 1/(k + r(d)), where each ranking r is a permutation on 1..|D|.'
+  locator: Section 1, RRF score formula (eq.)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The constant k is fixed at 60, chosen during a pilot investigation and never re-tuned during validation;
+    the formula keeps lower-ranked documents from vanishing and dampens outlier systems.
+  locator: Section 1, after formula
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: A pilot experiment over TREC topics found k=60 was near-optimal but that the exact choice was
+    not critical, with MAP varying only slightly across k from 0 to 500.
+  locator: Section 1, pilot experiments / Table 1
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: RRF consistently yields better results than any individual IR system and better results than the
+    standard fusion method Condorcet Fuse, demonstrated by combining TREC runs and by building a LETOR
+    3 meta-learner.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Across pilot and TREC experiments, RRF outperforms Condorcet Fuse, CombMNZ, and the best individual
+    system by roughly 4% to 5% on average in MAP.
+  locator: Section 1, TREC experiments summary
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: RRF is an unsupervised, training-free fusion method that combines ranks without regard to the
+    arbitrary scores of particular ranking methods and needs no special voting algorithm or global information.
+  locator: Section 1, opening / Section 2 Discussion
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Applying RRF to the LETOR 3 baseline rank-learning methods produces a meta-learner that, to the
+    authors' knowledge, no reported result matches or exceeds, making it the best known method on that
+    dataset.
+  locator: Section 1, LETOR 3 result
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Section 1, RRF score formula (eq.)
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Section 1, after formula
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Section 1, pilot experiments / Table 1
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section 1, TREC experiments summary
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Section 1, LETOR 3 result
+contradictions_or_cautions:
+- text: Short paper (2 pages); experiments limited to TREC ad hoc/Robust and LETOR 3 with MAP as the primary
+    reported measure
+  locator: card/trust
+- text: Short paper (2 pages); experiments are confined to TREC ad hoc/Robust tasks and the LETOR 3 dataset,
+    and report MAP as the primary measure (P@k, R-precision, NDCG noted as "comparable" but not tabulated).
+    The ACM DL canonical landing page is paywalled/Cloudflare-gated; full text here was verified against
+    the authors' University of Waterloo open PDF copy.
+  locator: card/limitations

@@ -1,0 +1,59 @@
+id: ext_20260614_b91b8f9b_001
+source_card_id: src_20260614_rib001_02
+created_at: '2026-06-14T20:58:33-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Decompose-Then-Verify factual-precision metrics such as FActScore can be manipulated to inflate
+    scores by adding obvious or repetitive subclaims.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Core is a customizable plug-and-play subclaim selection component that filters subclaims by their
+    uniqueness and informativeness.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Core formalizes subclaim selection as a constrained optimization problem rather than an ad-hoc
+    filter.
+  locator: Section 3 — The Proposed Core Method
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Factual-precision metrics augmented by Core are substantially more robust across a wide range
+    of knowledge domains.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Core is designed as a drop-in replacement for the decomposition component of existing factual-precision
+    evaluation pipelines.
+  locator: Section 1 — Introduction
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The authors release a modular evaluation framework supporting Core plus swappable decomposition
+    strategies, and an expanded FActScore biography dataset.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Preprint, not stated as peer-reviewed in extracted text
+  locator: card/trust
+- text: Repo URL taken from task brief, not directly visible in fetched HTML body
+  locator: card/trust
+- text: arXiv preprint; the fetched text does not state peer-review status. Repo URL (github.com/zipJiang/Core)
+    is from the task brief and was not directly visible in the fetched HTML body; the paper states code/framework
+    is released. Some section-level locators are approximate based on extraction.
+  locator: card/limitations

@@ -1,0 +1,74 @@
+id: ext_20260613_9d4f7ada_001
+source_card_id: src_20260613_rib008_03
+created_at: '2026-06-13T23:32:52-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Subagents are defined programmatically via the agents parameter and invoked through the Agent
+    tool; including Agent in allowedTools auto-approves invocations without a permission prompt.
+  locator: Creating subagents > Programmatic definition (recommended)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: A subagent starts a fresh context whose only parent-to-child channel is the Agent tool prompt
+    string; it does not receive the parent's conversation history, tool results, or system prompt, but
+    does inherit tool definitions and project CLAUDE.md (via settingSources).
+  locator: What subagents inherit (intro + table)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Subagents run in isolated context and can run concurrently; intermediate tool calls and results
+    stay inside the subagent and only its final message returns to the parent (verbatim as the Agent tool
+    result).
+  locator: Benefits of using subagents > Context isolation / Parallelization
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: As of Claude Code v2.1.172, subagents can spawn their own subagents; a background subagent five
+    levels below the main agent cannot spawn further, while foreground subagents can spawn at any depth.
+  locator: AgentDefinition configuration (Note, min-version 2.1.172)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The Agent tool was renamed from Task to Agent in Claude Code v2.1.63; current SDK releases emit
+    Agent in tool_use blocks but still use Task in the system:init tools list and in result.permission_denials,
+    so code must check both.
+  locator: Detecting subagent invocation (Note)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: Subagents are resumable by capturing the session_id and parsing agentId from the Agent tool result,
+    then passing resume=sessionId; for runs coordinating dozens to hundreds of agents, the docs point
+    to the Workflow tool (available in the TypeScript Agent SDK v0.3.149 and later).
+  locator: Resuming subagents / Scale up with dynamic workflows
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: AgentDefinition configuration (Note, min-version 2.1.172)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Detecting subagent invocation (Note)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Resuming subagents / Scale up with dynamic workflows
+contradictions_or_cautions:
+- text: Page lists no named authors; published date inferred as 2026-06 from source metadata. Version-gated
+    claims (v2.1.172, v2.1.63, SDK v0.3.149) are accurate as of the documented release but may change
+    in later versions.
+  locator: card/limitations

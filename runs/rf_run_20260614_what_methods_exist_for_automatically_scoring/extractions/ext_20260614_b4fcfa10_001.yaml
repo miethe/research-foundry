@@ -1,0 +1,54 @@
+id: ext_20260614_b4fcfa10_001
+source_card_id: src_20260614_rib042_06
+created_at: '2026-06-14T16:13:03-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Faithfulness is a single-turn RAG metric that uses LLM-as-a-judge to assess whether the generator's
+    answers rely solely on the retrieved context without hallucinating or providing misinformation.
+  locator: Definition (opening paragraph)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Faithfulness is computed as the number of truthful claims divided by the total number of claims
+    extracted from the actual output.
+  locator: How is it calculated (formula)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The metric first extracts individual claims from the actual output using an LLM, then uses the
+    same LLM to check how many of those claims are supported by the retrieved context.
+  locator: How is it calculated (computation steps)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: A claim counts as truthful if it does not contradict any facts presented in the retrieval context,
+    making the check contradiction-based rather than strict entailment.
+  locator: How is it calculated (truthfulness criterion)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: A faithfulness test case must include the input query, the generator's final output (actual_output),
+    and the retrieved context (retrieval_context).
+  locator: Required Arguments / Test case parameters
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_006
+  text: The faithfulness metric can be applied to both single-turn end-to-end and component-level RAG
+    testing, evaluating the generator component.
+  locator: Usage / testing scope
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: Page is undated (no published_at visible); reflects the documentation as accessed on 2026-06-14.
+    Default threshold value was not confirmed verbatim from the page, so it is omitted.
+  locator: card/limitations

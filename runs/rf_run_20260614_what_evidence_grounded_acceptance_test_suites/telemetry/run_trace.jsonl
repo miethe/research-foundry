@@ -1,0 +1,15 @@
+{"stage": "plan", "ts": "2026-06-14T17:08:39-04:00", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites"}
+{"ts": "2026-06-15T00:08:46-04:00", "stage": "extract", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "count": 9}
+{"ts": "2026-06-15T00:08:51-04:00", "stage": "claim_map", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "claims_total": 66}
+{"ts": "2026-06-15T00:13:27-04:00", "stage": "synthesize", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "report_id": "report_20260615_what_evidence_grounded_acceptance_test_suites", "claims_cited": 78}
+{"ts": "2026-06-15T00:24:10-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "exit_code": 2, "passed": false}
+{"ts": "2026-06-15T00:24:51-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T00:25:33-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T00:25:44-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T00:26:10-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "exit_code": 0, "passed": true}
+{"ts": "2026-06-15T00:28:13-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "exit_code": 2, "passed": false}
+{"stage": "bundle", "ts": "2026-06-15T00:28:13-04:00", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "bundle_id": "bundle_20260615_intent_research_20260614_what_evidence_grounded", "verified": false}
+{"ts": "2026-06-15T00:28:46-04:00", "stage": "verify", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "exit_code": 0, "passed": true}
+{"stage": "bundle", "ts": "2026-06-15T00:28:46-04:00", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "bundle_id": "bundle_20260615_intent_research_20260614_what_evidence_grounded", "verified": true}
+{"stage": "ccdash_event", "ts": "2026-06-15T00:28:53-04:00", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "event_id": "exec_20260615_intent_research_20260614_what_evidence_grounded"}
+{"stage": "writeback", "ts": "2026-06-15T00:28:53-04:00", "run_id": "rf_run_20260614_what_evidence_grounded_acceptance_test_suites", "requires_review": false}

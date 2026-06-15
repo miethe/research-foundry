@@ -1,0 +1,82 @@
+id: ext_20260614_51b59dc5_001
+source_card_id: src_20260614_kw006_05
+created_at: '2026-06-14T22:09:16-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The algorithm requires a UV-parameterized surface as input, deriving stitch direction and connectivity
+    from the surface's parameter directions rather than from a single seed point.
+  locator: Discussion / Limitations (full text)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Because the platform (Grasshopper for Rhino) evaluates NURBS, the method relies on NURBS UV division
+    to transfer a 3D geometry into a crochet pattern.
+  locator: Sec. 'Computing Stitches for Crocheting Non-symmetrical' (full text)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The crafter's hand effect (grip on the yarn) is captured empirically through six different physical
+    10-by-10-stitch tension swatches crocheted before running the algorithm.
+  locator: Fig. 4 caption (full text)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Gauge variables are split into determinate inputs (yarn weight, hook size) and an indeterminate
+    input — the crafter's grip on the yarn — which the swatch is used to measure.
+  locator: Sec. 2 / variables (full text)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The work formalizes crochet of non-symmetrical 3D objects as a computer algorithm whose output
+    is a conventional, human-readable text crochet pattern, going beyond axially symmetric revolved surfaces
+    (sphere, cylinder, cone, ellipsoid).
+  locator: Abstract / Sec. 3 (full text)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The study has two stages — an analytical systematic approach to crocheting 3D objects to discover
+    the underlying computational aspects, then a formal representation of that logic as a computer algorithm.
+  locator: Abstract (Springer landing page)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Sec. 'Computing Stitches for Crocheting Non-symmetrical' (full text)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Fig. 4 caption (full text)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Abstract / Sec. 3 (full text)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Abstract (Springer landing page)
+contradictions_or_cautions:
+- text: Springer landing page is paywalled; full-text quotes sourced from the authors' own ResearchGate-hosted
+    PDF of the same paper.
+  locator: card/trust
+- text: Springer landing page is paywalled; method-level verbatim quotes were taken from the authors'
+    own ResearchGate-hosted full-text PDF of the identical paper. Abstract and bibliographic metadata
+    verified directly from Springer.
+  locator: card/limitations
+- text: 'Scope gap vs amigurumi: no in-the-round geodesic shaping and no explicit per-round increase/decrease-rate
+    bound; producibility depends on parameterization quality plus swatch-measured gauge.'
+  locator: card/limitations

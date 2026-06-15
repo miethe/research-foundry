@@ -1,0 +1,87 @@
+id: ext_20260615_d125b52d_001
+source_card_id: src_20260614_rib033_10
+created_at: '2026-06-15T09:33:08-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: pgvector's HNSW index defaults are m=16 (max connections per layer) and ef_construction=64 (dynamic
+    candidate list size for building the graph).
+  locator: HNSW > index options / parameters
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The HNSW query-time candidate list size (ef_search) defaults to 40 in pgvector.
+  locator: HNSW > Query Options
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: pgvector documents that HNSW offers better speed-recall query performance than IVFFlat but has
+    slower build times and uses more memory.
+  locator: HNSW (index overview)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: For IVFFlat, pgvector recommends sizing lists as rows/1000 for up to 1M rows and sqrt(rows) above
+    1M rows.
+  locator: IVFFlat > Index Options (lists)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: pgvector recommends starting the IVFFlat probes parameter at sqrt(lists).
+  locator: IVFFlat > Query Options (probes)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: pgvector supports indexing halfvec (2-byte) vectors up to 4,000 dimensions and bit/binary vectors
+    up to 64,000 dimensions.
+  locator: Indexing > supported types / dimension limits
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: pgvector's current release is v0.8.2 and runs as a Postgres extension requiring a running Postgres
+    server (Postgres 13+), not an embeddable single-file store.
+  locator: Installation / requirements (v0.8.2)
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: HNSW > index options / parameters
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: HNSW > Query Options
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: IVFFlat > Index Options (lists)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Indexing > supported types / dimension limits
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Installation / requirements (v0.8.2)
+contradictions_or_cautions:
+- text: README defaults and recommendations may change between releases.
+  locator: card/trust
+- text: README-documented defaults and tuning recommendations are version-specific (captured at v0.8.2)
+    and may change in later releases; verify against the installed extension version before relying on
+    exact numbers.
+  locator: card/limitations

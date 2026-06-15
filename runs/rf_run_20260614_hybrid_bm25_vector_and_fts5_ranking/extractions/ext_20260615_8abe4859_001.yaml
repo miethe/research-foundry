@@ -1,0 +1,65 @@
+id: ext_20260615_8abe4859_001
+source_card_id: src_20260614_rib034_05
+created_at: '2026-06-15T09:55:29-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: RRF is a method for combining multiple result sets that carry different relevance indicators into
+    a single ranked result set.
+  locator: Intro definition (opening paragraph)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: RRF requires no tuning, and the individual relevance indicators being combined do not need to
+    be related to (or on the same scale as) one another to produce high-quality results.
+  locator: Intro paragraph (sentence after the definition)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: RRF scores a document d by summing 1.0 / (k + rank(result(q), d)) across each query q in which
+    d appears, where rank starts from 1.
+  locator: RRF scoring formula block
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: In the RRF formula, k is the ranking constant and rank(result(q), d) is document d's rank within
+    result(q), starting from 1.
+  locator: Formula variable definitions (legend below formula)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Elasticsearch's rank_constant (k) controls how much influence per-query result sets have on the
+    final ranking; a higher value gives lower-ranked documents more influence, the value must be >= 1,
+    and it defaults to 60.
+  locator: rank_constant parameter description
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: RRF scoring formula block
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Formula variable definitions (legend below formula)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: rank_constant parameter description
+contradictions_or_cautions:
+- text: 'Vendor product documentation: defaults (e.g., k=60) and parameter semantics describe Elasticsearch''s
+    specific implementation; other RRF implementations may differ. The page attributes the underlying
+    method to the Cormack et al. (Waterloo) RRF paper but does not itself argue RRF combines rankings
+    vs. raw scores in explicit comparative terms.'
+  locator: card/limitations

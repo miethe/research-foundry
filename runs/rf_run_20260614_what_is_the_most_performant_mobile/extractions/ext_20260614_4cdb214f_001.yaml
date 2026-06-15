@@ -1,0 +1,63 @@
+id: ext_20260614_4cdb214f_001
+source_card_id: src_20260614_kw009_07
+created_at: '2026-06-14T23:21:58-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Blending disables key overdraw-removal optimizations on Arm GPUs, specifically early ZS testing
+    and Forward Pixel Kill (FPK), which is especially costly for UIs and 2D games with many sprite layers.
+  locator: 'Section: The negative impact of inefficient blending'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Each blended layer per pixel consumes GPU cycles regardless of shader simplicity, so the number
+    of blended layers per pixel should be monitored and minimized.
+  locator: 'Section: How to optimize blending (bullet on layer counts)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Splitting large UI elements into separate opaque and transparent portions lets early ZS or FPK
+    remove the overdraw beneath the opaque parts that blending would otherwise prevent.
+  locator: 'Section: How to optimize blending (bullet on splitting UI elements)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Blending and alpha-to-coverage should always be disabled for opaque objects to preserve overdraw-removal
+    optimizations.
+  locator: 'Section: How to optimize blending (bullet on opaque objects)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Blending is comparatively efficient on Arm GPUs because the destination color is held on-chip
+    in the tile buffer, but unorm formats are preferred over floating-point and only simple FP16/R11G11B10
+    blends are hardware-accelerated on Valhall.
+  locator: 'Section: Blending (intro) / Optimized float blend modes'
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: 'Section: The negative impact of inefficient blending'
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: 'Section: Blending (intro) / Optimized float blend modes'
+contradictions_or_cautions:
+- text: Page covers blending mechanics on Arm GPUs only; some commonly-paired guidance (explicit front-to-back/back-to-front
+    draw order, discard/alpha-test effects) lives on other pages of the same guide, not this page.
+  locator: card/trust
+- text: This specific page documents blending mechanics; it does not itself spell out the explicit opaque-front-to-back
+    / transparent-back-to-front draw order or the discard/alpha-test hidden-surface-removal statements
+    (those appear on adjacent pages of the same guide). Evidence here is limited to claims verbatim on
+    this page. Published date (2025-02) and version 3.4 are taken from the document/URL revision metadata.
+  locator: card/limitations

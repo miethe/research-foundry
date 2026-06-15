@@ -1,0 +1,81 @@
+id: ext_20260615_87fcad08_001
+source_card_id: src_20260614_kw014_08
+created_at: '2026-06-15T10:22:37-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'The spec proposes three monetization mechanics: a marketplace cut on pattern sales with designer
+    storefronts, a subscription tier for pro features, and add-on packs.'
+  locator: Section 5 — Supporting Details > Monetization that fits the craft world
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: 'The proposed subscription tier gates specific ''pro'' capabilities: 3D preview, advanced import/parsing,
+    and pattern generation.'
+  locator: Section 5 — Supporting Details > Monetization that fits the craft world (subscription bullet)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The spec positions the product as 'Ravelry + interactive pattern runner + CAD-lite for amigurumi.'
+  locator: Section 1 — Context (closing line)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'The spec flags pattern IP/copyright from importing patterns ''from anywhere'' as the #1 business
+    landmine and recommends designer opt-in, licensing, or bounded user-private imports.'
+  locator: Section 6 — Risks / Limits (first bullet)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The spec names Ribblr and My Row Counter as the dominant existing 'pattern + tracking' competitors,
+    warning that shipping a basic pattern library plus counters means competing in a 'red ocean.'
+  locator: Section 4 — Core Content > A) What already exists; Section 0 TL;DR
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The spec recommends 3D-to-pattern generation as a Phase 3 capability, to be tackled only after
+    pattern execution/playback and structural 3D visualization are nailed.
+  locator: Section 4 — Core Content > D) 3D object → crochet pattern generator; Section 7 Phase 3
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The spec identifies the 3D visualizer plus reverse-pattern-from-3D as the novel, defensible wedge
+    differentiating KnitWit from existing pattern-tracking apps.
+  locator: Section 0 — TL;DR; Section 4 > B) The 3D visualizer
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Section 5 — Supporting Details > Monetization that fits the craft world (subscription bullet)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Section 6 — Risks / Limits (first bullet)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section 4 — Core Content > D) 3D object → crochet pattern generator; Section 7 Phase 3
+- metric_name: evidence_point
+  value: ev_007
+  unit: null
+  date_context: null
+  locator: Section 0 — TL;DR; Section 4 > B) The 3D visualizer
+contradictions_or_cautions:
+- text: AI-generated planning artifact (ChatGPT 5.2), not a validated market or legal analysis; monetization
+    mechanics and IP recommendations are proposals, not tested business outcomes. Competitor claims (Ribblr,
+    My Row Counter) cite third-party app-store/web sources that are not independently verified here.
+  locator: card/limitations

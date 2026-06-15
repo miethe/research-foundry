@@ -1,0 +1,85 @@
+id: ext_20260614_99912f60_001
+source_card_id: src_20260614_rib002_02
+created_at: '2026-06-14T14:17:15-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Across evaluated commercial LLMs and deep research agents, 3-13% of cited URLs are hallucinated
+    (no Wayback record, likely never existed) and 5-18% are non-resolving overall.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: 'Per-model fabricated-citation rates on DRBench: gemini-2.5-pro-deepresearch 13.3%, gpt-4.1 5.4%,
+    openai-deepresearch 3.5%, and claude-3-5-sonnet-with-search 3.0%.'
+  locator: Table 2 (Overall rates) / Section 4.2
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Deep research agents cite far more URLs per query (113.1 for Gemini, 41.2 for OpenAI vs 3.0-24.3
+    for search-augmented models), yet citation volume alone does not determine reliability.
+  locator: 'Section 4.2 (RQ2: How do deep research agents compare)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The urlhealth tool issues an HTTP HEAD request (falling back to GET) and classifies each cited
+    URL as LIVE, DEAD, LIKELY_HALLUCINATED, or UNKNOWN, using Wayback Machine snapshots to distinguish
+    stale from fabricated URLs.
+  locator: Section 5 (Mitigation) — urlhealth
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: 'Agentic self-correction with urlhealth significantly reduced non-resolving citation rates for
+    all three models (p<1e-35): GPT-5.1 16.0% to 0.6% (26x), Gemini 6.1% to 0.1% (79x), Claude 4.9% to
+    0.8% (6.4x).'
+  locator: Section 5.1 (Agentic self-correction evaluation — Results)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The paper warns that existing benchmarks measure citation support but not citation existence,
+    so with 3-13% fabricated URLs, naive support metrics systematically overestimate report reliability.
+  locator: Section 6 (Related work)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Table 2 (Overall rates) / Section 4.2
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: 'Section 4.2 (RQ2: How do deep research agents compare)'
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section 5.1 (Agentic self-correction evaluation — Results)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section 6 (Related work)
+contradictions_or_cautions:
+- text: Preprint (v1), not yet peer-reviewed
+  locator: card/trust
+- text: Rates measured on the DRBench evaluation set; may not generalize to all query distributions
+  locator: card/trust
+- text: v1 preprint, not yet peer-reviewed; rates are measured on the DRBench evaluation set and a specific
+    model snapshot list, so they may not generalize to all query distributions or later model versions.
+  locator: card/limitations
