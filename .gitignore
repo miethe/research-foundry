@@ -49,3 +49,6 @@ node_modules/
 # --- Local model / vector caches ---
 .paperqa/
 .gpt_researcher/
+
+# Agent scratch memory (per-agent, not a deliverable)
+.claude/agent-memory/

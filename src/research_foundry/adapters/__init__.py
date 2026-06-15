@@ -18,6 +18,7 @@ _CONCRETE = (
     "arc_council",
     "claude_agent_sdk",
     "gpt_researcher",
+    "notebooklm",
     "paperqa2",
     "opencode",
     "litellm_router",

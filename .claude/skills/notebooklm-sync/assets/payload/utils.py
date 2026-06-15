@@ -18,6 +18,7 @@ try:
         EXCLUDE_PATTERNS,
         INCLUDE_DIRS,
         MAPPING_PATH,
+        MAPPING_PATH_TEMPLATE,
         ROOT_INCLUDE_FILES,
     )
 except ImportError:
@@ -26,20 +27,49 @@ except ImportError:
         EXCLUDE_PATTERNS,
         INCLUDE_DIRS,
         MAPPING_PATH,
+        MAPPING_PATH_TEMPLATE,
         ROOT_INCLUDE_FILES,
     )
 
 
-def load_mapping(path: Optional[Path] = None) -> Dict[str, Any]:
-    """Load the notebook ID mapping from disk.
+def _mapping_path_for(notebook_id: Optional[str]) -> "Path":
+    """Resolve the mapping file path for a given notebook ID.
+
+    When *notebook_id* is provided, substitutes it into MAPPING_PATH_TEMPLATE
+    so each notebook maintains its own source-tracking file.  Falls back to the
+    default MAPPING_PATH when *notebook_id* is None (backward-compatible).
 
     Args:
-        path: Path to mapping file. Defaults to ~/.notebooklm/skillmeat-sources.json
+        notebook_id: NotebookLM notebook ID, or None to use the default path.
+
+    Returns:
+        Resolved Path object for the mapping file.
+    """
+    if notebook_id:
+        return Path(MAPPING_PATH_TEMPLATE.format(notebook_id=notebook_id))
+    return MAPPING_PATH
+
+
+def load_mapping(
+    path: Optional[Path] = None,
+    notebook_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Load the notebook ID mapping from disk.
+
+    When *notebook_id* is supplied, the per-notebook mapping file is used
+    (``~/.notebooklm/{notebook_id}-sources.json``).  Otherwise *path* or the
+    default MAPPING_PATH is used.  This preserves backward compatibility for
+    callers that do not pass either argument.
+
+    Args:
+        path: Explicit path to mapping file.  Takes precedence over notebook_id.
+        notebook_id: NotebookLM notebook ID; used to derive the per-notebook
+            mapping file path when *path* is None.
 
     Returns:
         Dictionary containing notebook metadata. Empty dict if file doesn't exist.
     """
-    target_path = path or MAPPING_PATH
+    target_path = path or _mapping_path_for(notebook_id)
 
     if not target_path.exists():
         return {}
@@ -52,17 +82,26 @@ def load_mapping(path: Optional[Path] = None) -> Dict[str, Any]:
         return {}
 
 
-def save_mapping(data: Dict[str, Any], path: Optional[Path] = None) -> None:
+def save_mapping(
+    data: Dict[str, Any],
+    path: Optional[Path] = None,
+    notebook_id: Optional[str] = None,
+) -> None:
     """Atomically save the notebook ID mapping to disk.
 
     Creates parent directory if needed. Uses atomic write (write to temp, then rename)
     to prevent corruption.
 
+    When *notebook_id* is supplied, the per-notebook mapping file is used.
+    Otherwise *path* or the default MAPPING_PATH is used.
+
     Args:
-        data: Dictionary to save
-        path: Path to mapping file. Defaults to ~/.notebooklm/skillmeat-sources.json
+        data: Dictionary to save.
+        path: Explicit path to mapping file.  Takes precedence over notebook_id.
+        notebook_id: NotebookLM notebook ID; used to derive the per-notebook
+            mapping file path when *path* is None.
     """
-    target_path = path or MAPPING_PATH
+    target_path = path or _mapping_path_for(notebook_id)
 
     # Ensure parent directory exists
     target_path.parent.mkdir(parents=True, exist_ok=True)

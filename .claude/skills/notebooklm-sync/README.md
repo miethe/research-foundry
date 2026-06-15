@@ -72,6 +72,38 @@ Project-specific configuration lives in `scripts/notebooklm_sync/config.py` afte
 | `NOTEBOOK_TITLE` | NotebookLM notebook name | Project name + " Docs" |
 | `CHUNK_SIZE_THRESHOLD` | Max chars before splitting | `15000` |
 | `LOG_LEVEL` | Logging verbosity | `"INFO"` |
+| `NOTEBOOK_RESOLVER_ENABLED` | Enable RF per-run/project routing | `False` |
+| `CORRELATION_REGISTRY_PATH` | Path to RF notebooks.yaml registry | `registries/notebooklm/notebooks.yaml` |
+| `MAPPING_PATH_TEMPLATE` | Per-notebook mapping file template | `~/.notebooklm/{notebook_id}-sources.json` |
+
+## RF Correlation Mode
+
+When deployed in a **Research Foundry** project, the sync hook can route each
+changed file to the correct per-run or per-project NotebookLM notebook.
+
+### Enabling
+
+Set `NOTEBOOK_RESOLVER_ENABLED = True` in `scripts/notebooklm_sync/config.py`.
+
+### How resolution works
+
+The hook parses a `runs/<run_id>/` segment from the file path, then queries
+`registries/notebooklm/notebooks.yaml`:
+
+1. **Run mode** — uses `runs[run_id].notebook_id` if present.
+2. **Project mode** — follows `runs[run_id].project` → `projects[slug].notebook_id`.
+
+Each resolved notebook writes to its own mapping file
+(`~/.notebooklm/{notebook_id}-sources.json`) so source lists remain independent.
+
+Resolution is **fail-soft**: any error (missing registry, malformed YAML, run
+not found) falls back silently to the default mapping.  The hook never raises.
+
+### Security note
+
+`work_sensitive` and `client_sensitive` run directories **must** be listed in
+`EXCLUDE_PATTERNS`.  The hook fires silently on Write/Edit without governance
+checks — RF's `requires_review_for` policy does not apply here.
 
 ## Commands
 

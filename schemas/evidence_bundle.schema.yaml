@@ -93,6 +93,27 @@ properties:
         type: array
         items:
           type: string
+      notebooklm_notebook_id:
+        type:
+          - string
+          - "null"
+        description: NotebookLM notebook id that received sources from this run
+      notebooklm_source_ids:
+        type: array
+        description: Source cards successfully pushed to NotebookLM
+        items:
+          type: object
+          properties:
+            nlm_source_id:
+              type: string
+              description: NotebookLM-assigned source id
+            rf_source_card_id:
+              type: string
+              description: RF source card id that was pushed
+          required:
+            - nlm_source_id
+            - rf_source_card_id
+          additionalProperties: true
     additionalProperties: true
 required:
   - id

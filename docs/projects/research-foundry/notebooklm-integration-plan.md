@@ -1,7 +1,7 @@
 ---
 doc_type: design_plan
 title: NotebookLM Integration — Sourcing, Reports, Extended Runs, Upload-Back
-status: draft
+status: implemented (offline; live-unvalidated)
 created: 2026-06-13
 author: Nick Miethe
 related_documents:
@@ -273,6 +273,153 @@ the sync state-file re-init. Largest blast radius because it touches `writeback.
 
 ---
 
+## Notebook Correlation
+
+The implemented integration resolves *which* notebook a given run, project, or file maps to
+through a single deterministic service —
+`src/research_foundry/services/notebook_correlation.py` — backed by an on-disk registry. All
+three seams (sourcing, upload-back, sync) call into this one resolver rather than each
+inventing its own mapping, so there is exactly one source of truth for the run↔notebook link
+and the cycle semantics are unambiguous.
+
+### Correlation modes
+
+`correlation_mode(*, paths=None) -> str` reads
+`foundry.yaml` → `integrations.notebooklm.correlation_mode` and returns one of three modes
+(default `"project"`):
+
+| Mode | Meaning | When the notebook is shared |
+|------|---------|-----------------------------|
+| `project` (default) | All runs under a project slug resolve to **one shared notebook** — the project's persistent knowledge base. | Across every run of the project. |
+| `run` | Each run gets (or creates) its **own** notebook, isolated from sibling runs. | Never shared; one notebook per run. |
+| `explicit` | The caller supplies the notebook id directly (`--notebook-id` / `notebook_id=` argument); no slug-based inference. | Wherever the caller points it. |
+
+The mode can be overridden per-invocation by the `mode=` argument to `resolve_notebook(...)`
+or the `--notebook-mode project|run|explicit` CLI flag; absent an override, the
+config default applies.
+
+### Resolver API (canonical)
+
+`src/research_foundry/services/notebook_correlation.py` exports:
+
+- `resolve_notebook(run_id, *, project=None, mode=None, create=False, client=None, paths=None) -> dict | None`
+  — the central entry point. Returns
+  `{notebook_id, notebook_title, project, run_id, mode}` (or `None` when no notebook can be
+  resolved and `create=False`, or when offline and creation was requested). When
+  `create=True` and a notebook is needed, it uses the supplied/lazily-fetched
+  `NotebookLMClient` to `create_notebook(title)` behind the same `available()` gate; if the
+  client is unavailable it degrades to `None` rather than raising.
+- `record_run_notebook(run_id, notebook_id, *, project=None, notebook_title=None, paths=None) -> None`
+  — persists a run↔notebook binding (and the project↔notebook binding in `project` mode) into
+  the registry. Used after a successful resolve/create so subsequent runs reuse the notebook.
+- `notebook_for_run(run_id, *, paths=None) -> str | None`
+  — fast read-only lookup of a previously-recorded notebook id for a run (no creation, no
+  network).
+- `notebook_for_path(file_path, *, paths=None) -> str | None`
+  — maps any path under `runs/<run_id>/...` to that run's resolved notebook by parsing the
+  `run_id` out of the path, then delegating to `notebook_for_run`. This is the hook the
+  sync layer uses to answer "what notebook does *this file* belong to?".
+- `correlation_mode(*, paths=None) -> str`
+  — returns the configured mode (default `"project"`).
+
+### Registry shape
+
+The correlation registry lives at `registries/notebooklm/notebooks.yaml`
+(written/read via `yamlio.dump_yaml`/`load_yaml`, so ordering is deterministic; created
+lazily on first write). Its shape:
+
+```yaml
+projects:
+  <slug>:
+    notebook_id: <nlm-notebook-uuid>
+    notebook_title: "RF — <slug>"
+    runs:
+      - <run_id>
+      - <run_id>
+runs:
+  <run_id>:
+    notebook_id: <nlm-notebook-uuid>
+    notebook_title: "RF — <slug>"
+    project: <slug>
+    created_at: <iso8601>
+```
+
+The `projects` block holds the shared-notebook bindings (project mode) and the membership
+list of runs; the `runs` block holds the per-run resolution record (including `run` and
+`explicit` mode bindings, which have no project-level shared notebook).
+
+### Config
+
+`foundry.yaml` → `integrations.notebooklm`:
+
+```yaml
+integrations:
+  notebooklm:
+    correlation_mode: project              # project | run | explicit
+    notebook_title_template: "RF — {project}"
+    base_url: null                          # null → CLI-backed client (no HTTP base)
+```
+
+`notebook_title_template` is interpolated with the project slug to title freshly-created
+notebooks. `base_url: null` signals the CLI-backed client path (NLM has no public REST API);
+see Open Question 1 resolution below.
+
+### How the three seams resolve through correlation
+
+- **Sourcing** (`adapters/notebooklm.py`, `NotebookLMAdapter`): the adapter calls
+  `resolve_notebook(run_id, project=..., mode=..., create=...)` to find the notebook to
+  query (`ask` / `source fulltext`), so discovery reads from the *same* notebook the run is
+  bound to. In `project` mode that is the shared project knowledge base; cross-run
+  accumulation is the intended behavior.
+- **Upload-back** (`services/writeback.py`, `_render_notebooklm_update`): the writeback
+  target resolves the run's notebook (creating it on first push when permitted), then
+  `add_source`s the report/source cards into it and `record_run_notebook(...)`s the binding.
+  Because both sourcing and upload-back resolve the *same* notebook in project mode, the
+  "source from Y then write to Y" path is a deliberate **append to the shared knowledge
+  base**, not a self-citation hazard (the claim ledger still gates which NLM prose may enter
+  a report body — correlation only governs notebook identity).
+- **Sync** (`notebooklm-sync` hook + `rf notebooklm sync`): the hook/CLI uses
+  `notebook_for_path(file_path)` to route a written `.md` under `runs/<run_id>/` to that
+  run's resolved notebook, so auto-mirrored files land in the correct notebook without a
+  separate `{project}-sources.json` mapping drifting out of sync.
+
+### Implemented surface
+
+The following real files/identifiers ship in this integration (offline; live-unvalidated —
+see §6 and the memory note):
+
+- **Correlation service** — `src/research_foundry/services/notebook_correlation.py`
+  (`resolve_notebook`, `record_run_notebook`, `notebook_for_run`, `notebook_for_path`,
+  `correlation_mode`), registry at `registries/notebooklm/notebooks.yaml`.
+- **Integration client** — `src/research_foundry/integrations/notebooklm.py`,
+  `class NotebookLMClient(IntegrationClient)` with `from_config() -> NotebookLMClient`,
+  `available(timeout=2.0) -> bool`, `create_notebook(title) -> dict | None`,
+  `add_source(notebook_id, locator, *, title=None) -> dict | None`,
+  `get_notebook(notebook_id) -> dict | None`; lazy singleton
+  `get_notebooklm_client() -> NotebookLMClient` in `integrations/__init__.py`.
+- **Adapter** — `src/research_foundry/adapters/notebooklm.py`,
+  `class NotebookLMAdapter` (`id="notebooklm"`, `requires=()`), registered by adding
+  `"notebooklm"` to `_CONCRETE` in `adapters/__init__.py`.
+- **Writeback target** — `_render_notebooklm_update(...)` in `services/writeback.py`;
+  `RunPaths.notebooklm_update -> writebacks/notebooklm_update.yaml`;
+  `WritebackResult.notebooklm_update_path: Path | None`; schema
+  `schemas/notebooklm_update.schema.yaml`; `push_status` enum
+  `proposed | pushed | skipped_offline | skipped_requires_review | skipped_no_notebook`.
+- **Governance rule** — `governance.yaml` → `writeback_targets.notebooklm`
+  (`permitted_profiles: [personal, work_approved, client_approved]`,
+  `requires_review_for: [work_sensitive, client_sensitive]`) and policy rule id
+  `notebooklm_writeback_requires_review` (mirrors `arc_writeback_requires_review`).
+- **Intake** — `intake_from_notebooklm(notebook_id, *, project=None, paths=None)` in
+  `services/intake.py`; CLI `rf intake notebooklm <notebook_id>`.
+- **CLI** — `rf swarm run --project <slug> [--notebook-mode project|run|explicit] [--notebook-id <id>]`;
+  `rf writeback --targets notebooklm`; `rf notebooklm resolve|status|sync` subcommands.
+- **Configurable sync** — `rf notebooklm sync` resolves through
+  `notebook_for_path`/`notebook_for_run` so the auto-mirror honors the correlation mode.
+- **Three workflows** — `.claude/workflows/notebooklm-sourcing.js`,
+  `.claude/workflows/notebooklm-report.js`, `.claude/workflows/notebooklm-extended.js`.
+
+---
+
 ## 4. Phased Implementation Plan (additive-first)
 
 Each phase is shippable and reversible; nothing before Phase 4 touches the core
@@ -346,28 +493,39 @@ before upload-back so the back-reference cycle in 3.4 is already detectable).
 
 ## 6. Open Questions
 
-1. **No documented NLM REST API.** Both the CLI and skill drive browser/OAuth automation.
-   `NotebookLMClient` would wrap the `notebooklm` CLI as subprocess rather than HTTP — does
-   that fit the `IntegrationClient` `_get/_post/_patch` contract, or do we need a
-   CLI-backed sibling base class? (`integrations/base.py` is HTTP-shaped.)
+1. **No documented NLM REST API.** ✅ **Resolved.** `NotebookLMClient` subclasses
+   `IntegrationClient` and **overrides** the HTTP-shaped methods to wrap the `notebooklm`
+   CLI as a `--json` subprocess (with `base_url: null` in config), keeping the same
+   `available()`-gated, returns-`None`-on-error contract. No separate CLI-backed base class
+   was needed — the subclass override absorbs the shape difference, so the rest of RF treats
+   it like any other integration client.
 2. **Quote-level extraction fidelity.** Does `notebooklm source fulltext --json` yield
    quote spans good enough to populate `extracted_points[].quote`, or only summaries? This
    gates whether 3.1 produces real evidence or locator-only degrades.
-3. **Auth bridge.** The skill uses a persistent Playwright profile + injected `state.json`
-   cookies; the CLI uses `NOTEBOOKLM_HOME`/`NOTEBOOKLM_AUTH_JSON`. How does the RF service
-   layer (which uses env vars / `foundry.yaml`) acquire a session without spawning a browser
-   mid-pipeline? Likely: require `notebooklm login` out-of-band, then CLI reuses the
-   session; document as a precondition like ARC/IntentTree reachability.
+3. **Auth bridge — ⏳ remaining (the only blocker to "live-validated").** The skill uses a
+   persistent Playwright profile + injected `state.json` cookies; the CLI uses
+   `NOTEBOOKLM_HOME`/`NOTEBOOKLM_AUTH_JSON`. The build environment has **no NLM auth**, so
+   the entire integration is implemented and tested **offline only** — the
+   `notebooklm` CLI command shapes are inferred from `.claude/skills/notebooklm/SKILL.md`,
+   exactly as the ARC/IntentTree clients were inferred from their skill docs. The remaining
+   validation step is a single first live run: `notebooklm login` out-of-band, then a real
+   `rf swarm run`/`rf writeback --targets notebooklm`/`rf notebooklm resolve` against an
+   authenticated session, adjusting the client subprocess shapes if the live CLI output
+   differs. Document the session as a precondition like ARC/IntentTree reachability. See the
+   memory note `notebooklm-integration-offline`.
 4. **Reproducibility of non-deterministic artifacts.** Workflow constraint 4 forbids
    `Math.random()`, but audio/video gen is inherently non-deterministic. The
    `notebooklm-extended.js` checkpoint must persist `nlm_task_id` so resume reuses the
    in-flight artifact — confirm `artifact wait`/`download` can re-attach to a prior task id
    after a workflow restart.
-5. **Bidirectional cycle semantics.** If a run *sources* notebook Y (3.1) and then *pushes*
-   its report back into Y (3.4), the lineage back-reference must prevent self-citation. Is
-   "source from Y then write to Y" allowed (append) or a data-integrity boundary
-   (new notebook)? Default proposal: write-back always creates/uses a distinct
-   "RF outputs" notebook, never the sourcing notebook.
+5. **Bidirectional cycle semantics.** ✅ **Resolved by Notebook Correlation.** In the
+   default `project` correlation mode the run's notebook *is* the shared project knowledge
+   base: sourcing and upload-back both resolve the **same** notebook through
+   `resolve_notebook(...)`, so "source from Y then write to Y" is a deliberate **append** to
+   that shared base. There is no self-citation hazard because the claim ledger — not the
+   notebook — gates which NLM prose may enter a report body; correlation only governs
+   notebook identity. (`run` mode isolates per run; `explicit` mode hands identity to the
+   caller.)
 6. **Sync state hygiene.** `state.json` currently says `project_slug: skillmeat`. Confirm
    `install.py --force --update` cleanly re-points the mapping, and that RF dev envs have
    `jq` on PATH (the `notebooklm-sync-hook.sh` requires it).
@@ -378,3 +536,11 @@ before upload-back so the back-reference cycle in 3.4 is already detectable).
    standard `waves/phases/tasks` `ExecutionReport` shape (same gap as
    `research-foundry-swarm.js`'s custom return). Reuse the swarm's custom-return precedent or
    extend the schema?
+
+**Resolution status:** OQ1 (CLI-backed client = `IntegrationClient` subclass override) and
+OQ5 (cycle semantics — the project notebook is the shared knowledge base, resolved via
+Notebook Correlation) are **resolved**. OQ3 (**live auth validation**) is the **only**
+remaining step before this integration can be marked live-validated; the rest of the surface
+ships offline and degrades fail-soft. OQ2/OQ4/OQ6/OQ7/OQ8 are implementation-detail
+refinements that the offline build already takes a default position on and that a live run
+will confirm or tune.

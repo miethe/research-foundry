@@ -85,6 +85,11 @@ policy_rules:
     condition: "writeback.target contains arc AND source.sensitivity in [work_sensitive, client_sensitive]"
     message: "Work/client-sensitive content requires human review before ARC council writeback."
 
+  - id: notebooklm_writeback_requires_review
+    severity: require_approval
+    condition: "writeback.target contains notebooklm AND source.sensitivity in [work_sensitive, client_sensitive]"
+    message: "Work/client-sensitive content requires human review before NotebookLM writeback."
+
   - id: material_claims_must_be_mapped
     severity: block
     condition: "report contains material claim without claim_id OR claim.status == unsupported"
@@ -155,6 +160,15 @@ writeback_targets:
       - client_sensitive
 
   arc:
+    permitted_profiles:
+      - personal
+      - work_approved
+      - client_approved
+    requires_review_for:
+      - work_sensitive
+      - client_sensitive
+
+  notebooklm:
     permitted_profiles:
       - personal
       - work_approved

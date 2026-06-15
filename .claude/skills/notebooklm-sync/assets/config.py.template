@@ -9,10 +9,34 @@ ROOT_INCLUDE_FILES = {root_files}
 INCLUDE_DIRS = {include_dirs}
 
 # Fine-grained exclusion patterns (glob patterns relative to project root)
+# NOTE: work_sensitive run directories MUST be listed here to avoid bypassing
+# the writeback review gate (the hook fires silently, without governance checks).
+# Example: "runs/rf_run_*_confidential/**" or per-run directory patterns.
 EXCLUDE_PATTERNS: list[str] = {exclude_patterns}
 
-# Mapping file location
+# Default mapping file location (used when NOTEBOOK_RESOLVER_ENABLED is False,
+# or when resolution fails to find a run-specific notebook)
 MAPPING_PATH = Path.home() / ".notebooklm" / "{project_slug}-sources.json"
 
 # Default notebook settings
 DEFAULT_NOTEBOOK_TITLE = "{notebook_title}"
+
+# ---------------------------------------------------------------------------
+# RF Correlation Registry (opt-in; backward-compatible)
+# ---------------------------------------------------------------------------
+
+# Set to True to enable per-project / per-run notebook resolution via the
+# Research Foundry correlation registry.  When False (default), behaviour is
+# identical to a plain notebooklm-sync installation.
+NOTEBOOK_RESOLVER_ENABLED: bool = False
+
+# Path to the RF correlation registry YAML.
+# Shape: {{projects: {{<slug>: {{notebook_id, notebook_title, runs: [run_id,...]}}}},
+#          runs: {{<run_id>: {{notebook_id, notebook_title, project, created_at}}}}}}
+# Leave as the default unless the RF project root differs from the project root.
+CORRELATION_REGISTRY_PATH: Path = Path(__file__).resolve().parent.parent.parent / "registries" / "notebooklm" / "notebooks.yaml"
+
+# Template for per-notebook mapping files.  {{notebook_id}} is substituted at
+# runtime.  This allows each notebook resolved via the registry to maintain its
+# own source-tracking file instead of sharing the default MAPPING_PATH.
+MAPPING_PATH_TEMPLATE: str = str(Path.home() / ".notebooklm" / "{{notebook_id}}-sources.json")

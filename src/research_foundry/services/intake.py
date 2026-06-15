@@ -328,4 +328,164 @@ def intake_from_intenttree(
     )
 
 
-__all__ = ["IntakeResult", "intake_from_intenttree"]
+@dataclass(frozen=True)
+class NLMIntakeResult:
+    """Outcome of :func:`intake_from_notebooklm`."""
+
+    notebook_id: str
+    raw_idea_id: str
+    intent_id: str | None
+    raw_idea_path: Path | None
+    intent_path: Path | None
+    offline: bool
+
+
+def intake_from_notebooklm(
+    notebook_id: str,
+    *,
+    project: str | None = None,
+    paths: FoundryPaths | None = None,
+) -> NLMIntakeResult:
+    """Pull a NotebookLM notebook identity into RF as a new captured idea.
+
+    Registers the notebook as a research interest without executing any run.
+    A back-link (``notebooklm_notebook_ref``) is written on the resulting
+    intent so that downstream writebacks and the correlation layer can locate
+    the originating notebook.
+
+    Design decisions
+    ----------------
+    * Fail-soft on client unavailability — when the ``notebooklm`` CLI is
+      absent or the client returns ``None`` for the notebook record the intake
+      still completes: a minimal raw idea is captured with the ``notebook_id``
+      as context, and ``offline=True`` is set on the result.
+    * The back-link ``notebooklm_notebook_ref`` is back-patched onto the
+      written intent file (same pattern as :func:`intake_from_intenttree` and
+      its ``intenttree_node_ref``).
+    * ``suggested_project`` is threaded through to ``capture_idea`` so the
+      triage / planning layers can pick it up via the intent's
+      ``project``/``suggested_project`` field.
+    * No network I/O is attempted beyond the best-effort ``get_notebook``
+      call. The pipeline never blocks on a missing NotebookLM endpoint.
+
+    Parameters
+    ----------
+    notebook_id:
+        The NotebookLM notebook identifier (e.g. ``"nb_abc123"``).
+    project:
+        Optional project slug to associate with this intake. Stored as
+        ``suggested_project`` on the raw idea and forwarded to correlation.
+    paths:
+        FoundryPaths override (defaults to ``FoundryPaths.discover()``).
+
+    Returns
+    -------
+    NLMIntakeResult
+        Contains the notebook_id, raw_idea_id, intent_id, and file paths.
+        ``offline=True`` when the live notebook record could not be retrieved.
+    """
+
+    paths = paths or FoundryPaths.discover()
+
+    # --- Attempt live notebook lookup (fail-soft) ----------------------------
+    notebook_record: dict[str, Any] | None = None
+    offline = False
+
+    try:
+        from ..integrations.notebooklm import get_notebooklm_client
+
+        client = get_notebooklm_client()
+        if client.available():
+            notebook_record = client.get_notebook(notebook_id)
+    except Exception:  # noqa: BLE001 — fail-soft; never raise
+        pass
+
+    if notebook_record is None:
+        offline = True
+
+    # --- Build body text from notebook record --------------------------------
+    title: str
+    body_parts: list[str] = []
+
+    if notebook_record and isinstance(notebook_record, dict):
+        title = str(notebook_record.get("title") or notebook_id)
+        if notebook_record.get("description"):
+            body_parts.append(str(notebook_record["description"]).strip())
+    else:
+        title = f"NotebookLM notebook {notebook_id}"
+
+    if not body_parts:
+        body_parts.append(
+            f"Notebook captured from NotebookLM (id: {notebook_id})."
+        )
+
+    body_parts.append(f"\n## Source\n\n- notebooklm:{notebook_id}")
+    if project:
+        body_parts.append(f"- project: {project}")
+
+    body_text = "\n\n".join(body_parts)
+
+    # --- capture_idea --------------------------------------------------------
+    cap = capture_idea(
+        body_text,
+        title=title,
+        captured_from="notebooklm",
+        sensitivity="personal",
+        suggested_project=project or "Research Foundry",
+        paths=paths,
+    )
+
+    # --- triage (no local tree node; NLM is the source) ---------------------
+    tri = triage_idea(
+        cap.raw_idea_id,
+        create_tree_node=False,
+        paths=paths,
+    )
+
+    # Back-patch notebooklm_notebook_ref on the intent file so the correlation
+    # layer and writeback service can find the originating notebook.
+    intent_path: Path | None = tri.intent_path
+    if intent_path is not None and intent_path.exists():
+        _patch_notebooklm_ref(intent_path, notebook_id, project=project)
+
+    return NLMIntakeResult(
+        notebook_id=notebook_id,
+        raw_idea_id=cap.raw_idea_id,
+        intent_id=tri.intent_id,
+        raw_idea_path=cap.path,
+        intent_path=intent_path,
+        offline=offline,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Internal helper — NLM back-patch
+# ---------------------------------------------------------------------------
+
+
+def _patch_notebooklm_ref(
+    intent_path: Path,
+    notebook_id: str,
+    *,
+    project: str | None = None,
+) -> None:
+    """Back-patch ``notebooklm_notebook_ref`` (and optionally ``project``) on
+    the written intent file.
+
+    Mirrors :func:`_patch_intent_node_ref` for the NLM integration path.
+    """
+    from ..yamlio import dump_yaml, load_yaml
+
+    try:
+        data = load_yaml(intent_path)
+        if not isinstance(data, dict):
+            return
+        data["notebooklm_notebook_ref"] = notebook_id
+        if project and not data.get("project"):
+            data["project"] = project
+        dump_yaml(data, intent_path)
+    except Exception:  # noqa: BLE001 — fail-soft; never raise
+        pass
+
+
+__all__ = ["IntakeResult", "NLMIntakeResult", "intake_from_intenttree", "intake_from_notebooklm"]

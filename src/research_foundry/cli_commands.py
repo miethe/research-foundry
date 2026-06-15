@@ -171,8 +171,16 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         max_cost: float = typer.Option(5.0, "--max-cost"),
         freshness: int = typer.Option(180, "--freshness", help="max source age (days)"),
         profile: str | None = typer.Option(None, "--profile", help="runtime key profile"),
+        project: str | None = typer.Option(None, "--project", help="project slug (sets run.yaml project field and NLM correlation)"),
+        notebook_mode: str | None = typer.Option(None, "--notebook-mode", help="NotebookLM correlation mode override: project|run|explicit (default: config)"),
+        notebook_id: str | None = typer.Option(None, "--notebook-id", help="explicit notebook id (for --notebook-mode explicit)"),
     ) -> None:
-        """Plan a research swarm: brief + swarm plan + routing decision (spec §10.4)."""
+        """Plan a research swarm: brief + swarm plan + routing decision (spec §10.4).
+
+        Pass ``--project`` to associate this run with a project slug (used for
+        NotebookLM correlation).  ``--notebook-mode`` and ``--notebook-id``
+        control how the run is mapped to a NotebookLM notebook.
+        """
 
         from .services import planning as svc
 
@@ -180,6 +188,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             r = svc.plan_run(
                 intent_id, depth=depth, audience=audience,
                 max_cost_usd=max_cost, freshness_days=freshness, profile=profile,
+                project=project,
             )
         except RFError as e:
             _fail(e)  # GovernanceError carries exit_code=3; others default to usage
@@ -187,6 +196,13 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         typer.echo(f"run={r.run_id}")  # plain (unwrapped) for scripting
         for p in (r.brief_path, r.swarm_path, r.routing_path):
             typer.echo(str(p))
+        # Best-effort NLM correlation (fail-soft — never blocks planning).
+        if notebook_mode or notebook_id:
+            _apply_notebook_options(
+                r.run_id,
+                project=notebook_id if notebook_mode == "explicit" else project,
+                mode=notebook_mode,
+            )
 
     # ----- ingest / source-card -----
     @app.command()
@@ -368,11 +384,20 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
     @app.command()
     def writeback(
         run: str = typer.Argument(...),
-        targets: str = typer.Option("meatywiki,skillmeat,ccdash", "--targets",
-                                    help="Comma-separated targets: meatywiki,skillmeat,ccdash,intenttree,arc"),
+        targets: str = typer.Option(
+            "meatywiki,skillmeat,ccdash",
+            "--targets",
+            help="Comma-separated targets: meatywiki,skillmeat,ccdash,intenttree,arc,notebooklm",
+        ),
         require_review: bool = typer.Option(False, "--require-review/--no-require-review"),
     ) -> None:
-        """Generate writebacks to MeatyWiki / SkillMeat / CCDash / IntentTree (spec §10.13)."""
+        """Generate writebacks to MeatyWiki / SkillMeat / CCDash / IntentTree (spec §10.13).
+
+        The ``notebooklm`` target is an opt-in addition — include it in
+        ``--targets`` to push the run's report and source cards to the
+        associated NotebookLM notebook.  The notebook must already exist (or be
+        resolvable via the correlation registry).
+        """
 
         from .services import writeback as svc
 
@@ -383,7 +408,15 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             )
         except RFError as e:
             _fail(e)
-        for p in (r.meatywiki_path, r.skillbom_path, r.ccdash_path, r.intenttree_update_path, r.arc_review_path):
+        all_paths = [
+            r.meatywiki_path,
+            r.skillbom_path,
+            r.ccdash_path,
+            r.intenttree_update_path,
+            r.arc_review_path,
+            getattr(r, "notebooklm_update_path", None),
+        ]
+        for p in all_paths:
             if p:
                 console.print(f"  {p}")
         if r.requires_review:
@@ -509,11 +542,24 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
     @swarm_app.command("run")
     def swarm_run(
         run: str = typer.Argument(...),
-        adapters: str = typer.Option("gpt_researcher,paperqa2", "--adapters"),
+        adapters: str = typer.Option(
+            "gpt_researcher,paperqa2",
+            "--adapters",
+            help="Comma-separated adapter ids (e.g. gpt_researcher,paperqa2,notebooklm).",
+        ),
         profile: str = typer.Option("personal", "--profile"),
         dry_run: bool = typer.Option(False, "--dry-run/--execute"),
+        project: str | None = typer.Option(None, "--project", help="project slug (sets run.yaml project field and NLM correlation)"),
+        notebook_mode: str | None = typer.Option(None, "--notebook-mode", help="NotebookLM correlation mode override: project|run|explicit (default: config)"),
+        notebook_id: str | None = typer.Option(None, "--notebook-id", help="explicit notebook id (for --notebook-mode explicit)"),
     ) -> None:
-        """Run enabled discovery adapters (degraded-safe) to produce source candidates."""
+        """Run enabled discovery adapters (degraded-safe) to produce source candidates.
+
+        Pass ``--project`` to associate this run with a project slug used for
+        NotebookLM correlation.  Add ``notebooklm`` to ``--adapters`` to also
+        push sources to the linked notebook.  ``--notebook-mode`` and
+        ``--notebook-id`` refine how the run maps to a notebook.
+        """
 
         from .adapters import get_adapter, load_all
         from .frontmatter import load_md
@@ -529,6 +575,13 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         if dry_run:
             console.print(f"[cyan]dry-run[/cyan] would run: {', '.join(wanted)}")
             return
+        # Best-effort NLM correlation before adapter dispatch (fail-soft).
+        if project or notebook_mode or notebook_id:
+            _apply_notebook_options(
+                run,
+                project=notebook_id if notebook_mode == "explicit" else project,
+                mode=notebook_mode,
+            )
         candidates: list[dict] = []
         for aid in wanted:
             ad = get_adapter(aid)
@@ -772,7 +825,206 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         if r.intent_path:
             typer.echo(str(r.intent_path))
 
+    @intake_app.command("notebooklm")
+    def intake_notebooklm(
+        notebook_id: str = typer.Argument(..., help="NotebookLM notebook id to pull"),
+        project: str | None = typer.Option(None, "--project", help="project slug to associate with this intake"),
+    ) -> None:
+        """Pull a NotebookLM notebook into RF as a new captured research idea.
+
+        Creates a raw idea and intent from the notebook metadata.  The
+        ``notebooklm_notebook_ref`` is back-patched onto the resulting intent
+        so downstream writebacks and the correlation layer can find the
+        originating notebook.
+
+        This operation is fail-soft: if the NotebookLM client is unavailable
+        the intake still completes with ``offline=True`` using the notebook_id
+        as context.
+        """
+
+        from .services.intake import intake_from_notebooklm
+
+        try:
+            r = intake_from_notebooklm(notebook_id, project=project)
+        except RFError as e:
+            _fail(e)
+        offline_tag = " [yellow](offline)[/yellow]" if r.offline else ""
+        console.print(f"[green]intake[/green] notebook {r.notebook_id}{offline_tag}")
+        typer.echo(f"raw_idea={r.raw_idea_id}")
+        if r.intent_id:
+            typer.echo(f"intent={r.intent_id}")
+        if r.raw_idea_path:
+            typer.echo(str(r.raw_idea_path))
+        if r.intent_path:
+            typer.echo(str(r.intent_path))
+
     app.add_typer(intake_app, name="intake")
+
+    # ----- notebooklm command group -----
+    notebooklm_app = typer.Typer(help="NotebookLM integration management.")
+
+    @notebooklm_app.command("resolve")
+    def notebooklm_resolve(
+        run: str = typer.Option(..., "--run", help="RF run id"),
+        project: str | None = typer.Option(None, "--project", help="project slug (or explicit notebook_id when --mode explicit)"),
+        mode: str | None = typer.Option(None, "--mode", help="correlation mode override: project|run|explicit"),
+        notebook_id: str | None = typer.Option(None, "--notebook-id", help="explicit notebook id (short-form for --mode explicit)"),
+        create: bool = typer.Option(False, "--create/--no-create", help="create the notebook if it does not exist yet (requires NLM client)"),
+    ) -> None:
+        """Resolve (and optionally create) the NotebookLM notebook for a run.
+
+        Prints the resolved notebook_id and metadata as Rich output.  With
+        ``--create`` a new notebook may be created via the NotebookLM client;
+        prints a clear message when the client is unavailable (fail-soft).
+        """
+
+        from .services.notebook_correlation import correlation_mode as _cfg_mode
+        from .services.notebook_correlation import resolve_notebook
+
+        # --notebook-id is a convenience alias for --mode explicit + project=<id>.
+        effective_mode = mode
+        effective_project = project
+        if notebook_id and not effective_mode:
+            effective_mode = "explicit"
+            effective_project = notebook_id
+        elif notebook_id:
+            effective_project = notebook_id
+
+        nlm_client = None
+        if create:
+            try:
+                from .integrations import get_notebooklm_client
+                nlm_client = get_notebooklm_client()
+            except Exception:  # noqa: BLE001 — fail-soft
+                console.print("[yellow]NLM client unavailable — notebook creation skipped[/yellow]")
+
+        result = resolve_notebook(
+            run,
+            project=effective_project,
+            mode=effective_mode,
+            create=create,
+            client=nlm_client,
+        )
+
+        if result is None:
+            console.print(
+                f"[yellow]no notebook resolved for run {run!r}"
+                f" (mode={effective_mode or _cfg_mode()})[/yellow]"
+            )
+            raise typer.Exit(1)
+
+        table = Table(title=f"notebook for run {run}")
+        table.add_column("Field")
+        table.add_column("Value")
+        table.add_row("notebook_id", result.get("notebook_id", ""))
+        table.add_row("notebook_title", result.get("notebook_title", ""))
+        table.add_row("project", result.get("project", ""))
+        table.add_row("mode", result.get("mode", ""))
+        console.print(table)
+        typer.echo(result.get("notebook_id", ""))  # plain for scripting
+
+    @notebooklm_app.command("status")
+    def notebooklm_status() -> None:
+        """Show NotebookLM client availability, correlation mode, and registry summary."""
+
+        from .services.notebook_correlation import (
+            _read_registry,
+        )
+        from .services.notebook_correlation import (
+            correlation_mode as _cfg_mode,
+        )
+
+        # Client availability (fail-soft).
+        available = False
+        try:
+            from .integrations import get_notebooklm_client
+            available = get_notebooklm_client().available()
+        except Exception:  # noqa: BLE001
+            pass
+
+        mode = _cfg_mode()
+        registry = _read_registry()
+
+        project_count = len(registry.get("projects") or {})
+        run_count = len(registry.get("runs") or {})
+
+        table = Table(title="rf notebooklm status")
+        table.add_column("Key")
+        table.add_column("Value")
+        table.add_row("client available", "[green]yes[/green]" if available else "[yellow]no[/yellow]")
+        table.add_row("correlation_mode", mode)
+        table.add_row("projects in registry", str(project_count))
+        table.add_row("runs in registry", str(run_count))
+        console.print(table)
+
+    @notebooklm_app.command("sync")
+    def notebooklm_sync(
+        run: str = typer.Option(..., "--run", help="RF run id"),
+        project: str | None = typer.Option(None, "--project", help="project slug (for notebook resolution)"),
+    ) -> None:
+        """Print the notebooklm-sync batch command for a run's Markdown files.
+
+        Resolves the notebook for the given run (read-only, no creation), then
+        prints the exact command the operator should run to sync the run's
+        Markdown output files to the notebook.  Does NOT execute the command.
+        """
+
+        from .paths import FoundryPaths
+        from .services.notebook_correlation import resolve_notebook
+
+        paths = FoundryPaths.discover()
+        rp = paths.run_paths(run)
+
+        result = resolve_notebook(run, project=project)
+        if result is None:
+            err_console.print(
+                f"[red]no notebook resolved for run {run!r}"
+                " — run 'rf notebooklm resolve --run <run> --create' first[/red]"
+            )
+            raise typer.Exit(1)
+
+        notebook_id_val = result["notebook_id"]
+
+        # Collect Markdown files in the run directory.
+        md_files: list[str] = []
+        if rp.run.exists():
+            for md in sorted(rp.run.rglob("*.md")):
+                md_files.append(str(md))
+
+        console.print(f"[green]notebook:[/green] {notebook_id_val}")
+        console.print("[cyan]Run the following command to sync:[/cyan]")
+        if md_files:
+            files_arg = " ".join(f'"{f}"' for f in md_files)
+            console.print(
+                f"  notebooklm add-source --notebook {notebook_id_val} {files_arg}"
+            )
+        else:
+            console.print(
+                f"  notebooklm add-source --notebook {notebook_id_val} <no .md files found in {rp.run}>"
+            )
+
+    app.add_typer(notebooklm_app, name="notebooklm")
+
+
+def _apply_notebook_options(
+    run_id: str,
+    *,
+    project: str | None,
+    mode: str | None,
+) -> None:
+    """Best-effort NLM correlation update from CLI options.
+
+    Called after a run is created (``plan`` or ``swarm run``) to apply
+    ``--notebook-mode`` / ``--notebook-id`` / ``--project`` overrides to the
+    correlation registry.  All errors are swallowed — the pipeline must never
+    fail due to an NLM issue.
+    """
+    try:
+        from .services.notebook_correlation import resolve_notebook
+
+        resolve_notebook(run_id, project=project, mode=mode)
+    except Exception:  # noqa: BLE001 — fail-soft; never block the caller
+        pass
 
 
 def _render_checks(checks) -> None:
