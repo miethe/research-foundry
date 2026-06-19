@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "run_id": "rf_run_scaffold_test_empty",
+  "intent_id": null,
+  "created_at": "2026-06-19T00:00:00Z",
+  "status_derived": "planned",
+  "status_raw": "planned",
+  "sensitivity": "public",
+  "sensitivity_threshold": "public",
+  "claim_counts": {
+    "source_cards": 0,
+    "extraction_cards": 0,
+    "claims_total": 0,
+    "claims_supported": 0,
+    "claims_mixed": 0,
+    "claims_contradicted": 0,
+    "claims_inference": 0,
+    "claims_speculation": 0,
+    "claims_unsupported": 0,
+    "total": 0,
+    "supported": 0,
+    "inference": 0,
+    "speculation": 0
+  },
+  "verification": {
+    "present": false,
+    "passed": null,
+    "exit_code": null,
+    "checks": []
+  },
+  "governance": null,
+  "timeline": [],
+  "claims": [],
+  "artifact_schema_versions": {
+    "run": "0.1",
+    "evidence_bundle": "0.1",
+    "claim_ledger": "0.1"
+  }
+}

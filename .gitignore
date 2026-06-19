@@ -1,3 +1,7 @@
+# --- Generated run exports (rf run export writes run.json into run dirs; regenerated on build) ---
+runs/*/run.json
+runs/**/run.json
+
 # --- Secrets & environment ---
 .env
 .env.*

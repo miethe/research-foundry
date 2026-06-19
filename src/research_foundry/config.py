@@ -91,6 +91,18 @@ class FoundryConfig:
         gov = self.governance
         return gov.get("key_profiles", {}) if isinstance(gov, dict) else {}
 
+    @property
+    def viewer(self) -> dict[str, Any]:
+        """The ``viewer`` block from ``foundry.yaml`` (runs-frontend export).
+
+        Holds read-only viewer settings, notably ``sensitivity_threshold``
+        (default ``public``) consumed by the export service to redact content
+        above the allowed sensitivity level.
+        """
+
+        viewer = self.foundry.get("viewer", {})
+        return viewer if isinstance(viewer, dict) else {}
+
     def policy_rules(self) -> list[dict[str, Any]]:
         """The ``policy_rules`` list from governance config (spec §7.2)."""
 

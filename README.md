@@ -126,6 +126,33 @@ rf council rf_run_20260612_agentic_research_workflows \
 rf skillbom propose rf_run_20260612_agentic_research_workflows
 ```
 
+### Viewing run provenance
+
+Export a run's full claim graph to a static JSON file and open the viewer:
+
+```bash
+# Export a single run (writes <run_dir>/run.json; default threshold: public)
+rf run export --json --run-id rf_run_20260612_agentic_research_workflows
+
+# Export all discovered runs before a viewer build (catches nested runs/runs/)
+rf run export --json --all
+
+# Override sensitivity threshold (expose personal-level content locally)
+rf run export --json --run-id rf_run_20260612_agentic_research_workflows \
+  --sensitivity-threshold personal
+
+# Print JSON to stdout for piping
+rf run export --json --run-id rf_run_20260612_agentic_research_workflows --stdout | jq '.claims | length'
+
+# List all runs as JSON with derived status (never stale run.yaml.status)
+rf run list --json
+```
+
+The `frontend/runs-viewer/` SPA loads the exported `run.json` files from a
+static-file server. Sensitivity redaction is applied at export time — governed
+content never reaches the viewer. See
+`docs/dev/architecture/adr-runs-read-path.md` for the full read-path decision.
+
 ---
 
 ## Folder map

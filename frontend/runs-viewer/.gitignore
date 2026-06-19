@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+*.local
+.vite/
+*.tsbuildinfo
+.claude/
+**/agent-memory/
+public/data/
+playwright-report/
+test-results/
+playwright/.cache/

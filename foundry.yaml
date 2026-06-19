@@ -19,6 +19,14 @@ foundry:
     model_profiles: config/model_profiles.yaml
     routing_rules: config/routing_rules.yaml
 
+  # Read-only runs viewer (runs-frontend). The export service reads
+  # viewer.sensitivity_threshold to decide which source-card quotes/bodies may
+  # leave the workspace. Default 'public' redacts personal/work_sensitive/
+  # client_sensitive content. Ordering: public < personal < work_sensitive <
+  # client_sensitive.
+  viewer:
+    sensitivity_threshold: public
+
   adapters:
     claude_agent_sdk: enabled
     claude_code: enabled

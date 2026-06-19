@@ -1005,6 +1005,71 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(notebooklm_app, name="notebooklm")
 
+    # ----- run (runs-frontend export contract, Phase 1) -----
+    run_app = typer.Typer(help="Run export contract for the read-only runs viewer.")
+
+    @run_app.command("export")
+    def run_export(
+        run_id: str = typer.Option(None, "--run-id", help="run id to export"),
+        all_runs: bool = typer.Option(False, "--all", help="export every discovered run"),
+        json_out: bool = typer.Option(True, "--json/--no-json", help="JSON output (the only format)"),
+        stdout: bool = typer.Option(False, "--stdout", help="write to stdout instead of run.json"),
+        sensitivity_threshold: str = typer.Option(
+            None,
+            "--sensitivity-threshold",
+            help="override foundry.yaml viewer.sensitivity_threshold",
+        ),
+    ) -> None:
+        """Export a denormalized run.json claim graph (deterministic; no LLM)."""
+
+        import json as _json
+        import sys as _sys
+
+        from .paths import FoundryPaths
+        from .services import export_service as svc
+
+        paths = FoundryPaths.discover()
+        try:
+            if all_runs:
+                written = svc.export_all(paths, sensitivity_threshold=sensitivity_threshold)
+                for path in written:
+                    console.print(f"[green]exported[/green] {path}")
+                if not written:
+                    console.print("[yellow]no runs found[/yellow]")
+                return
+            if not run_id:
+                _fail(RFError("provide --run-id or --all"))
+            if stdout:
+                data = svc.export_run(
+                    paths, run_id, sensitivity_threshold=sensitivity_threshold
+                )
+                typer.echo(_json.dumps(data, ensure_ascii=False, indent=2))
+            else:
+                out = svc.export_to_file(
+                    paths, run_id, sensitivity_threshold=sensitivity_threshold
+                )
+                console.print(f"[green]exported[/green] {out}")
+        except svc.ExportError as exc:
+            print(_json.dumps(exc.as_payload()), file=_sys.stderr)
+            raise typer.Exit(int(exc.exit_code)) from exc
+
+    @run_app.command("list")
+    def run_list(
+        json_out: bool = typer.Option(True, "--json/--no-json", help="JSON output"),
+    ) -> None:
+        """List discovered runs with derived status (recursive, depth <= 3)."""
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services import export_service as svc
+
+        paths = FoundryPaths.discover()
+        summaries = svc.list_runs(paths)
+        typer.echo(_json.dumps(summaries, ensure_ascii=False, indent=2))
+
+    app.add_typer(run_app, name="run")
+
 
 def _apply_notebook_options(
     run_id: str,

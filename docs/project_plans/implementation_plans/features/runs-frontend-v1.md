@@ -1,37 +1,46 @@
 ---
-title: "Implementation Plan: Research Foundry Runs Frontend v1"
+title: 'Implementation Plan: Research Foundry Runs Frontend v1'
 schema_version: 2
 doc_type: implementation_plan
-status: draft
+status: completed
 created: 2026-06-19
-updated: 2026-06-19
+updated: '2026-06-19'
 feature_slug: runs-frontend
-feature_version: "v1"
+feature_version: v1
 prd_ref: docs/project_plans/PRDs/features/runs-frontend-v1.md
 plan_ref: null
-scope: "Read-only web viewer for RF run provenance and verification status; Python export contract + forked SPA (IntentTree Web) + E2E hardening."
-effort_estimate: "13 pts"
-architecture_summary: "Phase 1 (Python-only upstream gate): rf run export --json denormalized claim-graph + sensitivity redaction. Phases 2-5: forked IntentTree Web SPA (frontend/runs-viewer/), entity swap AgentRun->RFRun, TS codegen from schemas/*.schema.yaml, React Query hooks, P3 read surfaces, P4 flagship provenance, P5 E2E + build + docs."
+scope: Read-only web viewer for RF run provenance and verification status; Python
+  export contract + forked SPA (IntentTree Web) + E2E hardening.
+effort_estimate: 13 pts
+architecture_summary: 'Phase 1 (Python-only upstream gate): rf run export --json denormalized
+  claim-graph + sensitivity redaction. Phases 2-5: forked IntentTree Web SPA (frontend/runs-viewer/),
+  entity swap AgentRun->RFRun, TS codegen from schemas/*.schema.yaml, React Query
+  hooks, P3 read surfaces, P4 flagship provenance, P5 E2E + build + docs.'
 related_documents:
-  - docs/project_plans/PRDs/features/runs-frontend-v1.md
-  - docs/project_plans/exploration/runs-frontend/runs-frontend-feasibility-brief.md
-  - docs/project_plans/exploration/runs-frontend/runs-frontend-charter.md
-  - docs/project_plans/exploration/runs-frontend/spikes/tech-findings.md
-  - docs/project_plans/exploration/runs-frontend/spikes/risk-findings.md
-  - docs/project_plans/exploration/runs-frontend/spikes/priorart-findings.md
-  - .claude/worknotes/runs-frontend/decisions-block.md
+- docs/project_plans/PRDs/features/runs-frontend-v1.md
+- docs/project_plans/exploration/runs-frontend/runs-frontend-feasibility-brief.md
+- docs/project_plans/exploration/runs-frontend/runs-frontend-charter.md
+- docs/project_plans/exploration/runs-frontend/spikes/tech-findings.md
+- docs/project_plans/exploration/runs-frontend/spikes/risk-findings.md
+- docs/project_plans/exploration/runs-frontend/spikes/priorart-findings.md
+- .claude/worknotes/runs-frontend/decisions-block.md
 references:
   user_docs: []
   context: []
   specs:
-    - docs/dev/architecture/rf-run-export-schema.md
+  - docs/dev/architecture/rf-run-export-schema.md
   related_prds: []
 spike_ref: null
-adr_refs: []
-deferred_items_spec_refs: []
+adr_refs:
+- docs/dev/architecture/adr-runs-read-path.md
+deferred_items_spec_refs:
+- docs/project_plans/design-specs/runs-auth-lan.md
+- docs/project_plans/design-specs/runs-loopback-api.md
+- docs/project_plans/design-specs/runs-writeback-preview.md
+- docs/project_plans/design-specs/runs-context-panels.md
 findings_doc_ref: null
 charter_ref: docs/project_plans/exploration/runs-frontend/runs-frontend-charter.md
-changelog_ref: null
+changelog_ref: CHANGELOG.md
 changelog_required: true
 test_plan_ref: null
 plan_structure: independent
@@ -41,83 +50,94 @@ contributors: []
 priority: high
 risk_level: medium
 category: features
-tags: [implementation, planning, phases, runs-frontend, viewer, provenance, export]
+tags:
+- implementation
+- planning
+- phases
+- runs-frontend
+- viewer
+- provenance
+- export
 milestone: null
 commit_refs: []
 pr_refs: []
 files_affected:
-  - src/research_foundry/services/export_service.py
-  - src/research_foundry/cli_commands.py
-  - frontend/runs-viewer/
-  - docs/dev/architecture/rf-run-export-schema.md
+- src/research_foundry/services/export_service.py
+- src/research_foundry/cli_commands.py
+- frontend/runs-viewer/
+- docs/dev/architecture/rf-run-export-schema.md
 wave_plan:
   serialization_barriers:
+  - docs/dev/architecture/rf-run-export-schema.md
+  - CHANGELOG.md
+  - README.md
+  phases:
+  - id: P1
+    depends_on: []
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/services/export_service.py
+    - src/research_foundry/cli_commands.py
     - docs/dev/architecture/rf-run-export-schema.md
+    - tests/unit/test_export_service.py
+    - tests/integration/test_export_round_trip.py
+  - id: P2
+    depends_on:
+    - P1
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - frontend/runs-viewer/
+    - frontend/runs-viewer/src/types/rf/
+    - frontend/runs-viewer/src/api/
+    - frontend/runs-viewer/src/hooks/
+  - id: P3
+    depends_on:
+    - P2
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    files_affected:
+    - frontend/runs-viewer/src/components/RunList/
+    - frontend/runs-viewer/src/components/TrustPanel/
+    - frontend/runs-viewer/src/screens/RunListScreen.tsx
+    - frontend/runs-viewer/src/screens/RunDetailScreen.tsx
+  - id: P4
+    depends_on:
+    - P3
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    files_affected:
+    - frontend/runs-viewer/src/components/ClaimLedger/
+    - frontend/runs-viewer/src/components/ProvenanceModal/
+    - frontend/runs-viewer/src/components/ReportOverlay/
+    - frontend/runs-viewer/src/components/SourceCard/
+    - frontend/runs-viewer/src/components/LineageGraph/
+  - id: P5
+    depends_on:
+    - P4
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    files_affected:
+    - tests/e2e/
     - CHANGELOG.md
     - README.md
-  phases:
-    - id: P1
-      depends_on: []
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/services/export_service.py
-        - src/research_foundry/cli_commands.py
-        - docs/dev/architecture/rf-run-export-schema.md
-        - tests/unit/test_export_service.py
-        - tests/integration/test_export_round_trip.py
-    - id: P2
-      depends_on: [P1]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - frontend/runs-viewer/
-        - frontend/runs-viewer/src/types/rf/
-        - frontend/runs-viewer/src/api/
-        - frontend/runs-viewer/src/hooks/
-    - id: P3
-      depends_on: [P2]
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      files_affected:
-        - frontend/runs-viewer/src/components/RunList/
-        - frontend/runs-viewer/src/components/TrustPanel/
-        - frontend/runs-viewer/src/screens/RunListScreen.tsx
-        - frontend/runs-viewer/src/screens/RunDetailScreen.tsx
-    - id: P4
-      depends_on: [P3]
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      files_affected:
-        - frontend/runs-viewer/src/components/ClaimLedger/
-        - frontend/runs-viewer/src/components/ProvenanceModal/
-        - frontend/runs-viewer/src/components/ReportOverlay/
-        - frontend/runs-viewer/src/components/SourceCard/
-        - frontend/runs-viewer/src/components/LineageGraph/
-    - id: P5
-      depends_on: [P4]
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      files_affected:
-        - tests/e2e/
-        - CHANGELOG.md
-        - README.md
-        - docs/dev/architecture/adr-runs-read-path.md
-        - docs/project_plans/design-specs/runs-loopback-api.md
-        - docs/project_plans/design-specs/runs-auth-lan.md
-        - docs/project_plans/design-specs/runs-writeback-preview.md
-        - docs/project_plans/design-specs/runs-context-panels.md
+    - docs/dev/architecture/adr-runs-read-path.md
+    - docs/project_plans/design-specs/runs-loopback-api.md
+    - docs/project_plans/design-specs/runs-auth-lan.md
+    - docs/project_plans/design-specs/runs-writeback-preview.md
+    - docs/project_plans/design-specs/runs-context-panels.md
   waves:
-    - [P1]
-    - [P2]
-    - [P3]
-    - [P4]
-    - [P5]
+  - - P1
+  - - P2
+  - - P3
+  - - P4
+  - - P5
 ---
 
 # Implementation Plan: Research Foundry Runs Frontend v1
