@@ -1,0 +1,68 @@
+schema_version: 1
+title: prior_day_visual_summary
+description: Data contract for compact or expanded visual summary images.
+
+top_level_fields:
+  repo:
+    type: string
+    required: true
+  target_date:
+    type: string
+    required: true
+  reporting_window:
+    type: string
+    required: true
+  mode:
+    type: enum
+    values: [compact, expanded]
+    required: true
+  image_count:
+    type: integer
+    required: true
+  release_context:
+    type: object
+    required: false
+    fields:
+      version: string
+      shipped: boolean
+      branch: string
+      notes: string
+  visual_surfaces:
+    type: list
+    required: false
+    item_fields:
+      label: string
+      kind: enum(web, cli, docs, demo, api, internal)
+      priority: enum(high, medium, low)
+      caption: string
+  change_groups:
+    type: object
+    required: true
+    fields:
+      user_facing: change_list
+      fixes: change_list
+      refactors: change_list
+      infra_ops: change_list
+  ledger:
+    type: list
+    required: true
+    item_fields:
+      item: string
+      type: enum(feature, fix, report, release, plan, infra, docs, pr)
+      created: boolean
+      started: boolean
+      completed: boolean
+      shipped: boolean
+      surface: string
+      refs: string
+
+mode_rules:
+  compact:
+    max_ledger_rows: 8
+    max_visual_surfaces: 2
+    max_callouts: 3
+  expanded:
+    min_ledger_rows: 9
+    recommended_pages:
+      - overview
+      - ledger_overflow

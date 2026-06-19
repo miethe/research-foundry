@@ -1,0 +1,22 @@
+repo: example-repo
+target_date: 2026-05-09
+reporting_window: prior day
+mode: compact
+image_count: 1
+release_context:
+  shipped: false
+  branch: main
+change_groups:
+  user_facing: []
+  fixes: []
+  refactors: []
+  infra_ops: []
+ledger:
+  - item: No shipped or completed repo work
+    type: release
+    created: false
+    started: false
+    completed: false
+    shipped: false
+    surface: none
+    refs: git log window empty
