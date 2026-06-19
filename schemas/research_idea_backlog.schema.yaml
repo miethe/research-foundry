@@ -1,0 +1,199 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/research_idea_backlog.schema.yaml"
+title: Research Idea Backlog
+description: >
+  A curated backlog of evidence-seedable research questions for Research Foundry. Each idea is a
+  superset of raw_idea + research_intent + intenttree_node fields so a single entry can drive both an
+  rf swarm run (capture -> triage -> plan -> swarm -> deterministic tail) and an IntentTree import
+  (pillar -> work_package/atomic_task). See backlog/research_idea_backlog.yaml.
+type: object
+properties:
+  schema_version:
+    type: string
+  type:
+    const: research_idea_backlog
+  title:
+    type: string
+  generated:
+    type: string
+  generated_by:
+    type: string
+  description:
+    type: string
+  governance_defaults:
+    $ref: "#/$defs/governance"
+  pillars:
+    type: array
+    items:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        intenttree_level:
+          const: pillar
+        idea_count:
+          type: integer
+        theme:
+          type: string
+        rationale:
+          type: string
+      required:
+        - id
+        - title
+      additionalProperties: true
+  ideas:
+    type: array
+    items:
+      $ref: "#/$defs/idea"
+required:
+  - type
+  - pillars
+  - ideas
+additionalProperties: true
+
+$defs:
+  governance:
+    type: object
+    properties:
+      sensitivity:
+        enum: [public, personal, work_sensitive, client_sensitive]
+      key_profile_allowed:
+        enum: [personal, work_approved, client_approved, offline_only]
+      requires_human_review:
+        type: boolean
+      allowed_writebacks:
+        type: array
+        items:
+          type: string
+    additionalProperties: true
+  idea:
+    type: object
+    properties:
+      ref:
+        type: string
+        description: Stable human reference (RIB-NNN).
+      id:
+        type: string
+        description: Stable slug (idea_<kebab>); becomes the IntentTree node id seed.
+      title:
+        type: string
+      pillar:
+        type: string
+        description: id of the owning pillar.
+      status:
+        enum: [proposed, captured, planned, running, completed, archived]
+      research_question:
+        type: string
+        description: The single core researchable question (drives rf capture).
+      research_questions:
+        type: object
+        properties:
+          primary:
+            type: array
+            items:
+              type: string
+          secondary:
+            type: array
+            items:
+              type: string
+        additionalProperties: true
+      tags:
+        type: array
+        items:
+          type: string
+      suggested_project:
+        enum: [Research Foundry, Agentic OS, unassigned]
+      sensitivity:
+        enum: [public, personal, work_sensitive, client_sensitive]
+      urgency:
+        enum: [low, medium, high]
+      research_potential:
+        enum: [low, medium, high]
+      desired_output:
+        type: object
+        properties:
+          artifact_type:
+            enum: [evidence_bundle, report, brief, source_note, market_scan, technical_memo, literature_review]
+          audience:
+            enum: [self, public, executive, technical, client, work_internal]
+          depth:
+            enum: [skim, standard, deep, exhaustive]
+        additionalProperties: true
+      swarm_hint:
+        type: object
+        properties:
+          max_cost_usd:
+            type: number
+          freshness_days:
+            type: integer
+        additionalProperties: true
+      governance:
+        $ref: "#/$defs/governance"
+      intenttree:
+        type: object
+        description: Fields mapped onto an IntentTree node on import.
+        properties:
+          level:
+            enum: [pillar, work_area, work_package, atomic_task, step]
+          priority:
+            enum: [low, medium, high]
+          dependencies:
+            type: array
+            items:
+              type: string
+          required_agent_postures:
+            type: array
+            items:
+              type: string
+          expected_artifacts:
+            type: array
+            items:
+              type: string
+          success_criteria:
+            type: array
+            items:
+              type: string
+          reusable_output_candidates:
+            type: array
+            items:
+              type: string
+        additionalProperties: true
+      source_refs:
+        type: array
+        description: Provenance — where each idea was mined from (evidence-first).
+        items:
+          type: object
+          properties:
+            path:
+              type: string
+            note:
+              type: string
+          required:
+            - path
+          additionalProperties: true
+      rationale:
+        type: string
+      links:
+        type: object
+        description: Lifecycle backlinks, backfilled as the idea moves from backlog to run.
+        properties:
+          raw_idea_id:
+            type: ["string", "null"]
+          intent_id:
+            type: ["string", "null"]
+          intenttree_node_id:
+            type: ["string", "null"]
+          run_id:
+            type: ["string", "null"]
+        additionalProperties: true
+      rf_capture:
+        type: string
+        description: Convenience ready-to-run rf capture command for this idea.
+    required:
+      - id
+      - title
+      - pillar
+      - research_question
+    additionalProperties: true
