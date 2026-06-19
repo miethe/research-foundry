@@ -1,0 +1,69 @@
+site_name: Research Foundry
+site_description: >-
+  An evidence-first, Markdown/YAML-first research control plane. Research Foundry captures raw
+  ideas, converts them into structured research intents, plans and runs research swarms, collects
+  normalized source cards, extracts evidence, builds an auditable claim ledger, synthesizes
+  reports, and verifies that every material claim traces back to a source.
+repo_url: https://github.com/miethe/research-foundry
+repo_name: miethe/research-foundry
+
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.tabs
+    - content.code.copy
+    - content.tabs.link
+    - toc.follow
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  highlight_js: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight
+  - pymdownx.details
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Why Research Foundry: why.md
+  - Concepts:
+      - The pipeline: concepts/pipeline.md
+      - Claim-status model: concepts/claim-model.md
+      - Governance & key profiles: concepts/governance.md
+      - Run artifacts: concepts/artifacts.md
+  - Quickstart: quickstart.md
+  - Case study:
+      - Overview: case-study/index.md
+      - Anatomy of one run: case-study/one-run.md
+      - The full wave: case-study/the-wave.md
+      - What it enables: case-study/what-it-enables.md
+      - Artifact appendix: case-study/artifacts-appendix.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Run-directory reference: reference/run-artifacts.md
+  - About: about.md

@@ -33,6 +33,10 @@ dev = [
     "mypy>=1.11",
     "types-PyYAML>=6.0",
 ]
+docs = [
+    "mkdocs-material",
+    "pymdown-extensions",
+]
 
 [project.scripts]
 rf = "research_foundry.cli:app"
