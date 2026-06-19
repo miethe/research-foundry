@@ -14,12 +14,14 @@
  */
 
 import type { RFRunSummary, RFStatusDerived, RFSensitivity } from "@/types/rf";
+import { getRunBucket, type RunHealthBucket } from "@/lib/runs";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Maps status_derived → the 3-state filter bucket used by filter tabs. */
 export type RunFilterState = "verified" | "needs-review" | "planned";
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function deriveFilterState(status: RFStatusDerived): RunFilterState {
   if (status === "verified" || status === "published") return "verified";
   if (
@@ -42,9 +44,11 @@ const STATUS_LABEL: Record<RFStatusDerived, string> = {
   published:        "Published",
 };
 
-const STATUS_PILL_CLASS: Record<RunFilterState, string> = {
+const HEALTH_PILL_CLASS: Record<RunHealthBucket, string> = {
   verified:       "done",
+  published:      "done",
   "needs-review": "progress",
+  failed:         "blocked",
   planned:        "idle",
 };
 
@@ -85,8 +89,8 @@ interface RunCardProps {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function RunCard({ run, onClick }: RunCardProps) {
-  const filterState = deriveFilterState(run.status_derived);
-  const pillClass   = STATUS_PILL_CLASS[filterState];
+  const filterState = getRunBucket(run);
+  const pillClass   = HEALTH_PILL_CLASS[filterState];
   const statusLabel = STATUS_LABEL[run.status_derived] ?? run.status_derived;
 
   // Claim counts — support both top-level aliases and long keys

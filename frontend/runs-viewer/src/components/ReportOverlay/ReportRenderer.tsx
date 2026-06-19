@@ -25,6 +25,8 @@ export interface ReportRendererProps {
   onClaimSelect:  (claimId: string) => void;
   /** Dimmed claim IDs from CompositionSidebar filter. All others are active. */
   dimmedClaimIds?: Set<string> | null;
+  selectedClaimId?: string | null;
+  compact?: boolean;
 }
 
 // ── Claim chip regex ──────────────────────────────────────────────────────────
@@ -32,6 +34,30 @@ export interface ReportRendererProps {
 const CLAIM_PATTERN = /\[claim:(clm_[a-zA-Z0-9_]+)\]/g;
 /** Non-global version used only for .test() guards to avoid lastIndex mutation. */
 const CLAIM_PATTERN_TEST = /\[claim:(clm_[a-zA-Z0-9_]+)\]/;
+
+function stripReportMetadata(markdown: string): string {
+  let text = markdown.trimStart();
+
+  if (text.startsWith("---")) {
+    const lines = text.split(/\r?\n/);
+    const endIndex = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
+    if (endIndex > 0) {
+      text = lines.slice(endIndex + 1).join("\n").trimStart();
+    }
+  }
+
+  const lines = text.split(/\r?\n/);
+  let firstContentIndex = 0;
+  while (
+    firstContentIndex < lines.length &&
+    (/^\s*$/.test(lines[firstContentIndex] ?? "") ||
+      /^[A-Za-z][A-Za-z0-9_-]*:\s+/.test(lines[firstContentIndex] ?? ""))
+  ) {
+    firstContentIndex += 1;
+  }
+
+  return lines.slice(firstContentIndex).join("\n").trimStart();
+}
 
 /**
  * Split a text string on [claim:clm_NNN] patterns and return an array of
@@ -42,6 +68,7 @@ function splitWithClaimChips(
   claims:        RFClaim[],
   onClaimSelect: (claimId: string) => void,
   dimmedClaimIds?: Set<string> | null,
+  selectedClaimId?: string | null,
 ): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
@@ -60,6 +87,7 @@ function splitWithClaimChips(
         claims={claims}
         onClaimSelect={onClaimSelect}
         dimmed={dimmedClaimIds ? !dimmedClaimIds.has(claimId) : false}
+        selected={selectedClaimId === claimId}
       />
     );
     lastIndex = match.index + match[0].length;
@@ -97,6 +125,7 @@ function buildComponents(
   claims:        RFClaim[],
   onClaimSelect: (claimId: string) => void,
   dimmedClaimIds?: Set<string> | null,
+  selectedClaimId?: string | null,
 ) {
   /**
    * Walk a react-markdown children tree and expand any string nodes that
@@ -105,12 +134,12 @@ function buildComponents(
   function expandChildren(children: React.ReactNode): React.ReactNode {
     if (typeof children === "string") {
       if (!CLAIM_PATTERN_TEST.test(children)) return children;
-      return splitWithClaimChips(children, claims, onClaimSelect, dimmedClaimIds);
+      return splitWithClaimChips(children, claims, onClaimSelect, dimmedClaimIds, selectedClaimId);
     }
     if (Array.isArray(children)) {
       return children.flatMap((child, i) => {
         if (typeof child === "string") {
-          const parts = splitWithClaimChips(child, claims, onClaimSelect, dimmedClaimIds);
+          const parts = splitWithClaimChips(child, claims, onClaimSelect, dimmedClaimIds, selectedClaimId);
           return parts.map((p, j) =>
             typeof p === "string" ? p : <span key={`${i}-${j}`}>{p}</span>
           );
@@ -147,8 +176,10 @@ function buildComponents(
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function ReportRenderer({ markdown, claims, onClaimSelect, dimmedClaimIds }: ReportRendererProps) {
-  if (!markdown) {
+export function ReportRenderer({ markdown, claims, onClaimSelect, dimmedClaimIds, selectedClaimId, compact = false }: ReportRendererProps) {
+  const bodyMarkdown = stripReportMetadata(markdown);
+
+  if (!bodyMarkdown) {
     return (
       <div className="rv-report-empty" data-testid="report-empty">
         <p>No report draft available for this run.</p>
@@ -157,12 +188,12 @@ export function ReportRenderer({ markdown, claims, onClaimSelect, dimmedClaimIds
   }
 
   return (
-    <div className="rv-report-content" data-testid="report-renderer">
+    <div className={`rv-report-content${compact ? " rv-report-content--compact" : ""}`} data-testid="report-renderer">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        components={buildComponents(claims, onClaimSelect, dimmedClaimIds)}
+        components={buildComponents(claims, onClaimSelect, dimmedClaimIds, selectedClaimId)}
       >
-        {markdown}
+        {bodyMarkdown}
       </ReactMarkdown>
     </div>
   );

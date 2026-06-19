@@ -198,6 +198,40 @@ export interface RFArtifactSchemaVersions {
   [k: string]:       string | undefined;
 }
 
+// ── Optional v2 Context / Writeback Summaries ────────────────────────────────
+
+export interface RFRunContextSummary {
+  routing_decision?: {
+    decision?: string | null;
+    rationale?: string | null;
+    [k: string]: unknown;
+  } | null;
+  research_brief_md?: string | null;
+  swarm_plan?: {
+    swarm?: string | null;
+    agents?: string[] | string | null;
+    adapters?: string[] | string | null;
+    [k: string]: unknown;
+  } | null;
+  upstream_entities?: Record<string, unknown> | null;
+}
+
+export interface RFWritebackTarget {
+  name?: string | null;
+  destination?: string | null;
+  status?: string | null;
+  url?: string | null;
+  [k: string]: unknown;
+}
+
+export interface RFRunWritebacksSummary {
+  targets?: RFWritebackTarget[] | null;
+  approved_for_writeback?: boolean | null;
+  reviewer_notes?: string | null;
+  required_fix?: string | null;
+  previews?: unknown[] | null;
+}
+
 // ── Run Export (top-level) ───────────────────────────────────────────────────
 
 /**
@@ -224,6 +258,10 @@ export interface RFRunExport {
   artifact_schema_versions?: RFArtifactSchemaVersions | null;
   /** Markdown report draft emitted by the synthesizer step. Null when not yet generated. */
   report_draft?:             string | null;
+  /** Optional v2 context stack. Absent in schema 1.1 exports. */
+  context?:                  RFRunContextSummary | null;
+  /** Optional v2 writeback summary. Absent in schema 1.1 exports. */
+  writebacks?:               RFRunWritebacksSummary | null;
 }
 
 // ── Run Summary (from `rf run list --json`) ──────────────────────────────────

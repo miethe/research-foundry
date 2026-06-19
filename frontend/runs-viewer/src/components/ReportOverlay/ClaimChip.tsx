@@ -17,11 +17,12 @@ export interface ClaimChipProps {
   claims:        RFClaim[];
   onClaimSelect: (claimId: string) => void;
   dimmed?:       boolean;
+  selected?:     boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function ClaimChip({ claimId, claims, onClaimSelect, dimmed = false }: ClaimChipProps) {
+export function ClaimChip({ claimId, claims, onClaimSelect, dimmed = false, selected = false }: ClaimChipProps) {
   const claim = claims.find((c) => c.claim_id === claimId);
 
   // Determine chip color by status
@@ -52,11 +53,13 @@ export function ClaimChip({ claimId, claims, onClaimSelect, dimmed = false }: Cl
   return (
     <button
       type="button"
-      className={`rv-claim-chip it-chip ${chipColor}${dimmed ? " rv-claim-chip--dimmed" : ""}`}
+      className={`rv-claim-chip it-chip ${chipColor}${dimmed ? " rv-claim-chip--dimmed" : ""}${selected ? " rv-claim-chip--selected" : ""}`}
       data-testid={`claim-chip-${claimId}`}
       data-claim-id={claimId}
       data-status={claim.status}
       data-dimmed={dimmed ? "true" : "false"}
+      data-selected={selected ? "true" : "false"}
+      aria-pressed={selected}
       title={`Claim ${claimId}: ${claim.text.slice(0, 80)}…`}
       onClick={() => onClaimSelect(claimId)}
     >

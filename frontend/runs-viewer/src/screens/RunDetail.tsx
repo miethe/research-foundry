@@ -20,56 +20,49 @@
  *   Failing check deep-links from VerificationChecklist resolve to #clm_NNN.
  */
 
-import { useState, useRef, useCallback }    from "react";
-import { useParams, useNavigate }            from "react-router-dom";
+import { useCallback }                       from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useRunDetail }                      from "@/hooks";
-import { TrustPanel }                        from "@/components/TrustPanel/TrustPanel";
-import { EmptyState }                        from "@/components/shared/EmptyState";
-import { ClaimLedgerTable }                  from "@/components/ClaimLedger/ClaimLedgerTable";
-import { LedgerFacets }                      from "@/components/ClaimLedger/LedgerFacets";
-import { ProvenanceModal }                   from "@/components/ProvenanceModal/ProvenanceModal";
-import type { ProvenanceModalHandle }        from "@/components/ProvenanceModal/ProvenanceModal";
+import { TrustCockpit }                      from "@/components/TrustPanel/TrustCockpit";
+import { ClaimAuditWorkbench }               from "@/components/ClaimLedger/ClaimAuditWorkbench";
 import { ReportOverlay }                     from "@/components/ReportOverlay/ReportOverlay";
 import { ArtifactLineageGraph }              from "@/components/LineageGraph/LineageGraph";
-import type { RFClaim }                      from "@/types/rf";
+import { formatDateTime }                    from "@/lib/runs";
 
 // ── Tab types ─────────────────────────────────────────────────────────────────
 
-type DetailTab = "trust" | "ledger" | "report" | "lineage";
+type DetailTab = "trust" | "ledger" | "report" | "lineage" | "writeback";
 
-// ── The 9 optional entity definitions ────────────────────────────────────────
+function coerceDetailTab(value: string | null): DetailTab {
+  if (value === "audit" || value === "ledger") return "ledger";
+  if (value === "report" || value === "lineage" || value === "writeback") return value;
+  return "trust";
+}
 
-const OPTIONAL_ENTITIES = [
-  { id: "source_candidates", label: "Source Candidates",  msg: "No source candidates found for this run." },
-  { id: "report_final",      label: "Final Report",       msg: "No final report available for this run." },
-  { id: "critic_review",     label: "Critic Review",      msg: "No critic review available for this run." },
-  { id: "council_review",    label: "Council Review",     msg: "No council review available for this run." },
-  { id: "governance_review", label: "Governance Review",  msg: "No governance review available for this run." },
-  { id: "raw_idea",          label: "Raw Idea",           msg: "No raw idea recorded for this run." },
-  { id: "research_intent",   label: "Research Intent",    msg: "No research intent recorded for this run." },
-  { id: "ibom",              label: "Intelligence BOM",   msg: "No iBOM available for this run." },
-  { id: "intenttree_node",   label: "IntentTree Node",    msg: "No IntentTree node linked to this run." },
-] as const;
+function tabToQuery(tab: DetailTab): string {
+  return tab === "ledger" ? "audit" : tab;
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function RunDetailScreen() {
   const { runId }    = useParams<{ runId: string }>();
   const navigate     = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: run, isLoading, error } = useRunDetail(runId ?? "");
+  const activeTab = coerceDetailTab(searchParams.get("view"));
+  const selectedClaimId = searchParams.get("claim");
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState<DetailTab>("trust");
-
-  // Ledger state: filtered claims
-  const [filteredClaims, setFilteredClaims] = useState<RFClaim[]>([]);
-
-  // ProvenanceModal ref (ledger track)
-  const modalRef = useRef<ProvenanceModalHandle>(null);
-
-  const handleClaimSelect = useCallback((claimId: string) => {
-    modalRef.current?.open(claimId);
-  }, []);
+  const setActiveTab = useCallback(
+    (tab: DetailTab, claimId?: string | null) => {
+      const next = new URLSearchParams(searchParams);
+      next.set("view", tabToQuery(tab));
+      if (claimId) next.set("claim", claimId);
+      else next.delete("claim");
+      setSearchParams(next, { replace: false });
+    },
+    [searchParams, setSearchParams],
+  );
 
   // ── No runId in URL ──
   if (!runId) {
@@ -118,7 +111,7 @@ export function RunDetailScreen() {
   }
 
   return (
-    <div className="rv-detail" data-testid="run-detail" data-run-id={run.run_id}>
+      <div className="rv-detail" data-testid="run-detail" data-run-id={run.run_id}>
 
       {/* Back nav */}
       <div className="rv-detail__nav">
@@ -127,24 +120,18 @@ export function RunDetailScreen() {
           onClick={() => navigate("/runs")}
           aria-label="Back to run list"
         >
-          ← Runs
+          Back to runs
         </button>
       </div>
 
       {/* Run identity header */}
       <div className="rv-detail__header">
-        <h1 className="rv-detail__run-id" data-testid="detail-run-id">
+        <h1 className="rv-detail__run-id">
           {run.run_id}
         </h1>
         {run.created_at && (
           <span className="rv-detail__created">
-            {new Date(run.created_at).toLocaleString(undefined, {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+            {formatDateTime(run.created_at)}
           </span>
         )}
       </div>
@@ -158,10 +145,11 @@ export function RunDetailScreen() {
       >
         {(
           [
-            { id: "trust",   label: "Trust Overview"  },
-            { id: "ledger",  label: `Claim Ledger${run.claims.length > 0 ? ` (${run.claims.length})` : ""}` },
+            { id: "trust",   label: "Trust"  },
+            { id: "ledger",  label: `Audit${run.claims.length > 0 ? ` (${run.claims.length})` : ""}` },
             { id: "report",  label: "Report"          },
             { id: "lineage", label: "Lineage"         },
+            { id: "writeback", label: "Writeback"     },
           ] as { id: DetailTab; label: string }[]
         ).map((tab) => (
           <button
@@ -183,59 +171,21 @@ export function RunDetailScreen() {
       {/* Trust tab */}
       {activeTab === "trust" && (
         <div role="tabpanel" aria-label="Trust Overview" data-testid="tabpanel-trust">
-          <TrustPanel run={run} />
-
-          {/* ── 9 Optional entity sections — all render graceful empty-states ── */}
-          <section
-            className="rv-optional-entities"
-            aria-label="Optional run artifacts"
-            data-testid="optional-entities"
-          >
-            <h2 className="rv-optional-entities__title">Run Artifacts</h2>
-            <p className="rv-optional-entities__note">
-              The following artifacts are generated during the research pipeline. They
-              are shown here when available; P4 surfaces interactive views for each.
-            </p>
-            <div className="rv-optional-entities__grid">
-              {OPTIONAL_ENTITIES.map(({ id, label, msg }) => (
-                <div
-                  key={id}
-                  className="rv-optional-entity"
-                  data-entity={id}
-                  data-testid={`optional-entity-${id}`}
-                >
-                  <EmptyState label={label} message={msg} />
-                </div>
-              ))}
-            </div>
-          </section>
+          <TrustCockpit
+            run={run}
+            onOpenAudit={(claimId) => setActiveTab("ledger", claimId)}
+          />
         </div>
       )}
 
       {/* Ledger tab */}
       {activeTab === "ledger" && (
         <div role="tabpanel" aria-label="Claim Ledger" data-testid="tabpanel-ledger">
-          <div className="rv-ledger-view">
-            {run.claims.length === 0 ? (
-              <EmptyState label="Claim Ledger" message="No claims in this run." />
-            ) : (
-              <>
-                <LedgerFacets
-                  claims={run.claims}
-                  onFiltered={setFilteredClaims}
-                />
-                <ClaimLedgerTable
-                  claims={filteredClaims.length > 0 || run.claims.length === 0
-                    ? filteredClaims
-                    : run.claims}
-                  onClaimSelect={handleClaimSelect}
-                />
-              </>
-            )}
-          </div>
-
-          {/* Provenance modal for ledger tab */}
-          <ProvenanceModal ref={modalRef} claims={run.claims} />
+          <ClaimAuditWorkbench
+            run={run}
+            initialClaimId={selectedClaimId}
+            onClaimChange={(claimId) => setActiveTab("ledger", claimId)}
+          />
         </div>
       )}
 
@@ -250,6 +200,33 @@ export function RunDetailScreen() {
       {activeTab === "lineage" && (
         <div role="tabpanel" aria-label="Lineage Graph" data-testid="tabpanel-lineage">
           <ArtifactLineageGraph run={run} />
+        </div>
+      )}
+
+      {activeTab === "writeback" && (
+        <div role="tabpanel" aria-label="Writeback" data-testid="tabpanel-writeback">
+          <section className="rv-writeback-workspace it-card">
+            <h2>Writeback Readiness</h2>
+            <p>
+              {run.writebacks
+                ? "Writeback summary is available in this export."
+                : "Writeback preview is not exported for this run yet."}
+            </p>
+            <dl>
+              <div>
+                <dt>Governance</dt>
+                <dd>{run.governance?.approved_for_writeback ? "Approved" : "Not approved or unavailable"}</dd>
+              </div>
+              <div>
+                <dt>Required fix</dt>
+                <dd>{run.writebacks?.required_fix ?? "No required fix exported"}</dd>
+              </div>
+              <div>
+                <dt>Targets</dt>
+                <dd>{run.writebacks?.targets?.length ? `${run.writebacks.targets.length} target(s)` : "Not exported"}</dd>
+              </div>
+            </dl>
+          </section>
         </div>
       )}
     </div>
