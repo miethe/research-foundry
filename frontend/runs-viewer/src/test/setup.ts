@@ -110,3 +110,17 @@ if (typeof global.EventSource === "undefined") {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (global as any).EventSource = StubEventSource;
 }
+
+/**
+ * Minimal ResizeObserver stub for JSDOM.
+ * React Flow (and other layout libs) call ResizeObserver to measure node sizes.
+ * JSDOM does not implement it, so we provide a no-op stub to prevent crashes.
+ */
+if (typeof global.ResizeObserver === "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (global as any).ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}

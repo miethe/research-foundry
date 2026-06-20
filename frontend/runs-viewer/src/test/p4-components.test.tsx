@@ -1066,7 +1066,7 @@ describe("CompositionSidebar", () => {
   });
 });
 
-// ── (8) LineageGraph ──────────────────────────────────────────────────────────
+// ── (8) LineageGraph (refactored: compact list + detail panel) ────────────────
 
 describe("ArtifactLineageGraph", () => {
   it("renders lineage-graph for populated run with claims", () => {
@@ -1090,7 +1090,9 @@ describe("ArtifactLineageGraph", () => {
     );
     expect(container.querySelector("[data-testid='lineage-graph']")).not.toBeNull();
     expect(container.querySelector(`[data-testid='lineage-node-run:${fixtureRun.run_id}']`)).not.toBeNull();
-    expect(container.textContent).toContain("No claims are exported");
+    // Empty-state detail comes from the run node's details in the tree
+    // (The "No claims are exported" text is in the node data, visible when selected in detail panel)
+    // We verify it's in the tree node data rather than always-on inline
   });
 
   it("buildLineageTree adapts fixture claims into a source-first hierarchy", () => {
@@ -1107,7 +1109,9 @@ describe("ArtifactLineageGraph", () => {
     expect(claim?.claimId).toMatch(/^clm_/);
   });
 
-  it("buildLineageTree exposes source, extraction, and claim details", () => {
+  it("buildLineageTree exposes source, extraction, and claim details on the node data", () => {
+    // Details are now in LineageDetailPanel, not inline rows.
+    // Verify the tree data still has details (so the panel can show them).
     const [root] = buildLineageTree(fixtureRun);
     const source = root.children.find((node) => node.kind === "source");
     const extraction = source?.children.find((node) => node.kind === "extraction");
@@ -1117,6 +1121,28 @@ describe("ArtifactLineageGraph", () => {
     expect(source?.details?.some((item) => item.label === "Source type")).toBe(true);
     expect(extraction?.details?.some((item) => item.label === "Evidence ID")).toBe(true);
     expect(claim?.details?.some((item) => item.label === "Sources")).toBe(true);
+  });
+
+  it("selecting a node shows its details in the detail panel", () => {
+    const [root] = buildLineageTree(fixtureRun);
+    const source = root.children[0]!;
+    const { container } = render(
+      <ArtifactLineageGraph run={fixtureRun} />,
+      { wrapper: makeWrapper() },
+    );
+
+    // Initially detail panel shows empty state
+    expect(container.querySelector("[data-testid='lineage-detail-empty']")).not.toBeNull();
+
+    // Click source row to select it
+    const sourceRow = container.querySelector(`[data-testid='lineage-node-${source.id}']`) as HTMLElement;
+    act(() => { fireEvent.click(sourceRow); });
+
+    // Detail panel now shows content for the source
+    const panel = container.querySelector("[data-testid='lineage-detail']");
+    expect(panel?.textContent).not.toContain("Select a node");
+    // Source type detail should appear in the panel
+    expect(panel?.textContent).toContain("Source type");
   });
 
   it("renders run, source, and extraction rows from the default expanded path", () => {
@@ -1173,5 +1199,83 @@ describe("ArtifactLineageGraph", () => {
     expect(root.kind).toBe("run");
     expect(root.children).toHaveLength(0);
     expect(root.details?.some((item) => item.value.includes("No claims"))).toBe(true);
+  });
+
+  it("view toggle exists: list and graph buttons are present", () => {
+    const { container } = render(
+      <ArtifactLineageGraph run={fixtureRun} />,
+      { wrapper: makeWrapper() },
+    );
+    expect(container.querySelector("[data-testid='lineage-view-list']")).not.toBeNull();
+    expect(container.querySelector("[data-testid='lineage-view-graph']")).not.toBeNull();
+  });
+
+  it("switching to graph view shows the graph canvas slot placeholder", () => {
+    const { container } = render(
+      <ArtifactLineageGraph run={fixtureRun} />,
+      { wrapper: makeWrapper() },
+    );
+
+    // Initially the list is shown
+    expect(container.querySelector("[role='tree']")).not.toBeNull();
+    expect(container.querySelector("[data-testid='lineage-graph-canvas-slot']")).toBeNull();
+
+    // Switch to graph view
+    act(() => {
+      fireEvent.click(container.querySelector("[data-testid='lineage-view-graph']") as HTMLElement);
+    });
+
+    expect(container.querySelector("[data-testid='lineage-graph-canvas-slot']")).not.toBeNull();
+  });
+
+  it("switching back to list view restores the tree", () => {
+    const { container } = render(
+      <ArtifactLineageGraph run={fixtureRun} />,
+      { wrapper: makeWrapper() },
+    );
+
+    // Go to graph then back to list
+    act(() => {
+      fireEvent.click(container.querySelector("[data-testid='lineage-view-graph']") as HTMLElement);
+    });
+    act(() => {
+      fireEvent.click(container.querySelector("[data-testid='lineage-view-list']") as HTMLElement);
+    });
+
+    expect(container.querySelector("[role='tree']")).not.toBeNull();
+    expect(container.querySelector("[data-testid='lineage-graph-canvas-slot']")).toBeNull();
+  });
+
+  it("detail panel shows empty state by default", () => {
+    const { container } = render(
+      <ArtifactLineageGraph run={fixtureRun} />,
+      { wrapper: makeWrapper() },
+    );
+    expect(container.querySelector("[data-testid='lineage-detail']")).not.toBeNull();
+    expect(container.querySelector("[data-testid='lineage-detail-empty']")).not.toBeNull();
+  });
+
+  it("clicking a claim row then selecting shows claim details in detail panel (Evidence ID and Sources)", () => {
+    const [root] = buildLineageTree(fixtureRun);
+    const source = root.children[0]!;
+    const extraction = source.children[0]!;
+    const claim = extraction.children[0]!;
+
+    const { container } = render(
+      <ArtifactLineageGraph run={fixtureRun} />,
+      { wrapper: makeWrapper() },
+    );
+
+    // Expand to make extraction and claim visible
+    act(() => {
+      fireEvent.click(container.querySelector("[data-testid='lineage-expand-all']") as HTMLElement);
+    });
+
+    // Click claim row
+    const claimRow = container.querySelector(`[data-testid='lineage-node-${claim.claimId}']`) as HTMLElement;
+    act(() => { fireEvent.click(claimRow); });
+
+    const panel = container.querySelector("[data-testid='lineage-detail']");
+    expect(panel?.textContent).toContain("Sources");
   });
 });

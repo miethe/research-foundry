@@ -219,3 +219,20 @@ function uniqueClaims(claims: RFClaim[]): RFClaim[] {
     return true;
   });
 }
+
+// ── Shared kind metadata (consumed by LineageList and LineageGraph v2) ─────────
+
+export interface LineageKindMeta {
+  label: string;
+  accent: string;   // CSS color value (--it-* token)
+  glyph: string;    // icon identifier used by renderKindIcon()
+}
+
+export const LINEAGE_KIND_META: Record<LineageNodeKind, LineageKindMeta> = {
+  run:        { label: "Run",        accent: "var(--it-blue-500)",   glyph: "stack"    },
+  source:     { label: "Source",     accent: "var(--it-teal-500)",   glyph: "document" },
+  extraction: { label: "Extraction", accent: "var(--it-purple-500)", glyph: "quote"    },
+  claim:      { label: "Claim",      accent: "var(--it-gold-400)",   glyph: "flag"     },
+  report:     { label: "Report",     accent: "var(--it-green-500)",  glyph: "file"     },
+  writeback:  { label: "Writeback",  accent: "var(--it-purple-400)", glyph: "upload"   },
+};
