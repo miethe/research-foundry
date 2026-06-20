@@ -25,11 +25,13 @@ const SENSITIVITY_ORDER: Record<RFSensitivity, number> = {
 };
 
 /** Returns true if the source should have its quote/summary redacted. */
-function isRedacted(sensitivity: RFSensitivity | null | undefined): boolean {
+function isRedacted(sensitivity: RFSensitivity | null | undefined, threshold?: RFSensitivity | null): boolean {
   if (!sensitivity) return false; // absent → public → safe
   const level = SENSITIVITY_ORDER[sensitivity];
   if (level === undefined) return true; // unknown → fail-closed
-  return level >= SENSITIVITY_ORDER.work_sensitive;
+  const thresholdLevel = threshold ? SENSITIVITY_ORDER[threshold] : SENSITIVITY_ORDER.personal;
+  if (thresholdLevel === undefined) return true;
+  return level > thresholdLevel;
 }
 
 // ── Badge maps ────────────────────────────────────────────────────────────────
@@ -78,14 +80,16 @@ const SOURCE_TYPE_LABEL: Record<RFSourceType, string> = {
 
 export interface SourceCardProps {
   source: RFResolvedSource;
+  sensitivityThreshold?: RFSensitivity | null;
+  compact?: boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function SourceCard({ source }: SourceCardProps) {
+export function SourceCard({ source, sensitivityThreshold, compact = false }: SourceCardProps) {
   const [quoteExpanded, setQuoteExpanded] = useState(false);
 
-  const redacted = isRedacted(source.sensitivity);
+  const redacted = isRedacted(source.sensitivity, sensitivityThreshold);
 
   const rank      = source.trust?.source_rank;
   const rankChip  = rank ? RANK_CHIP[rank]  ?? "" : "";
@@ -99,7 +103,7 @@ export function SourceCard({ source }: SourceCardProps) {
   if (source.dangling) {
     return (
       <div
-        className="rv-source-card rv-source-card--dangling"
+        className={`rv-source-card rv-source-card--dangling${compact ? " rv-source-card--compact" : ""}`}
         data-testid={`source-card-${source.source_card_id}`}
         data-sensitivity={source.sensitivity ?? "unknown"}
       >
@@ -112,7 +116,7 @@ export function SourceCard({ source }: SourceCardProps) {
 
   return (
     <div
-      className="rv-source-card it-card"
+      className={`rv-source-card it-card${compact ? " rv-source-card--compact" : ""}`}
       data-testid={`source-card-${source.source_card_id}`}
       data-sensitivity={source.sensitivity ?? "public"}
       data-redacted={redacted ? "true" : "false"}

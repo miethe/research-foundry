@@ -1,12 +1,14 @@
 import type {
   RFClaim,
   RFClaimCounts,
+  RFReportLocation,
   RFResolvedSource,
   RFRunExport,
   RFRunSummary,
   RFSensitivity,
   RFStatusDerived,
   RFVerification,
+  RFWritebackTarget,
 } from "@/types/rf";
 
 export type RunHealthBucket = "verified" | "needs-review" | "failed" | "planned" | "published";
@@ -153,4 +155,100 @@ export function formatShortDate(value?: string | null): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+export function deriveClaimTitle(claim: Pick<RFClaim, "claim_id" | "text">, maxLength = 96): string {
+  const text = claim.text.trim().replace(/\s+/g, " ");
+  if (!text) return claim.claim_id;
+  if (text.length <= maxLength) return text;
+  const clipped = text.slice(0, maxLength + 1);
+  const lastSpace = clipped.lastIndexOf(" ");
+  const boundary = lastSpace > 48 ? lastSpace : maxLength;
+  return `${text.slice(0, boundary).trim()}...`;
+}
+
+export function deriveSourceTitle(source: Pick<RFResolvedSource, "source_card_id" | "title" | "url">): string {
+  const explicit = source.title?.trim();
+  if (explicit) return explicit;
+  if (source.url) {
+    try {
+      const url = new URL(source.url);
+      const path = url.pathname.replace(/\/$/, "");
+      return path && path !== "/" ? `${url.hostname}${path}` : url.hostname;
+    } catch {
+      return source.url;
+    }
+  }
+  return source.source_card_id;
+}
+
+export function deriveExtractionTitle(source: Pick<RFResolvedSource, "evidence_id" | "evidence_locator" | "locator" | "source_card_id" | "title" | "url">): string {
+  return source.evidence_locator ?? source.locator ?? source.evidence_id ?? deriveSourceTitle(source);
+}
+
+export function deriveReportTitle(run: Pick<RFRunExport, "report_draft">): string {
+  return firstMarkdownHeading(run.report_draft, 1) ?? firstMarkdownHeading(run.report_draft) ?? "Draft report";
+}
+
+export function deriveRunTitle(run: Pick<RFRunExport, "run_id" | "intent_id" | "report_draft" | "context">): string {
+  return (
+    firstMarkdownHeading(run.report_draft, 1) ||
+    firstMarkdownHeading(run.report_draft) ||
+    firstMarkdownHeading(run.context?.research_brief_md, 1) ||
+    titleFromSlug(run.intent_id) ||
+    titleFromSlug(run.run_id) ||
+    run.run_id
+  );
+}
+
+export function deriveReportLocationTitle(location: RFReportLocation): string {
+  return location.heading ?? location.paragraph_id ?? location.file ?? "Report location";
+}
+
+export function deriveWritebackTitle(target: RFWritebackTarget): string {
+  if (target.name?.trim()) return target.name.trim();
+  if (target.destination?.trim()) return titleFromSlug(target.destination) ?? target.destination;
+  if (target.url) {
+    try {
+      return new URL(target.url).hostname;
+    } catch {
+      return target.url;
+    }
+  }
+  return "Writeback target";
+}
+
+export function hasWritebackExport(run: Pick<RFRunExport, "writebacks">): boolean {
+  const writebacks = run.writebacks;
+  return Boolean(
+    writebacks &&
+      ((writebacks.targets?.length ?? 0) > 0 ||
+        (writebacks.previews?.length ?? 0) > 0 ||
+        writebacks.required_fix ||
+        writebacks.reviewer_notes ||
+        writebacks.approved_for_writeback != null),
+  );
+}
+
+function firstMarkdownHeading(markdown?: string | null, level?: number): string | null {
+  if (!markdown) return null;
+  const lines = markdown.split(/\r?\n/);
+  for (const line of lines) {
+    const match = /^(#{1,6})\s+(.+?)\s*$/.exec(line.trim());
+    if (!match) continue;
+    if (level != null && match[1]?.length !== level) continue;
+    return match[2]?.replace(/\s+\[claim:[^\]]+\]/g, "").trim() || null;
+  }
+  return null;
+}
+
+function titleFromSlug(value?: string | null): string | null {
+  if (!value) return null;
+  const normalized = value
+    .replace(/^(rf_run|intent|intent_research)_?/i, "")
+    .replace(/^\d{8,}_?/, "")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  if (!normalized) return value;
+  return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
 }

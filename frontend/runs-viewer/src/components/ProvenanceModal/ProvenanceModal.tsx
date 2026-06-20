@@ -16,7 +16,7 @@
  *   modalRef.current?.close();
  */
 
-import { useState, useCallback, forwardRef, useImperativeHandle } from "react";
+import { useState, useCallback, forwardRef, useEffect, useImperativeHandle } from "react";
 import type { RFClaim } from "@/types/rf";
 import { SourceCard } from "@/components/SourceCard/SourceCard";
 
@@ -31,6 +31,10 @@ export interface ProvenanceModalProps {
   claims:        RFClaim[];
   /** Called when a from_claims chain link is clicked — opens the referenced claim. */
   onChainClick?: (claimId: string) => void;
+  /** Adds a higher stacking layer when opened from inside another modal. */
+  stacked?: boolean;
+  /** Allows parent modals to suppress their own Escape/overlay close while this is open. */
+  onOpenChange?: (open: boolean) => void;
 }
 
 // ── Status chip map (mirrors ClaimLedgerTable) ────────────────────────────────
@@ -47,18 +51,28 @@ const STATUS_CHIP: Record<string, string> = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const ProvenanceModal = forwardRef<ProvenanceModalHandle, ProvenanceModalProps>(
-  function ProvenanceModal({ claims, onChainClick }, ref) {
+  function ProvenanceModal({ claims, onChainClick, stacked = false, onOpenChange }, ref) {
     const [openClaimId, setOpenClaimId] = useState<string | null>(null);
 
-    const open  = useCallback((claimId: string) => setOpenClaimId(claimId), []);
-    const close = useCallback(() => setOpenClaimId(null), []);
+    const open  = useCallback((claimId: string) => {
+      setOpenClaimId(claimId);
+      onOpenChange?.(true);
+    }, [onOpenChange]);
+    const close = useCallback(() => {
+      setOpenClaimId(null);
+      onOpenChange?.(false);
+    }, [onOpenChange]);
 
     useImperativeHandle(ref, () => ({ open, close }), [open, close]);
 
-    // Close on Escape key or overlay click
-    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    }, [close]);
+    useEffect(() => {
+      if (!openClaimId) return undefined;
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === "Escape") close();
+      };
+      document.addEventListener("keydown", handleKeyDown);
+      return () => document.removeEventListener("keydown", handleKeyDown);
+    }, [close, openClaimId]);
 
     if (!openClaimId) return null;
 
@@ -67,10 +81,9 @@ export const ProvenanceModal = forwardRef<ProvenanceModalHandle, ProvenanceModal
     return (
       /* ── Overlay ── */
       <div
-        className="rv-modal-overlay"
+        className={`rv-modal-overlay${stacked ? " rv-modal-overlay--stacked" : ""}`}
         data-testid="provenance-modal-overlay"
         onClick={(e) => { if (e.target === e.currentTarget) close(); }}
-        onKeyDown={handleKeyDown}
         role="presentation"
       >
         <div

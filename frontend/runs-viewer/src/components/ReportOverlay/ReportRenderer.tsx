@@ -23,8 +23,12 @@ export interface ReportRendererProps {
   markdown:       string;
   claims:         RFClaim[];
   onClaimSelect:  (claimId: string) => void;
-  /** Dimmed claim IDs from CompositionSidebar filter. All others are active. */
+  /** Deprecated alias retained for older tests/callers; these are active IDs. */
   dimmedClaimIds?: Set<string> | null;
+  /** Active claim IDs for composition or selected-claim highlighting. */
+  activeClaimIds?: Set<string> | null;
+  highlightMode?: "none" | "composition" | "selected-claim";
+  highlightText?: boolean;
   selectedClaimId?: string | null;
   compact?: boolean;
 }
@@ -67,7 +71,7 @@ function splitWithClaimChips(
   text:          string,
   claims:        RFClaim[],
   onClaimSelect: (claimId: string) => void,
-  dimmedClaimIds?: Set<string> | null,
+  activeClaimIds?: Set<string> | null,
   selectedClaimId?: string | null,
 ): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
@@ -86,7 +90,7 @@ function splitWithClaimChips(
         claimId={claimId}
         claims={claims}
         onClaimSelect={onClaimSelect}
-        dimmed={dimmedClaimIds ? !dimmedClaimIds.has(claimId) : false}
+        dimmed={activeClaimIds ? !activeClaimIds.has(claimId) : false}
         selected={selectedClaimId === claimId}
       />
     );
@@ -111,6 +115,25 @@ function paragraphClass(text: string): string {
   return "";
 }
 
+function claimIdsInText(text: string): string[] {
+  const ids: string[] = [];
+  const re = new RegExp(CLAIM_PATTERN.source, "g");
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    if (match[1]) ids.push(match[1]);
+  }
+  return ids;
+}
+
+function blockHighlightClass(text: string, activeClaimIds: Set<string> | null | undefined, highlightText: boolean): string {
+  if (!highlightText || !activeClaimIds || activeClaimIds.size === 0) return "";
+  const ids = claimIdsInText(text);
+  if (ids.length === 0) return "rv-report-block--dimmed";
+  return ids.some((id) => activeClaimIds.has(id))
+    ? "rv-report-block--highlighted"
+    : "rv-report-block--dimmed";
+}
+
 // ── Custom renderer ───────────────────────────────────────────────────────────
 
 interface ParagraphProps {
@@ -124,22 +147,23 @@ interface ParagraphProps {
 function buildComponents(
   claims:        RFClaim[],
   onClaimSelect: (claimId: string) => void,
-  dimmedClaimIds?: Set<string> | null,
+  activeClaimIds?: Set<string> | null,
   selectedClaimId?: string | null,
+  highlightText = false,
 ) {
   /**
    * Walk a react-markdown children tree and expand any string nodes that
    * contain [claim:clm_NNN] patterns into [string, ClaimChip, string, ...].
    */
   function expandChildren(children: React.ReactNode): React.ReactNode {
-    if (typeof children === "string") {
+      if (typeof children === "string") {
       if (!CLAIM_PATTERN_TEST.test(children)) return children;
-      return splitWithClaimChips(children, claims, onClaimSelect, dimmedClaimIds, selectedClaimId);
+      return splitWithClaimChips(children, claims, onClaimSelect, activeClaimIds, selectedClaimId);
     }
     if (Array.isArray(children)) {
       return children.flatMap((child, i) => {
         if (typeof child === "string") {
-          const parts = splitWithClaimChips(child, claims, onClaimSelect, dimmedClaimIds, selectedClaimId);
+          const parts = splitWithClaimChips(child, claims, onClaimSelect, activeClaimIds, selectedClaimId);
           return parts.map((p, j) =>
             typeof p === "string" ? p : <span key={`${i}-${j}`}>{p}</span>
           );
@@ -156,8 +180,9 @@ function buildComponents(
       const textContent = typeof children === "string" ? children :
         Array.isArray(children) ? (children as React.ReactNode[]).map((c) => (typeof c === "string" ? c : "")).join("") : "";
       const extraClass = paragraphClass(textContent);
+      const highlightClass = blockHighlightClass(textContent, activeClaimIds, highlightText);
       return (
-        <p className={`rv-report-p${extraClass ? ` ${extraClass}` : ""}`}>
+        <p className={`rv-report-p${extraClass ? ` ${extraClass}` : ""}${highlightClass ? ` ${highlightClass}` : ""}`}>
           {expandChildren(children)}
         </p>
       );
@@ -169,15 +194,29 @@ function buildComponents(
     },
 
     li({ children }: ParagraphProps) {
-      return <li className="rv-report-li">{expandChildren(children)}</li>;
+      const textContent = typeof children === "string" ? children :
+        Array.isArray(children) ? (children as React.ReactNode[]).map((c) => (typeof c === "string" ? c : "")).join("") : "";
+      const highlightClass = blockHighlightClass(textContent, activeClaimIds, highlightText);
+      return <li className={`rv-report-li${highlightClass ? ` ${highlightClass}` : ""}`}>{expandChildren(children)}</li>;
     },
   };
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function ReportRenderer({ markdown, claims, onClaimSelect, dimmedClaimIds, selectedClaimId, compact = false }: ReportRendererProps) {
+export function ReportRenderer({
+  markdown,
+  claims,
+  onClaimSelect,
+  dimmedClaimIds,
+  activeClaimIds,
+  highlightMode = "none",
+  highlightText = false,
+  selectedClaimId,
+  compact = false,
+}: ReportRendererProps) {
   const bodyMarkdown = stripReportMetadata(markdown);
+  const activeIds = activeClaimIds ?? dimmedClaimIds ?? (highlightMode === "selected-claim" && selectedClaimId ? new Set([selectedClaimId]) : null);
 
   if (!bodyMarkdown) {
     return (
@@ -188,10 +227,14 @@ export function ReportRenderer({ markdown, claims, onClaimSelect, dimmedClaimIds
   }
 
   return (
-    <div className={`rv-report-content${compact ? " rv-report-content--compact" : ""}`} data-testid="report-renderer">
+    <div
+      className={`rv-report-content${compact ? " rv-report-content--compact" : ""}${highlightText && activeIds ? " rv-report-content--highlighting" : ""}`}
+      data-testid="report-renderer"
+      data-highlight-mode={highlightMode}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        components={buildComponents(claims, onClaimSelect, dimmedClaimIds, selectedClaimId)}
+        components={buildComponents(claims, onClaimSelect, activeIds, selectedClaimId, highlightText)}
       >
         {bodyMarkdown}
       </ReactMarkdown>

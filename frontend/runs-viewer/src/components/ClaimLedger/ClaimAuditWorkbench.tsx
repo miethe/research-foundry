@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RFClaim, RFResolvedSource, RFRunExport } from "@/types/rf";
-import { shouldRedactSource } from "@/lib/runs";
+import type { RFClaim, RFRunExport } from "@/types/rf";
+import { deriveClaimTitle, deriveReportLocationTitle, deriveSourceTitle, shouldRedactSource } from "@/lib/runs";
 import { ClaimLedgerTable } from "./ClaimLedgerTable";
 import { LedgerFacets } from "./LedgerFacets";
 import { ProvenanceModal } from "@/components/ProvenanceModal/ProvenanceModal";
 import type { ProvenanceModalHandle } from "@/components/ProvenanceModal/ProvenanceModal";
 import { ReportRenderer } from "@/components/ReportOverlay/ReportRenderer";
+import { SourceCard } from "@/components/SourceCard/SourceCard";
 
 interface ClaimAuditWorkbenchProps {
   run: RFRunExport;
   initialClaimId?: string | null;
   onClaimChange?: (claimId: string) => void;
+  onOpenProvenance?: (claimId: string) => void;
 }
 
-export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange }: ClaimAuditWorkbenchProps) {
+export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpenProvenance }: ClaimAuditWorkbenchProps) {
   const modalRef = useRef<ProvenanceModalHandle>(null);
   const firstClaimId = run.claims[0]?.claim_id ?? null;
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(initialClaimId ?? firstClaimId);
@@ -35,11 +37,20 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange }: Clai
     [run.claims, selectedClaimId],
   );
 
-  const selectClaim = useCallback((claimId: string, openModal = false) => {
+  const activeClaimIds = useMemo(
+    () => selectedClaimId ? new Set([selectedClaimId]) : null,
+    [selectedClaimId],
+  );
+
+  const selectClaim = useCallback((claimId: string) => {
     setSelectedClaimId(claimId);
     onClaimChange?.(claimId);
-    if (openModal) modalRef.current?.open(claimId);
   }, [onClaimChange]);
+
+  const openClaimModal = useCallback((claimId: string) => {
+    if (onOpenProvenance) onOpenProvenance(claimId);
+    else modalRef.current?.open(claimId);
+  }, [onOpenProvenance]);
 
   if (run.claims.length === 0) {
     return (
@@ -74,7 +85,7 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange }: Clai
           <ClaimLedgerTable
             claims={filteredClaims}
             selectedClaimId={selectedClaimId}
-            onClaimSelect={(claimId) => selectClaim(claimId, true)}
+            onClaimSelect={selectClaim}
           />
         </aside>
 
@@ -87,15 +98,19 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange }: Clai
             markdown={run.report_draft ?? ""}
             claims={run.claims}
             selectedClaimId={selectedClaimId}
+            activeClaimIds={activeClaimIds}
+            highlightMode="selected-claim"
+            highlightText
             onClaimSelect={(claimId) => selectClaim(claimId)}
             compact
           />
         </main>
 
         <ClaimInspector
+          runClaims={run.claims}
           claim={selectedClaim}
           threshold={run.sensitivity_threshold}
-          onOpenModal={(claimId) => modalRef.current?.open(claimId)}
+          onOpenModal={openClaimModal}
           onSelectClaim={(claimId) => selectClaim(claimId)}
         />
       </div>
@@ -116,11 +131,13 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange }: Clai
 }
 
 function ClaimInspector({
+  runClaims,
   claim,
   threshold,
   onOpenModal,
   onSelectClaim,
 }: {
+  runClaims: RFClaim[];
   claim: RFClaim | null;
   threshold: RFRunExport["sensitivity_threshold"];
   onOpenModal: (claimId: string) => void;
@@ -137,12 +154,14 @@ function ClaimInspector({
     );
   }
 
-  const primarySource = claim.sources[0] ?? null;
-  const redacted = primarySource ? shouldRedactSource(primarySource, threshold) : false;
   const dangling = claim.sources.some((source) => source.dangling || source.resolved === false);
+  const redactedSources = claim.sources.filter((source) => shouldRedactSource(source, threshold));
   const emptyInference =
     (claim.claim_type === "inference" || claim.status === "inference") &&
     (claim.inference_basis?.from_claims ?? []).length === 0;
+  const isInference = claim.claim_type === "inference" || claim.status === "inference";
+  const isSpeculation = claim.claim_type === "speculation" || claim.status === "speculation";
+  const confidence = confidenceScore(claim.confidence);
 
   return (
     <aside className="rv-claim-inspector it-card" data-testid="claim-inspector" data-claim-id={claim.claim_id}>
@@ -153,11 +172,18 @@ function ClaimInspector({
         </button>
       </div>
 
-      <div className="rv-inspector-head">
+      <div className="rv-inspector-title">
+        <h4>{deriveClaimTitle(claim)}</h4>
         <code>{claim.claim_id}</code>
+      </div>
+
+      <div className="rv-inspector-head">
         {claim.claim_type && <span className={`it-chip ${claim.claim_type === "factual" ? "" : claim.claim_type === "inference" ? "blue" : "orange"}`}>{claim.claim_type}</span>}
         {claim.status && <span className={`it-chip ${statusTone(claim.status)}`}>{claim.status}</span>}
-        {claim.confidence && <strong>{confidenceScore(claim.confidence)}%</strong>}
+        {claim.materiality && <span className="it-chip">{claim.materiality}</span>}
+        <span className={`rv-confidence-ring rv-confidence-ring--${confidence.tone}`} title={`${confidence.label} confidence`}>
+          {confidence.score}
+        </span>
       </div>
 
       <section className="rv-inspector-section">
@@ -166,66 +192,89 @@ function ClaimInspector({
       </section>
 
       <section className="rv-inspector-section">
-        <h4>Source Card</h4>
-        {primarySource ? <SourceSummary source={primarySource} redacted={redacted} /> : <p className="rv-muted">No source cards linked.</p>}
+        <h4>Metadata</h4>
+        <dl className="rv-inspector-dl">
+          <div><dt>Status</dt><dd>{claim.status ?? "Not exported"}</dd></div>
+          <div><dt>Confidence</dt><dd>{claim.confidence ?? "unknown"}</dd></div>
+          <div><dt>Materiality</dt><dd>{claim.materiality ?? "Not exported"}</dd></div>
+          <div><dt>Type</dt><dd>{claim.claim_type ?? "Not exported"}</dd></div>
+          <div><dt>Sources</dt><dd>{claim.sources.length}</dd></div>
+          <div><dt>Locations</dt><dd>{claim.report_locations?.length ?? 0}</dd></div>
+        </dl>
       </section>
 
-      {primarySource && (
-        <section className="rv-inspector-section">
-          <h4>Quote</h4>
-          {primarySource.dangling ? (
-            <Warning label="Dangling Source" message={`Missing source card: ${primarySource.source_card_id}`} />
-          ) : redacted ? (
-            <Warning label="Redacted Evidence" message={`Evidence text is hidden by threshold ${threshold ?? "public"}.`} />
-          ) : (
-            <blockquote className="rv-inspector-quote">
-              {primarySource.quote || primarySource.summary || "No quote or summary exported for this source."}
-            </blockquote>
-          )}
-          <dl className="rv-inspector-dl">
-            <div>
-              <dt>Locator</dt>
-              <dd>{primarySource.evidence_locator ?? primarySource.locator ?? "Not exported"}</dd>
-            </div>
-            <div>
-              <dt>Trust</dt>
-              <dd>{primarySource.trust?.source_rank ?? "unknown"}</dd>
-            </div>
-            <div>
-              <dt>Usage</dt>
-              <dd>{primarySource.usage?.citation_required ? "Citation required" : "No usage note"}</dd>
-            </div>
-          </dl>
-        </section>
-      )}
+      <section className="rv-inspector-section">
+        <h4>Source Cards</h4>
+        {claim.sources.length > 0 ? (
+          <div className="rv-inspector-source-list">
+            {claim.sources.map((source) => (
+              <SourceCard
+                key={`${source.source_card_id}-${source.evidence_id}`}
+                source={source}
+                sensitivityThreshold={threshold}
+                compact
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="rv-muted">No source cards linked.</p>
+        )}
+      </section>
 
-      {(claim.inference_basis?.reasoning_summary || emptyInference) && (
+      <section className="rv-inspector-section">
+        <h4>Report Locations</h4>
+        {claim.report_locations?.length ? (
+          <ul className="rv-report-location-list">
+            {claim.report_locations.map((location, index) => (
+              <li key={`${location.file ?? "report"}-${location.paragraph_id ?? index}`}>
+                <strong>{deriveReportLocationTitle(location)}</strong>
+                <span>{[location.file, location.paragraph_id].filter(Boolean).join(" / ") || "No locator exported"}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="rv-muted">No report locations exported.</p>
+        )}
+      </section>
+
+      {isInference && (
         <section className="rv-inspector-section">
           <h4>Inference Basis</h4>
           {emptyInference ? (
             <Warning label="Empty inference basis" message="This inference has no declared basis claims." />
           ) : (
-            <>
-              <p>{claim.inference_basis?.reasoning_summary}</p>
-              <div className="rv-linked-claims">
-                {(claim.inference_basis?.from_claims ?? []).map((claimId) => (
-                  <button key={claimId} type="button" className="it-btn ghost xs" onClick={() => onSelectClaim(claimId)}>
-                    {claimId}
-                  </button>
-                ))}
-              </div>
-            </>
+            <ClaimBasisFlow
+              claimIds={claim.inference_basis?.from_claims ?? []}
+              claims={runClaims}
+              reasoning={claim.inference_basis?.reasoning_summary}
+              onSelectClaim={onSelectClaim}
+            />
           )}
         </section>
       )}
 
-      {(dangling || emptyInference || redacted || claim.status === "mixed" || claim.status === "contradicted") && (
+      {isSpeculation && (
+        <section className="rv-inspector-section">
+          <h4>Speculation Basis</h4>
+          <p className="rv-muted">No structured basis exported.</p>
+          <button type="button" className="it-btn ghost xs" onClick={() => onOpenModal(claim.claim_id)}>
+            Open provenance modal
+          </button>
+        </section>
+      )}
+
+      {(dangling || emptyInference || redactedSources.length > 0 || claim.status === "mixed" || claim.status === "contradicted") && (
         <section className="rv-inspector-section">
           <h4>Warnings</h4>
           <div className="rv-warning-stack">
             {dangling && <Warning label="Dangling source" message="At least one source reference could not be resolved." />}
             {emptyInference && <Warning label="Inference gap" message="No basis claims are linked." />}
-            {redacted && <Warning label="Redacted source" message="Evidence text is present but hidden by policy." />}
+            {redactedSources.length > 0 && (
+              <Warning
+                label="Redacted source"
+                message={`${redactedSources.length} source(s) are hidden by policy: ${redactedSources.map(deriveSourceTitle).join(", ")}.`}
+              />
+            )}
             {(claim.status === "mixed" || claim.status === "contradicted") && (
               <Warning label="Conflicting evidence" message={`Claim status is ${claim.status}.`} />
             )}
@@ -236,17 +285,40 @@ function ClaimInspector({
   );
 }
 
-function SourceSummary({ source, redacted }: { source: RFResolvedSource; redacted: boolean }) {
+function ClaimBasisFlow({
+  claimIds,
+  claims,
+  reasoning,
+  onSelectClaim,
+}: {
+  claimIds: string[];
+  claims: RFClaim[];
+  reasoning?: string | null;
+  onSelectClaim: (claimId: string) => void;
+}) {
+  if (claimIds.length === 0) return <p className="rv-muted">No basis claims exported.</p>;
   return (
-    <div className={`rv-source-summary${source.dangling ? " rv-source-summary--dangling" : ""}`}>
-      <strong>{source.title ?? source.source_card_id}</strong>
-      <span>{source.source_type ?? "source"} · {source.locator ?? source.evidence_locator ?? "No locator"}</span>
-      <div>
-        <span className={`it-chip ${source.relation === "contradicts" ? "red" : source.relation === "supports" ? "green" : "blue"}`}>
-          {source.relation}
-        </span>
-        {redacted && <span className="it-chip orange">Redacted</span>}
+    <div className="rv-basis-flow" data-testid="claim-basis-flow">
+      <div className="rv-basis-flow__chain">
+        {claimIds.map((claimId, index) => {
+          const basisClaim = claims.find((candidate) => candidate.claim_id === claimId);
+          return (
+            <span key={claimId} className="rv-basis-flow__item">
+              <button
+                type="button"
+                className="rv-basis-flow__claim"
+                title={basisClaim ? `${basisClaim.text} | ${basisClaim.status ?? "unknown"} | ${basisClaim.confidence ?? "unknown"} | ${basisClaim.sources.length} source(s)` : "Claim not found"}
+                onClick={() => onSelectClaim(claimId)}
+                data-testid={`basis-claim-${claimId}`}
+              >
+                {claimId}
+              </button>
+              {index < claimIds.length - 1 && <span aria-hidden="true">to</span>}
+            </span>
+          );
+        })}
       </div>
+      {reasoning && <p>{reasoning}</p>}
     </div>
   );
 }
@@ -308,10 +380,11 @@ function statusTone(status: string): string {
   return "";
 }
 
-function confidenceScore(confidence: RFClaim["confidence"]): number {
-  if (confidence === "high") return 92;
-  if (confidence === "medium") return 74;
-  return 45;
+function confidenceScore(confidence: RFClaim["confidence"]): { score: string; label: string; tone: "green" | "amber" | "red" | "neutral" } {
+  if (confidence === "high") return { score: "92%", label: "high", tone: "green" };
+  if (confidence === "medium") return { score: "74%", label: "medium", tone: "amber" };
+  if (confidence === "low") return { score: "45%", label: "low", tone: "red" };
+  return { score: "?", label: "unknown", tone: "neutral" };
 }
 
 export default ClaimAuditWorkbench;

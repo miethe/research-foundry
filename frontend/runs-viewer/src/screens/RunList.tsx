@@ -17,16 +17,17 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate }        from "react-router-dom";
+import { useOutletContext } from "react-router-dom";
+import type { ShellSelectionContext } from "@/app/shellContext";
 import { useRunDetail, useRunList } from "@/hooks";
+import { RunDetailModal }      from "@/components/RunDetail/RunDetailModal";
 import { RunCard, deriveFilterState } from "@/components/RunList/RunCard";
 import type { RunCardData }    from "@/components/RunList/RunCard";
 import { FilterTabs }          from "@/components/RunList/FilterTabs";
 import type { FilterTab }      from "@/components/RunList/FilterTabs";
-import type { RFRunExport, RFRunSummary } from "@/types/rf";
+import type { RFRunSummary } from "@/types/rf";
 import {
   STATUS_LABEL,
-  formatDateTime,
   formatShortDate,
   getClaimTotal,
   getInferenceTotal,
@@ -42,14 +43,16 @@ type SortMode = "newest" | "highest-risk" | "most-claims" | "status";
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function RunListScreen() {
-  const navigate = useNavigate();
   const { data: runs, isLoading, error } = useRunList();
+  const shellSelection = useOutletContext<ShellSelectionContext | null>();
 
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [attentionOnly, setAttentionOnly] = useState(false);
+  const [highClaimOnly, setHighClaimOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("newest");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [modalRunId, setModalRunId] = useState<string | null>(null);
   const { data: selectedRun } = useRunDetail(selectedRunId ?? "");
 
   // Map RFRunSummary → RunCardData (adding optional fields that may be absent
@@ -71,6 +74,12 @@ export function RunListScreen() {
     }
   }, [cards, selectedRunId]);
 
+  useEffect(() => {
+    shellSelection?.setSelectedRunId(selectedRunId);
+  }, [selectedRunId, shellSelection]);
+
+  useEffect(() => () => shellSelection?.setSelectedRunId(null), [shellSelection]);
+
   // Compute per-tab counts for the tab badges
   const tabCounts = useMemo(() => {
     const counts: Partial<Record<FilterTab, number>> = { all: cards.length };
@@ -87,6 +96,7 @@ export function RunListScreen() {
     const filtered = cards.filter((card) => {
       const bucket = getRunBucket(card);
       if (attentionOnly && bucket !== "needs-review" && bucket !== "failed") return false;
+      if (highClaimOnly && getClaimTotal(card.claim_counts) < 75) return false;
       const bucketMatch = activeTab === "all" || getRunBucket(card) === activeTab;
       const tabMatch = activeTab === "all" || deriveFilterState(card.status_derived) === activeTab;
       if (!tabMatch && !bucketMatch) return false;
@@ -99,7 +109,7 @@ export function RunListScreen() {
       ].some((value) => value.toLowerCase().includes(normalized));
     });
     return filtered.sort((a, b) => compareRuns(a, b, sortMode));
-  }, [cards, activeTab, attentionOnly, query, sortMode]);
+  }, [cards, activeTab, attentionOnly, highClaimOnly, query, sortMode]);
 
   const health = useMemo(() => summarizePortfolio(cards), [cards]);
 
@@ -169,15 +179,32 @@ export function RunListScreen() {
               className={`rv-filter-row${attentionOnly ? " active" : ""}`}
               onClick={() => {
                 setAttentionOnly(true);
+                setHighClaimOnly(false);
                 setActiveTab("all");
               }}
             >
               Attention Queue <strong>{health.needsReview + health.failed}</strong>
             </button>
-            <button type="button" className="rv-filter-row" onClick={() => setSortMode("most-claims")}>
+            <button
+              type="button"
+              className={`rv-filter-row${highClaimOnly ? " active" : ""}`}
+              onClick={() => {
+                setHighClaimOnly((current) => !current);
+                setAttentionOnly(false);
+                setActiveTab("all");
+                setSortMode("most-claims");
+              }}
+              aria-pressed={highClaimOnly}
+            >
               High Claim Volume <strong>{health.highClaimRuns}</strong>
             </button>
-            <button type="button" className="rv-filter-row" onClick={() => setSortMode("newest")}>
+            <button
+              type="button"
+              className="rv-filter-row rv-filter-row--disabled"
+              disabled
+              aria-disabled="true"
+              title="This export does not include a stable current-week window."
+            >
               This Week <strong>{cards.length}</strong>
             </button>
           </div>
@@ -269,6 +296,7 @@ export function RunListScreen() {
               className="it-btn ghost sm"
               onClick={() => {
                 setAttentionOnly(true);
+                setHighClaimOnly(false);
                 setActiveTab("all");
               }}
             >
@@ -292,14 +320,20 @@ export function RunListScreen() {
               runs={visible}
               selectedRunId={selectedRunId}
               onSelect={setSelectedRunId}
-              onOpen={(runId) => navigate(`/runs/${encodeURIComponent(runId)}?view=trust`)}
+              onOpen={(runId) => {
+                setSelectedRunId(runId);
+                setModalRunId(runId);
+              }}
             />
             <ul className="rv-run-list__grid" role="list" data-testid="run-list-grid">
               {visible.map((card) => (
                 <li key={card.run_id}>
                   <RunCard
                     run={card}
-                    onClick={(runId) => navigate(`/runs/${encodeURIComponent(runId)}?view=trust`)}
+                    onClick={(runId) => {
+                      setSelectedRunId(runId);
+                      setModalRunId(runId);
+                    }}
                   />
                 </li>
               ))}
@@ -308,13 +342,7 @@ export function RunListScreen() {
         )}
       </main>
 
-      <SelectedRunInspector
-        run={selectedRun}
-        summary={cards.find((card) => card.run_id === selectedRunId) ?? null}
-        onOpen={(view) => {
-          if (selectedRunId) navigate(`/runs/${encodeURIComponent(selectedRunId)}?view=${view}`);
-        }}
-      />
+      <RunDetailModal runId={modalRunId} onClose={() => setModalRunId(null)} />
     </div>
   );
 }
@@ -484,70 +512,5 @@ function RunTable({
       </table>
       <div className="rv-run-table-footer">1-{runs.length} of {runs.length}</div>
     </div>
-  );
-}
-
-function SelectedRunInspector({
-  run,
-  summary,
-  onOpen,
-}: {
-  run?: RFRunExport;
-  summary: RunCardData | null;
-  onOpen: (view: "trust" | "audit" | "report" | "lineage") => void;
-}) {
-  const attention = run ? summarizeRunAttention(run) : null;
-  const selected = run ?? summary;
-  return (
-    <aside className="rv-selected-run" data-testid="selected-run-inspector" aria-label="Selected run">
-      <div className="rv-selected-run__head">
-        <span className="rv-kicker">Selected Run</span>
-        <h2>{selected?.run_id ?? "No run selected"}</h2>
-        <span>{selected ? STATUS_LABEL[selected.status_derived] : "Select a run"}</span>
-      </div>
-      {selected ? (
-        <>
-          <dl className="rv-selected-dl">
-            <div><dt>Created</dt><dd>{formatDateTime(selected.created_at)}</dd></div>
-            <div><dt>Sensitivity</dt><dd>{selected.sensitivity ?? "public"}</dd></div>
-            <div><dt>Claims</dt><dd>{getClaimTotal(selected.claim_counts, run?.claims).toLocaleString()}</dd></div>
-            <div><dt>Trust Score</dt><dd>{run?.verification?.passed ? "0.96" : attention?.failedChecks ? "0.42" : "pending"}</dd></div>
-          </dl>
-          <div className="rv-inspector-actions">
-            <button type="button" className="it-btn secondary sm" onClick={() => onOpen("trust")}>Trust</button>
-            <button type="button" className="it-btn ghost sm" onClick={() => onOpen("report")}>Report</button>
-            <button type="button" className="it-btn ghost sm" onClick={() => onOpen("audit")}>Ledger</button>
-          </div>
-          <section>
-            <div className="rv-pane-title">
-              <h3>Verification Failures</h3>
-              <span>{attention?.failedChecks ?? "Load"}</span>
-            </div>
-            <ul className="rv-inspector-list">
-              <li>Unsupported claims <strong>{attention?.unsupportedClaims ?? 0}</strong></li>
-              <li>Contradictory evidence <strong>{attention?.mixedClaims ?? 0}</strong></li>
-              <li>Redacted sources <strong>{attention?.redactedSources ?? 0}</strong></li>
-              <li>Dangling sources <strong>{attention?.danglingSources ?? 0}</strong></li>
-            </ul>
-          </section>
-          <section>
-            <div className="rv-pane-title">
-              <h3>Top Claims</h3>
-            </div>
-            <ul className="rv-top-claims">
-              {(run?.claims ?? []).slice(0, 3).map((claim) => (
-                <li key={claim.claim_id}>
-                  <span>{claim.text}</span>
-                  <strong>{claim.status ?? "unknown"}</strong>
-                </li>
-              ))}
-              {!run && <li>Load a run to inspect claim details.</li>}
-            </ul>
-          </section>
-        </>
-      ) : (
-        <p className="rv-muted">No runs are available.</p>
-      )}
-    </aside>
   );
 }

@@ -24,20 +24,26 @@ export interface ReportOverlayProps {
   run:          RFRunExport;
   /** Markdown content of the report_draft. Null/empty renders an empty-state via ReportRenderer. */
   reportDraft:  string | null;
+  onOpenProvenance?: (claimId: string) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function ReportOverlay({ run, reportDraft }: ReportOverlayProps) {
+export function ReportOverlay({ run, reportDraft, onOpenProvenance }: ReportOverlayProps) {
   const modalRef = useRef<ProvenanceModalHandle>(null);
-  const [dimmedClaimIds, setDimmedClaimIds] = useState<Set<string> | null>(null);
+  const [activeClaimIds, setActiveClaimIds] = useState<Set<string> | null>(null);
+  const [compositionFilter, setCompositionFilter] = useState<"supported" | "inference" | "speculation" | null>(null);
+  const [highlightText, setHighlightText] = useState(false);
 
   const handleClaimSelect = useCallback((claimId: string) => {
-    modalRef.current?.open(claimId);
-  }, []);
+    if (onOpenProvenance) onOpenProvenance(claimId);
+    else modalRef.current?.open(claimId);
+  }, [onOpenProvenance]);
 
-  const handleFilterChange = useCallback((activeIds: Set<string> | null) => {
-    setDimmedClaimIds(activeIds);
+  const handleFilterChange = useCallback((activeIds: Set<string> | null, filter: "supported" | "inference" | "speculation" | null) => {
+    setActiveClaimIds(activeIds);
+    setCompositionFilter(filter);
+    if (!activeIds) setHighlightText(false);
   }, []);
 
   return (
@@ -52,7 +58,9 @@ export function ReportOverlay({ run, reportDraft }: ReportOverlayProps) {
             markdown={reportDraft ?? ""}
             claims={run.claims}
             onClaimSelect={handleClaimSelect}
-            dimmedClaimIds={dimmedClaimIds}
+            activeClaimIds={activeClaimIds}
+            highlightMode={compositionFilter ? "composition" : "none"}
+            highlightText={highlightText}
           />
         </div>
 
@@ -62,15 +70,19 @@ export function ReportOverlay({ run, reportDraft }: ReportOverlayProps) {
             claimCounts={run.claim_counts}
             claims={run.claims}
             onFilterChange={handleFilterChange}
+            highlightText={highlightText}
+            onHighlightTextChange={setHighlightText}
           />
         </aside>
       </div>
 
       {/* Provenance modal (single instance, opened by chip clicks) */}
-      <ProvenanceModal
-        ref={modalRef}
-        claims={run.claims}
-      />
+      {!onOpenProvenance && (
+        <ProvenanceModal
+          ref={modalRef}
+          claims={run.claims}
+        />
+      )}
     </div>
   );
 }

@@ -23,12 +23,14 @@ export interface CompositionSidebarProps {
   claimCounts:   RFClaimCounts | null | undefined;
   claims:        RFClaim[];
   /** Called when filter changes; parent passes dimmedClaimIds to ReportRenderer. */
-  onFilterChange?: (activeClaimIds: Set<string> | null) => void;
+  onFilterChange?: (activeClaimIds: Set<string> | null, filter: CompositionFilter) => void;
+  highlightText?: boolean;
+  onHighlightTextChange?: (enabled: boolean) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function CompositionSidebar({ claimCounts, claims, onFilterChange }: CompositionSidebarProps) {
+export function CompositionSidebar({ claimCounts, claims, onFilterChange, highlightText = false, onHighlightTextChange }: CompositionSidebarProps) {
   const [activeFilter, setActiveFilter] = useState<CompositionFilter>(null);
 
   const total      = claimCounts?.total ?? claimCounts?.claims_total ?? 0;
@@ -44,7 +46,8 @@ export function CompositionSidebar({ claimCounts, claims, onFilterChange }: Comp
     setActiveFilter(next);
 
     if (!next) {
-      onFilterChange?.(null);
+      onFilterChange?.(null, null);
+      onHighlightTextChange?.(false);
       return;
     }
 
@@ -54,7 +57,7 @@ export function CompositionSidebar({ claimCounts, claims, onFilterChange }: Comp
         .filter((c) => c.status === next)
         .map((c) => c.claim_id)
     );
-    onFilterChange?.(matchingIds);
+    onFilterChange?.(matchingIds, next);
   }
 
   return (
@@ -150,14 +153,25 @@ export function CompositionSidebar({ claimCounts, claims, onFilterChange }: Comp
 
       {/* Reset hint */}
       {activeFilter && (
-        <button
-          type="button"
-          className="it-btn ghost xs rv-comp-sidebar__reset"
-          data-testid="comp-filter-reset"
-          onClick={() => handleFilterClick(null)}
-        >
-          Reset filter
-        </button>
+        <div className="rv-comp-sidebar__actions">
+          <label className="rv-highlight-toggle">
+            <input
+              type="checkbox"
+              checked={highlightText}
+              onChange={(event) => onHighlightTextChange?.(event.target.checked)}
+              data-testid="comp-highlight-toggle"
+            />
+            <span>Highlight attributed text</span>
+          </label>
+          <button
+            type="button"
+            className="it-btn ghost xs rv-comp-sidebar__reset"
+            data-testid="comp-filter-reset"
+            onClick={() => handleFilterClick(null)}
+          >
+            Reset filter
+          </button>
+        </div>
       )}
 
       {/* Total */}

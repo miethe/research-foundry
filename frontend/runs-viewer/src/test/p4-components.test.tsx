@@ -32,6 +32,7 @@ import { ReportRenderer }     from "@/components/ReportOverlay/ReportRenderer";
 import { ClaimChip }          from "@/components/ReportOverlay/ClaimChip";
 import { CompositionSidebar } from "@/components/ReportOverlay/CompositionSidebar";
 import { ArtifactLineageGraph } from "@/components/LineageGraph/LineageGraph";
+import { buildLineageTree } from "@/components/LineageGraph/lineageTree";
 
 // Types
 import type { RFClaim, RFRunExport } from "@/types/rf";
@@ -800,6 +801,42 @@ describe("ReportRenderer — claim chips", () => {
     expect(chip?.tagName.toLowerCase()).toBe("span");
     expect(chip?.getAttribute("aria-disabled")).toBe("true");
   });
+
+  it("selected-claim highlighting marks the matching report block and dims others", () => {
+    const md = "Supported paragraph [claim:clm_001].\n\nInference paragraph [claim:clm_002].";
+    const { container } = render(
+      <ReportRenderer
+        markdown={md}
+        claims={CLAIMS}
+        onClaimSelect={() => {}}
+        selectedClaimId="clm_002"
+        highlightMode="selected-claim"
+        highlightText
+      />,
+      { wrapper: makeWrapper() },
+    );
+    const highlighted = container.querySelector(".rv-report-block--highlighted");
+    expect(highlighted?.textContent).toContain("clm_002");
+    expect(container.querySelectorAll(".rv-report-block--dimmed").length).toBeGreaterThan(0);
+  });
+
+  it("composition highlighting uses active claim ids for text blocks", () => {
+    const md = "Supported paragraph [claim:clm_001].\n\nInference paragraph [claim:clm_002].";
+    const { container } = render(
+      <ReportRenderer
+        markdown={md}
+        claims={CLAIMS}
+        onClaimSelect={() => {}}
+        activeClaimIds={new Set(["clm_001"])}
+        highlightMode="composition"
+        highlightText
+      />,
+      { wrapper: makeWrapper() },
+    );
+    const highlighted = container.querySelector(".rv-report-block--highlighted");
+    expect(highlighted?.textContent).toContain("clm_001");
+    expect(container.querySelector("[data-highlight-mode='composition']")).not.toBeNull();
+  });
 });
 
 // ── ClaimChip direct tests ────────────────────────────────────────────────────
@@ -989,6 +1026,25 @@ describe("CompositionSidebar", () => {
     expect(lastCall).toBeNull();
   });
 
+  it("highlight attributed text toggle appears for active composition filters", () => {
+    const onHighlightTextChange = vi.fn();
+    const { container } = render(
+      <CompositionSidebar
+        claimCounts={COUNTS}
+        claims={CLAIMS}
+        onHighlightTextChange={onHighlightTextChange}
+      />,
+      { wrapper: makeWrapper() },
+    );
+    act(() => {
+      fireEvent.click(container.querySelector("[data-testid='comp-item-inference']") as HTMLElement);
+    });
+    const toggle = container.querySelector("[data-testid='comp-highlight-toggle']") as HTMLElement;
+    expect(toggle).not.toBeNull();
+    act(() => { fireEvent.click(toggle); });
+    expect(onHighlightTextChange).toHaveBeenCalledWith(true);
+  });
+
   it("renders empty state when claimCounts is null", () => {
     const { container } = render(
       <CompositionSidebar claimCounts={null} claims={[]} />,
@@ -1020,9 +1076,10 @@ describe("ArtifactLineageGraph", () => {
     );
     expect(container.querySelector("[data-testid='lineage-graph']")).not.toBeNull();
     expect(container.querySelector("[data-testid='lineage-svg']")).not.toBeNull();
+    expect(container.querySelector("[role='tree'][aria-label='Run lineage explorer']")).not.toBeNull();
   });
 
-  it("renders empty-state when run.claims is empty", () => {
+  it("renders a run root when run.claims is empty", () => {
     const emptyRun: RFRunExport = {
       ...fixtureRun,
       claims: [],
@@ -1031,78 +1088,90 @@ describe("ArtifactLineageGraph", () => {
       <ArtifactLineageGraph run={emptyRun} />,
       { wrapper: makeWrapper() },
     );
-    expect(container.querySelector("[data-testid='lineage-empty']")).not.toBeNull();
-    expect(container.querySelector("[data-testid='lineage-graph']")).toBeNull();
+    expect(container.querySelector("[data-testid='lineage-graph']")).not.toBeNull();
+    expect(container.querySelector(`[data-testid='lineage-node-run:${fixtureRun.run_id}']`)).not.toBeNull();
+    expect(container.textContent).toContain("No claims are exported");
   });
 
-  it("renders node for claim_ledger", () => {
+  it("buildLineageTree adapts fixture claims into a source-first hierarchy", () => {
+    const [root] = buildLineageTree(fixtureRun);
+    const source = root.children.find((node) => node.kind === "source");
+    const extraction = source?.children.find((node) => node.kind === "extraction");
+    const claim = extraction?.children.find((node) => node.kind === "claim");
+
+    expect(root.kind).toBe("run");
+    expect(root.id).toBe(`run:${fixtureRun.run_id}`);
+    expect(root.chips).toContain("published");
+    expect(source?.subtitle).toMatch(/^src_/);
+    expect(extraction?.subtitle).toMatch(/^ev_/);
+    expect(claim?.claimId).toMatch(/^clm_/);
+  });
+
+  it("buildLineageTree exposes source, extraction, and claim details", () => {
+    const [root] = buildLineageTree(fixtureRun);
+    const source = root.children.find((node) => node.kind === "source");
+    const extraction = source?.children.find((node) => node.kind === "extraction");
+    const claim = extraction?.children.find((node) => node.kind === "claim");
+
+    expect(root.details?.some((item) => item.label === "Verification")).toBe(true);
+    expect(source?.details?.some((item) => item.label === "Source type")).toBe(true);
+    expect(extraction?.details?.some((item) => item.label === "Evidence ID")).toBe(true);
+    expect(claim?.details?.some((item) => item.label === "Sources")).toBe(true);
+  });
+
+  it("renders run, source, and extraction rows from the default expanded path", () => {
+    const [root] = buildLineageTree(fixtureRun);
+    const source = root.children[0]!;
+    const extraction = source.children[0]!;
     const { container } = render(
       <ArtifactLineageGraph run={fixtureRun} />,
       { wrapper: makeWrapper() },
     );
-    expect(container.querySelector("[data-testid='lineage-node-claim_ledger']")).not.toBeNull();
+
+    expect(container.querySelector(`[data-testid='lineage-node-${root.id}']`)).not.toBeNull();
+    expect(container.querySelector(`[data-testid='lineage-node-${source.id}']`)).not.toBeNull();
+    expect(container.querySelector(`[data-testid='lineage-node-${extraction.id}']`)).not.toBeNull();
+    expect(container.querySelectorAll("[data-kind='source']").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll("[data-kind='extraction']").length).toBeGreaterThan(0);
   });
 
-  it("renders node for evidence_bundle", () => {
+  it("expand all reveals claim and report rows", () => {
+    const [root] = buildLineageTree(fixtureRun);
+    const firstClaim = root.children[0]!.children[0]!.children[0]!;
     const { container } = render(
       <ArtifactLineageGraph run={fixtureRun} />,
       { wrapper: makeWrapper() },
     );
-    expect(container.querySelector("[data-testid='lineage-node-evidence_bundle']")).not.toBeNull();
+
+    act(() => {
+      fireEvent.click(container.querySelector("[data-testid='lineage-expand-all']") as HTMLElement);
+    });
+
+    expect(container.querySelector(`[data-testid='lineage-node-${firstClaim.claimId}']`)).not.toBeNull();
+    expect(container.querySelectorAll("[data-kind='claim']").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll("[data-kind='report']").length).toBeGreaterThan(0);
   });
 
-  it("renders node for report", () => {
+  it("collapse all preserves the run root while hiding nested extraction rows", () => {
+    const [root] = buildLineageTree(fixtureRun);
+    const extraction = root.children[0]!.children[0]!;
     const { container } = render(
       <ArtifactLineageGraph run={fixtureRun} />,
       { wrapper: makeWrapper() },
     );
-    expect(container.querySelector("[data-testid='lineage-node-report']")).not.toBeNull();
+
+    act(() => {
+      fireEvent.click(container.querySelector("[data-testid='lineage-collapse-all']") as HTMLElement);
+    });
+
+    expect(container.querySelector(`[data-testid='lineage-node-${root.id}']`)).not.toBeNull();
+    expect(container.querySelector(`[data-testid='lineage-node-${extraction.id}']`)).toBeNull();
   });
 
-  it("renders at least one source_card node from fixture claims", () => {
-    const { container } = render(
-      <ArtifactLineageGraph run={fixtureRun} />,
-      { wrapper: makeWrapper() },
-    );
-    const sourceNodes = container.querySelectorAll("[data-kind='source_card']");
-    expect(sourceNodes.length).toBeGreaterThan(0);
-  });
-
-  it("renders edges from source nodes to extraction nodes", () => {
-    const { container } = render(
-      <ArtifactLineageGraph run={fixtureRun} />,
-      { wrapper: makeWrapper() },
-    );
-    // Any edge with from=src_* to ext_* should exist
-    const edges = container.querySelectorAll("[data-testid^='lineage-edge-src_']");
-    expect(edges.length).toBeGreaterThan(0);
-  });
-
-  it("evidence_bundle node has PASS verdict badge from passing verification", () => {
-    const { container } = render(
-      <ArtifactLineageGraph run={fixtureRun} />,
-      { wrapper: makeWrapper() },
-    );
-    const verdictEl = container.querySelector("[data-testid='lineage-verdict-evidence_bundle']");
-    expect(verdictEl?.textContent).toBe("PASS");
-  });
-
-  it("published run's report node has PASS verdict badge", () => {
-    const { container } = render(
-      <ArtifactLineageGraph run={fixtureRun} />,
-      { wrapper: makeWrapper() },
-    );
-    const verdictEl = container.querySelector("[data-testid='lineage-verdict-report']");
-    expect(verdictEl?.textContent).toBe("PASS");
-  });
-
-  it("graceful empty-state message text contains 'lineage data'", () => {
-    const emptyRun: RFRunExport = { ...fixtureRun, claims: [] };
-    const { container } = render(
-      <ArtifactLineageGraph run={emptyRun} />,
-      { wrapper: makeWrapper() },
-    );
-    const empty = container.querySelector("[data-testid='lineage-empty']");
-    expect(empty?.textContent).toContain("lineage data");
+  it("zero-claim buildLineageTree keeps run metadata visible", () => {
+    const [root] = buildLineageTree({ ...fixtureRun, claims: [] });
+    expect(root.kind).toBe("run");
+    expect(root.children).toHaveLength(0);
+    expect(root.details?.some((item) => item.value.includes("No claims"))).toBe(true);
   });
 });

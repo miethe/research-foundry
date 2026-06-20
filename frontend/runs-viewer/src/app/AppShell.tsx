@@ -1,22 +1,51 @@
+import { useMemo, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { useLocation, useNavigate } from "react-router-dom";
+import type { ShellSelectionContext } from "./shellContext";
 
-const NAV_ITEMS = [
-  { label: "Portfolio", short: "PF", target: "/runs" },
-  { label: "Runs", short: "RN", target: "/runs" },
-  { label: "Library", short: "LB", target: "/runs" },
-  { label: "Swarm", short: "SW", target: "/runs" },
-  { label: "Policies", short: "PL", target: "/runs" },
-  { label: "Reports", short: "RP", target: "/runs" },
-  { label: "Ledger", short: "LG", target: "/runs" },
-  { label: "Alerts", short: "AL", target: "/runs" },
-  { label: "Settings", short: "ST", target: "/runs" },
-] as const;
+type NavState = "enabled" | "contextual" | "disabled";
+
+interface ShellNavContext {
+  pathname: string;
+  search: string;
+  runId: string | null;
+  routeRunId: string | null;
+  view: string | null;
+}
+
+interface NavCapability {
+  label: string;
+  short: string;
+  state: NavState;
+  resolveTarget?: (ctx: ShellNavContext) => string | null;
+  disabledReason?: string;
+}
+
+const NAV_ITEMS: NavCapability[] = [
+  { label: "Portfolio", short: "PF", state: "enabled", resolveTarget: () => "/runs" },
+  { label: "Runs", short: "RN", state: "enabled", resolveTarget: (ctx) => ctx.runId ? `/runs/${encodeURIComponent(ctx.runId)}` : "/runs" },
+  { label: "Reports", short: "RP", state: "contextual", resolveTarget: (ctx) => ctx.runId ? `/runs/${encodeURIComponent(ctx.runId)}?view=report` : null, disabledReason: "Select a run first." },
+  { label: "Ledger", short: "LG", state: "contextual", resolveTarget: (ctx) => ctx.runId ? `/runs/${encodeURIComponent(ctx.runId)}?view=audit` : null, disabledReason: "Select a run first." },
+  { label: "Library", short: "LB", state: "disabled", disabledReason: "Library route is not implemented." },
+  { label: "Swarm", short: "SW", state: "disabled", disabledReason: "Swarm route is not implemented." },
+  { label: "Policies", short: "PL", state: "disabled", disabledReason: "Policies route is not implemented." },
+  { label: "Alerts", short: "AL", state: "disabled", disabledReason: "Alerts route is not implemented." },
+  { label: "Settings", short: "ST", state: "disabled", disabledReason: "Settings route is not implemented." },
+  { label: "Help", short: "HP", state: "disabled", disabledReason: "Help route is not implemented." },
+];
 
 export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
-  const activeArea = location.pathname === "/runs" ? "Portfolio" : location.pathname.startsWith("/runs") ? "Runs" : "Portfolio";
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const routeRunId = extractRunId(location.pathname);
+  const runId = routeRunId ?? selectedRunId;
+  const view = new URLSearchParams(location.search).get("view");
+  const ctx: ShellNavContext = { pathname: location.pathname, search: location.search, runId, routeRunId, view };
+  const outletContext = useMemo<ShellSelectionContext>(
+    () => ({ setSelectedRunId }),
+    [],
+  );
 
   return (
     <div className="rv-shell">
@@ -32,34 +61,51 @@ export function AppShell() {
         </button>
 
         <nav className="rv-shell-nav" aria-label="Primary">
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              className={`rv-shell-nav__item${activeArea === item.label ? " active" : ""}`}
-              onClick={() => navigate(item.target)}
-              aria-current={activeArea === item.label ? "page" : undefined}
-              title={item.label}
-            >
-              <span aria-hidden="true">{item.short}</span>
-              <strong>{item.label}</strong>
-            </button>
-          ))}
+          {NAV_ITEMS.map((item) => {
+            const target = item.resolveTarget?.(ctx) ?? null;
+            const disabled = item.state === "disabled" || !target;
+            const active = isActiveNav(item.label, ctx);
+            const title = disabled ? item.disabledReason ?? "Not available." : item.label;
+            return (
+              <button
+                key={item.label}
+                type="button"
+                className={`rv-shell-nav__item${active ? " active" : ""}${disabled ? " disabled" : ""}`}
+                onClick={() => {
+                  if (target) navigate(target);
+                }}
+                aria-current={active ? "page" : undefined}
+                aria-disabled={disabled ? "true" : undefined}
+                disabled={disabled}
+                title={title}
+                aria-label={disabled ? `${item.label}: ${title}` : item.label}
+                data-state={item.state}
+              >
+                <span aria-hidden="true">{item.short}</span>
+                <strong>{item.label}</strong>
+              </button>
+            );
+          })}
         </nav>
-
-        <button
-          type="button"
-          className="rv-shell-help"
-          onClick={() => navigate("/runs")}
-        >
-          Help
-        </button>
       </aside>
       <main className="rv-content">
-        <Outlet />
+        <Outlet context={outletContext} />
       </main>
     </div>
   );
 }
 
 export default AppShell;
+
+function extractRunId(pathname: string): string | null {
+  const match = /^\/runs\/([^/?#]+)/.exec(pathname);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+function isActiveNav(label: string, ctx: ShellNavContext): boolean {
+  if (label === "Portfolio") return ctx.pathname === "/runs";
+  if (label === "Runs") return Boolean(ctx.routeRunId) && (ctx.view == null || ctx.view === "overview" || ctx.view === "trust" || ctx.view === "lineage" || ctx.view === "writeback");
+  if (label === "Reports") return Boolean(ctx.routeRunId) && ctx.view === "report";
+  if (label === "Ledger") return Boolean(ctx.routeRunId) && (ctx.view === "audit" || ctx.view === "ledger");
+  return false;
+}

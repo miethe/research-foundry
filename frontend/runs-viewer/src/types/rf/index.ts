@@ -31,6 +31,8 @@ export type {
   RFGovernanceBlock,
   RFTimelineEvent,
   RFArtifactSchemaVersions,
+  RFWritebackTarget,
+  RFRunWritebacksSummary,
   RFRunExport,
   RFRunSummary,
 } from "./run-export.js";
