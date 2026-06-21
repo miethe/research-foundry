@@ -11,6 +11,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Runs Viewer — Swarm, Policies & Library tabs** (enable-disabled-viewer-tabs epic, Wave 2)
+
+- **Swarm tab** — Per-run view (`/runs/:runId/swarm`) visualizing the run's swarm plan
+  (swarm, agents, adapters) and routing decision, with a graceful empty state for runs exported
+  before metadata enrichment.
+- **Policies tab** — Top-level governance view (`/policies`) with a Global Governance Panel
+  (key profiles and policy rules from `config/governance.yaml`) and a Per-Run Governance table
+  (sensitivity, writeback approval, allowed writebacks, human-review requirement).
+- **Library tab** — Top-level index (`/library`) of reusable-output candidates and writeback
+  artifacts across runs; stale run references degrade to plain text rather than broken links.
+- With these three tabs, all six previously-disabled navigation tabs (Settings, Help, Alerts,
+  Swarm, Policies, Library) are now enabled — no dead nav items remain in the viewer.
+
 #### **Run Metadata Enrichment (v1)** — Linked Projects, Category, and Tags
 
 - **Linked Projects, Category, and Tags on every run** — Research Foundry runs now carry structured

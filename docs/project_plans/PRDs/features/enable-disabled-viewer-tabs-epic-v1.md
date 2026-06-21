@@ -1,12 +1,12 @@
 ---
-title: "Enable Disabled Viewer Tabs — Sub-Epic Index"
+title: "Enable Disabled Viewer Tabs \u2014 Sub-Epic Index"
 schema_version: 2
 doc_type: prd
-status: ready
-created: 2026-06-20
-updated: 2026-06-21
+status: completed
+created: '2026-06-20'
+updated: '2026-06-21'
 feature_slug: enable-disabled-viewer-tabs
-feature_version: "v1"
+feature_version: v1
 prd_ref: null
 plan_ref: null
 owner: nick
@@ -14,35 +14,42 @@ contributors: []
 priority: high
 risk_level: low
 category: product-planning
-tags: [prd, epic, runs-viewer, navigation, tabs]
-milestone: "runs-viewer-v2.2"
+tags:
+- navigation
+- tabs
+- runs-viewer
+- epic
+- v2.2
+milestone: runs-viewer-v2.2
 changelog_required: true
-commit_refs: []
+commit_refs:
+- 0235b47
+- 6c2060c
+- 9acd360
 pr_refs: []
 files_affected:
-  - frontend/runs-viewer/src/app/AppShell.tsx
-  - frontend/runs-viewer/src/app/routes.tsx
+- frontend/runs-viewer/src/app/AppShell.tsx
+- frontend/runs-viewer/src/app/routes.tsx
 related_documents:
-  - docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
-  - docs/project_plans/feature_contracts/features/viewer-tab-settings.md
-  - docs/project_plans/feature_contracts/features/viewer-tab-help.md
-  - docs/project_plans/feature_contracts/features/viewer-tab-alerts.md
-  - docs/project_plans/feature_contracts/features/viewer-tab-swarm.md
-  - docs/project_plans/feature_contracts/features/viewer-tab-policies.md
-  - docs/project_plans/feature_contracts/features/viewer-tab-library.md
-  - docs/project_plans/PRDs/features/run-metadata-enrichment-v1.md
+- docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
+- docs/project_plans/feature_contracts/features/viewer-tab-settings.md
+- docs/project_plans/feature_contracts/features/viewer-tab-help.md
+- docs/project_plans/feature_contracts/features/viewer-tab-alerts.md
+- docs/project_plans/feature_contracts/features/viewer-tab-swarm.md
+- docs/project_plans/feature_contracts/features/viewer-tab-policies.md
+- docs/project_plans/feature_contracts/features/viewer-tab-library.md
+- docs/project_plans/PRDs/features/run-metadata-enrichment-v1.md
 references:
   context:
-    - .claude/worknotes/runs-viewer-v2.2-polish/epic-brief.md
+  - .claude/worknotes/runs-viewer-v2.2-polish/epic-brief.md
   related_prds:
-    - docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
-    - docs/project_plans/PRDs/features/run-metadata-enrichment-v1.md
+  - docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
+  - docs/project_plans/PRDs/features/run-metadata-enrichment-v1.md
 adr_refs: []
 spike_ref: null
 charter_ref: null
 changelog_ref: null
 test_plan_ref: null
-tags: [navigation, tabs, runs-viewer, epic, v2.2]
 ---
 
 # Feature Brief & Metadata
