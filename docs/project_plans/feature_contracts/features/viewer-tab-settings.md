@@ -2,7 +2,7 @@
 title: "Feature Contract: Settings Tab — Viewer Config Surface"
 schema_version: 2
 doc_type: feature_contract
-status: ready
+status: completed
 created: 2026-06-20
 updated: 2026-06-21
 feature_slug: "viewer-tab-settings"
@@ -23,7 +23,18 @@ prd_ref: docs/project_plans/PRDs/features/enable-disabled-viewer-tabs-epic-v1.md
 plan_ref: null
 commit_refs: []
 pr_refs: []
-files_affected: []
+files_affected:
+  - frontend/runs-viewer/src/lib/viewerSettings.ts
+  - frontend/runs-viewer/src/screens/SettingsScreen.tsx
+  - frontend/runs-viewer/src/styles/settings.css
+  - frontend/runs-viewer/src/test/g5-settings.test.tsx
+  - frontend/runs-viewer/src/app/AppShell.tsx
+  - frontend/runs-viewer/src/app/App.tsx
+  - frontend/runs-viewer/src/app/routes.tsx
+  - frontend/runs-viewer/src/components/SourceCard/SourceCard.tsx
+  - frontend/runs-viewer/src/components/RunDetail/detailTabs.ts
+  - frontend/runs-viewer/src/api/client.ts
+  - frontend/runs-viewer/src/styles/index.css
 ---
 
 # Feature Contract: Settings Tab — Viewer Config Surface

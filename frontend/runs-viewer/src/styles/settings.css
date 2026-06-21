@@ -1,0 +1,165 @@
+/* ============================================================================
+   Settings screen — BEM rv-settings* classes.
+   Uses only existing --it-* design tokens from tokens.css.
+   Imported via src/styles/index.css after runs-viewer.css.
+   ============================================================================ */
+
+.rv-settings {
+  max-width: 640px;
+  padding: var(--it-space-8) var(--it-space-6);
+  margin: 0 auto;
+}
+
+.rv-settings__title {
+  font-size: var(--it-text-2xl);
+  font-weight: var(--it-weight-bold);
+  letter-spacing: var(--it-tracking-tight);
+  color: var(--it-text-primary);
+  margin: 0 0 var(--it-space-8);
+}
+
+/* ── Section card ── */
+
+.rv-settings__section {
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-lg);
+  padding: var(--it-space-6);
+  margin-bottom: var(--it-space-5);
+  box-shadow: var(--it-shadow-xs);
+}
+
+.rv-settings__section-title {
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+  margin: 0 0 var(--it-space-5);
+}
+
+/* ── Control row ── */
+
+.rv-settings__control {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--it-space-4);
+  padding: var(--it-space-3) 0;
+  border-bottom: 1px solid var(--it-border-subtle);
+}
+
+.rv-settings__control:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.rv-settings__label-block {
+  flex: 1;
+  min-width: 0;
+}
+
+.rv-settings__label {
+  display: block;
+  font-size: var(--it-text-base);
+  font-weight: var(--it-weight-medium);
+  color: var(--it-text-primary);
+  margin-bottom: var(--it-space-0_5);
+}
+
+.rv-settings__note {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-tertiary);
+  line-height: var(--it-leading-normal);
+  margin: 0;
+}
+
+/* ── Input row ── */
+
+.rv-settings__input-group {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-2);
+  margin-top: var(--it-space-3);
+}
+
+.rv-settings__input {
+  font: inherit;
+  font-size: var(--it-text-sm);
+  color: var(--it-text-primary);
+  background: var(--it-bg-canvas);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-sm);
+  padding: var(--it-space-1_5) var(--it-space-3);
+  flex: 1;
+  min-width: 0;
+}
+
+.rv-settings__input:focus {
+  outline: none;
+  border-color: var(--it-border-focus);
+  box-shadow: 0 0 0 3px rgba(59, 111, 189, 0.20);
+}
+
+.rv-settings__select {
+  font: inherit;
+  font-size: var(--it-text-sm);
+  color: var(--it-text-primary);
+  background: var(--it-bg-canvas);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-sm);
+  padding: var(--it-space-1_5) var(--it-space-3);
+  cursor: pointer;
+}
+
+.rv-settings__select:focus {
+  outline: none;
+  border-color: var(--it-border-focus);
+  box-shadow: 0 0 0 3px rgba(59, 111, 189, 0.20);
+}
+
+/* ── Toggle row ── */
+
+.rv-settings__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--it-space-2);
+  margin-top: var(--it-space-3);
+  cursor: pointer;
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+}
+
+.rv-settings__checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--it-blue-500);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── Info banner ── */
+
+.rv-settings__banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--it-space-2);
+  margin-top: var(--it-space-3);
+  background: var(--it-status-progress-bg);
+  border: 1px solid var(--it-blue-200);
+  border-radius: var(--it-radius-sm);
+  padding: var(--it-space-3);
+  font-size: var(--it-text-sm);
+  color: var(--it-status-progress-fg);
+  line-height: var(--it-leading-normal);
+}
+
+/* ── Reload notice ── */
+
+.rv-settings__reload-notice {
+  margin-top: var(--it-space-2);
+  font-size: var(--it-text-sm);
+  color: var(--it-status-warn-fg);
+  background: var(--it-status-warn-bg);
+  border-radius: var(--it-radius-xs);
+  padding: var(--it-space-1_5) var(--it-space-3);
+}

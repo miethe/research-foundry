@@ -13,6 +13,7 @@ import { Providers } from "./providers";
 import { AppShell } from "./AppShell";
 import { RunListScreen } from "@/screens/RunList";
 import { RunDetailScreen } from "@/screens/RunDetail";
+import { SettingsScreen } from "@/screens/SettingsScreen";
 
 const router = createBrowserRouter([
   {
@@ -22,6 +23,7 @@ const router = createBrowserRouter([
       { index: true, element: <Navigate to="/runs" replace /> },
       { path: "runs",         element: <RunListScreen /> },
       { path: "runs/:runId",  element: <RunDetailScreen /> },
+      { path: "settings",     element: <SettingsScreen /> },
     ],
   },
 ]);

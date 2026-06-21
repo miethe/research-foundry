@@ -1,3 +1,5 @@
+import { getViewerSettings } from "../../lib/viewerSettings";
+
 export type DetailTab = "overview" | "trust" | "ledger" | "report" | "lineage" | "writeback";
 
 export function coerceDetailTab(value: string | null): DetailTab {
@@ -5,7 +7,9 @@ export function coerceDetailTab(value: string | null): DetailTab {
   if (value === "overview" || value === "trust" || value === "report" || value === "lineage" || value === "writeback") {
     return value;
   }
-  return "overview";
+  // G5: Read stored default tab before falling back to 'overview' (AC G5-05).
+  // getViewerSettings() validates and defaults to 'overview' — safe to return directly.
+  return getViewerSettings().defaultTab;
 }
 
 export function tabToQuery(tab: DetailTab): string {

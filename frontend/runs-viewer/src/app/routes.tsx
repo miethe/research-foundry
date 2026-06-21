@@ -7,7 +7,7 @@
  */
 import type { ReactElement } from "react";
 
-export type RouteName = "runList" | "runDetail";
+export type RouteName = "runList" | "runDetail" | "settings";
 
 export interface RouteMeta {
   path: string;
@@ -18,6 +18,7 @@ export interface RouteMeta {
 export const ROUTES: Record<RouteName, RouteMeta> = {
   runList:   { path: "/runs",          label: "Runs"       },
   runDetail: { path: "/runs/:runId",   label: "Run Detail" },
+  settings:  { path: "/settings",      label: "Settings"   },
 };
 
 export interface ScreenRoute {

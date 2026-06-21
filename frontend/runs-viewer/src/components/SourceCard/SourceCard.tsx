@@ -14,6 +14,7 @@
 
 import { useState } from "react";
 import type { RFResolvedSource, RFSensitivity, RFSourceType, RFSourceRank } from "@/types/rf";
+import { getViewerSettings } from "@/lib/viewerSettings";
 
 // ── Sensitivity threshold ─────────────────────────────────────────────────────
 
@@ -32,6 +33,9 @@ const SENSITIVITY_ORDER: Record<RFSensitivity, number> = {
  * renders when sensitivityThreshold prop is not explicitly passed.
  */
 function isRedacted(sensitivity: RFSensitivity | null | undefined, threshold?: RFSensitivity | null): boolean {
+  // Runtime bypass: rv_show_all=true in localStorage disables all redaction gates.
+  // This layers on top of the build-time bypass below (G5 — AC G5-03).
+  if (getViewerSettings().showAll) return false;
   // Build-time bypass: VITE_SHOW_ALL=1 disables all redaction gates.
   if (import.meta.env.VITE_SHOW_ALL === "1") return false;
   if (!sensitivity) return false; // absent → public → safe

@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { useLocation, useNavigate } from "react-router-dom";
+import { applyTheme, getViewerSettings } from "@/lib/viewerSettings";
 import type { ShellSelectionContext } from "./shellContext";
 
 type NavState = "enabled" | "contextual" | "disabled";
@@ -30,7 +31,7 @@ const NAV_ITEMS: NavCapability[] = [
   { label: "Swarm", short: "SW", state: "disabled", disabledReason: "Swarm route is not implemented." },
   { label: "Policies", short: "PL", state: "disabled", disabledReason: "Policies route is not implemented." },
   { label: "Alerts", short: "AL", state: "disabled", disabledReason: "Alerts route is not implemented." },
-  { label: "Settings", short: "ST", state: "disabled", disabledReason: "Settings route is not implemented." },
+  { label: "Settings", short: "ST", state: "enabled", resolveTarget: () => "/settings" },
   { label: "Help", short: "HP", state: "disabled", disabledReason: "Help route is not implemented." },
 ];
 
@@ -38,6 +39,11 @@ export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+
+  // Apply persisted theme on mount so the stored theme takes effect on app boot
+  useEffect(() => {
+    applyTheme(getViewerSettings().theme);
+  }, []);
   const routeRunId = extractRunId(location.pathname);
   const runId = routeRunId ?? selectedRunId;
   const view = new URLSearchParams(location.search).get("view");
@@ -107,5 +113,6 @@ function isActiveNav(label: string, ctx: ShellNavContext): boolean {
   if (label === "Runs") return Boolean(ctx.routeRunId) && (ctx.view == null || ctx.view === "overview" || ctx.view === "trust" || ctx.view === "lineage" || ctx.view === "writeback");
   if (label === "Reports") return Boolean(ctx.routeRunId) && ctx.view === "report";
   if (label === "Ledger") return Boolean(ctx.routeRunId) && (ctx.view === "audit" || ctx.view === "ledger");
+  if (label === "Settings") return ctx.pathname === "/settings";
   return false;
 }

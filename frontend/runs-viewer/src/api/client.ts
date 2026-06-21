@@ -18,6 +18,7 @@
  */
 
 import type { RFRunExport, RFRunSummary } from "@/types/rf";
+import { getViewerSettings } from "@/lib/viewerSettings";
 
 // ── Env flag ─────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,24 @@ export class ClientError extends Error {
     this.name = "ClientError";
     this.status = status;
   }
+}
+
+// ── Data path helper ──────────────────────────────────────────────────────────
+
+/**
+ * Returns the normalized static data base path from viewer settings.
+ *
+ * The stored dataPath (e.g. '/data') has leading and trailing slashes stripped
+ * so it can be safely concatenated: `${getStaticDataBase()}/index.json`.
+ *
+ * Default: '/data' → 'data' (same URLs as before this feature was added).
+ *
+ * Called at request time (not at module init) so that changes saved via
+ * SettingsScreen take effect after the next page reload.
+ */
+function getStaticDataBase(): string {
+  const raw = getViewerSettings().dataPath; // e.g. '/data', 'data', '/my/custom/path'
+  return raw.replace(/^\/+|\/+$/g, ""); // strip leading/trailing slashes → 'data'
 }
 
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
@@ -92,7 +111,7 @@ export async function fetchRunList(): Promise<RFRunSummary[]> {
   }
 
   // Static mode: fetch the pre-generated run index
-  return staticGet<RFRunSummary[]>("data/index.json");
+  return staticGet<RFRunSummary[]>(`${getStaticDataBase()}/index.json`);
 }
 
 // ── Run Detail ────────────────────────────────────────────────────────────────
@@ -110,7 +129,7 @@ export async function fetchRunDetail(runId: string): Promise<RFRunExport> {
 
   // Static mode: fetch the per-run export
   try {
-    return await staticGet<RFRunExport>(`data/${encodeURIComponent(runId)}/run.json`);
+    return await staticGet<RFRunExport>(`${getStaticDataBase()}/${encodeURIComponent(runId)}/run.json`);
   } catch {
     // Run not found in static corpus — return graceful empty shape
     return {
