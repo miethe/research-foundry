@@ -1,0 +1,225 @@
+/* ============================================================================
+   Swarm screen — BEM rv-swarm* classes.
+   Uses only existing --it-* design tokens from tokens.css.
+   ============================================================================ */
+
+.rv-swarm {
+  max-width: 800px;
+  padding: var(--it-space-8) var(--it-space-6);
+  margin: 0 auto;
+}
+
+/* ── Header ── */
+
+.rv-swarm__header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--it-space-3);
+  margin: 0 0 var(--it-space-8);
+  flex-wrap: wrap;
+}
+
+.rv-swarm__title {
+  font-size: var(--it-text-2xl);
+  font-weight: var(--it-weight-bold);
+  letter-spacing: var(--it-tracking-tight);
+  color: var(--it-text-primary);
+  margin: 0;
+}
+
+.rv-swarm__run-id {
+  font-size: var(--it-text-xs);
+  font-family: var(--it-font-mono);
+  color: var(--it-text-tertiary);
+  background: var(--it-surface-sunken);
+  border-radius: var(--it-radius-sm);
+  padding: 2px var(--it-space-2);
+}
+
+/* ── Section card ── */
+
+.rv-swarm__section {
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-lg);
+  padding: var(--it-space-6);
+  margin-bottom: var(--it-space-5);
+  box-shadow: var(--it-shadow-xs);
+}
+
+.rv-swarm__section-title {
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+  margin: 0 0 var(--it-space-4);
+}
+
+/* ── Cards within sections ── */
+
+.rv-swarm__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-4);
+}
+
+.rv-swarm__card--empty {
+  /* intentionally minimal — just holds the placeholder */
+}
+
+.rv-swarm__placeholder {
+  color: var(--it-text-tertiary);
+  font-style: italic;
+  font-size: var(--it-text-sm);
+  margin: 0;
+}
+
+/* ── Routing Decision fields ── */
+
+.rv-swarm__agent-name,
+.rv-swarm__rationale {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1);
+}
+
+.rv-swarm__label {
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+}
+
+.rv-swarm__value {
+  font-size: var(--it-text-base);
+  color: var(--it-text-primary);
+}
+
+.rv-swarm__prose {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+  line-height: var(--it-leading-relaxed);
+  margin: 0;
+}
+
+/* ── Swarm plan entries (array format) ── */
+
+.rv-swarm__plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-3);
+}
+
+.rv-swarm__plan-entry {
+  background: var(--it-surface-sunken);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-md);
+  padding: var(--it-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+}
+
+.rv-swarm__plan-structured {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-3);
+}
+
+.rv-swarm__entry-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--it-space-3);
+}
+
+.rv-swarm__entry-label {
+  flex: 0 0 80px;
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+}
+
+.rv-swarm__entry-value {
+  flex: 1;
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+  word-break: break-word;
+}
+
+.rv-swarm__status {
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+  background: var(--it-surface-base);
+  border-radius: var(--it-radius-sm);
+  padding: 2px var(--it-space-2);
+}
+
+/* ── Raw JSON fallback ── */
+
+.rv-swarm__plan-raw {
+  overflow: auto;
+}
+
+.rv-swarm__raw-block {
+  background: var(--it-surface-sunken);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-md);
+  padding: var(--it-space-4);
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+  color: var(--it-text-secondary);
+  white-space: pre;
+  overflow-x: auto;
+  margin: 0;
+}
+
+/* ── Agents list ── */
+
+.rv-swarm__agents-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--it-space-2);
+}
+
+.rv-swarm__agent-chip {
+  display: inline-block;
+  background: var(--it-surface-sunken);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-full);
+  padding: var(--it-space-1) var(--it-space-3);
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-medium);
+  color: var(--it-text-secondary);
+}
+
+/* ── Full empty state (context absent) ── */
+
+.rv-swarm__empty-state {
+  text-align: center;
+  padding: var(--it-space-16) var(--it-space-6);
+  color: var(--it-text-tertiary);
+}
+
+.rv-swarm__empty-icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: var(--it-space-4);
+  opacity: 0.4;
+}
+
+.rv-swarm__empty-message {
+  font-size: var(--it-text-lg);
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-secondary);
+  margin: 0 0 var(--it-space-2);
+}
+
+.rv-swarm__empty-sub {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-tertiary);
+  margin: 0;
+}
