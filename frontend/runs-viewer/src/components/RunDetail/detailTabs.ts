@@ -5,7 +5,7 @@ export function coerceDetailTab(value: string | null): DetailTab {
   if (value === "overview" || value === "trust" || value === "report" || value === "lineage" || value === "writeback") {
     return value;
   }
-  return "trust";
+  return "overview";
 }
 
 export function tabToQuery(tab: DetailTab): string {

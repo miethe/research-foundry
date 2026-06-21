@@ -34,6 +34,7 @@ import {
   getRunBucket,
   getSpeculationTotal,
   getSupportedTotal,
+  titleFromSlug,
   type RunHealthBucket,
   summarizeRunAttention,
 } from "@/lib/runs";
@@ -258,7 +259,10 @@ export function RunListScreen() {
             title="Published / Verified"
             bucket="published"
             runs={cards}
-            onSelect={setSelectedRunId}
+            onOpen={(runId) => {
+              setSelectedRunId(runId);
+              setModalRunId(runId);
+            }}
             selectedRunId={selectedRunId}
             emptyMessage="No published runs in this export."
           />
@@ -266,7 +270,10 @@ export function RunListScreen() {
             title="Verified Drafts"
             bucket="verified"
             runs={cards}
-            onSelect={setSelectedRunId}
+            onOpen={(runId) => {
+              setSelectedRunId(runId);
+              setModalRunId(runId);
+            }}
             selectedRunId={selectedRunId}
             emptyMessage="No verified-only drafts; published runs are shown first."
           />
@@ -274,7 +281,10 @@ export function RunListScreen() {
             title="In Progress"
             bucket="needs-review"
             runs={cards}
-            onSelect={setSelectedRunId}
+            onOpen={(runId) => {
+              setSelectedRunId(runId);
+              setModalRunId(runId);
+            }}
             selectedRunId={selectedRunId}
             emptyMessage="No in-progress runs in the bundled export."
           />
@@ -282,7 +292,10 @@ export function RunListScreen() {
             title="Blocked"
             bucket="failed"
             runs={cards}
-            onSelect={setSelectedRunId}
+            onOpen={(runId) => {
+              setSelectedRunId(runId);
+              setModalRunId(runId);
+            }}
             selectedRunId={selectedRunId}
             emptyMessage="No failed or blocked runs in the bundled export."
           />
@@ -400,14 +413,15 @@ function StatusLane({
   bucket,
   runs,
   selectedRunId,
-  onSelect,
+  onOpen,
   emptyMessage,
 }: {
   title: string;
   bucket: RunHealthBucket;
   runs: RunCardData[];
   selectedRunId: string | null;
-  onSelect: (runId: string) => void;
+  /** Called on click — should both set selectedRunId AND open the modal. */
+  onOpen: (runId: string) => void;
   emptyMessage: string;
 }) {
   const laneRuns = runs.filter((run) => getRunBucket(run) === bucket).slice(0, 3);
@@ -424,9 +438,9 @@ function StatusLane({
               key={run.run_id}
               type="button"
               className={`rv-lane-run${selectedRunId === run.run_id ? " rv-lane-run--selected" : ""}`}
-              onClick={() => onSelect(run.run_id)}
+              onClick={() => onOpen(run.run_id)}
             >
-              <span>{run.run_id}</span>
+              <span>{run.title ?? titleFromSlug(run.run_id) ?? run.run_id}</span>
               <strong>{getClaimTotal(run.claim_counts).toLocaleString()}</strong>
             </button>
           ))}

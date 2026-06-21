@@ -94,6 +94,7 @@ for (const runId of runDirs) {
     created_at:     run.created_at ?? null,
     sensitivity:    run.sensitivity ?? null,
     claim_counts:   run.claim_counts ?? null,
+    title:          run.title ?? null,
   });
 }
 

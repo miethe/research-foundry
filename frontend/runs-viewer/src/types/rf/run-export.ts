@@ -276,4 +276,11 @@ export interface RFRunSummary {
   created_at?:     string | null;
   sensitivity?:    RFSensitivity | null;
   claim_counts?:   RFClaimCounts | null;
+  /**
+   * Human-readable title derived from the report_draft frontmatter `title:` key,
+   * or a slug-humanized string when the frontmatter title is absent.
+   * Added in schema_version 1.1 export; absent in older cached run.json files.
+   * Falls back to titleFromSlug(run_id) in the FE when absent or null.
+   */
+  title?:          string | null;
 }

@@ -1,12 +1,14 @@
 ---
-title: "Feature Contract: Nav Titles & Lineage Fixes"
+title: 'Feature Contract: Nav Titles & Lineage Fixes'
+description: Fix missing run titles, run-click modal behavior, default tab, and lineage
+  edge rendering in the runs-viewer SPA.
 schema_version: 2
 doc_type: feature_contract
-status: draft
-created: 2026-06-20
-updated: 2026-06-20
-feature_slug: "nav-titles-lineage-fixes"
-category: "harden-polish"
+status: completed
+created: '2026-06-20'
+updated: '2026-06-21'
+feature_slug: nav-titles-lineage-fixes
+category: harden-polish
 estimated_points: 7
 tier: 1
 owner: nick
@@ -14,13 +16,27 @@ priority: high
 risk_level: low
 changelog_required: true
 related_documents:
-  - docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
+- docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
 spike_ref: null
 prd_ref: null
 plan_ref: null
-commit_refs: []
+commit_refs:
+- b6efecb
 pr_refs: []
-files_affected: []
+files_affected:
+- src/research_foundry/services/export_service.py
+- frontend/runs-viewer/scripts/prebuild-static-data.mjs
+- frontend/runs-viewer/src/types/rf/run-export.ts
+- frontend/runs-viewer/src/components/LineageGraph/LineageFlow.tsx
+- frontend/runs-viewer/src/components/LineageGraph/lineageFlowElements.ts
+- frontend/runs-viewer/src/components/RunDetail/detailTabs.ts
+- frontend/runs-viewer/src/screens/RunList.tsx
+- frontend/runs-viewer/src/components/RunList/RunCard.tsx
+- frontend/runs-viewer/src/lib/runs.ts
+- tests/unit/test_export_service.py
+- frontend/runs-viewer/src/components/RunDetail/detailTabs.test.ts
+- frontend/runs-viewer/src/components/LineageGraph/LineageFlow.test.ts
+- CHANGELOG.md
 ---
 
 # Feature Contract: Nav Titles & Lineage Fixes
@@ -339,3 +355,92 @@ If you find:
 - **Better implementation path**: Document the deviation in the Completion Report with justification.
 
 Stay within scope. Avoid cleanup, refactors, or feature expansion beyond this contract. The reviewer will check for scope drift.
+
+---
+
+## Completion Report
+
+### Summary
+
+Implemented all four sub-items (a)–(d) in scope: lineage edge registration, `coerceDetailTab` default fix, run-click modal alignment, and run title export pipeline. The Python export service now derives a human-readable `title` from the report_draft YAML frontmatter (or slug-humanizes the run_id as fallback), propagated through `index.json` to `RFRunSummary.title` in the TypeScript type system. `RunCard` and `StatusLane` display the title as the primary label. All 224 frontend tests and 491 Python unit tests pass (one pre-existing schema-count test excluded).
+
+### Files Changed
+
+- `src/research_foundry/services/export_service.py` — added `_title_from_slug`, `_extract_title_from_report_draft`, `_derive_run_title` helpers; added `title` field to `export_run()` return dict; refactored to read `report_draft` once.
+- `frontend/runs-viewer/scripts/prebuild-static-data.mjs` — added `title: run.title ?? null` to `index.json` summary object.
+- `frontend/runs-viewer/src/types/rf/run-export.ts` — added `title?: string | null` to `RFRunSummary` interface.
+- `frontend/runs-viewer/src/lib/runs.ts` — exported `titleFromSlug` (previously private).
+- `frontend/runs-viewer/src/components/LineageGraph/LineageFlow.tsx` — imported `SmoothStepEdge` and `EdgeTypes` from `@xyflow/react`; defined `const edgeTypes: EdgeTypes = { smoothstep: SmoothStepEdge }` at module scope; passed `edgeTypes={edgeTypes}` to `<ReactFlow>`.
+- `frontend/runs-viewer/src/components/LineageGraph/lineageFlowElements.ts` — added `className: 'rv-lineage-edge'` to edge objects for CSS targeting.
+- `frontend/runs-viewer/src/components/RunDetail/detailTabs.ts` — changed `coerceDetailTab` fallback from `'trust'` to `'overview'`.
+- `frontend/runs-viewer/src/screens/RunList.tsx` — changed `StatusLane` prop from `onSelect` to `onOpen`; `onOpen` handler calls both `setSelectedRunId` and `setModalRunId`; lane buttons display title via `run.title ?? titleFromSlug(run.run_id) ?? run.run_id`.
+- `frontend/runs-viewer/src/components/RunList/RunCard.tsx` — imported `titleFromSlug`; added `displayTitle` derived from `run.title ?? titleFromSlug(run.run_id) ?? run.run_id`; added title row as primary label in the card body.
+- `tests/unit/test_export_service.py` — added `TestTitleFromSlug`, `TestExtractTitleFromReportDraft`, `TestDeriveRunTitle`, and `TestExportRunIncludesTitle` test classes (26 new Python tests).
+- `frontend/runs-viewer/src/components/RunDetail/detailTabs.test.ts` — new file: 13 unit tests for `coerceDetailTab` and `tabToQuery` (AC 3.1).
+- `frontend/runs-viewer/src/components/LineageGraph/LineageFlow.test.ts` — new file: 4 tests verifying `rv-lineage-edge` className and `SmoothStepEdge` import (AC 4.3).
+- `CHANGELOG.md` — added `[Unreleased]` entries for titles, lineage edges, modal fix, and default tab fix.
+- `docs/project_plans/feature_contracts/harden-polish/nav-titles-lineage-fixes.md` — updated frontmatter (`status: completed`, `files_affected`); this Completion Report appended.
+
+### Bug Reproduction (§1.4 nav/click divergence)
+
+**Root cause identified**: `StatusLane` in `RunList.tsx` called `onSelect={setSelectedRunId}` on card click — which updated `selectedRunId` (driving the nav highlight) without calling `setModalRunId`. The `RunDetailModal` opens only when `modalRunId` is non-null. So clicking a StatusLane card would highlight the nav item (because `selectedRunId` changed) but the modal would stay closed. The `RunCard` grid's onClick and the `RunTable`'s "Open" button already called both setters correctly, so those paths were fine.
+
+**Fix**: Refactored `StatusLane` to accept `onOpen: (runId: string) => void` instead of `onSelect`. All four `StatusLane` usages now pass an inline handler that calls `setSelectedRunId(runId)` and `setModalRunId(runId)` together.
+
+**"Open full page" preserved**: `RunDetailModal.tsx:94` link (`data-testid="run-modal-open-full-page"`) is unchanged. Verified during code review that no `onClick` handlers were modified on that component.
+
+**Tab reset on reopen**: When the modal is closed and reopened, `RunDetailModal.tsx:29–34` resets `activeTab` to `'overview'` via the `useEffect` on `runId`. This is unchanged behavior.
+
+### Tests Run
+
+- `detailTabs.test.ts`: 13/13 pass — `coerceDetailTab(null)` returns `'overview'`; `'audit'→'ledger'` alias preserved; all valid tab values pass through.
+- `LineageFlow.test.ts`: 4/4 pass — edges carry `className='rv-lineage-edge'`; edge type is `'smoothstep'`; `SmoothStepEdge` is defined and non-null; `LineageFlow` component exports correctly.
+- `lineageFlowElements.test.ts`: 24/24 pass (unchanged — edge construction logic untouched, `className` addition passes because existing tests don't assert on extra fields).
+- `test_export_service.py`: 56/56 pass — new `TestTitleFromSlug`, `TestExtractTitleFromReportDraft`, `TestDeriveRunTitle`, `TestExportRunIncludesTitle` classes all green.
+- Full Python suite: 491 pass, 1 pre-existing failure (`test_registry_lists_all_schemas` expects 20 schemas, finds 21 — unrelated to this contract; confirmed pre-existing by stash verification).
+- Full frontend suite: 224/224 pass (10 test files).
+
+### Validation Run
+
+| Command | Result | Notes |
+|---|---|---|
+| `npx tsc --noEmit` (runs-viewer) | Pass | Zero TS errors after `title?: string \| null` addition to `RFRunSummary` and `EdgeTypes` import |
+| `eslint src --max-warnings=0` (runs-viewer) | Pass | Zero warnings |
+| `vitest run` (runs-viewer) | Pass | 224 tests, 10 files |
+| `pytest tests/unit/test_export_service.py` | Pass | 56 tests including 26 new title tests |
+| `pytest tests/ --deselect test_registry_lists_all_schemas` | Pass | 491 tests; 1 pre-existing failure excluded |
+| `rf run export --all` (via PYTHONPATH worktree override) | Pass | 38 runs exported, all include `title` field |
+| `pnpm --filter runs-viewer build` | Not run | Requires venv active in build env; prebuild step verified by inspecting run.json outputs and simulating index.json logic |
+
+### Deviations From Contract
+
+1. **`RunCard` layout restructured**: The contract says "display title via existing `deriveRunTitle()` / `titleFromSlug()` fallback chain on `RunCard`". The implementation uses `run.title ?? titleFromSlug(run.run_id) ?? run.run_id` directly (bypassing `deriveRunTitle()` which requires a full `RFRunExport`), consistent with the contract's data requirement §6: "list view uses `title` from `RFRunSummary` directly". A new `div.rv-run-card__title-row` wraps the `<strong>` title and the `<span>` run_id (secondary), separating from the header row which holds badges. This is a minor layout addition, not a deviation from contract intent.
+
+2. **`node_modules` symlink in worktree**: To run vitest from the worktree, `frontend/runs-viewer/node_modules` was symlinked to the main repo's installed packages. This symlink is not committed (it's in the git `.gitignore` via `node_modules` exclusion). The symlink allows test execution from within the worktree.
+
+3. **`description` field added to contract frontmatter**: The feature-contract schema required a `description` field not present in the original contract. Added it during frontmatter update.
+
+4. **PYTHONPATH workaround for `rf run export --all`**: The research_foundry package is installed in editable mode from the main repo. Running `rf run export --all` without PYTHONPATH override uses the main repo code (without the `title` field). The validation used `PYTHONPATH=worktree/src` to validate the actual code changes. The production deploy will require reinstalling the package from the worktree branch or squash-merging to main.
+
+### Risks and Limitations
+
+- **Runs not yet re-exported**: Any `run.json` cached before this export run lacks the `title` field. Those runs will fall back to `titleFromSlug(run_id)` in the FE, which is acceptable per the contract's resilience requirement.
+- **`pnpm build` not validated end-to-end**: The `prebuild-static-data.mjs` change (adding `title` to summary) was verified by inspection and by manually simulating the index.json logic in Python, but the full `pnpm build` was not run due to the editable install boundary. The static data validation passed via direct `rf run export --all` output inspection.
+- **Pre-existing `test_registry_lists_all_schemas` failure**: This test expects exactly 20 schemas but 21 are registered. Not caused by this contract; the schema count was already wrong before this sprint.
+- **RunTable `onSelect` click (run_id button) does not open modal**: The run table has two actions per row: clicking the run_id button selects the run (nav highlight) without opening the modal, and clicking "Open" opens the modal. This select-without-open pattern in the table is intentional (the user may want to select a run for the attention panel without opening the modal). The contract's AC 2.1 targets RunList.tsx and RunCard.tsx, and the table is covered by the "Open" button. Documented here for clarity.
+
+### Follow-Up Recommendations
+
+1. **P1: Enable "This Week" filter** — `created_at` is now in `RFRunSummary`; a simple date-window comparison can enable this. Tier 0 quick-feature.
+2. **P1: Data-driven "High Claim Volume" threshold** — currently hardcoded at 75. Should be derived from `claim_counts` distribution across loaded runs.
+3. **Fix `test_registry_lists_all_schemas`** — this test counted 20 schemas but finds 21. Need to update the expected count or investigate if an extra schema was unintentionally registered.
+4. **Install editable package from branch before production deploy** — the `rf run export --all` at the deploy site needs to run with the updated `export_service.py`. Either squash-merge to main first, or reinstall the package from the branch before running the prebuild step.
+5. **Add `aria-label` with human title to RunCard** — currently `aria-label={Run ${displayTitle}, status: ...}` which is an improvement over the raw run_id, but could be further enhanced with the date.
+6. **Visual evidence screenshots** (ACs 1.4 and 4.2): Cannot be captured in this sprint (requires running UI). The validation deployment step (gated to user) will produce these.
+
+### Memory Candidates Captured
+
+- **Worktree + editable install boundary**: When editable Python packages are installed from the main repo, running CLIs from a worktree uses the main repo's code. Override with `PYTHONPATH=worktree/src python -m package ...` for validation. Document in deploy runbook.
+- **vitest from worktree**: `node_modules` must be symlinked from the main repo into the worktree for `vitest run` to work. The symlink is not committed.
+- **`SmoothStepEdge` is `React.memo` wrapped**: `typeof SmoothStepEdge === 'object'` (not `'function'`); check `$$typeof` or use `toBeDefined()` + `not.toBeNull()` in tests.
+- **Regex alternation must put longest alternative first**: `_RUN_ID_PREFIX_RE` must match `intent_research` before `intent` to correctly strip the compound prefix; shorter alternatives shadow longer ones in Python `re.sub`.

@@ -379,6 +379,67 @@ def _verification_block(rp: RunPaths, *, run_id: str | None) -> dict[str, Any]:
     }
 
 
+# --- title derivation --------------------------------------------------------
+
+_FRONTMATTER_TITLE_RE = re.compile(r"^title:\s*(.+?)\s*$", re.MULTILINE)
+_FRONTMATTER_FENCE_RE = re.compile(r"^---\s*\n(.*?)^---\s*\n", re.DOTALL | re.MULTILINE)
+_RUN_ID_PREFIX_RE = re.compile(r"^(rf_run|intent_research|intent)[_\-]?", re.IGNORECASE)
+_DATESTAMP_RE = re.compile(r"^\d{8,}[_\-]?")
+
+
+def _title_from_slug(value: str | None) -> str | None:
+    """Humanize a run_id slug into a readable title (Python equivalent of FE titleFromSlug).
+
+    Strips the ``rf_run_``, ``intent_``, and ``intent_research_`` prefixes, strips
+    leading date-stamps (8+ digits), replaces underscores/hyphens with spaces, and
+    title-cases the result.  Returns ``None`` when the input is empty/None or the
+    normalized result is empty.
+    """
+    if not value:
+        return None
+    normalized = _RUN_ID_PREFIX_RE.sub("", value)
+    normalized = _DATESTAMP_RE.sub("", normalized)
+    normalized = normalized.replace("_", " ").replace("-", " ").strip()
+    if not normalized:
+        return value
+    return " ".join(word.capitalize() for word in normalized.split())
+
+
+def _extract_title_from_report_draft(report_draft: str | None) -> str | None:
+    """Extract the YAML frontmatter ``title:`` value from a report draft Markdown string.
+
+    Parses only the fenced YAML block at the top of the document (``--- ... ---``).
+    Returns ``None`` if the frontmatter is absent, malformed, or has no ``title`` key.
+    Never raises — all errors are swallowed and ``None`` is returned instead.
+    """
+    if not report_draft:
+        return None
+    try:
+        fm_match = _FRONTMATTER_FENCE_RE.match(report_draft)
+        if fm_match:
+            fm_block = fm_match.group(1)
+            title_match = _FRONTMATTER_TITLE_RE.search(fm_block)
+            if title_match:
+                candidate = title_match.group(1).strip().strip('"\'')
+                return candidate if candidate else None
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _derive_run_title(run_id: str, report_draft: str | None) -> str:
+    """Derive a human-readable title for a run.
+
+    Priority: frontmatter ``title:`` key → slug-humanized ``run_id``.
+    Always returns a non-empty string.
+    """
+    return (
+        _extract_title_from_report_draft(report_draft)
+        or _title_from_slug(run_id)
+        or run_id
+    )
+
+
 # --- top-level export --------------------------------------------------------
 def export_run(
     paths: FoundryPaths,
@@ -414,9 +475,13 @@ def export_run(
         "claim_ledger": ledger.get("schema_version"),
     }
 
+    # Read report_draft once; use it for both title derivation and the export field.
+    report_draft = _read_report_draft(rp)
+
     return {
         "schema_version": EXPORT_SCHEMA_VERSION,
         "run_id": run_id,
+        "title": _derive_run_title(run_id, report_draft),
         "intent_id": run_meta.get("intent_id"),
         "created_at": run_meta.get("created_at"),
         "status_derived": derive_status(rp, run_id=run_id),
@@ -432,7 +497,7 @@ def export_run(
         "timeline": _timeline(rp, run_id=run_id),
         "claims": claims,
         "artifact_schema_versions": schema_versions,
-        "report_draft": _read_report_draft(rp),
+        "report_draft": report_draft,
     }
 
 
@@ -559,4 +624,7 @@ __all__ = [
     "list_runs",
     "run_json_path",
     "claim_tags_in_report",
+    "_title_from_slug",
+    "_extract_title_from_report_draft",
+    "_derive_run_title",
 ]

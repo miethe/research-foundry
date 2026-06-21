@@ -11,6 +11,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### runs-viewer v2.2 — Nav, Titles, and Lineage Fixes
+
+- **Run titles on all list surfaces**: `RunCard` and `StatusLane` buttons now display a human-readable run title derived from the report frontmatter `title:` key, with a slug-humanized fallback (e.g., `rf_run_20260613_roots_wave` → "Roots Wave"). Raw `run_id` slugs no longer appear as the primary display string.
+- **`title` field in export**: `export_service.py:export_run()` now derives and includes a `title` field in `run.json`; `prebuild-static-data.mjs` copies it into `index.json`; `RFRunSummary` type updated with `title?: string`.
+- **Lineage graph edges render**: `LineageFlow.tsx` now registers `SmoothStepEdge` from `@xyflow/react` as `edgeTypes` at module scope and passes `edgeTypes={edgeTypes}` to `<ReactFlow>`. Edges (connector lines between nodes) now appear in the Lineage tab graph view. Edges carry `className='rv-lineage-edge'` for CSS targeting.
+
+### Fixed
+
+#### runs-viewer v2.2
+
+- **Run-click → modal + aligned nav**: StatusLane buttons previously called `setSelectedRunId` without opening `RunDetailModal`. Now calls `setSelectedRunId(runId)` and `setModalRunId(runId)` consistently, so every card click opens the modal and the Runs nav item stays aligned.
+- **Default detail tab is Overview**: `coerceDetailTab` fallback changed from `'trust'` to `'overview'` so `/runs/:runId` with no `?tab=` param defaults to the Overview tab. The `'audit'→'ledger'` alias and all other valid tab values are unchanged.
+
 #### `rf run` sub-commands (Python CLI — `runs-frontend-v1` Phase 1)
 
 - **`rf run export --json`** — export a single run's full denormalized claim

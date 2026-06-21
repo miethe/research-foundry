@@ -14,7 +14,7 @@
  */
 
 import type { RFRunSummary, RFStatusDerived, RFSensitivity } from "@/types/rf";
-import { getRunBucket, type RunHealthBucket } from "@/lib/runs";
+import { getRunBucket, titleFromSlug, type RunHealthBucket } from "@/lib/runs";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -93,6 +93,9 @@ export function RunCard({ run, onClick }: RunCardProps) {
   const pillClass   = HEALTH_PILL_CLASS[filterState];
   const statusLabel = STATUS_LABEL[run.status_derived] ?? run.status_derived;
 
+  // Human-readable title: prefer exported title field, fall back to slug-humanized run_id.
+  const displayTitle = run.title ?? titleFromSlug(run.run_id) ?? run.run_id;
+
   // Claim counts — support both top-level aliases and long keys
   const cc = run.claim_counts;
   const supported   = cc?.supported   ?? cc?.claims_supported   ?? null;
@@ -132,7 +135,7 @@ export function RunCard({ run, onClick }: RunCardProps) {
       className="rv-run-card it-card"
       role="button"
       tabIndex={0}
-      aria-label={`Run ${run.run_id}, status: ${statusLabel}`}
+      aria-label={`Run ${displayTitle}, status: ${statusLabel}`}
       onClick={() => onClick?.(run.run_id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -159,8 +162,12 @@ export function RunCard({ run, onClick }: RunCardProps) {
             Schema mismatch
           </span>
         )}
+      </div>
 
-        <span className="rv-run-card__run-id">{run.run_id}</span>
+      {/* Title row: human-readable run title as primary label */}
+      <div className="rv-run-card__title-row">
+        <strong className="rv-run-card__title" data-testid="run-title">{displayTitle}</strong>
+        <span className="rv-run-card__run-id" data-testid="run-id">{run.run_id}</span>
       </div>
 
       {/* Meta row: sensitivity + date + governance */}

@@ -242,7 +242,7 @@ function firstMarkdownHeading(markdown?: string | null, level?: number): string 
   return null;
 }
 
-function titleFromSlug(value?: string | null): string | null {
+export function titleFromSlug(value?: string | null): string | null {
   if (!value) return null;
   const normalized = value
     .replace(/^(rf_run|intent|intent_research)_?/i, "")

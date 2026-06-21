@@ -23,9 +23,11 @@ import {
   MiniMap,
   Handle,
   Position,
+  SmoothStepEdge,
   type Node,
   type NodeProps,
   type NodeTypes,
+  type EdgeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -161,10 +163,16 @@ function LineageFlowNode({ data, id }: NodeProps<LineageFlowNodeType>) {
   );
 }
 
-// ── nodeTypes defined at module scope ──────────────────────────────────────────
+// ── nodeTypes and edgeTypes defined at module scope ────────────────────────────
+// Both must be stable references (defined outside any component) to prevent
+// React Flow from re-registering on every render, which causes flickering.
 
 const nodeTypes: NodeTypes = {
   lineage: LineageFlowNode,
+};
+
+const edgeTypes: EdgeTypes = {
+  smoothstep: SmoothStepEdge,
 };
 
 // ── Legend overlay ─────────────────────────────────────────────────────────────
@@ -214,6 +222,7 @@ function LineageFlowInner({
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
       nodesDraggable={false}
       nodesConnectable={false}
       elementsSelectable

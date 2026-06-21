@@ -551,3 +551,140 @@ def test_schema_version_is_1_1(tmp_foundry: FoundryPaths) -> None:
 def _json_blob(data: dict[str, Any]) -> str:
     import json
     return json.dumps(data, ensure_ascii=False)
+
+
+# --------------------------------------------------------------------------
+# title derivation helpers (nav-titles-lineage-fixes contract)
+# --------------------------------------------------------------------------
+
+class TestTitleFromSlug:
+    """Unit tests for _title_from_slug (Python equivalent of FE titleFromSlug)."""
+
+    def test_strips_rf_run_prefix_and_datestamp(self) -> None:
+        result = svc._title_from_slug("rf_run_20260613_my_cool_research")
+        assert result == "My Cool Research"
+
+    def test_strips_rf_run_prefix_no_datestamp(self) -> None:
+        result = svc._title_from_slug("rf_run_roots_wave")
+        assert result == "Roots Wave"
+
+    def test_strips_intent_prefix(self) -> None:
+        result = svc._title_from_slug("intent_knitwit_crochet")
+        assert result == "Knitwit Crochet"
+
+    def test_strips_intent_research_prefix(self) -> None:
+        result = svc._title_from_slug("intent_research_homelab_security")
+        assert result == "Homelab Security"
+
+    def test_returns_none_for_none_input(self) -> None:
+        assert svc._title_from_slug(None) is None
+
+    def test_returns_none_for_empty_string(self) -> None:
+        assert svc._title_from_slug("") is None
+
+    def test_title_cases_result(self) -> None:
+        result = svc._title_from_slug("rf_run_abc_def")
+        assert result is not None
+        assert result == result.title() or result[0].isupper()
+
+    def test_hyphen_separator_is_humanized(self) -> None:
+        result = svc._title_from_slug("rf_run_20260601_foo-bar-baz")
+        assert result == "Foo Bar Baz"
+
+
+class TestExtractTitleFromReportDraft:
+    """Unit tests for _extract_title_from_report_draft."""
+
+    def test_extracts_title_from_yaml_frontmatter(self) -> None:
+        report = "---\ntitle: My Research Report\ndate: 2026-06-13\n---\n# Heading\n\nBody text.\n"
+        result = svc._extract_title_from_report_draft(report)
+        assert result == "My Research Report"
+
+    def test_extracts_title_with_double_quotes(self) -> None:
+        report = '---\ntitle: "Quoted Title"\n---\n\nBody.\n'
+        result = svc._extract_title_from_report_draft(report)
+        assert result == "Quoted Title"
+
+    def test_extracts_title_with_single_quotes(self) -> None:
+        report = "---\ntitle: 'Single Quoted'\n---\n\nBody.\n"
+        result = svc._extract_title_from_report_draft(report)
+        assert result == "Single Quoted"
+
+    def test_returns_none_when_no_frontmatter(self) -> None:
+        report = "# No Frontmatter\n\nBody text without YAML block.\n"
+        result = svc._extract_title_from_report_draft(report)
+        assert result is None
+
+    def test_returns_none_when_title_key_absent(self) -> None:
+        report = "---\ndate: 2026-06-13\nauthor: Test\n---\n\nBody.\n"
+        result = svc._extract_title_from_report_draft(report)
+        assert result is None
+
+    def test_returns_none_for_none_input(self) -> None:
+        assert svc._extract_title_from_report_draft(None) is None
+
+    def test_returns_none_for_empty_string(self) -> None:
+        assert svc._extract_title_from_report_draft("") is None
+
+    def test_does_not_raise_on_malformed_frontmatter(self) -> None:
+        # Should return None gracefully, not raise
+        malformed = "---\ntitle:\n  nested:\n    value:\n---\n\nBody.\n"
+        result = svc._extract_title_from_report_draft(malformed)
+        # result may be None or empty — either is acceptable; must not raise
+        assert result is None or isinstance(result, str)
+
+
+class TestDeriveRunTitle:
+    """Unit tests for _derive_run_title — the top-level title combinator."""
+
+    def test_prefers_frontmatter_title_over_slug(self) -> None:
+        report = "---\ntitle: Explicit Title From Frontmatter\n---\n# H1\n"
+        result = svc._derive_run_title("rf_run_20260613_foo", report)
+        assert result == "Explicit Title From Frontmatter"
+
+    def test_falls_back_to_slug_when_no_frontmatter(self) -> None:
+        result = svc._derive_run_title("rf_run_20260613_roots_wave", None)
+        assert result == "Roots Wave"
+
+    def test_falls_back_to_run_id_when_slug_is_empty(self) -> None:
+        # An edge case where the slug normalizes to empty — should return raw run_id
+        result = svc._derive_run_title("---", None)
+        assert result  # must be non-empty
+        assert isinstance(result, str)
+
+    def test_always_returns_non_empty_string(self) -> None:
+        # Even with no report_draft and a minimal run_id
+        result = svc._derive_run_title("x", None)
+        assert result
+        assert isinstance(result, str)
+
+
+class TestExportRunIncludesTitle:
+    """Integration tests verifying the title field appears in export_run() output."""
+
+    def test_export_run_includes_title_field(self, tmp_foundry: FoundryPaths) -> None:
+        build_run(tmp_foundry)
+        data = svc.export_run(tmp_foundry, "rf_run_test001")
+        assert "title" in data
+        assert data["title"] is not None
+        assert isinstance(data["title"], str)
+        assert len(data["title"]) > 0
+
+    def test_export_run_title_uses_report_frontmatter(self, tmp_foundry: FoundryPaths) -> None:
+        """When report_draft has a title: key, export uses it."""
+        rp = build_run(tmp_foundry, with_report=False)
+        report = "---\ntitle: Roots Wave High Priority\n---\n# Roots Wave High Priority\n\nBody.\n"
+        rp.report_draft.write_text(report, encoding="utf-8")
+        data = svc.export_run(tmp_foundry, "rf_run_test001")
+        assert data["title"] == "Roots Wave High Priority"
+
+    def test_export_run_title_falls_back_to_slug_when_no_report(
+        self, tmp_foundry: FoundryPaths
+    ) -> None:
+        """When report_draft is absent, title is slug-humanized run_id."""
+        build_run(tmp_foundry, with_report=False)
+        data = svc.export_run(tmp_foundry, "rf_run_test001")
+        assert "title" in data
+        # slug of "rf_run_test001" → "Test001" (stripped rf_run_ prefix)
+        assert data["title"] is not None
+        assert data["title"] != "rf_run_test001"  # must NOT be the raw slug

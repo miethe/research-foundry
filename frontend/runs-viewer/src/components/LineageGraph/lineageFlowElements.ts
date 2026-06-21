@@ -85,6 +85,7 @@ export function buildFlowElements(
         source: e.sourceId,
         target: e.targetId,
         type: "smoothstep",
+        className: "rv-lineage-edge",
         style: {
           stroke: accent,
           strokeWidth: 2,
