@@ -182,6 +182,7 @@ export function RunDetailModal({ runId, onClose }: RunDetailModalProps) {
             <ProvenanceModal
               ref={modalRef}
               claims={run.claims}
+              sensitivityThreshold={run.sensitivity_threshold}
               stacked
               onOpenChange={setClaimModalOpen}
               onChainClick={setSelectedClaimId}

@@ -24,12 +24,22 @@ const SENSITIVITY_ORDER: Record<RFSensitivity, number> = {
   client_sensitive: 3,
 };
 
-/** Returns true if the source should have its quote/summary redacted. */
+/** Returns true if the source should have its quote/summary redacted.
+ *
+ * Belt-and-suspenders bypass: if VITE_SHOW_ALL=1 is set at build time,
+ * returns false unconditionally (LAN-only operator build; no third-party exposure).
+ * Default threshold changed to client_sensitive so that any sensitivity level
+ * renders when sensitivityThreshold prop is not explicitly passed.
+ */
 function isRedacted(sensitivity: RFSensitivity | null | undefined, threshold?: RFSensitivity | null): boolean {
+  // Build-time bypass: VITE_SHOW_ALL=1 disables all redaction gates.
+  if (import.meta.env.VITE_SHOW_ALL === "1") return false;
   if (!sensitivity) return false; // absent → public → safe
   const level = SENSITIVITY_ORDER[sensitivity];
   if (level === undefined) return true; // unknown → fail-closed
-  const thresholdLevel = threshold ? SENSITIVITY_ORDER[threshold] : SENSITIVITY_ORDER.personal;
+  // Default to client_sensitive (highest level) so absent threshold never re-masks content
+  // that the export already emitted unredacted at a high threshold.
+  const thresholdLevel = threshold ? SENSITIVITY_ORDER[threshold] : SENSITIVITY_ORDER.client_sensitive;
   if (thresholdLevel === undefined) return true;
   return level > thresholdLevel;
 }

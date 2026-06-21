@@ -81,6 +81,7 @@ export function ReportOverlay({ run, reportDraft, onOpenProvenance }: ReportOver
         <ProvenanceModal
           ref={modalRef}
           claims={run.claims}
+          sensitivityThreshold={run.sensitivity_threshold}
         />
       )}
     </div>

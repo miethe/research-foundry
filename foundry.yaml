@@ -25,7 +25,7 @@ foundry:
   # client_sensitive content. Ordering: public < personal < work_sensitive <
   # client_sensitive.
   viewer:
-    sensitivity_threshold: public
+    sensitivity_threshold: client_sensitive
 
   adapters:
     claude_agent_sdk: enabled

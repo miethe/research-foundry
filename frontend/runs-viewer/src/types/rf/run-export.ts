@@ -92,6 +92,8 @@ export interface RFResolvedSource {
   locator?:         string | null;
   resolved:         boolean;
   dangling:         boolean;
+  /** Whether the backend redacted this source at export time (sensitivity > threshold). Optional; absent means false. */
+  redacted?:        boolean;
 
   // Card-level fields (null when dangling=true)
   title?:           string | null;

@@ -17,7 +17,7 @@
  */
 
 import { useState, useCallback, forwardRef, useEffect, useImperativeHandle } from "react";
-import type { RFClaim } from "@/types/rf";
+import type { RFClaim, RFSensitivity } from "@/types/rf";
 import { SourceCard } from "@/components/SourceCard/SourceCard";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -35,6 +35,9 @@ export interface ProvenanceModalProps {
   stacked?: boolean;
   /** Allows parent modals to suppress their own Escape/overlay close while this is open. */
   onOpenChange?: (open: boolean) => void;
+  /** Active sensitivity threshold from the run export. Passed to SourceCard to avoid re-masking
+   *  content already emitted at a higher threshold. When absent, SourceCard defaults to client_sensitive. */
+  sensitivityThreshold?: RFSensitivity | null;
 }
 
 // ── Status chip map (mirrors ClaimLedgerTable) ────────────────────────────────
@@ -51,7 +54,7 @@ const STATUS_CHIP: Record<string, string> = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const ProvenanceModal = forwardRef<ProvenanceModalHandle, ProvenanceModalProps>(
-  function ProvenanceModal({ claims, onChainClick, stacked = false, onOpenChange }, ref) {
+  function ProvenanceModal({ claims, onChainClick, stacked = false, onOpenChange, sensitivityThreshold }, ref) {
     const [openClaimId, setOpenClaimId] = useState<string | null>(null);
 
     const open  = useCallback((claimId: string) => {
@@ -219,7 +222,7 @@ export const ProvenanceModal = forwardRef<ProvenanceModalHandle, ProvenanceModal
                   </h3>
                   <div className="rv-modal__source-list">
                     {claim.sources.map((src) => (
-                      <SourceCard key={`${src.source_card_id}-${src.evidence_id}`} source={src} />
+                      <SourceCard key={`${src.source_card_id}-${src.evidence_id}`} source={src} sensitivityThreshold={sensitivityThreshold} />
                     ))}
                   </div>
                 </div>

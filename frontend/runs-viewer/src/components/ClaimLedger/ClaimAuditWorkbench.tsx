@@ -166,6 +166,7 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
       <ProvenanceModal
         ref={modalRef}
         claims={run.claims}
+        sensitivityThreshold={run.sensitivity_threshold}
         onChainClick={(claimId) => selectClaim(claimId)}
       />
 

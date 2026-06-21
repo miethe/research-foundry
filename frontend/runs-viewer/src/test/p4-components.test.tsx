@@ -316,9 +316,34 @@ describe("LedgerFacets", () => {
 // ── (3) SourceCard sensitivity (P4-SENS-001 / R9 gate) ───────────────────────
 
 describe("SourceCard — sensitivity gate (R9 defense-in-depth)", () => {
-  it("work_sensitive source renders the redaction placeholder", () => {
+  // F4-004: Default threshold is client_sensitive — work_sensitive content renders
+  // when no sensitivityThreshold prop is passed (LAN-only operator build behavior).
+  it("work_sensitive source renders quote toggle (NOT redacted) with default client_sensitive threshold", () => {
     const { container } = render(
       <SourceCard source={WORK_SENSITIVE_SOURCE} />,
+      { wrapper: makeWrapper() },
+    );
+    const toggle = container.querySelector(
+      "[data-testid='source-card-quote-toggle-src_sensitive_001']",
+    );
+    expect(toggle).not.toBeNull();
+  });
+
+  it("work_sensitive source: data-redacted=false with default client_sensitive threshold", () => {
+    const { container } = render(
+      <SourceCard source={WORK_SENSITIVE_SOURCE} />,
+      { wrapper: makeWrapper() },
+    );
+    const card = container.querySelector(
+      "[data-testid='source-card-src_sensitive_001']",
+    );
+    expect(card?.getAttribute("data-redacted")).toBe("false");
+  });
+
+  // Explicit low threshold: gate still works when threshold is set below work_sensitive.
+  it("work_sensitive source renders the redaction placeholder when threshold=personal", () => {
+    const { container } = render(
+      <SourceCard source={WORK_SENSITIVE_SOURCE} sensitivityThreshold="personal" />,
       { wrapper: makeWrapper() },
     );
     const redacted = container.querySelector(
@@ -327,9 +352,9 @@ describe("SourceCard — sensitivity gate (R9 defense-in-depth)", () => {
     expect(redacted).not.toBeNull();
   });
 
-  it("work_sensitive source does NOT render the verbatim quote toggle", () => {
+  it("work_sensitive source does NOT render the verbatim quote toggle when threshold=personal", () => {
     const { container } = render(
-      <SourceCard source={WORK_SENSITIVE_SOURCE} />,
+      <SourceCard source={WORK_SENSITIVE_SOURCE} sensitivityThreshold="personal" />,
       { wrapper: makeWrapper() },
     );
     const toggle = container.querySelector(
@@ -338,9 +363,9 @@ describe("SourceCard — sensitivity gate (R9 defense-in-depth)", () => {
     expect(toggle).toBeNull();
   });
 
-  it("work_sensitive source: redaction placeholder contains sensitivity label", () => {
+  it("work_sensitive source: redaction placeholder contains sensitivity label when threshold=personal", () => {
     const { container } = render(
-      <SourceCard source={WORK_SENSITIVE_SOURCE} />,
+      <SourceCard source={WORK_SENSITIVE_SOURCE} sensitivityThreshold="personal" />,
       { wrapper: makeWrapper() },
     );
     const redacted = container.querySelector(
@@ -349,9 +374,9 @@ describe("SourceCard — sensitivity gate (R9 defense-in-depth)", () => {
     expect(redacted?.textContent).toContain("work_sensitive");
   });
 
-  it("work_sensitive source: data-redacted=true attribute is set", () => {
+  it("work_sensitive source: data-redacted=true attribute when threshold=personal", () => {
     const { container } = render(
-      <SourceCard source={WORK_SENSITIVE_SOURCE} />,
+      <SourceCard source={WORK_SENSITIVE_SOURCE} sensitivityThreshold="personal" />,
       { wrapper: makeWrapper() },
     );
     const card = container.querySelector(
