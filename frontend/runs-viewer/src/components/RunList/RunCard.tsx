@@ -88,11 +88,13 @@ export interface RunCardData extends RFRunSummary {
 interface RunCardProps {
   run: RunCardData;
   onClick?: (runId: string) => void;
+  /** Called when the user double-clicks the card or clicks the ⤢ expand button. */
+  onExpandRun?: (runId: string) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function RunCard({ run, onClick }: RunCardProps) {
+export function RunCard({ run, onClick, onExpandRun }: RunCardProps) {
   const filterState = getRunBucket(run);
   const pillClass   = HEALTH_PILL_CLASS[filterState];
   const statusLabel = STATUS_LABEL[run.status_derived] ?? run.status_derived;
@@ -149,6 +151,7 @@ export function RunCard({ run, onClick }: RunCardProps) {
       tabIndex={0}
       aria-label={`Run ${displayTitle}, status: ${statusLabel}`}
       onClick={() => onClick?.(run.run_id)}
+      onDoubleClick={() => onExpandRun?.(run.run_id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -159,7 +162,7 @@ export function RunCard({ run, onClick }: RunCardProps) {
       data-run-id={run.run_id}
       data-filter-state={filterState}
     >
-      {/* Header row: lifecycle badge + optional mismatch badge */}
+      {/* Header row: lifecycle badge + optional mismatch badge + expand button */}
       <div className="rv-run-card__header">
         <span className={`it-pill ${pillClass}`} data-testid="lifecycle-badge">
           {statusLabel}
@@ -173,6 +176,21 @@ export function RunCard({ run, onClick }: RunCardProps) {
           >
             Schema mismatch
           </span>
+        )}
+
+        {onExpandRun && (
+          <button
+            type="button"
+            className="it-btn ghost xs rv-run-card__expand"
+            data-testid="run-card-expand"
+            aria-label="Expand run in modal"
+            onClick={(e) => {
+              e.stopPropagation();
+              onExpandRun(run.run_id);
+            }}
+          >
+            ⤢
+          </button>
         )}
       </div>
 

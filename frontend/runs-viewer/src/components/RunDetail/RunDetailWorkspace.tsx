@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { RFRunExport } from "@/types/rf";
+import type { LineageNode } from "@/components/LineageGraph/lineageTree";
 import { ClaimAuditWorkbench } from "@/components/ClaimLedger/ClaimAuditWorkbench";
 import { ArtifactLineageGraph } from "@/components/LineageGraph/LineageGraph";
 import { ReportOverlay } from "@/components/ReportOverlay/ReportOverlay";
@@ -20,6 +21,8 @@ export interface RunDetailWorkspaceProps {
   mode: "page" | "modal";
   onTabChange: (tab: DetailTab, claimId?: string | null) => void;
   onOpenProvenance?: (claimId: string) => void;
+  /** Called when the user double-clicks a lineage row or clicks ⤢ in LineageDetailPanel. */
+  onExpandNode?: (node: LineageNode) => void;
 }
 
 export function RunDetailWorkspace({
@@ -29,6 +32,7 @@ export function RunDetailWorkspace({
   mode,
   onTabChange,
   onOpenProvenance,
+  onExpandNode,
 }: RunDetailWorkspaceProps) {
   const writebackAvailable = hasWritebackExport(run);
   const tabs = useMemo(
@@ -113,6 +117,7 @@ export function RunDetailWorkspace({
             selectedClaimId={selectedClaimId}
             onSelectClaim={(claimId) => onTabChange("lineage", claimId)}
             onOpenProvenance={onOpenProvenance}
+            onExpandNode={onExpandNode}
           />
         </div>
       )}

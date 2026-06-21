@@ -5,6 +5,8 @@ import { ClaimLedgerTable } from "./ClaimLedgerTable";
 import { LedgerFacets } from "./LedgerFacets";
 import { ProvenanceModal } from "@/components/ProvenanceModal/ProvenanceModal";
 import type { ProvenanceModalHandle } from "@/components/ProvenanceModal/ProvenanceModal";
+import { DetailModal } from "@/components/RunDetail/DetailModal";
+import type { DetailModalPayload } from "@/components/RunDetail/DetailModal";
 import { ReportRenderer } from "@/components/ReportOverlay/ReportRenderer";
 import { SourceCard } from "@/components/SourceCard/SourceCard";
 
@@ -20,6 +22,7 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
   const firstClaimId = run.claims[0]?.claim_id ?? null;
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(initialClaimId ?? firstClaimId);
   const [filteredClaims, setFilteredClaims] = useState<RFClaim[]>(run.claims);
+  const [detailModalPayload, setDetailModalPayload] = useState<DetailModalPayload | null>(null);
 
   useEffect(() => {
     setFilteredClaims(run.claims);
@@ -51,6 +54,10 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
     if (onOpenProvenance) onOpenProvenance(claimId);
     else modalRef.current?.open(claimId);
   }, [onOpenProvenance]);
+
+  const openDetailModal = useCallback((claimId: string) => {
+    setDetailModalPayload({ kind: "claim", claimId, claims: run.claims });
+  }, [run.claims]);
 
   if (run.claims.length === 0) {
     return (
@@ -86,6 +93,7 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
             claims={filteredClaims}
             selectedClaimId={selectedClaimId}
             onClaimSelect={selectClaim}
+            onExpandClaim={openDetailModal}
           />
         </aside>
 
@@ -112,6 +120,7 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
           threshold={run.sensitivity_threshold}
           runMeta={{ tags: run.tags, category: run.category }}
           onOpenModal={openClaimModal}
+          onExpandClaim={openDetailModal}
           onSelectClaim={(claimId) => selectClaim(claimId)}
         />
       </div>
@@ -126,6 +135,12 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
         ref={modalRef}
         claims={run.claims}
         onChainClick={(claimId) => selectClaim(claimId)}
+      />
+
+      <DetailModal
+        payload={detailModalPayload}
+        stacked
+        onClose={() => setDetailModalPayload(null)}
       />
     </section>
   );
@@ -143,6 +158,7 @@ function ClaimInspector({
   threshold,
   runMeta,
   onOpenModal,
+  onExpandClaim,
   onSelectClaim,
 }: {
   runClaims: RFClaim[];
@@ -150,6 +166,7 @@ function ClaimInspector({
   threshold: RFRunExport["sensitivity_threshold"];
   runMeta?: RunMetaRef;
   onOpenModal: (claimId: string) => void;
+  onExpandClaim?: (claimId: string) => void;
   onSelectClaim: (claimId: string) => void;
 }) {
   // P5 DISP-005: reference chips — shown only when non-null
@@ -179,9 +196,22 @@ function ClaimInspector({
     <aside className="rv-claim-inspector it-card" data-testid="claim-inspector" data-claim-id={claim.claim_id}>
       <div className="rv-pane-title">
         <h3>Selected Claim</h3>
-        <button className="it-btn ghost sm" type="button" onClick={() => onOpenModal(claim.claim_id)}>
-          Open modal
-        </button>
+        <div className="rv-pane-title__actions">
+          <button className="it-btn ghost sm" type="button" onClick={() => onOpenModal(claim.claim_id)}>
+            Open modal
+          </button>
+          {onExpandClaim && (
+            <button
+              className="it-btn ghost sm"
+              type="button"
+              data-testid="claim-inspector-expand"
+              aria-label="Expand claim in modal"
+              onClick={() => onExpandClaim(claim.claim_id)}
+            >
+              ⤢
+            </button>
+          )}
+        </div>
       </div>
 
       {/* P5 DISP-005: run-level reference chips — context only, non-interactive */}

@@ -61,11 +61,13 @@ export interface ClaimLedgerTableProps {
   claims:         RFClaim[];
   onClaimSelect:  (claimId: string) => void;
   selectedClaimId?: string | null;
+  /** Called when the user double-clicks a claim row; opens DetailModal with the claim payload. */
+  onExpandClaim?: (claimId: string) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function ClaimLedgerTable({ claims, onClaimSelect, selectedClaimId }: ClaimLedgerTableProps) {
+export function ClaimLedgerTable({ claims, onClaimSelect, selectedClaimId, onExpandClaim }: ClaimLedgerTableProps) {
   if (claims.length === 0) {
     return (
       <div className="rv-ledger-empty" data-testid="ledger-empty">
@@ -105,6 +107,7 @@ export function ClaimLedgerTable({ claims, onClaimSelect, selectedClaimId }: Cla
                 data-claim-id={claim.claim_id}
                 data-status={claim.status}
                 onClick={() => onClaimSelect(claim.claim_id)}
+                onDoubleClick={() => onExpandClaim?.(claim.claim_id)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();

@@ -18,11 +18,13 @@ export interface LineageViewProps {
   onToggle: (id: string) => void;
   selectedNodeId: string | null;
   onSelectNode: (id: string) => void;
+  /** Called when the user double-clicks a row; opens DetailModal with the node payload. */
+  onExpandNode?: (node: LineageNode) => void;
 }
 
 // ── LineageList ────────────────────────────────────────────────────────────────
 
-export function LineageList({ roots, expanded, onToggle, selectedNodeId, onSelectNode }: LineageViewProps) {
+export function LineageList({ roots, expanded, onToggle, selectedNodeId, onSelectNode, onExpandNode }: LineageViewProps) {
   return (
     <div
       className="rv-lineage-tree rv-lineage-list"
@@ -38,6 +40,7 @@ export function LineageList({ roots, expanded, onToggle, selectedNodeId, onSelec
           selectedNodeId={selectedNodeId}
           onToggle={onToggle}
           onSelectNode={onSelectNode}
+          onExpandNode={onExpandNode}
           isLast={idx === roots.length - 1}
           ancestorLines={[]}
         />
@@ -55,6 +58,7 @@ interface LineageListRowProps {
   selectedNodeId: string | null;
   onToggle: (id: string) => void;
   onSelectNode: (id: string) => void;
+  onExpandNode?: (node: LineageNode) => void;
   isLast: boolean;
   /** For each ancestor depth, whether that ancestor's guide line should continue. */
   ancestorLines: boolean[];
@@ -67,6 +71,7 @@ function LineageListRow({
   selectedNodeId,
   onToggle,
   onSelectNode,
+  onExpandNode,
   isLast,
   ancestorLines,
 }: LineageListRowProps) {
@@ -134,6 +139,7 @@ function LineageListRow({
         data-kind={node.kind}
         tabIndex={0}
         onClick={handleRowClick}
+        onDoubleClick={() => onExpandNode?.(node)}
         onKeyDown={handleRowKey}
         style={{ "--ll-depth": depth, "--ll-indent": `${indent}px` } as CSSProperties & Record<string, unknown>}
       >
@@ -222,6 +228,7 @@ function LineageListRow({
                 selectedNodeId={selectedNodeId}
                 onToggle={onToggle}
                 onSelectNode={onSelectNode}
+                onExpandNode={onExpandNode}
                 isLast={childIsLast}
                 ancestorLines={childAncestorLines}
               />

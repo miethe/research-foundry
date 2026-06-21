@@ -21,9 +21,11 @@ export interface LineageDetailPanelProps {
   runMeta?: LineageRunMetaRef;
   onSelectClaim?: (claimId: string) => void;
   onOpenProvenance?: (claimId: string) => void;
+  /** Called when the user clicks the ⤢ expand button; opens DetailModal with the node payload. */
+  onExpandNode?: (node: LineageNode) => void;
 }
 
-export function LineageDetailPanel({ node, runMeta, onSelectClaim, onOpenProvenance }: LineageDetailPanelProps) {
+export function LineageDetailPanel({ node, runMeta, onSelectClaim, onOpenProvenance, onExpandNode }: LineageDetailPanelProps) {
   // P5 DISP-005: reference chips — shown only when tags/category present (R-P2)
   const hasRunMeta = (runMeta?.tags?.length ?? 0) > 0 || runMeta?.category != null;
 
@@ -52,6 +54,17 @@ export function LineageDetailPanel({ node, runMeta, onSelectClaim, onOpenProvena
             <KindIcon kind={node.kind} size={16} />
           </span>
           <span className="it-chip rv-lineage-detail__kind-chip">{meta.label}</span>
+          {onExpandNode && (
+            <button
+              type="button"
+              className="it-btn ghost xs rv-lineage-detail__expand"
+              data-testid="lineage-detail-expand"
+              aria-label="Expand lineage node in modal"
+              onClick={() => onExpandNode(node)}
+            >
+              ⤢
+            </button>
+          )}
         </div>
         <strong className="rv-lineage-detail__title">{node.title}</strong>
         {node.subtitle && (

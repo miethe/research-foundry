@@ -17,6 +17,8 @@ export interface ArtifactLineageGraphProps {
   selectedClaimId?: string | null;
   onSelectClaim?: (claimId: string) => void;
   onOpenProvenance?: (claimId: string) => void;
+  /** Called when the user double-clicks a lineage row or clicks the ⤢ button in LineageDetailPanel. */
+  onExpandNode?: (node: LineageNode) => void;
 }
 
 type ViewMode = "list" | "graph";
@@ -26,6 +28,7 @@ export function ArtifactLineageGraph({
   selectedClaimId,
   onSelectClaim,
   onOpenProvenance,
+  onExpandNode,
 }: ArtifactLineageGraphProps) {
   const tree = useMemo(() => buildLineageTree(run), [run]);
   const allIds = useMemo(() => flattenNodeIds(tree), [tree]);
@@ -152,6 +155,7 @@ export function ArtifactLineageGraph({
               onToggle={handleToggle}
               selectedNodeId={selectedNodeId}
               onSelectNode={handleSelectNode}
+              onExpandNode={onExpandNode}
             />
           ) : (
             <div
@@ -176,6 +180,7 @@ export function ArtifactLineageGraph({
           runMeta={{ tags: run.tags, category: run.category }}
           onSelectClaim={onSelectClaim}
           onOpenProvenance={onOpenProvenance}
+          onExpandNode={onExpandNode}
         />
       </div>
 

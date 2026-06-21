@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import { useRunDetail } from "@/hooks";
 import { ProvenanceModal } from "@/components/ProvenanceModal/ProvenanceModal";
 import type { ProvenanceModalHandle } from "@/components/ProvenanceModal/ProvenanceModal";
+import { DetailModal } from "./DetailModal";
+import type { DetailModalPayload } from "./DetailModal";
+import type { LineageNode } from "@/components/LineageGraph/lineageTree";
 import {
   countVerificationChecks,
   deriveRunTitle,
@@ -23,6 +26,7 @@ export function RunDetailModal({ runId, onClose }: RunDetailModalProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
   const [claimModalOpen, setClaimModalOpen] = useState(false);
+  const [detailModalPayload, setDetailModalPayload] = useState<DetailModalPayload | null>(null);
   const modalRef = useRef<ProvenanceModalHandle>(null);
   const { data: run, isLoading, error } = useRunDetail(runId ?? "");
 
@@ -31,6 +35,7 @@ export function RunDetailModal({ runId, onClose }: RunDetailModalProps) {
       setActiveTab("overview");
       setSelectedClaimId(null);
       setClaimModalOpen(false);
+      setDetailModalPayload(null);
     }
   }, [runId]);
 
@@ -45,6 +50,10 @@ export function RunDetailModal({ runId, onClose }: RunDetailModalProps) {
     modalRef.current?.open(claimId);
   }, []);
 
+  const handleExpandNode = useCallback((node: LineageNode) => {
+    setDetailModalPayload({ kind: "node", node });
+  }, []);
+
   const fullPageHref = useMemo(() => {
     if (!runId) return "/runs";
     const params = new URLSearchParams();
@@ -53,14 +62,16 @@ export function RunDetailModal({ runId, onClose }: RunDetailModalProps) {
     return `/runs/${encodeURIComponent(runId)}?${params.toString()}`;
   }, [activeTab, runId, selectedClaimId]);
 
+  const detailModalOpen = detailModalPayload !== null;
+
   useEffect(() => {
     if (!runId) return undefined;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !claimModalOpen) onClose();
+      if (event.key === "Escape" && !claimModalOpen && !detailModalOpen) onClose();
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [claimModalOpen, onClose, runId]);
+  }, [claimModalOpen, detailModalOpen, onClose, runId]);
 
   if (!runId) return null;
 
@@ -72,7 +83,7 @@ export function RunDetailModal({ runId, onClose }: RunDetailModalProps) {
       className="rv-run-modal-overlay"
       data-testid="run-detail-modal-overlay"
       onClick={(event) => {
-        if (event.target === event.currentTarget && !claimModalOpen) onClose();
+        if (event.target === event.currentTarget && !claimModalOpen && !detailModalOpen) onClose();
       }}
       role="presentation"
     >
@@ -165,6 +176,7 @@ export function RunDetailModal({ runId, onClose }: RunDetailModalProps) {
               mode="modal"
               onTabChange={handleTabChange}
               onOpenProvenance={handleOpenProvenance}
+              onExpandNode={handleExpandNode}
             />
 
             <ProvenanceModal
@@ -173,6 +185,12 @@ export function RunDetailModal({ runId, onClose }: RunDetailModalProps) {
               stacked
               onOpenChange={setClaimModalOpen}
               onChainClick={setSelectedClaimId}
+            />
+
+            <DetailModal
+              payload={detailModalPayload}
+              stacked
+              onClose={() => setDetailModalPayload(null)}
             />
           </>
         )}

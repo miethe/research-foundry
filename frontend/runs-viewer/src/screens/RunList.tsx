@@ -400,6 +400,10 @@ export function RunListScreen() {
                       setSelectedRunId(runId);
                       setModalRunId(runId);
                     }}
+                    onExpandRun={(runId) => {
+                      setSelectedRunId(runId);
+                      setModalRunId(runId);
+                    }}
                   />
                 </li>
               ))}
