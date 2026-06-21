@@ -352,6 +352,29 @@ export interface RFRunExport {
    * Null when no source cards are present.
    */
   source_count_by_type?:     Record<string, number> | null;
+
+  /**
+   * Reusable output candidates from the backlog idea's intenttree block.
+   * Threaded by F5 Phase 7 (run-metadata-enrichment). Absent/null on pre-F5 exports.
+   * Consumers MUST treat this field as optional and guard every access.
+   */
+  reusable_output_candidates?: ReusableOutputCandidate[] | null;
+}
+
+// ── Reusable Output Candidate (F5/P7, schema 1.2+) ──────────────────────────
+
+/**
+ * A single reusable output candidate surfaced from the backlog idea's intenttree block.
+ * Threaded into RFRunExport by F5 Phase 7. All fields except `description` are optional
+ * because older export runs will not have populated them.
+ */
+export interface ReusableOutputCandidate {
+  /** Short description of the reusable output. */
+  description: string;
+  /** When true, this candidate is labeled as a SkillBOM candidate in the Library view. */
+  is_skillbom_candidate?: boolean;
+  /** The run_id that produced this candidate (may differ from the current run in aggregated views). */
+  source_run_id?: string;
 }
 
 // ── Run Summary (from `rf run list --json`) ──────────────────────────────────

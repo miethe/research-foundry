@@ -2,7 +2,7 @@
 title: "Feature Contract: Library Tab — Reusable Outputs & Writeback Artifacts Index"
 schema_version: 2
 doc_type: feature_contract
-status: ready
+status: completed
 created: 2026-06-20
 updated: 2026-06-21
 feature_slug: "viewer-tab-library"
@@ -28,7 +28,16 @@ prd_ref: docs/project_plans/PRDs/features/enable-disabled-viewer-tabs-epic-v1.md
 plan_ref: null
 commit_refs: []
 pr_refs: []
-files_affected: []
+files_affected:
+  - frontend/runs-viewer/src/types/rf/run-export.ts
+  - frontend/runs-viewer/src/types/rf/index.ts
+  - frontend/runs-viewer/src/app/AppShell.tsx
+  - frontend/runs-viewer/src/app/routes.tsx
+  - frontend/runs-viewer/src/app/App.tsx
+  - frontend/runs-viewer/src/screens/LibraryScreen.tsx
+  - frontend/runs-viewer/src/styles/library.css
+  - frontend/runs-viewer/src/styles/index.css
+  - frontend/runs-viewer/src/test/g4-library.test.tsx
 depends_on: [run-metadata-enrichment]
 ---
 

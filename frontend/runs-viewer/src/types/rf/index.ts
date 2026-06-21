@@ -35,6 +35,7 @@ export type {
   RFRunWritebacksSummary,
   RFRunExport,
   RFRunSummary,
+  ReusableOutputCandidate,
 } from "./run-export.js";
 
 // Auto-generated schema types (run `pnpm codegen` to regenerate)

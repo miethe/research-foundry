@@ -18,6 +18,7 @@ import { HelpScreen } from "@/screens/HelpScreen";
 import { AlertsFeed } from "@/screens/AlertsFeed";
 import { SwarmScreen } from "@/screens/SwarmScreen";
 import { PoliciesScreen } from "@/screens/PoliciesScreen";
+import { LibraryScreen } from "@/screens/LibraryScreen";
 
 const router = createBrowserRouter([
   {
@@ -31,7 +32,8 @@ const router = createBrowserRouter([
       { path: "settings",                element: <SettingsScreen /> },
       { path: "help",                    element: <HelpScreen /> },
       { path: "alerts",                  element: <AlertsFeed /> },
-      { path: "policies",               element: <PoliciesScreen /> },
+      { path: "policies",                element: <PoliciesScreen /> },
+      { path: "library",                 element: <LibraryScreen /> },
     ],
   },
 ]);
