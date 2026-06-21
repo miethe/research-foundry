@@ -26,8 +26,9 @@ export interface LedgerFacetState {
 }
 
 export interface LedgerFacetsProps {
-  claims:     RFClaim[];
-  onFiltered: (filtered: RFClaim[]) => void;
+  claims:        RFClaim[];
+  onFiltered:    (filtered: RFClaim[]) => void;
+  onFacetChange?: (facets: LedgerFacetState) => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -131,7 +132,7 @@ function FacetGroup({ label, testId, options, active, counts, onToggle }: FacetG
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function LedgerFacets({ claims, onFiltered }: LedgerFacetsProps) {
+export function LedgerFacets({ claims, onFiltered, onFacetChange }: LedgerFacetsProps) {
   const [facets, setFacets] = useState<LedgerFacetState>(emptyFacets);
 
   // Recompute counts from the FULL claims set (not filtered)
@@ -150,6 +151,7 @@ export function LedgerFacets({ claims, onFiltered }: LedgerFacetsProps) {
   // Notify parent whenever facets change
   useEffect(() => {
     onFiltered(applyFacets(claims, facets));
+    onFacetChange?.(facets);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facets, claims]);
 

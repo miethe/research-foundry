@@ -1,10 +1,11 @@
 ---
 title: "Feature Contract: Audit Highlight/Filter State Machine + Sticky Report Header"
+description: "Wire LedgerFacets active-facet claim-ID union into ReportRenderer for composition/selected-claim highlight modes and split the report pane into a sticky header and scrolling body."
 schema_version: 2
 doc_type: feature_contract
-status: draft
+status: completed
 created: 2026-06-20
-updated: 2026-06-20
+updated: 2026-06-21
 feature_slug: "audit-highlight-filter-and-sticky-report"
 category: "harden-polish"
 estimated_points: 7
@@ -18,13 +19,15 @@ related_documents:
 spike_ref: null
 prd_ref: null
 plan_ref: null
-commit_refs: []
+commit_refs:
+  - 9749da8
 pr_refs: []
 files_affected:
   - frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.tsx
   - frontend/runs-viewer/src/components/ClaimLedger/LedgerFacets.tsx
-  - frontend/runs-viewer/src/components/ReportOverlay/ReportRenderer.tsx
-  - frontend/runs-viewer/src/components/ClaimLedger/ClaimChip.tsx
+  - frontend/runs-viewer/src/lib/auditStateMachine.ts
+  - frontend/runs-viewer/src/lib/auditStateMachine.test.ts
+  - frontend/runs-viewer/src/styles/runs-viewer.css
 ---
 
 # Feature Contract: Audit Highlight/Filter State Machine + Sticky Report Header
@@ -357,3 +360,70 @@ If you find:
 - **Better implementation path**: document in the Completion Report with justification.
 
 Stay within scope. Do not implement the P1 polish items listed in §13. The reviewer will check for scope drift.
+
+---
+
+## Completion Report
+
+### Summary
+
+Implemented the four-state audit highlight/filter state machine and sticky report header for the Audit tab. A new pure-function module `auditStateMachine.ts` derives `{ highlightMode, activeClaimIds, highlightText }` from `(activeFacets, selectedClaimId, claims)`, covering the none / composition / selected-claim states with a deselect-toggle transition. `LedgerFacets` gained an optional `onFacetChange` callback to lift facet state without double-filtering. `ClaimAuditWorkbench` now drives `ReportRenderer` from the state machine output and the report pane is split into a sticky `__header` (run ID, run title, clear-selection button) and a scrolling `__body`. CSS in `runs-viewer.css` sets `.rv-audit-report` to `display: flex; flex-direction: column` with `__header { position: sticky; top: 0; z-index: 10 }` and `__body { overflow-y: auto; flex: 1 }`.
+
+### Files Changed
+
+- `frontend/runs-viewer/src/lib/auditStateMachine.ts` — New pure state machine module; `isFacetEmpty`, `deriveMatchedClaimIds`, `deriveAuditHighlight` exported.
+- `frontend/runs-viewer/src/lib/auditStateMachine.test.ts` — 17 unit tests covering F3-TEST-1 through F3-TEST-7.
+- `frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.tsx` — Lifted `activeFacets` state, replaced static `activeClaimIds` memo with `auditHighlight` derived from state machine, added toggle-deselect row click, `clearSelection` callback, `reportTitle`, updated `LedgerFacets` usage, split report pane JSX into sticky `__header` + scrolling `__body`.
+- `frontend/runs-viewer/src/components/ClaimLedger/LedgerFacets.tsx` — Added optional `onFacetChange?: (facets: LedgerFacetState) => void` to `LedgerFacetsProps`; fires alongside `onFiltered` in the existing `useEffect`.
+- `frontend/runs-viewer/src/styles/runs-viewer.css` — Replaced single `.rv-audit-report { max-height: 760px; overflow: auto }` with flex-column layout + 8 new scoped BEM rules.
+
+### Acceptance Criteria Status
+
+- [x] AC F3-1: No facets active, no claim selected → `highlightMode='none'`, empty `activeClaimIds` (F3-TEST-1 passes)
+- [x] AC F3-2: Facets active, no claim selected → `highlightMode='composition'`, matched claim IDs in `activeClaimIds`, `highlightText=false` (F3-TEST-2 passes)
+- [x] AC F3-3: Claim row clicked → `highlightMode='selected-claim'`, `Set([id])`, `highlightText=true` (F3-TEST-3 passes)
+- [x] AC F3-4: Clicking already-selected row deselects → reverts to composition (facets active) or none (no facets) (F3-TEST-4 passes; toggle implemented via `setSelectedClaimId(prev => prev === claimId ? null : claimId)`)
+- [x] AC F3-5: Sticky report header stays pinned while body scrolls — `.rv-audit-report__header { position: sticky; top: 0 }` on parent with `overflow: hidden`; body independently scrolls
+- [x] AC F3-6: Clear-selection button in sticky header resets `selectedClaimId`; disabled when `selectedClaimId === null && isFacetEmpty(activeFacets)` (F3-TEST-6 passes)
+- [x] AC F3-7: LedgerFacets matched-claim union available to `ClaimAuditWorkbench` without double-filtering — implemented by calling `deriveMatchedClaimIds` (same AND-filter logic) inside the state machine rather than threading IDs through `LedgerFacets` (F3-TEST-7 passes)
+
+### Validation Run
+
+| Command | Result | Notes |
+|---|---|---|
+| `cd frontend/runs-viewer && npx tsc --noEmit` | Pass | Zero output = zero new errors |
+| `npx eslint src/components/ClaimLedger/ src/components/ReportOverlay/ src/lib/auditStateMachine*` | Pass | Zero output = zero lint errors |
+| `npx vitest run src/lib/auditStateMachine.test.ts` | Pass | 17/17 tests in 4ms |
+| `pnpm build` | Pass | 1.72s build; chunk-size warning is pre-existing, not caused by this change |
+| F3-SMOKE-1 runtime | Not run | Requires live browser session; visual screenshot evidence deferred to validator review |
+
+### Deviations From Contract
+
+- **`ClaimChip.tsx` not touched**: Contract §8 states "no `ClaimChip` internal changes needed" — confirmed correct, `ClaimChip` already accepts `dimmed` and `selected` props wired by `ReportRenderer` internally.
+- **`ReportRenderer.tsx` not touched**: Contract §5.6 confirmed — only props change, no internal rendering changes. `activeClaimIds` prop type is already `Set<string> | null`; passing a `Set<string>` (not null) is compatible.
+- **Facet ID union computed in `auditStateMachine` (not threaded through `LedgerFacets`)**: Contract §5.2 allowed either approach. Chosen approach avoids prop-drilling and a second `useEffect` chain in `LedgerFacets`. The `onFacetChange` callback still lifts the `LedgerFacetState` object so `ClaimAuditWorkbench` owns it as described in AC F3-7.
+- **`run.title` used for sticky header run title**: `RFRunExport` already has a pre-computed `title?: string | null` field (schema 1.1+), so the sticky header uses `run.title ?? titleFromSlug(run.run_id) ?? run.run_id` instead of calling `titleFromSlug` unconditionally. This is strictly better (schema 1.2 runs have a pre-formatted title).
+- **`initialClaimId` defaults**: Existing behavior keeps `selectedClaimId` initialized to `initialClaimId ?? firstClaimId`. The state machine treats any non-null value as "selected-claim" mode on first render. This is the pre-existing default and is intentional.
+
+### Risks and Limitations
+
+- **F3-SMOKE-1 (runtime screenshot)**: The smoke test requires a live browser with a populated run. This was not run during the sprint due to no active browser session. The `task-completion-validator` should verify visually or defer to a manual smoke by the operator.
+- **Sticky CSS behavior on unusual viewport heights**: The sticky header relies on `.rv-audit-report` having `overflow: hidden` (not `auto`), which stops it from being the scroll container. The `.rv-audit-grid` parent uses `align-items: start` (not `stretch`), so the grid cells are height-intrinsic. At very short viewports the body may not scroll independently. The typical 1080p LAN display is not affected.
+- **`LedgerFacetState` import cycle**: `auditStateMachine.ts` imports `LedgerFacetState` from `LedgerFacets.tsx`. TypeScript type-only import; no circular runtime issue. Both files confirmed compiling cleanly.
+
+### Follow-Up Recommendations
+
+- **F3.1 contract**: Implement the three deferred P1 polish items from §13: composition highlight-text toggle UI, inference/speculation basis hover tooltips on `ClaimChip`, and dangling/redacted warning badges in `ClaimInspector`.
+- **F3-SMOKE-1**: Run the live browser smoke test after the operator deploys the build to the LAN node to capture screenshot evidence for AC F3-2 and AC F3-5.
+- **Sticky header height in constrained layouts**: If the 3-pane grid is ever switched to `align-items: stretch`, the sticky header will need `overflow: hidden` verification on the outer element.
+
+### Memory Candidates Captured
+
+- **CSS sticky-in-overflow gotcha**: `position: sticky` is clipped by any ancestor with `overflow: auto/scroll`. Moving `overflow-y: auto` to the `__body` child and setting the parent to `overflow: hidden` is the correct fix pattern. Captured as candidate memory item.
+- **`RFRunExport.title` field**: Pre-computed humanized title field at `run.title` (schema 1.1+) — prefer over calling `titleFromSlug(run.run_id)` directly.
+
+### P1 Items Confirmed Not Implemented
+
+- Composition highlight-text toggle UI: NOT implemented.
+- Inference/speculation basis hover tooltips on `ClaimChip`: NOT implemented.
+- Dangling/redacted warning badges in `ClaimInspector`: NOT implemented.

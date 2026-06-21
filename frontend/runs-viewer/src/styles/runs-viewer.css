@@ -2119,7 +2119,57 @@ button.active .rv-tab-count {
 
 .rv-audit-report {
   max-height: 760px;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rv-audit-report__header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--it-surface-bg, var(--it-bg-primary, #fff));
+  border-bottom: 1px solid var(--it-border-subtle, rgba(0,0,0,0.08));
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rv-audit-report__header .rv-pane-title {
+  margin-bottom: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.rv-audit-report__run-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--it-text-tertiary);
+  font-size: var(--it-text-xs);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.rv-audit-report__run-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rv-audit-report__clear-btn {
+  flex-shrink: 0;
+}
+
+.rv-audit-report__body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .rv-claim-inspector {

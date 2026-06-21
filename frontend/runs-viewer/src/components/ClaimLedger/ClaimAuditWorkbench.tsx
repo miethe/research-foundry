@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RFClaim, RFRunExport } from "@/types/rf";
-import { deriveClaimTitle, deriveReportLocationTitle, deriveSourceTitle, shouldRedactSource } from "@/lib/runs";
+import { deriveClaimTitle, deriveReportLocationTitle, deriveSourceTitle, shouldRedactSource, titleFromSlug } from "@/lib/runs";
+import { deriveAuditHighlight, isFacetEmpty } from "@/lib/auditStateMachine";
+import type { LedgerFacetState } from "@/components/ClaimLedger/LedgerFacets";
 import { ClaimLedgerTable } from "./ClaimLedgerTable";
 import { LedgerFacets } from "./LedgerFacets";
 import { ProvenanceModal } from "@/components/ProvenanceModal/ProvenanceModal";
@@ -23,6 +25,9 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(initialClaimId ?? firstClaimId);
   const [filteredClaims, setFilteredClaims] = useState<RFClaim[]>(run.claims);
   const [detailModalPayload, setDetailModalPayload] = useState<DetailModalPayload | null>(null);
+  const [activeFacets, setActiveFacets] = useState<LedgerFacetState>({
+    status: new Set(), materiality: new Set(), claim_type: new Set(), confidence: new Set(),
+  });
 
   useEffect(() => {
     setFilteredClaims(run.claims);
@@ -40,15 +45,26 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
     [run.claims, selectedClaimId],
   );
 
-  const activeClaimIds = useMemo(
-    () => selectedClaimId ? new Set([selectedClaimId]) : null,
-    [selectedClaimId],
+  // Derive the state machine output (highlight mode, active IDs, text flag)
+  const auditHighlight = useMemo(
+    () => deriveAuditHighlight(activeFacets, selectedClaimId, run.claims),
+    [activeFacets, selectedClaimId, run.claims],
   );
 
   const selectClaim = useCallback((claimId: string) => {
-    setSelectedClaimId(claimId);
-    onClaimChange?.(claimId);
+    // Toggle: clicking the already-selected claim deselects it
+    setSelectedClaimId((prev) => {
+      const next = prev === claimId ? null : claimId;
+      if (next !== null) onClaimChange?.(next);
+      return next;
+    });
   }, [onClaimChange]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedClaimId(null);
+  }, []);
+
+  const reportTitle = run.title ?? titleFromSlug(run.run_id) ?? run.run_id;
 
   const openClaimModal = useCallback((claimId: string) => {
     if (onOpenProvenance) onOpenProvenance(claimId);
@@ -88,7 +104,7 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
             <h3>Ledger</h3>
             <span>{filteredClaims.length} of {run.claims.length}</span>
           </div>
-          <LedgerFacets claims={run.claims} onFiltered={setFilteredClaims} />
+          <LedgerFacets claims={run.claims} onFiltered={setFilteredClaims} onFacetChange={setActiveFacets} />
           <ClaimLedgerTable
             claims={filteredClaims}
             selectedClaimId={selectedClaimId}
@@ -98,20 +114,36 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
         </aside>
 
         <main className="rv-audit-report it-card" aria-label="Report">
-          <div className="rv-pane-title">
-            <h3>Report</h3>
-            <span>{selectedClaimId ? `Selected ${selectedClaimId}` : "No claim selected"}</span>
+          <div className="rv-audit-report__header">
+            <div className="rv-pane-title">
+              <h3>Report</h3>
+              <span className="rv-audit-report__run-meta">
+                <code>{run.run_id}</code>
+                {reportTitle && <span className="rv-audit-report__run-title">{reportTitle}</span>}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="it-btn ghost xs rv-audit-report__clear-btn"
+              aria-label="Clear claim selection"
+              disabled={selectedClaimId === null && isFacetEmpty(activeFacets)}
+              onClick={clearSelection}
+            >
+              Clear
+            </button>
           </div>
-          <ReportRenderer
-            markdown={run.report_draft ?? ""}
-            claims={run.claims}
-            selectedClaimId={selectedClaimId}
-            activeClaimIds={activeClaimIds}
-            highlightMode="selected-claim"
-            highlightText
-            onClaimSelect={(claimId) => selectClaim(claimId)}
-            compact
-          />
+          <div className="rv-audit-report__body">
+            <ReportRenderer
+              markdown={run.report_draft ?? ""}
+              claims={run.claims}
+              selectedClaimId={selectedClaimId}
+              activeClaimIds={auditHighlight.activeClaimIds}
+              highlightMode={auditHighlight.highlightMode}
+              highlightText={auditHighlight.highlightText}
+              onClaimSelect={(claimId) => selectClaim(claimId)}
+              compact
+            />
+          </div>
         </main>
 
         <ClaimInspector
