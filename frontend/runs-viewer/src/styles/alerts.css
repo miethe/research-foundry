@@ -1,0 +1,196 @@
+/* ============================================================================
+   Alerts feed screen — BEM rv-alerts* classes.
+   Uses only existing --it-* design tokens from tokens.css.
+   Imported via src/styles/index.css after help.css.
+   ============================================================================ */
+
+.rv-alerts {
+  max-width: 860px;
+  padding: var(--it-space-8) var(--it-space-6);
+  margin: 0 auto;
+}
+
+.rv-alerts__title {
+  font-size: var(--it-text-2xl);
+  font-weight: var(--it-weight-bold);
+  letter-spacing: var(--it-tracking-tight);
+  color: var(--it-text-primary);
+  margin: 0 0 var(--it-space-8);
+}
+
+/* ── Loading state ── */
+
+.rv-alerts__loading {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-3);
+  color: var(--it-text-secondary);
+  font-size: var(--it-text-sm);
+  padding: var(--it-space-6) 0;
+}
+
+.rv-alerts__spinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--it-border-soft);
+  border-top-color: var(--it-blue-500);
+  border-radius: 50%;
+  animation: rv-spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes rv-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Empty state ── */
+
+.rv-alerts__empty {
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-lg);
+  padding: var(--it-space-10) var(--it-space-6);
+  text-align: center;
+  color: var(--it-text-secondary);
+  font-size: var(--it-text-base);
+  box-shadow: var(--it-shadow-xs);
+}
+
+.rv-alerts__empty-icon {
+  font-size: 2rem;
+  margin-bottom: var(--it-space-3);
+  display: block;
+  line-height: 1;
+}
+
+.rv-alerts__empty-message {
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-primary);
+  margin: 0 0 var(--it-space-1);
+}
+
+.rv-alerts__empty-sub {
+  margin: 0;
+  font-size: var(--it-text-sm);
+}
+
+/* ── Alert card ── */
+
+.rv-alert-card {
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-lg);
+  padding: var(--it-space-5) var(--it-space-6);
+  margin-bottom: var(--it-space-4);
+  box-shadow: var(--it-shadow-xs);
+}
+
+.rv-alert-card--error {
+  border-color: var(--it-border-soft);
+  opacity: 0.7;
+}
+
+.rv-alert-card__header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--it-space-3);
+  margin-bottom: var(--it-space-4);
+  flex-wrap: wrap;
+}
+
+.rv-alert-card__title {
+  font-size: var(--it-text-base);
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-primary);
+  margin: 0;
+  line-height: var(--it-leading-snug);
+}
+
+.rv-alert-card__run-id {
+  font-family: var(--it-font-mono, monospace);
+  font-size: var(--it-text-xs);
+  background: var(--it-bg-canvas);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-xs);
+  padding: 1px var(--it-space-1_5);
+  color: var(--it-text-secondary);
+  white-space: nowrap;
+}
+
+/* ── Signal list ── */
+
+.rv-alert-card__signals {
+  list-style: none;
+  margin: 0 0 var(--it-space-4);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1_5);
+}
+
+.rv-alert-card__signal {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-2);
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+}
+
+.rv-alert-card__signal-badge {
+  font-weight: var(--it-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--it-text-primary);
+  min-width: 1.5rem;
+  text-align: right;
+}
+
+.rv-alert-card__signal--critical .rv-alert-card__signal-badge {
+  color: var(--it-red-500, #ef4444);
+}
+
+.rv-alert-card__signal--warning .rv-alert-card__signal-badge {
+  color: var(--it-amber-500, #f59e0b);
+}
+
+.rv-alert-card__signal-label {
+  color: var(--it-text-secondary);
+}
+
+/* ── Footer / action ── */
+
+.rv-alert-card__footer {
+  padding-top: var(--it-space-3);
+  border-top: 1px solid var(--it-border-subtle);
+}
+
+.rv-alert-card__view-link {
+  font-size: var(--it-text-sm);
+  color: var(--it-blue-500);
+  text-decoration: none;
+  font-weight: var(--it-weight-medium);
+}
+
+.rv-alert-card__view-link:hover {
+  text-decoration: underline;
+}
+
+.rv-alert-card__unavailable {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-tertiary);
+  font-style: italic;
+}
+
+/* ── Feed container ── */
+
+.rv-alerts__feed {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 768px) {
+  .rv-alerts {
+    padding: var(--it-space-6) var(--it-space-4);
+  }
+}

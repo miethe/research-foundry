@@ -15,6 +15,7 @@ import { RunListScreen } from "@/screens/RunList";
 import { RunDetailScreen } from "@/screens/RunDetail";
 import { SettingsScreen } from "@/screens/SettingsScreen";
 import { HelpScreen } from "@/screens/HelpScreen";
+import { AlertsFeed } from "@/screens/AlertsFeed";
 
 const router = createBrowserRouter([
   {
@@ -26,6 +27,7 @@ const router = createBrowserRouter([
       { path: "runs/:runId",  element: <RunDetailScreen /> },
       { path: "settings",     element: <SettingsScreen /> },
       { path: "help",          element: <HelpScreen /> },
+      { path: "alerts",        element: <AlertsFeed /> },
     ],
   },
 ]);

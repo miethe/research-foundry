@@ -1,12 +1,12 @@
 ---
-title: "Feature Contract: Alerts Tab — Cross-Run Attention Feed"
+title: "Feature Contract: Alerts Tab \u2014 Cross-Run Attention Feed"
 schema_version: 2
 doc_type: feature_contract
-status: ready
+status: completed
 created: 2026-06-20
-updated: 2026-06-21
-feature_slug: "viewer-tab-alerts"
-category: "features"
+updated: '2026-06-21'
+feature_slug: viewer-tab-alerts
+category: features
 estimated_points: 5
 tier: 1
 owner: nick
@@ -14,15 +14,17 @@ priority: medium
 risk_level: low
 changelog_required: false
 related_documents:
-  - docs/project_plans/PRDs/features/enable-disabled-viewer-tabs-epic-v1.md
-  - docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
+- docs/project_plans/PRDs/features/enable-disabled-viewer-tabs-epic-v1.md
+- docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
 spike_ref: null
 prd_ref: docs/project_plans/PRDs/features/enable-disabled-viewer-tabs-epic-v1.md
 plan_ref: null
 commit_refs: []
 pr_refs: []
 files_affected: []
-audience: [ai-agents, developers]
+audience:
+- ai-agents
+- developers
 ---
 
 # Feature Contract: Alerts Tab — Cross-Run Attention Feed
@@ -397,3 +399,64 @@ This contract is your specification. Implement to satisfy the acceptance criteri
 - If a `run.json` fetch is slow or fails, degrade gracefully — do not block the entire feed.
 - Stay within scope. The reviewer will check for scope drift into F5 territory (new export fields,
   type changes) or F2 territory (modal expansion).
+
+---
+
+## Completion Report
+
+### Summary
+
+Implemented the Alerts tab (G3) end-to-end as a new `AlertsFeed` screen at `/alerts`. The screen fetches the run index and all per-run exports in parallel, calls `summarizeRunAttention()` for each, and progressively renders alert cards for runs with any non-zero signal. Clean runs are suppressed. A zero-alert empty state is shown when all runs are clean. Per-run fetch errors show a placeholder card without blocking the rest of the feed. All eight signal categories (failedChecks, warningChecks, unsupportedClaims, mixedClaims, danglingSources, redactedSources, emptyInferenceBasis, schemaMismatch) are displayed with human-readable labels.
+
+### Files Changed
+
+- `frontend/runs-viewer/src/app/AppShell.tsx` — enabled Alerts NAV_ITEM; added isActiveNav branch for /alerts
+- `frontend/runs-viewer/src/app/routes.tsx` — added "alerts" to RouteName union and ROUTES record
+- `frontend/runs-viewer/src/app/App.tsx` — registered /alerts route bound to AlertsFeed
+- `frontend/runs-viewer/src/screens/AlertsFeed.tsx` — new screen component (named export)
+- `frontend/runs-viewer/src/styles/alerts.css` — BEM rv-alerts* / rv-alert-card* styles using existing design tokens
+- `frontend/runs-viewer/src/styles/index.css` — added @import for alerts.css
+- `frontend/runs-viewer/src/test/g3-alerts.test.tsx` — 33 new tests covering all ACs
+
+### Acceptance Criteria Status
+
+- [x] AC G3-1: Alerts nav item is enabled and routes correctly — NAV_ITEMS entry has state: "enabled", resolveTarget: () => "/alerts"; /alerts registered in ROUTES and App.tsx
+- [x] AC G3-2: AlertsFeed screen renders inside AppShell at /alerts — route registered, named export consumed, renders within Outlet
+- [x] AC G3-3: Feed aggregates attention signals using summarizeRunAttention — all 8 signal categories rendered; per-run error shows placeholder; zero-signal runs suppressed
+- [x] AC G3-4: Empty state when no runs have alerts — "No attention signals — all runs look clean." panel shown when all fetches complete with zero alert runs
+- [x] AC G3-5: Run title display with fallback chain — deriveRunTitle(run) used, fallback to titleFromSlug(run.run_id); run_id chip always shown
+- [x] AC G3-6: "View run" navigation link per alert card — React Router Link to /runs/:runId with encodeURIComponent
+- [x] AC G3-7: Loading state while per-run fetches are in-flight — loading spinner shown during index and per-run fetches; progressive render supported
+- [x] AC G3-8: Runtime smoke — build passes with zero TypeScript errors; existing routes unaffected
+
+### Validation Run
+
+| Command | Result | Notes |
+|---|---|---|
+| `pnpm test` | Pass | 433/433 tests pass (17 test files) |
+| `pnpm lint` | Pass | 0 warnings, --max-warnings=0 |
+| `pnpm build` | Pass | tsc -b clean + vite build succeeds; chunk size warning is pre-existing (React Flow) |
+
+### Deviations From Contract
+
+- **Error placeholder behavior**: `fetchRunDetail` in `client.ts` has a built-in graceful fallback that returns an empty `RFRunExport` shape (with `schema_version: "1.0"`) rather than throwing on 404/static fetch error. Tests for the error path use `vi.spyOn(clientModule, "fetchRunDetail").mockRejectedValue(...)` to simulate loopback-mode network failures, which is the only realistic throw path. The error UI renders correctly in that scenario.
+- No other deviations from contract.
+
+### Risks and Limitations
+
+- **`needsHumanReview` deferred to F5**: `summarizeRunAttention` does not include a `needsHumanReview` field; this is intentional per contract §4 Out of Scope. Deferred to F5 metadata enrichment.
+- **Parallel fetch performance at scale**: all per-run `run.json` files are fetched in parallel on mount. With large portfolios (50+ runs) this could be slow. Mitigated by `Promise.allSettled` with progressive rendering. P1: cap to first N runs or paginate.
+- **404 static fetch errors swallowed by client**: `fetchRunDetail` returns a minimal empty run on 404 (schema_version: "1.0" → triggers schemaMismatch). This is consistent with existing client behavior for all other screens.
+
+### Follow-Up Recommendations
+
+- P1: `needsHumanReview` governance signal (pending F5 run-metadata-enrichment adding `requires_human_review` to `RFRunExport`)
+- P1: nav badge count showing number of alerted runs on the Alerts nav item
+- P1: per-RunCard alert indicator in the Portfolio view
+- P1: feed filtering/faceting by signal category
+- P1: cap parallel fetches or paginate for portfolios > 20 runs
+
+### Memory Candidates Captured
+
+- `fetchRunDetail` in `client.ts` has a built-in graceful fallback on 404 — returns empty `RFRunExport` with `schema_version: "1.0"` rather than throwing. Tests for the error path must mock at the module level (`vi.spyOn(clientModule, "fetchRunDetail")`).
+- Alert cards use `data-testid="alert-card"` for normal alert runs and `data-testid="alert-card-error"` for runs where `fetchRunDetail` threw; these are mutually exclusive.

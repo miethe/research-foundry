@@ -30,7 +30,7 @@ const NAV_ITEMS: NavCapability[] = [
   { label: "Library", short: "LB", state: "disabled", disabledReason: "Library route is not implemented." },
   { label: "Swarm", short: "SW", state: "disabled", disabledReason: "Swarm route is not implemented." },
   { label: "Policies", short: "PL", state: "disabled", disabledReason: "Policies route is not implemented." },
-  { label: "Alerts", short: "AL", state: "disabled", disabledReason: "Alerts route is not implemented." },
+  { label: "Alerts", short: "AL", state: "enabled", resolveTarget: () => "/alerts" },
   { label: "Settings", short: "ST", state: "enabled", resolveTarget: () => "/settings" },
   { label: "Help", short: "HP", state: "enabled", resolveTarget: () => "/help" },
 ];
@@ -113,6 +113,7 @@ function isActiveNav(label: string, ctx: ShellNavContext): boolean {
   if (label === "Runs") return Boolean(ctx.routeRunId) && (ctx.view == null || ctx.view === "overview" || ctx.view === "trust" || ctx.view === "lineage" || ctx.view === "writeback");
   if (label === "Reports") return Boolean(ctx.routeRunId) && ctx.view === "report";
   if (label === "Ledger") return Boolean(ctx.routeRunId) && (ctx.view === "audit" || ctx.view === "ledger");
+  if (label === "Alerts") return ctx.pathname === "/alerts";
   if (label === "Settings") return ctx.pathname === "/settings";
   if (label === "Help") return ctx.pathname === "/help";
   return false;
