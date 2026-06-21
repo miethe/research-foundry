@@ -1,0 +1,152 @@
+/* ============================================================================
+   Help screen — BEM rv-help* classes.
+   Uses only existing --it-* design tokens from tokens.css.
+   Imported via src/styles/index.css after settings.css.
+   ============================================================================ */
+
+.rv-help {
+  max-width: 720px;
+  padding: var(--it-space-8) var(--it-space-6);
+  margin: 0 auto;
+}
+
+.rv-help__title {
+  font-size: var(--it-text-2xl);
+  font-weight: var(--it-weight-bold);
+  letter-spacing: var(--it-tracking-tight);
+  color: var(--it-text-primary);
+  margin: 0 0 var(--it-space-8);
+}
+
+/* ── Section card ── */
+
+.rv-help__section {
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-lg);
+  padding: var(--it-space-6);
+  margin-bottom: var(--it-space-5);
+  box-shadow: var(--it-shadow-xs);
+}
+
+.rv-help__section-title {
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+  margin: 0 0 var(--it-space-4);
+}
+
+/* ── About text ── */
+
+.rv-help__about-text {
+  font-size: var(--it-text-base);
+  color: var(--it-text-secondary);
+  line-height: var(--it-leading-normal);
+  margin: 0;
+}
+
+/* ── Shortcuts table ── */
+
+.rv-help__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--it-text-sm);
+}
+
+.rv-help__table th {
+  text-align: left;
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-secondary);
+  padding: var(--it-space-2) var(--it-space-3);
+  border-bottom: 1px solid var(--it-border-soft);
+}
+
+.rv-help__table td {
+  padding: var(--it-space-2) var(--it-space-3);
+  color: var(--it-text-primary);
+  border-bottom: 1px solid var(--it-border-subtle);
+}
+
+.rv-help__table tr:last-child td {
+  border-bottom: none;
+}
+
+.rv-help__kbd {
+  display: inline-block;
+  font-family: var(--it-font-mono, monospace);
+  font-size: var(--it-text-xs);
+  background: var(--it-bg-canvas);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-xs);
+  padding: 1px var(--it-space-1_5);
+  color: var(--it-text-primary);
+}
+
+/* ── Glossary ── */
+
+.rv-help__glossary {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rv-help__glossary-item {
+  padding: var(--it-space-3) 0;
+  border-bottom: 1px solid var(--it-border-subtle);
+}
+
+.rv-help__glossary-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.rv-help__term {
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-primary);
+  font-size: var(--it-text-base);
+}
+
+.rv-help__definition {
+  color: var(--it-text-secondary);
+  font-size: var(--it-text-sm);
+  line-height: var(--it-leading-normal);
+  margin-top: var(--it-space-0_5);
+}
+
+/* ── Links ── */
+
+.rv-help__links-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+}
+
+.rv-help__link {
+  color: var(--it-blue-500);
+  font-size: var(--it-text-sm);
+  text-decoration: none;
+}
+
+.rv-help__link:hover {
+  text-decoration: underline;
+}
+
+.rv-help__link-note {
+  display: inline;
+  font-size: var(--it-text-xs);
+  color: var(--it-text-tertiary);
+  margin-left: var(--it-space-2);
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 768px) {
+  .rv-help {
+    padding: var(--it-space-6) var(--it-space-4);
+  }
+}

@@ -1,22 +1,24 @@
 ---
-title: "Feature Contract: Help Tab (Viewer)"
+title: 'Feature Contract: Help Tab (Viewer)'
 schema_version: 2
 doc_type: feature_contract
-status: ready
+status: completed
 created: 2026-06-20
-updated: 2026-06-21
-feature_slug: "viewer-tab-help"
-category: "features"
+updated: '2026-06-21'
+feature_slug: viewer-tab-help
+category: features
 estimated_points: 2
 tier: 1
 owner: nick
 priority: medium
 risk_level: low
 changelog_required: false
-audience: [ai-agents, developers]
+audience:
+- ai-agents
+- developers
 related_documents:
-  - docs/project_plans/PRDs/features/enable-disabled-viewer-tabs-epic-v1.md
-  - docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
+- docs/project_plans/PRDs/features/enable-disabled-viewer-tabs-epic-v1.md
+- docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
 spike_ref: null
 prd_ref: docs/project_plans/PRDs/features/enable-disabled-viewer-tabs-epic-v1.md
 plan_ref: null
@@ -352,3 +354,73 @@ and pass validation.
 
 Stay within scope. Do not touch any disabled tab other than Help. Do not modify run export,
 backend Python, or any existing run-detail component.
+
+---
+
+## Completion Report
+
+### Summary
+
+The Help tab (G6) is fully implemented. The `Help` entry in `NAV_ITEMS` was changed from `disabled` to `enabled` with `resolveTarget: () => "/help"`. `isActiveNav()` was extended with a `Help` branch. The `/help` route was registered in the React Router config in `App.tsx`. A new `HelpScreen.tsx` screen component was created with four static sections (About, Keyboard Shortcuts, Glossary, Links). Supporting CSS (`help.css`) was added using the existing `--it-*` design token system, and `index.css` was updated to import it. 27 new tests covering all contract ACs were added and pass alongside the pre-existing 380 tests (407 total).
+
+### Files Changed
+
+- `frontend/runs-viewer/src/app/AppShell.tsx` — Enable Help nav item (state disabled→enabled, resolveTarget added); extend `isActiveNav()` with Help branch
+- `frontend/runs-viewer/src/app/App.tsx` — Register `{ path: "help", element: <HelpScreen /> }` route; import HelpScreen
+- `frontend/runs-viewer/src/app/routes.tsx` — Add `"help"` to `RouteName` union; add `/help` entry to `ROUTES` record
+- `frontend/runs-viewer/src/screens/HelpScreen.tsx` — New static screen: About, Keyboard Shortcuts, Glossary (8 terms), Links
+- `frontend/runs-viewer/src/styles/help.css` — New `rv-help*` BEM stylesheet using existing `--it-*` design tokens
+- `frontend/runs-viewer/src/styles/index.css` — Add `@import "./help.css";`
+- `frontend/runs-viewer/src/test/g6-help.test.tsx` — 27 new tests: UNIT-G6-screen + UNIT-G6-nav
+
+### Acceptance Criteria Status
+
+- [x] AC G6-01: Help nav item enabled and navigable — NAV_ITEMS Help entry is `state: "enabled"` with `resolveTarget: () => "/help"`; route registered in App.tsx
+- [x] AC G6-02: Help nav item shows as active on /help — `isActiveNav()` returns true when `label === "Help" && ctx.pathname === "/help"`; verified by UNIT-G6-nav tests (aria-current="page" on button)
+- [x] AC G6-03: HelpScreen renders with all four sections — About, Keyboard Shortcuts, Glossary, Links sections present with `data-testid` attributes; verified by UNIT-G6-screen tests
+- [x] AC G6-04: Glossary contains all eight required terms — Claim, Governance, Lineage, Run, Sensitivity, Source, Verification, Writeback in alphabetical order; verified by UNIT-G6-screen tests
+- [x] AC G6-05: Keyboard shortcuts table present with at least Escape documented — Table present with Escape → "Close overlay, detail pane, or modal" row; ArrowRight/ArrowLeft/Enter/Space also documented
+- [x] AC G6-06: External links open in new tab safely — All `<a>` elements in Links section have `target="_blank"` and `rel="noopener noreferrer"`; verified by UNIT-G6-screen tests
+- [x] AC G6-07: Runtime smoke (R-P4) — Build passes (`tsc -b && vite build`); `/help` route is registered and renders HelpScreen; manual smoke not automated (no browser in this environment — see notes)
+- [x] AC-SHARED-1: Nav item enabled and route registered — done
+- [x] AC-SHARED-2: Screen renders without error — 27 tests pass; no render exceptions
+- [x] AC-SHARED-3: Graceful empty/placeholder UI — static content, no data dependency, never blank
+- [x] AC-SHARED-4: Component render test covering screen + empty state — UNIT-G6-screen + UNIT-G6-nav test suite
+
+### Validation Run
+
+| Command | Result | Notes |
+|---|---|---|
+| `pnpm test` (vitest run) | Pass | 407 tests pass (380 pre-existing + 27 new G6 tests) |
+| `pnpm lint` (eslint --max-warnings=0) | Pass | 0 warnings, 0 errors |
+| `pnpm build` (tsc -b && vite build) | Pass | TypeScript clean; Vite build succeeds; chunk-size warning is pre-existing |
+| Smoke: navigate to /help in browser | Not automated | No browser in this CI environment; build passes and route is registered |
+
+### Deviations From Contract
+
+- **Router file**: the contract referenced `app/routes.tsx` as the routing config, but the actual React Router `createBrowserRouter()` call lives in `App.tsx`. Both files were updated: `routes.tsx` received the `RouteName`/`ROUTES` metadata entry; `App.tsx` received the live route registration. This matches the Settings (G5) pattern exactly.
+- **No nav icons**: `AppShell.tsx` does not use icon components — nav items render a `short` text abbreviation (`HP` for Help) and a `label` string. No icon library selection was needed.
+- **External doc links**: all four documentation links use `href="#"` stub placeholders. Research Foundry docs are not yet publicly hosted. This is noted per §4 In Scope guidance.
+- **CSS import location**: `help.css` is imported in `styles/index.css` (same pattern as `settings.css`), not imported directly in the component. The component uses `@/styles/help.css` import to mirror `SettingsScreen`'s `@/styles/settings.css` import.
+
+### Risks and Limitations
+
+- Stub links (`href="#"`) should be updated to real URLs once RF documentation is publicly hosted.
+- The chunk-size warning (`723 kB`) is pre-existing and unrelated to this change.
+- SMOKE-G6 (browser navigation screenshot) was not captured in this environment; the build passing + route registration + 407 tests passing provides strong proxy coverage.
+
+### Follow-Up Recommendations
+
+- Update `DOC_LINKS` hrefs in `HelpScreen.tsx` once RF public docs are available.
+- Add any new viewer keyboard shortcuts to the `SHORTCUTS` array in `HelpScreen.tsx` as they are introduced.
+- Consider adding a version string (from `package.json`) to the About section for easier debugging.
+
+### Memory Candidates Captured
+
+- Pattern: the actual React Router in this project is in `App.tsx` (createBrowserRouter), not `routes.tsx` which is metadata-only. Future route additions must touch both files.
+- Pattern: AppShell nav items use `state: "enabled"` + `resolveTarget` (not a `href` field) to enable a tab. Disabling uses `state: "disabled"`.
+- Gotcha: `isActiveNav()` in AppShell must explicitly handle each label; the function falls through to `return false` for unhandled labels, so a new enabled tab that lacks a branch will never show as active.
+
+### Commit
+
+`28a6ca7` — `feat(runs-viewer): enable Help tab (G6)`

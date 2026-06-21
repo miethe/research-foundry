@@ -7,6 +7,7 @@
 @import "./app.css";
 @import "./runs-viewer.css";
 @import "./settings.css";
+@import "./help.css";
 
 /* Accessibility — visually-hidden live regions for screen-reader status */
 .sr-only {

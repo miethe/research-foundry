@@ -14,6 +14,7 @@ import { AppShell } from "./AppShell";
 import { RunListScreen } from "@/screens/RunList";
 import { RunDetailScreen } from "@/screens/RunDetail";
 import { SettingsScreen } from "@/screens/SettingsScreen";
+import { HelpScreen } from "@/screens/HelpScreen";
 
 const router = createBrowserRouter([
   {
@@ -24,6 +25,7 @@ const router = createBrowserRouter([
       { path: "runs",         element: <RunListScreen /> },
       { path: "runs/:runId",  element: <RunDetailScreen /> },
       { path: "settings",     element: <SettingsScreen /> },
+      { path: "help",          element: <HelpScreen /> },
     ],
   },
 ]);

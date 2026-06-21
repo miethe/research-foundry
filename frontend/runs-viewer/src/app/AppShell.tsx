@@ -32,7 +32,7 @@ const NAV_ITEMS: NavCapability[] = [
   { label: "Policies", short: "PL", state: "disabled", disabledReason: "Policies route is not implemented." },
   { label: "Alerts", short: "AL", state: "disabled", disabledReason: "Alerts route is not implemented." },
   { label: "Settings", short: "ST", state: "enabled", resolveTarget: () => "/settings" },
-  { label: "Help", short: "HP", state: "disabled", disabledReason: "Help route is not implemented." },
+  { label: "Help", short: "HP", state: "enabled", resolveTarget: () => "/help" },
 ];
 
 export function AppShell() {
@@ -114,5 +114,6 @@ function isActiveNav(label: string, ctx: ShellNavContext): boolean {
   if (label === "Reports") return Boolean(ctx.routeRunId) && ctx.view === "report";
   if (label === "Ledger") return Boolean(ctx.routeRunId) && (ctx.view === "audit" || ctx.view === "ledger");
   if (label === "Settings") return ctx.pathname === "/settings";
+  if (label === "Help") return ctx.pathname === "/help";
   return false;
 }
