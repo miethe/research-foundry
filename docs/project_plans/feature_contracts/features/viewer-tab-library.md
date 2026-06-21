@@ -2,9 +2,9 @@
 title: "Feature Contract: Library Tab — Reusable Outputs & Writeback Artifacts Index"
 schema_version: 2
 doc_type: feature_contract
-status: draft
+status: ready
 created: 2026-06-20
-updated: 2026-06-20
+updated: 2026-06-21
 feature_slug: "viewer-tab-library"
 category: "features"
 estimated_points: 5

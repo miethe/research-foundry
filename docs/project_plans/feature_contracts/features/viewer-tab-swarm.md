@@ -2,9 +2,9 @@
 title: "Feature Contract: Swarm Tab — Visualize swarm_plan, Agents, and Routing Decision"
 schema_version: 2
 doc_type: feature_contract
-status: draft
+status: ready
 created: 2026-06-20
-updated: 2026-06-20
+updated: 2026-06-21
 feature_slug: "viewer-tab-swarm"
 category: "features"
 estimated_points: 5

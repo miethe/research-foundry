@@ -2,9 +2,9 @@
 title: "Enable Disabled Viewer Tabs — Sub-Epic Index"
 schema_version: 2
 doc_type: prd
-status: draft
+status: ready
 created: 2026-06-20
-updated: 2026-06-20
+updated: 2026-06-21
 feature_slug: enable-disabled-viewer-tabs
 feature_version: "v1"
 prd_ref: null
@@ -203,7 +203,19 @@ graph TD
 - G3 Alerts can run in parallel (uses existing `lib/runs.ts:summarizeRunAttention()` and current `run.json` fields)
 
 **Wave 2 (after F5 export enrichment lands):**
-- G1 Swarm, G2 Policies, G4 Library may run in parallel once F5 phase 4 (export threading) is complete
+- G1 Swarm, G2 Policies, G4 Library may run in parallel once the **Wave-2 Unblock Gate** (below) is satisfied.
+
+#### Wave-2 Unblock Gate (concrete milestone)
+
+Wave 2 is unblocked when **all** of the following hold:
+
+1. **F5 Phase 4 — "Export & FE Types"** (the serialization barrier; see `docs/project_plans/implementation_plans/features/run-metadata-enrichment-v1/phase-4-5-export-and-display.md`) is merged — this is the phase that threads the enriched fields into `RFRunExport`.
+2. **All runs are re-exported and the static bundle is rebuilt** (`public/data` regenerated via the viewer's static-data build). F5 code merged is *necessary but not sufficient* — the bundle must be rebuilt for the viewer to carry the new fields.
+3. **Verification (state-checkable):** a sample re-exported run's `RFRunExport` carries `context.swarm_plan` + `context.routing_decision` (→ G1 Swarm) and `governance.allowed_writebacks` + `governance.requires_human_review` (→ G2 Policies).
+
+**Gate owner:** `nick` (epic owner) confirms the re-export + bundle rebuild before dispatching Wave 2.
+
+**Library (G4) nuance:** G4's `reusable_output_candidates` data may land in F5 Phase 7 (Enrichment Extras, P1) rather than P4 core. G4 may still start at the P4 gate — its writeback/report sections are F5-independent and the reusable-outputs section degrades gracefully (empty state) until P7. Do not block G4 solely on P7.
 
 ---
 
@@ -242,6 +254,16 @@ Each child contract MUST include a runtime smoke task (R-P4 requirement) in its 
 3. Confirms the screen renders without console errors.
 4. Confirms the nav item highlights correctly.
 5. Confirms graceful empty state when data is absent.
+
+### Shared-File Integration Strategy (locked decision)
+
+The shared files `AppShell.tsx` (NAV_ITEMS) and `app/routes.tsx` are touched by every tab. **Locked strategy: parallel development + a single coordination commit per wave** — not sequential sprints, and not three independent piecemeal merges:
+
+1. Each tab sprint builds its screen component and its *own* NAV_ITEMS/route delta on a separate branch.
+2. Shared-file deltas are **not** merged piecemeal. After a wave's sprints complete, one **coordination commit** integrates all of that wave's NAV_ITEMS entries + route registrations in a single reviewed pass.
+3. Screen-component changes (new files only) may merge independently; only the shared-file edits funnel through the coordination commit.
+
+This keeps sprints parallel (fast) while confining the merge-conflict surface to one integration step per wave.
 
 ---
 
@@ -307,7 +329,7 @@ Each child contract MUST include a runtime smoke task (R-P4 requirement) in its 
 - Each tab is implemented as an independent Tier 1 sprint; no shared state management is required across tabs.
 - Wave 1 sprints (G5, G6, G3) may run fully in parallel with each other.
 - Wave 2 sprints (G1, G2, G4) may run fully in parallel with each other, provided they start after F5 export threading is complete.
-- Shared file conflicts (`AppShell.tsx`, `routes.tsx`) are the implementer's responsibility to resolve per-sprint or in a single integration pass.
+- Shared file conflicts (`AppShell.tsx`, `routes.tsx`) are resolved via the locked Shared-File Integration Strategy (§8): one coordination commit per wave, not per-sprint piecemeal merges.
 
 ---
 
@@ -315,7 +337,7 @@ Each child contract MUST include a runtime smoke task (R-P4 requirement) in its 
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|:------:|:----------:|------------|
-| Merge conflicts in `AppShell.tsx` and `routes.tsx` when 3 Wave 1 sprints run in parallel | Med | High | Run wave 1 sequentially OR integrate NAV_ITEMS + route entries in a single coordinator commit after individual screen components are built |
+| Merge conflicts in `AppShell.tsx` and `routes.tsx` when 3 Wave 1 sprints run in parallel | Med | High | **Locked:** parallel dev + single coordination commit per wave (see §8 → Shared-File Integration Strategy) — shared NAV_ITEMS/route deltas integrated in one reviewed pass, not piecemeal |
 | Wave 2 tabs silently break when F5 fields are absent (pre-enrichment runs) | Med | Med | Mandatory resilience AC per R-P2 in each Wave 2 contract; graceful empty state required |
 | `isActiveNav()` does not correctly highlight new tab routes | Low | Low | Each contract includes a smoke test step verifying nav highlight |
 | Child contract scope creep (e.g., Policies tab pulling in governance editing) | Med | Low | Scope boundaries explicit in each child contract; viewer is read-only — no mutations |
