@@ -767,6 +767,13 @@
   text-underline-offset: 3px;
 }
 
+.rv-table-run-id {
+  display: block;
+  font-size: 11px;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
 .rv-table-open {
   min-width: 54px;
 }

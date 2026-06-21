@@ -146,6 +146,7 @@ export function RunListScreen() {
 
       if (!normalized) return true;
       return [
+        card.title ?? "",
         card.run_id,
         card.status_derived,
         card.sensitivity ?? "",
@@ -570,7 +571,7 @@ function RunTable({
       <table className="rv-run-table">
         <thead>
           <tr>
-            <th>Run ID</th>
+            <th>Title</th>
             <th>Status</th>
             <th className="rv-run-table__col-project">Project</th>
             <th>Sensitivity</th>
@@ -597,11 +598,12 @@ function RunTable({
                     type="button"
                     className="rv-table-link"
                     aria-pressed={selectedRunId === run.run_id}
-                    aria-label={`Select run ${run.run_id}`}
+                    aria-label={`Select run ${run.title ?? titleFromSlug(run.run_id) ?? run.run_id}`}
                     onClick={() => onSelect(run.run_id)}
                   >
-                    {run.run_id}
+                    {run.title ?? titleFromSlug(run.run_id) ?? run.run_id}
                   </button>
+                  <span className="rv-muted rv-table-run-id">{run.run_id}</span>
                 </td>
                 <td><span className={`it-pill ${getRunBucket(run) === "failed" ? "blocked" : getRunBucket(run) === "planned" ? "idle" : "done"}`}>{STATUS_LABEL[run.status_derived]}</span></td>
                 <td className="rv-run-table__col-project" data-testid="run-table-project">
