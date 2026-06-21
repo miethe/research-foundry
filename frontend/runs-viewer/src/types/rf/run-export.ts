@@ -190,6 +190,10 @@ export interface RFGovernanceBlock {
   approved_for_writeback?:   boolean;
   approved_by?:              string | null;
   approval_timestamp?:       string | null;
+  /** AC-4: threaded from run.yaml governance.allowed_writebacks */
+  allowed_writebacks?:       string[] | null;
+  /** AC-4: threaded from run.yaml governance.requires_human_review */
+  requires_human_review?:    boolean | null;
 }
 
 // ── Timeline Event ───────────────────────────────────────────────────────────

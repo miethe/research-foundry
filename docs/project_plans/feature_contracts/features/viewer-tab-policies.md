@@ -2,7 +2,7 @@
 title: "Feature Contract: Policies Tab (Governance + Per-Run Governance)"
 schema_version: 2
 doc_type: feature_contract
-status: ready
+status: completed
 created: 2026-06-20
 updated: 2026-06-21
 feature_slug: "viewer-tab-policies"
@@ -24,7 +24,19 @@ prd_ref: docs/project_plans/PRDs/features/enable-disabled-viewer-tabs-epic-v1.md
 plan_ref: null
 commit_refs: []
 pr_refs: []
-files_affected: []
+files_affected:
+  - src/research_foundry/services/export_service.py
+  - frontend/runs-viewer/src/types/rf/run-export.ts
+  - frontend/runs-viewer/src/types/governance.ts
+  - frontend/runs-viewer/scripts/prebuild-static-data.mjs
+  - frontend/runs-viewer/src/api/client.ts
+  - frontend/runs-viewer/src/app/AppShell.tsx
+  - frontend/runs-viewer/src/app/routes.tsx
+  - frontend/runs-viewer/src/app/App.tsx
+  - frontend/runs-viewer/src/screens/PoliciesScreen.tsx
+  - frontend/runs-viewer/src/styles/policies.css
+  - frontend/runs-viewer/src/styles/index.css
+  - frontend/runs-viewer/src/test/g2-policies.test.tsx
 ---
 
 # Feature Contract: Policies Tab (Governance + Per-Run Governance)

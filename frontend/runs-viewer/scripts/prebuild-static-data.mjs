@@ -26,6 +26,7 @@ import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import yaml from "js-yaml";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // scripts/ → runs-viewer/ → frontend/ → runs-frontend-v1 (repo root for worktree)
@@ -109,4 +110,35 @@ for (const runId of runDirs) {
 const indexPath = join(PUBLIC_DATA_DIR, "index.json");
 writeFileSync(indexPath, JSON.stringify(summaries, null, 2));
 console.log(`[prebuild] Wrote index with ${summaries.length} run(s) → public/data/index.json`);
+
+// ── 5. Write governance.json from config/governance.yaml ─────────────────────
+// Reads config/governance.yaml (key_profiles + policy_rules) and writes
+// public/data/governance.json for the PoliciesScreen GlobalGovernancePanel.
+// On any read/parse error, writes {} so the fetch never 404s.
+
+const GOVERNANCE_YAML = join(REPO_ROOT, "config", "governance.yaml");
+const governancePath = join(PUBLIC_DATA_DIR, "governance.json");
+let governanceConfig = {};
+try {
+  if (existsSync(GOVERNANCE_YAML)) {
+    const raw = readFileSync(GOVERNANCE_YAML, "utf8");
+    const parsed = yaml.load(raw);
+    if (parsed && typeof parsed === "object") {
+      // Extract only the two viewer-relevant keys; ignore everything else.
+      const { key_profiles, policy_rules } = parsed;
+      governanceConfig = {
+        key_profiles: key_profiles ?? null,
+        policy_rules: policy_rules ?? null,
+      };
+    }
+  } else {
+    console.log("[prebuild] config/governance.yaml not found — writing empty governance.json");
+  }
+} catch (err) {
+  console.warn(`[prebuild] WARN: could not read/parse governance.yaml: ${err.message} — writing {}`);
+  governanceConfig = {};
+}
+
+writeFileSync(governancePath, JSON.stringify(governanceConfig, null, 2));
+console.log("[prebuild] Wrote governance config → public/data/governance.json");
 console.log("[prebuild] Static data pre-build complete.");

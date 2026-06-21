@@ -1,0 +1,202 @@
+/* ============================================================================
+   Policies screen — BEM rv-policies* classes.
+   Uses only existing --it-* design tokens from tokens.css.
+   ============================================================================ */
+
+.rv-policies {
+  max-width: 960px;
+  padding: var(--it-space-8) var(--it-space-6);
+  margin: 0 auto;
+}
+
+/* ── Header ── */
+
+.rv-policies__header {
+  margin: 0 0 var(--it-space-8);
+}
+
+.rv-policies__title {
+  font-size: var(--it-text-2xl);
+  font-weight: var(--it-weight-bold);
+  letter-spacing: var(--it-tracking-tight);
+  color: var(--it-text-primary);
+  margin: 0;
+}
+
+/* ── Section ── */
+
+.rv-policies__section {
+  margin-bottom: var(--it-space-8);
+}
+
+.rv-policies__section-title {
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+  margin: 0 0 var(--it-space-4);
+}
+
+/* ── Panel card ── */
+
+.rv-policies__panel {
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-lg);
+  padding: var(--it-space-6);
+  box-shadow: var(--it-shadow-xs);
+}
+
+.rv-policies__panel--empty {
+  /* minimal — holds placeholder only */
+}
+
+/* ── Muted placeholder ── */
+
+.rv-policies__muted {
+  color: var(--it-text-tertiary);
+  font-style: italic;
+  font-size: var(--it-text-sm);
+  margin: 0;
+}
+
+/* ── Subsection within panel ── */
+
+.rv-policies__subsection {
+  margin-bottom: var(--it-space-6);
+}
+
+.rv-policies__subsection:last-child {
+  margin-bottom: 0;
+}
+
+.rv-policies__subsection-title {
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+  margin: 0 0 var(--it-space-3);
+}
+
+/* ── Tables ── */
+
+.rv-policies__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--it-text-sm);
+}
+
+.rv-policies__table thead th {
+  text-align: left;
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+  padding: var(--it-space-2) var(--it-space-3) var(--it-space-2) 0;
+  border-bottom: 1px solid var(--it-border-soft);
+  white-space: nowrap;
+}
+
+.rv-policies__table tbody tr {
+  border-bottom: 1px solid var(--it-border-soft);
+}
+
+.rv-policies__table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.rv-policies__cell {
+  padding: var(--it-space-3) var(--it-space-3) var(--it-space-3) 0;
+  color: var(--it-text-secondary);
+  vertical-align: top;
+}
+
+.rv-policies__cell--name {
+  font-weight: var(--it-weight-medium);
+  color: var(--it-text-primary);
+  white-space: nowrap;
+}
+
+.rv-policies__cell--run-id {
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Sortable column header ── */
+
+.rv-policies__sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.rv-policies__sortable:hover {
+  color: var(--it-text-primary);
+}
+
+.rv-policies__sortable:focus-visible {
+  outline: 2px solid var(--it-accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--it-radius-sm);
+}
+
+/* ── Run link ── */
+
+.rv-policies__run-link {
+  color: var(--it-text-link);
+  text-decoration: none;
+}
+
+.rv-policies__run-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Severity badge ── */
+
+.rv-policies__severity {
+  display: inline-block;
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-medium);
+  padding: 1px var(--it-space-2);
+  border-radius: var(--it-radius-sm);
+  background: var(--it-surface-sunken);
+  color: var(--it-text-secondary);
+}
+
+.rv-policies__severity--error {
+  background: color-mix(in srgb, var(--it-danger, #dc2626) 12%, transparent);
+  color: var(--it-danger, #dc2626);
+}
+
+.rv-policies__severity--warning {
+  background: color-mix(in srgb, var(--it-warning, #d97706) 12%, transparent);
+  color: var(--it-warning, #d97706);
+}
+
+.rv-policies__severity--info {
+  background: color-mix(in srgb, var(--it-accent-primary, #3b82f6) 12%, transparent);
+  color: var(--it-accent-primary, #3b82f6);
+}
+
+/* ── Pre (key_profiles raw display) ── */
+
+.rv-policies__pre {
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+  color: var(--it-text-secondary);
+  background: var(--it-surface-sunken);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-md);
+  padding: var(--it-space-3);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}

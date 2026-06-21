@@ -18,6 +18,7 @@
  */
 
 import type { RFRunExport, RFRunSummary } from "@/types/rf";
+import type { GovernanceConfig } from "@/types/governance";
 import { getViewerSettings } from "@/lib/viewerSettings";
 
 // ── Env flag ─────────────────────────────────────────────────────────────────
@@ -142,6 +143,24 @@ export async function fetchRunDetail(runId: string): Promise<RFRunExport> {
       governance:     null,
       timeline:       null,
     };
+  }
+}
+
+// ── Governance Config ─────────────────────────────────────────────────────────
+
+/**
+ * GET /data/governance.json → static governance config snapshot.
+ *
+ * Fetches the governance config baked into the build by prebuild-static-data.mjs.
+ * Returns an empty GovernanceConfig object if the file is absent (404) or invalid.
+ * Never throws — callers can always safely access the returned object.
+ */
+export async function fetchGovernanceConfig(): Promise<GovernanceConfig> {
+  try {
+    return await staticGet<GovernanceConfig>(`${getStaticDataBase()}/governance.json`);
+  } catch {
+    // File absent or unparseable — return empty config gracefully
+    return {};
   }
 }
 

@@ -587,7 +587,15 @@ def export_run(
     cards = _load_source_cards(rp, run_id=run_id)
 
     claims = _build_claims(ledger, cards, threshold_rank)
-    governance = bundle.get("governance") or {}
+    governance = dict(bundle.get("governance") or {})
+    # AC-4: thread allowed_writebacks and requires_human_review from run.yaml
+    # governance block (not the evidence_bundle) so per-run governance policy
+    # fields are visible in the viewer even for runs without a full bundle.
+    run_gov = run_meta.get("governance") or {}
+    if run_gov.get("allowed_writebacks") is not None:
+        governance.setdefault("allowed_writebacks", run_gov["allowed_writebacks"])
+    if run_gov.get("requires_human_review") is not None:
+        governance.setdefault("requires_human_review", run_gov["requires_human_review"])
     sensitivity = (
         run_meta.get("sensitivity")
         or governance.get("sensitivity")

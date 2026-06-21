@@ -10,6 +10,7 @@
 @import "./help.css";
 @import "./alerts.css";
 @import "./swarm.css";
+@import "./policies.css";
 
 /* Accessibility — visually-hidden live regions for screen-reader status */
 .sr-only {

@@ -29,7 +29,7 @@ const NAV_ITEMS: NavCapability[] = [
   { label: "Ledger", short: "LG", state: "contextual", resolveTarget: (ctx) => ctx.runId ? `/runs/${encodeURIComponent(ctx.runId)}?view=audit` : null, disabledReason: "Select a run first." },
   { label: "Library", short: "LB", state: "disabled", disabledReason: "Library route is not implemented." },
   { label: "Swarm", short: "SW", state: "contextual", resolveTarget: (ctx) => ctx.runId ? `/runs/${encodeURIComponent(ctx.runId)}/swarm` : null, disabledReason: "Select a run first." },
-  { label: "Policies", short: "PL", state: "disabled", disabledReason: "Policies route is not implemented." },
+  { label: "Policies", short: "PL", state: "enabled", resolveTarget: () => "/policies" },
   { label: "Alerts", short: "AL", state: "enabled", resolveTarget: () => "/alerts" },
   { label: "Settings", short: "ST", state: "enabled", resolveTarget: () => "/settings" },
   { label: "Help", short: "HP", state: "enabled", resolveTarget: () => "/help" },
@@ -114,6 +114,7 @@ function isActiveNav(label: string, ctx: ShellNavContext): boolean {
   if (label === "Reports") return Boolean(ctx.routeRunId) && ctx.view === "report";
   if (label === "Ledger") return Boolean(ctx.routeRunId) && (ctx.view === "audit" || ctx.view === "ledger");
   if (label === "Swarm") return Boolean(ctx.routeRunId) && ctx.pathname.endsWith("/swarm");
+  if (label === "Policies") return ctx.pathname === "/policies";
   if (label === "Alerts") return ctx.pathname === "/alerts";
   if (label === "Settings") return ctx.pathname === "/settings";
   if (label === "Help") return ctx.pathname === "/help";
