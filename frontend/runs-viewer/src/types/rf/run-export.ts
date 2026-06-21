@@ -1,8 +1,17 @@
 /**
  * RF Run Export Types — hand-written to match the frozen run.json contract.
  *
- * Source of truth: docs/dev/architecture/rf-run-export-schema.md (status: frozen)
- * Bound to schema_version "1.0".
+ * Source of truth: docs/dev/architecture/rf-run-export-schema.json (JSON Schema draft-07)
+ * Bound to schema_version "1.2".
+ *
+ * Codegen evaluated (P1/SCH-003): json-schema-to-typescript was tested against
+ * rf-run-export-schema.json. Rejected because: (1) codegen inlines all
+ * RFSensitivity / RFClaimType / RFSourceType enums as anonymous unions on every
+ * property instead of producing reusable named types; (2) additionalProperties:true
+ * objects (RFTimelineEvent, RFResolvedSource.*) emit `unknown` fields that lose
+ * domain intent; (3) hand-written types already carry richer doc-comments and
+ * a cleaner component interface. Manual sync against the JSON schema is enforced
+ * by PR review. See SCH-003 in phase-1-3-schema-derivation-creation.md.
  *
  * These types define the denormalized claim-graph shape emitted by
  * `rf run export --json`. They are intentionally separate from the
@@ -248,6 +257,13 @@ export interface RFRunExport {
   created_at?:               string | null;
   status_derived:            RFStatusDerived;
   status_raw?:               string | null;
+  /**
+   * Human-readable title derived from the report_draft frontmatter `title:` key,
+   * or a slug-humanized string when the frontmatter title is absent.
+   * Added in schema_version 1.1 export; absent in older cached run.json files.
+   * Mirrors the same field on RFRunSummary so consumers can use either type uniformly.
+   */
+  title?:                    string | null;
   sensitivity?:              RFSensitivity | null;
   sensitivity_threshold?:    RFSensitivity | null;
   claim_counts?:             RFClaimCounts | null;
@@ -262,6 +278,74 @@ export interface RFRunExport {
   context?:                  RFRunContextSummary | null;
   /** Optional v2 writeback summary. Absent in schema 1.1 exports. */
   writebacks?:               RFRunWritebacksSummary | null;
+
+  // ── Run Metadata Enrichment fields (schema 1.2) ────────────────────────────
+  // All fields below are optional/nullable — absent on pre-migration runs (schema < 1.2).
+  // Consumers MUST use optional access (?.) throughout. Populated in P2 (backfill)
+  // and P3 (creation path). Threaded through export in P4.
+
+  /**
+   * List of project slugs this run is linked to. Derived from backlog idea.suggested_project
+   * at run creation or via backfill migration. Null/absent on pre-migration runs.
+   */
+  linked_projects?:          string[] | null;
+
+  /**
+   * Research pillar / category string. Derived from backlog idea.pillar.
+   * Examples: 'AI Engineering', 'Frontend Tooling'. Null/absent on pre-migration runs.
+   */
+  category?:                 string | null;
+
+  /**
+   * List of topic tags. Derived from backlog idea.tags or set explicitly at run creation.
+   * Null/absent on pre-migration runs.
+   */
+  tags?:                     string[] | null;
+
+  /**
+   * Backlog idea ID in RIB-NNN format (e.g. 'RIB-042').
+   * References an entry in backlog/research_idea_backlog.yaml.
+   * Null when run was not created from a backlog idea.
+   */
+  backlog_idea_ref?:         string | null;
+
+  /**
+   * Reverse slug of the backlog idea (matches idea.id field in the backlog YAML).
+   * Null when backlog_idea_ref is null.
+   */
+  backlog_idea_id?:          string | null;
+
+  // ── Enrichment Extras (schema 1.2, P7 — ENR-001, ENR-002) ─────────────────
+  // Threaded from run.yaml.profile and aggregated from source cards.
+  // All null/absent on pre-enrichment runs. FE must use optional access (?.).
+
+  /**
+   * Actual or budgeted cost of the run in USD. Sourced from run.yaml.profile.max_cost_usd.
+   * Null when no profile block is present (pre-enrichment runs).
+   */
+  cost_usd?:                 number | null;
+
+  /**
+   * Model and resource profile settings for the run. Sourced from run.yaml.profile.
+   * Contains extraction_model_profile, synthesis_model_profile, verification_model_profile,
+   * max_cost_usd, max_runtime_minutes, freshness_days. Null when profile absent.
+   */
+  model_profiles?: {
+    max_cost_usd?:                  number | null;
+    extraction_model_profile?:      string | null;
+    synthesis_model_profile?:       string | null;
+    verification_model_profile?:    string | null;
+    max_runtime_minutes?:           number | null;
+    freshness_days?:                number | null;
+    [k: string]: unknown;
+  } | null;
+
+  /**
+   * Count of source cards by source_type (e.g. { official_doc: 3, paper: 1 }).
+   * Aggregated from all source cards in the run's sources/ directory.
+   * Null when no source cards are present.
+   */
+  source_count_by_type?:     Record<string, number> | null;
 }
 
 // ── Run Summary (from `rf run list --json`) ──────────────────────────────────
@@ -283,4 +367,10 @@ export interface RFRunSummary {
    * Falls back to titleFromSlug(run_id) in the FE when absent or null.
    */
   title?:          string | null;
+
+  // Metadata enrichment stubs (schema 1.2) — populated in P4 (export threading + index.json).
+  // Absent on pre-migration runs; consumers must use optional access (?.).
+  linked_projects?: string[] | null; // populated in P4
+  category?:        string | null;   // populated in P4
+  tags?:            string[] | null; // populated in P4
 }

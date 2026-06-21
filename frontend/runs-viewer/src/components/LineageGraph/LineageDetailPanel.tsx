@@ -1,19 +1,32 @@
 /**
  * LineageDetailPanel — Right-hand detail panel for the selected lineage node.
  * Replaces the always-on inline <dl> that used to live inside every row.
+ *
+ * P5 DISP-005: accepts optional runMeta for reference tag/category chips in the panel header.
+ * Chips are non-interactive context only; omitted when tags/category null/absent (R-P2).
  */
 
 import type { LineageNode } from "./lineageTree";
 import { LINEAGE_KIND_META } from "./lineageTree";
 import { KindIcon } from "./kindIcons";
 
+/** Minimal run-level metadata for reference display (P5 DISP-005). */
+export interface LineageRunMetaRef {
+  tags?: string[] | null;
+  category?: string | null;
+}
+
 export interface LineageDetailPanelProps {
   node: LineageNode | null;
+  runMeta?: LineageRunMetaRef;
   onSelectClaim?: (claimId: string) => void;
   onOpenProvenance?: (claimId: string) => void;
 }
 
-export function LineageDetailPanel({ node, onSelectClaim, onOpenProvenance }: LineageDetailPanelProps) {
+export function LineageDetailPanel({ node, runMeta, onSelectClaim, onOpenProvenance }: LineageDetailPanelProps) {
+  // P5 DISP-005: reference chips — shown only when tags/category present (R-P2)
+  const hasRunMeta = (runMeta?.tags?.length ?? 0) > 0 || runMeta?.category != null;
+
   if (!node) {
     return (
       <div className="rv-lineage-detail rv-lineage-detail--empty" data-testid="lineage-detail">
@@ -43,6 +56,21 @@ export function LineageDetailPanel({ node, onSelectClaim, onOpenProvenance }: Li
         <strong className="rv-lineage-detail__title">{node.title}</strong>
         {node.subtitle && (
           <code className="rv-lineage-detail__subtitle">{node.subtitle}</code>
+        )}
+        {/* P5 DISP-005: run-level reference chips — context only, non-interactive */}
+        {hasRunMeta && (
+          <div className="rv-lineage-detail__run-meta" data-testid="lineage-run-meta" aria-label="Run context">
+            {runMeta?.category ? (
+              <span className="rv-run-modal__category" data-testid="lineage-run-category">
+                {runMeta.category}
+              </span>
+            ) : null}
+            {runMeta?.tags?.map((tag) => (
+              <span key={tag} className="it-chip rv-tag-chip rv-tag-chip--sm" data-testid="lineage-run-tag">
+                {tag}
+              </span>
+            ))}
+          </div>
         )}
       </div>
 

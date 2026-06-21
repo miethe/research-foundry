@@ -250,7 +250,7 @@ def test_dangling_source_is_flagged_not_dropped(tmp_foundry: FoundryPaths) -> No
 def test_claim_counts_and_top_level_shape(tmp_foundry: FoundryPaths) -> None:
     build_run(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_test001")
-    assert data["schema_version"] == svc.EXPORT_SCHEMA_VERSION == "1.1"
+    assert data["schema_version"] == svc.EXPORT_SCHEMA_VERSION == "1.2"
     assert data["run_id"] == "rf_run_test001"
     assert data["claim_counts"]["total"] == 5
     assert data["claim_counts"]["supported"] == 3
@@ -539,10 +539,568 @@ def test_report_draft_falls_back_to_final(tmp_foundry: FoundryPaths) -> None:
     assert data["report_draft"] == final_content
 
 
-def test_schema_version_is_1_1(tmp_foundry: FoundryPaths) -> None:
+def test_schema_version_is_1_2(tmp_foundry: FoundryPaths) -> None:
     build_run(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_test001")
-    assert data["schema_version"] == "1.1"
+    assert data["schema_version"] == "1.2"
+
+
+# --------------------------------------------------------------------------
+# metadata enrichment fields (schema 1.2)
+# --------------------------------------------------------------------------
+
+def _build_run_with_metadata(
+    paths: FoundryPaths,
+    run_id: str = "rf_run_meta001",
+    *,
+    linked_projects: list[str] | None = None,
+    category: str | None = None,
+    tags: list[str] | None = None,
+    backlog_idea_ref: str | None = None,
+    backlog_idea_id: str | None = None,
+) -> RunPaths:
+    """Build a minimal run with optional metadata enrichment fields."""
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+
+    run_yaml: dict[str, Any] = {
+        "schema_version": "0.1",
+        "type": "run",
+        "run_id": run_id,
+        "status": "planned",
+    }
+    if linked_projects is not None:
+        run_yaml["linked_projects"] = linked_projects
+    if category is not None:
+        run_yaml["category"] = category
+    if tags is not None:
+        run_yaml["tags"] = tags
+    if backlog_idea_ref is not None:
+        run_yaml["backlog_idea_ref"] = backlog_idea_ref
+    if backlog_idea_id is not None:
+        run_yaml["backlog_idea_id"] = backlog_idea_id
+
+    dump_yaml(run_yaml, rp.run_yaml)
+    return rp
+
+
+def test_metadata_fields_emitted_when_present(tmp_foundry: FoundryPaths) -> None:
+    """EXP-001: All 5 new fields are present in export output when set in run.yaml."""
+    _build_run_with_metadata(
+        tmp_foundry,
+        linked_projects=["Research Foundry", "KnitWit"],
+        category="AI Engineering",
+        tags=["agents", "python"],
+        backlog_idea_ref="RIB-042",
+        backlog_idea_id="idea_agent-framework-eval",
+    )
+    data = svc.export_run(tmp_foundry, "rf_run_meta001")
+
+    assert data["linked_projects"] == ["Research Foundry", "KnitWit"]
+    assert data["category"] == "AI Engineering"
+    assert data["tags"] == ["agents", "python"]
+    assert data["backlog_idea_ref"] == "RIB-042"
+    assert data["backlog_idea_id"] == "idea_agent-framework-eval"
+
+
+def test_metadata_fields_null_when_absent(tmp_foundry: FoundryPaths) -> None:
+    """EXP-001: All 5 new fields are present as null (not key-omitted) when absent."""
+    _build_run_with_metadata(tmp_foundry)  # no metadata fields set
+    data = svc.export_run(tmp_foundry, "rf_run_meta001")
+
+    # Keys must be present (not omitted), with null values
+    assert "linked_projects" in data and data["linked_projects"] is None
+    assert "category" in data and data["category"] is None
+    assert "tags" in data and data["tags"] is None
+    assert "backlog_idea_ref" in data and data["backlog_idea_ref"] is None
+    assert "backlog_idea_id" in data and data["backlog_idea_id"] is None
+
+
+def test_metadata_fields_null_on_pre_migration_run(tmp_foundry: FoundryPaths) -> None:
+    """EXP-001: Pre-migration runs (no metadata fields in run.yaml) emit null for all 5."""
+    build_run(tmp_foundry)  # uses the standard builder without metadata fields
+    data = svc.export_run(tmp_foundry, "rf_run_test001")
+
+    assert data["linked_projects"] is None
+    assert data["category"] is None
+    assert data["tags"] is None
+    assert data["backlog_idea_ref"] is None
+    assert data["backlog_idea_id"] is None
+
+
+def test_schema_version_bumped_to_1_2(tmp_foundry: FoundryPaths) -> None:
+    """EXP-003: schema_version in export output is '1.2'."""
+    assert svc.EXPORT_SCHEMA_VERSION == "1.2"
+    _build_run_with_metadata(tmp_foundry)
+    data = svc.export_run(tmp_foundry, "rf_run_meta001")
+    assert data["schema_version"] == "1.2"
+
+
+def test_existing_fields_unaffected_by_metadata_addition(tmp_foundry: FoundryPaths) -> None:
+    """EXP-001: Adding metadata fields must not alter existing export fields."""
+    _build_run_with_metadata(
+        tmp_foundry,
+        linked_projects=["My Project"],
+        category="Backend",
+        tags=["python"],
+    )
+    data = svc.export_run(tmp_foundry, "rf_run_meta001")
+
+    # Core fields still present and correct
+    assert data["run_id"] == "rf_run_meta001"
+    assert data["schema_version"] == "1.2"
+    assert data["status_derived"] == "planned"
+    assert "claims" in data
+    assert "claim_counts" in data
+
+
+# --------------------------------------------------------------------------
+# ENR-001: cost_usd + model_profiles from run.yaml.profile
+# --------------------------------------------------------------------------
+
+def _build_run_with_profile(
+    paths: FoundryPaths,
+    run_id: str = "rf_run_profile001",
+    *,
+    profile: dict[str, Any] | None = None,
+) -> RunPaths:
+    """Build a minimal run with an optional profile block."""
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+    run_yaml: dict[str, Any] = {
+        "schema_version": "0.1",
+        "type": "run",
+        "run_id": run_id,
+        "status": "planned",
+    }
+    if profile is not None:
+        run_yaml["profile"] = profile
+    dump_yaml(run_yaml, rp.run_yaml)
+    return rp
+
+
+def test_cost_usd_and_model_profiles_present_when_profile_set(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """ENR-001: cost_usd and model_profiles threaded from run.yaml.profile."""
+    _build_run_with_profile(
+        tmp_foundry,
+        profile={
+            "max_cost_usd": 7.0,
+            "max_runtime_minutes": 60,
+            "freshness_days": 180,
+            "extraction_model_profile": "rf_extract_cheap",
+            "synthesis_model_profile": "rf_synthesize_deep",
+            "verification_model_profile": "rf_verify_balanced",
+        },
+    )
+    data = svc.export_run(tmp_foundry, "rf_run_profile001")
+
+    assert data["cost_usd"] == 7.0
+    mp = data["model_profiles"]
+    assert mp is not None
+    assert mp["max_cost_usd"] == 7.0
+    assert mp["max_runtime_minutes"] == 60
+    assert mp["freshness_days"] == 180
+    assert mp["extraction_model_profile"] == "rf_extract_cheap"
+    assert mp["synthesis_model_profile"] == "rf_synthesize_deep"
+    assert mp["verification_model_profile"] == "rf_verify_balanced"
+
+
+def test_cost_usd_and_model_profiles_null_when_no_profile(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """ENR-001: cost_usd and model_profiles are null for runs without profile."""
+    _build_run_with_profile(tmp_foundry)  # no profile block
+    data = svc.export_run(tmp_foundry, "rf_run_profile001")
+
+    assert "cost_usd" in data and data["cost_usd"] is None
+    assert "model_profiles" in data and data["model_profiles"] is None
+
+
+# --------------------------------------------------------------------------
+# ENR-002: source_count_by_type aggregated from source cards
+# --------------------------------------------------------------------------
+
+def test_source_count_by_type_aggregated_correctly(tmp_foundry: FoundryPaths) -> None:
+    """ENR-002: source_count_by_type aggregates source_type from source cards."""
+    build_run(tmp_foundry, "rf_run_srccount")
+    # The standard build_run uses source_type "web" for the source cards;
+    # check that source_count_by_type is derived correctly.
+    data = svc.export_run(tmp_foundry, "rf_run_srccount")
+    sct = data["source_count_by_type"]
+    assert sct is not None
+    assert isinstance(sct, dict)
+    # All 3 source cards in build_run have source_type "web"
+    assert sct.get("web") == 3
+
+
+def test_source_count_by_type_null_when_no_sources(tmp_foundry: FoundryPaths) -> None:
+    """ENR-002: source_count_by_type is null for runs with no source cards."""
+    build_run(tmp_foundry, "rf_run_nosrc", with_sources=False)
+    data = svc.export_run(tmp_foundry, "rf_run_nosrc")
+    assert "source_count_by_type" in data and data["source_count_by_type"] is None
+
+
+# --------------------------------------------------------------------------
+# ENR-003: context block (routing_decision + swarm_plan)
+# --------------------------------------------------------------------------
+
+def _build_run_with_routing(
+    paths: FoundryPaths,
+    run_id: str = "rf_run_ctx001",
+    *,
+    with_routing: bool = True,
+    with_swarm: bool = True,
+) -> RunPaths:
+    """Build a minimal run with optional routing_decision.yaml and swarm_plan.yaml."""
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+    dump_yaml(
+        {"schema_version": "0.1", "run_id": run_id, "status": "planned"},
+        rp.run_yaml,
+    )
+    if with_routing:
+        dump_yaml(
+            {
+                "schema_version": "0.1",
+                "type": "routing_decision",
+                "id": f"route_{run_id}",
+                "selected_abstraction_level": "L4",
+                "rationale": "Test rationale for routing",
+                "human_required": False,
+            },
+            rp.routing_decision,
+        )
+    if with_swarm:
+        dump_yaml(
+            {
+                "schema_version": "0.1",
+                "type": "swarm_plan",
+                "id": f"swarm_{run_id}",
+                "agents": [
+                    {"role": "source_scout", "posture": "researcher"},
+                    {"role": "synthesis_lead", "posture": "synthesizer"},
+                ],
+                "required_outputs": ["source_cards", "report_draft.md"],
+            },
+            rp.swarm_plan,
+        )
+    return rp
+
+
+def test_context_routing_and_swarm_present(tmp_foundry: FoundryPaths) -> None:
+    """ENR-003: context.routing_decision and context.swarm_plan populated when files exist."""
+    _build_run_with_routing(tmp_foundry)
+    data = svc.export_run(tmp_foundry, "rf_run_ctx001")
+
+    ctx = data.get("context")
+    assert ctx is not None
+
+    rd = ctx.get("routing_decision")
+    assert rd is not None
+    assert rd.get("rationale") == "Test rationale for routing"
+
+    sp = ctx.get("swarm_plan")
+    assert sp is not None
+    agents = sp.get("agents")
+    assert agents is not None
+    assert "source_scout" in agents
+    assert "synthesis_lead" in agents
+
+
+def test_context_null_when_no_routing_or_swarm(tmp_foundry: FoundryPaths) -> None:
+    """ENR-003: context is null for runs without routing_decision.yaml or swarm_plan.yaml."""
+    _build_run_with_routing(tmp_foundry, "rf_run_noctx", with_routing=False, with_swarm=False)
+    data = svc.export_run(tmp_foundry, "rf_run_noctx")
+    assert "context" in data and data["context"] is None
+
+
+def test_context_partial_routing_only(tmp_foundry: FoundryPaths) -> None:
+    """ENR-003: context populated with routing only when swarm_plan absent."""
+    _build_run_with_routing(tmp_foundry, "rf_run_ronly", with_routing=True, with_swarm=False)
+    data = svc.export_run(tmp_foundry, "rf_run_ronly")
+    ctx = data.get("context")
+    assert ctx is not None
+    assert ctx.get("routing_decision") is not None
+    assert ctx.get("swarm_plan") is None
+
+
+def test_context_partial_swarm_only(tmp_foundry: FoundryPaths) -> None:
+    """ENR-003: context populated with swarm_plan only when routing_decision absent."""
+    _build_run_with_routing(tmp_foundry, "rf_run_sonly", with_routing=False, with_swarm=True)
+    data = svc.export_run(tmp_foundry, "rf_run_sonly")
+    ctx = data.get("context")
+    assert ctx is not None
+    assert ctx.get("routing_decision") is None
+    assert ctx.get("swarm_plan") is not None
+
+
+# --------------------------------------------------------------------------
+# ENR schema_version and full enrichment round-trip
+# --------------------------------------------------------------------------
+
+def test_enrichment_extra_fields_all_present_on_full_run(tmp_foundry: FoundryPaths) -> None:
+    """ENR-001/002/003: All enrichment-extra fields present on a fully-enriched run."""
+    # Build a run with profile, routing, swarm, and sources
+    rp = build_run(tmp_foundry, "rf_run_enr_full")
+    # Add profile to run.yaml
+    from research_foundry.yamlio import load_yaml
+    run_data = load_yaml(rp.run_yaml)
+    run_data["profile"] = {
+        "max_cost_usd": 5.0,
+        "max_runtime_minutes": 30,
+        "freshness_days": 90,
+        "extraction_model_profile": "rf_extract_cheap",
+        "synthesis_model_profile": "rf_synthesize_std",
+        "verification_model_profile": "rf_verify_std",
+    }
+    dump_yaml(run_data, rp.run_yaml)
+    # Add routing_decision + swarm_plan
+    dump_yaml(
+        {
+            "schema_version": "0.1", "type": "routing_decision",
+            "id": "route_enr_full", "selected_abstraction_level": "L3",
+            "rationale": "Standard research route",
+        },
+        rp.routing_decision,
+    )
+    dump_yaml(
+        {
+            "schema_version": "0.1", "type": "swarm_plan",
+            "id": "swarm_enr_full",
+            "agents": [{"role": "paper_analyst", "posture": "researcher"}],
+            "required_outputs": ["source_cards"],
+        },
+        rp.swarm_plan,
+    )
+
+    data = svc.export_run(tmp_foundry, "rf_run_enr_full")
+
+    # ENR-001
+    assert data["cost_usd"] == 5.0
+    assert data["model_profiles"] is not None
+    assert data["model_profiles"]["extraction_model_profile"] == "rf_extract_cheap"
+    # ENR-002
+    assert data["source_count_by_type"] is not None
+    assert isinstance(data["source_count_by_type"], dict)
+    # ENR-003
+    assert data["context"] is not None
+    assert data["context"]["routing_decision"] is not None
+    assert data["context"]["swarm_plan"] is not None
+    # schema_version still 1.2
+    assert data["schema_version"] == "1.2"
+
+
+def test_enrichment_extra_fields_null_on_pre_enrichment_run(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """ENR-001/002/003: All enrichment-extra fields null on pre-enrichment run (no sources/profile/routing)."""
+    rp = tmp_foundry.run_paths("rf_run_bare")
+    rp.ensure_scaffold()
+    dump_yaml({"run_id": "rf_run_bare", "status": "planned"}, rp.run_yaml)
+
+    data = svc.export_run(tmp_foundry, "rf_run_bare")
+
+    assert data["cost_usd"] is None
+    assert data["model_profiles"] is None
+    assert data["source_count_by_type"] is None
+    assert data["context"] is None
+
+
+# --------------------------------------------------------------------------
+# Fix 1: title field present and non-null in export_run()
+# --------------------------------------------------------------------------
+
+def test_title_present_and_non_null(tmp_foundry: FoundryPaths) -> None:
+    """BLOCKER FIX: export_run() must include a non-null 'title' key."""
+    build_run(tmp_foundry)
+    data = svc.export_run(tmp_foundry, "rf_run_test001")
+    assert "title" in data
+    assert data["title"] is not None
+    assert isinstance(data["title"], str)
+    assert len(data["title"]) > 0
+
+
+def test_title_derived_from_slug_when_no_report_frontmatter(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """Title falls back to humanized slug when report draft has no frontmatter title."""
+    build_run(tmp_foundry)
+    # The standard report draft has no YAML frontmatter title.
+    data = svc.export_run(tmp_foundry, "rf_run_test001")
+    # Slug "rf_run_test001" → strips "rf_run_" prefix → "test001" → title-cased → "Test001"
+    assert data["title"] == "Test001"
+
+
+def test_title_extracted_from_report_frontmatter(tmp_foundry: FoundryPaths) -> None:
+    """Title comes from YAML frontmatter title: field when present."""
+    rp = build_run(tmp_foundry, with_report=False)
+    rp.report_draft.write_text(
+        "---\ntitle: My Research Report\nauthor: Test\n---\n\nBody text.\n",
+        encoding="utf-8",
+    )
+    data = svc.export_run(tmp_foundry, "rf_run_test001")
+    assert data["title"] == "My Research Report"
+
+
+def test_title_slug_helpers_correct() -> None:
+    """Unit test the slug-humanization helpers directly."""
+    # "rf_run_test001" → strips prefix → "test001" → no word boundary on digits → "Test001"
+    assert svc._title_from_slug("rf_run_test001") == "Test001"
+    # multi-word slugs split on underscores → each word capitalized
+    assert svc._title_from_slug("intent_research_ai_agents") == "Ai Agents"
+    assert svc._title_from_slug("intent_scaling_law") == "Scaling Law"
+    assert svc._title_from_slug(None) is None
+    assert svc._extract_title_from_report_draft(None) is None
+    assert svc._extract_title_from_report_draft("no frontmatter") is None
+    assert (
+        svc._extract_title_from_report_draft(
+            "---\ntitle: Hello World\n---\n\nBody.\n"
+        )
+        == "Hello World"
+    )
+
+
+# --------------------------------------------------------------------------
+# Fix 2: list_runs() includes linked_projects, category, tags
+# --------------------------------------------------------------------------
+
+def test_list_runs_includes_metadata_fields(tmp_foundry: FoundryPaths) -> None:
+    """list_runs() summaries must include linked_projects, category, tags."""
+    rp = tmp_foundry.run_paths("rf_run_listmeta")
+    rp.ensure_scaffold()
+    from research_foundry.yamlio import dump_yaml as _dump
+    _dump(
+        {
+            "schema_version": "0.1",
+            "type": "run",
+            "run_id": "rf_run_listmeta",
+            "status": "planned",
+            "linked_projects": ["Proj A", "Proj B"],
+            "category": "Engineering",
+            "tags": ["python", "testing"],
+        },
+        rp.run_yaml,
+    )
+    rows = svc.list_runs(tmp_foundry)
+    row = next(r for r in rows if r["run_id"] == "rf_run_listmeta")
+    assert row["linked_projects"] == ["Proj A", "Proj B"]
+    assert row["category"] == "Engineering"
+    assert row["tags"] == ["python", "testing"]
+
+
+def test_list_runs_metadata_fields_null_when_absent(tmp_foundry: FoundryPaths) -> None:
+    """list_runs() emits null (not key-omitted) for metadata fields on pre-migration runs."""
+    build_run(tmp_foundry, "rf_run_listbase")
+    rows = svc.list_runs(tmp_foundry)
+    row = next(r for r in rows if r["run_id"] == "rf_run_listbase")
+    assert "linked_projects" in row and row["linked_projects"] is None
+    assert "category" in row and row["category"] is None
+    assert "tags" in row and row["tags"] is None
+
+
+# --------------------------------------------------------------------------
+# Fix 3: ENR-004 writebacks field in export_run()
+# --------------------------------------------------------------------------
+
+def test_writebacks_null_when_no_writeback_files(tmp_foundry: FoundryPaths) -> None:
+    """ENR-004: writebacks is null when no writeback files exist."""
+    build_run(tmp_foundry, with_writebacks=False)
+    data = svc.export_run(tmp_foundry, "rf_run_test001")
+    assert "writebacks" in data
+    assert data["writebacks"] is None
+
+
+def test_writebacks_emitted_when_present(tmp_foundry: FoundryPaths) -> None:
+    """ENR-004: writebacks object emitted when writeback files are present (RFRunWritebacksSummary shape)."""
+    build_run(tmp_foundry, with_writebacks=True)
+    data = svc.export_run(tmp_foundry, "rf_run_test001")
+    assert "writebacks" in data
+    wb = data["writebacks"]
+    assert wb is not None
+    # Must be an object (RFRunWritebacksSummary), not a bare list.
+    assert isinstance(wb, dict), "writebacks must be an object, not a list"
+    # Must have 'targets' list (what FE reads as writebacks.targets?.length)
+    assert "targets" in wb
+    targets_list = wb["targets"]
+    assert isinstance(targets_list, list)
+    assert len(targets_list) >= 1
+    # Must have approved_for_writeback field (bool or null)
+    assert "approved_for_writeback" in wb
+    # The standard build_run with_writebacks=True writes ccdash_event.yaml
+    target_names = {entry["target"] for entry in targets_list}
+    assert "ccdash" in target_names
+    for entry in targets_list:
+        assert "target" in entry
+        assert "status" in entry
+
+
+def test_writebacks_url_extracted_from_yaml(tmp_foundry: FoundryPaths) -> None:
+    """ENR-004: url field extracted from YAML writeback when present."""
+    rp = build_run(tmp_foundry, "rf_run_wburl", with_writebacks=False)
+    from research_foundry.yamlio import dump_yaml as _dump
+    _dump({"url": "https://wiki.example.com/page/42", "status": "synced"},
+          rp.intenttree_update)
+    data = svc.export_run(tmp_foundry, "rf_run_wburl")
+    wb = data["writebacks"]
+    assert wb is not None
+    assert isinstance(wb, dict), "writebacks must be an object (RFRunWritebacksSummary)"
+    assert "targets" in wb
+    itt_entry = next((e for e in wb["targets"] if e["target"] == "intenttree"), None)
+    assert itt_entry is not None
+    assert itt_entry.get("url") == "https://wiki.example.com/page/42"
+
+
+# --------------------------------------------------------------------------
+# Fix 4: _context_summary allowlist — no unanticipated keys leak
+# --------------------------------------------------------------------------
+
+def test_context_summary_allowlist_blocks_unknown_keys(tmp_foundry: FoundryPaths) -> None:
+    """ENR-004/security: _context_summary must not forward unknown routing keys."""
+    rp = tmp_foundry.run_paths("rf_run_ctx_safe")
+    rp.ensure_scaffold()
+    from research_foundry.yamlio import dump_yaml as _dump
+    _dump({"run_id": "rf_run_ctx_safe", "status": "planned"}, rp.run_yaml)
+    # Write routing_decision with both allowlisted and non-allowlisted keys
+    _dump(
+        {
+            "schema_version": "0.1",
+            "type": "routing_decision",
+            "id": "route_safe",
+            "selected_abstraction_level": "L3",
+            "rationale": "safe rationale",
+            "human_required": False,
+            "CONFIDENTIAL_FIELD": "must_not_appear",
+            "internal_note": "also_must_not_appear",
+        },
+        rp.routing_decision,
+    )
+    _dump(
+        {
+            "schema_version": "0.1",
+            "type": "swarm_plan",
+            "id": "swarm_safe",
+            "agents": [{"role": "scout"}],
+            "required_outputs": ["report_draft.md"],
+            "SECRET_KEY": "leaked_secret",
+        },
+        rp.swarm_plan,
+    )
+    data = svc.export_run(tmp_foundry, "rf_run_ctx_safe")
+    import json
+    blob = json.dumps(data)
+    assert "CONFIDENTIAL_FIELD" not in blob
+    assert "must_not_appear" not in blob
+    assert "internal_note" not in blob
+    assert "also_must_not_appear" not in blob
+    assert "SECRET_KEY" not in blob
+    assert "leaked_secret" not in blob
+    # Allowlisted fields DO appear
+    ctx = data.get("context")
+    assert ctx is not None
+    assert ctx["routing_decision"]["rationale"] == "safe rationale"
+    assert ctx["routing_decision"]["human_required"] is False
 
 
 # --------------------------------------------------------------------------

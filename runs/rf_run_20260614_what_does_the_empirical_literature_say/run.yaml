@@ -19,3 +19,14 @@ profile:
   extraction_model_profile: rf_extract_cheap
   synthesis_model_profile: rf_synthesize_deep
   verification_model_profile: rf_verify_balanced
+linked_projects:
+- Research Foundry
+category: pillar_evidence-claim-verification
+tags:
+- claim-verification
+- hallucination
+- verifiable-ai
+- rag
+- evidence
+backlog_idea_ref: RIB-002
+backlog_idea_id: idea_claim-traceability-verification-landscape

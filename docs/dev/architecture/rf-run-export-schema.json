@@ -1,0 +1,411 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "rf-run-export-schema.json",
+  "title": "RFRunExport",
+  "description": "Formal JSON Schema for the denormalized run.json contract emitted by `rf run export --json`. Schema version 1.2 adds five run-metadata enrichment fields (linked_projects, category, tags, backlog_idea_ref, backlog_idea_id). All new fields are optional/nullable for backwards compatibility with pre-migration run.json documents (schema 1.0 and 1.1).",
+  "type": "object",
+  "required": ["schema_version", "run_id", "status_derived", "claims"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Export contract version. '1.2' adds metadata enrichment fields; '1.1' added report_draft; '1.0' is the initial frozen contract.",
+      "examples": ["1.2", "1.1", "1.0"]
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Canonical run identifier (e.g. rf_run_20260613_...).",
+      "pattern": "^rf_run_"
+    },
+    "intent_id": {
+      "type": ["string", "null"],
+      "description": "Intent document ID. Null when intent artifact is absent.",
+      "nullable": true
+    },
+    "created_at": {
+      "type": ["string", "null"],
+      "description": "ISO-8601 timestamp from run.yaml. Null when run.yaml is absent.",
+      "nullable": true
+    },
+    "status_derived": {
+      "type": "string",
+      "description": "Derived run status (authoritative). Computed from on-disk artifacts, never from run.yaml.status.",
+      "enum": [
+        "planned",
+        "sources_ingested",
+        "extracted",
+        "claim_mapped",
+        "synthesized",
+        "verified",
+        "published"
+      ]
+    },
+    "status_raw": {
+      "type": ["string", "null"],
+      "description": "Verbatim run.yaml.status (may be stale — use status_derived for display).",
+      "nullable": true
+    },
+    "sensitivity": {
+      "type": ["string", "null"],
+      "description": "Run-level sensitivity label. Absent or null treated as 'public' (safe to render).",
+      "enum": ["public", "personal", "work_sensitive", "client_sensitive", null],
+      "nullable": true
+    },
+    "sensitivity_threshold": {
+      "type": ["string", "null"],
+      "description": "Active viewer threshold. Evidence above this level is redacted in claims[].sources.",
+      "enum": ["public", "personal", "work_sensitive", "client_sensitive", null],
+      "nullable": true
+    },
+    "claim_counts": {
+      "oneOf": [
+        { "$ref": "#/$defs/RFClaimCounts" },
+        { "type": "null" }
+      ],
+      "description": "Aggregated claim count statistics. Null when claim ledger is absent.",
+      "nullable": true
+    },
+    "verification": {
+      "oneOf": [
+        { "$ref": "#/$defs/RFVerification" },
+        { "type": "null" }
+      ],
+      "description": "Verification block from reviews/verification.yaml. Null when absent.",
+      "nullable": true
+    },
+    "governance": {
+      "oneOf": [
+        { "$ref": "#/$defs/RFGovernanceBlock" },
+        { "type": "null" }
+      ],
+      "description": "Governance block from evidence_bundle. Null when absent.",
+      "nullable": true
+    },
+    "timeline": {
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/RFTimelineEvent" },
+      "description": "Telemetry/run_trace.jsonl events. Null or empty when trace is absent.",
+      "nullable": true
+    },
+    "claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/RFClaim" },
+      "description": "The denormalized claim graph. Each claim carries its resolved sources. Non-null (may be empty array when no ledger exists)."
+    },
+    "artifact_schema_versions": {
+      "oneOf": [
+        { "$ref": "#/$defs/RFArtifactSchemaVersions" },
+        { "type": "null" }
+      ],
+      "description": "Per-artifact schema_version pins (OQ-7). Null when artifacts are absent.",
+      "nullable": true
+    },
+    "report_draft": {
+      "type": ["string", "null"],
+      "description": "Verbatim Markdown of the synthesized report. Null when neither report_draft.md nor report_final.md exists. No sensitivity redaction applied (R9 boundary is claims[].sources[].quote/summary).",
+      "nullable": true
+    },
+    "context": {
+      "oneOf": [
+        { "$ref": "#/$defs/RFRunContextSummary" },
+        { "type": "null" }
+      ],
+      "description": "Optional v2 context stack (routing decision, research brief, swarm plan). Absent in schema 1.0/1.1 exports.",
+      "nullable": true
+    },
+    "writebacks": {
+      "oneOf": [
+        { "$ref": "#/$defs/RFRunWritebacksSummary" },
+        { "type": "null" }
+      ],
+      "description": "Optional v2 writeback summary. Absent in schema 1.0/1.1 exports.",
+      "nullable": true
+    },
+    "linked_projects": {
+      "type": ["array", "null"],
+      "items": { "type": "string" },
+      "description": "List of project slugs this run is linked to. Derived from backlog idea.suggested_project at run creation or via backfill. Null/absent on pre-migration runs (schema < 1.2). Consumers must use optional access.",
+      "nullable": true
+    },
+    "category": {
+      "type": ["string", "null"],
+      "description": "Research pillar / category string. Derived from backlog idea.pillar. Examples: 'AI Engineering', 'Frontend Tooling'. Null/absent on pre-migration runs.",
+      "nullable": true
+    },
+    "tags": {
+      "type": ["array", "null"],
+      "items": { "type": "string" },
+      "description": "List of topic tags. Derived from backlog idea.tags or set explicitly at run creation. Null/absent on pre-migration runs.",
+      "nullable": true
+    },
+    "backlog_idea_ref": {
+      "type": ["string", "null"],
+      "description": "Backlog idea ID in RIB-NNN format (e.g. 'RIB-042'). References an entry in backlog/research_idea_backlog.yaml. Null when run was not created from a backlog idea.",
+      "pattern": "^RIB-\\d+$",
+      "nullable": true
+    },
+    "backlog_idea_id": {
+      "type": ["string", "null"],
+      "description": "Reverse slug of the backlog idea (matches idea.id field in the backlog YAML). Provided for stable cross-referencing. Null when backlog_idea_ref is null.",
+      "nullable": true
+    },
+    "title": {
+      "type": ["string", "null"],
+      "description": "Human-readable title derived from the report_draft frontmatter title: key, or a slug-humanized string when frontmatter title is absent. Added in schema_version 1.1. Absent in older cached run.json files.",
+      "nullable": true
+    },
+    "cost_usd": {
+      "type": ["number", "null"],
+      "description": "Actual or budgeted cost of the run in USD. Sourced from run.yaml.profile.max_cost_usd. Null when no profile block is present (pre-enrichment runs).",
+      "nullable": true
+    },
+    "model_profiles": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "max_cost_usd":                 { "type": ["number", "null"] },
+            "extraction_model_profile":     { "type": ["string", "null"] },
+            "synthesis_model_profile":      { "type": ["string", "null"] },
+            "verification_model_profile":   { "type": ["string", "null"] },
+            "max_runtime_minutes":          { "type": ["number", "null"] },
+            "freshness_days":               { "type": ["number", "null"] }
+          }
+        },
+        { "type": "null" }
+      ],
+      "description": "Model and resource profile settings for the run. Sourced from run.yaml.profile. Null when profile absent.",
+      "nullable": true
+    },
+    "source_count_by_type": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
+        { "type": "null" }
+      ],
+      "description": "Count of source cards by source_type (e.g. {official_doc: 3, paper: 1}). Aggregated from all source cards in the run's sources/ directory. Null when no source cards are present.",
+      "nullable": true
+    }
+  },
+  "$defs": {
+    "RFClaimCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_cards":         { "type": ["integer", "null"] },
+        "extraction_cards":     { "type": ["integer", "null"] },
+        "claims_total":         { "type": ["integer", "null"] },
+        "claims_supported":     { "type": ["integer", "null"] },
+        "claims_mixed":         { "type": ["integer", "null"] },
+        "claims_contradicted":  { "type": ["integer", "null"] },
+        "claims_inference":     { "type": ["integer", "null"] },
+        "claims_speculation":   { "type": ["integer", "null"] },
+        "claims_unsupported":   { "type": ["integer", "null"] },
+        "total":                { "type": ["integer", "null"] },
+        "supported":            { "type": ["integer", "null"] },
+        "inference":            { "type": ["integer", "null"] },
+        "speculation":          { "type": ["integer", "null"] }
+      }
+    },
+    "RFVerificationCheck": {
+      "type": "object",
+      "required": ["id", "severity", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "id":        { "type": "string" },
+        "severity":  { "type": "string", "enum": ["error", "warning", "info"] },
+        "status":    { "type": "string", "enum": ["pass", "fail", "skip"] },
+        "detail":    { "type": ["string", "null"] },
+        "locations": { "type": ["array", "null"] }
+      }
+    },
+    "RFVerification": {
+      "type": "object",
+      "required": ["present"],
+      "additionalProperties": false,
+      "properties": {
+        "present":   { "type": "boolean" },
+        "passed":    { "type": ["boolean", "null"] },
+        "exit_code": { "type": ["integer", "null"] },
+        "checks":    {
+          "type": "array",
+          "items": { "$ref": "#/$defs/RFVerificationCheck" }
+        }
+      }
+    },
+    "RFGovernanceBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sensitivity":             { "type": ["string", "null"], "enum": ["public", "personal", "work_sensitive", "client_sensitive", null] },
+        "approved_for_writeback":  { "type": ["boolean", "null"] },
+        "approved_by":             { "type": ["string", "null"] },
+        "approval_timestamp":      { "type": ["string", "null"] }
+      }
+    },
+    "RFTimelineEvent": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "ts":    { "type": ["string", "null"] },
+        "event": { "type": ["string", "null"] },
+        "stage": { "type": ["string", "null"] }
+      }
+    },
+    "RFResolvedSource": {
+      "type": "object",
+      "required": ["source_card_id", "evidence_id", "relation", "resolved", "dangling"],
+      "additionalProperties": true,
+      "properties": {
+        "source_card_id":   { "type": "string" },
+        "evidence_id":      { "type": "string" },
+        "relation":         { "type": "string", "enum": ["supports", "contradicts", "context"] },
+        "locator":          { "type": ["string", "null"] },
+        "resolved":         { "type": "boolean" },
+        "dangling":         { "type": "boolean" },
+        "title":            { "type": ["string", "null"] },
+        "source_type": {
+          "type": ["string", "null"],
+          "enum": ["official_doc", "paper", "standard", "repo", "news", "blog", "book", "personal_note", "internal_doc", "other", null]
+        },
+        "url":              { "type": ["string", "null"] },
+        "trust": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "source_rank":        { "type": ["string", "null"], "enum": ["primary", "secondary", "tertiary", "unknown", null] },
+                "reliability_notes":  { "type": ["string", "null"] },
+                "known_limitations":  { "type": ["array", "null"], "items": { "type": "string" } }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "usage": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "allowed_for_public_output":       { "type": ["boolean", "null"] },
+                "allowed_for_work_output":         { "type": ["boolean", "null"] },
+                "allowed_for_personal_meatywiki":  { "type": ["boolean", "null"] },
+                "citation_required":               { "type": ["boolean", "null"] },
+                "quote_limit_notes":               { "type": ["string", "null"] }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "sensitivity":       { "type": ["string", "null"], "enum": ["public", "personal", "work_sensitive", "client_sensitive", null] },
+        "evidence_locator":  { "type": ["string", "null"] },
+        "summary":           { "type": ["string", "null"] },
+        "quote":             { "type": ["string", "null"] }
+      }
+    },
+    "RFInferenceBasis": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "from_claims":        { "type": "array", "items": { "type": "string" } },
+        "reasoning_summary":  { "type": ["string", "null"] }
+      }
+    },
+    "RFReportLocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file":         { "type": ["string", "null"] },
+        "heading":      { "type": ["string", "null"] },
+        "paragraph_id": { "type": ["string", "null"] }
+      }
+    },
+    "RFClaim": {
+      "type": "object",
+      "required": ["claim_id", "text", "sources"],
+      "additionalProperties": false,
+      "properties": {
+        "claim_id":          { "type": "string" },
+        "text":              { "type": "string" },
+        "materiality":       { "type": ["string", "null"], "enum": ["core", "background", "style", "material", null] },
+        "claim_type":        { "type": ["string", "null"] },
+        "status": {
+          "type": ["string", "null"],
+          "enum": ["supported", "mixed", "contradicted", "inference", "speculation", "unsupported", null]
+        },
+        "confidence":        { "type": ["string", "null"], "enum": ["low", "medium", "high", null] },
+        "report_locations":  { "type": ["array", "null"], "items": { "$ref": "#/$defs/RFReportLocation" } },
+        "inference_basis": {
+          "oneOf": [
+            { "$ref": "#/$defs/RFInferenceBasis" },
+            { "type": "null" }
+          ]
+        },
+        "sources":           { "type": "array", "items": { "$ref": "#/$defs/RFResolvedSource" } }
+      }
+    },
+    "RFArtifactSchemaVersions": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "null"] },
+      "properties": {
+        "run":             { "type": ["string", "number", "null"] },
+        "evidence_bundle": { "type": ["string", "number", "null"] },
+        "claim_ledger":    { "type": ["string", "number", "null"] }
+      }
+    },
+    "RFRunContextSummary": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "routing_decision": {
+          "oneOf": [
+            { "type": "object", "additionalProperties": true },
+            { "type": "null" }
+          ]
+        },
+        "research_brief_md": { "type": ["string", "null"] },
+        "swarm_plan": {
+          "oneOf": [
+            { "type": "object", "additionalProperties": true },
+            { "type": "null" }
+          ]
+        },
+        "upstream_entities": {
+          "oneOf": [
+            { "type": "object", "additionalProperties": true },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "RFWritebackTarget": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "name":        { "type": ["string", "null"] },
+        "destination": { "type": ["string", "null"] },
+        "status":      { "type": ["string", "null"] },
+        "url":         { "type": ["string", "null"] }
+      }
+    },
+    "RFRunWritebacksSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "targets": {
+          "type": ["array", "null"],
+          "items": { "$ref": "#/$defs/RFWritebackTarget" }
+        },
+        "approved_for_writeback": { "type": ["boolean", "null"] },
+        "reviewer_notes":         { "type": ["string", "null"] },
+        "required_fix":           { "type": ["string", "null"] },
+        "previews":               { "type": ["array", "null"] }
+      }
+    }
+  }
+}

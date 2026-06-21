@@ -110,6 +110,7 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
           runClaims={run.claims}
           claim={selectedClaim}
           threshold={run.sensitivity_threshold}
+          runMeta={{ tags: run.tags, category: run.category }}
           onOpenModal={openClaimModal}
           onSelectClaim={(claimId) => selectClaim(claimId)}
         />
@@ -130,19 +131,30 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
   );
 }
 
+/** Minimal run-level metadata passed to ClaimInspector for reference display (P5 DISP-005). */
+interface RunMetaRef {
+  tags?: string[] | null;
+  category?: string | null;
+}
+
 function ClaimInspector({
   runClaims,
   claim,
   threshold,
+  runMeta,
   onOpenModal,
   onSelectClaim,
 }: {
   runClaims: RFClaim[];
   claim: RFClaim | null;
   threshold: RFRunExport["sensitivity_threshold"];
+  runMeta?: RunMetaRef;
   onOpenModal: (claimId: string) => void;
   onSelectClaim: (claimId: string) => void;
 }) {
+  // P5 DISP-005: reference chips — shown only when non-null
+  const hasRunMeta = (runMeta?.tags?.length ?? 0) > 0 || runMeta?.category != null;
+
   if (!claim) {
     return (
       <aside className="rv-claim-inspector it-card" data-testid="claim-inspector">
@@ -171,6 +183,22 @@ function ClaimInspector({
           Open modal
         </button>
       </div>
+
+      {/* P5 DISP-005: run-level reference chips — context only, non-interactive */}
+      {hasRunMeta && (
+        <div className="rv-inspector-run-meta" data-testid="inspector-run-meta" aria-label="Run context">
+          {runMeta?.category ? (
+            <span className="rv-run-modal__category" data-testid="inspector-run-category">
+              {runMeta.category}
+            </span>
+          ) : null}
+          {runMeta?.tags?.map((tag) => (
+            <span key={tag} className="it-chip rv-tag-chip rv-tag-chip--sm" data-testid="inspector-run-tag">
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="rv-inspector-title">
         <h4>{deriveClaimTitle(claim)}</h4>

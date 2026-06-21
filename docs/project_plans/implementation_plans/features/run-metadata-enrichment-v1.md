@@ -1,16 +1,18 @@
 ---
 schema_version: 2
 doc_type: implementation_plan
-title: "Implementation Plan: Run Metadata Enrichment (v1)"
-status: draft
+title: 'Implementation Plan: Run Metadata Enrichment (v1)'
+status: completed
 created: 2026-06-20
-updated: 2026-06-20
+updated: '2026-06-21'
 feature_slug: run-metadata-enrichment
-feature_version: "v1"
+feature_version: v1
 prd_ref: docs/project_plans/PRDs/features/run-metadata-enrichment-v1.md
 plan_ref: null
-scope: "Add Linked Projects, Category, and Tags to every run — derived from the research backlog, backfilled onto existing runs, threaded through the export pipeline, and surfaced in the viewer with filtering."
-effort_estimate: "~16-20 pts"
+scope: "Add Linked Projects, Category, and Tags to every run \u2014 derived from the\
+  \ research backlog, backfilled onto existing runs, threaded through the export pipeline,\
+  \ and surfaced in the viewer with filtering."
+effort_estimate: ~16-20 pts
 architecture_summary: null
 risk_level: medium
 changelog_required: true
@@ -18,29 +20,35 @@ priority: high
 owner: nick
 contributors: []
 category: product-planning
-tags: [implementation, planning, phases, run-metadata, enrichment, runs-viewer]
+tags:
+- implementation
+- planning
+- phases
+- run-metadata
+- enrichment
+- runs-viewer
 milestone: runs-viewer-v2.2-polish
 commit_refs: []
 pr_refs: []
 files_affected:
-  - backlog/research_idea_backlog.yaml
-  - registries/run_index.yaml
-  - services/planning.py
-  - src/research_foundry/services/export_service.py
-  - scripts/backfill_run_metadata.py
-  - scripts/prebuild-static-data.mjs
-  - scripts/seed_swarm_runs.sh
-  - docs/dev/architecture/rf-run-export-schema.json
-  - docs/dev/architecture/rf-run-export-schema.md
-  - frontend/runs-viewer/src/types/rf/run-export.ts
-  - frontend/runs-viewer/src/screens/RunList.tsx
-  - frontend/runs-viewer/src/components/RunList/RunCard.tsx
-  - frontend/runs-viewer/src/components/RunList/FilterTabs.tsx
-  - frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx
-  - frontend/runs-viewer/src/components/RunDetail/RunDetailModal.tsx
-  - frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.tsx
-  - frontend/runs-viewer/src/components/LineageGraph/LineageDetailPanel.tsx
-  - CHANGELOG.md
+- backlog/research_idea_backlog.yaml
+- registries/run_index.yaml
+- services/planning.py
+- src/research_foundry/services/export_service.py
+- scripts/backfill_run_metadata.py
+- scripts/prebuild-static-data.mjs
+- scripts/seed_swarm_runs.sh
+- docs/dev/architecture/rf-run-export-schema.json
+- docs/dev/architecture/rf-run-export-schema.md
+- frontend/runs-viewer/src/types/rf/run-export.ts
+- frontend/runs-viewer/src/screens/RunList.tsx
+- frontend/runs-viewer/src/components/RunList/RunCard.tsx
+- frontend/runs-viewer/src/components/RunList/FilterTabs.tsx
+- frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx
+- frontend/runs-viewer/src/components/RunDetail/RunDetailModal.tsx
+- frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.tsx
+- frontend/runs-viewer/src/components/LineageGraph/LineageDetailPanel.tsx
+- CHANGELOG.md
 deferred_items_spec_refs: []
 findings_doc_ref: null
 charter_ref: null
@@ -49,93 +57,106 @@ test_plan_ref: null
 plan_structure: independent
 progress_init: auto
 related_documents:
-  - docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
-  - docs/project_plans/human-briefs/run-metadata-enrichment.md
-  - .claude/worknotes/runs-viewer-v2.2-polish/epic-brief.md
-  - .claude/worknotes/run-metadata-enrichment/decisions-block.md
+- docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
+- docs/project_plans/human-briefs/run-metadata-enrichment.md
+- .claude/worknotes/runs-viewer-v2.2-polish/epic-brief.md
+- .claude/worknotes/run-metadata-enrichment/decisions-block.md
 references:
   user_docs: []
   context:
-    - .claude/worknotes/runs-viewer-v2.2-polish/epic-brief.md
+  - .claude/worknotes/runs-viewer-v2.2-polish/epic-brief.md
   specs:
-    - .claude/specs/changelog-spec.md
+  - .claude/specs/changelog-spec.md
   related_prds:
-    - docs/project_plans/PRDs/features/run-metadata-enrichment-v1.md
+  - docs/project_plans/PRDs/features/run-metadata-enrichment-v1.md
 wave_plan:
   serialization_barriers:
+  - frontend/runs-viewer/src/types/rf/run-export.ts
+  - src/research_foundry/services/export_service.py
+  - scripts/prebuild-static-data.mjs
+  phases:
+  - id: P1
+    depends_on: []
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    files_affected:
     - frontend/runs-viewer/src/types/rf/run-export.ts
+    - docs/dev/architecture/rf-run-export-schema.json
+  - id: P2
+    depends_on:
+    - P1
+    isolation: shared
+    parallelizable: false
+    files_affected:
+    - registries/run_index.yaml
+    - scripts/backfill_run_metadata.py
+  - id: P3
+    depends_on:
+    - P1
+    isolation: shared
+    parallelizable: true
+    files_affected:
+    - services/planning.py
+    - scripts/seed_swarm_runs.sh
+  - id: P4
+    depends_on:
+    - P2
+    - P3
+    isolation: shared
+    parallelizable: false
+    files_affected:
     - src/research_foundry/services/export_service.py
     - scripts/prebuild-static-data.mjs
-  phases:
-    - id: P1
-      depends_on: []
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      files_affected:
-        - frontend/runs-viewer/src/types/rf/run-export.ts
-        - docs/dev/architecture/rf-run-export-schema.json
-    - id: P2
-      depends_on: [P1]
-      isolation: shared
-      parallelizable: false
-      files_affected:
-        - registries/run_index.yaml
-        - scripts/backfill_run_metadata.py
-    - id: P3
-      depends_on: [P1]
-      isolation: shared
-      parallelizable: true
-      files_affected:
-        - services/planning.py
-        - scripts/seed_swarm_runs.sh
-    - id: P4
-      depends_on: [P2, P3]
-      isolation: shared
-      parallelizable: false
-      files_affected:
-        - src/research_foundry/services/export_service.py
-        - scripts/prebuild-static-data.mjs
-        - frontend/runs-viewer/src/types/rf/run-export.ts
-    - id: P5
-      depends_on: [P4]
-      isolation: shared
-      parallelizable: true
-      owner_skills: [frontend-design]
-      files_affected:
-        - frontend/runs-viewer/src/screens/RunList.tsx
-        - frontend/runs-viewer/src/components/RunList/RunCard.tsx
-        - frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx
-        - frontend/runs-viewer/src/components/RunDetail/RunDetailModal.tsx
-        - frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.tsx
-        - frontend/runs-viewer/src/components/LineageGraph/LineageDetailPanel.tsx
-    - id: P6
-      depends_on: [P5]
-      isolation: shared
-      files_affected:
-        - frontend/runs-viewer/src/screens/RunList.tsx
-        - frontend/runs-viewer/src/components/RunList/FilterTabs.tsx
-    - id: P7
-      depends_on: [P4]
-      isolation: shared
-      parallelizable: true
-      files_affected:
-        - src/research_foundry/services/export_service.py
-        - frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx
-        - frontend/runs-viewer/src/types/rf/run-export.ts
-    - id: P8
-      depends_on: [P5, P6, P7]
-      isolation: shared
-      parallelizable: false
-      files_affected:
-        - CHANGELOG.md
+    - frontend/runs-viewer/src/types/rf/run-export.ts
+  - id: P5
+    depends_on:
+    - P4
+    isolation: shared
+    parallelizable: true
+    owner_skills:
+    - frontend-design
+    files_affected:
+    - frontend/runs-viewer/src/screens/RunList.tsx
+    - frontend/runs-viewer/src/components/RunList/RunCard.tsx
+    - frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx
+    - frontend/runs-viewer/src/components/RunDetail/RunDetailModal.tsx
+    - frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.tsx
+    - frontend/runs-viewer/src/components/LineageGraph/LineageDetailPanel.tsx
+  - id: P6
+    depends_on:
+    - P5
+    isolation: shared
+    files_affected:
+    - frontend/runs-viewer/src/screens/RunList.tsx
+    - frontend/runs-viewer/src/components/RunList/FilterTabs.tsx
+  - id: P7
+    depends_on:
+    - P4
+    isolation: shared
+    parallelizable: true
+    files_affected:
+    - src/research_foundry/services/export_service.py
+    - frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx
+    - frontend/runs-viewer/src/types/rf/run-export.ts
+  - id: P8
+    depends_on:
+    - P5
+    - P6
+    - P7
+    isolation: shared
+    parallelizable: false
+    files_affected:
+    - CHANGELOG.md
   waves:
-    - [P1]
-    - [P2, P3]
-    - [P4]
-    - [P5, P7]
-    - [P6]
-    - [P8]
+  - - P1
+  - - P2
+    - P3
+  - - P4
+  - - P5
+    - P7
+  - - P6
+  - - P8
 ---
 
 # Implementation Plan: Run Metadata Enrichment (v1)

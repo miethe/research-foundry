@@ -59,3 +59,6 @@ node_modules/
 
 # MkDocs build output
 website/site/
+
+# Backfill migration backups (run.yaml.bak) — git history is the canonical backup
+runs/**/*.bak

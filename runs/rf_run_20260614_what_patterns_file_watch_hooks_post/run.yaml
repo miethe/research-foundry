@@ -19,3 +19,14 @@ profile:
   extraction_model_profile: rf_extract_cheap
   synthesis_model_profile: rf_synthesize_deep
   verification_model_profile: rf_verify_balanced
+linked_projects:
+- Research Foundry
+category: pillar_cross-tool-integration-agentic-os
+tags:
+- event-driven
+- seam-integration
+- local-first
+- file-watch
+- agentic-os
+backlog_idea_ref: RIB-024
+backlog_idea_id: idea_event-driven-seam-integration

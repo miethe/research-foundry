@@ -33,6 +33,7 @@ from ..registry import RUN_INDEX, Registry
 from ..schemas import default_registry, validate
 from ..yamlio import append_jsonl, dump_yaml, load_yaml
 from . import governance as governance_svc
+from .backlog_metadata import BacklogMetadata, lookup_metadata
 
 # Default model profiles when the I-BOM does not specify a model_policy.
 _DEFAULT_MODEL_POLICY = {
@@ -227,6 +228,7 @@ def plan_run(
     freshness_days: int = 180,
     profile: str | None = None,
     project: str | None = None,
+    backlog_idea_ref: str | None = None,
     paths: FoundryPaths | None = None,
 ) -> PlanResult:
     """Plan a research run for ``intent_id``.
@@ -249,6 +251,13 @@ def plan_run(
     are recorded without any network access.  ``notebook_id`` in ``run.yaml``
     starts as ``None`` and is filled in later by the writeback or sourcing layer.
 
+    When ``backlog_idea_ref`` is provided (e.g. ``"RIB-001"``), the five new
+    metadata fields (``linked_projects``, ``category``, ``tags``,
+    ``backlog_idea_ref``, ``backlog_idea_id``) are derived from the backlog
+    entry and written to ``run.yaml``.  When absent, ``linked_projects`` is
+    derived from the resolved project slug (if non-``"unassigned"``), and
+    the remaining fields are ``null``.
+
     Parameters
     ----------
     intent_id:
@@ -270,6 +279,11 @@ def plan_run(
         Project slug.  Resolved from (in priority order): the ``project``
         argument, the intent's ``project`` field, the intent's
         ``raw_idea.suggested_project`` field, or ``'unassigned'``.
+    backlog_idea_ref:
+        Optional ``RIB-NNN`` reference to a backlog idea.  When provided,
+        ``linked_projects``, ``category``, ``tags``, ``backlog_idea_ref``,
+        and ``backlog_idea_id`` are populated in ``run.yaml`` from the
+        backlog entry.
     paths:
         FoundryPaths override (defaults to ``FoundryPaths.discover()``).
     """
@@ -288,6 +302,28 @@ def plan_run(
         or str(intent.get("suggested_project") or "").strip()
         or "unassigned"
     )
+
+    # --- Derive new metadata fields from backlog (P3 creation path) ----------
+    # Uses the shared backlog_metadata helper (same helper used by P2 backfill
+    # migration) so derivation logic is never duplicated.
+    _bm: BacklogMetadata | None = None
+    if backlog_idea_ref:
+        _bm = lookup_metadata(backlog_idea_ref, paths)
+
+    if _bm is not None:
+        _linked_projects: list[str] | None = _bm.linked_projects or None
+        _category: str | None = _bm.category
+        _tags: list[str] | None = _bm.tags or None
+        _backlog_idea_ref: str | None = _bm.backlog_idea_ref
+        _backlog_idea_id: str | None = _bm.backlog_idea_id
+    else:
+        # Graceful degradation: derive linked_projects from resolved project slug
+        # if it is non-trivial; leave the rest null.
+        _linked_projects = [effective_project] if effective_project != "unassigned" else None
+        _category = None
+        _tags = None
+        _backlog_idea_ref = None
+        _backlog_idea_id = None
 
     title = str(intent.get("title") or intent_id)
     intent_slug = slugify(title)
@@ -461,6 +497,18 @@ def plan_run(
         "human_required": human_required,
         "project": effective_project,
         "notebook_id": None,
+        # --- new metadata fields (P3 creation path; backfill in P2) ----------
+        # linked_projects: list of project slugs this run is associated with.
+        "linked_projects": _linked_projects,
+        # category: pillar / thematic grouping derived from backlog idea.
+        "category": _category,
+        # tags: union of backlog idea tags; null when no backlog link.
+        "tags": _tags,
+        # backlog_idea_ref: RIB-NNN backlog reference slug (null if no link).
+        "backlog_idea_ref": _backlog_idea_ref,
+        # backlog_idea_id: stable idea id slug (null if no link).
+        "backlog_idea_id": _backlog_idea_id,
+        # ---------------------------------------------------------------------
         "profile": {
             "depth": depth,
             "audience": audience,
@@ -486,6 +534,12 @@ def plan_run(
             "routing_id": r_id,
             "human_required": human_required,
             "run_dir": str(run.run),
+            # Metadata fields — kept in sync with run.yaml (single-writer consistency).
+            "linked_projects": _linked_projects,
+            "category": _category,
+            "tags": _tags,
+            "backlog_idea_ref": _backlog_idea_ref,
+            "backlog_idea_id": _backlog_idea_id,
         }
     )
 

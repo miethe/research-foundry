@@ -11,6 +11,39 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Run Metadata Enrichment (v1)** — Linked Projects, Category, and Tags
+
+- **Linked Projects, Category, and Tags on every run** — Research Foundry runs now carry structured
+  metadata derived from the research backlog. Each run links to zero or more research ideas via
+  `linked_projects[]`, carries a single `category` (from backlog), and inherits a `tags[]` array.
+  18 existing runs have been backfilled; new runs created via `rf capture --backlog-idea-ref` or
+  `plan_run()` automatically populate these fields at creation time.
+- **Portfolio filtering by project, category, and tag** — `FilterTabs.tsx` extends filter controls
+  to expose three new sections: "Project" (checkbox list of all linked projects across the
+  portfolio), "Category" (checkbox list of categories), and "Tags" (checkbox list of tags). Filters
+  use AND-logic; selecting multiple projects/categories/tags narrows results. Empty-state gracefully
+  renders when no runs match.
+- **Metadata display across all viewer surfaces** — Linked Projects appear as a primary column in
+  the RunList portfolio table; RunCard badges display the project (primary) and category; RunDetail
+  Overview and RunDetailModal headers show project, category, and tag chips. ClaimAuditWorkbench and
+  LineageDetailPanel reference tags in their inspection panes. All surfaces gracefully omit metadata
+  when fields are null (pre-migration runs).
+- **Enrichment-extra fields** — Export schema bumped to v1.2; `rf run export --json` now includes
+  additional run metadata: `cost_usd` (execution cost), `model_profiles` (object with extraction,
+  synthesis, and verification model names and budgets), `source_count_by_type` (breakdown of web,
+  document, and other source types), and threading of `context.routing_decision` and
+  `context.swarm_plan` for downstream swarm analysis. Each field is optional and null-safe.
+- **Enrichment overview widgets** — RunDetailWorkspace Overview tab now shows a second "Enrichment"
+  section (below the P5 Run Metadata section) with widgets for Cost (formatted USD), Model Profiles
+  (compact model-by-model table), Source Count by Type (counts grouped by type), Claim Distribution
+  (stacked progress bars for supported/inference/speculation/contradicted/unsupported claims), and
+  Writeback Targets (name and status). Each widget renders only when its field is non-null;
+  pre-enrichment runs omit the entire section.
+- **Backfill script and creation path** — `scripts/backfill_run_metadata.py` idempotently derives
+  metadata from the backlog and writes to existing `run.yaml` files (with `--dry-run` support);
+  `plan_run()` in the Python core wires metadata at creation; `rf capture --backlog-idea-ref ID`
+  captures a new research run tied to a backlog idea.
+
 #### runs-viewer v2.2 — Nav, Titles, and Lineage Fixes
 
 - **Run titles on all list surfaces**: `RunCard` and `StatusLane` buttons now display a human-readable run title derived from the report frontmatter `title:` key, with a slug-humanized fallback (e.g., `rf_run_20260613_roots_wave` → "Roots Wave"). Raw `run_id` slugs no longer appear as the primary display string.

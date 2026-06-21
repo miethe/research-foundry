@@ -89,6 +89,26 @@ export function RunDetailModal({ runId, onClose }: RunDetailModalProps) {
             <span className="rv-kicker">Run Detail</span>
             <h2>{run ? deriveRunTitle(run) : runId}</h2>
             <code>{runId}</code>
+            {/* P5 DISP-003: metadata sub-header — omit entirely when all fields null */}
+            {run && (run.linked_projects?.length || run.category || run.tags?.length) ? (
+              <div className="rv-run-modal__meta-line" data-testid="run-modal-meta-line">
+                {run.linked_projects?.length ? (
+                  <span className="it-chip blue rv-project-badge" data-testid="modal-project-badge">
+                    {run.linked_projects.join(", ")}
+                  </span>
+                ) : null}
+                {run.category ? (
+                  <span className="rv-run-modal__category" data-testid="modal-category">
+                    {run.category}
+                  </span>
+                ) : null}
+                {run.tags?.map((tag) => (
+                  <span key={tag} className="it-chip rv-tag-chip" data-testid="modal-tag-chip">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="rv-run-modal__actions">
             <Link className="it-btn secondary sm" to={fullPageHref} data-testid="run-modal-open-full-page">

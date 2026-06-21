@@ -1,43 +1,39 @@
 ---
 schema_name: ccdash_document
 schema_version: 2
-
 doc_type: human_brief
 doc_subtype: feature_brief
 root_kind: project_plans
-
 id: BRIEF-run-metadata-enrichment
-title: "Run Metadata Enrichment — Human Brief"
-status: draft
+title: "Run Metadata Enrichment \u2014 Human Brief"
+status: completed
 category: human-briefs
-
 feature_slug: run-metadata-enrichment
 feature_family: run-metadata-enrichment
 feature_version: v1
-
 prd_ref: docs/project_plans/PRDs/features/run-metadata-enrichment-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/run-metadata-enrichment-v1.md
 intent_ref: null
 epic_ref: null
-
 related_documents:
-  - docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
-  - .claude/worknotes/run-metadata-enrichment/decisions-block.md
-  - .claude/worknotes/runs-viewer-v2.2-polish/epic-brief.md
-
+- docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
+- .claude/worknotes/run-metadata-enrichment/decisions-block.md
+- .claude/worknotes/runs-viewer-v2.2-polish/epic-brief.md
 owner: nick
 contributors: []
-
-audience: [humans]
-
+audience:
+- humans
 priority: high
 confidence: 0.78
-
-created: "2026-06-20"
-updated: "2026-06-20"
-target_release: ""
-
-tags: [human-brief, runs-viewer, metadata, enrichment, tier-3]
+created: '2026-06-20'
+updated: '2026-06-21'
+target_release: ''
+tags:
+- human-brief
+- runs-viewer
+- metadata
+- enrichment
+- tier-3
 ---
 
 # Run Metadata Enrichment — Human Brief
@@ -195,3 +191,4 @@ _Optional. Append-only. Short notes during execution — surprises, pivots, vali
 _Agents may append here only if explicitly instructed in a task prompt._
 
 - [2026-06-20] Brief created. OQ-1 through OQ-6 harvested from epic brief and decisions block. Estimation anchored at 18 pts (Tier 3). Human review gate flagged at P2 dry-run.
+- [2026-06-21] **Feature shipped.** All 8 phases executed via wave-driven workflow orchestration (P1→[P2,P3]→P4→[P5,P7]→P6→P8). Backfill applied to 18 runs (run.yaml + run_index.yaml), `backlog_idea_ref` = RIB-NNN per schema. Static data rebuilds at deploy. **Tier 3 gate cleared** (karen + correctness + architecture, all APPROVED) after two remediation cycles: (1) restored the human-readable run title accidentally dropped while making Linked Projects primary; fixed `backlog_idea_ref` slug→RIB-NNN; closed list_runs/plan_run/writebacks/context gaps; (2) aligned `writebacks` to the `RFRunWritebacksSummary` object shape and added missing top-level schema fields (`title`/`cost_usd`/`model_profiles`/`source_count_by_type`) + a strict Draft7 schema-validation regression test. Final: 534 pytest + 244 vitest green, tsc/eslint/ruff clean. Squash-merged to `main`. See `.claude/progress/run-metadata-enrichment/plan-completion.md`.

@@ -151,6 +151,27 @@ function RunOverview({ run, onOpenAudit }: { run: RFRunExport; onOpenAudit: (cla
   const attention = summarizeRunAttention(run);
   const topClaims = run.claims.slice(0, 4);
 
+  // P5 DISP-004: determine which metadata fields are present
+  const hasMetadata =
+    (run.linked_projects?.length ?? 0) > 0 ||
+    run.category != null ||
+    (run.tags?.length ?? 0) > 0 ||
+    run.backlog_idea_ref != null;
+
+  // P7 ENR-005: determine which enrichment widgets to show
+  const hasCost = run.cost_usd != null;
+  const hasModelProfiles = run.model_profiles != null;
+  const hasSourceCountByType =
+    run.source_count_by_type != null &&
+    Object.keys(run.source_count_by_type).length > 0;
+  const hasClaimDistribution =
+    run.claim_counts != null &&
+    (run.claim_counts.total ?? 0) > 0;
+  const hasWritebacks =
+    run.writebacks?.targets != null && run.writebacks.targets.length > 0;
+  const hasEnrichment =
+    hasCost || hasModelProfiles || hasSourceCountByType || hasClaimDistribution || hasWritebacks;
+
   return (
     <section className="rv-run-overview" data-testid="run-overview">
       <div className="rv-run-overview__hero it-card">
@@ -168,6 +189,197 @@ function RunOverview({ run, onOpenAudit }: { run: RFRunExport; onOpenAudit: (cla
           <div><dt>Top attention</dt><dd>{topAttentionLabel(attention)}</dd></div>
         </dl>
       </div>
+
+      {/* P5 DISP-004: Run Metadata section — renders only rows with data; section omits when all null */}
+      <div className="rv-run-overview__metadata it-card" data-testid="run-overview-metadata">
+        <div className="rv-pane-title">
+          <h3>Run Metadata</h3>
+        </div>
+        {hasMetadata ? (
+          <dl className="rv-metadata-dl">
+            {run.linked_projects?.length ? (
+              <div className="rv-metadata-dl__row" data-testid="metadata-linked-projects">
+                <dt>Linked Projects</dt>
+                <dd>
+                  <div className="rv-metadata-dl__chips">
+                    {run.linked_projects.map((project) => (
+                      <span key={project} className="it-chip blue rv-project-badge">
+                        {project}
+                      </span>
+                    ))}
+                  </div>
+                </dd>
+              </div>
+            ) : null}
+            {run.category ? (
+              <div className="rv-metadata-dl__row" data-testid="metadata-category">
+                <dt>Category</dt>
+                <dd><span className="rv-run-modal__category">{run.category}</span></dd>
+              </div>
+            ) : null}
+            {run.tags?.length ? (
+              <div className="rv-metadata-dl__row" data-testid="metadata-tags">
+                <dt>Tags</dt>
+                <dd>
+                  <div className="rv-metadata-dl__chips">
+                    {run.tags.map((tag) => (
+                      <span key={tag} className="it-chip rv-tag-chip">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </dd>
+              </div>
+            ) : null}
+            {run.backlog_idea_ref ? (
+              <div className="rv-metadata-dl__row" data-testid="metadata-backlog-ref">
+                <dt>Backlog Ref</dt>
+                <dd>
+                  <a
+                    href={`#backlog-${run.backlog_idea_ref}`}
+                    className="rv-backlog-link"
+                    title={run.backlog_idea_id ?? run.backlog_idea_ref}
+                  >
+                    {run.backlog_idea_ref}
+                  </a>
+                  {run.backlog_idea_id ? (
+                    <span className="rv-muted"> ({run.backlog_idea_id})</span>
+                  ) : null}
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+        ) : (
+          <p className="rv-muted" data-testid="metadata-empty">No run metadata available for this export.</p>
+        )}
+      </div>
+
+      {/* P7 ENR-005: Enrichment section — each widget shown only when its data field non-null */}
+      {hasEnrichment ? (
+        <div
+          className="rv-run-overview__enrichment it-card"
+          data-testid="run-overview-enrichment"
+        >
+          <div className="rv-pane-title">
+            <h3>Run Enrichment</h3>
+          </div>
+          <div className="rv-enrichment-widgets">
+
+            {/* Cost widget */}
+            {hasCost ? (
+              <div className="rv-enrichment-widget" data-testid="enrichment-cost">
+                <span className="rv-enrichment-widget__label">Cost</span>
+                <span className="rv-enrichment-widget__value it-numeric">
+                  {`$${(run.cost_usd as number).toFixed(4)}`}
+                </span>
+              </div>
+            ) : null}
+
+            {/* Model Profiles widget */}
+            {hasModelProfiles ? (
+              <div className="rv-enrichment-widget rv-enrichment-widget--wide" data-testid="enrichment-model-profiles">
+                <span className="rv-enrichment-widget__label">Model Profiles</span>
+                <table className="rv-enrichment-table" aria-label="Model profile settings">
+                  <tbody>
+                    {run.model_profiles!.extraction_model_profile != null ? (
+                      <tr>
+                        <th>Extraction</th>
+                        <td><code>{run.model_profiles!.extraction_model_profile}</code></td>
+                      </tr>
+                    ) : null}
+                    {run.model_profiles!.synthesis_model_profile != null ? (
+                      <tr>
+                        <th>Synthesis</th>
+                        <td><code>{run.model_profiles!.synthesis_model_profile}</code></td>
+                      </tr>
+                    ) : null}
+                    {run.model_profiles!.verification_model_profile != null ? (
+                      <tr>
+                        <th>Verification</th>
+                        <td><code>{run.model_profiles!.verification_model_profile}</code></td>
+                      </tr>
+                    ) : null}
+                    {run.model_profiles!.max_runtime_minutes != null ? (
+                      <tr>
+                        <th>Max runtime</th>
+                        <td>{run.model_profiles!.max_runtime_minutes} min</td>
+                      </tr>
+                    ) : null}
+                    {run.model_profiles!.freshness_days != null ? (
+                      <tr>
+                        <th>Freshness</th>
+                        <td>{run.model_profiles!.freshness_days} days</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+
+            {/* Source Count by Type widget */}
+            {hasSourceCountByType ? (
+              <div className="rv-enrichment-widget rv-enrichment-widget--wide" data-testid="enrichment-source-count">
+                <span className="rv-enrichment-widget__label">Sources by Type</span>
+                <div className="rv-enrichment-source-counts">
+                  {Object.entries(run.source_count_by_type!).map(([type, count]) => (
+                    <div key={type} className="rv-enrichment-source-count-row">
+                      <span className="it-chip rv-tag-chip">{type.replace(/_/g, " ")}</span>
+                      <span className="rv-enrichment-count it-numeric">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {/* Confidence + Materiality distribution widget (from claim_counts) */}
+            {hasClaimDistribution ? (
+              <div className="rv-enrichment-widget rv-enrichment-widget--wide" data-testid="enrichment-claim-distribution">
+                <span className="rv-enrichment-widget__label">Claim Distribution</span>
+                <div className="rv-enrichment-distributions">
+                  <ClaimDistributionBars counts={run.claim_counts!} />
+                </div>
+              </div>
+            ) : null}
+
+            {/* Writeback targets + status widget */}
+            {hasWritebacks ? (
+              <div className="rv-enrichment-widget rv-enrichment-widget--wide" data-testid="enrichment-writebacks">
+                <span className="rv-enrichment-widget__label">Writeback Targets</span>
+                <ul className="rv-enrichment-writeback-list">
+                  {run.writebacks!.targets!.map((target, idx) => {
+                    const key = target.name ?? target.destination ?? String(idx);
+                    const statusClass = writebackStatusClass(target.status ?? null);
+                    return (
+                      <li key={key} className="rv-enrichment-writeback-row">
+                        <span className="rv-enrichment-writeback-name">
+                          {target.name ?? target.destination ?? "—"}
+                        </span>
+                        {target.status ? (
+                          <span className={`it-chip ${statusClass}`}>
+                            {target.status}
+                          </span>
+                        ) : null}
+                        {target.url ? (
+                          <a
+                            href={target.url}
+                            className="rv-enrichment-writeback-link"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`Open ${target.name ?? "writeback target"}`}
+                          >
+                            ↗
+                          </a>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
+
+          </div>
+        </div>
+      ) : null}
 
       <div className="rv-run-overview__claims it-card">
         <div className="rv-pane-title">
@@ -187,6 +399,61 @@ function RunOverview({ run, onOpenAudit }: { run: RFRunExport; onOpenAudit: (cla
       </div>
     </section>
   );
+}
+
+// ── Enrichment sub-components ─────────────────────────────────────────────────
+
+/**
+ * Renders confidence and materiality progress bars from claim_counts.
+ * Each bar shows the proportion of that category relative to total claims.
+ * Only renders bars for categories with non-zero counts.
+ */
+function ClaimDistributionBars({ counts }: { counts: NonNullable<RFRunExport["claim_counts"]> }) {
+  const total = counts.total ?? counts.claims_total ?? 0;
+  if (total === 0) return null;
+
+  const rows: Array<{ label: string; value: number; colorClass: string; testId: string }> = [
+    { label: "Supported",    value: counts.supported ?? counts.claims_supported ?? 0,    colorClass: "",         testId: "dist-supported" },
+    { label: "Inference",    value: counts.inference ?? counts.claims_inference ?? 0,    colorClass: "blue",     testId: "dist-inference" },
+    { label: "Speculation",  value: counts.speculation ?? counts.claims_speculation ?? 0, colorClass: "gold",    testId: "dist-speculation" },
+    { label: "Contradicted", value: counts.claims_contradicted ?? 0,                      colorClass: "purple",  testId: "dist-contradicted" },
+    { label: "Unsupported",  value: counts.claims_unsupported ?? 0,                       colorClass: "",        testId: "dist-unsupported" },
+  ].filter((r) => r.value > 0);
+
+  return (
+    <div className="rv-enrichment-dist-bars" data-testid="claim-distribution-bars">
+      {rows.map(({ label, value, colorClass, testId }) => {
+        const pct = Math.round((value / total) * 100);
+        return (
+          <div key={label} className="rv-enrichment-dist-row" data-testid={testId}>
+            <span className="rv-enrichment-dist-label">{label}</span>
+            <div
+              className={`it-progress${colorClass ? ` ${colorClass}` : ""} rv-enrichment-dist-bar`}
+              role="progressbar"
+              aria-valuenow={pct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`${label}: ${value} of ${total} (${pct}%)`}
+            >
+              <div className="fill" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="rv-enrichment-dist-count it-numeric">{value}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Maps writeback status string to an it-chip color class. */
+function writebackStatusClass(status: string | null): string {
+  if (!status) return "";
+  const s = status.toLowerCase();
+  if (s === "published" || s === "success" || s === "complete" || s === "completed") return "green";
+  if (s === "pending" || s === "approved" || s === "ready") return "blue";
+  if (s === "draft" || s === "in_progress" || s === "processing") return "orange";
+  if (s === "failed" || s === "error" || s === "blocked") return "red";
+  return "";
 }
 
 function topAttentionLabel(attention: ReturnType<typeof summarizeRunAttention>): string {

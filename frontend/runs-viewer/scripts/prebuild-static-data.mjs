@@ -89,12 +89,18 @@ for (const runId of runDirs) {
   console.log(`[prebuild]   copied → public/data/${runId}/run.json`);
 
   summaries.push({
-    run_id:         run.run_id,
-    status_derived: run.status_derived ?? null,
-    created_at:     run.created_at ?? null,
-    sensitivity:    run.sensitivity ?? null,
-    claim_counts:   run.claim_counts ?? null,
-    title:          run.title ?? null,
+    run_id:          run.run_id,
+    status_derived:  run.status_derived ?? null,
+    created_at:      run.created_at ?? null,
+    sensitivity:     run.sensitivity ?? null,
+    claim_counts:    run.claim_counts ?? null,
+    title:           run.title ?? null,
+    // Metadata enrichment fields (schema 1.2) — null for pre-migration runs.
+    // linked_projects, category, tags are needed on list views (EXP-002).
+    // backlog_idea_ref / backlog_idea_id are detail-view only; omit from index.
+    linked_projects: run.linked_projects ?? null,
+    category:        run.category ?? null,
+    tags:            run.tags ?? null,
   });
 }
 

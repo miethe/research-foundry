@@ -1,0 +1,97 @@
+
+[DRY-RUN] Backfill complete.
+  Runs backfilled : 18
+  Runs skipped    : 0  (no link or already up-to-date)
+  Field changes   : 90
+
+Diff:
+  [rf_run_20260614_claim_segmentation_and_claim_to_source] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_claim_segmentation_and_claim_to_source] category: None -> 'pillar_evidence-claim-verification'
+  [rf_run_20260614_claim_segmentation_and_claim_to_source] tags: None -> ['claim-verification', 'attribution', 'entailment', 'claim-ledger', 'extraction']
+  [rf_run_20260614_claim_segmentation_and_claim_to_source] backlog_idea_ref: None -> 'idea_claim-segmentation-source-alignment'
+  [rf_run_20260614_claim_segmentation_and_claim_to_source] backlog_idea_id: None -> 'idea_claim-segmentation-source-alignment'
+  [rf_run_20260614_closed_loop_telemetry_to_artifact_feedback] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_closed_loop_telemetry_to_artifact_feedback] category: None -> 'pillar_reuse-promotion-governance'
+  [rf_run_20260614_closed_loop_telemetry_to_artifact_feedback] tags: None -> ['feedback-loop', 'artifact-governance', 'telemetry', 'closed-loop', 'agentic-sdlc']
+  [rf_run_20260614_closed_loop_telemetry_to_artifact_feedback] backlog_idea_ref: None -> 'idea_closed-loop-telemetry-artifact-improvement'
+  [rf_run_20260614_closed_loop_telemetry_to_artifact_feedback] backlog_idea_id: None -> 'idea_closed-loop-telemetry-artifact-improvement'
+  [rf_run_20260614_contradiction_detection_across_heterogeneous_sou] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_contradiction_detection_across_heterogeneous_sou] category: None -> 'pillar_evidence-claim-verification'
+  [rf_run_20260614_contradiction_detection_across_heterogeneous_sou] tags: None -> ['contradiction-detection', 'evidence-quality', 'knowledge-graph', 'fact-checking', 'nlp']
+  [rf_run_20260614_contradiction_detection_across_heterogeneous_sou] backlog_idea_ref: None -> 'idea_contradiction-detection-heterogeneous-sources'
+  [rf_run_20260614_contradiction_detection_across_heterogeneous_sou] backlog_idea_id: None -> 'idea_contradiction-detection-heterogeneous-sources'
+  [rf_run_20260614_determinism_ci_cost_control_for_agentic] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_determinism_ci_cost_control_for_agentic] category: None -> 'pillar_evaluation-quality'
+  [rf_run_20260614_determinism_ci_cost_control_for_agentic] tags: None -> ['evals', 'agent-sdk', 'ci-cd', 'llm-as-judge', 'non-determinism', 'cost-control']
+  [rf_run_20260614_determinism_ci_cost_control_for_agentic] backlog_idea_ref: None -> 'idea_agentic-eval-harness-ci'
+  [rf_run_20260614_determinism_ci_cost_control_for_agentic] backlog_idea_id: None -> 'idea_agentic-eval-harness-ci'
+  [rf_run_20260614_do_token_logprob_distributions_provide_more] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_do_token_logprob_distributions_provide_more] category: None -> 'pillar_evaluation-quality'
+  [rf_run_20260614_do_token_logprob_distributions_provide_more] tags: None -> ['logprobs', 'classification-confidence', 'calibration', 'llm', 'abstention', 'cost-efficiency']
+  [rf_run_20260614_do_token_logprob_distributions_provide_more] backlog_idea_ref: None -> 'idea_logprob-confidence-calibration'
+  [rf_run_20260614_do_token_logprob_distributions_provide_more] backlog_idea_id: None -> 'idea_logprob-confidence-calibration'
+  [rf_run_20260614_embedding_model_vector_store_strategy_for] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_embedding_model_vector_store_strategy_for] category: None -> 'pillar_knowledge-compilation-retrieval'
+  [rf_run_20260614_embedding_model_vector_store_strategy_for] tags: None -> ['embeddings', 'vector-search', 'pgvector', 'sqlite-vec', 'local-first', 'cost-efficiency']
+  [rf_run_20260614_embedding_model_vector_store_strategy_for] backlog_idea_ref: None -> 'idea_embedding-vector-store-strategy'
+  [rf_run_20260614_embedding_model_vector_store_strategy_for] backlog_idea_id: None -> 'idea_embedding-vector-store-strategy'
+  [rf_run_20260614_hybrid_bm25_vector_and_fts5_ranking] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_hybrid_bm25_vector_and_fts5_ranking] category: None -> 'pillar_knowledge-compilation-retrieval'
+  [rf_run_20260614_hybrid_bm25_vector_and_fts5_ranking] tags: None -> ['search', 'bm25', 'vector-search', 'fts5', 'sqlite', 'ranking']
+  [rf_run_20260614_hybrid_bm25_vector_and_fts5_ranking] backlog_idea_ref: None -> 'idea_hybrid-bm25-vector-fts5'
+  [rf_run_20260614_hybrid_bm25_vector_and_fts5_ranking] backlog_idea_id: None -> 'idea_hybrid-bm25-vector-fts5'
+  [rf_run_20260614_semantic_entity_consolidation_and_auto_merge] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_semantic_entity_consolidation_and_auto_merge] category: None -> 'pillar_knowledge-compilation-retrieval'
+  [rf_run_20260614_semantic_entity_consolidation_and_auto_merge] tags: None -> ['entity-resolution', 'deduplication', 'threshold-calibration', 'knowledge-graph', 'similarity']
+  [rf_run_20260614_semantic_entity_consolidation_and_auto_merge] backlog_idea_ref: None -> 'idea_entity-consolidation-merge-thresholds'
+  [rf_run_20260614_semantic_entity_consolidation_and_auto_merge] backlog_idea_id: None -> 'idea_entity-consolidation-merge-thresholds'
+  [rf_run_20260614_sensitivity_aware_ai_routing_tier_policy] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_sensitivity_aware_ai_routing_tier_policy] category: None -> 'pillar_governance-multi-key-safety'
+  [rf_run_20260614_sensitivity_aware_ai_routing_tier_policy] tags: None -> ['sensitivity', 'data-classification', 'llm-routing', 'governance', 'data-boundary', 'writeback']
+  [rf_run_20260614_sensitivity_aware_ai_routing_tier_policy] backlog_idea_ref: None -> 'idea_sensitivity-aware-tool-routing'
+  [rf_run_20260614_sensitivity_aware_ai_routing_tier_policy] backlog_idea_id: None -> 'idea_sensitivity-aware-tool-routing'
+  [rf_run_20260614_what_architectures_define_an_agentic_origination] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_what_architectures_define_an_agentic_origination] category: None -> 'pillar_cross-tool-integration-agentic-os'
+  [rf_run_20260614_what_architectures_define_an_agentic_origination] tags: None -> ['origination-layer', 'research-routing', 'control-plane', 'execution-packets', 'intent-extraction']
+  [rf_run_20260614_what_architectures_define_an_agentic_origination] backlog_idea_ref: None -> 'idea_origination-layer-routing'
+  [rf_run_20260614_what_architectures_define_an_agentic_origination] backlog_idea_id: None -> 'idea_origination-layer-routing'
+  [rf_run_20260614_what_are_the_documented_trade_offs] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_what_are_the_documented_trade_offs] category: None -> 'pillar_knowledge-compilation-retrieval'
+  [rf_run_20260614_what_are_the_documented_trade_offs] tags: None -> ['file-first', 'database', 'architecture', 'git', 'reproducibility']
+  [rf_run_20260614_what_are_the_documented_trade_offs] backlog_idea_ref: None -> 'idea_file-vs-db-truth-architecture'
+  [rf_run_20260614_what_are_the_documented_trade_offs] backlog_idea_id: None -> 'idea_file-vs-db-truth-architecture'
+  [rf_run_20260614_what_components_schemas_agent_roles_and] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_what_components_schemas_agent_roles_and] category: None -> 'pillar_cross-tool-integration-agentic-os'
+  [rf_run_20260614_what_components_schemas_agent_roles_and] tags: None -> ['agentic-os', 'research-swarm', 'evidence-bundle', 'architecture', 'mvp']
+  [rf_run_20260614_what_components_schemas_agent_roles_and] backlog_idea_ref: None -> 'idea_rf-self-validation-mvp-architecture'
+  [rf_run_20260614_what_components_schemas_agent_roles_and] backlog_idea_id: None -> 'idea_rf-self-validation-mvp-architecture'
+  [rf_run_20260614_what_does_the_empirical_literature_say] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_what_does_the_empirical_literature_say] category: None -> 'pillar_evidence-claim-verification'
+  [rf_run_20260614_what_does_the_empirical_literature_say] tags: None -> ['claim-verification', 'hallucination', 'verifiable-ai', 'rag', 'evidence']
+  [rf_run_20260614_what_does_the_empirical_literature_say] backlog_idea_ref: None -> 'idea_claim-traceability-verification-landscape'
+  [rf_run_20260614_what_does_the_empirical_literature_say] backlog_idea_id: None -> 'idea_claim-traceability-verification-landscape'
+  [rf_run_20260614_what_governance_criteria_evaluation_frameworks_a] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_what_governance_criteria_evaluation_frameworks_a] category: None -> 'pillar_reuse-promotion-governance'
+  [rf_run_20260614_what_governance_criteria_evaluation_frameworks_a] tags: None -> ['skillbom', 'governance', 'promotion', 'reusable-skills', 'evaluation']
+  [rf_run_20260614_what_governance_criteria_evaluation_frameworks_a] backlog_idea_ref: None -> 'idea_skillbom-promotion-governance'
+  [rf_run_20260614_what_governance_criteria_evaluation_frameworks_a] backlog_idea_id: None -> 'idea_skillbom-promotion-governance'
+  [rf_run_20260614_what_methods_exist_for_automatically_scoring] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_what_methods_exist_for_automatically_scoring] category: None -> 'pillar_evaluation-quality'
+  [rf_run_20260614_what_methods_exist_for_automatically_scoring] tags: None -> ['quality-scoring', 'evaluation', 'ccdash', 'telemetry', 'research-metrics', 'claim-ledger']
+  [rf_run_20260614_what_methods_exist_for_automatically_scoring] backlog_idea_ref: None -> 'idea_evidence-bundle-quality-scoring'
+  [rf_run_20260614_what_methods_exist_for_automatically_scoring] backlog_idea_id: None -> 'idea_evidence-bundle-quality-scoring'
+  [rf_run_20260614_what_patterns_file_watch_hooks_post] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_what_patterns_file_watch_hooks_post] category: None -> 'pillar_cross-tool-integration-agentic-os'
+  [rf_run_20260614_what_patterns_file_watch_hooks_post] tags: None -> ['event-driven', 'seam-integration', 'local-first', 'file-watch', 'agentic-os']
+  [rf_run_20260614_what_patterns_file_watch_hooks_post] backlog_idea_ref: None -> 'idea_event-driven-seam-integration'
+  [rf_run_20260614_what_patterns_file_watch_hooks_post] backlog_idea_id: None -> 'idea_event-driven-seam-integration'
+  [rf_run_20260614_what_pipeline_architecture_best_ingests_outputs] linked_projects: [] -> ['Research Foundry']
+  [rf_run_20260614_what_pipeline_architecture_best_ingests_outputs] category: None -> 'pillar_capture-ingestion'
+  [rf_run_20260614_what_pipeline_architecture_best_ingests_outputs] tags: [] -> ['research-capture', 'ingestion-pipeline', 'provenance', 'normalization', 'intake']
+  [rf_run_20260614_what_pipeline_architecture_best_ingests_outputs] backlog_idea_ref: None -> 'idea_unified-research-capture-harness'
+  [rf_run_20260614_what_pipeline_architecture_best_ingests_outputs] backlog_idea_id: None -> 'idea_unified-research-capture-harness'
+  [rf_run_20260614_what_published_security_frameworks_threat_models] linked_projects: None -> ['Research Foundry']
+  [rf_run_20260614_what_published_security_frameworks_threat_models] category: None -> 'pillar_governance-multi-key-safety'
+  [rf_run_20260614_what_published_security_frameworks_threat_models] tags: None -> ['key-isolation', 'governance', 'credential-security', 'boundary', 'api-keys', 'threat-model']
+  [rf_run_20260614_what_published_security_frameworks_threat_models] backlog_idea_ref: None -> 'idea_key-isolation-multiprofile-governance'
+  [rf_run_20260614_what_published_security_frameworks_threat_models] backlog_idea_id: None -> 'idea_key-isolation-multiprofile-governance'

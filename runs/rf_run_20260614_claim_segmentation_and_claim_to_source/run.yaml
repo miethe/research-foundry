@@ -19,3 +19,14 @@ profile:
   extraction_model_profile: rf_extract_cheap
   synthesis_model_profile: rf_synthesize_deep
   verification_model_profile: rf_verify_balanced
+linked_projects:
+- Research Foundry
+category: pillar_evidence-claim-verification
+tags:
+- claim-verification
+- attribution
+- entailment
+- claim-ledger
+- extraction
+backlog_idea_ref: RIB-001
+backlog_idea_id: idea_claim-segmentation-source-alignment

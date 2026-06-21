@@ -4,6 +4,8 @@
  * Renders:
  *   - Derived lifecycle badge (status_derived → verified / needs-review / failed / planned)
  *   - Sensitivity badge (when sensitivity is non-null)
+ *   - Linked Projects badge (PRIMARY metadata, P5 DISP-001) — when linked_projects non-null
+ *   - Tags chips (top 3 + overflow badge, P5 DISP-001) — when tags non-null
  *   - Claim counts (supported / inference / speculation)
  *   - Verification pass/fail indicator (when verification data present)
  *   - Governance verdict (when governance.approved_for_writeback present)
@@ -11,6 +13,8 @@
  *
  * All optional fields degrade gracefully — no crash on partial data.
  * Uses RFRunSummary from useRunList() for the list view.
+ *
+ * R-P2: linked_projects/tags null/absent → nothing rendered; no console error.
  */
 
 import type { RFRunSummary, RFStatusDerived, RFSensitivity } from "@/types/rf";
@@ -121,6 +125,14 @@ export function RunCard({ run, onClick }: RunCardProps) {
   // Schema mismatch (OQ-7)
   const schemaMismatch = run.schema_version_mismatch === true;
 
+  // Linked Projects (PRIMARY metadata — P5 DISP-001)
+  const linkedProjects = run.linked_projects?.length ? run.linked_projects : null;
+
+  // Tags chips — top 3, overflow badge (P5 DISP-001)
+  const tags = run.tags?.length ? run.tags : null;
+  const visibleTags = tags?.slice(0, 3) ?? null;
+  const overflowCount = tags ? Math.max(0, tags.length - 3) : 0;
+
   // Date display
   const createdLabel = run.created_at
     ? new Date(run.created_at).toLocaleDateString(undefined, {
@@ -169,6 +181,33 @@ export function RunCard({ run, onClick }: RunCardProps) {
         <strong className="rv-run-card__title" data-testid="run-title">{displayTitle}</strong>
         <span className="rv-run-card__run-id" data-testid="run-id">{run.run_id}</span>
       </div>
+
+      {/* Linked Projects — PRIMARY metadata (P5 DISP-001). Omit when null/absent. */}
+      {linkedProjects && (
+        <div className="rv-run-card__projects" data-testid="run-card-projects">
+          {linkedProjects.map((project) => (
+            <span key={project} className="it-chip blue rv-project-badge" data-testid="project-badge">
+              {project}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Tags chips — top 3 + overflow. Omit when null/absent. */}
+      {visibleTags && (
+        <div className="rv-run-card__tags" data-testid="run-card-tags">
+          {visibleTags.map((tag) => (
+            <span key={tag} className="it-chip rv-tag-chip" data-testid="tag-chip">
+              {tag}
+            </span>
+          ))}
+          {overflowCount > 0 && (
+            <span className="it-chip rv-tag-chip rv-tag-chip--overflow" data-testid="tag-overflow">
+              +{overflowCount}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Meta row: sensitivity + date + governance */}
       <div className="rv-run-card__meta">

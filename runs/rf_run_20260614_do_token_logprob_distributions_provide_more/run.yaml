@@ -19,3 +19,15 @@ profile:
   extraction_model_profile: rf_extract_cheap
   synthesis_model_profile: rf_synthesize_deep
   verification_model_profile: rf_verify_balanced
+linked_projects:
+- Research Foundry
+category: pillar_evaluation-quality
+tags:
+- logprobs
+- classification-confidence
+- calibration
+- llm
+- abstention
+- cost-efficiency
+backlog_idea_ref: RIB-045
+backlog_idea_id: idea_logprob-confidence-calibration

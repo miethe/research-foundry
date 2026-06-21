@@ -153,6 +153,58 @@ static-file server. Sensitivity redaction is applied at export time — governed
 content never reaches the viewer. See
 `docs/dev/architecture/adr-runs-read-path.md` for the full read-path decision.
 
+### Run Metadata (Linked Projects, Category, Tags)
+
+Runs can carry rich metadata derived from the research backlog, displayed across the viewer and
+used for portfolio filtering and project linking:
+
+**Metadata fields:**
+- **Linked Projects:** Project slugs the run is associated with (e.g., `research-foundry`,
+  `skillmeat`). Used for portfolio filtering and cross-project linking.
+- **Category:** Research pillar or domain (e.g., `AI Engineering`, `Frontend Tooling`).
+- **Tags:** User-defined topic tags for classification and discovery.
+- **Backlog Idea Reference:** The RIB-NNN identifier when the run was created from a research
+  idea backlog entry.
+
+**Where metadata is displayed:**
+- **Portfolio table:** Project column shows linked projects as badges; filter by project,
+  category, or tag using the FilterTabs.
+- **Run cards:** Project badges and tag chips visible at a glance.
+- **Run Detail:** All metadata fields shown in the Overview section with enrichment widgets
+  (cost, model profiles, source diversity).
+- **Claim ledger:** Tag references linked to claims for contextual discovery.
+
+**Filtering portfolio by metadata:**
+
+Use the FilterTabs (Project, Category, Tags filters) to narrow the portfolio view:
+```
+Portfolio filters use AND logic: runs must match selected projects AND category AND tags.
+Runs with null metadata are excluded when a filter is active.
+Clear all filters to see the full portfolio.
+```
+
+**Backfill migration for pre-migration runs:**
+
+Runs created before metadata enrichment was enabled (schema < 1.2) carry `null` values for these
+fields. The backfill migration idempotently populates metadata by inverting the research backlog's
+idea↔run linkage:
+
+```bash
+# Preview changes without committing
+scripts/backfill_run_metadata.py --dry-run
+
+# Apply the migration
+scripts/backfill_run_metadata.py --commit
+```
+
+After backfill, re-export runs before restarting the viewer:
+```bash
+rf run export --json --all
+pnpm --filter runs-viewer build
+```
+
+See `docs/dev/architecture/rf-run-export-schema.md` §11–13 for complete schema documentation.
+
 ---
 
 ## Folder map

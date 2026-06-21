@@ -4058,6 +4058,336 @@ button.active .rv-tab-count {
 }
 
 /* =========================================================================
+   P5 — RUN METADATA ENRICHMENT DISPLAY
+   Linked Projects (PRIMARY), category, tags across all target surfaces.
+   R-P2: all elements render only when fields non-null; graceful absence.
+   ========================================================================= */
+
+/* ── RunCard: linked_projects badge row ──────────────────────────────────── */
+
+.rv-run-card__projects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--it-space-1);
+  margin-top: var(--it-space-1);
+}
+
+/* ── RunCard: tags chip row ──────────────────────────────────────────────── */
+
+.rv-run-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--it-space-1);
+  margin-top: var(--it-space-1);
+}
+
+/* Shared project badge — extends .it-chip.blue */
+.rv-project-badge {
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-medium);
+  letter-spacing: 0.01em;
+}
+
+/* Tag chip — neutral it-chip, smaller */
+.rv-tag-chip {
+  font-size: var(--it-text-xs);
+}
+
+.rv-tag-chip--sm {
+  font-size: 10px;
+  padding: 2px 6px;
+}
+
+.rv-tag-chip--overflow {
+  color: var(--it-text-secondary);
+}
+
+/* ── StatusLane: project sub-label ──────────────────────────────────────── */
+
+/* The lane run button is already a grid; the project sub-label spans col 1 */
+.rv-lane-run__project {
+  grid-column: 1;
+  font-size: 11px;
+  color: var(--it-blue-600, #1e5fa8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: -2px;
+}
+
+/* Re-target lane-run grid to allow sub-label row */
+.rv-lane-run {
+  grid-template-rows: auto auto;
+}
+
+/* ── RunTable: Project column ────────────────────────────────────────────── */
+
+/* Responsive: hide at narrow widths */
+@media (max-width: 900px) {
+  .rv-run-table__col-project {
+    display: none;
+  }
+}
+
+/* ── RunDetailModal: metadata sub-header line ────────────────────────────── */
+
+.rv-run-modal__meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--it-space-1);
+  margin-top: var(--it-space-1);
+}
+
+.rv-run-modal__category {
+  font-size: var(--it-text-xs);
+  color: var(--it-text-secondary);
+  font-style: italic;
+}
+
+/* ── RunDetailWorkspace: Overview metadata section ───────────────────────── */
+
+.rv-run-overview__metadata {
+  padding: var(--it-space-4);
+}
+
+.rv-metadata-dl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+  margin: 0;
+}
+
+.rv-metadata-dl__row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: var(--it-space-3);
+  align-items: start;
+}
+
+.rv-metadata-dl__row dt {
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-medium);
+  color: var(--it-text-secondary);
+  padding-top: 2px;
+}
+
+.rv-metadata-dl__row dd {
+  margin: 0;
+  font-size: var(--it-text-sm);
+  color: var(--it-text-primary);
+}
+
+.rv-metadata-dl__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--it-space-1);
+}
+
+/* Backlog link */
+.rv-backlog-link {
+  color: var(--it-blue-600, #1e5fa8);
+  text-decoration: none;
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+}
+
+.rv-backlog-link:hover {
+  text-decoration: underline;
+}
+
+/* ── P7 ENR-005: RunDetailWorkspace enrichment widgets ───────────────────── */
+
+.rv-run-overview__enrichment {
+  padding: var(--it-space-4);
+}
+
+/* Flex-wrap grid of widget cards */
+.rv-enrichment-widgets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-4);
+  margin-top: var(--it-space-2);
+}
+
+/* Single enrichment widget — narrow (cost, single-value) */
+.rv-enrichment-widget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1_5);
+}
+
+/* Wide widget — tables, lists, bars */
+.rv-enrichment-widget--wide {
+  width: 100%;
+}
+
+/* Widget label — uppercase eyebrow */
+.rv-enrichment-widget__label {
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--it-text-tertiary);
+}
+
+/* Single metric value */
+.rv-enrichment-widget__value {
+  font-size: var(--it-text-md);
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-primary);
+}
+
+/* Model profile compact table */
+.rv-enrichment-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--it-text-sm);
+}
+
+.rv-enrichment-table th,
+.rv-enrichment-table td {
+  padding: var(--it-space-1) var(--it-space-2);
+  text-align: left;
+  vertical-align: top;
+}
+
+.rv-enrichment-table th {
+  font-weight: var(--it-weight-medium);
+  color: var(--it-text-secondary);
+  width: 120px;
+  white-space: nowrap;
+}
+
+.rv-enrichment-table td {
+  color: var(--it-text-primary);
+}
+
+.rv-enrichment-table td code {
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+  background: var(--it-neutral-100);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.rv-enrichment-table tr + tr th,
+.rv-enrichment-table tr + tr td {
+  border-top: 1px solid var(--it-border-subtle);
+}
+
+/* Source count by type */
+.rv-enrichment-source-counts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1);
+}
+
+.rv-enrichment-source-count-row {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-2);
+}
+
+.rv-enrichment-count {
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-secondary);
+}
+
+/* Claim distribution progress bars */
+.rv-enrichment-dist-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+}
+
+.rv-enrichment-dist-row {
+  display: grid;
+  grid-template-columns: 100px 1fr 36px;
+  align-items: center;
+  gap: var(--it-space-2);
+}
+
+.rv-enrichment-dist-label {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rv-enrichment-dist-bar {
+  /* inherits .it-progress */
+}
+
+.rv-enrichment-dist-count {
+  font-size: var(--it-text-xs);
+  color: var(--it-text-tertiary);
+  text-align: right;
+}
+
+/* Writeback target list */
+.rv-enrichment-writeback-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1_5);
+}
+
+.rv-enrichment-writeback-row {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-2);
+  flex-wrap: wrap;
+}
+
+.rv-enrichment-writeback-name {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-enrichment-writeback-link {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-tertiary);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.rv-enrichment-writeback-link:hover {
+  color: var(--it-blue-600);
+}
+
+/* ── ClaimInspector: run-level reference chips ───────────────────────────── */
+
+.rv-inspector-run-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--it-space-1);
+  padding: var(--it-space-1) 0 var(--it-space-2);
+  border-bottom: 1px solid var(--it-border-subtle);
+  margin-bottom: var(--it-space-2);
+}
+
+/* ── LineageDetailPanel: run-level reference chips ───────────────────────── */
+
+.rv-lineage-detail__run-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--it-space-1);
+  margin-top: var(--it-space-1);
+}
+
+/* =========================================================================
    P3 — DARK THEME OVERRIDES
    All tokens already switch in [data-theme="dark"]; these handle anything
    that needs an explicit override.

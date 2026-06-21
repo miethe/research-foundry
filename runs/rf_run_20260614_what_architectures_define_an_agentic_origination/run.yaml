@@ -19,3 +19,14 @@ profile:
   extraction_model_profile: rf_extract_cheap
   synthesis_model_profile: rf_synthesize_deep
   verification_model_profile: rf_verify_balanced
+linked_projects:
+- Research Foundry
+category: pillar_cross-tool-integration-agentic-os
+tags:
+- origination-layer
+- research-routing
+- control-plane
+- execution-packets
+- intent-extraction
+backlog_idea_ref: RIB-026
+backlog_idea_id: idea_origination-layer-routing

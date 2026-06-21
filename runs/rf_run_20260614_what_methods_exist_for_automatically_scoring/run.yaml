@@ -19,3 +19,15 @@ profile:
   extraction_model_profile: rf_extract_cheap
   synthesis_model_profile: rf_synthesize_deep
   verification_model_profile: rf_verify_balanced
+linked_projects:
+- Research Foundry
+category: pillar_evaluation-quality
+tags:
+- quality-scoring
+- evaluation
+- ccdash
+- telemetry
+- research-metrics
+- claim-ledger
+backlog_idea_ref: RIB-042
+backlog_idea_id: idea_evidence-bundle-quality-scoring

@@ -19,3 +19,14 @@ profile:
   extraction_model_profile: rf_extract_cheap
   synthesis_model_profile: rf_synthesize_deep
   verification_model_profile: rf_verify_balanced
+linked_projects:
+- Research Foundry
+category: pillar_knowledge-compilation-retrieval
+tags:
+- entity-resolution
+- deduplication
+- threshold-calibration
+- knowledge-graph
+- similarity
+backlog_idea_ref: RIB-035
+backlog_idea_id: idea_entity-consolidation-merge-thresholds

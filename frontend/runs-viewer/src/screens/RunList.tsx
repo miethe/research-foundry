@@ -24,7 +24,7 @@ import { RunDetailModal }      from "@/components/RunDetail/RunDetailModal";
 import { RunCard, deriveFilterState } from "@/components/RunList/RunCard";
 import type { RunCardData }    from "@/components/RunList/RunCard";
 import { FilterTabs }          from "@/components/RunList/FilterTabs";
-import type { FilterTab }      from "@/components/RunList/FilterTabs";
+import type { FilterTab, MetadataFilterOptions, MetadataFilterState } from "@/components/RunList/FilterTabs";
 import type { RFRunSummary } from "@/types/rf";
 import {
   STATUS_LABEL,
@@ -54,6 +54,13 @@ export function RunListScreen() {
   const [sortMode, setSortMode] = useState<SortMode>("newest");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [modalRunId, setModalRunId] = useState<string | null>(null);
+
+  // P6 — metadata filter state (FILT-001)
+  const [metadataFilters, setMetadataFilters] = useState<MetadataFilterState>({
+    activeLinkedProjects: [],
+    activeCategories: [],
+    activeTags: [],
+  });
   const { data: selectedRun } = useRunDetail(selectedRunId ?? "");
 
   // Map RFRunSummary → RunCardData (adding optional fields that may be absent
@@ -67,6 +74,24 @@ export function RunListScreen() {
       })),
     [runs],
   );
+
+  // P6 — derive facet option lists dynamically from loaded runs (FILT-002).
+  // Null-safe: runs missing a field don't contribute to the option list.
+  const metadataOptions: MetadataFilterOptions = useMemo(() => {
+    const projects = new Set<string>();
+    const categories = new Set<string>();
+    const tags = new Set<string>();
+    for (const card of cards) {
+      card.linked_projects?.forEach((p) => p && projects.add(p));
+      if (card.category) categories.add(card.category);
+      card.tags?.forEach((t) => t && tags.add(t));
+    }
+    return {
+      linkedProjects: Array.from(projects).sort(),
+      categories: Array.from(categories).sort(),
+      tags: Array.from(tags).sort(),
+    };
+  }, [cards]);
 
   useEffect(() => {
     if (!selectedRunId && cards[0]) setSelectedRunId(cards[0].run_id);
@@ -93,6 +118,7 @@ export function RunListScreen() {
 
   // Filtered set
   const visible = useMemo(() => {
+    const { activeLinkedProjects, activeCategories, activeTags } = metadataFilters;
     const normalized = query.trim().toLowerCase();
     const filtered = cards.filter((card) => {
       const bucket = getRunBucket(card);
@@ -101,6 +127,23 @@ export function RunListScreen() {
       const bucketMatch = activeTab === "all" || getRunBucket(card) === activeTab;
       const tabMatch = activeTab === "all" || deriveFilterState(card.status_derived) === activeTab;
       if (!tabMatch && !bucketMatch) return false;
+
+      // P6 — AND-logic metadata filter (FILT-003).
+      // Runs with null fields fail a non-empty filter (they have no matching values).
+      if (activeLinkedProjects.length > 0) {
+        const runProjects = card.linked_projects ?? [];
+        const hasMatch = runProjects.some((p) => activeLinkedProjects.includes(p));
+        if (!hasMatch) return false;
+      }
+      if (activeCategories.length > 0) {
+        if (!card.category || !activeCategories.includes(card.category)) return false;
+      }
+      if (activeTags.length > 0) {
+        const runTags = card.tags ?? [];
+        const hasMatch = runTags.some((t) => activeTags.includes(t));
+        if (!hasMatch) return false;
+      }
+
       if (!normalized) return true;
       return [
         card.run_id,
@@ -110,7 +153,7 @@ export function RunListScreen() {
       ].some((value) => value.toLowerCase().includes(normalized));
     });
     return filtered.sort((a, b) => compareRuns(a, b, sortMode));
-  }, [cards, activeTab, attentionOnly, highClaimOnly, query, sortMode]);
+  }, [cards, activeTab, attentionOnly, highClaimOnly, query, sortMode, metadataFilters]);
 
   const health = useMemo(() => summarizePortfolio(cards), [cards]);
 
@@ -170,6 +213,9 @@ export function RunListScreen() {
               setAttentionOnly(false);
               setActiveTab(tab);
             }}
+            metadataFilters={metadataFilters}
+            metadataOptions={metadataOptions}
+            onMetadataFilterChange={setMetadataFilters}
           />
         </div>
         <div className="rv-rail-section">
@@ -324,9 +370,16 @@ export function RunListScreen() {
         </section>
 
         {visible.length === 0 ? (
-          <div className="rv-run-list__no-match" data-testid="run-list-no-match">
-            <p>No runs match the selected filter.</p>
-          </div>
+          <MetadataEmptyState
+            hasMetadataFilters={
+              metadataFilters.activeLinkedProjects.length > 0 ||
+              metadataFilters.activeCategories.length > 0 ||
+              metadataFilters.activeTags.length > 0
+            }
+            onClearFilters={() =>
+              setMetadataFilters({ activeLinkedProjects: [], activeCategories: [], activeTags: [] })
+            }
+          />
         ) : (
           <>
             <RunTable
@@ -361,6 +414,37 @@ export function RunListScreen() {
 }
 
 export default RunListScreen;
+
+// ── P6: Graceful empty state when metadata filters match 0 runs (FILT-004) ────
+
+function MetadataEmptyState({
+  hasMetadataFilters,
+  onClearFilters,
+}: {
+  hasMetadataFilters: boolean;
+  onClearFilters: () => void;
+}) {
+  if (hasMetadataFilters) {
+    return (
+      <div className="rv-run-list__no-match rv-run-list__no-match--filters" data-testid="run-list-filter-empty">
+        <p>No runs match the selected filters.</p>
+        <button
+          type="button"
+          className="it-btn ghost sm"
+          onClick={onClearFilters}
+          data-testid="clear-filters-btn"
+        >
+          Clear filters
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="rv-run-list__no-match" data-testid="run-list-no-match">
+      <p>No runs match the selected filter.</p>
+    </div>
+  );
+}
 
 function compareRuns(a: RFRunSummary, b: RFRunSummary, sortMode: SortMode): number {
   if (sortMode === "most-claims") return getClaimTotal(b.claim_counts) - getClaimTotal(a.claim_counts);
@@ -441,6 +525,11 @@ function StatusLane({
               onClick={() => onOpen(run.run_id)}
             >
               <span>{run.title ?? titleFromSlug(run.run_id) ?? run.run_id}</span>
+              {run.linked_projects?.length ? (
+                <span className="rv-lane-run__project" data-testid="lane-run-project">
+                  {run.linked_projects.join(", ")}
+                </span>
+              ) : null}
               <strong>{getClaimTotal(run.claim_counts).toLocaleString()}</strong>
             </button>
           ))}
@@ -479,6 +568,7 @@ function RunTable({
           <tr>
             <th>Run ID</th>
             <th>Status</th>
+            <th className="rv-run-table__col-project">Project</th>
             <th>Sensitivity</th>
             <th>Claims</th>
             <th>Supported</th>
@@ -488,40 +578,50 @@ function RunTable({
           </tr>
         </thead>
         <tbody>
-          {runs.map((run) => (
-            <tr
-              key={run.run_id}
-              className={selectedRunId === run.run_id ? "rv-run-table-row--selected" : ""}
-              aria-selected={selectedRunId === run.run_id}
-            >
-              <td>
-                <button
-                  type="button"
-                  className="rv-table-link"
-                  aria-pressed={selectedRunId === run.run_id}
-                  aria-label={`Select run ${run.run_id}`}
-                  onClick={() => onSelect(run.run_id)}
-                >
-                  {run.run_id}
-                </button>
-              </td>
-              <td><span className={`it-pill ${getRunBucket(run) === "failed" ? "blocked" : getRunBucket(run) === "planned" ? "idle" : "done"}`}>{STATUS_LABEL[run.status_derived]}</span></td>
-              <td>{run.sensitivity ?? "public"}</td>
-              <td>{getClaimTotal(run.claim_counts).toLocaleString()}</td>
-              <td>{getSupportedTotal(run.claim_counts).toLocaleString()}</td>
-              <td>{getInferenceTotal(run.claim_counts).toLocaleString()}</td>
-              <td>{formatShortDate(run.created_at)}</td>
-              <td>
-                <button
-                  type="button"
-                  className="it-btn ghost xs rv-table-open"
-                  onClick={() => onOpen(run.run_id)}
-                >
-                  Open
-                </button>
-              </td>
-            </tr>
-          ))}
+          {runs.map((run) => {
+            const projectText = run.linked_projects?.length
+              ? run.linked_projects.join(", ")
+              : null;
+            return (
+              <tr
+                key={run.run_id}
+                className={selectedRunId === run.run_id ? "rv-run-table-row--selected" : ""}
+                aria-selected={selectedRunId === run.run_id}
+              >
+                <td>
+                  <button
+                    type="button"
+                    className="rv-table-link"
+                    aria-pressed={selectedRunId === run.run_id}
+                    aria-label={`Select run ${run.run_id}`}
+                    onClick={() => onSelect(run.run_id)}
+                  >
+                    {run.run_id}
+                  </button>
+                </td>
+                <td><span className={`it-pill ${getRunBucket(run) === "failed" ? "blocked" : getRunBucket(run) === "planned" ? "idle" : "done"}`}>{STATUS_LABEL[run.status_derived]}</span></td>
+                <td className="rv-run-table__col-project" data-testid="run-table-project">
+                  {projectText
+                    ? <span className="it-chip blue rv-project-badge">{projectText}</span>
+                    : <span className="rv-muted">—</span>}
+                </td>
+                <td>{run.sensitivity ?? "public"}</td>
+                <td>{getClaimTotal(run.claim_counts).toLocaleString()}</td>
+                <td>{getSupportedTotal(run.claim_counts).toLocaleString()}</td>
+                <td>{getInferenceTotal(run.claim_counts).toLocaleString()}</td>
+                <td>{formatShortDate(run.created_at)}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="it-btn ghost xs rv-table-open"
+                    onClick={() => onOpen(run.run_id)}
+                  >
+                    Open
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       <div className="rv-run-table-footer">1-{runs.length} of {runs.length}</div>

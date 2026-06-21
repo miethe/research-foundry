@@ -14,8 +14,17 @@ exactly what we want to exercise here.
 
 from __future__ import annotations
 
+import json
+import shutil
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+import jsonschema
 import pytest
 
+from research_foundry import ids
+from research_foundry.paths import FoundryPaths, distribution_root
 from research_foundry.schemas import SchemaRegistry, validate
 
 # The 16 artifact schemas shipped under ``schemas/``. Kept explicit so the
@@ -36,6 +45,7 @@ EXPECTED_SCHEMA_NAMES: list[str] = [
     "raw_idea",
     "report_frontmatter",
     "research_brief",
+    "research_idea_backlog",
     "research_intent",
     "review_packet",
     "routing_decision",
@@ -175,6 +185,12 @@ def _valid(name: str) -> dict:
             "status": "proposed",
             "push_status": "proposed",
         },
+        # required: type (const research_idea_backlog), pillars, ideas
+        "research_idea_backlog": {
+            "type": "research_idea_backlog",
+            "pillars": [],
+            "ideas": [],
+        },
     }
     return dict(builders[name])
 
@@ -213,6 +229,7 @@ def _invalid(name: str) -> dict:
         "notebooklm_update": "run_id",
         "raw_idea": "id",
         "research_brief": "id",
+        "research_idea_backlog": "type",
         "research_intent": "id",
         "review_packet": "id",
         "routing_decision": "id",
@@ -242,10 +259,10 @@ def test_invalid_instance_fails(name: str) -> None:
 
 
 def test_registry_lists_all_schemas() -> None:
-    """The registry reports exactly the 20 expected schema names."""
+    """The registry reports exactly the expected schema names."""
 
     names = SchemaRegistry().names()
-    assert len(names) == 20
+    assert len(names) == len(EXPECTED_SCHEMA_NAMES)
     assert names == sorted(EXPECTED_SCHEMA_NAMES)
 
 
@@ -256,3 +273,179 @@ def test_unknown_schema_yields_error_result_not_exception() -> None:
     assert not result.ok
     assert result.errors, "unknown schema should surface at least one error"
     assert result.schema == "definitely_not_a_real_schema"
+
+
+# ---------------------------------------------------------------------------
+# Regression guard: export_run() output must pass strict rf-run-export-schema
+# validation with additionalProperties:false (prevents schema/export drift).
+# ---------------------------------------------------------------------------
+
+# Substrate directories needed for a minimal isolated foundry workspace.
+_SUBSTRATE = [
+    "inbox/raw_ideas", "inbox/clips", "intents/active", "iboms/active",
+    "intenttree/nodes", "runs", "registries",
+    "meatywiki/sources", "meatywiki/concepts", "meatywiki/decisions", "meatywiki/patterns",
+    "skillmeat/skillboms", "ccdash/events", "ccdash/daily", "ccdash/summaries",
+]
+_FIXED_TS = datetime(2026, 6, 13, 9, 41, 0, tzinfo=UTC).astimezone()
+
+
+@pytest.fixture
+def _tmp_foundry_for_schema(tmp_path: Path) -> FoundryPaths:
+    """Isolated foundry workspace used only by the export regression guard tests."""
+    root = tmp_path / "fdry_schema"
+    root.mkdir(parents=True)
+    dist = distribution_root()
+    for sub in ("schemas", "config", "templates"):
+        src = dist / sub
+        if src.exists():
+            shutil.copytree(src, root / sub)
+    foundry_src = dist / "foundry.yaml"
+    if foundry_src.exists():
+        shutil.copyfile(foundry_src, root / "foundry.yaml")
+    else:
+        (root / "foundry.yaml").write_text("foundry:\n  owner: Test\n", encoding="utf-8")
+    for d in _SUBSTRATE:
+        (root / d).mkdir(parents=True, exist_ok=True)
+    return FoundryPaths(root=root)
+
+
+def _build_full_export_run(paths: FoundryPaths) -> dict[str, Any]:
+    """Build a fully-enriched run and return export_run() output for schema validation."""
+    from research_foundry.frontmatter import dump_md
+    from research_foundry.paths import RunPaths
+    from research_foundry.services.export_service import export_run
+    from research_foundry.yamlio import dump_yaml
+
+    run_id = "rf_run_schema_guard"
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+
+    # run.yaml with metadata enrichment + profile
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "type": "run",
+            "run_id": run_id,
+            "intent_id": "intent_schema_guard",
+            "status": "planned",
+            "sensitivity": "personal",
+            "created_at": "2026-06-13T22:46:23-04:00",
+            "linked_projects": ["Research Foundry"],
+            "category": "AI Engineering",
+            "tags": ["schema", "validation"],
+            "backlog_idea_ref": "RIB-001",
+            "backlog_idea_id": "idea_schema-guard",
+            "profile": {
+                "max_cost_usd": 3.0,
+                "max_runtime_minutes": 30,
+                "freshness_days": 90,
+                "extraction_model_profile": "rf_extract_cheap",
+                "synthesis_model_profile": "rf_synthesize_std",
+                "verification_model_profile": "rf_verify_std",
+            },
+        },
+        rp.run_yaml,
+    )
+
+    # minimal source card
+    dump_md(
+        {
+            "schema_version": "0.1",
+            "type": "source_card",
+            "source_card_id": "src_guard",
+            "sensitivity": "public",
+            "source": {"title": "Guard Source", "source_type": "official_doc",
+                       "locator": {"url": "https://example.test/guard"}},
+            "trust": {"source_rank": "primary"},
+            "usage": {"allowed_for_public_output": True},
+            "extracted_points": [{"evidence_id": "ev_001", "locator": "p1",
+                                   "summary": "guard summary", "quote": "guard quote"}],
+        },
+        "",
+        rp.sources / "src_guard.md",
+    )
+
+    # claim ledger with one claim referencing the source card
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "claims": [
+                {
+                    "claim_id": "clm_guard_001",
+                    "text": "Guard claim text",
+                    "materiality": "core",
+                    "claim_type": "factual",
+                    "status": "supported",
+                    "confidence": "high",
+                    "sources": [{"source_card_id": "src_guard", "evidence_id": "ev_001",
+                                 "relation": "supports", "locator": "p1"}],
+                    "inference_basis": {"from_claims": [], "reasoning_summary": None},
+                }
+            ],
+        },
+        rp.claim_ledger,
+    )
+
+    # verification
+    dump_yaml(
+        {"run_id": run_id, "passed": True, "exit_code": 0,
+         "checks": [{"id": "check_01", "severity": "error", "status": "pass",
+                     "detail": "ok", "locations": []}]},
+        rp.verification,
+    )
+
+    # evidence bundle
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "run_id": run_id,
+            "status": "verified",
+            "counts": {"claims_total": 1, "claims_supported": 1},
+            "governance": {"sensitivity": "personal", "approved_for_writeback": False},
+        },
+        rp.evidence_bundle,
+    )
+
+    # report draft (with frontmatter title for title-derivation path)
+    rp.report_draft.write_text(
+        "---\ntitle: Guard Research Report\n---\n\nBody. [claim:clm_guard_001]\n",
+        encoding="utf-8",
+    )
+
+    return export_run(paths, run_id)
+
+
+def test_export_run_passes_strict_json_schema_validation(
+    _tmp_foundry_for_schema: FoundryPaths,
+) -> None:
+    """REGRESSION GUARD: export_run() output must pass strict Draft7 validation
+    against rf-run-export-schema.json with additionalProperties:false.
+
+    If this test fails, a field was added to export_run() without updating the
+    schema (or vice versa). Fix by adding the field to the schema's properties.
+    """
+    ids.set_clock(lambda: _FIXED_TS)
+    try:
+        export_dict = _build_full_export_run(_tmp_foundry_for_schema)
+    finally:
+        ids.set_clock(lambda: datetime.now(UTC).astimezone())
+
+    # Load the schema from the repo docs directory (authoritative location).
+    schema_path = (
+        Path(__file__).parent.parent
+        / "docs" / "dev" / "architecture" / "rf-run-export-schema.json"
+    )
+    assert schema_path.exists(), f"rf-run-export-schema.json not found at {schema_path}"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    validator = jsonschema.Draft7Validator(schema)
+    errors = list(validator.iter_errors(export_dict))
+    error_messages = [
+        f"  [{e.path_deque and '.'.join(str(p) for p in e.absolute_path) or 'root'}] {e.message}"
+        for e in errors
+    ]
+    assert not errors, (
+        f"export_run() output failed strict JSON schema validation "
+        f"({len(errors)} error(s)):\n" + "\n".join(error_messages)
+    )

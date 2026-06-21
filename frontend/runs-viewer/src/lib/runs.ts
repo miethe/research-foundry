@@ -104,6 +104,13 @@ export function shouldRedactSource(
   return sourceExceedsThreshold(source.sensitivity, threshold ?? "public");
 }
 
+/**
+ * Schema versions that the viewer fully understands. Neither '1.1' nor '1.2'
+ * triggers a mismatch badge; only genuinely unknown or future-incompatible
+ * versions do.  Update this set when a breaking schema bump is released.
+ */
+const KNOWN_VALID_SCHEMA_VERSIONS = new Set(["1.1", "1.2"]);
+
 export interface RunAttentionSummary {
   failedChecks: number;
   warningChecks: number;
@@ -129,7 +136,7 @@ export function summarizeRunAttention(run: RFRunExport): RunAttentionSummary {
         (claim.claim_type === "inference" || claim.status === "inference") &&
         (claim.inference_basis?.from_claims ?? []).length === 0,
     ).length,
-    schemaMismatch: Boolean(run.schema_version && run.schema_version !== "1.1"),
+    schemaMismatch: Boolean(run.schema_version && !KNOWN_VALID_SCHEMA_VERSIONS.has(run.schema_version)),
   };
 }
 

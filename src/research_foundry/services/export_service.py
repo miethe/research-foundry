@@ -33,7 +33,7 @@ from ..frontmatter import split_frontmatter
 from ..paths import FoundryPaths, RunPaths
 from ..yamlio import loads_yaml
 
-EXPORT_SCHEMA_VERSION = "1.1"
+EXPORT_SCHEMA_VERSION = "1.2"
 
 # --- sensitivity model -------------------------------------------------------
 # Ordering: lower index = less sensitive. The viewer threshold names the MOST
@@ -341,42 +341,129 @@ def _claim_counts(claims: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
-def _timeline(rp: RunPaths, *, run_id: str | None) -> list[dict[str, Any]]:
-    if not rp.run_trace.exists():
-        return []
-    events: list[dict[str, Any]] = []
-    try:
-        for line in _read_text(rp.run_trace).splitlines():
-            if line.strip():
-                events.append(json.loads(line))
-    except Exception as exc:  # noqa: BLE001
-        raise ExportError(
-            f"malformed run trace: {exc}", run_id=run_id, artifact_path=rp.run_trace
-        ) from exc
-    return events
+def _source_count_by_type(cards: dict[str, dict[str, Any]]) -> dict[str, int] | None:
+    """Aggregate source counts by source_type from the loaded source cards.
+
+    Returns None (not an empty dict) when no source cards are present, so the
+    FE can cleanly distinguish "run has no sources" from "run has sources of
+    unknown type".
+    """
+    if not cards:
+        return None
+    counts: dict[str, int] = {}
+    for card_data in cards.values():
+        src_type = (card_data.get("meta") or {}).get("source", {}).get("source_type")
+        if src_type:
+            key = str(src_type)
+            counts[key] = counts.get(key, 0) + 1
+        else:
+            counts["other"] = counts.get("other", 0) + 1
+    return counts if counts else None
 
 
-def _verification_block(rp: RunPaths, *, run_id: str | None) -> dict[str, Any]:
-    data = _load_yaml_dict(rp.verification, run_id=run_id)
-    if not data:
-        return {"present": False, "passed": None, "exit_code": None, "checks": []}
-    checks = [
-        {
-            "id": c.get("id"),
-            "severity": c.get("severity"),
-            "status": c.get("status"),
-            "detail": c.get("detail"),
-            "locations": c.get("locations") or [],
-        }
-        for c in (data.get("checks") or [])
-        if isinstance(c, dict)
-    ]
-    return {
-        "present": True,
-        "passed": data.get("passed"),
-        "exit_code": data.get("exit_code"),
-        "checks": checks,
+def _cost_and_model_profiles(
+    run_meta: dict[str, Any],
+) -> tuple[float | None, dict[str, Any] | None]:
+    """Extract cost_usd and model_profiles from run.yaml.profile.
+
+    Returns (cost_usd, model_profiles) — either or both may be None when the
+    profile block is absent (pre-enrichment runs).
+    """
+    profile = run_meta.get("profile")
+    if not isinstance(profile, dict):
+        return None, None
+
+    cost_usd: float | None = None
+    raw_cost = profile.get("max_cost_usd")
+    if raw_cost is not None:
+        try:
+            cost_usd = float(raw_cost)
+        except (TypeError, ValueError):
+            cost_usd = None
+
+    model_profiles: dict[str, Any] = {}
+    for key in (
+        "max_cost_usd",
+        "extraction_model_profile",
+        "synthesis_model_profile",
+        "verification_model_profile",
+        "max_runtime_minutes",
+        "freshness_days",
+    ):
+        val = profile.get(key)
+        if val is not None:
+            model_profiles[key] = val
+
+    return cost_usd, model_profiles if model_profiles else None
+
+
+_ROUTING_DECISION_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "selected_abstraction_level",
+        "rationale",
+        "human_required",
+        "confidence",
+        "abstraction_options",
+        "recommended_agents",
+        "routing_notes",
     }
+)
+
+_SWARM_PLAN_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "agents",
+        "required_outputs",
+        "parallel",
+        "swarm_notes",
+        "estimated_cost_usd",
+        "estimated_runtime_minutes",
+        "posture",
+        "depth",
+    }
+)
+
+
+def _context_summary(rp: RunPaths, *, run_id: str | None) -> dict[str, Any] | None:
+    """Build the context summary block from routing_decision.yaml + swarm_plan.yaml.
+
+    Only explicitly allowlisted keys are forwarded so no unanticipated or
+    unredacted keys from either file can leak into run.json.
+
+    Returns None when neither file exists (pre-v2 runs).
+    """
+    routing = _load_yaml_dict(rp.routing_decision, run_id=run_id)
+    swarm = _load_yaml_dict(rp.swarm_plan, run_id=run_id)
+
+    if not routing and not swarm:
+        return None
+
+    ctx: dict[str, Any] = {}
+
+    if routing:
+        ctx["routing_decision"] = {
+            "decision": routing.get("selected_abstraction_level"),
+            "rationale": routing.get("rationale"),
+            **{k: routing[k] for k in _ROUTING_DECISION_ALLOWLIST
+               if k in routing and k not in ("selected_abstraction_level", "rationale")},
+        }
+    else:
+        ctx["routing_decision"] = None
+
+    if swarm:
+        agents = swarm.get("agents")
+        ctx["swarm_plan"] = {
+            "swarm": swarm.get("id"),
+            "agents": [a.get("role") for a in agents if isinstance(a, dict)]
+            if isinstance(agents, list)
+            else agents,
+            "adapters": swarm.get("required_outputs"),
+            **{k: swarm[k] for k in _SWARM_PLAN_ALLOWLIST
+               if k in swarm and k not in ("agents", "required_outputs")},
+        }
+    else:
+        ctx["swarm_plan"] = None
+
+    return ctx
 
 
 # --- title derivation --------------------------------------------------------
@@ -440,6 +527,44 @@ def _derive_run_title(run_id: str, report_draft: str | None) -> str:
     )
 
 
+def _timeline(rp: RunPaths, *, run_id: str | None) -> list[dict[str, Any]]:
+    if not rp.run_trace.exists():
+        return []
+    events: list[dict[str, Any]] = []
+    try:
+        for line in _read_text(rp.run_trace).splitlines():
+            if line.strip():
+                events.append(json.loads(line))
+    except Exception as exc:  # noqa: BLE001
+        raise ExportError(
+            f"malformed run trace: {exc}", run_id=run_id, artifact_path=rp.run_trace
+        ) from exc
+    return events
+
+
+def _verification_block(rp: RunPaths, *, run_id: str | None) -> dict[str, Any]:
+    data = _load_yaml_dict(rp.verification, run_id=run_id)
+    if not data:
+        return {"present": False, "passed": None, "exit_code": None, "checks": []}
+    checks = [
+        {
+            "id": c.get("id"),
+            "severity": c.get("severity"),
+            "status": c.get("status"),
+            "detail": c.get("detail"),
+            "locations": c.get("locations") or [],
+        }
+        for c in (data.get("checks") or [])
+        if isinstance(c, dict)
+    ]
+    return {
+        "present": True,
+        "passed": data.get("passed"),
+        "exit_code": data.get("exit_code"),
+        "checks": checks,
+    }
+
+
 # --- top-level export --------------------------------------------------------
 def export_run(
     paths: FoundryPaths,
@@ -475,8 +600,31 @@ def export_run(
         "claim_ledger": ledger.get("schema_version"),
     }
 
-    # Read report_draft once; use it for both title derivation and the export field.
+    # --- metadata enrichment fields (schema 1.2) --------------------------------
+    # Read from run.yaml directly; emit null (not key-omit) so FE can detect
+    # cleanly between "old run (absent)" and "new run with no value (null)".
+    linked_projects = run_meta.get("linked_projects") or None
+    category = run_meta.get("category") or None
+    tags = run_meta.get("tags") or None
+    backlog_idea_ref = run_meta.get("backlog_idea_ref") or None
+    backlog_idea_id = run_meta.get("backlog_idea_id") or None
+
+    # --- enrichment-extra fields (ENR-001, ENR-002, ENR-003 — schema 1.2 P7) ----
+    cost_usd, model_profiles = _cost_and_model_profiles(run_meta)
+    source_count_by_type = _source_count_by_type(cards)
+    context_summary = _context_summary(rp, run_id=run_id)
+
+    # Read report_draft once; reuse for title derivation and export field.
     report_draft = _read_report_draft(rp)
+
+    # ENR-004: writebacks emitted as null (no writeback files) or RFRunWritebacksSummary object.
+    # Thread approved_for_writeback from the governance block into the summary so FE can
+    # render the approval state without reading the bundle separately.
+    writebacks = _collect_writebacks(rp)
+    if writebacks is not None:
+        approved = governance.get("approved_for_writeback")
+        writebacks["approved_for_writeback"] = bool(approved) if approved is not None else None
+
 
     return {
         "schema_version": EXPORT_SCHEMA_VERSION,
@@ -498,6 +646,20 @@ def export_run(
         "claims": claims,
         "artifact_schema_versions": schema_versions,
         "report_draft": report_draft,
+        # Optional v2 context (ENR-003): routing_decision + swarm_plan; null on pre-v2 runs
+        "context": context_summary,
+        # Metadata enrichment (schema 1.2) — null for pre-migration runs
+        "linked_projects": linked_projects,
+        "category": category,
+        "tags": tags,
+        "backlog_idea_ref": backlog_idea_ref,
+        "backlog_idea_id": backlog_idea_id,
+        # Enrichment extras (P7 — ENR-001, ENR-002): null when profile / sources absent
+        "cost_usd": cost_usd,
+        "model_profiles": model_profiles,
+        "source_count_by_type": source_count_by_type,
+        # ENR-004: writeback artifacts; null when no writeback files present
+        "writebacks": writebacks,
     }
 
 
@@ -581,9 +743,66 @@ def list_runs(paths: FoundryPaths) -> list[dict[str, Any]]:
                 "claim_counts": bundle.get("counts") or {},
                 "verification_passed": verification.get("passed"),
                 "governance_verdict": governance.get("approved_for_writeback"),
+                # Schema 1.2 metadata — null for pre-migration runs (matches export_run)
+                "linked_projects": run_meta.get("linked_projects") or None,
+                "category": run_meta.get("category") or None,
+                "tags": run_meta.get("tags") or None,
             }
         )
     return summaries
+
+
+def _collect_writebacks(rp: RunPaths) -> dict[str, Any] | None:
+    """Collect writeback status from the run's writebacks/ directory.
+
+    Returns an RFRunWritebacksSummary-shaped object:
+        { targets: [{target, status, url?}], approved_for_writeback: bool|null, ... }
+    when the writebacks directory has any known files, or None otherwise.
+
+    The object shape matches the TypeScript RFRunWritebacksSummary interface and
+    the JSON schema §RFRunWritebacksSummary definition. Returning a bare list
+    would silently break FE consumers that read writebacks.targets?.length.
+    """
+    if not rp.writebacks.is_dir():
+        return None
+
+    # Map each well-known writeback filename to a target label.
+    _WRITEBACK_TARGETS: dict[str, str] = {
+        "meatywiki_writeback.md": "meatywiki",
+        "skillbom_candidate.md": "skillbom",
+        "ccdash_event.yaml": "ccdash",
+        "intenttree_update.yaml": "intenttree",
+        "arc_review_request.yaml": "arc",
+        "notebooklm_update.yaml": "notebooklm",
+    }
+
+    entries: list[dict[str, Any]] = []
+    for filename, target in _WRITEBACK_TARGETS.items():
+        path = rp.writebacks / filename
+        if not path.exists():
+            continue
+        entry: dict[str, Any] = {"target": target, "status": "present"}
+        # Best-effort: try to read a "url" field from YAML writebacks.
+        if filename.endswith(".yaml"):
+            try:
+                data = _load_yaml_file(path, run_id=None)
+                if isinstance(data, dict) and data.get("url"):
+                    entry["url"] = str(data["url"])
+            except Exception:  # noqa: BLE001
+                pass
+        entries.append(entry)
+
+    if not entries:
+        return None
+
+    # Derive approved_for_writeback from the evidence bundle governance block.
+    # We don't re-read the bundle here (already read by the caller); instead we
+    # keep the field as null — callers that have bundle data may override. The
+    # safe default (null/false) means the FE never auto-approves.
+    return {
+        "targets": entries,
+        "approved_for_writeback": None,
+    }
 
 
 def _read_report_draft(rp: RunPaths) -> str | None:
@@ -624,7 +843,13 @@ __all__ = [
     "list_runs",
     "run_json_path",
     "claim_tags_in_report",
+    # title helpers (restored from main)
     "_title_from_slug",
     "_extract_title_from_report_draft",
     "_derive_run_title",
+    # ENR helpers (exported for test access)
+    "_source_count_by_type",
+    "_cost_and_model_profiles",
+    "_context_summary",
+    "_collect_writebacks",
 ]

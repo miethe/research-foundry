@@ -127,6 +127,7 @@ def capture_idea(
     research_potential: str = "unknown",
     suggested_project: str = "Research Foundry",
     attachments: list[dict] | None = None,
+    backlog_idea_ref: str | None = None,
     paths: FoundryPaths | None = None,
 ) -> CaptureResult:
     """Capture raw idea ``text`` into ``inbox/raw_ideas/<raw_id>.md``.
@@ -141,6 +142,10 @@ def capture_idea(
         are embedded into the raw-idea front matter verbatim. Useful when the
         idea originates from a system that already carries source links (e.g.
         IntentTree nodes with ``links`` / ``artifacts``).
+    backlog_idea_ref:
+        Optional ``RIB-NNN`` reference to a backlog idea (validated by the
+        caller).  Stored in the raw-idea front matter so triage and planning
+        can pick it up.
     """
 
     paths = paths or FoundryPaths.discover()
@@ -161,6 +166,8 @@ def capture_idea(
         "initial_questions": [],
         "attachments": list(attachments or []),
         "triage": {"status": "untriaged", "intent_id": None},
+        # backlog_idea_ref: RIB-NNN link (null when not provided).
+        "backlog_idea_ref": backlog_idea_ref,
     }
 
     body = _render_body(text, title)

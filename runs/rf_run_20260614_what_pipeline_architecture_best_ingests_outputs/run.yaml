@@ -10,6 +10,17 @@ created_at: '2026-06-14T14:07:32-04:00'
 status: planned
 sensitivity: personal
 human_required: false
+linked_projects:
+- Research Foundry
+category: pillar_capture-ingestion
+tags:
+- research-capture
+- ingestion-pipeline
+- provenance
+- normalization
+- intake
+backlog_idea_ref: RIB-053
+backlog_idea_id: idea_unified-research-capture-harness
 profile:
   depth: deep
   audience: technical

@@ -1,26 +1,28 @@
 ---
 title: "RF Run Export Schema (run.json)"
 description: "Frozen denormalized claim-graph contract emitted by `rf run export --json`; the sole data source for the read-only runs viewer."
-status: frozen
-schema_version: "1.1"
+status: stable
+schema_version: "1.2"
 doc_type: architecture
 created: 2026-06-19
-updated: 2026-06-19
-feature_slug: runs-frontend
-phase: 1
-owners: ["python-backend-engineer", "backend-architect"]
+updated: 2026-06-21
+feature_slug: run-metadata-enrichment
+phase: "8"
+owners: ["python-backend-engineer", "backend-architect", "documentation-writer"]
 resolves: ["OQ-1", "OQ-2", "OQ-3"]
 source_of_truth: src/research_foundry/services/export_service.py
 reviewed_by: backend-architect
 review_verdict: approved
-review_date: 2026-06-19
+review_date: 2026-06-21
+changelog_ref: "CHANGELOG.md → [Unreleased] Added → Run Metadata Enrichment"
 ---
 
 # RF Run Export Schema (`run.json`)
 
-> **Frozen contract.** This is the P1 exit gate. Every Phase-2+ TypeScript type
-> and React Query hook binds to this shape. Changes after freeze require a
-> schema-version bump and `backend-architect` re-review.
+> **Stable contract (v1.2).** This schema is bound to schema-version strings
+> in `run.json` documents. Every TypeScript type and React Query hook binds to
+> this shape. Changes require a schema-version bump and `backend-architect`
+> re-review. See [Changelog](#changelog) for version history and migration notes.
 
 ## 1. Purpose & Invariants (OQ-1 resolution)
 
@@ -48,7 +50,7 @@ Load-bearing invariants:
 
 ```jsonc
 {
-  "schema_version": "1.1",            // export contract version (this doc)
+  "schema_version": "1.2",            // export contract version (this doc)
   "run_id": "rf_run_20260613_...",    // canonical id
   "intent_id": "intent_research_...", // nullable
   "created_at": "2026-06-13T22:46:23-04:00", // from run.yaml, nullable
@@ -64,7 +66,39 @@ Load-bearing invariants:
   "artifact_schema_versions": {       // OQ-7: per-artifact schema_version pins
     "run": "0.1", "evidence_bundle": "0.1", "claim_ledger": "0.1"
   },
-  "report_draft": "# Report\n\n..."   // see §8 — verbatim markdown, null if absent
+  "report_draft": "# Report\n\n...",  // see §8 — verbatim markdown, null if absent
+  "context": { ... },                 // see §9 — v2 optional context stack, null if absent
+  "writebacks": { ... },              // see §10 — v2 optional writeback summary, null if absent
+
+  // ── Run Metadata Enrichment (v1.2 — schema 1.2) ────────────────────────────
+  // All fields below are optional/nullable — absent on pre-migration runs (v1.0/1.1).
+  // Populated in P2 (backfill migration) and P3 (creation path). Consumers use optional access (?.).
+  
+  "linked_projects": ["research-foundry"],  // null on pre-migration runs
+  "category": "AI Engineering",             // null on pre-migration runs
+  "tags": ["agent-design", "research"],     // null on pre-migration runs
+  "backlog_idea_ref": "RIB-042",            // null when not from backlog
+  "backlog_idea_id": "agentic_research",    // null when backlog_idea_ref is null
+
+  // ── Enrichment Extras (v1.2 — schema 1.2, P7) ─────────────────────────────
+  // Sourced from run.yaml.profile, source cards, and claim aggregation.
+  // All null/absent on pre-enrichment runs. Consumers use optional access (?.).
+
+  "cost_usd": 2.47,                         // null when no profile present
+  "model_profiles": {                       // null when no profile present
+    "max_cost_usd": 5.0,
+    "extraction_model_profile": "rf_extract_cheap",
+    "synthesis_model_profile": "rf_synthesize_deep",
+    "verification_model_profile": "rf_verify_standard",
+    "max_runtime_minutes": 120,
+    "freshness_days": 90
+  },
+  "source_count_by_type": {                 // null when no source cards present
+    "official_doc": 3,
+    "paper": 1,
+    "repo": 2,
+    "blog": 1
+  }
 }
 ```
 
@@ -221,9 +255,367 @@ interactions without a second round-trip.
 - **No LLM transformation** — the file is read verbatim; no truncation, no
   per-sentence processing.
 
+## 9. `context` — Optional v2 Context Stack
+
+Optional v2 context (routing decision, research brief, swarm plan) when present.
+Absent in schema 1.0/1.1 exports. When present, contains:
+
+```jsonc
+{
+  "routing_decision": {
+    "decision": "Use sonnet for synthesis",
+    "rationale": "Fast iteration needed for research scope",
+    ...                               // additional context fields
+  },
+  "research_brief_md": "## Brief\n\nInvestigate...",
+  "swarm_plan": {
+    "swarm": "rf_research_standard",
+    "agents": ["sonnet-extractor", "sonnet-synthesizer"],
+    "adapters": ["claim-mapper", "report-critic"],
+    ...                               // additional context fields
+  },
+  "upstream_entities": { ... }        // optional upstream routing info
+}
+```
+
+- **All fields nullable:** each context element may be `null` when absent.
+- **Graceful degradation:** frontend uses optional access (`context?.routing_decision`).
+
+## 10. `writebacks` — Optional v2 Writeback Summary
+
+Optional writeback target summary when the run has been published or targeted for
+publication. Absent in schema 1.0/1.1 exports. When present, contains:
+
+```jsonc
+{
+  "targets": [
+    {
+      "name": "MeatyWiki",
+      "destination": "concepts/research-foundry",
+      "status": "published",
+      "url": "https://meatywiki.local/concepts/research-foundry",
+      ...                             // additional target fields
+    },
+    {
+      "name": "SkillMeat",
+      "destination": "skillboms/claim-verification",
+      "status": "pending_review",
+      "url": null,
+      ...
+    }
+  ],
+  "approved_for_writeback": true,
+  "reviewer_notes": "Approved for all targets",
+  "required_fix": null,
+  "previews": [ ... ]                 // optional preview artifacts
+}
+```
+
+- **Targets array:** each target carries name, destination, status, and URL.
+- **Nullable fields:** `targets`, `reviewer_notes`, `required_fix`, `previews` may be `null`.
+- **Graceful degradation:** frontend gates writeback affordances on `writebacks?.targets?.length > 0`.
+
+## 11. Run Metadata Enrichment Fields (v1.2 — New in schema 1.2)
+
+Schema 1.2 adds five run-metadata fields, derived from the research backlog. All are optional/nullable
+for backwards compatibility with pre-migration runs (schema 1.0/1.1). Consumers MUST use optional access
+(`run?.linked_projects`, etc.) throughout.
+
+### 11.1 `linked_projects` — Array of Project Slugs
+
+```json
+"linked_projects": ["research-foundry", "skillmeat"]
+```
+
+**Type:** `string[] | null`
+
+**Source:** Derived from backlog `idea.suggested_project[]` at run creation (P3) or via backfill
+migration (P2). When a run is created from `--backlog-idea-ref RIB-NNN`, the corresponding idea's
+`suggested_project` field(s) populate this array.
+
+**Nullable:** `null` on pre-migration runs (schema < 1.2).
+
+**Semantics:** Indicates which projects/epics this run's findings should be linked to or published
+within. Used for portfolio filtering (section §13.2) and downstream integration with project
+management systems.
+
+**Frontend usage:** Display as project badges on RunCard, filter portfolio by selected projects,
+include in RunDetail header breadcrumb.
+
+### 11.2 `category` — Research Pillar / Category String
+
+```json
+"category": "AI Engineering"
+```
+
+**Type:** `string | null`
+
+**Source:** Derived from backlog `idea.pillar` at run creation (P3) or via backfill migration (P2).
+Represents the research domain or knowledge pillar.
+
+**Nullable:** `null` on pre-migration runs.
+
+**Examples:** "AI Engineering", "Frontend Tooling", "Database Systems", "Security", "DevOps",
+"Research Infrastructure".
+
+**Frontend usage:** Display as category chip in RunCard and RunDetail, filter portfolio by
+selected categories, use for visual grouping in Lineage view.
+
+### 11.3 `tags` — Array of Topic Tags
+
+```json
+"tags": ["agent-design", "research-methodology", "agentic-os"]
+```
+
+**Type:** `string[] | null`
+
+**Source:** Derived from backlog `idea.tags[]` at run creation (P3) or via backfill migration (P2).
+User-defined topic tags for run classification and discovery.
+
+**Nullable:** `null` on pre-migration runs.
+
+**Frontend usage:** Display as tag chips in RunCard, RunDetail Overview, and claim ledger (tags
+reference linked claims), filter portfolio by selected tags, enable tag-based discovery workflows.
+
+### 11.4 `backlog_idea_ref` — Backlog Idea ID
+
+```json
+"backlog_idea_ref": "RIB-042"
+```
+
+**Type:** `string | null` (pattern: `^RIB-\d+$`)
+
+**Source:** The backlog idea ID in RIB-NNN format when the run was created from a research idea
+backlog entry. Null when the run was created outside the backlog (manual capture, imported, etc.).
+
+**Nullable:** `null` when the run is not linked to a backlog idea.
+
+**Semantics:** Provides a human-friendly reference to the idea that triggered the run. Used for
+traceability back to the idea in `research_idea_backlog.yaml`.
+
+**Frontend usage:** Display as a breadcrumb link in RunDetail header, enable jump-to-idea
+navigation, use for backlog↔run linkage visualization.
+
+### 11.5 `backlog_idea_id` — Backlog Idea Slug
+
+```json
+"backlog_idea_id": "agentic_research"
+```
+
+**Type:** `string | null`
+
+**Source:** Reverse slug of the backlog idea (matches `idea.id` field in the backlog YAML). Null
+when `backlog_idea_ref` is null.
+
+**Nullable:** `null` when the run is not linked to a backlog idea.
+
+**Semantics:** Stable machine-friendly reference (slug) for the backlog idea. Enables consistent
+cross-referencing even if the RIB-NNN numbering changes due to backlog reordering.
+
+**Frontend usage:** Use as a stable key for idea↔run linking, enable URL routes like
+`/backlog/{idea_id}/run/{run_id}`.
+
+### 11.6 Backfill Migration for Pre-Migration Runs
+
+Pre-migration runs (created before P2/P3 implementation) carry `null` values for all five fields
+above. The backfill migration (P2 task `MIG-001`/`MIG-002`) idempotently populates these fields
+by inverting the backlog's `idea.links.run_id` → `run_metadata` map:
+
+1. **Inversion:** For each backlog idea with `links.run_id: [list of run_ids]`, the migration
+   creates a backward map: `run_id → {linked_projects, category, tags, backlog_idea_ref, backlog_idea_id}`.
+2. **Idempotency:** Re-running the migration on an already-populated run.yaml produces no diff
+   (safe to re-run on updated backlog).
+3. **Dry-run:** `--dry-run` flag produces a diff without writing (for review before commit).
+4. **Merge logic:** When multiple backlog ideas link to the same run, the migration unions
+   `tags` and collects all `linked_projects` (later ideas override category if conflict).
+
+**Runtime command:**
+```bash
+scripts/backfill_run_metadata.py --dry-run  # Preview changes
+scripts/backfill_run_metadata.py --commit   # Write changes to run.yaml files
+```
+
+## 12. Enrichment Extras (v1.2 — New in schema 1.2, Phase 7)
+
+Schema 1.2 also adds three enrichment-extras fields, sourced from run profiles and aggregated
+from source cards. All are optional/nullable for backwards compatibility. These fields unlock
+downstream tabs (Swarm, Policies, Library) in future phases.
+
+### 12.1 `cost_usd` — Actual or Budgeted Run Cost
+
+```json
+"cost_usd": 2.47
+```
+
+**Type:** `number | null`
+
+**Source:** Sourced from `run.yaml → profile → max_cost_usd` (the budgeted cost for the run).
+
+**Nullable:** `null` when no profile block is present (pre-enrichment runs).
+
+**Semantics:** The actual or maximum budgeted cost of running this research in USD. Used to
+track research expenditure and implement cost-aware filtering/sorting.
+
+**Frontend usage:** Display in RunCard cost badge, RunDetail enrichment widget (formatted as
+`$2.47`), sort/filter portfolio by cost range, aggregate costs in run dashboards.
+
+### 12.2 `model_profiles` — Resource Allocation Profile
+
+```jsonc
+{
+  "max_cost_usd": 5.0,
+  "extraction_model_profile": "rf_extract_cheap",
+  "synthesis_model_profile": "rf_synthesize_deep",
+  "verification_model_profile": "rf_verify_standard",
+  "max_runtime_minutes": 120,
+  "freshness_days": 90
+}
+```
+
+**Type:** `object | null` (object has optional properties; see structure above)
+
+**Source:** Sourced from `run.yaml → profile` (the complete resource allocation config).
+
+**Nullable:** `null` when no profile block is present.
+
+**Fields:**
+- `max_cost_usd`: Maximum allowed spend (matched with actual `cost_usd`).
+- `extraction_model_profile`: Named extraction profile (e.g., `rf_extract_cheap`, `rf_extract_deep`).
+- `synthesis_model_profile`: Named synthesis profile (e.g., `rf_synthesize_deep`).
+- `verification_model_profile`: Named verification profile (e.g., `rf_verify_standard`).
+- `max_runtime_minutes`: Maximum wall-clock runtime budget.
+- `freshness_days`: Maximum acceptable age of sources (freshness constraint).
+
+**Semantics:** Fully describes the resource tier and model routing for the run. Useful for
+understanding why certain models were selected and for comparing research cost/quality
+trade-offs across runs.
+
+**Frontend usage:** Display in RunDetail enrichment widget as a compact table, use profile
+names for sorting/filtering, show freshness constraint in run details.
+
+### 12.3 `source_count_by_type` — Source Card Aggregation
+
+```jsonc
+{
+  "official_doc": 3,
+  "paper": 1,
+  "repo": 2,
+  "blog": 1,
+  "other": 2
+}
+```
+
+**Type:** `Record<string, number> | null` (keys are source type names from RFSourceType enum)
+
+**Source:** Aggregated from all source cards in the run's `sources/*.md` files by reading each
+card's `source_type` field.
+
+**Nullable:** `null` when no source cards are present.
+
+**Valid keys:** `official_doc`, `paper`, `standard`, `repo`, `news`, `blog`, `book`,
+`personal_note`, `internal_doc`, `other`.
+
+**Semantics:** Provides a quick summary of source diversity and coverage without loading the
+full claim graph. Used to assess evidence quality and identify gaps in source type coverage.
+
+**Frontend usage:** Display as a mini bar chart or key-value table in RunDetail enrichment
+widget, use for sorting/filtering portfolio by source diversity, show in run summary cards.
+
+### 12.4 Distribution Aggregates (From `claim_counts`)
+
+The following distribution aggregates are already captured in `claim_counts` (not new in 1.2):
+
+- **Confidence distribution:** `claim_counts.low`, `claim_counts.medium`, `claim_counts.high`
+- **Materiality distribution:** `claim_counts.core`, `claim_counts.background`, `claim_counts.style`
+- **Status distribution:** `claim_counts.supported`, `claim_counts.mixed`, `claim_counts.contradicted`,
+  `claim_counts.inference`, `claim_counts.speculation`, `claim_counts.unsupported`
+
+The frontend Enrichment widget renders these as progress bars / distribution charts in the
+RunDetail Overview.
+
+## 13. Frontend Display and Filtering
+
+### 13.1 Display Surfaces (Run Metadata Fields)
+
+Schema 1.2 adds visual display of run metadata across multiple surfaces:
+
+| Surface | Fields displayed | Component |
+|---------|------------------|-----------|
+| **RunList table** | `linked_projects` (primary) | RunList.tsx columns |
+| **RunCard** | `linked_projects` (badges), `tags` (chips), `category` (hint) | RunCard.tsx |
+| **RunCard hover** | `backlog_idea_ref` (reference link) | RunCard tooltip |
+| **RunDetail Overview** | All metadata fields + enrichment widget section | RunDetailWorkspace.tsx |
+| **RunDetailModal header** | `linked_projects`, `tags` reference chips | RunDetailModal.tsx |
+| **ClaimLedger inspector** | `tags` reference chips | ClaimAuditWorkbench.tsx |
+| **LineageGraph panel** | `tags` reference chips in header | LineageDetailPanel.tsx |
+
+### 13.2 Filtering / Faceting (Portfolio Level)
+
+Portfolio filtering is implemented in `FilterTabs.tsx` and `RunList.tsx`:
+
+**Filter controls:**
+- **Project filter:** Checkbox list derived from all unique `linked_projects[]` across runs.
+- **Category filter:** Checkbox list derived from all unique `category` values.
+- **Tags filter:** Checkbox list derived from all unique `tags[]` values.
+
+**Filter logic (AND semantics):**
+```
+run passes if:
+  (run.linked_projects intersects activeProjects OR activeProjects empty) AND
+  (run.category in activeCategories OR activeCategories empty) AND
+  (run.tags intersects activeTags OR activeTags empty)
+```
+
+**Null handling:** Runs with `null` metadata fields are correctly excluded when the corresponding
+filter is active (they have no matching values). A run with `tags: null` will not appear in results
+if "Tags: researcher" filter is active.
+
+**Empty state:** When all runs are filtered out, show "No runs match the selected filters" with a
+[Clear filters] button.
+
+## 14. Backwards Compatibility Notes
+
+Schema 1.2 is **fully backwards compatible** with schema 1.0 and 1.1:
+
+- All new fields (11 total: 5 metadata + 3 enrichment + 2 v2 context) are **optional/nullable**.
+- Pre-migration runs (v1.0/1.1) carry `null` values or omit these fields entirely.
+- Frontend components use **optional access** (`run?.linked_projects`, etc.) and gracefully
+  degrade when fields are absent.
+- Static data rebuild (`rf run export --all`) automatically includes v1.2 fields for all runs
+  (backfill migration populates metadata; enrichment is optional per run).
+
+**Version detection:** Always check `schema_version` to determine which fields are available:
+- Schema `1.0`: no metadata, no enrichment, no context, no writebacks.
+- Schema `1.1`: adds `report_draft`.
+- Schema `1.2`: adds run metadata (5 fields), enrichment extras (3 fields), context, and writebacks.
+
+**Migration note (for developers):** When upgrading from v1.0/v1.1 exports to v1.2:
+1. Runs with metadata/enrichment fields will appear after backfill (P2) + re-export (P4).
+2. Pre-migration runs remain queryable with `schema_version < "1.2"`.
+3. Frontend can show "[Metadata pending backfill]" or "[Pre-enrichment run]" labels for old runs.
+
+## 15. CLI Surface Changes (v1.2)
+
+The export command remains stable; all v1.2 fields are included in `--json` output:
+
+```bash
+# Export with v1.2 fields
+rf run export --json --run-id rf_run_20260613_...
+
+# Export all (includes backfill metadata)
+rf run export --json --all
+
+# List all runs with metadata stubs in RFRunSummary
+rf run list --json
+```
+
+Schema version is automatically set to `"1.2"` in output when the run has been backfilled or
+created with v1.2 infrastructure (P2+). Pre-migration runs remain at their original version.
+
 ## Changelog
 
 | Version | Date | Change |
 |---------|------|--------|
 | 1.0 | 2026-06-19 | Initial frozen contract (Phase 1 exit gate). |
-| 1.1 | 2026-06-19 | **Additive post-freeze change** — added `report_draft: string \| null` top-level field to unblock the "read report → click claim chip → see quote" frontend journey. Requires `backend-architect` re-review (`review_verdict: pending-rereview`). |
+| 1.1 | 2026-06-19 | **Additive post-freeze change** — added `report_draft: string \| null` top-level field to unblock the "read report → click claim chip → see quote" frontend journey. |
+| 1.2 | 2026-06-21 | **Run Metadata Enrichment** — added 5 metadata fields (`linked_projects`, `category`, `tags`, `backlog_idea_ref`, `backlog_idea_id`), 3 enrichment extras (`cost_usd`, `model_profiles`, `source_count_by_type`), and 2 v2 context fields (`context`, `writebacks`). All are optional/nullable for backwards compatibility. Includes backfill migration (P2) for pre-migration runs and idempotent re-export threading (P4). Frontend filtering, display, and enrichment widgets are enabled in P5–P7. |

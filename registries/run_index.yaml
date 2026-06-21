@@ -59,6 +59,17 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_what_does_the_empirical_literature_say
   indexed_at: '2026-06-14T14:05:59-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_evidence-claim-verification
+  tags:
+  - claim-verification
+  - hallucination
+  - verifiable-ai
+  - rag
+  - evidence
+  backlog_idea_ref: RIB-002
+  backlog_idea_id: idea_claim-traceability-verification-landscape
 - id: rf_run_20260614_what_published_security_frameworks_threat_models
   intent_id: intent_research_20260614_what_published_security_frameworks_threat_models
   status: planned
@@ -69,6 +80,18 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_what_published_security_frameworks_threat_models
   indexed_at: '2026-06-14T14:07:29-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_governance-multi-key-safety
+  tags:
+  - key-isolation
+  - governance
+  - credential-security
+  - boundary
+  - api-keys
+  - threat-model
+  backlog_idea_ref: RIB-018
+  backlog_idea_id: idea_key-isolation-multiprofile-governance
 - id: rf_run_20260614_what_patterns_file_watch_hooks_post
   intent_id: intent_research_20260614_what_patterns_file_watch_hooks_post
   status: planned
@@ -79,6 +102,17 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_what_patterns_file_watch_hooks_post
   indexed_at: '2026-06-14T14:07:30-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_cross-tool-integration-agentic-os
+  tags:
+  - event-driven
+  - seam-integration
+  - local-first
+  - file-watch
+  - agentic-os
+  backlog_idea_ref: RIB-024
+  backlog_idea_id: idea_event-driven-seam-integration
 - id: rf_run_20260614_what_components_schemas_agent_roles_and
   intent_id: intent_research_20260614_what_components_schemas_agent_roles_and
   status: planned
@@ -89,6 +123,17 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_what_components_schemas_agent_roles_and
   indexed_at: '2026-06-14T14:07:30-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_cross-tool-integration-agentic-os
+  tags:
+  - agentic-os
+  - research-swarm
+  - evidence-bundle
+  - architecture
+  - mvp
+  backlog_idea_ref: RIB-025
+  backlog_idea_id: idea_rf-self-validation-mvp-architecture
 - id: rf_run_20260614_what_architectures_define_an_agentic_origination
   intent_id: intent_research_20260614_what_architectures_define_an_agentic_origination
   status: planned
@@ -99,6 +144,17 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_what_architectures_define_an_agentic_origination
   indexed_at: '2026-06-14T14:07:30-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_cross-tool-integration-agentic-os
+  tags:
+  - origination-layer
+  - research-routing
+  - control-plane
+  - execution-packets
+  - intent-extraction
+  backlog_idea_ref: RIB-026
+  backlog_idea_id: idea_origination-layer-routing
 - id: rf_run_20260614_what_are_the_documented_trade_offs
   intent_id: intent_research_20260614_what_are_the_documented_trade_offs
   status: planned
@@ -109,6 +165,17 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_what_are_the_documented_trade_offs
   indexed_at: '2026-06-14T14:07:31-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_knowledge-compilation-retrieval
+  tags:
+  - file-first
+  - database
+  - architecture
+  - git
+  - reproducibility
+  backlog_idea_ref: RIB-037
+  backlog_idea_id: idea_file-vs-db-truth-architecture
 - id: rf_run_20260614_what_methods_exist_for_automatically_scoring
   intent_id: intent_research_20260614_what_methods_exist_for_automatically_scoring
   status: planned
@@ -119,6 +186,18 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_what_methods_exist_for_automatically_scoring
   indexed_at: '2026-06-14T14:07:31-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_evaluation-quality
+  tags:
+  - quality-scoring
+  - evaluation
+  - ccdash
+  - telemetry
+  - research-metrics
+  - claim-ledger
+  backlog_idea_ref: RIB-042
+  backlog_idea_id: idea_evidence-bundle-quality-scoring
 - id: rf_run_20260614_do_token_logprob_distributions_provide_more
   intent_id: intent_research_20260614_do_token_logprob_distributions_provide_more
   status: planned
@@ -129,6 +208,18 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_do_token_logprob_distributions_provide_more
   indexed_at: '2026-06-14T14:07:31-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_evaluation-quality
+  tags:
+  - logprobs
+  - classification-confidence
+  - calibration
+  - llm
+  - abstention
+  - cost-efficiency
+  backlog_idea_ref: RIB-045
+  backlog_idea_id: idea_logprob-confidence-calibration
 - id: rf_run_20260614_what_governance_criteria_evaluation_frameworks_a
   intent_id: intent_research_20260614_what_governance_criteria_evaluation_frameworks_a
   status: planned
@@ -139,6 +230,17 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_what_governance_criteria_evaluation_frameworks_a
   indexed_at: '2026-06-14T14:07:32-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_reuse-promotion-governance
+  tags:
+  - skillbom
+  - governance
+  - promotion
+  - reusable-skills
+  - evaluation
+  backlog_idea_ref: RIB-051
+  backlog_idea_id: idea_skillbom-promotion-governance
 - id: rf_run_20260614_what_pipeline_architecture_best_ingests_outputs
   intent_id: intent_research_20260614_what_pipeline_architecture_best_ingests_outputs
   status: planned
@@ -149,6 +251,17 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_what_pipeline_architecture_best_ingests_outputs
   indexed_at: '2026-06-14T14:07:32-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_capture-ingestion
+  tags:
+  - research-capture
+  - ingestion-pipeline
+  - provenance
+  - normalization
+  - intake
+  backlog_idea_ref: RIB-053
+  backlog_idea_id: idea_unified-research-capture-harness
 - id: rf_run_20260614_what_is_the_evidence_grounded_design
   intent_id: intent_research_20260614_what_is_the_evidence_grounded_design
   status: planned
@@ -309,6 +422,17 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_claim_segmentation_and_claim_to_source
   indexed_at: '2026-06-14T20:50:02-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_evidence-claim-verification
+  tags:
+  - claim-verification
+  - attribution
+  - entailment
+  - claim-ledger
+  - extraction
+  backlog_idea_ref: RIB-001
+  backlog_idea_id: idea_claim-segmentation-source-alignment
 - id: rf_run_20260614_contradiction_detection_across_heterogeneous_sou
   intent_id: intent_research_20260614_contradiction_detection_across_heterogeneous_sou
   status: planned
@@ -319,6 +443,17 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_contradiction_detection_across_heterogeneous_sou
   indexed_at: '2026-06-14T20:50:46-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_evidence-claim-verification
+  tags:
+  - contradiction-detection
+  - evidence-quality
+  - knowledge-graph
+  - fact-checking
+  - nlp
+  backlog_idea_ref: RIB-003
+  backlog_idea_id: idea_contradiction-detection-heterogeneous-sources
 - id: rf_run_20260614_sensitivity_aware_ai_routing_tier_policy
   intent_id: intent_research_20260614_sensitivity_aware_ai_routing_tier_policy
   status: planned
@@ -329,6 +464,18 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_sensitivity_aware_ai_routing_tier_policy
   indexed_at: '2026-06-14T20:50:46-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_governance-multi-key-safety
+  tags:
+  - sensitivity
+  - data-classification
+  - llm-routing
+  - governance
+  - data-boundary
+  - writeback
+  backlog_idea_ref: RIB-017
+  backlog_idea_id: idea_sensitivity-aware-tool-routing
 - id: rf_run_20260614_embedding_model_vector_store_strategy_for
   intent_id: intent_research_20260614_embedding_model_vector_store_strategy_for
   status: planned
@@ -339,6 +486,18 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_embedding_model_vector_store_strategy_for
   indexed_at: '2026-06-14T20:50:47-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_knowledge-compilation-retrieval
+  tags:
+  - embeddings
+  - vector-search
+  - pgvector
+  - sqlite-vec
+  - local-first
+  - cost-efficiency
+  backlog_idea_ref: RIB-033
+  backlog_idea_id: idea_embedding-vector-store-strategy
 - id: rf_run_20260614_hybrid_bm25_vector_and_fts5_ranking
   intent_id: intent_research_20260614_hybrid_bm25_vector_and_fts5_ranking
   status: planned
@@ -349,6 +508,18 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_hybrid_bm25_vector_and_fts5_ranking
   indexed_at: '2026-06-14T20:50:47-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_knowledge-compilation-retrieval
+  tags:
+  - search
+  - bm25
+  - vector-search
+  - fts5
+  - sqlite
+  - ranking
+  backlog_idea_ref: RIB-034
+  backlog_idea_id: idea_hybrid-bm25-vector-fts5
 - id: rf_run_20260614_semantic_entity_consolidation_and_auto_merge
   intent_id: intent_research_20260614_semantic_entity_consolidation_and_auto_merge
   status: planned
@@ -359,6 +530,17 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_semantic_entity_consolidation_and_auto_merge
   indexed_at: '2026-06-14T20:50:48-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_knowledge-compilation-retrieval
+  tags:
+  - entity-resolution
+  - deduplication
+  - threshold-calibration
+  - knowledge-graph
+  - similarity
+  backlog_idea_ref: RIB-035
+  backlog_idea_id: idea_entity-consolidation-merge-thresholds
 - id: rf_run_20260614_determinism_ci_cost_control_for_agentic
   intent_id: intent_research_20260614_determinism_ci_cost_control_for_agentic
   status: planned
@@ -369,6 +551,18 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_determinism_ci_cost_control_for_agentic
   indexed_at: '2026-06-14T20:50:48-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_evaluation-quality
+  tags:
+  - evals
+  - agent-sdk
+  - ci-cd
+  - llm-as-judge
+  - non-determinism
+  - cost-control
+  backlog_idea_ref: RIB-041
+  backlog_idea_id: idea_agentic-eval-harness-ci
 - id: rf_run_20260614_closed_loop_telemetry_to_artifact_feedback
   intent_id: intent_research_20260614_closed_loop_telemetry_to_artifact_feedback
   status: planned
@@ -379,5 +573,16 @@ items:
   human_required: false
   run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_closed_loop_telemetry_to_artifact_feedback
   indexed_at: '2026-06-14T20:50:48-04:00'
+  linked_projects:
+  - Research Foundry
+  category: pillar_reuse-promotion-governance
+  tags:
+  - feedback-loop
+  - artifact-governance
+  - telemetry
+  - closed-loop
+  - agentic-sdlc
+  backlog_idea_ref: RIB-047
+  backlog_idea_id: idea_closed-loop-telemetry-artifact-improvement
 count: 38
-updated_at: '2026-06-14T20:50:48-04:00'
+updated_at: '2026-06-21T01:23:41-04:00'

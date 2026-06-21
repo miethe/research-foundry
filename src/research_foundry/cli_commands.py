@@ -123,15 +123,45 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         tag: list[str] = typer.Option(None, "--tag", help="repeatable tag"),
         urgency: str = typer.Option("medium", "--urgency"),
         title: str | None = typer.Option(None, "--title"),
+        backlog_idea_ref: str | None = typer.Option(
+            None,
+            "--backlog-idea-ref",
+            help="Link to a backlog idea by RIB-NNN ref (validated against the backlog).",
+        ),
     ) -> None:
-        """Capture a raw idea into the inbox (spec §10.2)."""
+        """Capture a raw idea into the inbox (spec §10.2).
 
+        Pass ``--backlog-idea-ref RIB-NNN`` to link the captured idea to an
+        entry in ``backlog/research_idea_backlog.yaml``.  The ref is validated
+        before the idea is written; an unrecognised ref exits with an error.
+        """
+
+        from .paths import FoundryPaths
         from .services import capture as svc
+        from .services.backlog_metadata import backlog_exists, lookup_metadata
+
+        # Validate the backlog ref before writing anything.
+        if backlog_idea_ref is not None:
+            _bpaths = FoundryPaths.discover()
+            if not backlog_exists(_bpaths):
+                err_console.print(
+                    "[yellow]warning:[/yellow] backlog/research_idea_backlog.yaml not found; "
+                    "--backlog-idea-ref will be stored but cannot be validated."
+                )
+            else:
+                _bmeta = lookup_metadata(backlog_idea_ref, _bpaths)
+                if _bmeta is None:
+                    err_console.print(
+                        f"[red]error:[/red] backlog idea ref '{backlog_idea_ref}' not found "
+                        "in backlog/research_idea_backlog.yaml."
+                    )
+                    raise typer.Exit(int(ExitCode.USAGE))
 
         try:
             r = svc.capture_idea(
                 text, title=title, captured_from=from_, sensitivity=sensitivity,
                 urgency=urgency, tags=list(tag) if tag else None,
+                backlog_idea_ref=backlog_idea_ref,
             )
         except RFError as e:
             _fail(e)

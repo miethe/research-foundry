@@ -19,3 +19,14 @@ profile:
   extraction_model_profile: rf_extract_cheap
   synthesis_model_profile: rf_synthesize_deep
   verification_model_profile: rf_verify_balanced
+linked_projects:
+- Research Foundry
+category: pillar_reuse-promotion-governance
+tags:
+- skillbom
+- governance
+- promotion
+- reusable-skills
+- evaluation
+backlog_idea_ref: RIB-051
+backlog_idea_id: idea_skillbom-promotion-governance

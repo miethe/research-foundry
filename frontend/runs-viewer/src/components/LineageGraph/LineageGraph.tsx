@@ -170,9 +170,10 @@ export function ArtifactLineageGraph({
           )}
         </div>
 
-        {/* Detail panel */}
+        {/* Detail panel — P5 DISP-005: pass run meta for reference chips */}
         <LineageDetailPanel
           node={selectedNode}
+          runMeta={{ tags: run.tags, category: run.category }}
           onSelectClaim={onSelectClaim}
           onOpenProvenance={onOpenProvenance}
         />
