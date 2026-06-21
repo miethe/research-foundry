@@ -2,9 +2,9 @@
 title: "Feature Contract: Viewer Un-Redact (LAN)"
 schema_version: 2
 doc_type: feature_contract
-status: draft
+status: completed
 created: 2026-06-20
-updated: 2026-06-20
+updated: 2026-06-21
 feature_slug: "viewer-unredact-lan"
 category: "harden-polish"
 estimated_points: 4
@@ -19,13 +19,19 @@ related_documents:
 spike_ref: null
 prd_ref: docs/project_plans/PRDs/enhancements/runs-viewer-v2.2-polish-epic-v1.md
 plan_ref: null
-commit_refs: []
+commit_refs:
+  - bbf6341
 pr_refs: []
 files_affected:
   - foundry.yaml
   - frontend/runs-viewer/src/types/rf/run-export.ts
   - frontend/runs-viewer/src/components/SourceCard/SourceCard.tsx
   - frontend/runs-viewer/.env (or .env.local, optional VITE_SHOW_ALL bypass)
+  - frontend/runs-viewer/src/components/ProvenanceModal/ProvenanceModal.tsx
+  - frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.tsx
+  - frontend/runs-viewer/src/components/RunDetail/RunDetailModal.tsx
+  - frontend/runs-viewer/src/components/ReportOverlay/ReportOverlay.tsx
+  - frontend/runs-viewer/src/test/p4-components.test.tsx
 ---
 
 # Feature Contract: Viewer Un-Redact (LAN)
