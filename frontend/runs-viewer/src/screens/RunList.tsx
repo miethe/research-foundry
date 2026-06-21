@@ -555,7 +555,7 @@ function AttentionCard({ label, value }: { label: string; value: number }) {
   );
 }
 
-function RunTable({
+export function RunTable({
   runs,
   selectedRunId,
   onSelect,

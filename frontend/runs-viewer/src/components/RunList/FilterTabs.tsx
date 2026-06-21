@@ -12,6 +12,7 @@
 
 import { useState } from "react";
 import type { RunFilterState } from "./RunCard";
+import { TagFilterPanel } from "./TagFilterPanel";
 
 export type FilterTab = "all" | RunFilterState;
 
@@ -109,6 +110,42 @@ function FacetSection({
   );
 }
 
+// ── Collapsible Tags section wrapping TagFilterPanel ─────────────────────────
+
+function CollapsibleTagSection({
+  options,
+  active,
+  onToggle,
+}: {
+  options: string[];
+  active: string[];
+  onToggle: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rv-facet-section" data-testid="facet-section-tags">
+      <button
+        type="button"
+        className="rv-facet-header"
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <span>Tags</span>
+        {active.length > 0 && (
+          <span className="rv-facet-badge" aria-label={`${active.length} selected`}>
+            {active.length}
+          </span>
+        )}
+        <span className="rv-facet-chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <TagFilterPanel options={options} active={active} onToggle={onToggle} />
+      )}
+    </div>
+  );
+}
+
 // ── FilterTabs ────────────────────────────────────────────────────────────────
 
 export function FilterTabs({
@@ -187,12 +224,14 @@ export function FilterTabs({
             active={metadataFilters!.activeCategories}
             onToggle={toggleCategory}
           />
-          <FacetSection
-            title="Tags"
-            options={metadataOptions!.tags}
-            active={metadataFilters!.activeTags}
-            onToggle={toggleTag}
-          />
+          {/* Tags — inline-searchable colored pill panel */}
+          {metadataOptions!.tags.length > 0 && (
+            <CollapsibleTagSection
+              active={metadataFilters!.activeTags}
+              options={metadataOptions!.tags}
+              onToggle={toggleTag}
+            />
+          )}
         </div>
       )}
     </div>

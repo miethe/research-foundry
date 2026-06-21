@@ -19,6 +19,7 @@
 
 import type { RFRunSummary, RFStatusDerived, RFSensitivity } from "@/types/rf";
 import { getRunBucket, titleFromSlug, type RunHealthBucket } from "@/lib/runs";
+import { tagColorClass } from "./tagColor";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -215,7 +216,7 @@ export function RunCard({ run, onClick, onExpandRun }: RunCardProps) {
       {visibleTags && (
         <div className="rv-run-card__tags" data-testid="run-card-tags">
           {visibleTags.map((tag) => (
-            <span key={tag} className="it-chip rv-tag-chip" data-testid="tag-chip">
+            <span key={tag} className={`it-chip rv-tag-chip ${tagColorClass(tag)}`} data-testid="tag-chip">
               {tag}
             </span>
           ))}

@@ -958,6 +958,329 @@ button.active .rv-tab-count {
   color: var(--it-blue-700);
 }
 
+/* ── Filter-tabs outer wrapper ─────────────────────────────────────────────── */
+
+.rv-filter-tabs-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-3);
+}
+
+/* ── Facet sections container ──────────────────────────────────────────────── */
+
+.rv-facet-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1);
+}
+
+/* ── Individual collapsible facet section ──────────────────────────────────── */
+
+.rv-facet-section {
+  border: 1px solid var(--it-border-subtle);
+  border-radius: var(--it-radius-sm);
+  overflow: hidden;
+  background: var(--it-surface-base);
+}
+
+/* ── Collapsible header button ─────────────────────────────────────────────── */
+
+.rv-facet-header {
+  /* reset: button styles are in tokens.css, we build on top */
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-2);
+  width: 100%;
+  padding: var(--it-space-2) var(--it-space-3);
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-medium);
+  color: var(--it-text-secondary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--it-dur-fast) var(--it-ease-out),
+              color var(--it-dur-fast) var(--it-ease-out);
+}
+
+.rv-facet-header:hover,
+.rv-facet-header:focus-visible {
+  background: var(--it-teal-50);
+  color: var(--it-teal-600);
+  outline: none;
+}
+
+.rv-facet-header:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--it-border-focus);
+}
+
+/* ── Active count badge inside the header ─────────────────────────────────── */
+
+.rv-facet-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--it-radius-pill);
+  background: var(--it-teal-100);
+  color: var(--it-teal-600);
+  font-size: 11px;
+  font-weight: var(--it-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* ── Chevron arrow — pushed to the far right ─────────────────────────────── */
+
+.rv-facet-chevron {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--it-text-muted);
+  transition: color var(--it-dur-fast) var(--it-ease-out);
+}
+
+.rv-facet-header:hover .rv-facet-chevron,
+.rv-facet-header:focus-visible .rv-facet-chevron {
+  color: var(--it-teal-500);
+}
+
+/* ── Option fieldset ──────────────────────────────────────────────────────── */
+
+.rv-facet-list {
+  border: 0;
+  margin: 0;
+  padding: var(--it-space-1) 0 var(--it-space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Visually-hidden legend (sr-only) */
+.rv-facet-legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Single option row ────────────────────────────────────────────────────── */
+
+.rv-facet-list-item {
+  padding: 0 var(--it-space-3);
+}
+
+/* ── Label wrapping checkbox + text ──────────────────────────────────────── */
+
+.rv-facet-option {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-2);
+  padding: var(--it-space-1_5) var(--it-space-2);
+  border-radius: var(--it-radius-xs);
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+  cursor: pointer;
+  transition: background var(--it-dur-fast) var(--it-ease-out),
+              color var(--it-dur-fast) var(--it-ease-out);
+}
+
+.rv-facet-option:hover {
+  background: var(--it-neutral-50);
+  color: var(--it-text-primary);
+}
+
+.rv-facet-option.active {
+  background: var(--it-teal-50);
+  color: var(--it-teal-600);
+}
+
+/* Hide the native checkbox visually while keeping it accessible */
+.rv-facet-option input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  accent-color: var(--it-teal-500);
+  cursor: pointer;
+}
+
+/* ── Text label inside option ─────────────────────────────────────────────── */
+
+.rv-facet-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================================================================
+   P6 — TAG COLOR PALETTE
+   Deterministic hue classes applied by tagColorClass(). Each slot pairs
+   a light background token with a dark text token for 4.5:1+ contrast.
+   Active state uses the midpoint hue + white text.
+   ========================================================================= */
+
+/* Resting (inactive) — light bg, dark text */
+.rv-tag--teal   { background: var(--it-teal-100);   color: var(--it-teal-600);   }
+.rv-tag--blue   { background: var(--it-blue-100);   color: var(--it-blue-700);   }
+.rv-tag--purple { background: var(--it-purple-100); color: var(--it-purple-700); }
+.rv-tag--green  { background: var(--it-green-100);  color: var(--it-green-700);  }
+.rv-tag--orange { background: var(--it-orange-100); color: var(--it-orange-600); }
+
+/* Active — stronger bg + white (or near-white) text */
+.rv-tag--teal.is-active   { background: var(--it-teal-600);   color: #fff; }
+.rv-tag--blue.is-active   { background: var(--it-blue-500);   color: #fff; }
+.rv-tag--purple.is-active { background: var(--it-purple-500); color: #fff; }
+.rv-tag--green.is-active  { background: var(--it-green-600);  color: #fff; }
+.rv-tag--orange.is-active { background: var(--it-orange-600); color: #fff; }
+
+/* =========================================================================
+   P6 — TAG FILTER PANEL (TagFilterPanel.tsx)
+   Inline-searchable tag panel that replaces the Tags FacetSection.
+   ========================================================================= */
+
+.rv-tag-filter-panel {
+  padding: var(--it-space-2) var(--it-space-3) var(--it-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+}
+
+/* Search input wrapper */
+.rv-tag-filter-panel__search {
+  position: relative;
+}
+
+.rv-tag-filter-panel__input {
+  width: 100%;
+  padding: var(--it-space-1_5) var(--it-space-3);
+  font-size: var(--it-text-sm);
+  font-family: var(--it-font-sans);
+  color: var(--it-text-primary);
+  background: var(--it-neutral-50);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-sm);
+  outline: none;
+  transition: border-color var(--it-dur-fast) var(--it-ease-out),
+              box-shadow var(--it-dur-fast) var(--it-ease-out);
+  box-sizing: border-box;
+}
+
+.rv-tag-filter-panel__input::placeholder {
+  color: var(--it-text-muted);
+}
+
+.rv-tag-filter-panel__input:focus {
+  border-color: var(--it-border-focus);
+  box-shadow: 0 0 0 2px rgba(138, 174, 226, 0.30);
+  background: var(--it-surface-base);
+}
+
+/* Pill wrap */
+.rv-tag-filter-panel__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--it-space-1);
+}
+
+/* Individual tag pill — interactive button */
+.rv-tag-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 10px;
+  border-radius: var(--it-radius-pill);
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-medium);
+  font-family: var(--it-font-sans);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: opacity var(--it-dur-fast) var(--it-ease-out),
+              filter var(--it-dur-fast) var(--it-ease-out),
+              box-shadow var(--it-dur-fast) var(--it-ease-out);
+  /* Color is provided by rv-tag--<hue> classes */
+}
+
+.rv-tag-filter-pill:hover {
+  filter: brightness(0.93);
+}
+
+.rv-tag-filter-pill:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--it-border-focus);
+}
+
+.rv-tag-filter-pill.is-active {
+  /* Stronger bg + white text from rv-tag--<hue>.is-active */
+  box-shadow: var(--it-shadow-xs);
+}
+
+/* Checkmark prefix inside active pill */
+.rv-tag-filter-pill__check {
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* No-match empty state */
+.rv-tag-filter-panel__empty {
+  margin: 0;
+  padding: var(--it-space-2) 0;
+  font-size: var(--it-text-sm);
+  color: var(--it-text-muted);
+  font-style: italic;
+  text-align: center;
+}
+
+/* ── Dark theme overrides for new facet/tag components ───────────────────── */
+
+[data-theme="dark"] .rv-facet-section {
+  background: var(--it-surface-base);
+  border-color: var(--it-border-soft);
+}
+
+[data-theme="dark"] .rv-facet-header:hover,
+[data-theme="dark"] .rv-facet-header:focus-visible {
+  background: rgba(47, 134, 147, 0.14);
+  color: var(--it-teal-300);
+}
+
+[data-theme="dark"] .rv-facet-option.active {
+  background: rgba(47, 134, 147, 0.14);
+  color: var(--it-teal-300);
+}
+
+[data-theme="dark"] .rv-facet-badge {
+  background: rgba(47, 134, 147, 0.22);
+  color: var(--it-teal-300);
+}
+
+[data-theme="dark"] .rv-tag-filter-panel__input {
+  background: var(--it-neutral-800);
+  border-color: var(--it-border-soft);
+  color: var(--it-text-primary);
+}
+
+[data-theme="dark"] .rv-tag-filter-panel__input:focus {
+  background: var(--it-surface-base);
+}
+
+[data-theme="dark"] .rv-tag--teal   { background: rgba(47,134,147,0.20); color: var(--it-teal-300); }
+[data-theme="dark"] .rv-tag--blue   { background: rgba(59,111,189,0.20); color: var(--it-blue-300); }
+[data-theme="dark"] .rv-tag--purple { background: rgba(111,86,194,0.20); color: var(--it-purple-300); }
+[data-theme="dark"] .rv-tag--green  { background: rgba(47,143,74,0.20);  color: var(--it-green-300); }
+[data-theme="dark"] .rv-tag--orange { background: rgba(194,100,26,0.20); color: var(--it-orange-300); }
+
+[data-theme="dark"] .rv-tag--teal.is-active   { background: var(--it-teal-600);   color: #fff; }
+[data-theme="dark"] .rv-tag--blue.is-active   { background: var(--it-blue-500);   color: #fff; }
+[data-theme="dark"] .rv-tag--purple.is-active { background: var(--it-purple-500); color: #fff; }
+[data-theme="dark"] .rv-tag--green.is-active  { background: var(--it-green-600);  color: #fff; }
+[data-theme="dark"] .rv-tag--orange.is-active { background: var(--it-orange-600); color: #fff; }
+
 /* =========================================================================
    P3 — RUN CARD (RunCard.tsx)
    ========================================================================= */
