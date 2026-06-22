@@ -4786,3 +4786,110 @@ button.active .rv-tab-count {
   background: rgba(47, 143, 74, 0.08);
   border-color: rgba(47, 143, 74, 0.20);
 }
+
+/* =========================================================================
+   DARK THEME — hardcoded light backgrounds consolidated override
+   Every selector below has a frozen hex in its light rule; this block
+   re-backgrounds it to the closest dark surface token so the page shell,
+   cards, table headers, and hover states are legible on --it-bg-app.
+   Light mode is byte-identical (no rules above are touched).
+   ========================================================================= */
+
+/* Page shell — outermost frame */
+[data-theme="dark"] .rv-shell {
+  background: var(--it-bg-app);
+}
+
+/* Portfolio layout — full-page gradient */
+[data-theme="dark"] .rv-portfolio {
+  background: linear-gradient(180deg, var(--it-bg-canvas) 0%, var(--it-bg-app) 100%);
+}
+
+/* Sidebar nav — active segment / active filter row (teal tint in light) */
+[data-theme="dark"] .rv-portfolio-rail .it-seg button.active {
+  background: var(--it-surface-glass);
+}
+
+[data-theme="dark"] .rv-filter-row:hover,
+[data-theme="dark"] .rv-filter-row:focus-visible,
+[data-theme="dark"] .rv-filter-row.active {
+  background: var(--it-surface-glass);
+}
+
+/* Lane run — selected / hover state */
+[data-theme="dark"] .rv-lane-run:hover,
+[data-theme="dark"] .rv-lane-run:focus-visible,
+[data-theme="dark"] .rv-lane-run--selected {
+  background: var(--it-surface-glass);
+}
+
+/* Run table — header row */
+[data-theme="dark"] .rv-run-table th {
+  background: var(--it-surface-elevated);
+}
+
+/* Run table — row hover / selected */
+[data-theme="dark"] .rv-run-table tr:hover,
+[data-theme="dark"] .rv-run-table-row--selected {
+  background: var(--it-surface-glass);
+}
+
+[data-theme="dark"] .rv-run-table tr[aria-selected="true"] {
+  background: var(--it-surface-glass);
+}
+
+/* Attention cards — small metric chips */
+[data-theme="dark"] .rv-attention-card {
+  background: var(--it-surface-base);
+}
+
+/* Run overview — hero stat cards */
+[data-theme="dark"] .rv-run-overview__hero dl div {
+  background: var(--it-surface-base);
+}
+
+/* Run overview — claims list buttons */
+[data-theme="dark"] .rv-run-overview__claims button {
+  background: var(--it-surface-base);
+}
+
+/* Run modal — elevated surface */
+[data-theme="dark"] .rv-run-modal {
+  background: var(--it-surface-elevated);
+}
+
+/* Metrics grid — individual metric tiles */
+[data-theme="dark"] .rv-metric {
+  background: var(--it-surface-base);
+}
+
+/* Risk row hover */
+[data-theme="dark"] .rv-risk-row:hover,
+[data-theme="dark"] .rv-risk-row:focus-visible {
+  background: var(--it-surface-base);
+}
+
+/* Inspector — title card */
+[data-theme="dark"] .rv-inspector-title {
+  background: var(--it-surface-base);
+}
+
+/* Inspector — source summary card */
+[data-theme="dark"] .rv-source-summary {
+  background: var(--it-surface-base);
+}
+
+/* Inspector quote — teal-bordered callout */
+[data-theme="dark"] .rv-inspector-quote {
+  background: var(--it-surface-base);
+}
+
+/* Report location list items */
+[data-theme="dark"] .rv-report-location-list li {
+  background: var(--it-surface-base);
+}
+
+/* Lineage node cards */
+[data-theme="dark"] .rv-lineage-node {
+  background: var(--it-surface-base);
+}
