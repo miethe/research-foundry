@@ -62,6 +62,8 @@
   --it-orange-400: #df7d2a;
   --it-orange-500: #c2641a;   /* primary orange */
   --it-orange-600: #9a4f15;
+  --it-orange-700: #7d3f10;
+  --it-amber-500:  var(--it-orange-500);   /* amber alias → orange ramp */
 
   /* Reds — blockers, risk, failure */
   --it-red-50:    #fbecec;
@@ -111,6 +113,12 @@
   --it-surface-toast:  rgba(255, 255, 255, 0.92);
   --it-sidebar-bg:    rgba(255, 255, 255, 0.78);
 
+  /* Surface aliases (semantic; auto-adapt via theme-aware base tokens) */
+  --it-surface-bg:     var(--it-surface-base);      /* generic panel bg */
+  --it-bg-primary:     var(--it-surface-base);      /* primary content bg */
+  --it-surface-raised: var(--it-surface-elevated);  /* elevated surface */
+  --it-surface-sunken: var(--it-neutral-50);        /* recessed (dark-overridden) */
+
   --it-border-subtle: rgba(20, 26, 44, 0.06);
   --it-border-soft:   rgba(20, 26, 44, 0.10);
   --it-border-strong: rgba(20, 26, 44, 0.16);
@@ -136,6 +144,12 @@
   --it-status-done-fg:     var(--it-green-700);
   --it-status-idle-bg:     var(--it-neutral-100);
   --it-status-idle-fg:     var(--it-neutral-600);
+
+  /* Solid semantic accents (dark-tunable; overridden under [data-theme="dark"]) */
+  --it-success:        var(--it-green-600);
+  --it-warning:        var(--it-orange-600);
+  --it-danger:         var(--it-red-600);
+  --it-accent-primary: var(--it-blue-500);
 
   /* CTA — primary success action ("Execute Next"). Semantic so the green is
      dark-tunable; redeclared under [data-theme="dark"] (never a frozen primitive). */
@@ -217,6 +231,7 @@
   --it-leading-snug:   1.30;
   --it-leading-normal: 1.45;
   --it-leading-loose:  1.60;
+  --it-leading-relaxed: 1.70;
 
   --it-tracking-tight:  -0.02em;
   --it-tracking-normal: 0;
@@ -261,6 +276,7 @@
   --it-radius-2xl: 24px;
   --it-radius-3xl: 32px;
   --it-radius-pill: 999px;
+  --it-radius-full: var(--it-radius-pill);
 
   /* -------------------------------------------------------------------------
      SHADOW — layered, low-opacity. Glass surfaces use blur + soft elevation.
@@ -352,6 +368,13 @@
   --it-cta-success-bg:       var(--it-green-500);
   --it-cta-success-bg-hover: #38a559;
   --it-cta-success-ring:     var(--it-green-400);
+
+  /* Solid semantic accents — lighter shades for contrast on dark surfaces */
+  --it-surface-sunken: var(--it-bg-canvas);
+  --it-success:        var(--it-green-300);
+  --it-warning:        var(--it-orange-300);
+  --it-danger:         var(--it-red-300);
+  --it-accent-primary: var(--it-blue-300);
 
   --it-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40),
                   0 2px 6px rgba(0, 0, 0, 0.30);
