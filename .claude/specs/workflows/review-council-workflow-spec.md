@@ -2,7 +2,7 @@
 schema_version: 2
 doc_type: spec
 title: "review-council Workflow Spec — Agent Review Council (ARC) Wrapper"
-status: active
+status: candidate  # not built in RF — no .claude/workflows/review-council.js on disk; RF uses research-foundry-council.js. See workflow-registry.md.
 phase: 4
 created: 2026-06-01
 owner: nick
