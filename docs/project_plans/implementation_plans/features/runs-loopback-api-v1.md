@@ -1,38 +1,44 @@
 ---
-title: "Implementation Plan: Runs Viewer — Live Loopback API + Gated LAN Exposure"
+title: "Implementation Plan: Runs Viewer \u2014 Live Loopback API + Gated LAN Exposure"
 schema_version: 2
 doc_type: implementation_plan
-status: draft
-created: 2026-06-22
-updated: 2026-06-22
+status: completed
+created: '2026-06-22'
+updated: '2026-06-22'
 feature_slug: runs-loopback-api
-feature_version: "v1"
+feature_version: v1
 prd_ref: docs/project_plans/PRDs/features/runs-loopback-api-v1.md
 plan_ref: null
-scope: "Add rf serve read-only FastAPI API serving the runs-viewer SPA from disk with loopback-first auth and gated LAN exposure via shared-secret token."
-effort_estimate: "13 pts"
-architecture_summary: "FastAPI app factory wired to existing export_service core; 5 read endpoints matching client.ts contract; middleware stack (CORS → optional token auth → optional IP allowlist); Typer CLI command; optional [serve] extra in pyproject.toml."
+scope: Add rf serve read-only FastAPI API serving the runs-viewer SPA from disk with
+  loopback-first auth and gated LAN exposure via shared-secret token.
+effort_estimate: 13 pts
+architecture_summary: "FastAPI app factory wired to existing export_service core;\
+  \ 5 read endpoints matching client.ts contract; middleware stack (CORS \u2192 optional\
+  \ token auth \u2192 optional IP allowlist); Typer CLI command; optional [serve]\
+  \ extra in pyproject.toml."
 related_documents:
-  - docs/project_plans/PRDs/features/runs-loopback-api-v1.md
-  - docs/project_plans/design-specs/runs-loopback-api.md
-  - docs/project_plans/design-specs/runs-auth-lan.md
-  - docs/dev/architecture/adr-runs-read-path.md
-  - docs/dev/architecture/rf-run-export-schema.md
-  - frontend/runs-viewer/src/api/client.ts
-  - .claude/worknotes/runs-loopback-api/decisions-block.md
+- docs/project_plans/PRDs/features/runs-loopback-api-v1.md
+- docs/project_plans/design-specs/runs-loopback-api.md
+- docs/project_plans/design-specs/runs-auth-lan.md
+- docs/dev/architecture/adr-runs-read-path.md
+- docs/dev/architecture/rf-run-export-schema.md
+- frontend/runs-viewer/src/api/client.ts
+- .claude/worknotes/runs-loopback-api/decisions-block.md
 references:
   user_docs: []
   context: []
   specs: []
   related_prds:
-    - docs/project_plans/PRDs/features/runs-frontend-v1.md
+  - docs/project_plans/PRDs/features/runs-frontend-v1.md
 spike_ref: null
 adr_refs:
-  - docs/dev/architecture/adr-runs-read-path.md
-deferred_items_spec_refs: []
-findings_doc_ref: null
+- docs/dev/architecture/adr-runs-read-path.md
+deferred_items_spec_refs:
+- docs/project_plans/design-specs/runs-auth-lan.md
+- docs/project_plans/design-specs/runs-loopback-api.md
+findings_doc_ref: .claude/findings/runs-loopback-api-findings.md
 charter_ref: null
-changelog_ref: null
+changelog_ref: CHANGELOG.md
 changelog_required: true
 test_plan_ref: null
 plan_structure: unified
@@ -42,98 +48,113 @@ contributors: []
 priority: medium
 risk_level: medium
 category: features
-tags: [implementation, api, runs-viewer, loopback, fastapi, auth, lan]
+tags:
+- implementation
+- api
+- runs-viewer
+- loopback
+- fastapi
+- auth
+- lan
 milestone: null
 commit_refs: []
 pr_refs: []
 files_affected:
-  - src/research_foundry/api/__init__.py
-  - src/research_foundry/api/app.py
-  - src/research_foundry/api/routers/runs.py
-  - src/research_foundry/api/middleware/auth.py
-  - src/research_foundry/api/middleware/allowlist.py
-  - src/research_foundry/cli_commands.py
-  - src/research_foundry/config.py
-  - pyproject.toml
-  - frontend/runs-viewer/src/api/client.ts
-  - tests/test_serve_api.py
-  - tests/test_serve_auth.py
-  - tests/test_serve_cli.py
-  - systemd/rf-serve.service
-  - docs/dev/architecture/adr-runs-read-path.md
-  - CHANGELOG.md
+- src/research_foundry/api/__init__.py
+- src/research_foundry/api/app.py
+- src/research_foundry/api/routers/runs.py
+- src/research_foundry/api/middleware/auth.py
+- src/research_foundry/api/middleware/allowlist.py
+- src/research_foundry/cli_commands.py
+- src/research_foundry/config.py
+- pyproject.toml
+- frontend/runs-viewer/src/api/client.ts
+- tests/test_serve_api.py
+- tests/test_serve_auth.py
+- tests/test_serve_cli.py
+- systemd/rf-serve.service
+- docs/dev/architecture/adr-runs-read-path.md
+- CHANGELOG.md
 wave_plan:
   serialization_barriers:
-    - src/research_foundry/config.py
-    - frontend/runs-viewer/src/api/client.ts
+  - src/research_foundry/config.py
+  - frontend/runs-viewer/src/api/client.ts
   phases:
-    - id: P1
-      depends_on: []
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/api/__init__.py
-        - src/research_foundry/api/app.py
-        - src/research_foundry/cli_commands.py
-        - pyproject.toml
-    - id: P2
-      depends_on: [P1]
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/api/routers/runs.py
-    - id: P3
-      depends_on: [P1]
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/config.py
-    - id: P4
-      depends_on: [P2, P3]
-      isolation: worktree
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/api/middleware/auth.py
-        - src/research_foundry/api/middleware/allowlist.py
-        - src/research_foundry/api/app.py
-    - id: P5
-      depends_on: [P4]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - frontend/runs-viewer/src/api/client.ts
-    - id: P6
-      depends_on: [P5]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - tests/test_serve_api.py
-        - tests/test_serve_auth.py
-        - tests/test_serve_cli.py
-    - id: P7
-      depends_on: [P6]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - systemd/rf-serve.service
-        - docs/dev/architecture/adr-runs-read-path.md
-        - docs/project_plans/design-specs/runs-loopback-api.md
-        - docs/project_plans/design-specs/runs-auth-lan.md
-        - CHANGELOG.md
+  - id: P1
+    depends_on: []
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/api/__init__.py
+    - src/research_foundry/api/app.py
+    - src/research_foundry/cli_commands.py
+    - pyproject.toml
+  - id: P2
+    depends_on:
+    - P1
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/api/routers/runs.py
+  - id: P3
+    depends_on:
+    - P1
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/config.py
+  - id: P4
+    depends_on:
+    - P2
+    - P3
+    isolation: worktree
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/api/middleware/auth.py
+    - src/research_foundry/api/middleware/allowlist.py
+    - src/research_foundry/api/app.py
+  - id: P5
+    depends_on:
+    - P4
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - frontend/runs-viewer/src/api/client.ts
+  - id: P6
+    depends_on:
+    - P5
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - tests/test_serve_api.py
+    - tests/test_serve_auth.py
+    - tests/test_serve_cli.py
+  - id: P7
+    depends_on:
+    - P6
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - systemd/rf-serve.service
+    - docs/dev/architecture/adr-runs-read-path.md
+    - docs/project_plans/design-specs/runs-loopback-api.md
+    - docs/project_plans/design-specs/runs-auth-lan.md
+    - CHANGELOG.md
   waves:
-    - [P1]
-    - [P2, P3]
-    - [P4]
-    - [P5]
-    - [P6]
-    - [P7]
+  - - P1
+  - - P2
+    - P3
+  - - P4
+  - - P5
+  - - P6
+  - - P7
 ---
 
 # Implementation Plan: Runs Viewer — Live Loopback API + Gated LAN Exposure

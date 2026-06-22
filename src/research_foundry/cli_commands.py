@@ -1180,6 +1180,119 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(run_app, name="run")
 
+    # ----- serve (loopback API) -----
+    @app.command()
+    def serve(
+        port: int = typer.Option(
+            7432,
+            "--port",
+            help="TCP port to bind (default 7432; avoids MeatyWiki API at 8765)",
+        ),
+        bind_host: str = typer.Option("127.0.0.1", "--bind-host", help="Host address to bind"),
+        auth_mode: str = typer.Option(
+            None,
+            "--auth-mode",
+            help="Authentication mode: none | token (default: from foundry.yaml viewer.auth_mode)",
+        ),
+        sensitivity_threshold: str = typer.Option(
+            None,
+            "--sensitivity-threshold",
+            help="Override foundry.yaml viewer.sensitivity_threshold (default: public)",
+        ),
+    ) -> None:
+        """Start the Research Foundry loopback HTTP API (spec §loopback-api-v1).
+
+        Requires the ``serve`` extra::
+
+            pip install 'research-foundry[serve]'
+
+        The server binds to ``bind_host:port`` and exposes a read-only JSON API
+        consumed by the runs viewer.
+
+        LAN exposure (``--bind-host 0.0.0.0``) requires ``--auth-mode token``
+        AND the token env var (named by ``viewer.auth_token_env``, default
+        ``RF_SERVE_TOKEN``) to be non-empty.  Both checks fail closed before
+        any port is opened.
+
+        Example::
+
+            rf serve --port 7432 --bind-host 127.0.0.1
+            rf serve --bind-host 0.0.0.0 --auth-mode token  # RF_SERVE_TOKEN must be set
+        """
+        import os as _os
+
+        # --- lazy import guard -----------------------------------------------
+        try:
+            import uvicorn
+            from .api.app import create_app
+        except ImportError as exc:
+            err_console.print(
+                "[red]serve requires fastapi and uvicorn.[/red] "
+                "Install with: pip install 'research-foundry[serve]'"
+            )
+            raise typer.Exit(1) from exc
+
+        from .config import FoundryConfig
+
+        config = FoundryConfig.load()
+
+        # Resolve effective auth_mode: CLI flag takes precedence over config.
+        effective_auth_mode = auth_mode if auth_mode is not None else config.viewer_auth_mode()
+        if effective_auth_mode not in ("none", "token"):
+            err_console.print(
+                f"[red]unknown auth-mode {effective_auth_mode!r}; use 'none' or 'token'[/red]"
+            )
+            raise typer.Exit(1)
+
+        # Resolve effective bind_host: CLI flag takes precedence over config.
+        effective_bind_host = bind_host  # CLI always provides a default
+
+        # --- Fail-closed pre-bind validation (security invariants 1 & 2) -----
+        # Both checks happen BEFORE any call to create_app or uvicorn.run so
+        # that no port is opened when the configuration is unsafe.
+        _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+        is_loopback = effective_bind_host in _LOOPBACK_HOSTS
+
+        if not is_loopback:
+            # Security invariant 1: 0.0.0.0 (or any non-loopback) without
+            # auth_mode=token is a hard exit before any port is opened.
+            if effective_auth_mode != "token":
+                err_console.print(
+                    f"[red]error:[/red] binding to {effective_bind_host!r} requires "
+                    "--auth-mode token; refusing to bind without authentication."
+                )
+                raise typer.Exit(1)
+
+            # Security invariant 2: auth_mode=token but token env var unset.
+            token_env_var = config.viewer_auth_token_env()
+            token_value = _os.environ.get(token_env_var, "")
+            if not token_value:
+                err_console.print(
+                    f"[red]error:[/red] {token_env_var} not set; "
+                    f"refusing to bind on {effective_bind_host}"
+                )
+                raise typer.Exit(1)
+
+        # Apply CLI sensitivity_threshold override into the viewer block so the
+        # export service picks it up without a dedicated constructor argument.
+        if sensitivity_threshold is not None:
+            config.viewer["sensitivity_threshold"] = sensitivity_threshold
+
+        # Patch effective auth_mode back into config so create_app sees the
+        # CLI-overridden value when it calls config.viewer_auth_mode().
+        if auth_mode is not None:
+            config.viewer["auth_mode"] = effective_auth_mode
+
+        fastapi_app = create_app(config)
+
+        console.print(f"[green]rf serve[/green] listening on {effective_bind_host}:{port}")
+        console.print(
+            f"  auth_mode={effective_auth_mode}  "
+            f"sensitivity_threshold={sensitivity_threshold or 'public (default)'}"
+        )
+
+        uvicorn.run(fastapi_app, host=effective_bind_host, port=port)
+
 
 def _apply_notebook_options(
     run_id: str,

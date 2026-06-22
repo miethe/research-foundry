@@ -1,0 +1,38 @@
+# rf-serve.service — systemd --user unit for Research Foundry loopback API server
+#
+# Environment file pattern:
+#   Create %h/.config/rf-serve/rf-serve.env with contents like:
+#     RF_SERVE_TOKEN=<your-secret-token>
+#   Permissions: chmod 600 ~/.config/rf-serve/rf-serve.env
+#
+# Enable and start:
+#   systemctl --user enable --now rf-serve
+#
+# NOTE: This unit is NOT auto-enabled. The operator must enable it manually.
+# NOTE: The [serve] extra must be installed:
+#   uv tool install --extra serve research-foundry   # or: pip install "research-foundry[serve]"
+# NOTE: Adjust ExecStart if `rf` is not on PATH; typical uv install path is %h/.local/bin/rf
+
+[Unit]
+Description=Research Foundry loopback API server (rf serve)
+Documentation=https://github.com/miethe/research-foundry
+After=network.target
+
+[Service]
+Type=simple
+
+# Load secrets from an environment file — do NOT inline secrets here.
+# Create the file with: install -Dm600 /dev/stdin ~/.config/rf-serve/rf-serve.env
+EnvironmentFile=%h/.config/rf-serve/rf-serve.env
+
+# Enable loopback API mode for the runs viewer
+Environment=RUNS_FRONTEND_LOOPBACK_API=true
+
+# Run rf serve; adjust path if uv placed the binary elsewhere (e.g. %h/.local/bin/rf serve)
+ExecStart=%h/.local/bin/rf serve
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

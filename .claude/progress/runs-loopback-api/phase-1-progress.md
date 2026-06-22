@@ -6,7 +6,7 @@ prd: runs-loopback-api
 feature_slug: runs-loopback-api
 phase: 1
 title: API Foundation
-status: pending
+status: completed
 created: '2026-06-22'
 updated: '2026-06-22'
 prd_ref: docs/project_plans/PRDs/features/runs-loopback-api-v1.md
@@ -18,7 +18,7 @@ completed: null
 overall_progress: 0
 completion_estimate: on-track
 total_tasks: 3
-completed_tasks: 0
+completed_tasks: 3
 in_progress_tasks: 0
 blocked_tasks: 0
 at_risk_tasks: 0
@@ -31,43 +31,63 @@ model_usage:
   external: []
 tasks:
 - id: P1-001
-  description: "Add fastapi>=0.111, uvicorn[standard]>=0.29 as optional [serve] extra in pyproject.toml. Add import guard in api/__init__.py that raises a clear install error if missing."
-  status: pending
+  description: Add fastapi>=0.111, uvicorn[standard]>=0.29 as optional [serve] extra
+    in pyproject.toml. Add import guard in api/__init__.py that raises a clear install
+    error if missing.
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies: []
-  estimated_effort: "0.5 pts"
+  estimated_effort: 0.5 pts
   priority: high
   assigned_model: sonnet
   model_effort: adaptive
-  ac_ref: "P1 quality gate: pip install research-foundry (no extra) does not import fastapi or uvicorn"
-
+  ac_ref: 'P1 quality gate: pip install research-foundry (no extra) does not import
+    fastapi or uvicorn'
+  started: '2026-06-22T15:30:00Z'
+  completed: '2026-06-22T15:45:00Z'
+  evidence:
+  - commit: pending-wave1
 - id: P1-002
-  description: "Create src/research_foundry/api/app.py with create_app(config: FoundryConfig) -> FastAPI factory. Wire CORS middleware (default origins: localhost:*, 127.0.0.1:*; configurable). Include GET /health probe returning {status: ok}. Register runs router stub."
-  status: pending
+  description: 'Create src/research_foundry/api/app.py with create_app(config: FoundryConfig)
+    -> FastAPI factory. Wire CORS middleware (default origins: localhost:*, 127.0.0.1:*;
+    configurable). Include GET /health probe returning {status: ok}. Register runs
+    router stub.'
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - P1-001
-  estimated_effort: "0.75 pts"
+  estimated_effort: 0.75 pts
   priority: high
   assigned_model: sonnet
   model_effort: adaptive
-  ac_ref: "P1 quality gate: rf serve boots; GET /health returns 200; CORS preflight returns Access-Control-Allow-Origin"
-
+  ac_ref: 'P1 quality gate: rf serve boots; GET /health returns 200; CORS preflight
+    returns Access-Control-Allow-Origin'
+  started: '2026-06-22T15:30:00Z'
+  completed: '2026-06-22T15:45:00Z'
+  evidence:
+  - commit: pending-wave1
 - id: P1-003
-  description: "Add serve command to cli_commands.py (or cli_serve.py). Accepts --port (default 7432), --bind-host (default 127.0.0.1), --auth-mode (none|token, default none), --sensitivity-threshold. Calls uvicorn.run(create_app(config), ...). Wire fail-closed bind check stub."
-  status: pending
+  description: Add serve command to cli_commands.py (or cli_serve.py). Accepts --port
+    (default 7432), --bind-host (default 127.0.0.1), --auth-mode (none|token, default
+    none), --sensitivity-threshold. Calls uvicorn.run(create_app(config), ...). Wire
+    fail-closed bind check stub.
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - P1-002
-  estimated_effort: "0.75 pts"
+  estimated_effort: 0.75 pts
   priority: high
   assigned_model: sonnet
   model_effort: adaptive
-  ac_ref: "P1 quality gate: rf serve --help lists all flags; rf serve starts uvicorn on 127.0.0.1:7432; --port overrides port"
-
+  ac_ref: 'P1 quality gate: rf serve --help lists all flags; rf serve starts uvicorn
+    on 127.0.0.1:7432; --port overrides port'
+  started: '2026-06-22T15:30:00Z'
+  completed: '2026-06-22T15:45:00Z'
+  evidence:
+  - commit: pending-wave1
 parallelization:
   batch_1:
   - P1-001
@@ -79,29 +99,28 @@ parallelization:
   - P1-001
   - P1-002
   - P1-003
-  estimated_total_time: "1 day"
-
+  estimated_total_time: 1 day
 blockers: []
-
 success_criteria:
 - id: SC-P1-1
-  description: "pip install research-foundry (no extra) does not import fastapi or uvicorn"
+  description: pip install research-foundry (no extra) does not import fastapi or
+    uvicorn
   status: pending
 - id: SC-P1-2
-  description: "rf serve starts and GET /health returns 200"
+  description: rf serve starts and GET /health returns 200
   status: pending
 - id: SC-P1-3
-  description: "CORS allows SPA origin in loopback mode"
+  description: CORS allows SPA origin in loopback mode
   status: pending
 - id: SC-P1-4
-  description: "rf serve --help shows all flags with correct defaults"
+  description: rf serve --help shows all flags with correct defaults
   status: pending
-
 files_modified:
 - src/research_foundry/api/__init__.py
 - src/research_foundry/api/app.py
 - src/research_foundry/cli_commands.py
 - pyproject.toml
+progress: 100
 ---
 
 # runs-loopback-api - Phase 1: API Foundation

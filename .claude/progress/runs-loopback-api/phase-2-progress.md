@@ -6,7 +6,7 @@ prd: runs-loopback-api
 feature_slug: runs-loopback-api
 phase: 2
 title: Read Endpoints
-status: pending
+status: completed
 created: '2026-06-22'
 updated: '2026-06-22'
 prd_ref: docs/project_plans/PRDs/features/runs-loopback-api-v1.md
@@ -18,7 +18,7 @@ completed: null
 overall_progress: 0
 completion_estimate: on-track
 total_tasks: 6
-completed_tasks: 0
+completed_tasks: 6
 in_progress_tasks: 0
 blocked_tasks: 0
 at_risk_tasks: 0
@@ -31,83 +31,118 @@ model_usage:
   external: []
 tasks:
 - id: P2-001
-  description: "Create src/research_foundry/api/routers/runs.py. Define FastAPI APIRouter with prefix /api. Inject FoundryPaths via dependency. Wire router into create_app()."
-  status: pending
+  description: Create src/research_foundry/api/routers/runs.py. Define FastAPI APIRouter
+    with prefix /api. Inject FoundryPaths via dependency. Wire router into create_app().
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - P1-003
-  estimated_effort: "0.5 pts"
+  estimated_effort: 0.5 pts
   priority: high
   assigned_model: sonnet
   model_effort: adaptive
-  ac_ref: "Router registered; GET /api/runs returns 200 with empty list when no runs exist; router visible in /openapi.json"
-
+  ac_ref: Router registered; GET /api/runs returns 200 with empty list when no runs
+    exist; router visible in /openapi.json
+  started: '2026-06-22T15:46:00Z'
+  completed: '2026-06-22T15:52:00Z'
+  evidence:
+  - commit: pending-wave2
 - id: P2-002
-  description: "Implement GET /api/runs calling export_service.list_runs(paths). Returns RFRunSummary[] matching client.ts fetchRunList shape. Sensitivity threshold from config/CLI flag."
-  status: pending
+  description: Implement GET /api/runs calling export_service.list_runs(paths). Returns
+    RFRunSummary[] matching client.ts fetchRunList shape. Sensitivity threshold from
+    config/CLI flag.
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - P2-001
-  estimated_effort: "0.5 pts"
+  estimated_effort: 0.5 pts
   priority: high
   assigned_model: sonnet
   model_effort: adaptive
-  ac_ref: "Response is JSON array; items match RFRunSummary fields; sensitivity filter applied; empty array (not 404) when no runs"
-
+  ac_ref: Response is JSON array; items match RFRunSummary fields; sensitivity filter
+    applied; empty array (not 404) when no runs
+  started: '2026-06-22T15:46:00Z'
+  completed: '2026-06-22T15:52:00Z'
+  evidence:
+  - commit: pending-wave2
 - id: P2-003
-  description: "Implement GET /api/runs/{run_id} calling export_service.export_run(paths, run_id). Returns RFRunExport. 404 with structured {detail: run not found} if absent. Missing optional fields return null not 500."
-  status: pending
+  description: 'Implement GET /api/runs/{run_id} calling export_service.export_run(paths,
+    run_id). Returns RFRunExport. 404 with structured {detail: run not found} if absent.
+    Missing optional fields return null not 500.'
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - P2-002
-  estimated_effort: "0.75 pts"
+  estimated_effort: 0.75 pts
   priority: high
   assigned_model: sonnet
   model_effort: adaptive
-  ac_ref: "Response matches RFRunExport shape; missing run -> HTTP 404; sensitivity gate applied; tags/summary missing fields return null"
-
+  ac_ref: Response matches RFRunExport shape; missing run -> HTTP 404; sensitivity
+    gate applied; tags/summary missing fields return null
+  started: '2026-06-22T15:46:00Z'
+  completed: '2026-06-22T15:52:00Z'
+  evidence:
+  - commit: pending-wave2
 - id: P2-004
-  description: "Implement GET /api/runs/{run_id}/claims returning export_run(paths, run_id)[claims]. Apply sensitivity filter. 404 propagated. Empty array (not null) when run has no claims. missing evidence_strength handled as null."
-  status: pending
+  description: Implement GET /api/runs/{run_id}/claims returning export_run(paths,
+    run_id)[claims]. Apply sensitivity filter. 404 propagated. Empty array (not null)
+    when run has no claims. missing evidence_strength handled as null.
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - P2-003
-  estimated_effort: "0.5 pts"
+  estimated_effort: 0.5 pts
   priority: high
   assigned_model: sonnet
   model_effort: adaptive
-  ac_ref: "Returns claims array; quote/summary redacted per threshold; 404 on unknown run; empty array not null when no claims"
-
+  ac_ref: Returns claims array; quote/summary redacted per threshold; 404 on unknown
+    run; empty array not null when no claims
+  started: '2026-06-22T15:46:00Z'
+  completed: '2026-06-22T15:52:00Z'
+  evidence:
+  - commit: pending-wave2
 - id: P2-005
-  description: "Implement GET /api/runs/{run_id}/sources/{source_card_id}. Scan export_run claims for matching source_card_id. Return RFResolvedSource. 404 if not found or run absent. Missing url/access_date returned as null."
-  status: pending
+  description: Implement GET /api/runs/{run_id}/sources/{source_card_id}. Scan export_run
+    claims for matching source_card_id. Return RFResolvedSource. 404 if not found
+    or run absent. Missing url/access_date returned as null.
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - P2-004
-  estimated_effort: "0.5 pts"
+  estimated_effort: 0.5 pts
   priority: high
   assigned_model: sonnet
   model_effort: adaptive
-  ac_ref: "Returns RFResolvedSource when source exists; HTTP 404 when absent; HTTP 404 propagated when run absent; url/access_date null-safe"
-
+  ac_ref: Returns RFResolvedSource when source exists; HTTP 404 when absent; HTTP
+    404 propagated when run absent; url/access_date null-safe
+  started: '2026-06-22T15:46:00Z'
+  completed: '2026-06-22T15:52:00Z'
+  evidence:
+  - commit: pending-wave2
 - id: P2-006
-  description: "Implement GET /data/governance.json. Inspect prebuild-static-data.mjs output shape and fetchGovernanceConfig() in client.ts. Return FoundryConfig.governance snapshot matching GovernanceConfig TS type exactly."
-  status: pending
+  description: Implement GET /data/governance.json. Inspect prebuild-static-data.mjs
+    output shape and fetchGovernanceConfig() in client.ts. Return FoundryConfig.governance
+    snapshot matching GovernanceConfig TS type exactly.
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - P2-001
-  estimated_effort: "0.25 pts"
+  estimated_effort: 0.25 pts
   priority: medium
   assigned_model: sonnet
   model_effort: adaptive
-  ac_ref: "Response matches GovernanceConfig TS type; fields match prebuild-static-data.mjs output; no 500 on missing optional governance fields"
-
+  ac_ref: Response matches GovernanceConfig TS type; fields match prebuild-static-data.mjs
+    output; no 500 on missing optional governance fields
+  started: '2026-06-22T15:46:00Z'
+  completed: '2026-06-22T15:52:00Z'
+  evidence:
+  - commit: pending-wave2
 parallelization:
   batch_1:
   - P2-001
@@ -126,29 +161,30 @@ parallelization:
   - P2-003
   - P2-004
   - P2-005
-  estimated_total_time: "1.5 days"
-
+  estimated_total_time: 1.5 days
 blockers: []
-
 success_criteria:
 - id: SC-P2-1
-  description: "All 5 endpoints return correct JSON shape matching client.ts TypeScript types"
+  description: All 5 endpoints return correct JSON shape matching client.ts TypeScript
+    types
   status: pending
 - id: SC-P2-2
-  description: "Missing/unknown run_id returns HTTP 404 with structured body on all applicable endpoints"
+  description: Missing/unknown run_id returns HTTP 404 with structured body on all
+    applicable endpoints
   status: pending
 - id: SC-P2-3
-  description: "Sensitivity gate applied (verified by inspection; dedicated test in P6)"
+  description: Sensitivity gate applied (verified by inspection; dedicated test in
+    P6)
   status: pending
 - id: SC-P2-4
-  description: "GET /api/runs returns empty array, not 404, when run corpus is empty"
+  description: GET /api/runs returns empty array, not 404, when run corpus is empty
   status: pending
 - id: SC-P2-5
-  description: "FE missing-field resilience ACs verified for P2-003, P2-004, P2-005"
+  description: FE missing-field resilience ACs verified for P2-003, P2-004, P2-005
   status: pending
-
 files_modified:
 - src/research_foundry/api/routers/runs.py
+progress: 100
 ---
 
 # runs-loopback-api - Phase 2: Read Endpoints

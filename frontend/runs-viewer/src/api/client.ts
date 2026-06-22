@@ -9,8 +9,14 @@
  *     Used for development and the default viewer deployment.
  *
  *   Mode B: Loopback API mode
- *     Fetches from a local RF API server (e.g. MeatyWiki at :8765).
+ *     Fetches from a local RF API server (rf serve, default port 7432).
  *     Gated behind import.meta.env.VITE_RUNS_FRONTEND_LOOPBACK_API="true".
+ *
+ * Env vars (Mode B):
+ *   VITE_RUNS_FRONTEND_LOOPBACK_API  Set to "true" to activate loopback mode.
+ *   VITE_RUNS_LOOPBACK_API_BASE      Override API base URL (default: http://127.0.0.1:7432/api).
+ *   VITE_RUNS_LOOPBACK_API_TOKEN     Shared-secret token for auth_mode=token (injected at build
+ *                                    time; omit header when not set). See frontend/runs-viewer/README.md.
  *
  * NO POST/PUT/DELETE methods are exported. This is a read-only viewer.
  * The R9 sensitivity gate lives in the Python export service; this client
@@ -29,7 +35,7 @@ const LOOPBACK_ENABLED =
    import.meta.env?.VITE_RUNS_FRONTEND_LOOPBACK_API === true);
 
 const LOOPBACK_BASE =
-  import.meta.env?.VITE_RUNS_LOOPBACK_API_BASE ?? "http://127.0.0.1:8765/api";
+  import.meta.env?.VITE_RUNS_LOOPBACK_API_BASE ?? "http://127.0.0.1:7432/api";
 
 // ── Base URL (for static asset fetches) ──────────────────────────────────────
 
@@ -69,12 +75,35 @@ function getStaticDataBase(): string {
 
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
 
+/**
+ * AUTH-HEADER CONTRACT (P4-SEAM — implemented in Phase P5)
+ *
+ * When VITE_RUNS_LOOPBACK_API_TOKEN is set and non-empty:
+ *   - MUST send `Authorization: Bearer ${VITE_RUNS_LOOPBACK_API_TOKEN}`
+ *   - Token value is injected at Vite build time (not from runtime JS)
+ *
+ * When VITE_RUNS_LOOPBACK_API_TOKEN is absent or empty:
+ *   - The Authorization header MUST be omitted entirely
+ *   - MUST NOT send `Authorization: Bearer ` (empty string after "Bearer ")
+ *
+ * On HTTP 401 from the server:
+ *   - Surface via ClientError — do NOT silently swallow it
+ *
+ * Full server-side contract lives in:
+ *   src/research_foundry/api/middleware/auth.py (AUTH-HEADER CONTRACT block)
+ */
 async function loopbackGet<T>(path: string): Promise<T> {
   const url = `${LOOPBACK_BASE}${path.startsWith("/") ? path : `/${path}`}`;
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
+
+  // Build headers per the auth-header contract: inject Authorization only when
+  // the token env var is set AND non-empty (Vite bakes it in at build time).
+  const token: string = import.meta.env?.VITE_RUNS_LOOPBACK_API_TOKEN ?? "";
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(url, { method: "GET", headers });
   if (!res.ok) {
     throw new ClientError(res.status, `Loopback GET ${url} failed: ${res.statusText}`);
   }

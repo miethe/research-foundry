@@ -3,9 +3,10 @@ title: "Design Spec: Runs Viewer — Live Loopback API (OQ-6 / FR-11)"
 doc_type: design_spec
 schema_version: 2
 status: draft
-maturity: idea
+maturity: promoted
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-06-22
+prd_ref: docs/project_plans/PRDs/features/runs-loopback-api-v1.md
 feature_slug: runs-frontend
 deferred_from: runs-frontend-v1
 deferred_item_id: OQ-6
@@ -20,19 +21,19 @@ related_docs:
 
 # Design Spec: Runs Viewer — Live Loopback API (OQ-6 / FR-11)
 
-> **Maturity: idea** — pre-commitment stub. No implementation has been
-> scoped. Promote to `proposal` when the promotion trigger fires.
+> **Maturity: promoted** (June 2026) — Design and implementation complete. The loopback API (`rf serve`) is now a supported feature shipped in `runs-loopback-api-v1`. See the PRD and implementation plan for execution details.
 
 ---
 
-## Deferral Summary
+## Implementation Summary
 
 | Field | Value |
 |-------|-------|
-| **Deferred from** | `runs-frontend-v1` (Phase 5, DOC-006) |
-| **Reason** | Static-export cycle (`rf run export --json --all` pre-build) is sufficient for the current operator cadence. The "browse as runs land" JTBD — wanting the viewer to reflect a run that just completed without re-running export — has not been validated post-P2. Shipping a live API before validating the JTBD adds protocol and auth complexity without confirmed value. |
-| **Promotion trigger** | Operator identifies a real "browse as runs land" JTBD where the static export rebuild cycle is too slow or too manual; **or** the run corpus grows to a size (100+ runs) where `--all` export time is materially disruptive to the operator's workflow. |
-| **Target spec path** | `docs/project_plans/design-specs/runs-loopback-api.md` (this file) |
+| **Promoted from** | `runs-frontend-v1` (Phase 5, deferred as OQ-6) |
+| **Promoted to** | `runs-loopback-api-v1` (Phase P7, June 2026) |
+| **Status** | Shipped and integrated with the runs-viewer SPA |
+| **PRD** | `docs/project_plans/PRDs/features/runs-loopback-api-v1.md` |
+| **Implementation plan** | `docs/project_plans/implementation_plans/features/runs-loopback-api-v1.md` |
 
 ---
 
@@ -54,39 +55,61 @@ Implementing the loopback API requires:
 
 ---
 
-## Scope (idea-stage)
+## Implementation (v1.0)
 
-When promoted, this spec would cover:
+### API Surface
 
-- **API surface** — minimal REST API for the runs viewer's data needs:
-  `GET /runs` (index, same shape as `rf run list --json`),
-  `GET /runs/:run_id` (full export, same shape as `run.json`).
-  No mutation endpoints — read-only invariant preserved.
-- **Sensitivity gate** — same threshold model as the export service; the API
-  applies redaction at the response-serialization layer, not in the client.
-- **Process model** — `rf serve --port PORT` as a long-running foreground
-  process, or as a `systemd --user` service on `agentic-nuc`.
-- **Hot-reload** — whether the API re-reads from disk on each request (simple,
-  correct) or caches with a filesystem-watch invalidation.
-- **Auth coordination** — this spec depends on OQ-4 (auth/LAN exposure) for
-  any non-loopback deployment; design together.
-- **Flag wiring** — finalize `RUNS_FRONTEND_LOOPBACK_API` semantics, including
-  how `rf run export --json` and `rf serve` co-exist (export can still write
-  `run.json` for offline use even when the API is running).
+Minimal REST API for the runs viewer's data needs:
 
-### v1 Invariant
+| Endpoint | Method | Purpose | Response Shape |
+|----------|--------|---------|-----------------|
+| `/api/runs` | GET | Index all runs | `RFRunSummary[]` (same as `rf run list --json`) |
+| `/api/runs/{run_id}` | GET | Full run export | `RFRunExport` (same as `run.json`) |
+| `/api/runs/{run_id}/claims` | GET | Claim ledger for run | `Claim[]` |
+| `/api/runs/{run_id}/sources/{source_card_id}` | GET | Resolve a source card | `RFResolvedSource \| null` |
+| `/data/governance.json` | GET | Governance config snapshot | `GovernanceConfig` |
+| `/health` | GET | Liveness probe | `{"status": "ok"}` |
 
-In v1, `RUNS_FRONTEND_LOOPBACK_API` is always unset. The export service is the
-only supported data path. The ADR (`adr-runs-read-path.md`) records this.
+No mutation endpoints — read-only invariant preserved.
+
+### Sensitivity Gate
+
+Same threshold model as the export service. The API applies redaction at the response-serialization layer, not in the client. All responses route through `export_service.export_run()` or `export_service.list_runs()` — no raw file reads.
+
+### Process Model
+
+- `rf serve --port PORT [--bind-host HOST] [--auth-mode auth-mode]` as a long-running foreground process
+- Optional `[serve]` extra in `pyproject.toml`: `pip install research-foundry[serve]` for FastAPI and Uvicorn
+- `systemd/rf-serve.service` provided for deployment on `agentic-nuc`
+- Default port: `7432` (deconflicts from MeatyWiki `8765`)
+
+### Hot-Reload Strategy
+
+v1.0 uses simple per-request disk reads (no caching). Correct and operationally transparent at current scale. Filesystem-watch hot-reload caching deferred to v2 (see Deferred section).
+
+### Auth & LAN Exposure
+
+Coordinated with design spec `runs-auth-lan.md` (promoted v1.0):
+- Loopback-only by default (`127.0.0.1:7432`, no auth)
+- LAN exposure to `0.0.0.0` is opt-in: `--bind-host 0.0.0.0 --auth-mode token` with `RF_SERVE_TOKEN` env var
+- Fail-closed bind check: server exits non-zero if `bind_host=0.0.0.0` but no token configured
+- IP allowlist: optional `viewer.allowlist` config key
+
+### Flag Wiring
+
+`VITE_RUNS_FRONTEND_LOOPBACK_API` (set at SPA build time) controls read path:
+- Unset (default): SPA loads from static `run.json` files
+- `true`: SPA loads from live API at `VITE_RUNS_LOOPBACK_API_BASE` (default: `http://127.0.0.1:7432/api`)
+- Static export and live API co-exist — operator can use either or both
 
 ---
 
-## Notes for Promotion
+## Deferred (v2)
 
-- The `RUNS_FRONTEND_LOOPBACK_API` flag is the seam — validate that it works
-  before designing the server. The P2 data layer was built with this flag in
-  mind.
-- The frozen export schema (`rf-run-export-schema.md`) is the API's response
-  contract; no new shape design needed — just HTTP transport on top.
-- The loopback API should reuse `export_service.py` logic, not duplicate it.
-  Consider `export_service.export_run(run_id) -> dict` as the shared core.
+### DEF-03: Filesystem-Watch Hot-Reload Cache
+
+**Rationale**: v1.0 reads disk on every request. For large run corpora (500+ runs), this scales linearly and may show latency. Filesystem-watch invalidation (inotify/watchdog) adds a dependency and invalidation bugs; not justified v1.
+
+**Promotion trigger**: Run corpus exceeds ~500 runs **or** operator observes visible per-request latency (>1s on typical hardware).
+
+**Implementation sketch**: Wrap `export_service` responses in a caching layer; invalidate on filesystem change events from the run directory.

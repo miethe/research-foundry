@@ -153,6 +153,53 @@ static-file server. Sensitivity redaction is applied at export time — governed
 content never reaches the viewer. See
 `docs/dev/architecture/adr-runs-read-path.md` for the full read-path decision.
 
+### Serving Runs Live (Loopback API)
+
+Alternatively, run a local HTTP server to serve live run data without pre-exporting:
+
+```bash
+# Start the server on loopback (127.0.0.1:7432, no auth required)
+rf serve
+
+# Or start on LAN with a shared-secret token (requires RF_SERVE_TOKEN env var)
+export RF_SERVE_TOKEN="your-secret-token-here"
+rf serve --bind-host 0.0.0.0 --auth-mode token
+
+# Configure the SPA to use the live API
+export VITE_RUNS_FRONTEND_LOOPBACK_API=true
+export VITE_RUNS_LOOPBACK_API_BASE=http://127.0.0.1:7432/api
+export VITE_RUNS_LOOPBACK_API_TOKEN="your-secret-token-here"  # if LAN mode
+pnpm --filter runs-viewer build
+pnpm --filter runs-viewer preview  # or serve with your static host
+```
+
+**`rf serve` environment variables and defaults:**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `RF_SERVE_TOKEN` | — | Shared-secret token for LAN mode (`--auth-mode token`). Must be set before starting with `--bind-host 0.0.0.0`. |
+| `VITE_RUNS_FRONTEND_LOOPBACK_API` | `false` | Set to `true` to enable loopback API mode in the SPA (at build time). |
+| `VITE_RUNS_LOOPBACK_API_BASE` | `http://127.0.0.1:7432/api` | Base URL for loopback API requests (override if `rf serve` runs on a different host/port). |
+| `VITE_RUNS_LOOPBACK_API_TOKEN` | — | Bearer token for loopback API requests when `--auth-mode token` is enabled. |
+
+**Port allocation:**
+
+- Default port: `7432` (loopback and LAN modes)
+- Configurable: `rf serve --port 9000` (or set `foundry.yaml → viewer.serve_port`)
+- **Note**: Port `8765` is reserved for MeatyWiki on agentic-nuc; `7432` avoids this conflict.
+
+**Static export vs. loopback API:**
+
+| Aspect | Static Export | Loopback API |
+|--------|---------------|--------------|
+| **Setup** | `rf run export --json --all` (one-time or pre-build) | `rf serve` (always-on process) |
+| **Freshness** | Stale until re-export | Live (per-request reads) |
+| **Deployment** | Works offline, no auth needed | Requires running server; LAN mode requires token |
+| **Scalability** | Pre-build scales with run count | Per-request reads scale per query |
+| **Default** | Enabled (`VITE_RUNS_FRONTEND_LOOPBACK_API=false`) | Opt-in (`VITE_RUNS_FRONTEND_LOOPBACK_API=true`) |
+
+For details, see `docs/dev/architecture/adr-runs-read-path.md`.
+
 ### Run Metadata (Linked Projects, Category, Tags)
 
 Runs can carry rich metadata derived from the research backlog, displayed across the viewer and

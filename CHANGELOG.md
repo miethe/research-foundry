@@ -11,6 +11,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Loopback API — Live Runs without Static Export**
+
+- **`rf serve` command** — Read-only FastAPI server for runs-viewer live data (loopback mode, 
+  default port 7432). Serves run summaries, claim ledgers, and source cards directly from 
+  on-disk runs without pre-export; enables SPA-to-backend polling for live updates.
+- **Loopback API mode** — SPA can read live runs without static export via 
+  `VITE_RUNS_FRONTEND_LOOPBACK_API` environment variable. When enabled, `RFRunSummary` and 
+  claim queries fetch from the loopback API instead of bundled `index.json`.
+- **Gated LAN exposure** — `rf serve --bind-host 0.0.0.0` requires `--auth-mode token` and a 
+  configured token; fails closed without one. Prevents accidental unauthenticated exposure of 
+  sensitive research data across network boundaries.
+
 #### **Runs Viewer — Swarm, Policies & Library tabs** (enable-disabled-viewer-tabs epic, Wave 2)
 
 - **Swarm tab** — Per-run view (`/runs/:runId/swarm`) visualizing the run's swarm plan
