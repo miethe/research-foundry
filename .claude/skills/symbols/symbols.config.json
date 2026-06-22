@@ -1,6 +1,6 @@
 {
   "$schema": "../symbols-config-schema.json",
-  "projectName": "SkillMeat",
+  "projectName": "research-foundry",
   "symbolsDir": "ai",
   "domains": {
     "web": {
@@ -28,12 +28,7 @@
   "extraction": {
     "python": {
       "directories": [
-        "skillmeat/api",
-        "skillmeat/core",
-        "skillmeat/storage",
-        "skillmeat/sources",
-        "skillmeat/marketplace",
-        "skillmeat/observability"
+        "src/research_foundry"
       ],
       "extensions": [
         ".py"
@@ -47,10 +42,7 @@
     },
     "typescript": {
       "directories": [
-        "skillmeat/web/app",
-        "skillmeat/web/components",
-        "skillmeat/web/hooks",
-        "skillmeat/web/lib"
+        "frontend/runs-viewer/src"
       ],
       "extensions": [
         ".ts",
@@ -80,7 +72,7 @@
   },
   "metadata": {
     "version": "1.0",
-    "description": "SkillMeat full-stack application with FastAPI backend and Next.js 15 frontend. Python backend in skillmeat/api, core logic in skillmeat/core, Next.js app in skillmeat/web. Supports symbols extraction for Python (FastAPI routes, services, repositories) and TypeScript (React Server/Client Components, hooks, utilities).",
-    "lastUpdated": "2026-01-14T20:15:00.000000Z"
+    "description": "Research Foundry Python research control plane with FastAPI backend and Vite+React runs-viewer frontend. Python source in src/research_foundry, frontend SPA in frontend/runs-viewer/src. Supports symbols extraction for Python (FastAPI routes, services, repositories) and TypeScript (React components, hooks, utilities).",
+    "lastUpdated": "2026-06-22T00:00:00.000000Z"
   }
 }

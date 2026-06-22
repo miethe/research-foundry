@@ -85,17 +85,17 @@ Before executing tasks, load relevant symbols for the phase domain:
 
 **Backend tasks**:
 ```bash
-jq '.symbols[] | select(.layer == "service" or .layer == "repository")' /Users/miethe/dev/homelab/development/skillmeat/ai/symbols-api.json
+jq '.symbols[] | select(.layer == "service" or .layer == "repository")' ai/symbols-api.json
 ```
 
 **Frontend tasks**:
 ```bash
-jq '.symbols[] | select(.type == "component" or .type == "hook")' /Users/miethe/dev/homelab/development/skillmeat/ai/symbols-web.json
+jq '.symbols[] | select(.type == "component" or .type == "hook")' ai/symbols-web.json
 ```
 
 **Targeted by feature**:
 ```bash
-jq '.symbols[] | select(.name | contains("[FeatureDomain]"))' /Users/miethe/dev/homelab/development/skillmeat/ai/symbols-*.json
+jq '.symbols[] | select(.name | contains("[FeatureDomain]"))' ai/symbols-*.json
 ```
 
 This provides pattern context with 96% token savings vs reading full files.

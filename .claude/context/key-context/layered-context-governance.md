@@ -4,7 +4,7 @@ Defines the ratified context model and budget guardrails.
 
 ## Ratified Layers
 
-1. `Layer 0` runtime truth: machine-readable artifacts (`openapi.json`, hooks barrel, symbols).
+1. `Layer 0` runtime truth: source code under `src/research_foundry/` + symbol graphs at `ai/symbols-*.json` (when generated via `.claude/skills/symbols/symbols.config.json`).
 2. `Layer 1` entry `CLAUDE.md`: routing + non-negotiable invariants only.
 3. `Layer 2` key context: compact task-routing playbooks.
 4. `Layer 3` deep context: domain docs and deep references.
@@ -25,7 +25,9 @@ Defines the ratified context model and budget guardrails.
 - Required checks:
   - No dead links from entry `CLAUDE.md` files.
   - No references to missing rule files.
-  - API claims in key-context validated against `skillmeat/api/openapi.json`.
+  - API claims in key-context validated against `src/research_foundry/api/` source (app.py, routers/runs.py).
+  - Service layer claims validated against `src/research_foundry/services/` module docstrings.
+  - CLI command claims validated against `src/research_foundry/cli.py` + `cli_commands.py`.
 
 ## Change Policy
 

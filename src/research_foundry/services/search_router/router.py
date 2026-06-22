@@ -7,7 +7,7 @@ a schema mismatch never raises — issues are recorded in the returned record's
 ``schema_errors`` and the run still produces a ``search_run.yaml`` on disk.
 
 :func:`extract_urls` is the standalone known-URL extraction path used by
-``rf extract``.
+``rf fetch``.
 """
 
 from __future__ import annotations

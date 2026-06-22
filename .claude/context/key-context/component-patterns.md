@@ -1,116 +1,28 @@
----
-title: React Component Patterns - Quick Reference
-description: Index and quick-reference guide for SkillMeat component conventions, styling, and accessibility patterns
-audience: developers
-tags: [react, typescript, components, accessibility, shadcn, radix-ui]
-created: 2025-01-14
-updated: 2026-03-11
-category: frontend
-status: active
-references:
-  - skillmeat/web/components/**/*.tsx
-  - skillmeat/web/lib/utils.ts
----
+# React Component Patterns — runs-viewer
 
-# React Component Patterns - Quick Reference
+**Scope**: `frontend/runs-viewer/src/components/`
 
-Quick-reference decision matrix and index for SkillMeat component conventions. Detailed guides are in the `component-patterns/` subdirectory.
+## Conventions (observed from codebase)
 
-## Component Directory Decision
+1. **Feature directories** — each major feature is a directory:
+   `RunList/`, `RunDetail/`, `ClaimLedger/`, `LineageGraph/`, `TrustPanel/`, `SourceCard/`, `ReportOverlay/`, `ProvenanceModal/`, `shared/`
 
-| Directory | Purpose | When to Use | Examples |
-|-----------|---------|-------------|----------|
-| `ui/` | shadcn/ui primitives | Never create/modify — use CLI | button, dialog, dropdown-menu |
-| `shared/` | Cross-cutting UI | Used by 2+ features | ColorSelector, IconPicker, EntityPickerDialog (unified picker for members/entities) |
-| `[feature]/` | Feature-specific only | Only used within one feature | collection-card, deployment-set-card |
+2. **Plain function components** — no class components; exported as named functions.
 
-## Key Invariants
+3. **TypeScript props interfaces** — co-located above the component (`interface RunCardProps { … }`).
 
-- **Named exports only** — no default exports
-- **`cn()` for all class composition** — never inline styles
-- **Server components by default** — add `'use client'` only when needed
-- **Never modify `components/ui/`** — compose instead using shadcn primitives
+4. **Type imports from `@/types/rf`** — generated types mirror Python schemas (e.g. `RFRunSummary`, `RFStatusDerived`, `RFSensitivity`).
 
-## Component Template (Minimal)
+5. **CSS class naming** — `rv-` prefix for runs-viewer; `it-` prefix for shared design tokens (`it-card`, `it-pill`, `it-chip`, `it-btn`). No CSS-in-JS; no Tailwind; plain `.css` files in `src/styles/`.
 
-```typescript
-import { cn } from '@/lib/utils';
+6. **Graceful degradation** — optional fields render nothing when null/absent (never crash on partial data).
 
-interface MyComponentProps {
-  required: string;
-  optional?: boolean;
-  className?: string;
-}
+7. **Data hooks** — components consume data via hooks (`useRunList`, `useRunDetail`, `useClaimLedger`, `useSourceCard`) which wrap React Query + the `api/client.ts` fetchers.
 
-export function MyComponent({ required, optional = false, className }: MyComponentProps) {
-  return (
-    <div className={cn('base-classes', optional && 'conditional-class', className)}>
-      {required}
-    </div>
-  );
-}
-```
+8. **No external component library** — no shadcn, no Radix, no `@miethe/ui`. Components are bespoke with semantic HTML and ARIA attributes.
 
-## Load Detailed Guides When Working On
+9. **Test IDs** — `data-testid` attributes on key elements for Vitest assertions.
 
-| Topic | File | Use When |
-|-------|------|----------|
-| Shared components (ColorSelector, IconPicker) | `./component-patterns/shared-components.md` | Building or modifying cross-feature components |
-| Deployment sets (card, modal, member picker) | `./component-patterns/deployment-sets.md` | Working on deployment set UI |
-| Accessibility (ARIA, keyboard nav) | `./component-patterns/accessibility.md` | Building interactive components or forms |
-| Styling (cn(), Tailwind, spacing, antipatterns) | `./component-patterns/styling.md` | Need spacing reference or styling conventions |
-| Artifact picker patterns (useInfiniteArtifacts) | `./component-patterns/artifact-picker.md` | Building browse/select dialogs for artifacts |
-| Entity picker dialog system (unified member/entity picker) | `.claude/context/key-context/entity-picker-patterns.md` | Integrating EntityPickerDialog for members, bundles, or context entities |
-| Component extraction to @miethe/ui | `.claude/specs/ui-package-extraction-spec.md` | Planning new design system components or shared library extraction |
+## Example: RunCard
 
-## Quick Answers
-
-### Should I modify a shadcn component?
-
-**No.** Compose a new component instead:
-
-```typescript
-// WRONG: Editing components/ui/button.tsx
-// CORRECT: Create components/shared/submit-button.tsx
-import { Button } from '@/components/ui/button';
-
-export function SubmitButton({ loading, children }: Props) {
-  return (
-    <Button disabled={loading}>
-      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-      {children}
-    </Button>
-  );
-}
-```
-
-### How do I export components?
-
-**Always use named exports:**
-
-```typescript
-// ✅ Correct
-export function MyComponent() { ... }
-
-// ❌ Wrong
-export default function MyComponent() { ... }
-```
-
-### How do I style components?
-
-**Always use `cn()` with Tailwind classes:**
-
-```typescript
-// ✅ Correct
-<div className={cn('base-class', variant === 'primary' && 'bg-primary', className)} />
-
-// ❌ Wrong
-<div style={{ backgroundColor: variant === 'primary' ? 'blue' : 'gray' }} />
-```
-
-## Reference Links
-
-- **shadcn/ui**: https://ui.shadcn.com/
-- **Radix UI**: https://www.radix-ui.com/
-- **Tailwind CSS**: https://tailwindcss.com/docs
-- **WAI-ARIA Practices**: https://www.w3.org/WAI/ARIA/apg/
+`components/RunList/RunCard.tsx` renders a clickable card with lifecycle badge, sensitivity chip, claim counts, governance verdict, and tags — all conditional on data presence.

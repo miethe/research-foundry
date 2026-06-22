@@ -2,10 +2,10 @@
 schema_version: 2
 doc_type: skill_spec
 skill_name: research-foundry-swarm
-skill_version: 1.0.0
+skill_version: 1.1.0
 status: stable
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-22
 owner: "Nick Miethe"
 source_docs:
   - README.md
@@ -61,9 +61,16 @@ This skill is the **install, init, and swarm-drive** layer. It is the complement
 | Understand adapter degradation and stub behavior | `SKILL.md` §2 Path A | `docs/projects/research-foundry/research-foundry-mvp-spec.md` §13 |
 | Understand what `source_candidates.yaml` is (and is not) | `SKILL.md` §2 Path A | `docs/projects/research-foundry/research-foundry-mvp-spec.md` §10.6 |
 | Orchestrate Claude Code agent swarm as outer discovery layer | `SKILL.md` §2 Path B | `docs/projects/research-foundry/SERVICE_CONTRACT.md` |
+| Link capture to backlog (`--backlog-idea-ref`) and derive run metadata | `SKILL.md` §2 Path B | `src/research_foundry/cli_commands.py` `capture` |
+| Reconcile run↔backlog lifecycle (`rf backlog reconcile`) | `SKILL.md` §2 Path B | `src/research_foundry/services/backlog_metadata.py` |
+| Discover sources via the first-party Search Router (`rf search`) | `SKILL.md` §2 Path C | `src/research_foundry/services/search_router/cli.py` |
+| Fetch known URLs into source cards (`rf fetch`) | `SKILL.md` §2 Path C | `src/research_foundry/services/search_router/cli.py` |
 | Ingest discovered sources into a run (`rf ingest`) | `SKILL.md` §2 Path B | `README.md` §The demo loop, end to end |
 | Run the deterministic tail (extract → claim-map → synthesize → verify → bundle → writeback) | `SKILL.md` §3 The deterministic tail | `README.md` §The demo loop, end to end |
 | Interpret `rf verify` exit codes and remediate | `SKILL.md` §3 Exit-code table | `docs/projects/research-foundry/research-foundry-mvp-spec.md` §10.10 |
+| Export run data for viewer (`rf run export`, `rf run list`) | `SKILL.md` §3 The deterministic tail | `src/research_foundry/services/export_service.py` |
+| Serve the loopback API with fail-closed LAN governance (`rf serve`) | `SKILL.md` §4 Governance & Guardrails | `src/research_foundry/api/app.py` |
+| Understand decision_record auto-emit on meatywiki writeback | `SKILL.md` §3 The deterministic tail | `src/research_foundry/services/writeback.py` |
 | Run governance preflight (`rf guard check`) | `SKILL.md` §4 Governance & Guardrails | `README.md` §Governance & key profiles |
 | Select and enforce key-profile isolation | `SKILL.md` §4 Governance & Guardrails | `README.md` §Governance & key profiles |
 
@@ -95,6 +102,21 @@ This skill is the **install, init, and swarm-drive** layer. It is the complement
 8. **All adapters degrade to deterministic stubs by default**: Unless an extra (`.[research]` or `.[llm]`) is installed AND opt-in real mode is enabled for that adapter, every adapter falls back to its offline stub. A 0/5 live-adapter `rf doctor` result is a valid, fully functional state for the deterministic pipeline.
    _Source_: `README.md` §Status: MVP; `docs/projects/research-foundry/research-foundry-mvp-spec.md` §13
 
+9. **Search Router keyless providers degrade gracefully offline**: `rf search` and `rf fetch` (the `[search]` extra) work without API keys via jina and github providers; they degrade to empty results when offline rather than raising errors. Keyed providers are skipped when their keys are absent.
+   _Source_: `src/research_foundry/services/search_router/cli.py`; `SKILL.md` §2 Path C
+
+10. **`rf serve` fails closed on non-loopback bind**: Binding to a non-loopback host requires `--auth-mode token` AND a non-empty `RF_SERVE_TOKEN` env var. Both checks execute BEFORE any port is opened. An IP allowlist middleware rejects unlisted IPs (HTTP 403) when configured.
+    _Source_: `src/research_foundry/cli_commands.py` `serve`; `src/research_foundry/api/app.py`
+
+11. **`rf writeback --targets meatywiki` auto-emits a decision_record**: When inference/recommendation claims exist in the claim ledger, the meatywiki writeback automatically renders an additional `decision_record_writeback.md`. This is NOT a separate `--targets` value — it is triggered by including `meatywiki` in targets.
+    _Source_: `src/research_foundry/services/writeback.py` `_render_decision_record`; `src/research_foundry/services/planning.py` `_WRITEBACKS`
+
+12. **Export schema v1.2 includes run metadata**: `rf run export` emits `cost_usd`, `model_profiles`, `source_count_by_type`, `writebacks` summary, `linked_projects`, `category`, and `tags`. All data routes through `export_service`; sensitivity redaction is enforced at the export layer.
+    _Source_: `src/research_foundry/services/export_service.py` `EXPORT_SCHEMA_VERSION`
+
+13. **`rf backlog reconcile` defaults to dry-run**: Reconciliation never writes changes unless `--write` is explicitly passed. Status advances are forward-only; non-null links are never overwritten.
+    _Source_: `src/research_foundry/services/backlog_metadata.py` `reconcile_backlog`
+
 ---
 
 ## 4. Enhancement Backlog
@@ -122,6 +144,11 @@ This skill is the **install, init, and swarm-drive** layer. It is the complement
 ---
 
 ## 5. Changelog
+
+### v1.1.0 — 2026-06-22
+- Added capability coverage for: Search Router (`rf search`), URL fetch (`rf fetch`), run export (`rf run export`/`rf run list`), loopback API (`rf serve`), backlog reconcile (`rf backlog reconcile`), `--backlog-idea-ref` on capture, decision_record auto-emit
+- Added invariants 9–13 covering: keyless provider degradation, fail-closed LAN bind, decision_record auto-emit, export schema v1.2 fields, dry-run default for backlog reconcile
+- SKILL.md §2 Path C (Search Router) added; §2 Path B updated with backlog-idea-ref and reconcile lifecycle; §3 writeback step broadened; §4 rf serve governance surface added
 
 ### v1.0.0 — 2026-06-13
 - Initial SPEC.md authored and published as `stable`

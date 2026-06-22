@@ -211,7 +211,7 @@ def test_cli_search_smoke(tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyP
     assert "run" in result.output
 
 
-def test_cli_extract_smoke(tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_fetch_smoke(tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch) -> None:
     from typer.testing import CliRunner
 
     from research_foundry.cli import app
@@ -224,7 +224,7 @@ def test_cli_extract_smoke(tmp_foundry: FoundryPaths, monkeypatch: pytest.Monkey
     )
 
     runner = CliRunner()
-    result = runner.invoke(app, ["extract", "https://example.com"])
+    result = runner.invoke(app, ["fetch", "https://example.com"])
     assert result.exit_code == 0, result.output
 
 

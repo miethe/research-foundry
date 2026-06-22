@@ -36,13 +36,13 @@ Follow this systematic approach to create a new feature: $ARGUMENTS
    - **Query symbols first** for existing patterns (96% token savings):
      ```bash
      # Find similar implementations via symbols
-     jq '.symbols[] | select(.name | contains("Feature"))' /Users/miethe/dev/homelab/development/skillmeat/ai/symbols-*.json
+     jq '.symbols[] | select(.name | contains("Feature"))' ai/symbols-*.json
 
      # Backend patterns
-     jq '.symbols[] | select(.layer == "service" or .layer == "repository")' /Users/miethe/dev/homelab/development/skillmeat/ai/symbols-api.json
+     jq '.symbols[] | select(.layer == "service" or .layer == "repository")' ai/symbols-api.json
 
      # Frontend patterns
-     jq '.symbols[] | select(.type == "component")' /Users/miethe/dev/homelab/development/skillmeat/ai/symbols-web.json
+     jq '.symbols[] | select(.type == "component")' ai/symbols-web.json
      ```
    - Study existing codebase patterns and conventions
    - Identify similar features for consistency

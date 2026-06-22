@@ -87,8 +87,8 @@ rf search "agent-native search APIs"
 rf search "redis vs kafka for event sourcing" --mode source_discovery --max-results 6
 rf search "Brave Search API pricing" --mode quick_lookup --max-cost 0.05
 
-# Known-URL extraction (jina → firecrawl)
-rf extract https://example.com/docs/x https://example.com/blog/y
+# Known-URL fetch (jina → firecrawl)
+rf fetch https://example.com/docs/x https://example.com/blog/y
 ```
 
 Each invocation writes:

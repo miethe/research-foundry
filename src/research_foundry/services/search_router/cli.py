@@ -1,4 +1,4 @@
-"""``rf search`` / ``rf extract`` CLI surface for the Search Router (Wave 3).
+"""``rf search`` / ``rf fetch`` CLI surface for the Search Router (Wave 3).
 
 Thin command layer: parse args → build a ``search_request`` dict → call the
 orchestrator → render with Rich → translate errors to exit codes. Registered
@@ -22,7 +22,7 @@ err_console = Console(stderr=True)
 
 
 def register(app: typer.Typer) -> None:
-    """Attach the ``search`` and ``extract`` commands to the root app."""
+    """Attach the ``search`` and ``fetch`` commands to the root app."""
 
     @app.command()
     def search(
@@ -83,10 +83,10 @@ def register(app: typer.Typer) -> None:
             console.print(table)
 
     @app.command()
-    def extract(
-        urls: list[str] = typer.Argument(..., help="one or more URLs to extract"),
+    def fetch(
+        urls: list[str] = typer.Argument(..., help="one or more URLs to fetch"),
     ) -> None:
-        """Extract markdown from known URLs into source cards (spec ADR §11)."""
+        """Fetch markdown from known URLs into source cards (spec ADR §11)."""
 
         try:
             result = extract_urls(list(urls))

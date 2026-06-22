@@ -170,7 +170,7 @@ require touching source-cards, telemetry, or the runs viewer.
 | Surface | Module | Status |
 |---------|--------|--------|
 | Python API | `research_foundry.services.search_router.run_search`, `extract_urls` | Implemented (Wave 3) |
-| CLI | `rf search`, `rf extract` (`services.search_router.cli`) | Implemented (Wave 3) |
+| CLI | `rf search`, `rf fetch` (`services.search_router.cli`) | Implemented (Wave 3) |
 | MCP server | `services.search_router.mcp_server` (optional extra `mcp`) | Implemented (Wave 4 — thin) |
 | REST API | spec §10.3 | Deferred |
 

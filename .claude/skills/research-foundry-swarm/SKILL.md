@@ -110,11 +110,16 @@ This is the clean integration pattern: the Claude Code agent (or a multi-agent w
 
 2. **Create the run context** (capture → triage → plan):
    ```bash
-   rf capture "<research question>" --from manual --sensitivity personal --tag <tag>
+   rf capture "<research question>" --from manual --sensitivity personal --tag <tag> \
+     --backlog-idea-ref RIB-NNN   # optional: link to a backlog idea entry
    rf triage inbox/raw_ideas/raw_*.md --create-intent --create-ibom --create-tree-node
    rf plan <intent_id> --depth deep --audience technical --max-cost 5 --freshness 180d
    ```
    This produces `runs/<run_id>/research_brief.md` and `runs/<run_id>/swarm_plan.yaml`.
+
+   **Run metadata population:** When `--backlog-idea-ref` is provided, `linked_projects`, `category`, and `tags` are derived from the backlog entry and written into `run.yaml`. These fields flow through the export schema (v1.2) to the runs viewer.
+
+   **Backlog lifecycle reconciliation:** After runs complete, use `rf backlog reconcile [--dry-run|--write]` to synchronize run status back to the backlog (forward-only status advancement and link population). Default is `--dry-run` (prints diff without writing).
 
 3. **Agent-driven discovery:** The Claude Code agent (or subagents it spawns) uses web search, document reads, API calls, or any available tool to locate sources. Each located source is a candidate to feed in.
 
@@ -131,6 +136,30 @@ This is the clean integration pattern: the Claude Code agent (or a multi-agent w
 
 **Key architectural fact:** The Claude Code multi-agent workflow is the outer orchestrator. `rf` is never the caller of Claude Code — it is the governance and evidence spine that the orchestrator feeds into.
 
+### Path C — First-party Search Router (lightweight discovery)
+
+For runs that don't need a full agent swarm, RF ships a first-party **Search Router** that handles source discovery and URL extraction directly:
+
+```bash
+# Discover sources (produces source cards by default)
+rf search "kubernetes pod scheduling" --mode source_discovery --max-results 8 --max-cost 0.25
+
+# Skip card creation — get ranked candidates only
+rf search "kubernetes pod scheduling" --no-cards --intent-id INT-001 --task-node-id TN-005
+
+# Extract markdown from known URLs into source cards
+rf fetch https://example.com/paper.pdf https://docs.k8s.io/scheduling
+```
+
+**Requires** the `[search]` extra: `uv tool install --editable ".[search]"`
+
+**How it relates to the swarm paths:**
+- `rf search` replaces the need for `rf swarm run` when the query is well-formed and the scope is bounded. It produces source_cards directly (unless `--no-cards`), skipping the candidate→ingest two-step.
+- `rf fetch` replaces `rf ingest` when you already have URLs and want Markdown extraction + source-card creation in one step.
+- Path A/B swarm patterns remain preferred for deep, multi-adapter discovery runs.
+
+**Keyless provider degradation:** Providers that need no API key (jina, github) work immediately; they degrade gracefully offline. Keyed providers (brave, exa, firecrawl) require configured API keys and are skipped when absent.
+
 ---
 
 ## 3. The Deterministic Tail & the Verify Gate
@@ -138,7 +167,7 @@ This is the clean integration pattern: the Claude Code agent (or a multi-agent w
 Once source cards exist in `runs/<run_id>/sources/`, the pipeline is fully deterministic and offline-safe:
 
 ```bash
-# Extract evidence from source cards (cheap model profile)
+# Extract CLAIMS from source cards (cheap model profile) — NOT URL extraction
 rf extract <run_id> --model-profile rf_extract_cheap
 
 # Build the claim ledger from extractions
@@ -158,8 +187,11 @@ rf verify <run_id> \
 # Publish the durable evidence bundle
 rf bundle <run_id> --verify --out evidence_bundle.yaml
 
-# Write back to downstream targets
+# Write back to downstream targets (full list: meatywiki,skillmeat,ccdash,intenttree,arc,notebooklm)
 rf writeback <run_id> --targets meatywiki,skillmeat,ccdash --require-review
+# NOTE: --targets meatywiki automatically emits an additional decision_record writeback
+# rendered from inference/recommendation claims (when they exist in the ledger).
+# decision_record is NOT a separate --targets value — it is auto-emitted with meatywiki.
 ```
 
 ### Publishing into MeatyWiki (live vault)
@@ -214,6 +246,25 @@ This is mandatory before any source discovery, model call, or privileged action.
 - A key or model must not touch data above its tier.
 - A writeback target must not receive data above its permitted tier.
 - `rf guard` fails closed when a rule is ambiguous.
+
+### LAN-exposure governance (`rf serve`)
+
+`rf serve` is the read-only loopback HTTP API consumed by the runs viewer. It is a **governance surface** with fail-closed bind semantics:
+
+```bash
+# Loopback only (safe default — no auth required)
+rf serve --port 7432 --bind-host 127.0.0.1 --auth-mode none
+
+# LAN exposure — BOTH guards must pass or the server refuses to start:
+#   1. --auth-mode token (explicit)
+#   2. RF_SERVE_TOKEN env var must be set and non-empty
+rf serve --port 7432 --bind-host 0.0.0.0 --auth-mode token
+```
+
+- Requires the `[serve]` extra (fastapi, uvicorn): `pip install 'research-foundry[serve]'`
+- Endpoints: `/health`, `/api/runs`, `/api/runs/{id}`, `/api/runs/{id}/claims`, `/api/runs/{id}/sources/{sc_id}`, `/data/governance.json`. All data routes go through `export_service` — sensitivity redaction is enforced at the export layer.
+- The `--sensitivity-threshold` flag overrides which sensitivity level is the most that flows through to JSON (default: `public`).
+- IP allowlist middleware is active when `viewer.allowlist` is configured (rejects unlisted IPs with HTTP 403).
 
 ### Never ship unsupported claims
 

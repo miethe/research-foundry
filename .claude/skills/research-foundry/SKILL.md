@@ -42,23 +42,40 @@ Match the operator's intent to the loop step, then the `rf` command.
 | Operator intent | Loop step | `rf` command | Subagent |
 | --- | --- | --- | --- |
 | Set up a new foundry | 0 | `rf init <dir> --profile … --with-claude` | — |
-| Capture a raw idea | 1 | `rf capture "<idea>" --from … --sensitivity … --tag …` | rf_intake_curator |
+| Capture a raw idea | 1 | `rf capture "<idea>" --from … --sensitivity … --tag … --backlog-idea-ref RIB-NNN` | rf_intake_curator |
 | Triage into intent + I-BOM + tree node | 2–4 | `rf triage <raw_idea.md> --create-intent --create-ibom --create-tree-node` | rf_intake_curator |
 | Plan the swarm (brief + routing) | 5–7 | `rf plan <intent_id> --depth … --audience … --max-cost … --freshness …` | (router) |
 | Governance preflight | 8 | `rf guard check --profile <profile>` | rf_governance_officer |
+| Search for sources (Search Router) | 9 | `rf search "<query>" --mode source_discovery --max-results N --max-cost X --intent-id ID --task-node-id ID --no-cards` | rf_source_scout |
+| Fetch known URLs into source cards | 9–10 | `rf fetch <urls…>` | rf_source_carder |
 | Ingest a source manually | 9–10 | `rf ingest <path|url> --source-type … --sensitivity … --run <run>` | rf_source_carder |
-| Discover sources | 9 | `rf swarm run <run> --profile …` | rf_source_scout |
-| Create source cards | 10 | (via `rf swarm run` / `rf ingest`) | rf_source_carder |
-| Extract evidence | 11 | `rf extract <run> --source-cards … --model-profile rf_extract_cheap` | (extractor) |
+| Discover sources (adapter swarm) | 9 | `rf swarm run <run> --profile …` | rf_source_scout |
+| Create source cards | 10 | (via `rf search` / `rf fetch` / `rf swarm run` / `rf ingest`) | rf_source_carder |
+| Extract claims from source cards | 11 | `rf extract <run> --model-profile rf_extract_cheap` | (extractor) |
 | Build claim ledger | 12 | `rf claim-map <run> --from extractions --out claims/claim_ledger.yaml` | (claim mapper) |
 | Detect contradictions/gaps | 13 | (via `rf swarm run`) | (contradiction hunter) |
 | Synthesize report | 14 | `rf synthesize <run> --report reports/report_draft.md --model-profile rf_synthesize_deep` | rf_synthesizer |
 | Verify every material claim | 15 | `rf verify <run> --report … --claim-ledger … --fail-on-unsupported` | rf_claim_auditor |
 | Council / human review | 16 | `rf council <run> --roles … --vote approve-concern-block` | (council) |
 | Publish evidence bundle | 17 | `rf bundle <run> --verify --out evidence_bundle.yaml` | — |
-| Write back (wiki/skill/ccdash) | 18–20 | `rf writeback <run> --targets meatywiki,skillmeat,ccdash --require-review` | rf_governance_officer |
+| Write back (wiki/skill/ccdash/…) | 18–20 | `rf writeback <run> --targets meatywiki,skillmeat,ccdash,intenttree,arc,notebooklm --require-review` | rf_governance_officer |
 | Propose / promote SkillBOM | 19 | `rf skillbom propose <run>` / `rf skillbom promote <cand> --reviewer …` | — |
+| Export run data (viewer contract) | — | `rf run export --run-id <run> --all --stdout --sensitivity-threshold …` | — |
+| List runs | — | `rf run list` | — |
+| Serve loopback API (runs viewer) | — | `rf serve --port 7432 --bind-host 127.0.0.1 --auth-mode none\|token --sensitivity-threshold N` | — |
+| Reconcile backlog ↔ runs | — | `rf backlog reconcile [--dry-run\|--write]` | — |
 | Status / health / cost / redact / index | — | `rf status` · `rf doctor` · `rf cost <run>` · `rf redact <run> --target public` · `rf index rebuild` · `rf ccdash summarize --period daily` | — |
+
+### Command notes
+
+- **`rf search`** produces source_cards directly (unless `--no-cards`). Requires the `[search]` extra (httpx). Keyless providers (jina, github) degrade gracefully when offline; keyed providers (brave, exa, firecrawl) require configured API keys.
+- **`rf fetch`** (URL extraction) extracts Markdown from one or more known URLs into source cards. Distinct from `rf extract` (claim extraction from existing source cards).
+- **`rf extract`** is **claim extraction**: it processes a run's source cards into extraction/claim cards (spec §10.7). It is NOT URL fetching.
+- **`rf writeback --targets meatywiki`** auto-emits an additional `decision_record` writeback (rendered from inference/recommendation claims) when inference claims exist in the claim ledger. The decision_record is NOT a separate `--targets` value — it is emitted automatically alongside the `meatywiki` source-note writeback.
+- **`rf serve`** requires the `[serve]` extra (fastapi, uvicorn). Non-loopback bind (e.g. `--bind-host 0.0.0.0`) FAILS CLOSED unless `--auth-mode token` AND env `RF_SERVE_TOKEN` is non-empty. Includes an IP allowlist middleware. All routes serve through export_service (read-only).
+- **`rf run export`** produces export schema v1.2 with fields: `cost_usd`, `model_profiles`, `source_count_by_type`, `writebacks` summary, `linked_projects`, `category`, `tags`.
+- **`rf backlog reconcile`** defaults to `--dry-run`; pass `--write` to apply. Reconciles `run.yaml` `backlog_idea_ref` against the idea backlog, advancing status and filling links.
+- **`rf capture --backlog-idea-ref RIB-NNN`** links the captured idea to an entry in `backlog/research_idea_backlog.yaml`. The ref is validated before the idea is written. Run metadata `linked_projects`, `category`, and `tags` are populated on every run.
 
 ## Claim-traceability discipline
 
