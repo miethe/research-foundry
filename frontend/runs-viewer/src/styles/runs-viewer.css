@@ -340,7 +340,7 @@
 }
 
 .rv-portfolio-rail {
-  background: rgba(255, 255, 255, 0.76);
+  background: var(--it-surface-glass);
   color: var(--it-text-primary);
   padding: 18px 14px;
   display: flex;
@@ -462,7 +462,7 @@
 .rv-threshold-card {
   margin-top: auto;
   padding: 12px;
-  background: #fff;
+  background: var(--it-surface-base);
   border: 1px solid var(--it-border-subtle);
   border-radius: 8px;
 }
@@ -525,7 +525,7 @@
   height: 36px;
   border: 1px solid var(--it-border-soft);
   border-radius: 8px;
-  background: #fff;
+  background: var(--it-surface-base);
   color: var(--it-text-primary);
   padding: 0 10px;
   font: inherit;
@@ -550,7 +550,7 @@
 
 .rv-health-tile {
   min-height: 84px;
-  background: #fff;
+  background: var(--it-surface-base);
   border: 1px solid var(--it-border-subtle);
   border-radius: 8px;
   padding: 12px;
@@ -589,7 +589,7 @@
   min-width: 0;
   border: 1px solid var(--it-border-subtle);
   border-radius: 8px;
-  background: #fff;
+  background: var(--it-surface-base);
   overflow: hidden;
 }
 
@@ -627,7 +627,7 @@
 .rv-lane-run {
   border: 0;
   border-bottom: 1px solid var(--it-border-subtle);
-  background: #fff;
+  background: var(--it-surface-base);
   min-height: 48px;
   text-align: left;
   padding: 8px 12px;
@@ -719,7 +719,7 @@
 .rv-run-table {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
+  background: var(--it-surface-base);
   font-size: var(--it-text-sm);
 }
 
@@ -780,13 +780,13 @@
 
 .rv-run-table-footer {
   padding: 10px 12px;
-  background: #fff;
+  background: var(--it-surface-base);
   color: var(--it-text-secondary);
   font-size: var(--it-text-sm);
 }
 
 .rv-selected-run {
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--it-surface-glass);
   border-left: 1px solid var(--it-border-subtle);
   padding: 18px 18px 24px;
   display: flex;
@@ -1999,7 +1999,7 @@ button.active .rv-tab-count {
 .rv-run-modal__summary div {
   border: 1px solid var(--it-border-subtle);
   border-radius: 8px;
-  background: #fff;
+  background: var(--it-surface-base);
   padding: 9px;
 }
 
@@ -2042,7 +2042,7 @@ button.active .rv-tab-count {
   gap: 18px;
   align-items: flex-start;
   padding: 18px;
-  background: #fff;
+  background: var(--it-surface-base);
   border: 1px solid var(--it-border-subtle);
   border-radius: 8px;
 }
@@ -2389,7 +2389,7 @@ button.active .rv-tab-count {
   align-items: end;
   gap: 14px;
   padding: 14px 16px;
-  background: #fff;
+  background: var(--it-surface-base);
   border: 1px solid var(--it-border-subtle);
   border-radius: 8px;
 }
@@ -2563,7 +2563,7 @@ button.active .rv-tab-count {
   font-size: 11px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  background: #fff;
+  background: var(--it-surface-elevated);
 }
 
 .rv-confidence-ring--green { border-color: var(--it-green-500); color: var(--it-green-700); }
@@ -4330,7 +4330,7 @@ button.active .rv-tab-count {
   position: absolute;
   top: 10px;
   right: 10px;
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--it-surface-glass);
   border: 1px solid var(--it-border-subtle, #e2eaf2);
   border-radius: 7px;
   padding: 7px 9px;

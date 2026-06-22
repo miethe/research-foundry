@@ -277,7 +277,7 @@ body[data-tweaks="off"] .tweaks-panel-host { display: none; }
 
 .map-side-panel {
   position: absolute;
-  background: rgba(255,255,255,0.88);
+  background: var(--it-surface-glass);
   backdrop-filter: var(--it-blur-md);
   -webkit-backdrop-filter: var(--it-blur-md);
   border: 1px solid rgba(255,255,255,0.7);
@@ -305,7 +305,7 @@ body[data-tweaks="off"] .tweaks-panel-host { display: none; }
 
 .legend-box {
   position: absolute; bottom: 22px; right: 24px;
-  background: rgba(255,255,255,0.92);
+  background: var(--it-surface-glass);
   border: 1px solid rgba(255,255,255,0.7);
   border-radius: var(--it-radius-md);
   padding: 12px 14px;
@@ -697,7 +697,7 @@ body[data-tweaks="off"] .tweaks-panel-host { display: none; }
 .task-card.active {
   box-shadow: var(--it-shadow-glow-blue);
   border-color: var(--it-blue-400);
-  background: #fff;
+  background: var(--it-surface-base);
 }
 .task-card.agent {
   background: var(--it-purple-50);
