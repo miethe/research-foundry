@@ -4454,6 +4454,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -4488,6 +4489,7 @@ requires-dist = [
     { name = "claude-agent-sdk", marker = "extra == 'llm'", specifier = ">=0.1" },
     { name = "fastapi", marker = "extra == 'serve'", specifier = ">=0.111" },
     { name = "gpt-researcher", marker = "extra == 'research'", specifier = ">=0.8" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "httpx", marker = "extra == 'search'", specifier = ">=0.27" },
     { name = "jsonschema", specifier = ">=4.20" },
     { name = "litellm", marker = "extra == 'llm'", specifier = ">=1.40" },

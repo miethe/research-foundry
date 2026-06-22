@@ -38,6 +38,8 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "types-PyYAML>=6.0",
+    # Required by fastapi/starlette TestClient (tests/test_serve_*.py); not a runtime dep.
+    "httpx>=0.27",
 ]
 docs = [
     "mkdocs-material",
