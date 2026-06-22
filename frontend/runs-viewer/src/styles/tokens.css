@@ -407,6 +407,12 @@
   --it-pane-approval-pending-bg: rgba(194, 100, 26, 0.18);
   --it-pane-verified-bg:         rgba(47, 143, 74, 0.16);
   --it-canvas-scrim-bg:          rgba(0, 0, 0, 0.62);
+
+  /* Neutral background tokens — dark-aware (surface use only; never text/border) */
+  --it-neutral-25:  #141a2e;
+  --it-neutral-50:  #1b233e;
+  --it-neutral-100: #222c4d;
+  --it-neutral-200: #2d3963;
 }
 
 /* ===========================================================================

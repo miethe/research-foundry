@@ -4893,3 +4893,22 @@ button.active .rv-tab-count {
 [data-theme="dark"] .rv-lineage-node {
   background: var(--it-surface-base);
 }
+
+/* neutral-300 backgrounds that need darkening (not covered by token flip) */
+[data-theme="dark"] .rv-tone-dot {
+  background: var(--it-neutral-200);
+}
+[data-theme="dark"] .rv-lineage-node:not(:last-child)::after {
+  background: var(--it-neutral-200);
+}
+
+/* Sidebar label contrast — too faint at 10px in dark */
+[data-theme="dark"] .rv-rail-section h2 {
+  color: var(--it-text-secondary);
+}
+
+/* Disabled filter row — double-dimmed near-invisible in dark */
+[data-theme="dark"] .rv-filter-row--disabled {
+  color: var(--it-text-tertiary);
+  opacity: 0.82;
+}
