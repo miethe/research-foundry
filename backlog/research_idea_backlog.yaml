@@ -76,20 +76,12 @@ provenance_legs:
   — indicating the first run was deliberately shallow/demo. The richest source of follow-on questions
   came from spec §17 (Risks and open questions table), the adapter contracts in §13, the model routing
   in §8, and the bidirectional integrations plan open-decisions list (§5).'
-- 'ideation: Sources explored: MeatyIdeas (README, docs/init-prd.md, docs/SEED.md, docs/init_implementation.md,
-  docs/init-2-impl.md, docs/init-2-output.md, docs/BUNDLE_SCHEMA.md, app/api/search.py) and PKM MeatyBrain
-  vault (App Ideas/Work/Agentic Control Plane/LLM Wiki/* including LLM-Wiki.md, llm-wiki-eval.md, llm-wiki-design-spec.md,
-  llm-wiki-impl-spec.md, llm-wiki-workflow-os-addendum.md, compilation-engine-spec.md, meatywiki-overview.md;
-  App Ideas/Ideations/consolidated_notes.md).
+- |-
+  ideation: Sources explored: MeatyIdeas (README, docs/init-prd.md, docs/SEED.md, docs/init_implementation.md, docs/init-2-impl.md, docs/init-2-output.md, docs/BUNDLE_SCHEMA.md, app/api/search.py) and PKM MeatyBrain vault (App Ideas/Work/Agentic Control Plane/LLM Wiki/* including LLM-Wiki.md, llm-wiki-eval.md, llm-wiki-design-spec.md, llm-wiki-impl-spec.md, llm-wiki-workflow-os-addendum.md, compilation-engine-spec.md, meatywiki-overview.md; App Ideas/Ideations/consolidated_notes.md).
 
+  The Agentic Control Plane PKM backup directory at /Users/miethe/dev/homelab/development/claude-backup/projects/-Users-miethe-Documents-Other-PKM-MeatyBrain-App-Ideas-Work-Agentic-Control-Plane-LLM-Wiki/ contained only a .session-aliases file (no content) — the actual content lives at /Users/miethe/Documents/Other/PKM/MeatyBrain/App Ideas/Work/Agentic Control Plane/LLM Wiki/.
 
-  The Agentic Control Plane PKM backup directory at /Users/miethe/dev/homelab/development/claude-backup/projects/-Users-miethe-Documents-Other-PKM-MeatyBrain-App-Ideas-Work-Agentic-Control-Plane-LLM-Wiki/
-  contained only a .session-aliases file (no content) — the actual content lives at /Users/miethe/Documents/Other/PKM/MeatyBrain/App
-  Ideas/Work/Agentic Control Plane/LLM Wiki/.
-
-
-  No existing Research Foundry backlog convention was discovered in these source directories; the RF backlog
-  would need to be checked in the research-foundry project itself.'
+  No existing Research Foundry backlog convention was discovered in these source directories; the RF backlog would need to be checked in the research-foundry project itself.
 - 'agentic_os: Backlog convention: this ecosystem does not have a dedicated RF research backlog file.
   The closest analog is the AI-workflow audit''s improvement backlog (08-top-10-improvements.md) and the
   IntentTree deferred-items-backlog.md. Open questions (OQ-NN) are the primary signpost for research-worthy
@@ -262,7 +254,7 @@ ideas:
     hard gates cannot be enforced. Highest-value missing question for the Evidence pillar.
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_claim_segmentation_and_claim_to_source
     intenttree_node_id: null
     run_id: rf_run_20260614_claim_segmentation_and_claim_to_source
   rf_capture: rf capture 'How can a draft report be reliably decomposed into discrete material claims
@@ -362,7 +354,7 @@ ideas:
     since the deliverable is a synthesized evidence comparison rather than a decision brief.
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_what_does_the_empirical_literature_say
     intenttree_node_id: null
     run_id: rf_run_20260614_what_does_the_empirical_literature_say
   rf_capture: rf capture 'What does the empirical literature say about unsupported-claim/hallucination
@@ -462,7 +454,7 @@ ideas:
     layer slots onto an agreed claim model.
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_contradiction_detection_across_heterogeneous_sou
     intenttree_node_id: null
     run_id: rf_run_20260614_contradiction_detection_across_heterogeneous_sou
   rf_capture: rf capture 'What NLP/LLM approaches most effectively detect factual contradictions between
@@ -1720,7 +1712,7 @@ ideas:
     prevents a misclassified work/client task from leaking to an inappropriate sink.
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_sensitivity_aware_ai_routing_tier_policy
     intenttree_node_id: null
     run_id: rf_run_20260614_sensitivity_aware_ai_routing_tier_policy
   rf_capture: rf capture 'What frameworks and enforcement patterns do enterprises use to classify task
@@ -1818,7 +1810,7 @@ ideas:
     de-risks the highest-stakes governance invariant before live adapters ship.
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_what_published_security_frameworks_threat_models
     intenttree_node_id: null
     run_id: rf_run_20260614_what_published_security_frameworks_threat_models
   rf_capture: rf capture 'What published security frameworks, threat models, and runtime-enforcement mechanisms
@@ -2377,7 +2369,7 @@ ideas:
     defaults.
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_what_patterns_file_watch_hooks_post
     intenttree_node_id: null
     run_id: rf_run_20260614_what_patterns_file_watch_hooks_post
   rf_capture: rf capture 'What patterns (file-watch hooks, post-merge triggers, SSE, event sourcing) most
@@ -2478,7 +2470,7 @@ ideas:
     governance stays at default personal tier.'
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_what_components_schemas_agent_roles_and
     intenttree_node_id: null
     run_id: rf_run_20260614_what_components_schemas_agent_roles_and
   rf_capture: rf capture 'What components, schemas, agent roles, and execution loop are truly required
@@ -2579,7 +2571,7 @@ ideas:
     source cards. All inputs are personal homelab specs, so governance stays at personal defaults.
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_what_architectures_define_an_agentic_origination
     intenttree_node_id: null
     run_id: rf_run_20260614_what_architectures_define_an_agentic_origination
   rf_capture: rf capture 'What architectures define an agentic '\''origination layer'\'' that receives
@@ -3225,7 +3217,7 @@ ideas:
     benchmarked, scale-tiered evidence rather than vendor claims.'
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_embedding_model_vector_store_strategy_for
     intenttree_node_id: null
     run_id: rf_run_20260614_embedding_model_vector_store_strategy_for
   rf_capture: rf capture 'Which combination of embedding model (local bge-m3/MiniLM/nomic vs API text-embedding-3-small)
@@ -3325,7 +3317,7 @@ ideas:
     thresholds rather than generic advice.
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_hybrid_bm25_vector_and_fts5_ranking
     intenttree_node_id: null
     run_id: rf_run_20260614_hybrid_bm25_vector_and_fts5_ranking
   rf_capture: rf capture 'At what corpus size does BM25/FTS5 alone become insufficient for a Markdown
@@ -3428,7 +3420,7 @@ ideas:
     added given the data-loss risk surface.
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_semantic_entity_consolidation_and_auto_merge
     intenttree_node_id: null
     run_id: rf_run_20260614_semantic_entity_consolidation_and_auto_merge
   rf_capture: rf capture 'What entity-resolution algorithms and merge strategies (Fellegi-Sunter, TF-IDF
@@ -3615,7 +3607,7 @@ ideas:
     than discovers, but high leverage as a shared dependency.
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_what_are_the_documented_trade_offs
     intenttree_node_id: null
     run_id: rf_run_20260614_what_are_the_documented_trade_offs
   rf_capture: rf capture 'What are the documented trade-offs between file-first (Markdown+Git) and database-first
@@ -3977,7 +3969,7 @@ ideas:
     are homelab dev material.
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_determinism_ci_cost_control_for_agentic
     intenttree_node_id: null
     run_id: rf_run_20260614_determinism_ci_cost_control_for_agentic
   rf_capture: rf capture 'What determinism strategies (temperature-0+seed, stubbed tool responses, rubric-based
@@ -4085,7 +4077,7 @@ ideas:
     multi-question, red-team posture required to keep the metric honest.
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_what_methods_exist_for_automatically_scoring
     intenttree_node_id: null
     run_id: rf_run_20260614_what_methods_exist_for_automatically_scoring
   rf_capture: rf capture 'What methods exist for automatically scoring agent-generated research outputs
@@ -4367,7 +4359,7 @@ ideas:
     make it a work_package, but it stays personal and reversible.'
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_do_token_logprob_distributions_provide_more
     intenttree_node_id: null
     run_id: rf_run_20260614_do_token_logprob_distributions_provide_more
   rf_capture: rf capture 'Do token-logprob distributions provide more calibrated classification confidence
@@ -4572,7 +4564,7 @@ ideas:
     public literature plus local telemetry schema rather than sensitive internal positioning.'
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_closed_loop_telemetry_to_artifact_feedback
     intenttree_node_id: null
     run_id: rf_run_20260614_closed_loop_telemetry_to_artifact_feedback
   rf_capture: rf capture 'What does the literature and practitioner evidence say about closed-loop feedback
@@ -4967,7 +4959,7 @@ ideas:
     so the research is about gate criteria and prior art rather than greenfield design.'
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_what_governance_criteria_evaluation_frameworks_a
     intenttree_node_id: null
     run_id: rf_run_20260614_what_governance_criteria_evaluation_frameworks_a
   rf_capture: rf capture 'What governance criteria, evaluation frameworks, and promotion gates should
@@ -5168,7 +5160,7 @@ ideas:
     Capture & Ingestion pillar; personal sensitivity since the sources and vault are the owner''s own.'
   links:
     raw_idea_id: null
-    intent_id: null
+    intent_id: intent_research_20260614_what_pipeline_architecture_best_ingests_outputs
     intenttree_node_id: null
     run_id: rf_run_20260614_what_pipeline_architecture_best_ingests_outputs
   rf_capture: rf capture 'What pipeline architecture best ingests outputs from ChatGPT deep-research,

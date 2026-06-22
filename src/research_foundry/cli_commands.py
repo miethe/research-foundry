@@ -1035,6 +1035,86 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(notebooklm_app, name="notebooklm")
 
+    # ----- backlog -----
+    backlog_app = typer.Typer(help="Backlog lifecycle management.")
+
+    @backlog_app.command("reconcile")
+    def backlog_reconcile(
+        dry_run: bool = typer.Option(True, "--dry-run/--write",
+                                     help="Print diff only (default). Pass --write to apply."),
+    ) -> None:
+        """Reconcile run→backlog lifecycle: fill missing status and links fields.
+
+        Scans ``runs/*/run.yaml`` for ``backlog_idea_ref``, maps each back to
+        the matching idea in ``backlog/research_idea_backlog.yaml``, and
+        advances ``status`` (forward only) and fills null ``links.*`` fields.
+
+        Defaults to ``--dry-run`` — prints the proposed diff as a table
+        without writing.  Pass ``--write`` to apply changes atomically.
+
+        Also reports inverse drift:
+        * Backlog ideas marked ``completed`` with no matching run directory.
+        * Run directories that carry no ``backlog_idea_ref`` field.
+        """
+
+        from .paths import FoundryPaths
+        from .services.backlog_metadata import reconcile_backlog
+
+        paths = FoundryPaths.discover()
+
+        try:
+            diffs, orphaned_completed, runs_without_ref = reconcile_backlog(
+                paths, dry_run=dry_run
+            )
+        except Exception as exc:  # noqa: BLE001
+            err_console.print(f"[red]reconcile error:[/red] {exc}")
+            raise typer.Exit(1) from exc
+
+        mode_label = "dry-run" if dry_run else "write"
+
+        # --- changes table ---
+        if diffs:
+            diff_table = Table(
+                title=f"backlog reconcile ({mode_label}) -- {len(diffs)} change(s)",
+                show_header=True,
+                header_style="bold",
+            )
+            diff_table.add_column("ref")
+            diff_table.add_column("field")
+            diff_table.add_column("old")
+            diff_table.add_column("new")
+            for d in diffs:
+                diff_table.add_row(
+                    d.ref,
+                    d.field,
+                    str(d.old) if d.old is not None else "null",
+                    f"[green]{d.new}[/green]",
+                )
+            console.print(diff_table)
+        else:
+            console.print(f"[green]backlog reconcile ({mode_label}):[/green] no changes needed")
+
+        # --- inverse drift ---
+        if orphaned_completed:
+            console.print(
+                f"\n[yellow]orphaned completed ideas[/yellow] "
+                f"(marked completed but no run dir): {len(orphaned_completed)}"
+            )
+            for ref in orphaned_completed:
+                console.print(f"  {ref}")
+
+        if runs_without_ref:
+            console.print(
+                f"\n[yellow]runs without backlog_idea_ref[/yellow]: {len(runs_without_ref)}"
+            )
+            for rid in runs_without_ref:
+                console.print(f"  {rid}")
+
+        if not dry_run and diffs:
+            console.print(f"\n[green]applied {len(diffs)} change(s) to backlog[/green]")
+
+    app.add_typer(backlog_app, name="backlog")
+
     # ----- run (runs-frontend export contract, Phase 1) -----
     run_app = typer.Typer(help="Run export contract for the read-only runs viewer.")
 

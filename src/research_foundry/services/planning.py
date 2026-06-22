@@ -110,6 +110,7 @@ _VALIDATION_STEPS = [
 ]
 _WRITEBACKS = [
     {"target": "meatywiki", "type": "source_note"},
+    {"target": "meatywiki", "type": "decision_record"},
     {"target": "skillmeat", "type": "skillbom_candidate"},
     {"target": "ccdash", "type": "execution_event"},
 ]

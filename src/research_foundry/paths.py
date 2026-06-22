@@ -241,6 +241,10 @@ class RunPaths:
         return self.writebacks / "notebooklm_update.yaml"
 
     @property
+    def decision_record_writeback(self) -> Path:
+        return self.writebacks / "decision_record_writeback.md"
+
+    @property
     def telemetry(self) -> Path:
         return self.run / "telemetry"
 

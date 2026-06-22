@@ -137,6 +137,15 @@ def _supported_claims(ledger: dict[str, Any]) -> list[dict[str, Any]]:
     return [c for c in (ledger.get("claims") or []) if (c or {}).get("status") == "supported"]
 
 
+def _inference_claims(ledger: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return inference-status claims, recommendations first, then the rest."""
+
+    claims = [c for c in (ledger.get("claims") or []) if (c or {}).get("status") == "inference"]
+    recommendations = [c for c in claims if (c or {}).get("claim_type") == "recommendation"]
+    others = [c for c in claims if (c or {}).get("claim_type") != "recommendation"]
+    return recommendations + others
+
+
 def _source_card_titles(rp, paths: FoundryPaths) -> dict[str, str]:
     """Map source_card_id -> title from the run's source cards."""
 
@@ -261,6 +270,7 @@ def _load_bundle(rp) -> dict[str, Any]:
 class WritebackResult:
     run_id: str
     meatywiki_path: Path | None
+    decision_record_path: Path | None
     skillbom_path: Path | None
     ccdash_path: Path | None
     intenttree_update_path: Path | None
@@ -339,6 +349,130 @@ def _render_meatywiki(
     return rp.meatywiki_writeback
 
 
+def _render_decision_record(
+    rp,
+    paths: FoundryPaths,
+    *,
+    bundle_ident: str,
+    sensitivity: str,
+    ledger: dict[str, Any],
+    requires_review: bool,
+) -> Path | None:
+    """Write writebacks/decision_record_writeback.md from inference/recommendation claims.
+
+    Returns None (no file written) when there are zero inference claims in the
+    ledger — an empty decision record would carry no signal and is omitted.
+    """
+
+    inference = _inference_claims(ledger)
+    if not inference:
+        return None
+
+    report_meta, _ = _report_meta(rp)
+    title = str(report_meta.get("title") or "Research Foundry decision record")
+    slug = slugify(title)
+    mwb_ident = meatywiki_writeback_id(f"dr_{title}")
+    target_page = f"meatywiki/decisions/{slug}.md"
+    status = "proposed" if requires_review else "written"
+
+    # Pull reasoning_summary from the primary (first) recommendation claim;
+    # fall back to the first inference claim if no recommendation exists.
+    primary = inference[0]
+    primary_basis = (primary.get("inference_basis") or {}) if isinstance(primary.get("inference_basis"), dict) else {}
+    primary_reasoning = str(primary_basis.get("reasoning_summary") or primary.get("text") or "")
+
+    # Collect all source claim IDs cited across all inference claims.
+    all_from_claims: list[str] = []
+    for inf in inference:
+        basis = (inf.get("inference_basis") or {}) if isinstance(inf.get("inference_basis"), dict) else {}
+        for cid in (basis.get("from_claims") or []):
+            if cid not in all_from_claims:
+                all_from_claims.append(str(cid))
+
+    # Context: summarise what the supported evidence established.
+    supported = _supported_claims(ledger)
+    context_lines = (
+        [f"- {c.get('text', '')} [claim:{c.get('claim_id', '')}]" for c in supported]
+        if supported
+        else ["- (no supported claims — decision is based on inference only)"]
+    )
+    context_block = "\n".join(context_lines)
+
+    # Decision: primary recommendation claim text.
+    decision_block = f"{primary.get('text', '')} [claim:{primary.get('claim_id', '')}]"
+
+    # Rationale: reasoning_summary from all inference claims.
+    rationale_parts: list[str] = []
+    for inf in inference:
+        basis = (inf.get("inference_basis") or {}) if isinstance(inf.get("inference_basis"), dict) else {}
+        summary = str(basis.get("reasoning_summary") or "")
+        if summary:
+            rationale_parts.append(f"- {summary} [claim:{inf.get('claim_id', '')}]")
+    rationale_block = "\n".join(rationale_parts) if rationale_parts else f"- {primary_reasoning}"
+
+    # Consequences: remaining non-primary inference claims.
+    consequences_parts = [
+        f"- {inf.get('text', '')} [claim:{inf.get('claim_id', '')}]"
+        for inf in inference[1:]
+    ]
+    consequences_block = "\n".join(consequences_parts) if consequences_parts else "- None recorded."
+
+    # Links: back-references to source claim IDs (from_claims) + standard pages.
+    link_lines = [f"- [[claim:{cid}]]" for cid in all_from_claims]
+    link_lines += ["- [[Research Foundry]]", "- [[Agentic Control Plane]]"]
+    links_block = "\n".join(link_lines)
+
+    front: dict[str, Any] = {
+        "id": mwb_ident,
+        "evidence_bundle_id": bundle_ident,
+        "target_page": target_page,
+        "writeback_type": "decision_record",
+        "status": status,
+        "summary": f"Decision record from run {rp.run.name}: {primary_reasoning[:120] or 'see body'}",
+        "key_claims": [
+            {"claim_id": c.get("claim_id"), "include": True} for c in inference
+        ],
+        "links": {
+            "source_cards": sorted(
+                {
+                    src.get("source_card_id")
+                    for inf in inference
+                    for src in (inf.get("sources") or [])
+                    if src.get("source_card_id")
+                }
+            ),
+            "related_pages": ["[[Research Foundry]]", "[[Agentic Control Plane]]"],
+            "from_claims": all_from_claims,
+        },
+        "approval": {
+            "required": requires_review,
+            "reason": (
+                "work/client sensitivity requires human review before writeback"
+                if requires_review
+                else "personal/public research: auto-approved"
+            ),
+            "approved_by": None,
+        },
+    }
+    _schema_or_raise(front, "meatywiki_writeback")
+
+    body = (
+        f"# Decision Record: {title}\n\n"
+        f"## Context\n\n{context_block}\n\n"
+        f"## Decision\n\n{decision_block}\n\n"
+        f"## Rationale\n\n{rationale_block}\n\n"
+        f"## Consequences\n\n{consequences_block}\n\n"
+        f"## Links\n\n{links_block}\n"
+    )
+
+    dump_md(front, body, rp.decision_record_writeback)
+    _MIRROR_ALLOWED_SENSITIVITIES = {"public", "personal"}
+    if not requires_review and sensitivity in _MIRROR_ALLOWED_SENSITIVITIES:
+        mirror = paths.meatywiki / "decisions" / f"{slug}.md"
+        dump_md(front, body, mirror)
+    return rp.decision_record_writeback
+
+
 def _render_skillbom(
     rp,
     paths: FoundryPaths,
@@ -346,17 +480,54 @@ def _render_skillbom(
     bundle_ident: str,
     ccdash_event_id_value: str,
     requires_review: bool,
+    ledger: dict[str, Any] | None = None,
 ) -> Path:
-    """Write writebacks/skillbom_candidate.md (+ mirror) from the template fields."""
+    """Write writebacks/skillbom_candidate.md (+ mirror) from the template fields.
+
+    When ``ledger`` is provided, ``purpose`` and ``known_failure_modes`` are
+    populated from the run's recommendation/inference claims rather than the
+    fixed stub.
+    """
 
     report_meta, _ = _report_meta(rp)
     title = str(report_meta.get("title") or "Research swarm")
     cand_ident = skillbom_candidate_id(title)
     name = f"Research Swarm — {title}"
-    purpose = (
+
+    # Derive purpose from the primary recommendation/inference claim's text when
+    # the ledger is available; fall back to the static stub otherwise.
+    _fallback_purpose = (
         "Reusable research swarm: cheap extraction + deep synthesis with claim "
         "traceability and governance gating."
     )
+    purpose = _fallback_purpose
+    known_failure_modes: list[str] = [
+        "source_overcollection",
+        "unsupported_synthesis",
+        "citation_mismatch",
+        "stale_sources",
+        "work_personal_boundary_leak",
+    ]
+
+    if ledger is not None:
+        inference = _inference_claims(ledger)
+        if inference:
+            primary = inference[0]
+            primary_text = str(primary.get("text") or "")
+            basis = (primary.get("inference_basis") or {}) if isinstance(primary.get("inference_basis"), dict) else {}
+            reasoning = str(basis.get("reasoning_summary") or "")
+            if reasoning:
+                purpose = reasoning
+            elif primary_text:
+                purpose = primary_text
+            # Append a failure mode for each non-primary inference that represents
+            # a potential failure path (claim_type != recommendation).
+            for inf in inference[1:]:
+                inf_text = str(inf.get("text") or "").strip()
+                if inf_text and inf_text not in known_failure_modes:
+                    slug = slugify(inf_text, max_words=5)
+                    if slug and slug not in known_failure_modes:
+                        known_failure_modes.append(slug)
 
     front: dict[str, Any] = {
         "id": cand_ident,
@@ -378,13 +549,7 @@ def _render_skillbom(
             "evidence_bundle.schema.yaml",
         ],
         "validation": ["claim_verifier_passed", "governance_guard_passed", "report_reviewed"],
-        "known_failure_modes": [
-            "source_overcollection",
-            "unsupported_synthesis",
-            "citation_mismatch",
-            "stale_sources",
-            "work_personal_boundary_leak",
-        ],
+        "known_failure_modes": known_failure_modes,
         "performance_evidence": {
             "ccdash_event_id": ccdash_event_id_value,
             "quality_score": "pending",
@@ -828,6 +993,7 @@ def writeback(
     requires_review = bool(require_review) or sensitivity in _WORK_SENSITIVITIES
 
     meatywiki_path: Path | None = None
+    decision_record_path: Path | None = None
     skillbom_path: Path | None = None
     ccdash_path: Path | None = None
     intenttree_update_path: Path | None = None
@@ -849,6 +1015,15 @@ def writeback(
             ledger=ledger,
             requires_review=requires_review,
         )
+        # decision_record is additive: emits only when inference claims exist.
+        decision_record_path = _render_decision_record(
+            rp,
+            paths,
+            bundle_ident=bundle_ident,
+            sensitivity=sensitivity,
+            ledger=ledger,
+            requires_review=requires_review,
+        )
 
     if "skillmeat" in targets:
         skillbom_path = _render_skillbom(
@@ -857,6 +1032,7 @@ def writeback(
             bundle_ident=bundle_ident,
             ccdash_event_id_value=ccdash_event_id_value,
             requires_review=requires_review,
+            ledger=ledger,
         )
 
     if "intenttree" in targets:
@@ -909,6 +1085,7 @@ def writeback(
     return WritebackResult(
         run_id=run_id,
         meatywiki_path=meatywiki_path,
+        decision_record_path=decision_record_path,
         skillbom_path=skillbom_path,
         ccdash_path=ccdash_path,
         intenttree_update_path=intenttree_update_path,
@@ -1074,6 +1251,7 @@ __all__ = [
     "council_review",
     "skillbom_propose",
     "skillbom_promote",
+    "_render_decision_record",
     "_render_intenttree_update",
     "_render_arc_council",
     "_render_notebooklm_update",
