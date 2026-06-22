@@ -2,10 +2,15 @@
 title: "Design Spec: Runs Frontend Facelift v2"
 doc_type: design_spec
 schema_version: 2
-status: draft
+status: superseded
 maturity: shaping
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-06-21
+superseded_by:
+  - docs/project_plans/design-specs/runs-frontend-facelift-v2-1.md
+superseded_note: >
+  v2 roadmap realized by the v2.1 Stabilization spec, which shipped in commit
+  c3c76dd (runs-viewer facelift v2.1). v2 retained for historical rationale.
 feature_slug: runs-frontend-facelift
 feature_family: runs-frontend
 feature_version: v2

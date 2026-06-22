@@ -2,10 +2,11 @@
 title: "Design Spec: Runs Frontend Facelift v2.1 Stabilization"
 doc_type: design_spec
 schema_version: 2
-status: draft
-maturity: ready
+status: completed
+maturity: implemented
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-06-21
+implemented_by: c3c76dd
 feature_slug: runs-frontend-facelift
 feature_family: runs-frontend
 feature_version: v2.1

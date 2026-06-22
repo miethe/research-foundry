@@ -2,9 +2,9 @@
 title: "EPIC: Runs-Viewer v2.2 Polish"
 schema_version: 2
 doc_type: prd
-status: draft
+status: completed
 created: 2026-06-20
-updated: 2026-06-20
+updated: 2026-06-21
 feature_slug: "runs-viewer-v2.2-polish"
 feature_version: "v1"
 prd_ref: null
@@ -17,7 +17,7 @@ category: "product-planning"
 tags: [prd, epic, runs-viewer, polish, enhancement]
 milestone: "v2.2"
 changelog_required: true
-commit_refs: []
+commit_refs: [4f72a88, 655b5bf, fae65aa, bbf6341, 0235b47, 6c2060c, 3b1dee9, 9acd360]
 pr_refs: []
 files_affected: []
 related_documents:

@@ -2,9 +2,9 @@
 title: "Implementation Plan: Research Foundry Docs Site + Flagship Case Study"
 schema_version: 2
 doc_type: implementation_plan
-status: approved
+status: completed
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-06-21
 feature_slug: docs-site-case-study
 feature_version: "v1"
 prd_ref: null
@@ -21,7 +21,7 @@ risk_level: low
 owner: nick
 tags: [docs-site, mkdocs, github-pages, case-study, infrastructure]
 milestone: null
-commit_refs: []
+commit_refs: [1ae5bff]
 pr_refs: []
 files_affected:
   - website/mkdocs.yml
