@@ -1,0 +1,111 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/search_run.schema.yaml"
+title: Search Run
+description: Record of a completed Research Foundry search operation.
+type: object
+properties:
+  run_id:
+    type: string
+  schema_errors:
+    type: array
+    items:
+      type: string
+  created_at:
+    type: string
+  completed_at:
+    type:
+      - string
+      - "null"
+  request:
+    type: object
+    additionalProperties: true
+  provider_chain:
+    type: array
+    items:
+      type: object
+      properties:
+        provider:
+          type: string
+        role:
+          type: string
+        status:
+          type: string
+      additionalProperties: true
+  normalized_results:
+    type: array
+    items:
+      type: object
+      properties:
+        title:
+          type: string
+        url:
+          type: string
+        snippet:
+          type: string
+        provider:
+          type: string
+        rank:
+          type: integer
+        score:
+          type:
+            - number
+            - "null"
+      additionalProperties: true
+  source_cards:
+    type: array
+    items:
+      type: object
+      properties:
+        source_id:
+          type: string
+      additionalProperties: true
+  metrics:
+    type: object
+    properties:
+      queries_executed:
+        type: integer
+      urls_extracted:
+        type: integer
+      pages_crawled:
+        type: integer
+      useful_source_count:
+        type:
+          - integer
+          - "null"
+      duplicate_rate:
+        type:
+          - number
+          - "null"
+      extraction_failure_rate:
+        type:
+          - number
+          - "null"
+      citation_coverage:
+        type:
+          - number
+          - "null"
+      estimated_cost_usd:
+        type: number
+      latency_ms:
+        type: integer
+    additionalProperties: true
+  writebacks:
+    type: object
+    properties:
+      ccdash_event_id:
+        type:
+          - string
+          - "null"
+      meatywiki_page_ids:
+        type: array
+        items:
+          type: string
+      skillmeat_candidate_ids:
+        type: array
+        items:
+          type: string
+    additionalProperties: true
+required:
+  - run_id
+  - request
+additionalProperties: true

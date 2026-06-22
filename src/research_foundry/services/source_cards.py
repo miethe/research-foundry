@@ -156,6 +156,8 @@ def ingest_source(
     title: str | None = None,
     created_by_agent: str = "rf_source_carder",
     fetch: bool = False,
+    content: str | None = None,
+    extra_limitations: list[str] | None = None,
     paths: FoundryPaths | None = None,
 ) -> IngestResult:
     """Ingest one source into ``runs/<run>/sources/`` as a source_card.
@@ -164,6 +166,11 @@ def ingest_source(
     fetch (8s timeout); any failure degrades to a locator-only card. Local files
     are read as text; PDFs without a text extractor are recorded by locator and
     flagged degraded.
+
+    When ``content`` is supplied (e.g. markdown already extracted by a search-
+    router provider) no fetch/read is attempted: the given text is used directly
+    as the source content. An empty ``content`` string degrades to a locator-only
+    card. Pass extractor provenance via ``created_by_agent``.
     """
 
     paths = paths or FoundryPaths.discover()
@@ -176,12 +183,18 @@ def ingest_source(
     is_local_file = local_path.exists() and local_path.is_file()
     is_url = (not is_local_file) and _is_url(locator)
 
-    content: str | None = None
     degraded = False
     loc_url: str | None = None
     loc_file: str | None = None
 
-    if is_local_file:
+    if content is not None:
+        # Caller supplied content directly (e.g. extractor markdown) — no fetch.
+        degraded = not content
+        if _is_url(locator):
+            loc_url = locator
+        else:
+            loc_file = locator
+    elif is_local_file:
         loc_file = str(local_path)
         content, degraded = _read_local(local_path)
     elif is_url:
@@ -200,6 +213,13 @@ def ingest_source(
     src_id = source_card_id(eff_title, locator)
 
     points = _build_points(content, degraded=degraded)
+
+    # known_limitations: base (degraded marker) + any caller-supplied flags
+    # (e.g. prompt-injection risk from extraction), deduped, existing first.
+    known_limitations: list[str] = ["content_not_retrieved"] if degraded else []
+    for lim in extra_limitations or []:
+        if lim and lim not in known_limitations:
+            known_limitations.append(lim)
 
     front_matter = {
         "schema_version": "0.1",
@@ -230,7 +250,7 @@ def ingest_source(
                 if degraded
                 else "Ingested deterministically; not yet reliability-rated."
             ),
-            "known_limitations": (["content_not_retrieved"] if degraded else []),
+            "known_limitations": known_limitations,
             "conflicts_with": [],
         },
         "usage": {

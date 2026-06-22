@@ -159,6 +159,7 @@ def _wire() -> None:
 
     candidates = [
         "research_foundry.cli_commands",  # aggregated command wiring (Wave 3)
+        "research_foundry.services.search_router.cli",  # rf search / rf extract (Wave 3)
     ]
     for mod_name in candidates:
         try:

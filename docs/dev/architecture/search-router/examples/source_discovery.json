@@ -1,0 +1,25 @@
+{
+  "intent_id": "intent_agentic_search_stack_2026_06_21",
+  "task_node_id": "task_compare_agent_search_tools",
+  "user_or_agent_id": "agent_claude_code",
+  "query": "best web search APIs for AI agents source extraction crawling semantic search",
+  "mode": "source_discovery",
+  "constraints": {
+    "required_source_types": ["official_docs", "repo", "vendor"],
+    "max_source_age_days": 180,
+    "language": "en"
+  },
+  "budget": {
+    "max_external_queries": 4,
+    "max_urls_to_extract": 8,
+    "max_crawl_pages": 0,
+    "max_provider_cost_usd": 0.25,
+    "max_latency_seconds": 90
+  },
+  "output_requirements": {
+    "source_cards": true,
+    "claim_ledger": true,
+    "extracted_markdown": true,
+    "summary": true
+  }
+}

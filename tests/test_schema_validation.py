@@ -49,9 +49,12 @@ EXPECTED_SCHEMA_NAMES: list[str] = [
     "research_intent",
     "review_packet",
     "routing_decision",
+    "search_request",
+    "search_run",
     "skillbom_candidate",
     "source_card",
     "swarm_plan",
+    "tool_profile",
 ]
 
 
@@ -191,6 +194,24 @@ def _valid(name: str) -> dict:
             "pillars": [],
             "ideas": [],
         },
+        # required: query, mode (search router, ADR §11.1)
+        "search_request": {
+            "query": "best agent web search APIs 2026",
+            "mode": "source_discovery",
+        },
+        # required: run_id, request (search router, ADR §11.2)
+        "search_run": {
+            "run_id": "rf_run_demo",
+            "request": {
+                "query": "best agent web search APIs 2026",
+                "mode": "source_discovery",
+            },
+        },
+        # required: id, provider (search router, ADR §11.5)
+        "tool_profile": {
+            "id": "brave_search_v1",
+            "provider": "brave",
+        },
     }
     return dict(builders[name])
 
@@ -233,8 +254,11 @@ def _invalid(name: str) -> dict:
         "research_intent": "id",
         "review_packet": "id",
         "routing_decision": "id",
+        "search_request": "query",
+        "search_run": "run_id",
         "skillbom_candidate": "id",
         "swarm_plan": "id",
+        "tool_profile": "id",
     }
     instance.pop(required_first[name], None)
     return instance

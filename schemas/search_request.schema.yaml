@@ -1,0 +1,95 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/search_request.schema.yaml"
+title: Search Request
+description: Input schema for a Research Foundry search operation.
+type: object
+properties:
+  request_id:
+    type: string
+  intent_id:
+    type: string
+  task_node_id:
+    type: string
+  user_or_agent_id:
+    type: string
+  query:
+    type: string
+  mode:
+    enum:
+      - cache_first
+      - known_url_extract
+      - quick_lookup
+      - source_discovery
+      - semantic_discovery
+      - official_source_check
+      - github_discovery
+      - academic_discovery
+      - docs_crawl
+      - deep_research
+      - monitoring_delta
+  constraints:
+    type: object
+    properties:
+      allowed_domains:
+        type: array
+        items:
+          type: string
+      blocked_domains:
+        type: array
+        items:
+          type: string
+      required_source_types:
+        type: array
+        items:
+          type: string
+      max_source_age_days:
+        type:
+          - integer
+          - "null"
+      language:
+        type: string
+      region:
+        type:
+          - string
+          - "null"
+    additionalProperties: true
+  budget:
+    type: object
+    properties:
+      max_external_queries:
+        type: integer
+      max_urls_to_extract:
+        type: integer
+      max_crawl_pages:
+        type: integer
+      max_provider_cost_usd:
+        type: number
+      max_latency_seconds:
+        type: integer
+    additionalProperties: true
+  output_requirements:
+    type: object
+    properties:
+      source_cards:
+        type: boolean
+      claim_ledger:
+        type: boolean
+      extracted_markdown:
+        type: boolean
+      summary:
+        type: boolean
+    additionalProperties: true
+  approval:
+    type: object
+    properties:
+      requires_human_approval:
+        type: boolean
+      reason:
+        type:
+          - string
+          - "null"
+    additionalProperties: true
+required:
+  - query
+  - mode
+additionalProperties: true

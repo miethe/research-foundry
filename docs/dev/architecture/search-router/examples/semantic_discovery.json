@@ -1,0 +1,23 @@
+{
+  "intent_id": "intent_agent_memory_patterns_2026_06_21",
+  "task_node_id": "task_find_similar_memory_systems",
+  "user_or_agent_id": "agent_claude_code",
+  "query": "open source agent memory subsystems similar to MemGPT and Letta with vector + episodic stores",
+  "mode": "semantic_discovery",
+  "constraints": {
+    "max_source_age_days": 365,
+    "language": "en"
+  },
+  "budget": {
+    "max_external_queries": 5,
+    "max_urls_to_extract": 10,
+    "max_crawl_pages": 0,
+    "max_provider_cost_usd": 0.30,
+    "max_latency_seconds": 120
+  },
+  "output_requirements": {
+    "source_cards": true,
+    "extracted_markdown": true,
+    "summary": true
+  }
+}

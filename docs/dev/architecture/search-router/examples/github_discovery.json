@@ -1,0 +1,22 @@
+{
+  "intent_id": "intent_search_router_competitors_2026_06_21",
+  "task_node_id": "task_github_search_routers",
+  "user_or_agent_id": "agent_claude_code",
+  "query": "research agent search router orchestrator with provider abstraction",
+  "mode": "github_discovery",
+  "constraints": {
+    "required_source_types": ["repo"],
+    "language": "en"
+  },
+  "budget": {
+    "max_external_queries": 4,
+    "max_urls_to_extract": 6,
+    "max_crawl_pages": 0,
+    "max_provider_cost_usd": 0.20,
+    "max_latency_seconds": 90
+  },
+  "output_requirements": {
+    "source_cards": true,
+    "summary": true
+  }
+}
