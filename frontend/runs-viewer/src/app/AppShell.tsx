@@ -8,10 +8,7 @@ type NavState = "enabled" | "contextual" | "disabled";
 
 interface ShellNavContext {
   pathname: string;
-  search: string;
-  runId: string | null;
   routeRunId: string | null;
-  view: string | null;
 }
 
 interface NavCapability {
@@ -22,13 +19,12 @@ interface NavCapability {
   disabledReason?: string;
 }
 
+// D2: Run-scoped items (Runs, Reports, Ledger, Swarm) removed from top-level nav.
+// Runs are accessed only via Portfolio (/runs page → run list → run detail).
+// Run-scoped detail tabs (Ledger, Report, Swarm) live on the run detail surface.
 const NAV_ITEMS: NavCapability[] = [
   { label: "Portfolio", short: "PF", state: "enabled", resolveTarget: () => "/runs" },
-  { label: "Runs", short: "RN", state: "enabled", resolveTarget: (ctx) => ctx.runId ? `/runs/${encodeURIComponent(ctx.runId)}` : "/runs" },
-  { label: "Reports", short: "RP", state: "contextual", resolveTarget: (ctx) => ctx.runId ? `/runs/${encodeURIComponent(ctx.runId)}?view=report` : null, disabledReason: "Select a run first." },
-  { label: "Ledger", short: "LG", state: "contextual", resolveTarget: (ctx) => ctx.runId ? `/runs/${encodeURIComponent(ctx.runId)}?view=audit` : null, disabledReason: "Select a run first." },
   { label: "Library", short: "LB", state: "enabled", resolveTarget: () => "/library" },
-  { label: "Swarm", short: "SW", state: "contextual", resolveTarget: (ctx) => ctx.runId ? `/runs/${encodeURIComponent(ctx.runId)}/swarm` : null, disabledReason: "Select a run first." },
   { label: "Policies", short: "PL", state: "enabled", resolveTarget: () => "/policies" },
   { label: "Alerts", short: "AL", state: "enabled", resolveTarget: () => "/alerts" },
   { label: "Settings", short: "ST", state: "enabled", resolveTarget: () => "/settings" },
@@ -38,16 +34,14 @@ const NAV_ITEMS: NavCapability[] = [
 export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [, setSelectedRunId] = useState<string | null>(null);
 
   // Apply persisted theme on mount so the stored theme takes effect on app boot
   useEffect(() => {
     applyTheme(getViewerSettings().theme);
   }, []);
   const routeRunId = extractRunId(location.pathname);
-  const runId = routeRunId ?? selectedRunId;
-  const view = new URLSearchParams(location.search).get("view");
-  const ctx: ShellNavContext = { pathname: location.pathname, search: location.search, runId, routeRunId, view };
+  const ctx: ShellNavContext = { pathname: location.pathname, routeRunId };
   const outletContext = useMemo<ShellSelectionContext>(
     () => ({ setSelectedRunId }),
     [],
@@ -108,12 +102,9 @@ function extractRunId(pathname: string): string | null {
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
+// D2: isActiveNav simplified — only global nav items remain.
 function isActiveNav(label: string, ctx: ShellNavContext): boolean {
-  if (label === "Portfolio") return ctx.pathname === "/runs";
-  if (label === "Runs") return Boolean(ctx.routeRunId) && (ctx.view == null || ctx.view === "overview" || ctx.view === "trust" || ctx.view === "lineage" || ctx.view === "writeback");
-  if (label === "Reports") return Boolean(ctx.routeRunId) && ctx.view === "report";
-  if (label === "Ledger") return Boolean(ctx.routeRunId) && (ctx.view === "audit" || ctx.view === "ledger");
-  if (label === "Swarm") return Boolean(ctx.routeRunId) && ctx.pathname.endsWith("/swarm");
+  if (label === "Portfolio") return ctx.pathname === "/runs" || Boolean(ctx.routeRunId);
   if (label === "Library") return ctx.pathname === "/library";
   if (label === "Policies") return ctx.pathname === "/policies";
   if (label === "Alerts") return ctx.pathname === "/alerts";

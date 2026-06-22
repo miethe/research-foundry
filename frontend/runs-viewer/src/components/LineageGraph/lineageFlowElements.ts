@@ -26,6 +26,9 @@ export interface FlowElements {
  * This is a pure function — no React hooks, no side-effects.
  * All position / sizing data comes from `layoutLineage`; we never recompute
  * positions here.
+ *
+ * D4: onExpandNode is stored in node.data so LineageFlowNode can call it on
+ * single-click, opening DetailModal with the node payload.
  */
 export function buildFlowElements(
   roots: LineageNode[],
@@ -33,6 +36,7 @@ export function buildFlowElements(
   selectedNodeId: string | null,
   onToggle: (id: string) => void,
   onSelectNode: (id: string) => void,
+  onExpandNode?: (node: LineageNode) => void,
 ): FlowElements {
   // NOTE: callbacks passed here are stored in node.data; React Flow re-renders
   // nodes when data changes, so callers should provide stable references (useCallback).
@@ -52,6 +56,7 @@ export function buildFlowElements(
       childCount,
       onToggle,
       onSelectNode,
+      onExpandNode,
     };
 
     return {

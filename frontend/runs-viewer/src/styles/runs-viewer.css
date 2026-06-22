@@ -4894,6 +4894,326 @@ button.active .rv-tab-count {
   background: var(--it-surface-base);
 }
 
+/* ===== v2.3 Stage-1 additions ===== */
+
+/* ── D1: Clickable table row ───────────────────────────────────────────────────
+   The entire <tr> is keyboard-accessible and opens the run modal.
+   Inner buttons (title link, Open) stopPropagation and are still independently operable.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.rv-run-table-row--clickable {
+  cursor: pointer;
+}
+
+.rv-run-table-row--clickable:hover {
+  background: #eff8fb;
+}
+
+.rv-run-table-row--clickable:focus-visible {
+  outline: 2px solid var(--it-blue-500, #3b6fbd);
+  outline-offset: -2px;
+  background: #eff8fb;
+}
+
+[data-theme="dark"] .rv-run-table-row--clickable:hover,
+[data-theme="dark"] .rv-run-table-row--clickable:focus-visible {
+  background: var(--it-surface-base);
+}
+
+/* ── D5 sticky chrome — page surface ─────────────────────────────────────────
+   .rv-detail__sticky pins nav + header to the top with a visible divider.
+   .rv-detail__body is the scrollable content area below.
+
+   CSS var --rv-sticky-header-height is consumed by Stage 3's outline sidebar
+   to set its sticky top offset so it clears the pinned chrome.
+
+   The value is measured dynamically via ResizeObserver in RunDetail.tsx and set
+   on the .rv-detail root element so it tracks actual rendered height (important
+   when long run titles wrap). 112px is the :root fallback for first paint.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --rv-sticky-header-height: 112px;
+}
+
+.rv-detail__sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--it-surface-base, #f8fafc);
+  border-bottom: 1px solid var(--it-border-subtle, rgba(0,0,0,0.08));
+  /* Allow tab bar (inside workspace) to also be considered part of sticky chrome
+     when rendered in page mode. Tab bar is within .rv-detail__body but the
+     top-sticky band covers nav + identity header only in the .rv-detail__sticky div. */
+}
+
+[data-theme="dark"] .rv-detail__sticky {
+  background: var(--it-surface-elevated);
+  border-bottom-color: var(--it-border-soft);
+}
+
+.rv-detail__body {
+  /* Scroll container for page-mode run detail.
+     Stage 3 contract: IntersectionObserver anchors to this element via
+     data-scroll-container="true". Outline sidebar sticky top =
+     var(--rv-sticky-header-height). */
+  min-height: 0;
+  padding: var(--it-space-4, 16px) var(--it-space-6, 24px);
+}
+
+/* ── D5 sticky chrome — modal surface ────────────────────────────────────────
+   In modal mode the .rv-detail-workspace__tab-bar must NOT scroll with the content.
+   The existing .rv-run-modal .rv-detail-workspace has overflow:auto which would
+   swallow the tab bar. We make the workspace a flex column and pin the tab bar
+   at the top, then the body scrolls independently.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.rv-run-modal .rv-detail-workspace {
+  display: flex;
+  flex-direction: column;
+  /* overflow stays auto from existing rule; the body div below takes the scroll */
+}
+
+/* The tab bar row: flex-shrink:0 keeps it pinned above the scrolling body */
+.rv-detail-workspace__tab-bar {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--it-border-subtle, rgba(0,0,0,0.08));
+  margin-bottom: 0 !important; /* override .rv-detail__tabs margin-bottom */
+  padding-bottom: 8px;
+}
+
+/* The scrollable body within the workspace */
+.rv-detail-workspace__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-top: var(--it-space-4, 16px);
+}
+
+/* Page-mode workspace: body scrolls via parent .rv-detail__body; no internal scroll needed */
+.rv-detail-workspace--page .rv-detail-workspace__body {
+  overflow: visible;
+}
+
+/* D5 (fix): page-mode tab bar sticky — pins below the sticky header chrome.
+   .rv-detail__body has no overflow/transform/isolation that would clip this.
+   --rv-sticky-header-height is measured dynamically via ResizeObserver in RunDetail.tsx;
+   112px is the :root fallback for first paint. */
+.rv-detail-workspace--page .rv-detail-workspace__tab-bar {
+  position: sticky;
+  top: var(--rv-sticky-header-height, 112px);
+  z-index: 10;
+  background: var(--it-surface-base, #f8fafc);
+}
+
+[data-theme="dark"] .rv-detail-workspace--page .rv-detail-workspace__tab-bar {
+  background: var(--it-surface-elevated);
+}
+
+[data-theme="dark"] .rv-detail-workspace__tab-bar {
+  border-bottom-color: var(--it-border-soft);
+}
+
+/* ── D6: SwarmPane inside tab body ───────────────────────────────────────────
+   .rv-swarm--pane strips the standalone screen header padding; inherits
+   swarm card styles from swarm.css (already globally imported).
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.rv-swarm--pane {
+  padding: 0;
+}
+
+.rv-swarm--pane .rv-swarm__header {
+  display: none; /* page-level title is provided by RunDetail / RunDetailModal header */
+}
+/* ===== end v2.3 Stage-1 additions ===== */
+
+/* ===== v2.3 Stage-2 additions (D3 + D4) ====================================
+
+   D3: Edge connector lines in LineageFlow — no new CSS needed; edges use the
+       existing .rv-lineage-edge class and React Flow renders the SVG path.
+       This section documents the selector in case future dark-theme overrides
+       are needed for the edge stroke color.
+
+   D4: DetailModal navigate action footer. Reuses .rv-modal-overlay--stacked
+       z-index convention (already at z-index:1100). The footer renders inside
+       .rv-modal__body as a sibling of the node detail content.
+   =========================================================================== */
+
+/* ── D4: Node modal footer with primary navigate action ───────────────────── */
+
+.rv-detail-modal__footer {
+  border-top: 1px solid var(--it-border-subtle, rgba(0, 0, 0, 0.08));
+  padding-top: var(--it-space-4, 16px);
+  margin-top: var(--it-space-2, 8px);
+  display: flex;
+  justify-content: flex-start;
+}
+
+[data-theme="dark"] .rv-detail-modal__footer {
+  border-top-color: var(--it-border-soft);
+}
+
+.rv-detail-modal__navigate-action {
+  /* Inherits .it-btn.secondary.sm from the it- design system.
+     No additional sizing overrides needed — secondary sm is already compact. */
+  font-size: var(--it-text-sm, 0.875rem);
+  gap: var(--it-space-1, 4px);
+}
+
+/* ── D3: lineage edge — dark-theme stroke override (if needed) ─────────────
+   The edge stroke color comes from node kind accent (CSS variable from
+   LINEAGE_KIND_META[kind].accent). Dark-theme adjustments can be applied here
+   if specific kind accents clash with the dark canvas background.
+   No override needed as of Stage 2 — the existing accent vars are dark-safe.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* ===== end v2.3 Stage-2 additions ===== */
+
+/* ===== v2.3 Stage-3 additions (D5 report outline) ===========================
+
+   D5: navigable table-of-contents in the report sidebar.
+   - .rv-report-outline      — nav container; sits above CompositionSidebar in sidebar
+   - .rv-report-outline__title — section label ("Contents")
+   - .rv-report-outline__list  — ordered list of headings
+   - .rv-report-outline__item  — one heading entry; indented via --level CSS var
+   - .rv-report-outline__item--active — current visible heading
+   - .rv-report-outline__link  — the clickable button for each entry
+
+   Sidebar sticky top updated to use --rv-sticky-header-height (Stage 1 contract).
+   =========================================================================== */
+
+/* ── D5: Override sidebar sticky top to clear the Stage-1 sticky chrome ─────── */
+
+.rv-report-overlay__sidebar {
+  /* Override: was top: var(--it-space-6); now clears sticky tab bar chrome.
+     --rv-sticky-header-height is measured dynamically via ResizeObserver in RunDetail.tsx
+     (112px :root fallback for first paint). Fall back to var(--it-space-6) if the var
+     is not defined (e.g. in isolated test renders). */
+  top: var(--rv-sticky-header-height, var(--it-space-6, 24px));
+  /* Sidebar scrolls independently within its sticky position */
+  max-height: calc(100vh - var(--rv-sticky-header-height, 112px) - var(--it-space-6, 24px));
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-3);
+}
+
+/* ── D5: ReportOutline container ─────────────────────────────────────────────── */
+
+.rv-report-outline {
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-subtle);
+  border-radius: var(--it-radius-lg);
+  padding: var(--it-space-3) var(--it-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+}
+
+.rv-report-outline--empty {
+  /* Omit border/background for the empty state — it's just a muted message */
+  background: none;
+  border-color: transparent;
+  padding: 0;
+}
+
+.rv-report-outline__empty {
+  font-size: var(--it-text-xs);
+  color: var(--it-text-muted);
+  margin: 0;
+}
+
+/* ── D5: Outline title ────────────────────────────────────────────────────────── */
+
+.rv-report-outline__title {
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--it-text-tertiary);
+  margin: 0;
+}
+
+/* ── D5: Outline list ─────────────────────────────────────────────────────────── */
+
+.rv-report-outline__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* ── D5: Outline items — level indentation via CSS custom property --level ───── */
+
+.rv-report-outline__item {
+  /* --level: 0 = h2, 1 = h3 (set inline in JSX) */
+  padding-left: calc(var(--level, 0) * 12px);
+}
+
+.rv-report-outline__link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 3px var(--it-space-1, 4px);
+  border-radius: var(--it-radius-sm);
+  font-size: var(--it-text-xs);
+  color: var(--it-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color var(--it-dur-fast) var(--it-ease-out),
+              background var(--it-dur-fast) var(--it-ease-out);
+  line-height: 1.4;
+}
+
+.rv-report-outline__link:hover {
+  color: var(--it-text-primary);
+  background: var(--it-neutral-100);
+}
+
+.rv-report-outline__link:focus-visible {
+  outline: 2px solid var(--it-blue-500, #3b6fbd);
+  outline-offset: 1px;
+}
+
+/* h3 items are slightly lighter weight */
+.rv-report-outline__item--h3 .rv-report-outline__link {
+  font-weight: var(--it-weight-normal, 400);
+  color: var(--it-text-tertiary);
+}
+
+/* ── D5: Active item highlight ───────────────────────────────────────────────── */
+
+.rv-report-outline__item--active .rv-report-outline__link {
+  color: var(--it-teal-600, #0e7490);
+  font-weight: var(--it-weight-semibold, 600);
+  background: var(--it-teal-50, rgba(8, 145, 178, 0.07));
+}
+
+/* ── D5: Dark-theme overrides ────────────────────────────────────────────────── */
+
+[data-theme="dark"] .rv-report-outline {
+  background: var(--it-surface-base);
+  border-color: var(--it-border-soft);
+}
+
+[data-theme="dark"] .rv-report-outline__link:hover {
+  background: var(--it-surface-elevated);
+  color: var(--it-text-primary);
+}
+
+[data-theme="dark"] .rv-report-outline__item--active .rv-report-outline__link {
+  color: var(--it-teal-400, #22d3ee);
+  background: rgba(8, 145, 178, 0.12);
+}
+
+/* ===== end v2.3 Stage-3 additions ===== */
 /* neutral-300 backgrounds that need darkening (not covered by token flip) */
 [data-theme="dark"] .rv-tone-dot {
   background: var(--it-neutral-200);

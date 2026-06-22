@@ -15,6 +15,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm     from "remark-gfm";
 import type { RFClaim } from "@/types/rf";
 import { ClaimChip }    from "./ClaimChip";
+import { slugify }      from "./reportOutlineUtils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,24 @@ function splitWithClaimChips(
   return parts;
 }
 
+// ── Heading slug tracking (deduplicate within a render pass) ─────────────────
+
+/**
+ * A per-render slug counter is required to match the deduplication logic in
+ * extractHeadings (ReportOutline). We build it once per buildComponents call
+ * (which happens once per render since buildComponents is not memoized).
+ */
+function makeSlugCounter() {
+  const counts: Record<string, number> = {};
+  return function nextSlug(text: string): string {
+    const base = slugify(text);
+    if (!base) return "";
+    const count = counts[base] ?? 0;
+    counts[base] = count + 1;
+    return count === 0 ? base : `${base}-${count + 1}`;
+  };
+}
+
 // ── Sentence color detection ──────────────────────────────────────────────────
 
 /**
@@ -140,9 +159,16 @@ interface ParagraphProps {
   children?: React.ReactNode;
 }
 
+interface HeadingProps {
+  children?: React.ReactNode;
+}
+
 /**
  * Builds the react-markdown custom components object. Needs claims and callbacks
  * in scope, so we recreate it per render (or memoize if needed).
+ *
+ * D5: h2/h3 renderers emit id={slug} so the ReportOutline anchor links work.
+ * Slug generation mirrors extractHeadings (ReportOutline.ts) for consistency.
  */
 function buildComponents(
   claims:        RFClaim[],
@@ -151,6 +177,8 @@ function buildComponents(
   selectedClaimId?: string | null,
   highlightText = false,
 ) {
+  // Shared slug counter: deduplicates headings in the same order as extractHeadings
+  const nextSlug = makeSlugCounter();
   /**
    * Walk a react-markdown children tree and expand any string nodes that
    * contain [claim:clm_NNN] patterns into [string, ClaimChip, string, ...].
@@ -198,6 +226,22 @@ function buildComponents(
         Array.isArray(children) ? (children as React.ReactNode[]).map((c) => (typeof c === "string" ? c : "")).join("") : "";
       const highlightClass = blockHighlightClass(textContent, activeClaimIds, highlightText);
       return <li className={`rv-report-li${highlightClass ? ` ${highlightClass}` : ""}`}>{expandChildren(children)}</li>;
+    },
+
+    // D5: h2/h3 heading renderers emit id={slug} for anchor-link navigation.
+    // The slug is computed with the same deduplication counter as extractHeadings.
+    h2({ children }: HeadingProps) {
+      const rawText = typeof children === "string" ? children :
+        Array.isArray(children) ? (children as React.ReactNode[]).map((c) => (typeof c === "string" ? c : "")).join("") : "";
+      const slug = nextSlug(rawText);
+      return <h2 id={slug || undefined} className="rv-report-h2" data-heading-slug={slug || undefined}>{children}</h2>;
+    },
+
+    h3({ children }: HeadingProps) {
+      const rawText = typeof children === "string" ? children :
+        Array.isArray(children) ? (children as React.ReactNode[]).map((c) => (typeof c === "string" ? c : "")).join("") : "";
+      const slug = nextSlug(rawText);
+      return <h3 id={slug || undefined} className="rv-report-h3" data-heading-slug={slug || undefined}>{children}</h3>;
     },
   };
 }

@@ -54,6 +54,11 @@ export function RunDetailModal({ runId, onClose }: RunDetailModalProps) {
     setDetailModalPayload({ kind: "node", node });
   }, []);
 
+  const handleDetailModalNavigate = useCallback((tab: DetailTab, claimId?: string) => {
+    handleTabChange(tab, claimId ?? null);
+    setDetailModalPayload(null);
+  }, [handleTabChange]);
+
   const fullPageHref = useMemo(() => {
     if (!runId) return "/runs";
     const params = new URLSearchParams();
@@ -192,6 +197,7 @@ export function RunDetailModal({ runId, onClose }: RunDetailModalProps) {
               payload={detailModalPayload}
               stacked
               onClose={() => setDetailModalPayload(null)}
+              onNavigate={handleDetailModalNavigate}
             />
           </>
         )}

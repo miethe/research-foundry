@@ -1,29 +1,29 @@
 /**
- * G1-swarm tests — SwarmScreen component tests + isActiveNav coverage for Swarm.
+ * g1-swarm.test.tsx — v2.3 Stage-1 nav + swarm + row-click tests.
  *
- * Covers:
- *   TEST-G1-01: routing_decision card renders agent + rationale when present
- *   TEST-G1-02: swarm_plan section renders when data present (structured + array)
- *   TEST-G1-03: full empty state when context is null (pre-F5 exports)
- *   TEST-G1-04: isActiveNav returns true for Swarm at /runs/:runId/swarm
- *   SMOKE-G1-01: Swarm nav item enabled and not disabled
- *   SMOKE-G1-02: SwarmScreen renders without crash with data present
- *   SMOKE-G1-03: SwarmScreen renders without crash with context absent
+ * D2: run-scoped sidebar items (Runs, Reports, Ledger, Swarm) are ABSENT from NAV_ITEMS.
+ *     Global tabs present: Portfolio, Library, Policies, Alerts, Settings, Help.
+ * D1: Clicking a RunTable <tr> opens the run modal (setModalRunId).
+ * D6: Swarm tab present in RunDetailWorkspace on both page and modal.
+ * D4 (integration): onNavigate is threaded from RunDetailModal → DetailModal.
  */
 
-import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { describe, it, expect, vi } from "vitest";
+import { render, fireEvent, act } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 
-import { SwarmScreen } from "@/screens/SwarmScreen";
 import { AppShell } from "@/app/AppShell";
-import type { RFRunExport } from "@/types/rf";
+import { RunDetailWorkspace } from "@/components/RunDetail/RunDetailWorkspace";
+import { RunDetailModal } from "@/components/RunDetail/RunDetailModal";
+import { RunTable } from "@/screens/RunList";
+import type { RFRunExport, RFClaim } from "@/types/rf";
+import type { RunCardData } from "@/components/RunList/RunCard";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-/** Minimal run with no context block (pre-F5 export). */
-function makeRunNoContext(runId: string): RFRunExport {
+function makeRun(runId: string): RFRunExport {
   return {
     schema_version: "1.1",
     run_id: runId,
@@ -33,117 +33,97 @@ function makeRunNoContext(runId: string): RFRunExport {
     verification: { present: true, passed: true, exit_code: 0, checks: [] },
     governance: null,
     timeline: null,
-    // context deliberately absent
   };
 }
 
-/** Run with null context (explicit null — pre-F5). */
-function makeRunNullContext(runId: string): RFRunExport {
+function makeRunWithSwarm(runId: string): RFRunExport {
   return {
-    ...makeRunNoContext(runId),
-    context: null,
-  };
-}
-
-/** Run with a populated context block (post-F5 export). */
-function makeRunWithSwarmData(runId: string): RFRunExport {
-  return {
-    ...makeRunNoContext(runId),
-    title: "My Test Research Run",
+    ...makeRun(runId),
+    title: "Swarm Test Run",
     context: {
       routing_decision: {
         decision: "rf_domain_researcher",
-        rationale: "Chosen because the query requires domain-specific source discovery.",
+        rationale: "Domain-specific discovery required.",
       },
       swarm_plan: {
         swarm: "discovery_swarm",
-        agents: ["rf_source_scout", "rf_deep_reader"],
-        adapters: ["web_fetch", "pubmed"],
+        agents: ["rf_source_scout"],
+        adapters: ["web_fetch"],
       },
     },
   };
 }
 
-/** Run with routing_decision only (swarm_plan absent). */
-function makeRunWithRoutingOnly(runId: string): RFRunExport {
+function makeRunCardData(run: RFRunExport): RunCardData {
   return {
-    ...makeRunNoContext(runId),
-    context: {
-      routing_decision: {
-        decision: "rf_synthesizer",
-        rationale: "Synthesis-only run; no discovery needed.",
-      },
-      swarm_plan: null,
-    },
+    run_id: run.run_id,
+    status_derived: run.status_derived,
+    created_at: null,
+    sensitivity: null,
+    claim_counts: null,
+    title: (run as { title?: string }).title ?? null,
+    linked_projects: null,
+    category: null,
+    tags: null,
   };
 }
 
-// ── Test helpers ───────────────────────────────────────────────────────────────
-
-function renderSwarmInRoute(run: RFRunExport) {
-  const runId = run.run_id;
+function makeWrapper(initialPath = "/runs") {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
   });
-  // Pre-seed cache so useRunDetail returns synchronously
-  qc.setQueryData(["rf", "runs", "detail", runId], run);
-
-  return render(
-    <MemoryRouter initialEntries={[`/runs/${encodeURIComponent(runId)}/swarm`]}>
-      <QueryClientProvider client={qc}>
-        <Routes>
-          <Route path="/runs/:runId/swarm" element={<SwarmScreen />} />
-        </Routes>
-      </QueryClientProvider>
-    </MemoryRouter>,
-  );
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <MemoryRouter initialEntries={[initialPath]}>
+        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      </MemoryRouter>
+    );
+  };
 }
 
-// ── SMOKE-G1-01: Swarm nav item enabled ───────────────────────────────────────
+// ── D2: Run-scoped items absent from sidebar nav ──────────────────────────────
 
-describe("isActiveNav — Swarm nav item (AC G1-05, SMOKE-G1-01)", () => {
-  it("Swarm nav button is NOT disabled when a runId is in the URL", () => {
+describe("D2 — sidebar cleanup: run-scoped items absent from NAV_ITEMS", () => {
+  it("Runs nav item is ABSENT from the sidebar", () => {
     const { container } = render(
-      <MemoryRouter initialEntries={["/runs/run_abc/swarm"]}>
+      <MemoryRouter initialEntries={["/runs"]}>
         <AppShell />
       </MemoryRouter>,
     );
     const navButtons = container.querySelectorAll(".rv-shell-nav__item");
-    const swarmBtn = Array.from(navButtons).find(
-      (btn) => btn.querySelector("strong")?.textContent === "Swarm",
-    ) as HTMLButtonElement | undefined;
-    expect(swarmBtn).not.toBeUndefined();
-    expect(swarmBtn!.disabled).toBe(false);
+    const runsBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Runs",
+    );
+    expect(runsBtn).toBeUndefined();
   });
 
-  it("Swarm nav button does NOT have data-state='disabled'", () => {
+  it("Reports nav item is ABSENT from the sidebar", () => {
     const { container } = render(
-      <MemoryRouter initialEntries={["/runs/run_abc/swarm"]}>
+      <MemoryRouter initialEntries={["/runs"]}>
         <AppShell />
       </MemoryRouter>,
     );
     const navButtons = container.querySelectorAll(".rv-shell-nav__item");
-    const swarmBtn = Array.from(navButtons).find(
-      (btn) => btn.querySelector("strong")?.textContent === "Swarm",
+    const reportsBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Reports",
     );
-    expect(swarmBtn!.getAttribute("data-state")).toBe("contextual");
+    expect(reportsBtn).toBeUndefined();
   });
 
-  it("Swarm nav button has aria-current='page' when pathname ends with /swarm", () => {
+  it("Ledger nav item is ABSENT from the sidebar", () => {
     const { container } = render(
-      <MemoryRouter initialEntries={["/runs/run_abc/swarm"]}>
+      <MemoryRouter initialEntries={["/runs"]}>
         <AppShell />
       </MemoryRouter>,
     );
     const navButtons = container.querySelectorAll(".rv-shell-nav__item");
-    const swarmBtn = Array.from(navButtons).find(
-      (btn) => btn.querySelector("strong")?.textContent === "Swarm",
+    const ledgerBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Ledger",
     );
-    expect(swarmBtn).not.toBeUndefined();
-    expect(swarmBtn!.getAttribute("aria-current")).toBe("page");
+    expect(ledgerBtn).toBeUndefined();
   });
 
-  it("Swarm nav button does NOT have aria-current='page' on /runs", () => {
+  it("Swarm nav item is ABSENT from the sidebar", () => {
     const { container } = render(
       <MemoryRouter initialEntries={["/runs"]}>
         <AppShell />
@@ -153,169 +133,10 @@ describe("isActiveNav — Swarm nav item (AC G1-05, SMOKE-G1-01)", () => {
     const swarmBtn = Array.from(navButtons).find(
       (btn) => btn.querySelector("strong")?.textContent === "Swarm",
     );
-    expect(swarmBtn!.getAttribute("aria-current")).toBeNull();
+    expect(swarmBtn).toBeUndefined();
   });
 
-  it("Swarm nav button is disabled when no runId is active (on /runs)", () => {
-    const { container } = render(
-      <MemoryRouter initialEntries={["/runs"]}>
-        <AppShell />
-      </MemoryRouter>,
-    );
-    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
-    const swarmBtn = Array.from(navButtons).find(
-      (btn) => btn.querySelector("strong")?.textContent === "Swarm",
-    ) as HTMLButtonElement | undefined;
-    expect(swarmBtn).not.toBeUndefined();
-    expect(swarmBtn!.disabled).toBe(true);
-  });
-
-  it("enabling Swarm nav does not break Alerts active state at /alerts", () => {
-    const { container } = render(
-      <MemoryRouter initialEntries={["/alerts"]}>
-        <AppShell />
-      </MemoryRouter>,
-    );
-    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
-    const alertsBtn = Array.from(navButtons).find(
-      (btn) => btn.querySelector("strong")?.textContent === "Alerts",
-    );
-    expect(alertsBtn!.getAttribute("aria-current")).toBe("page");
-    const swarmBtn = Array.from(navButtons).find(
-      (btn) => btn.querySelector("strong")?.textContent === "Swarm",
-    );
-    expect(swarmBtn!.getAttribute("aria-current")).toBeNull();
-  });
-});
-
-// ── SMOKE-G1-03 / TEST-G1-03: Full empty state when context absent ────────────
-
-describe("SwarmScreen — full empty state when context absent (AC G1-04, SMOKE-G1-03, TEST-G1-03)", () => {
-  it("renders the swarm screen container when context is absent", () => {
-    const run = makeRunNoContext("run_no_ctx");
-    const { container } = renderSwarmInRoute(run);
-    expect(container.querySelector("[data-testid='swarm-screen']")).not.toBeNull();
-  });
-
-  it("shows 'Swarm data not available' message when context is undefined", () => {
-    const run = makeRunNoContext("run_no_ctx_2");
-    const { container } = renderSwarmInRoute(run);
-    const empty = container.querySelector("[data-testid='swarm-context-empty']");
-    expect(empty).not.toBeNull();
-    expect(empty!.textContent).toContain("Swarm data not available");
-  });
-
-  it("shows 'Re-export this run' guidance when context is undefined", () => {
-    const run = makeRunNoContext("run_no_ctx_3");
-    const { container } = renderSwarmInRoute(run);
-    const empty = container.querySelector("[data-testid='swarm-context-empty']");
-    expect(empty).not.toBeNull();
-    expect(empty!.textContent!.toLowerCase()).toContain("re-export");
-  });
-
-  it("shows full empty state when context is explicitly null", () => {
-    const run = makeRunNullContext("run_null_ctx");
-    const { container } = renderSwarmInRoute(run);
-    const empty = container.querySelector("[data-testid='swarm-context-empty']");
-    expect(empty).not.toBeNull();
-  });
-
-  it("does NOT throw a JS error when context is absent", () => {
-    const run = makeRunNoContext("run_no_ctx_safe");
-    expect(() => renderSwarmInRoute(run)).not.toThrow();
-  });
-});
-
-// ── SMOKE-G1-02 / TEST-G1-01: Routing Decision card with data ─────────────────
-
-describe("SwarmScreen — routing decision card (AC G1-02, SMOKE-G1-02, TEST-G1-01)", () => {
-  it("renders swarm screen without crash when routing_decision is present", () => {
-    const run = makeRunWithSwarmData("run_full");
-    expect(() => renderSwarmInRoute(run)).not.toThrow();
-  });
-
-  it("renders the routing decision section", () => {
-    const run = makeRunWithSwarmData("run_routing");
-    const { container } = renderSwarmInRoute(run);
-    expect(container.querySelector("[data-testid='swarm-routing-section']")).not.toBeNull();
-  });
-
-  it("renders the routing decision card with agent name", () => {
-    const run = makeRunWithSwarmData("run_agent");
-    const { container } = renderSwarmInRoute(run);
-    const card = container.querySelector("[data-testid='swarm-routing-card']");
-    expect(card).not.toBeNull();
-    expect(card!.textContent).toContain("rf_domain_researcher");
-  });
-
-  it("renders the routing decision rationale text", () => {
-    const run = makeRunWithSwarmData("run_rationale");
-    const { container } = renderSwarmInRoute(run);
-    const rationale = container.querySelector("[data-testid='swarm-routing-rationale']");
-    expect(rationale).not.toBeNull();
-    expect(rationale!.textContent).toContain("Chosen because");
-  });
-
-  it("renders 'No routing decision' placeholder when routing_decision is absent", () => {
-    const run = makeRunNoContext("run_no_routing");
-    // Give it a context but no routing_decision
-    const runWithEmptyContext: RFRunExport = {
-      ...run,
-      context: { routing_decision: null, swarm_plan: null },
-    };
-    const { container } = renderSwarmInRoute(runWithEmptyContext);
-    const empty = container.querySelector("[data-testid='swarm-routing-empty']");
-    expect(empty).not.toBeNull();
-    expect(empty!.textContent).toContain("No routing decision recorded");
-  });
-});
-
-// ── SMOKE-G1-02 / TEST-G1-02: Swarm plan section with data ───────────────────
-
-describe("SwarmScreen — swarm plan section (AC G1-03, SMOKE-G1-02, TEST-G1-02)", () => {
-  it("renders the swarm plan section", () => {
-    const run = makeRunWithSwarmData("run_plan");
-    const { container } = renderSwarmInRoute(run);
-    expect(container.querySelector("[data-testid='swarm-plan-section']")).not.toBeNull();
-  });
-
-  it("renders structured swarm plan with swarm/agents/adapters", () => {
-    const run = makeRunWithSwarmData("run_structured");
-    const { container } = renderSwarmInRoute(run);
-    const structured = container.querySelector("[data-testid='swarm-plan-structured']");
-    expect(structured).not.toBeNull();
-    expect(structured!.textContent).toContain("discovery_swarm");
-  });
-
-  it("renders agents from swarm_plan.agents", () => {
-    const run = makeRunWithSwarmData("run_agents");
-    const { container } = renderSwarmInRoute(run);
-    const structured = container.querySelector("[data-testid='swarm-plan-structured']");
-    expect(structured).not.toBeNull();
-    expect(structured!.textContent).toContain("rf_source_scout");
-  });
-
-  it("renders 'No swarm plan' placeholder when swarm_plan is absent", () => {
-    const run = makeRunWithRoutingOnly("run_no_plan");
-    const { container } = renderSwarmInRoute(run);
-    const empty = container.querySelector("[data-testid='swarm-plan-empty']");
-    expect(empty).not.toBeNull();
-    expect(empty!.textContent).toContain("No swarm plan recorded");
-  });
-
-  it("renders the agents section chip list when agents can be derived", () => {
-    const run = makeRunWithSwarmData("run_chips");
-    const { container } = renderSwarmInRoute(run);
-    expect(container.querySelector("[data-testid='swarm-agents-section']")).not.toBeNull();
-    const chips = container.querySelectorAll("[data-testid='swarm-agent-chip']");
-    expect(chips.length).toBeGreaterThan(0);
-  });
-});
-
-// ── Regression guard: existing nav items not broken ───────────────────────────
-
-describe("Swarm nav — no regression on existing nav items", () => {
-  it("Portfolio is still active at /runs", () => {
+  it("Portfolio nav item is present and active at /runs", () => {
     const { container } = render(
       <MemoryRouter initialEntries={["/runs"]}>
         <AppShell />
@@ -325,19 +146,479 @@ describe("Swarm nav — no regression on existing nav items", () => {
     const pfBtn = Array.from(navButtons).find(
       (btn) => btn.querySelector("strong")?.textContent === "Portfolio",
     );
+    expect(pfBtn).not.toBeUndefined();
     expect(pfBtn!.getAttribute("aria-current")).toBe("page");
   });
 
-  it("Settings is still active at /settings", () => {
+  it("Library nav item is present", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/library"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
+    const lbBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Library",
+    );
+    expect(lbBtn).not.toBeUndefined();
+    expect(lbBtn!.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("Policies nav item is present and active at /policies", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/policies"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
+    const plBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Policies",
+    );
+    expect(plBtn).not.toBeUndefined();
+    expect(plBtn!.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("Alerts nav item is present and active at /alerts", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/alerts"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
+    const alBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Alerts",
+    );
+    expect(alBtn).not.toBeUndefined();
+    expect(alBtn!.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("Settings nav item is present and active at /settings", () => {
     const { container } = render(
       <MemoryRouter initialEntries={["/settings"]}>
         <AppShell />
       </MemoryRouter>,
     );
     const navButtons = container.querySelectorAll(".rv-shell-nav__item");
-    const settingsBtn = Array.from(navButtons).find(
+    const stBtn = Array.from(navButtons).find(
       (btn) => btn.querySelector("strong")?.textContent === "Settings",
     );
-    expect(settingsBtn!.getAttribute("aria-current")).toBe("page");
+    expect(stBtn).not.toBeUndefined();
+    expect(stBtn!.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("Help nav item is present and active at /help", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/help"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
+    const hpBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Help",
+    );
+    expect(hpBtn).not.toBeUndefined();
+    expect(hpBtn!.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("exactly 6 nav items are present (Portfolio, Library, Policies, Alerts, Settings, Help)", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/runs"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
+    expect(navButtons.length).toBe(6);
+  });
+});
+
+// ── D1: RunTable row click opens modal ───────────────────────────────────────
+
+describe("D1 — RunTable row click opens run modal", () => {
+  it("clicking a table row calls onOpen with the run_id", () => {
+    const onOpen = vi.fn();
+    const onSelect = vi.fn();
+    const run = makeRun("test_run_001");
+    const runs: RunCardData[] = [makeRunCardData(run)];
+
+    const { container } = render(
+      <RunTable
+        runs={runs}
+        selectedRunId={null}
+        onSelect={onSelect}
+        onOpen={onOpen}
+      />,
+      { wrapper: makeWrapper() },
+    );
+
+    const row = container.querySelector("[data-testid='run-table-row']");
+    expect(row).not.toBeNull();
+    act(() => { fireEvent.click(row!); });
+    expect(onOpen).toHaveBeenCalledWith("test_run_001");
+  });
+
+  it("pressing Enter on a focused table row calls onOpen", () => {
+    const onOpen = vi.fn();
+    const run = makeRun("test_run_002");
+    const runs: RunCardData[] = [makeRunCardData(run)];
+
+    const { container } = render(
+      <RunTable
+        runs={runs}
+        selectedRunId={null}
+        onSelect={() => {}}
+        onOpen={onOpen}
+      />,
+      { wrapper: makeWrapper() },
+    );
+
+    const row = container.querySelector("[data-testid='run-table-row']");
+    expect(row).not.toBeNull();
+    act(() => { fireEvent.keyDown(row!, { key: "Enter" }); });
+    expect(onOpen).toHaveBeenCalledWith("test_run_002");
+  });
+
+  it("pressing Space on a focused table row calls onOpen", () => {
+    const onOpen = vi.fn();
+    const run = makeRun("test_run_003");
+    const runs: RunCardData[] = [makeRunCardData(run)];
+
+    const { container } = render(
+      <RunTable
+        runs={runs}
+        selectedRunId={null}
+        onSelect={() => {}}
+        onOpen={onOpen}
+      />,
+      { wrapper: makeWrapper() },
+    );
+
+    const row = container.querySelector("[data-testid='run-table-row']");
+    expect(row).not.toBeNull();
+    act(() => { fireEvent.keyDown(row!, { key: " " }); });
+    expect(onOpen).toHaveBeenCalledWith("test_run_003");
+  });
+
+  it("table row has tabIndex=0 and role=row for keyboard operability", () => {
+    const run = makeRun("test_run_004");
+    const { container } = render(
+      <RunTable
+        runs={[makeRunCardData(run)]}
+        selectedRunId={null}
+        onSelect={() => {}}
+        onOpen={() => {}}
+      />,
+      { wrapper: makeWrapper() },
+    );
+    const row = container.querySelector("[data-testid='run-table-row']");
+    expect(row?.getAttribute("tabindex")).toBe("0");
+    expect(row?.getAttribute("role")).toBe("row");
+  });
+
+  it("clicking the inner Open button calls onOpen without double-firing via row", () => {
+    const onOpen = vi.fn();
+    const run = makeRun("test_run_005");
+
+    const { container } = render(
+      <RunTable
+        runs={[makeRunCardData(run)]}
+        selectedRunId={null}
+        onSelect={() => {}}
+        onOpen={onOpen}
+      />,
+      { wrapper: makeWrapper() },
+    );
+
+    const openBtn = container.querySelector(".rv-table-open");
+    expect(openBtn).not.toBeNull();
+    act(() => { fireEvent.click(openBtn!); });
+    // onOpen called exactly once (stopPropagation prevents double-fire)
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith("test_run_005");
+  });
+
+  it("clicking inner title button calls onSelect, not onOpen", () => {
+    const onOpen = vi.fn();
+    const onSelect = vi.fn();
+    const run = makeRun("test_run_006");
+
+    const { container } = render(
+      <RunTable
+        runs={[makeRunCardData(run)]}
+        selectedRunId={null}
+        onSelect={onSelect}
+        onOpen={onOpen}
+      />,
+      { wrapper: makeWrapper() },
+    );
+
+    const titleBtn = container.querySelector(".rv-table-link");
+    expect(titleBtn).not.toBeNull();
+    act(() => { fireEvent.click(titleBtn!); });
+    expect(onSelect).toHaveBeenCalledWith("test_run_006");
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+});
+
+// ── D6: Swarm tab present in RunDetailWorkspace ───────────────────────────────
+
+describe("D6 — Swarm tab in RunDetailWorkspace (page + modal)", () => {
+  it("Swarm tab button is present in the workspace tab bar", () => {
+    const run = makeRun("test_run_swarm_page");
+    const { container } = render(
+      <RunDetailWorkspace
+        run={run}
+        activeTab="overview"
+        mode="page"
+        onTabChange={() => {}}
+      />,
+      { wrapper: makeWrapper() },
+    );
+    const swarmTab = container.querySelector("[data-testid='detail-tab-swarm']");
+    expect(swarmTab).not.toBeNull();
+    expect(swarmTab!.textContent).toBe("Swarm");
+  });
+
+  it("Swarm tab button is present in modal mode", () => {
+    const run = makeRun("test_run_swarm_modal");
+    const { container } = render(
+      <RunDetailWorkspace
+        run={run}
+        activeTab="overview"
+        mode="modal"
+        onTabChange={() => {}}
+      />,
+      { wrapper: makeWrapper() },
+    );
+    const swarmTab = container.querySelector("[data-testid='detail-tab-swarm']");
+    expect(swarmTab).not.toBeNull();
+  });
+
+  it("clicking Swarm tab fires onTabChange with 'swarm'", () => {
+    const onTabChange = vi.fn();
+    const run = makeRun("test_run_swarm_click");
+    const { container } = render(
+      <RunDetailWorkspace
+        run={run}
+        activeTab="overview"
+        mode="page"
+        onTabChange={onTabChange}
+      />,
+      { wrapper: makeWrapper() },
+    );
+    const swarmTab = container.querySelector("[data-testid='detail-tab-swarm']") as HTMLButtonElement;
+    expect(swarmTab).not.toBeNull();
+    act(() => { fireEvent.click(swarmTab); });
+    expect(onTabChange).toHaveBeenCalledWith("swarm");
+  });
+
+  it("Swarm tabpanel renders SwarmPane with empty state when context absent", () => {
+    const run = makeRun("test_run_swarm_empty");
+    const { container } = render(
+      <RunDetailWorkspace
+        run={run}
+        activeTab="swarm"
+        mode="page"
+        onTabChange={() => {}}
+      />,
+      { wrapper: makeWrapper() },
+    );
+    const tabpanel = container.querySelector("[data-testid='tabpanel-swarm']");
+    expect(tabpanel).not.toBeNull();
+    const swarmPane = container.querySelector("[data-testid='swarm-pane']");
+    expect(swarmPane).not.toBeNull();
+    // Empty state shown when context absent
+    const emptyState = container.querySelector("[data-testid='swarm-pane-context-empty']");
+    expect(emptyState).not.toBeNull();
+    expect(emptyState!.textContent).toContain("Swarm data not available");
+  });
+
+  it("Swarm tabpanel renders SwarmPane with content when context present", () => {
+    const run = makeRunWithSwarm("test_run_swarm_content");
+    const { container } = render(
+      <RunDetailWorkspace
+        run={run}
+        activeTab="swarm"
+        mode="page"
+        onTabChange={() => {}}
+      />,
+      { wrapper: makeWrapper() },
+    );
+    const tabpanel = container.querySelector("[data-testid='tabpanel-swarm']");
+    expect(tabpanel).not.toBeNull();
+    // Should show routing decision section
+    const routingSection = container.querySelector("[data-testid='swarm-pane-routing-section']");
+    expect(routingSection).not.toBeNull();
+    // Should show swarm plan section
+    const planSection = container.querySelector("[data-testid='swarm-pane-plan-section']");
+    expect(planSection).not.toBeNull();
+  });
+
+  it("RunDetailModal has Swarm tab in the workspace (via pre-seeded cache)", async () => {
+    const run = makeRunWithSwarm("test_run_modal_swarm");
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
+    });
+    qc.setQueryData(["rf", "runs", "detail", run.run_id], run);
+
+    const { container } = render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <RunDetailModal runId={run.run_id} onClose={() => {}} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    // Wait for run data to load from cache
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const swarmTab = container.querySelector("[data-testid='detail-tab-swarm']");
+    expect(swarmTab).not.toBeNull();
+    expect(swarmTab!.textContent).toBe("Swarm");
+  });
+
+  it("Ledger tab is still present in RunDetailWorkspace", () => {
+    const run = makeRun("test_run_ledger_present");
+    const { container } = render(
+      <RunDetailWorkspace
+        run={run}
+        activeTab="overview"
+        mode="page"
+        onTabChange={() => {}}
+      />,
+      { wrapper: makeWrapper() },
+    );
+    expect(container.querySelector("[data-testid='detail-tab-ledger']")).not.toBeNull();
+  });
+
+  it("Report tab is still present in RunDetailWorkspace", () => {
+    const run = makeRun("test_run_report_present");
+    const { container } = render(
+      <RunDetailWorkspace
+        run={run}
+        activeTab="overview"
+        mode="page"
+        onTabChange={() => {}}
+      />,
+      { wrapper: makeWrapper() },
+    );
+    expect(container.querySelector("[data-testid='detail-tab-report']")).not.toBeNull();
+  });
+});
+
+// ── Regression: Portfolio active state ───────────────────────────────────────
+
+describe("Regression — Portfolio active state unaffected by D2", () => {
+  it("Portfolio is active at /runs (run list)", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/runs"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const pfBtn = Array.from(
+      container.querySelectorAll(".rv-shell-nav__item"),
+    ).find((btn) => btn.querySelector("strong")?.textContent === "Portfolio");
+    expect(pfBtn!.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("Portfolio is active on a run detail page /runs/:runId", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/runs/test_run_abc"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const pfBtn = Array.from(
+      container.querySelectorAll(".rv-shell-nav__item"),
+    ).find((btn) => btn.querySelector("strong")?.textContent === "Portfolio");
+    expect(pfBtn!.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("Settings is active at /settings", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const stBtn = Array.from(
+      container.querySelectorAll(".rv-shell-nav__item"),
+    ).find((btn) => btn.querySelector("strong")?.textContent === "Settings");
+    expect(stBtn!.getAttribute("aria-current")).toBe("page");
+  });
+});
+
+// ── D4 integration: onNavigate threaded from RunDetailModal → DetailModal ─────
+//
+// Verifies that the `onNavigate` prop is actually wired through RunDetailModal
+// to DetailModal so the navigate action button appears when a lineage node is
+// expanded from modal context (regression guard for the missing prop bug).
+
+describe("D4 (integration) — RunDetailModal threads onNavigate into DetailModal", () => {
+  function makeRunWithClaim(runId: string): RFRunExport {
+    const claim: RFClaim = {
+      claim_id: "clm_integration_001",
+      text: "Integration test claim",
+      status: "supported",
+      sources: [
+        {
+          source_card_id: "src_int_001",
+          evidence_id: "ev_int_001",
+          relation: "supports",
+          resolved: true,
+          dangling: false,
+          title: "Integration Source",
+        },
+      ],
+    };
+    return {
+      schema_version: "1.1",
+      run_id: runId,
+      status_derived: "verified",
+      claims: [claim],
+      claim_counts: null,
+      verification: { present: true, passed: true, exit_code: 0, checks: [] },
+      governance: null,
+      timeline: null,
+    };
+  }
+
+  it("detail-modal-navigate button is present after expanding a lineage node from RunDetailModal", async () => {
+    const runId = "test_run_d4_integration";
+    const run = makeRunWithClaim(runId);
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
+    });
+    qc.setQueryData(["rf", "runs", "detail", runId], run);
+
+    const { container } = render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <RunDetailModal runId={runId} onClose={vi.fn()} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    // Wait for run data to hydrate from cache
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Switch to Lineage tab
+    const lineageTab = container.querySelector("[data-testid='detail-tab-lineage']") as HTMLButtonElement | null;
+    expect(lineageTab).not.toBeNull();
+    act(() => { fireEvent.click(lineageTab!); });
+
+    // The lineage tree root is a "run" kind node (no navigate action).
+    // Its first child is a "source" kind node (navigate action → lineage tab).
+    // Both are expanded by default (defaultExpanded in ArtifactLineageGraph).
+    const sourceNode = container.querySelector("[data-kind='source']") as HTMLElement | null;
+    expect(sourceNode).not.toBeNull();
+    act(() => { fireEvent.click(sourceNode!); });
+
+    // The navigate button should now be visible — confirming onNavigate was passed
+    // from RunDetailModal → DetailModal (the D4 wiring fix).
+    const navigateBtn = container.querySelector("[data-testid='detail-modal-navigate']");
+    expect(navigateBtn).not.toBeNull();
   });
 });

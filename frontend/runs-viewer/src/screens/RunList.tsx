@@ -587,19 +587,37 @@ export function RunTable({
             const projectText = run.linked_projects?.length
               ? run.linked_projects.join(", ")
               : null;
+            const isSelected = selectedRunId === run.run_id;
             return (
+              // D1: Entire row is keyboard-accessible and opens the run modal on click.
+              // Inner buttons (title link, Open) use stopPropagation so they still work independently.
               <tr
                 key={run.run_id}
-                className={selectedRunId === run.run_id ? "rv-run-table-row--selected" : ""}
-                aria-selected={selectedRunId === run.run_id}
+                className={`rv-run-table-row--clickable${isSelected ? " rv-run-table-row--selected" : ""}`}
+                aria-selected={isSelected}
+                tabIndex={0}
+                role="row"
+                aria-label={`Open run: ${run.title ?? titleFromSlug(run.run_id) ?? run.run_id}`}
+                onClick={() => onOpen(run.run_id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpen(run.run_id);
+                  }
+                }}
+                data-testid="run-table-row"
+                data-run-id={run.run_id}
               >
                 <td>
                   <button
                     type="button"
                     className="rv-table-link"
-                    aria-pressed={selectedRunId === run.run_id}
+                    aria-pressed={isSelected}
                     aria-label={`Select run ${run.title ?? titleFromSlug(run.run_id) ?? run.run_id}`}
-                    onClick={() => onSelect(run.run_id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelect(run.run_id);
+                    }}
                   >
                     {run.title ?? titleFromSlug(run.run_id) ?? run.run_id}
                   </button>
@@ -617,10 +635,15 @@ export function RunTable({
                 <td>{getInferenceTotal(run.claim_counts).toLocaleString()}</td>
                 <td>{formatShortDate(run.created_at)}</td>
                 <td>
+                  {/* Keep 'Open' as a secondary affordance; stopPropagation avoids double-fire */}
                   <button
                     type="button"
                     className="it-btn ghost xs rv-table-open"
-                    onClick={() => onOpen(run.run_id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpen(run.run_id);
+                    }}
+                    aria-label={`Open run ${run.title ?? titleFromSlug(run.run_id) ?? run.run_id}`}
                   >
                     Open
                   </button>

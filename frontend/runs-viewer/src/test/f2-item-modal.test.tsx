@@ -206,9 +206,10 @@ describe("RunCard — expand button (AC F2-02)", () => {
   });
 });
 
-// ── (AC F2-03) Double-click on LineageList row fires onExpandNode ───────────
+// ── (AC F2-03) Single-click on LineageList row fires onExpandNode ───────────
+// Updated: list mode now uses single-click (consistent with graph mode).
 
-describe("LineageList — double-click fires onExpandNode (AC F2-03)", () => {
+describe("LineageList — single-click fires onExpandNode (AC F2-03)", () => {
   const defaultProps = {
     roots: [SOURCE_NODE],
     expanded: new Set<string>([SOURCE_NODE.id]),
@@ -217,19 +218,19 @@ describe("LineageList — double-click fires onExpandNode (AC F2-03)", () => {
     onSelectNode: vi.fn(),
   };
 
-  it("double-clicking a row fires onExpandNode with the correct node", () => {
+  it("single-clicking a row fires onExpandNode with the correct node", () => {
     const onExpand = vi.fn();
     const { container } = render(
       <LineageList {...defaultProps} onExpandNode={onExpand} />,
       { wrapper: makeWrapper() },
     );
     const row = container.querySelector(`[data-testid='lineage-node-${SOURCE_NODE.id}']`) as HTMLElement;
-    act(() => { fireEvent.doubleClick(row); });
+    act(() => { fireEvent.click(row); });
     expect(onExpand).toHaveBeenCalledOnce();
     expect(onExpand).toHaveBeenCalledWith(SOURCE_NODE);
   });
 
-  it("single-click does NOT fire onExpandNode", () => {
+  it("single-click also fires onSelectNode", () => {
     const onExpand = vi.fn();
     const onSelect = vi.fn();
     const { container } = render(
@@ -239,16 +240,16 @@ describe("LineageList — double-click fires onExpandNode (AC F2-03)", () => {
     const row = container.querySelector(`[data-testid='lineage-node-${SOURCE_NODE.id}']`) as HTMLElement;
     act(() => { fireEvent.click(row); });
     expect(onSelect).toHaveBeenCalledOnce();
-    expect(onExpand).not.toHaveBeenCalled();
+    expect(onExpand).toHaveBeenCalledOnce();
   });
 
-  it("double-click does not throw when onExpandNode not provided", () => {
+  it("click does not throw when onExpandNode not provided", () => {
     const { container } = render(
       <LineageList {...defaultProps} />,
       { wrapper: makeWrapper() },
     );
     const row = container.querySelector(`[data-testid='lineage-node-${SOURCE_NODE.id}']`) as HTMLElement;
-    expect(() => { fireEvent.doubleClick(row); }).not.toThrow();
+    expect(() => { fireEvent.click(row); }).not.toThrow();
   });
 });
 

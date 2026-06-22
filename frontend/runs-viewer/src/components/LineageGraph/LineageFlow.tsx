@@ -49,6 +49,8 @@ export interface LineageFlowNodeData {
   childCount: number;
   onToggle: (id: string) => void;
   onSelectNode: (id: string) => void;
+  /** D4: single-click on graph node opens DetailModal with the node payload. */
+  onExpandNode?: (node: LineageNode) => void;
   [key: string]: unknown; // satisfy React Flow's Record<string, unknown> constraint
 }
 
@@ -59,12 +61,15 @@ type LineageFlowNodeType = Node<LineageFlowNodeData>;
 // ── Custom node component (defined at module scope to avoid re-registration) ───
 
 function LineageFlowNode({ data, id }: NodeProps<LineageFlowNodeType>) {
-  const { node, meta, isSelected, isExpanded, childCount, onToggle, onSelectNode } = data;
+  const { node, meta, isSelected, isExpanded, childCount, onToggle, onSelectNode, onExpandNode } = data;
   const chips = node.chips ?? [];
   const visibleChips = chips.slice(0, 3);
 
   function handleBodyClick() {
     onSelectNode(id);
+    // D4: single-click on a graph node also opens DetailModal (graph mode has no
+    // separate select vs. expand distinction, so one click does both).
+    onExpandNode?.(node);
   }
 
   function handleBadgeClick(e: React.MouseEvent) {
@@ -88,6 +93,7 @@ function LineageFlowNode({ data, id }: NodeProps<LineageFlowNodeType>) {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onSelectNode(id);
+          onExpandNode?.(node);
         }
       }}
     >
@@ -203,12 +209,13 @@ function LineageFlowInner({
   onToggle,
   selectedNodeId,
   onSelectNode,
+  onExpandNode,
 }: LineageViewProps) {
-  // onToggle / onSelectNode are memoized by the parent (LineageGraph), so they are
-  // stable refs — safe to depend on directly without re-running this every render.
+  // onToggle / onSelectNode / onExpandNode are memoized by the parent (LineageGraph),
+  // so they are stable refs — safe to depend on directly without re-running each render.
   const { nodes, edges } = useMemo(
-    () => buildFlowElements(roots, expanded, selectedNodeId, onToggle, onSelectNode),
-    [roots, expanded, selectedNodeId, onToggle, onSelectNode],
+    () => buildFlowElements(roots, expanded, selectedNodeId, onToggle, onSelectNode, onExpandNode),
+    [roots, expanded, selectedNodeId, onToggle, onSelectNode, onExpandNode],
   );
 
   function handleNodeColorForMinimap(node: { data?: unknown }): string {

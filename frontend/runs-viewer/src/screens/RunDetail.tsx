@@ -20,10 +20,13 @@
  *   Failing check deep-links from VerificationChecklist resolve to #clm_NNN.
  */
 
-import { useCallback }                       from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useRunDetail }                      from "@/hooks";
 import { RunDetailWorkspace }                from "@/components/RunDetail/RunDetailWorkspace";
+import { DetailModal }                       from "@/components/RunDetail/DetailModal";
+import type { DetailModalPayload }           from "@/components/RunDetail/DetailModal";
+import type { LineageNode }                  from "@/components/LineageGraph/lineageTree";
 import { coerceDetailTab, tabToQuery, type DetailTab } from "@/components/RunDetail/detailTabs";
 import { deriveRunTitle, formatDateTime }    from "@/lib/runs";
 
@@ -37,6 +40,24 @@ export function RunDetailScreen() {
   const activeTab = coerceDetailTab(searchParams.get("view"));
   const selectedClaimId = searchParams.get("claim");
 
+  // D4: detail modal state for lineage node expand in page mode
+  const [detailModalPayload, setDetailModalPayload] = useState<DetailModalPayload | null>(null);
+
+  // FIX-2: measure .rv-detail__sticky to keep --rv-sticky-header-height accurate when
+  // the run title wraps. The :root default (112px) is the first-paint fallback.
+  const stickyRef = useRef<HTMLDivElement>(null);
+  const detailRootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const sticky = stickyRef.current;
+    const root   = detailRootRef.current;
+    if (!sticky || !root) return;
+    const observer = new ResizeObserver(() => {
+      root.style.setProperty("--rv-sticky-header-height", `${sticky.offsetHeight}px`);
+    });
+    observer.observe(sticky);
+    return () => observer.disconnect();
+  }, []);
+
   const setActiveTab = useCallback(
     (tab: DetailTab, claimId?: string | null) => {
       const next = new URLSearchParams(searchParams);
@@ -47,6 +68,17 @@ export function RunDetailScreen() {
     },
     [searchParams, setSearchParams],
   );
+
+  // D4: expand node — open detail modal
+  const handleExpandNode = useCallback((node: LineageNode) => {
+    setDetailModalPayload({ kind: "node", node });
+  }, []);
+
+  // D4: navigate from detail modal → update URL tab + close modal
+  const handleDetailModalNavigate = useCallback((tab: DetailTab, claimId?: string) => {
+    setActiveTab(tab, claimId ?? null);
+    setDetailModalPayload(null);
+  }, [setActiveTab]);
 
   // ── No runId in URL ──
   if (!runId) {
@@ -95,38 +127,59 @@ export function RunDetailScreen() {
   }
 
   return (
-      <div className="rv-detail" data-testid="run-detail" data-run-id={run.run_id}>
-
-      {/* Back nav */}
-      <div className="rv-detail__nav">
-        <button
-          className="it-btn ghost"
-          onClick={() => navigate("/runs")}
-          aria-label="Back to run list"
-        >
-          Back to runs
-        </button>
-      </div>
-
-      {/* Run identity header */}
-      <div className="rv-detail__header">
-        <div>
-          <h1 className="rv-detail__title">{deriveRunTitle(run)}</h1>
-          <code className="rv-detail__run-id">{run.run_id}</code>
+    <div className="rv-detail" data-testid="run-detail" data-run-id={run.run_id} ref={detailRootRef}>
+      {/*
+       * D5 STICKY CHROME: .rv-detail__sticky pins nav + header to the top with a visible divider.
+       * The scrollable content lives in .rv-detail__body below.
+       *
+       * STAGE-3 CONTRACT: .rv-detail__body is the page-mode scroll container that the
+       * ReportOutline IntersectionObserver anchors to (via data-scroll-container attribute).
+       * The CSS var --rv-sticky-header-height is set to the height of .rv-detail__sticky
+       * so Stage 3's outline sidebar can set its sticky top offset accordingly.
+       */}
+      <div className="rv-detail__sticky" data-testid="run-detail-sticky" ref={stickyRef}>
+        {/* Back nav */}
+        <div className="rv-detail__nav">
+          <button
+            className="it-btn ghost"
+            onClick={() => navigate("/runs")}
+            aria-label="Back to run list"
+          >
+            Back to runs
+          </button>
         </div>
-        {run.created_at && (
-          <span className="rv-detail__created">
-            {formatDateTime(run.created_at)}
-          </span>
-        )}
+
+        {/* Run identity header */}
+        <div className="rv-detail__header">
+          <div>
+            <h1 className="rv-detail__title">{deriveRunTitle(run)}</h1>
+            <code className="rv-detail__run-id">{run.run_id}</code>
+          </div>
+          {run.created_at && (
+            <span className="rv-detail__created">
+              {formatDateTime(run.created_at)}
+            </span>
+          )}
+        </div>
       </div>
 
-      <RunDetailWorkspace
-        run={run}
-        activeTab={activeTab}
-        selectedClaimId={selectedClaimId}
-        mode="page"
-        onTabChange={setActiveTab}
+      {/* Scrollable body — Stage 3 anchors its outline here */}
+      <div className="rv-detail__body" data-scroll-container="true">
+        <RunDetailWorkspace
+          run={run}
+          activeTab={activeTab}
+          selectedClaimId={selectedClaimId}
+          mode="page"
+          onTabChange={setActiveTab}
+          onExpandNode={handleExpandNode}
+        />
+      </div>
+
+      {/* D4: lineage node detail modal — page mode */}
+      <DetailModal
+        payload={detailModalPayload}
+        onClose={() => setDetailModalPayload(null)}
+        onNavigate={handleDetailModalNavigate}
       />
     </div>
   );

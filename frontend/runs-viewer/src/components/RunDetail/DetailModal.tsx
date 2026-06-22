@@ -26,12 +26,13 @@
  *   - claimId not found in claims array → renders "Claim not found" (mirrors ProvenanceModal:127-132)
  */
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { RFClaim } from "@/types/rf";
-import type { LineageNode } from "@/components/LineageGraph/lineageTree";
+import type { LineageNode, LineageNodeKind } from "@/components/LineageGraph/lineageTree";
 import { LINEAGE_KIND_META } from "@/components/LineageGraph/lineageTree";
 import { KindIcon } from "@/components/LineageGraph/kindIcons";
 import { SourceCard } from "@/components/SourceCard/SourceCard";
+import type { DetailTab } from "./detailTabs";
 
 // ── Payload types ─────────────────────────────────────────────────────────────
 
@@ -49,6 +50,12 @@ export interface DetailModalProps {
   onOpenChange?: (open: boolean) => void;
   /** Called when the modal requests close. Parent sets payload to null. */
   onClose: () => void;
+  /**
+   * D4: Called when the user clicks the primary navigate action in the node modal footer.
+   * Navigates to the relevant detail tab (and optionally highlights a specific claim).
+   * When omitted the navigate action button is not rendered (graceful degradation).
+   */
+  onNavigate?: (tab: DetailTab, claimId?: string) => void;
 }
 
 // ── Status chip map (mirrors ProvenanceModal) ─────────────────────────────────
@@ -64,7 +71,10 @@ const STATUS_CHIP: Record<string, string> = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function DetailModal({ payload, stacked = false, onOpenChange, onClose }: DetailModalProps) {
+export function DetailModal({ payload, stacked = false, onOpenChange, onClose, onNavigate }: DetailModalProps) {
+  // Focus management: move focus into the modal when it opens
+  const dialogRef = useRef<HTMLDivElement>(null);
+
   const close = useCallback(() => {
     onClose();
     onOpenChange?.(false);
@@ -87,6 +97,18 @@ export function DetailModal({ payload, stacked = false, onOpenChange, onClose }:
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [close, payload]);
 
+  // Focus management: move focus into the dialog when it opens (a11y)
+  useEffect(() => {
+    if (payload && dialogRef.current) {
+      // Focus the close button (first interactive element) or the dialog itself
+      const focusTarget =
+        dialogRef.current.querySelector<HTMLElement>(
+          '[data-testid="detail-modal-close"], button, [href], [tabindex]:not([tabindex="-1"])',
+        ) ?? dialogRef.current;
+      focusTarget.focus();
+    }
+  }, [payload]);
+
   if (!payload) return null;
 
   return (
@@ -97,9 +119,11 @@ export function DetailModal({ payload, stacked = false, onOpenChange, onClose }:
       role="presentation"
     >
       <div
+        ref={dialogRef}
         className="rv-modal rv-detail-modal"
         role="dialog"
         aria-modal="true"
+        tabIndex={-1}
         aria-label={
           payload.kind === "claim"
             ? `Detail for ${payload.claimId}`
@@ -151,7 +175,7 @@ export function DetailModal({ payload, stacked = false, onOpenChange, onClose }:
           {payload.kind === "claim" ? (
             <ClaimModalBody claimId={payload.claimId} claims={payload.claims} />
           ) : (
-            <NodeModalBody node={payload.node} />
+            <NodeModalBody node={payload.node} onNavigate={onNavigate} onClose={close} />
           )}
         </div>
       </div>
@@ -223,8 +247,68 @@ function ClaimModalBody({ claimId, claims }: { claimId: string; claims: RFClaim[
 
 // ── Node body ─────────────────────────────────────────────────────────────────
 
-function NodeModalBody({ node }: { node: LineageNode }) {
+interface NodeModalBodyProps {
+  node: LineageNode;
+  onNavigate?: (tab: DetailTab, claimId?: string) => void;
+  onClose?: () => void;
+}
+
+/**
+ * Derives the navigate action for a lineage node.
+ * Returns { tab, claimId, label } — or null when no obvious target exists.
+ *
+ * Mapping:
+ *   claim      → ledger tab, highlight claimId
+ *   report     → report tab (+ claimId if available)
+ *   writeback  → writeback tab
+ *   source / extraction → lineage tab (source-first lineage view)
+ *   run        → overview tab (omitted — we're already on the run detail surface)
+ */
+function deriveNavigateAction(
+  node: LineageNode,
+): { tab: DetailTab; claimId?: string; label: string } | null {
+  const kind: LineageNodeKind = node.kind;
+  switch (kind) {
+    case "claim":
+      return {
+        tab: "ledger",
+        claimId: node.claimId ?? node.subtitle,
+        label: "View in Claim Ledger",
+      };
+    case "report":
+      return {
+        tab: "report",
+        claimId: node.claimId,
+        label: "View in Report",
+      };
+    case "writeback":
+      return {
+        tab: "writeback",
+        label: "View Writeback",
+      };
+    case "source":
+    case "extraction":
+      return {
+        tab: "lineage",
+        label: "View in Lineage",
+      };
+    case "run":
+      // Already on the run detail surface; omit the action
+      return null;
+    default:
+      return null;
+  }
+}
+
+function NodeModalBody({ node, onNavigate, onClose }: NodeModalBodyProps) {
   const meta = LINEAGE_KIND_META[node.kind];
+  const navigateAction = deriveNavigateAction(node);
+
+  function handleNavigate() {
+    if (!navigateAction || !onNavigate) return;
+    onNavigate(navigateAction.tab, navigateAction.claimId);
+    onClose?.();
+  }
 
   return (
     <>
@@ -281,6 +365,20 @@ function NodeModalBody({ node }: { node: LineageNode }) {
         </span>
         <span className="rv-muted">{meta.label} node</span>
       </div>
+
+      {/* D4: Primary navigate action — only rendered when onNavigate provided + action exists */}
+      {onNavigate && navigateAction && (
+        <div className="rv-detail-modal__footer" data-testid="detail-modal-footer">
+          <button
+            type="button"
+            className="it-btn secondary sm rv-detail-modal__navigate-action"
+            data-testid="detail-modal-navigate"
+            onClick={handleNavigate}
+          >
+            {navigateAction.label} →
+          </button>
+        </div>
+      )}
     </>
   );
 }

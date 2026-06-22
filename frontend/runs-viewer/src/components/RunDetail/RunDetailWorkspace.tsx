@@ -5,6 +5,7 @@ import { ClaimAuditWorkbench } from "@/components/ClaimLedger/ClaimAuditWorkbenc
 import { ArtifactLineageGraph } from "@/components/LineageGraph/LineageGraph";
 import { ReportOverlay } from "@/components/ReportOverlay/ReportOverlay";
 import { TrustCockpit } from "@/components/TrustPanel/TrustCockpit";
+import { SwarmPane } from "./SwarmPane";
 import {
   deriveRunTitle,
   formatDateTime,
@@ -43,6 +44,7 @@ export function RunDetailWorkspace({
         { id: "ledger", label: `Audit${run.claims.length > 0 ? ` (${run.claims.length})` : ""}` },
         { id: "report", label: "Report" },
         { id: "lineage", label: "Lineage" },
+        { id: "swarm", label: "Swarm" },
         { id: "writeback", label: "Writeback", disabled: !writebackAvailable && activeTab !== "writeback" },
       ] as { id: DetailTab; label: string; disabled?: boolean }[],
     [activeTab, run.claims.length, writebackAvailable],
@@ -50,8 +52,18 @@ export function RunDetailWorkspace({
 
   return (
     <div className={`rv-detail-workspace rv-detail-workspace--${mode}`} data-testid="run-detail-workspace" data-mode={mode}>
+      {/*
+       * D5 STICKY CHROME: The tab bar is a flex-shrink:0 sibling ABOVE the scroll container.
+       * In modal mode this bar is pulled out of the scrolling region via CSS.
+       * In page mode RunDetail.tsx wraps nav+header+tabbar in .rv-detail__sticky.
+       *
+       * STAGE-3 CONTRACT: The scrollable content area has class .rv-detail-workspace__body.
+       * The modal scroll container is .rv-run-modal .rv-detail-workspace (overflow:auto set by CSS).
+       * Page scroll container is .rv-detail__body (set by RunDetail.tsx).
+       * Outline's IntersectionObserver anchors to the nearest scroll container with that class.
+       */}
       <div
-        className="rv-detail__tabs it-seg"
+        className="rv-detail__tabs it-seg rv-detail-workspace__tab-bar"
         role="tablist"
         aria-label="Run detail views"
         data-testid="detail-tabs"
@@ -63,6 +75,7 @@ export function RunDetailWorkspace({
             role="tab"
             className={activeTab === tab.id ? "active" : ""}
             aria-selected={activeTab === tab.id}
+            aria-current={activeTab === tab.id ? "true" : undefined}
             aria-disabled={tab.disabled ? "true" : undefined}
             disabled={tab.disabled}
             title={tab.disabled ? "Writeback preview is not exported for this run." : tab.label}
@@ -74,80 +87,89 @@ export function RunDetailWorkspace({
         ))}
       </div>
 
-      {activeTab === "overview" && (
-        <div role="tabpanel" aria-label="Overview" data-testid="tabpanel-overview">
-          <RunOverview run={run} onOpenAudit={(claimId) => onTabChange("ledger", claimId)} />
-        </div>
-      )}
+      {/* Scrollable content body — Stage 3 anchors its outline IntersectionObserver here */}
+      <div className="rv-detail-workspace__body">
+        {activeTab === "overview" && (
+          <div role="tabpanel" aria-label="Overview" data-testid="tabpanel-overview">
+            <RunOverview run={run} onOpenAudit={(claimId) => onTabChange("ledger", claimId)} />
+          </div>
+        )}
 
-      {activeTab === "trust" && (
-        <div role="tabpanel" aria-label="Trust Overview" data-testid="tabpanel-trust">
-          <TrustCockpit
-            run={run}
-            onOpenAudit={(claimId) => onTabChange("ledger", claimId)}
-          />
-        </div>
-      )}
+        {activeTab === "trust" && (
+          <div role="tabpanel" aria-label="Trust Overview" data-testid="tabpanel-trust">
+            <TrustCockpit
+              run={run}
+              onOpenAudit={(claimId) => onTabChange("ledger", claimId)}
+            />
+          </div>
+        )}
 
-      {activeTab === "ledger" && (
-        <div role="tabpanel" aria-label="Claim Ledger" data-testid="tabpanel-ledger">
-          <ClaimAuditWorkbench
-            run={run}
-            initialClaimId={selectedClaimId}
-            onClaimChange={(claimId) => onTabChange("ledger", claimId)}
-            onOpenProvenance={onOpenProvenance}
-          />
-        </div>
-      )}
+        {activeTab === "ledger" && (
+          <div role="tabpanel" aria-label="Claim Ledger" data-testid="tabpanel-ledger">
+            <ClaimAuditWorkbench
+              run={run}
+              initialClaimId={selectedClaimId}
+              onClaimChange={(claimId) => onTabChange("ledger", claimId)}
+              onOpenProvenance={onOpenProvenance}
+            />
+          </div>
+        )}
 
-      {activeTab === "report" && (
-        <div role="tabpanel" aria-label="Report" data-testid="tabpanel-report">
-          <ReportOverlay
-            run={run}
-            reportDraft={run.report_draft ?? null}
-            onOpenProvenance={onOpenProvenance}
-          />
-        </div>
-      )}
+        {activeTab === "report" && (
+          <div role="tabpanel" aria-label="Report" data-testid="tabpanel-report">
+            <ReportOverlay
+              run={run}
+              reportDraft={run.report_draft ?? null}
+              onOpenProvenance={onOpenProvenance}
+            />
+          </div>
+        )}
 
-      {activeTab === "lineage" && (
-        <div role="tabpanel" aria-label="Lineage Graph" data-testid="tabpanel-lineage">
-          <ArtifactLineageGraph
-            run={run}
-            selectedClaimId={selectedClaimId}
-            onSelectClaim={(claimId) => onTabChange("lineage", claimId)}
-            onOpenProvenance={onOpenProvenance}
-            onExpandNode={onExpandNode}
-          />
-        </div>
-      )}
+        {activeTab === "lineage" && (
+          <div role="tabpanel" aria-label="Lineage Graph" data-testid="tabpanel-lineage">
+            <ArtifactLineageGraph
+              run={run}
+              selectedClaimId={selectedClaimId}
+              onSelectClaim={(claimId) => onTabChange("lineage", claimId)}
+              onOpenProvenance={onOpenProvenance}
+              onExpandNode={onExpandNode}
+            />
+          </div>
+        )}
 
-      {activeTab === "writeback" && (
-        <div role="tabpanel" aria-label="Writeback" data-testid="tabpanel-writeback">
-          <section className="rv-writeback-workspace it-card">
-            <h2>Writeback Readiness</h2>
-            <p>
-              {writebackAvailable
-                ? "Writeback summary is available in this export."
-                : "Writeback preview is not exported for this run yet."}
-            </p>
-            <dl>
-              <div>
-                <dt>Governance</dt>
-                <dd>{run.governance?.approved_for_writeback ? "Approved" : "Not approved or unavailable"}</dd>
-              </div>
-              <div>
-                <dt>Required fix</dt>
-                <dd>{run.writebacks?.required_fix ?? "No required fix exported"}</dd>
-              </div>
-              <div>
-                <dt>Targets</dt>
-                <dd>{run.writebacks?.targets?.length ? `${run.writebacks.targets.length} target(s)` : "Not exported"}</dd>
-              </div>
-            </dl>
-          </section>
-        </div>
-      )}
+        {activeTab === "swarm" && (
+          <div role="tabpanel" aria-label="Swarm" data-testid="tabpanel-swarm">
+            <SwarmPane run={run} />
+          </div>
+        )}
+
+        {activeTab === "writeback" && (
+          <div role="tabpanel" aria-label="Writeback" data-testid="tabpanel-writeback">
+            <section className="rv-writeback-workspace it-card">
+              <h2>Writeback Readiness</h2>
+              <p>
+                {writebackAvailable
+                  ? "Writeback summary is available in this export."
+                  : "Writeback preview is not exported for this run yet."}
+              </p>
+              <dl>
+                <div>
+                  <dt>Governance</dt>
+                  <dd>{run.governance?.approved_for_writeback ? "Approved" : "Not approved or unavailable"}</dd>
+                </div>
+                <div>
+                  <dt>Required fix</dt>
+                  <dd>{run.writebacks?.required_fix ?? "No required fix exported"}</dd>
+                </div>
+                <div>
+                  <dt>Targets</dt>
+                  <dd>{run.writebacks?.targets?.length ? `${run.writebacks.targets.length} target(s)` : "Not exported"}</dd>
+                </div>
+              </dl>
+            </section>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

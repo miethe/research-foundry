@@ -21,7 +21,8 @@ export const ROUTES: Record<RouteName, RouteMeta> = {
   settings:  { path: "/settings",            label: "Settings"   },
   help:      { path: "/help",                label: "Help"       },
   alerts:    { path: "/alerts",              label: "Alerts"     },
-  swarm:     { path: "/runs/:runId/swarm",   label: "Swarm"      },
+  // Redirect alias: App.tsx redirects /runs/:runId/swarm → /runs/:runId?view=swarm. Not a standalone screen.
+  swarm:     { path: "/runs/:runId/swarm",   label: "Swarm (→ ?view=swarm)" },
   policies:  { path: "/policies",            label: "Policies"   },
   library:   { path: "/library",             label: "Library"    },
 };

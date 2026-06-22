@@ -413,7 +413,8 @@ describe("Policies nav — no regression on existing nav items", () => {
     expect(settingsBtn!.getAttribute("aria-current")).toBe("page");
   });
 
-  it("Swarm is still contextual (not disabled or enabled) at /runs/run_abc/swarm", () => {
+  // D2: Swarm is now a run-detail tab, not a top-level nav item.
+  it("Swarm is absent from global nav (D2 — now a run detail tab)", () => {
     const { container } = render(
       <MemoryRouter initialEntries={["/runs/run_abc/swarm"]}>
         <AppShell />
@@ -423,6 +424,6 @@ describe("Policies nav — no regression on existing nav items", () => {
     const swarmBtn = Array.from(navButtons).find(
       (btn) => btn.querySelector("strong")?.textContent === "Swarm",
     );
-    expect(swarmBtn!.getAttribute("data-state")).toBe("contextual");
+    expect(swarmBtn).toBeUndefined();
   });
 });

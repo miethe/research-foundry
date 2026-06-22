@@ -169,6 +169,7 @@ export function ArtifactLineageGraph({
                 onToggle={handleToggle}
                 selectedNodeId={selectedNodeId}
                 onSelectNode={handleSelectNode}
+                onExpandNode={onExpandNode}
               />
             </div>
           )}

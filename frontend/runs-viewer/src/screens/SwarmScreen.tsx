@@ -20,88 +20,22 @@ import { useParams } from "react-router-dom";
 import { useRunDetail } from "@/hooks";
 import { deriveRunTitle, titleFromSlug } from "@/lib/runs";
 import type { RFRunContextSummary } from "@/types/rf/run-export";
+import {
+  type RoutingDecision,
+  isRoutingDecision,
+  isSwarmPlanArray,
+  isSwarmPlanObject,
+  extractAgents,
+} from "./swarmUtils";
 import "@/styles/swarm.css";
-
-// ── Type helpers ──────────────────────────────────────────────────────────────
-
-/**
- * Minimal interface matching the context.routing_decision shape defined in
- * RFRunContextSummary. We re-use the typed field directly rather than redefining.
- */
-type RoutingDecision = NonNullable<RFRunContextSummary["routing_decision"]>;
-
-/**
- * A single swarm plan entry when swarm_plan is an array of objects.
- */
-interface SwarmPlanEntry {
-  agent?: string | null;
-  task?: string | null;
-  status?: string | null;
-  [k: string]: unknown;
-}
-
-// ── Type guards ───────────────────────────────────────────────────────────────
-
-function isRoutingDecision(v: unknown): v is RoutingDecision {
-  return typeof v === "object" && v !== null;
-}
-
-function isSwarmPlanArray(v: unknown): v is SwarmPlanEntry[] {
-  return Array.isArray(v);
-}
-
-function isSwarmPlanObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
-// ── Agent extraction ──────────────────────────────────────────────────────────
-
-/**
- * Derive a deduplicated list of agent names from routing_decision and swarm_plan.
- * Returns an empty array when no agent names can be found.
- */
-function extractAgents(
-  routingDecision: RoutingDecision | null | undefined,
-  swarmPlan: RFRunContextSummary["swarm_plan"],
-): string[] {
-  const names = new Set<string>();
-
-  // From routing_decision.decision (often an agent name)
-  if (routingDecision?.decision && typeof routingDecision.decision === "string") {
-    names.add(routingDecision.decision.trim());
-  }
-
-  // From swarm_plan.agents
-  if (swarmPlan?.agents) {
-    const agents = swarmPlan.agents;
-    if (Array.isArray(agents)) {
-      agents.forEach((a) => {
-        if (typeof a === "string" && a.trim()) names.add(a.trim());
-      });
-    } else if (typeof agents === "string" && agents.trim()) {
-      names.add(agents.trim());
-    }
-  }
-
-  // From array entries' agent field
-  if (isSwarmPlanArray(swarmPlan)) {
-    swarmPlan.forEach((entry) => {
-      if (entry.agent && typeof entry.agent === "string" && entry.agent.trim()) {
-        names.add(entry.agent.trim());
-      }
-    });
-  }
-
-  return Array.from(names);
-}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-interface RoutingDecisionCardProps {
+export interface RoutingDecisionCardProps {
   decision: RoutingDecision | null | undefined;
 }
 
-function RoutingDecisionCard({ decision }: RoutingDecisionCardProps) {
+export function RoutingDecisionCard({ decision }: RoutingDecisionCardProps) {
   if (!decision || !isRoutingDecision(decision)) {
     return (
       <div
@@ -153,11 +87,11 @@ function RoutingDecisionCard({ decision }: RoutingDecisionCardProps) {
   );
 }
 
-interface SwarmPlanSectionProps {
+export interface SwarmPlanSectionProps {
   swarmPlan: RFRunContextSummary["swarm_plan"] | undefined;
 }
 
-function SwarmPlanSection({ swarmPlan }: SwarmPlanSectionProps) {
+export function SwarmPlanSection({ swarmPlan }: SwarmPlanSectionProps) {
   if (!swarmPlan) {
     return (
       <div
@@ -270,11 +204,11 @@ function SwarmPlanSection({ swarmPlan }: SwarmPlanSectionProps) {
   );
 }
 
-interface AgentsListProps {
+export interface AgentsListProps {
   agents: string[];
 }
 
-function AgentsList({ agents }: AgentsListProps) {
+export function AgentsList({ agents }: AgentsListProps) {
   if (agents.length === 0) return null;
 
   return (

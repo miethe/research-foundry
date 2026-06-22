@@ -18,7 +18,14 @@ export interface LineageViewProps {
   onToggle: (id: string) => void;
   selectedNodeId: string | null;
   onSelectNode: (id: string) => void;
-  /** Called when the user double-clicks a row; opens DetailModal with the node payload. */
+  /**
+   * Called when the user single-clicks a lineage row (list) or a lineage graph node (flow).
+   * Also called by the ⤢ button in LineageDetailPanel.
+   * Opens DetailModal with the node payload.
+   *
+   * LineageList rows now trigger this on SINGLE-click (consistent with graph mode).
+   * The chevron toggle button handles expand/collapse independently and stops propagation.
+   */
   onExpandNode?: (node: LineageNode) => void;
 }
 
@@ -88,12 +95,14 @@ function LineageListRow({
 
   function handleRowClick() {
     onSelectNode(node.id);
+    onExpandNode?.(node);
   }
 
   function handleRowKey(e: KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onSelectNode(node.id);
+      onExpandNode?.(node);
     } else if (e.key === "ArrowRight") {
       // Expand a collapsed node (treeitem keyboard pattern). The toggle button is
       // not in the Tab order, so arrows are the keyboard path to expand/collapse.
@@ -139,7 +148,6 @@ function LineageListRow({
         data-kind={node.kind}
         tabIndex={0}
         onClick={handleRowClick}
-        onDoubleClick={() => onExpandNode?.(node)}
         onKeyDown={handleRowKey}
         style={{ "--ll-depth": depth, "--ll-indent": `${indent}px` } as CSSProperties & Record<string, unknown>}
       >

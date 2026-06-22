@@ -59,6 +59,10 @@ describe("coerceDetailTab — known tab values pass through", () => {
   it("returns 'writeback' for 'writeback'", () => {
     expect(coerceDetailTab("writeback")).toBe("writeback");
   });
+
+  it("returns 'swarm' for 'swarm' (D6 — new tab)", () => {
+    expect(coerceDetailTab("swarm")).toBe("swarm");
+  });
 });
 
 describe("tabToQuery — alias and passthrough", () => {
@@ -72,5 +76,9 @@ describe("tabToQuery — alias and passthrough", () => {
 
   it("returns 'trust' unchanged", () => {
     expect(tabToQuery("trust")).toBe("trust");
+  });
+
+  it("returns 'swarm' unchanged (D6)", () => {
+    expect(tabToQuery("swarm")).toBe("swarm");
   });
 });
