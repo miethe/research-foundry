@@ -420,6 +420,15 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             help="Comma-separated targets: meatywiki,skillmeat,ccdash,intenttree,arc,notebooklm",
         ),
         require_review: bool = typer.Option(False, "--require-review/--no-require-review"),
+        decision_record_only: bool = typer.Option(
+            False,
+            "--decision-record-only",
+            help=(
+                "Re-render only the decision_record writeback for this run. "
+                "Leaves all other writeback files untouched. "
+                "No-ops silently when the ledger has zero inference claims."
+            ),
+        ),
     ) -> None:
         """Generate writebacks to MeatyWiki / SkillMeat / CCDash / IntentTree (spec §10.13).
 
@@ -427,7 +436,51 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         ``--targets`` to push the run's report and source cards to the
         associated NotebookLM notebook.  The notebook must already exist (or be
         resolvable via the correlation registry).
+
+        Pass ``--decision-record-only`` to re-render only the decision_record
+        writeback for an existing run without disturbing other writeback files.
+        Used for the backfill path over already-completed runs.
         """
+
+        if decision_record_only:
+            from .ids import bundle_id as make_bundle_id
+            from .paths import FoundryPaths
+            from .services.writeback import (
+                _inference_claims,
+                _ledger,
+                _load_bundle,
+                _render_decision_record,
+                _sensitivity,
+            )
+
+            paths = FoundryPaths.discover()
+            rp = paths.run_paths(run)
+            if not rp.run.exists():
+                err_console.print(f"[red]run not found: {run} ({rp.run})[/red]")
+                raise typer.Exit(1)
+
+            ledger = _ledger(rp)
+            if not _inference_claims(ledger):
+                console.print("[yellow]no inference claims — decision_record skipped[/yellow]")
+                return
+
+            bundle = _load_bundle(rp)
+            bundle_ident = str(bundle.get("id") or make_bundle_id(run))
+            sensitivity = _sensitivity(rp)
+            _WORK_SENSITIVITIES = {"work_sensitive", "client_sensitive"}
+            requires_review = bool(require_review) or sensitivity in _WORK_SENSITIVITIES
+
+            out = _render_decision_record(
+                rp,
+                paths,
+                bundle_ident=bundle_ident,
+                sensitivity=sensitivity,
+                ledger=ledger,
+                requires_review=requires_review,
+            )
+            if out:
+                console.print(f"  {out}")
+            return
 
         from .services import writeback as svc
 
@@ -440,6 +493,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             _fail(e)
         all_paths = [
             r.meatywiki_path,
+            r.decision_record_path,
             r.skillbom_path,
             r.ccdash_path,
             r.intenttree_update_path,

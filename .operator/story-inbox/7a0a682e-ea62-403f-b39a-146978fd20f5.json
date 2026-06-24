@@ -1,0 +1,15 @@
+{
+  "id": "7a0a682e-ea62-403f-b39a-146978fd20f5",
+  "aar_path": "/Users/miethe/dev/homelab/development/research-foundry/docs/project_plans/design-specs/research_foundry_search_router_aar.md",
+  "project": "Research Foundry",
+  "title": "AAR \u2014 Research Foundry Search Router MVP (autopilot build)",
+  "date": null,
+  "session": null,
+  "domains": [],
+  "source": "manual",
+  "metrics": {},
+  "status": "backlog",
+  "content_hash": "8710e7b9a5f472ad8e0d7a3b924c679d94041ff35122da2d88d0920baaecc4a6",
+  "created_at": "2026-06-22T02:41:34.240915+00:00",
+  "updated_at": "2026-06-22T02:41:34.241109+00:00"
+}

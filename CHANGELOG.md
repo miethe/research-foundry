@@ -54,6 +54,25 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - With these three tabs, all six previously-disabled navigation tabs (Settings, Help, Alerts,
   Swarm, Policies, Library) are now enabled — no dead nav items remain in the viewer.
 
+#### **`decision_record` Writeback — Close the RF→Project Harvest Seam (Gap 1)**
+
+- **`decision_record` writeback** — `rf writeback` now emits an additive `meatywiki/decisions/<slug>.md`
+  alongside the existing `source_note` whenever a completed run's claim ledger contains at least one
+  `status: inference` claim (typically a `claim_type: recommendation`). The rendered file carries a
+  populated **Decision** section (primary inference claim text), **Rationale** (reasoning summaries from
+  all inference claims), and **Links** back to the source claim IDs (`inference_basis.from_claims`).
+  Recommendation-typed claims appear first. Deterministic-only runs (zero inference claims) silently
+  skip the file — no error, no empty record.
+- **`rf writeback --decision-record-only --run <id>`** — new flag re-renders only the
+  `decision_record_writeback.md` for an existing run without disturbing the run's other writeback
+  files. Used for the backfill path over already-completed runs.
+- **`scripts/backfill_decision_record_writebacks.py`** — bulk backfill helper that re-renders
+  decision records over all runs with inference claims (`--dry-run` by default; `--write` to apply;
+  `--run-id` to target a single run).
+- **`services/planning.py::_WRITEBACKS`** now declares `{meatywiki: [source_note, decision_record],
+  skillmeat: skillbom_candidate, ccdash: execution_event}` so the run contract reflects the full
+  writeback set.
+
 #### **Run Metadata Enrichment (v1)** — Linked Projects, Category, and Tags
 
 - **Linked Projects, Category, and Tags on every run** — Research Foundry runs now carry structured

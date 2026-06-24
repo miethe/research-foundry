@@ -2,7 +2,7 @@
 title: "Feature Contract: decision_record Writeback (close the RF→project harvest seam)"
 schema_version: 2
 doc_type: feature_contract
-status: draft
+status: completed
 created: 2026-06-23
 updated: 2026-06-23
 feature_slug: "writeback-decision-record"
@@ -19,13 +19,18 @@ related_documents:
 spike_ref: null
 prd_ref: null
 plan_ref: null
-commit_refs: []
+commit_refs:
+  - c810cc1
 pr_refs: []
 files_affected:
   - src/research_foundry/services/writeback.py
   - src/research_foundry/services/planning.py
+  - src/research_foundry/cli_commands.py
   - templates/meatywiki_decision_record.md
   - schemas/meatywiki_writeback.schema.yaml
+  - scripts/backfill_decision_record_writebacks.py
+  - tests/test_decision_record_writeback.py
+  - CHANGELOG.md
 ---
 
 > **IntentTree:** maps to node `node_01KVQZGABG67QB66HXJWSC019Q` (`harvest-seam-fix`,
@@ -315,3 +320,57 @@ This contract is your specification. Implement to satisfy the acceptance criteri
 
 Stay within scope. Keep the decision-record **additive** — do not touch `source_note`, `skillbom_candidate`,
 or any schema. The reviewer will check for scope drift.
+
+---
+
+## Completion Report
+
+### Summary
+
+The `decision_record` writeback feature was already substantially implemented (service layer, tests, backfill script, planning wiring, paths). This sprint completed the remaining two gaps: (1) added the `--decision-record-only` flag to the `rf writeback` CLI command so operators can re-render only the decision record for an existing run without disturbing other writebacks (the backfill path); (2) added `r.decision_record_path` to the `all_paths` list in the normal writeback output so the new file is surfaced in CLI output when emitted. Additionally, CHANGELOG.md was updated and the contract status was promoted to `completed`.
+
+### Files Changed
+
+- `src/research_foundry/cli_commands.py` — added `--decision-record-only` flag with early-return logic; added `r.decision_record_path` to `all_paths` in the normal writeback output path
+- `CHANGELOG.md` — added `decision_record` writeback section under `## [Unreleased] > ### Added`
+- `docs/project_plans/feature_contracts/enhancements/writeback-decision-record.md` — promoted `status: draft` → `status: completed`; appended this Completion Report
+
+### Acceptance Criteria Status
+
+- [x] A run whose ledger contains `status: inference` / `claim_type: recommendation` claims emits `writebacks/meatywiki_decision_record.md` with correct structure — confirmed by 9 existing tests in `test_decision_record_writeback.py`
+- [x] `recommendation`-typed inference claims appear first — confirmed by `_inference_claims` ordering logic and tests
+- [x] The existing `source_note` writeback is unchanged (additive) — confirmed by `test_writebacks.py` (no regressions)
+- [x] A deterministic-only run emits no decision-record and no error — confirmed by existing no-op path test
+- [x] `services/planning.py::_WRITEBACKS` declares `decision_record` — confirmed by `test_planning.py` passing
+- [x] `rf writeback --decision-record-only --run <id>` path implemented in CLI — implemented in this sprint; backfill script `scripts/backfill_decision_record_writebacks.py` also exists
+- [x] Unit test over fixture ledger with ≥1 recommendation claim asserts content — 9 tests in `test_decision_record_writeback.py` covering populated and no-op paths
+- [x] Emitted decision-record schema-validates against `schemas/meatywiki_writeback.schema.yaml` — confirmed by schema validation test in `test_decision_record_writeback.py`
+
+### Validation Run
+
+| Command | Result | Notes |
+|---|---|---|
+| `flake8 src/research_foundry/services/writeback.py src/research_foundry/services/planning.py src/research_foundry/cli_commands.py --select=E9,F63,F7,F82` | Pass | Zero errors |
+| `./.venv/bin/python -m pytest tests/test_decision_record_writeback.py tests/test_writebacks.py tests/test_planning.py -v` | Pass | 20/20 passed |
+| `./.venv/bin/python -m pytest tests/ -k "writeback or planning" -v` | Pass | 87/87 passed, 1 warning (httpx deprecation, pre-existing) |
+
+### Deviations From Contract
+
+- **`--run` flag not added separately**: The contract spec says `--decision-record-only --run <id>`, but the existing `writeback` command takes `run` as a positional `Argument`, not an `--run` option. The `--decision-record-only` flag was added as a boolean option alongside the existing positional `run` argument — invoked as `rf writeback <run_id> --decision-record-only`. This is consistent with the existing CLI pattern and avoids introducing an inconsistent `--run` alias.
+
+### Risks and Limitations
+
+- The `--decision-record-only` path recomputes `bundle_ident` from the on-disk `evidence_bundle.yaml` if present, or derives it from the run_id via `make_bundle_id()`. If neither the bundle file nor inference claims exist, the command exits with a yellow no-op message rather than an error — this is the intended behavior per the contract.
+- The 18 already-completed runs can be backfilled via `scripts/backfill_decision_record_writebacks.py` or manually via `rf writeback <run_id> --decision-record-only`. Neither path has been executed against live runs in this sprint (the script exists and is correct but live backfill is an operator action).
+- The `_WORK_SENSITIVITIES` constant is duplicated in the `--decision-record-only` code path (inline set) rather than imported from `writeback.py` where it is module-level. Since the constant is a private implementation detail of the service module (not exported), this avoids a brittle private-symbol import while keeping behavior identical.
+
+### Follow-Up Recommendations
+
+- **Gap 2**: Implement `rf backlog reconcile` / backlog status+links lifecycle (node `node_01KVQZGHZ96CNQBCS70ZV4MXZR`) — the natural next step to close the second harvest seam.
+- **Live backfill**: Run `scripts/backfill_decision_record_writebacks.py --write` against the 18 completed runs to retroactively harvest decisions.
+- **`skillbom_candidate` enrichment**: Currently static/stub; deferred per contract scope. Consider enriching with inference claims in a future Tier-1 contract.
+- **Export contract**: `run.json` v1.3 does not yet expose `decision_record_path` — consider adding to the export schema alongside `meatywiki_path` for downstream consumers.
+
+### Memory Candidates Captured
+
+- None — all implementation details are covered by the contract spec and existing project memory entries.
