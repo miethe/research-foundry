@@ -2,9 +2,9 @@
 title: "Feature Contract: rf backlog reconcile — run→backlog lifecycle writer"
 schema_version: 2
 doc_type: feature_contract
-status: draft
+status: completed
 created: 2026-06-23
-updated: 2026-06-23
+updated: 2026-06-24
 feature_slug: "backlog-reconcile-command"
 category: "enhancements"
 estimated_points: 4
@@ -19,7 +19,8 @@ related_documents:
 spike_ref: null
 prd_ref: null
 plan_ref: null
-commit_refs: []
+commit_refs:
+  - 20b56c7
 pr_refs: []
 files_affected:
   - src/research_foundry/services/backlog_metadata.py
