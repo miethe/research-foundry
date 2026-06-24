@@ -176,6 +176,18 @@
   color: var(--it-text-link);
 }
 
+/* Run-reference links rendered as <button> (open the run modal on click).
+   Reset native button chrome so they match the former anchor styling. */
+button.rv-library__run-link--button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
 /* ── Run text (non-link fallback for stale run refs) ── */
 
 .rv-library__run-text {

@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { render, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -301,13 +301,29 @@ describe("LibraryScreen — Published Reports section (AC G4-3, TEST-G4-01, TEST
     expect(card?.textContent).toContain("My Published Report");
   });
 
-  it("shows link to run report tab for Published Report", () => {
+  it("opens the run modal (report tab) when a Published Report is clicked", () => {
     const summary = makeRunSummary("run_pub_link");
     const run = makeRunPublished("run_pub_link");
     const { container } = renderLibrary({ summaries: [summary], runExports: [run] });
-    const link = container.querySelector("[data-testid='library-report-link']") as HTMLAnchorElement | null;
-    expect(link).not.toBeNull();
-    expect(link!.getAttribute("href")).toContain("view=report");
+    // The run reference is now a button that opens the run modal in-place
+    // (the modal carries an "Open full page" button → the detail page) rather
+    // than navigating away.
+    const trigger = container.querySelector("[data-testid='library-report-link']") as HTMLButtonElement | null;
+    expect(trigger).not.toBeNull();
+    expect(trigger!.tagName).toBe("BUTTON");
+
+    fireEvent.click(trigger!);
+
+    const modal = container.querySelector("[data-testid='run-detail-modal']");
+    expect(modal).not.toBeNull();
+    expect(modal!.getAttribute("data-run-id")).toBe("run_pub_link");
+
+    // The modal's "Open full page" affordance links to the run detail route
+    // on the report tab.
+    const fullPage = container.querySelector("[data-testid='run-modal-open-full-page']") as HTMLAnchorElement | null;
+    expect(fullPage).not.toBeNull();
+    expect(fullPage!.getAttribute("href")).toContain("/runs/run_pub_link");
+    expect(fullPage!.getAttribute("href")).toContain("view=report");
   });
 });
 

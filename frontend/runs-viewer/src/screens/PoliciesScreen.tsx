@@ -20,7 +20,7 @@
 
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { fetchGovernanceConfig, fetchRunList, fetchRunDetail } from "@/api/client";
 import type { GovernanceConfig, GovernancePolicyRule } from "@/types/governance";
 import type { RFRunSummary } from "@/types/rf";
@@ -49,22 +49,21 @@ interface RunGovernanceRow {
 }
 
 function useRunGovernanceRows(summaries: RFRunSummary[]): RunGovernanceRow[] {
-  // Fetch each run's governance block. React Query deduplicates and caches.
-  // For small deployments (< 100 runs) eager batch-load is acceptable.
-  const results = summaries.map((s) => {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const { data, isLoading } = useQuery({
+  // Single useQueries call — stable hook count regardless of summaries.length.
+  // (A per-item useQuery loop violates Rules of Hooks and crashes when the
+  //  run-list query resolves and the array length changes between renders.)
+  const results = useQueries({
+    queries: summaries.map((s) => ({
       queryKey: ["rf", "runs", "detail", s.run_id],
       queryFn: () => fetchRunDetail(s.run_id),
       staleTime: 60_000,
-    });
-    return {
-      run_id: s.run_id,
-      governance: (data?.governance as RFGovernanceBlock | null | undefined) ?? null,
-      loading: isLoading,
-    };
+    })),
   });
-  return results;
+  return summaries.map((s, i) => ({
+    run_id: s.run_id,
+    governance: (results[i]?.data?.governance as RFGovernanceBlock | null | undefined) ?? null,
+    loading: results[i]?.isLoading ?? false,
+  }));
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

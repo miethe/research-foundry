@@ -20,10 +20,12 @@ import { coerceDetailTab, tabToQuery, type DetailTab } from "./detailTabs";
 export interface RunDetailModalProps {
   runId: string | null;
   onClose: () => void;
+  /** Tab to show when the modal first opens for a run. Defaults to "overview". */
+  initialTab?: DetailTab;
 }
 
-export function RunDetailModal({ runId, onClose }: RunDetailModalProps) {
-  const [activeTab, setActiveTab] = useState<DetailTab>("overview");
+export function RunDetailModal({ runId, onClose, initialTab = "overview" }: RunDetailModalProps) {
+  const [activeTab, setActiveTab] = useState<DetailTab>(initialTab);
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
   const [claimModalOpen, setClaimModalOpen] = useState(false);
   const [detailModalPayload, setDetailModalPayload] = useState<DetailModalPayload | null>(null);
@@ -31,13 +33,15 @@ export function RunDetailModal({ runId, onClose }: RunDetailModalProps) {
   const { data: run, isLoading, error } = useRunDetail(runId ?? "");
 
   useEffect(() => {
+    // Reset to the caller-requested tab whenever the modal opens for a
+    // (possibly different) run, and clear stacked sub-modals when it closes.
+    setActiveTab(initialTab);
     if (!runId) {
-      setActiveTab("overview");
       setSelectedClaimId(null);
       setClaimModalOpen(false);
       setDetailModalPayload(null);
     }
-  }, [runId]);
+  }, [runId, initialTab]);
 
   const handleTabChange = useCallback((tab: DetailTab, claimId?: string | null) => {
     setActiveTab(coerceDetailTab(tab));

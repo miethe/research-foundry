@@ -21,12 +21,13 @@
  * For small personal deployments this is acceptable; see Risk Areas in the contract.
  */
 
-import { useMemo } from "react";
-import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { fetchRunDetail, fetchRunList } from "@/api/client";
 import { deriveRunTitle, titleFromSlug } from "@/lib/runs";
 import type { RFRunExport, RFRunSummary, RFWritebackTarget, ReusableOutputCandidate } from "@/types/rf/run-export";
+import { RunDetailModal } from "@/components/RunDetail/RunDetailModal";
+import type { DetailTab } from "@/components/RunDetail/detailTabs";
 import "@/styles/library.css";
 
 // ── Data aggregation helpers ──────────────────────────────────────────────────
@@ -165,19 +166,21 @@ interface LoadedRun {
  * Mirrors the pattern in PoliciesScreen.useRunGovernanceRows.
  */
 function useLoadedRuns(summaries: RFRunSummary[]): LoadedRun[] {
-  return summaries.map((s) => {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const { data, isLoading } = useQuery({
+  // Single useQueries call — stable hook count regardless of summaries.length.
+  // (A per-item useQuery loop violates Rules of Hooks and crashes when the
+  //  run-list query resolves and the array length changes between renders.)
+  const results = useQueries({
+    queries: summaries.map((s) => ({
       queryKey: ["rf", "runs", "detail", s.run_id],
       queryFn: () => fetchRunDetail(s.run_id),
       staleTime: 60_000,
-    });
-    return {
-      runId: s.run_id,
-      data: data ?? null,
-      isLoading,
-    };
+    })),
   });
+  return summaries.map((s, i) => ({
+    runId: s.run_id,
+    data: results[i]?.data ?? null,
+    isLoading: results[i]?.isLoading ?? false,
+  }));
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -187,9 +190,10 @@ function useLoadedRuns(summaries: RFRunSummary[]): LoadedRun[] {
 interface PublishedReportsSectionProps {
   entries: PublishedReportEntry[];
   isLoading: boolean;
+  onOpenRun: (runId: string, tab?: DetailTab) => void;
 }
 
-function PublishedReportsSection({ entries, isLoading }: PublishedReportsSectionProps) {
+function PublishedReportsSection({ entries, isLoading, onOpenRun }: PublishedReportsSectionProps) {
   if (isLoading) {
     return (
       <div className="rv-library__panel" data-testid="library-reports-loading">
@@ -228,13 +232,14 @@ function PublishedReportsSection({ entries, isLoading }: PublishedReportsSection
           >
             <div className="rv-library__card-title">
               {entry.inIndex ? (
-                <Link
-                  to={`/runs/${encodeURIComponent(entry.runId)}?view=report`}
-                  className="rv-library__run-link"
+                <button
+                  type="button"
+                  className="rv-library__run-link rv-library__run-link--button"
                   data-testid="library-report-link"
+                  onClick={() => onOpenRun(entry.runId, "report")}
                 >
                   {entry.title}
-                </Link>
+                </button>
               ) : (
                 <span className="rv-library__run-text">{entry.title}</span>
               )}
@@ -261,9 +266,10 @@ function PublishedReportsSection({ entries, isLoading }: PublishedReportsSection
 interface WritebackArtifactsSectionProps {
   entries: WritebackArtifactEntry[];
   isLoading: boolean;
+  onOpenRun: (runId: string, tab?: DetailTab) => void;
 }
 
-function WritebackArtifactsSection({ entries, isLoading }: WritebackArtifactsSectionProps) {
+function WritebackArtifactsSection({ entries, isLoading, onOpenRun }: WritebackArtifactsSectionProps) {
   if (isLoading) {
     return (
       <div className="rv-library__panel" data-testid="library-writebacks-loading">
@@ -331,13 +337,14 @@ function WritebackArtifactsSection({ entries, isLoading }: WritebackArtifactsSec
               </div>
               <div className="rv-library__card-run-ref">
                 {entry.inIndex ? (
-                  <Link
-                    to={`/runs/${encodeURIComponent(entry.runId)}`}
-                    className="rv-library__run-link rv-library__run-link--secondary"
+                  <button
+                    type="button"
+                    className="rv-library__run-link rv-library__run-link--secondary rv-library__run-link--button"
                     data-testid="library-writeback-run-link"
+                    onClick={() => onOpenRun(entry.runId)}
                   >
                     {entry.runTitle}
-                  </Link>
+                  </button>
                 ) : (
                   <span className="rv-library__run-text rv-library__run-text--secondary">
                     {entry.runTitle}
@@ -359,12 +366,14 @@ interface ReusableOutputsSectionProps {
   entries: ReusableOutputEntry[];
   isLoading: boolean;
   anyFieldPresent: boolean;
+  onOpenRun: (runId: string, tab?: DetailTab) => void;
 }
 
 function ReusableOutputsSection({
   entries,
   isLoading,
   anyFieldPresent,
+  onOpenRun,
 }: ReusableOutputsSectionProps) {
   if (isLoading) {
     return (
@@ -435,13 +444,14 @@ function ReusableOutputsSection({
                   When the referenced run is not in the loaded index (stale ref),
                   render plain text instead of a broken link (AC G4-7). */}
               {entry.inIndex ? (
-                <Link
-                  to={`/runs/${encodeURIComponent(entry.candidate.source_run_id ?? entry.runId)}`}
-                  className="rv-library__run-link rv-library__run-link--secondary"
+                <button
+                  type="button"
+                  className="rv-library__run-link rv-library__run-link--secondary rv-library__run-link--button"
                   data-testid="library-reusable-run-link"
+                  onClick={() => onOpenRun(entry.candidate.source_run_id ?? entry.runId)}
                 >
                   {entry.runTitle}
-                </Link>
+                </button>
               ) : (
                 <span
                   className="rv-library__run-text rv-library__run-text--secondary"
@@ -511,6 +521,12 @@ export function LibraryScreen() {
     [readyRuns],
   );
 
+  // Clicking an in-index run reference opens the run modal (which has an
+  // "Open full page" button → detail page) rather than navigating away.
+  const [modal, setModal] = useState<{ runId: string; tab: DetailTab } | null>(null);
+  const openRun = (runId: string, tab?: DetailTab) =>
+    setModal({ runId, tab: tab ?? "overview" });
+
   return (
     <div className="rv-library" data-testid="library-screen">
       <header className="rv-library__header">
@@ -532,6 +548,7 @@ export function LibraryScreen() {
         <PublishedReportsSection
           entries={publishedReports}
           isLoading={anyLoading}
+          onOpenRun={openRun}
         />
       </section>
 
@@ -547,6 +564,7 @@ export function LibraryScreen() {
         <WritebackArtifactsSection
           entries={writebackArtifacts}
           isLoading={anyLoading}
+          onOpenRun={openRun}
         />
       </section>
 
@@ -563,8 +581,15 @@ export function LibraryScreen() {
           entries={reusableOutputs}
           isLoading={anyLoading}
           anyFieldPresent={anyReusableFieldPresent}
+          onOpenRun={openRun}
         />
       </section>
+
+      <RunDetailModal
+        runId={modal?.runId ?? null}
+        initialTab={modal?.tab}
+        onClose={() => setModal(null)}
+      />
     </div>
   );
 }
