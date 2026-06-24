@@ -20,7 +20,7 @@ spike_ref: null
 prd_ref: null
 plan_ref: null
 commit_refs:
-  - c810cc1
+  - a5407a9
 pr_refs: []
 files_affected:
   - src/research_foundry/services/writeback.py
