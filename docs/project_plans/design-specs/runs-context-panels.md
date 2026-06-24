@@ -3,14 +3,15 @@ title: "Design Spec: Runs Viewer — Run Context Panels (FR-14)"
 doc_type: design_spec
 schema_version: 2
 status: draft
-maturity: idea
+maturity: promoted
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-06-23
 feature_slug: runs-frontend
 deferred_from: runs-frontend-v1
 deferred_item_id: FR-14
 category: backlog
 owner: nick
+prd_ref: docs/project_plans/PRDs/features/runs-context-panels-v1.md
 related_docs:
   - docs/dev/architecture/rf-run-export-schema.md
   - docs/project_plans/implementation_plans/features/runs-frontend-v1.md
