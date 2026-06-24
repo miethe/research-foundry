@@ -5,7 +5,7 @@ import { ClaimAuditWorkbench } from "@/components/ClaimLedger/ClaimAuditWorkbenc
 import { ArtifactLineageGraph } from "@/components/LineageGraph/LineageGraph";
 import { ReportOverlay } from "@/components/ReportOverlay/ReportOverlay";
 import { TrustCockpit } from "@/components/TrustPanel/TrustCockpit";
-import { SwarmPane } from "./SwarmPane";
+import { ContextPane } from "./ContextPane";
 import {
   deriveRunTitle,
   formatDateTime,
@@ -44,7 +44,7 @@ export function RunDetailWorkspace({
         { id: "ledger", label: `Audit${run.claims.length > 0 ? ` (${run.claims.length})` : ""}` },
         { id: "report", label: "Report" },
         { id: "lineage", label: "Lineage" },
-        { id: "swarm", label: "Swarm" },
+        { id: "context", label: "Context" },
         { id: "writeback", label: "Writeback", disabled: !writebackAvailable && activeTab !== "writeback" },
       ] as { id: DetailTab; label: string; disabled?: boolean }[],
     [activeTab, run.claims.length, writebackAvailable],
@@ -137,9 +137,9 @@ export function RunDetailWorkspace({
           </div>
         )}
 
-        {activeTab === "swarm" && (
-          <div role="tabpanel" aria-label="Swarm" data-testid="tabpanel-swarm">
-            <SwarmPane run={run} />
+        {activeTab === "context" && (
+          <div role="tabpanel" aria-label="Context" data-testid="tabpanel-context">
+            <ContextPane run={run} />
           </div>
         )}
 

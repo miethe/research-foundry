@@ -1,37 +1,42 @@
 ---
 schema_version: 2
 doc_type: implementation_plan
-title: "Implementation Plan: Runs Viewer — Run Context Panels (FR-14)"
-status: draft
-created: 2026-06-23
-updated: 2026-06-23
+title: "Implementation Plan: Runs Viewer \u2014 Run Context Panels (FR-14)"
+status: completed
+created: '2026-06-23'
+updated: '2026-06-24'
 feature_slug: runs-context-panels
-feature_version: "v1"
+feature_version: v1
 prd_ref: docs/project_plans/PRDs/features/runs-context-panels-v1.md
 plan_ref: null
-scope: "Additive context block in run.json (1.2→1.3), export wiring for 4 source artifacts, 4 read-only collapsed panels in the run-detail view, export-time redaction extension, and schema/CHANGELOG docs."
-effort_estimate: "~15 pts"
-architecture_summary: "Static-export SPA feature: schema contract → export producer → FE consumer. No new tables, no CRUD endpoints. Backend adds _build_context() to export_service.py; FE adds 4 collapsed panel components to RunDetailWorkspace."
+scope: "Additive context block in run.json (1.2\u21921.3), export wiring for 4 source\
+  \ artifacts, 4 read-only collapsed panels in the run-detail view, export-time redaction\
+  \ extension, and schema/CHANGELOG docs."
+effort_estimate: ~15 pts
+architecture_summary: "Static-export SPA feature: schema contract \u2192 export producer\
+  \ \u2192 FE consumer. No new tables, no CRUD endpoints. Backend adds _build_context()\
+  \ to export_service.py; FE adds 4 collapsed panel components to RunDetailWorkspace."
 related_documents:
-  - docs/project_plans/PRDs/features/runs-context-panels-v1.md
-  - docs/project_plans/design-specs/runs-context-panels.md
-  - docs/dev/architecture/rf-run-export-schema.md
-  - docs/project_plans/PRDs/features/runs-frontend-v1.md
-  - docs/project_plans/PRDs/features/runs-loopback-api-v1.md
-  - .claude/worknotes/runs-context-panels/decisions-block.md
+- docs/project_plans/PRDs/features/runs-context-panels-v1.md
+- docs/project_plans/design-specs/runs-context-panels.md
+- docs/dev/architecture/rf-run-export-schema.md
+- docs/project_plans/PRDs/features/runs-frontend-v1.md
+- docs/project_plans/PRDs/features/runs-loopback-api-v1.md
+- .claude/worknotes/runs-context-panels/decisions-block.md
 references:
   user_docs: []
   context: []
   specs: []
   related_prds:
-    - docs/project_plans/PRDs/features/runs-frontend-v1.md
-    - docs/project_plans/PRDs/features/runs-loopback-api-v1.md
+  - docs/project_plans/PRDs/features/runs-frontend-v1.md
+  - docs/project_plans/PRDs/features/runs-loopback-api-v1.md
 spike_ref: null
 adr_refs: []
-deferred_items_spec_refs: []
+deferred_items_spec_refs:
+- docs/project_plans/design-specs/runs-context-panels-lazy-load-v2.md
 findings_doc_ref: null
 charter_ref: null
-changelog_ref: null
+changelog_ref: CHANGELOG.md
 changelog_required: true
 test_plan_ref: null
 plan_structure: unified
@@ -41,73 +46,91 @@ contributors: []
 priority: medium
 risk_level: medium
 category: features
-tags: [implementation, runs-viewer, context-panels, schema, fr-14]
+tags:
+- implementation
+- runs-viewer
+- context-panels
+- schema
+- fr-14
 milestone: null
 commit_refs: []
 pr_refs: []
 files_affected:
-  - src/research_foundry/services/export_service.py
-  - src/research_foundry/schemas/run_export.py
-  - src/runs_viewer/components/RunDetail/RoutingDecisionPanel.tsx
-  - src/runs_viewer/components/RunDetail/ResearchBriefPanel.tsx
-  - src/runs_viewer/components/RunDetail/SwarmPlanPanel.tsx
-  - src/runs_viewer/components/RunDetail/UpstreamEntitiesPanel.tsx
-  - src/runs_viewer/components/RunDetail/RunDetailWorkspace.tsx
-  - src/runs_viewer/types/run.ts
-  - docs/dev/architecture/rf-run-export-schema.md
-  - CHANGELOG.md
+- src/research_foundry/services/export_service.py
+- frontend/runs-viewer/src/types/rf/run-export.ts
+- frontend/runs-viewer/src/components/RunDetail/ContextPane.tsx
+- frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx
+- frontend/runs-viewer/src/components/RunDetail/detailTabs.ts
+- frontend/runs-viewer/src/components/RunDetail/detailTabs.test.ts
+- frontend/runs-viewer/src/hooks/useCollapseState.ts
+- frontend/runs-viewer/src/hooks/index.ts
+- frontend/runs-viewer/src/lib/viewerSettings.ts
+- frontend/runs-viewer/src/styles/context-pane.css
+- frontend/runs-viewer/src/test/fr14-context-pane.test.tsx
+- frontend/runs-viewer/src/test/fixtures/run.json
+- frontend/runs-viewer/src/test/g1-swarm.test.tsx
+- tests/unit/test_export_service.py
+- docs/dev/architecture/rf-run-export-schema.md
+- CHANGELOG.md
+- docs/project_plans/design-specs/runs-context-panels-lazy-load-v2.md
 wave_plan:
   serialization_barriers:
-    - src/runs_viewer/types/run.ts
-    - src/research_foundry/schemas/run_export.py
+  - src/runs_viewer/types/run.ts
+  - src/research_foundry/schemas/run_export.py
   phases:
-    - id: P1
-      depends_on: []
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/schemas/run_export.py
-        - src/runs_viewer/types/run.ts
-        - docs/dev/architecture/rf-run-export-schema.md
-    - id: P2
-      depends_on: [P1]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/services/export_service.py
-    - id: P3_scaffold
-      depends_on: [P1]
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      files_affected:
-        - src/runs_viewer/types/run.ts
-    - id: P3
-      depends_on: [P2, P3_scaffold]
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      files_affected:
-        - src/runs_viewer/components/RunDetail/RoutingDecisionPanel.tsx
-        - src/runs_viewer/components/RunDetail/ResearchBriefPanel.tsx
-        - src/runs_viewer/components/RunDetail/SwarmPlanPanel.tsx
-        - src/runs_viewer/components/RunDetail/UpstreamEntitiesPanel.tsx
-        - src/runs_viewer/components/RunDetail/RunDetailWorkspace.tsx
-    - id: P4
-      depends_on: [P3]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - docs/dev/architecture/rf-run-export-schema.md
-        - CHANGELOG.md
+  - id: P1
+    depends_on: []
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/schemas/run_export.py
+    - src/runs_viewer/types/run.ts
+    - docs/dev/architecture/rf-run-export-schema.md
+  - id: P2
+    depends_on:
+    - P1
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/services/export_service.py
+  - id: P3_scaffold
+    depends_on:
+    - P1
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    files_affected:
+    - src/runs_viewer/types/run.ts
+  - id: P3
+    depends_on:
+    - P2
+    - P3_scaffold
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    files_affected:
+    - src/runs_viewer/components/RunDetail/RoutingDecisionPanel.tsx
+    - src/runs_viewer/components/RunDetail/ResearchBriefPanel.tsx
+    - src/runs_viewer/components/RunDetail/SwarmPlanPanel.tsx
+    - src/runs_viewer/components/RunDetail/UpstreamEntitiesPanel.tsx
+    - src/runs_viewer/components/RunDetail/RunDetailWorkspace.tsx
+  - id: P4
+    depends_on:
+    - P3
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - docs/dev/architecture/rf-run-export-schema.md
+    - CHANGELOG.md
   waves:
-    - [P1]
-    - [P2, P3_scaffold]
-    - [P3]
-    - [P4]
+  - - P1
+  - - P2
+    - P3_scaffold
+  - - P3
+  - - P4
 ---
 
 # Implementation Plan: Runs Viewer — Run Context Panels (FR-14)

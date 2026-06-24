@@ -2,123 +2,145 @@
 type: progress
 schema_version: 2
 doc_type: progress
-prd: "runs-context-panels"
-feature_slug: "runs-context-panels"
-prd_ref: "docs/project_plans/PRDs/features/runs-context-panels-v1.md"
-plan_ref: "docs/project_plans/implementation_plans/features/runs-context-panels-v1.md"
+prd: runs-context-panels
+feature_slug: runs-context-panels
+prd_ref: docs/project_plans/PRDs/features/runs-context-panels-v1.md
+plan_ref: docs/project_plans/implementation_plans/features/runs-context-panels-v1.md
 execution_model: sequential
 phase: 2
-title: "Export Wiring & Redaction"
-status: pending
+title: Export Wiring & Redaction
+status: completed
 created: 2026-06-23
-updated: 2026-06-23
+updated: '2026-06-24'
 started: null
 completed: null
 commit_refs: []
 pr_refs: []
-
 overall_progress: 0
 completion_estimate: on-track
-
 total_tasks: 5
-completed_tasks: 0
+completed_tasks: 5
 in_progress_tasks: 0
 blocked_tasks: 0
 at_risk_tasks: 0
-
-owners: ["python-backend-engineer"]
-contributors: ["ui-engineer-enhanced"]
-
+owners:
+- python-backend-engineer
+contributors:
+- ui-engineer-enhanced
 model_usage:
-  primary: "sonnet"
+  primary: sonnet
   external: []
-
 tasks:
-  - id: "P2-001"
-    description: "Add _build_context(run_paths: RunPaths) -> dict | None to export_service.py. Reads routing_decision.yaml, research_brief.md, swarm_plan.yaml, upstream entity IDs from run.yaml. Returns None when all source artifacts absent."
-    status: pending
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P1-005"]
-    estimated_effort: "2 pts"
-    priority: high
-    assigned_model: sonnet
-    model_effort: adaptive
-
-  - id: "P2-002"
-    description: "Each absent artifact sets context.* field to null (not omitted). When all artifacts absent, context itself is null. Unit test BE-002 per-artifact."
-    status: pending
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P2-001"]
-    estimated_effort: "0.5 pts"
-    priority: high
-    assigned_model: sonnet
-    model_effort: adaptive
-
-  - id: "P2-003"
-    description: "Extend R9 redaction pass to cover context.routing_decision, context.swarm_plan, context.research_brief_md source URLs and work_sensitive-tagged text. Unit test BE-003."
-    status: pending
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P2-001"]
-    estimated_effort: "1 pt"
-    priority: high
-    assigned_model: sonnet
-    model_effort: adaptive
-
-  - id: "P2-004"
-    description: "Wire _build_context() into main export pipeline so run.json emits context: {...} | null. Integration test: full export with realistic fixture emits schema 1.3 with populated+redacted context."
-    status: pending
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P2-003"]
-    estimated_effort: "0.5 pts"
-    priority: high
-    assigned_model: sonnet
-    model_effort: adaptive
-
-  - id: "P2-005"
-    description: "Serialization barrier verification: ui-engineer-enhanced confirms exported run.json context structure matches TS RunContext type exactly; no type-shape mismatches."
-    status: pending
-    assigned_to: ["ui-engineer-enhanced"]
-    dependencies: ["P2-004", "P1-002"]
-    estimated_effort: "0.5 pts"
-    priority: high
-    assigned_model: sonnet
-    model_effort: adaptive
-
+- id: P2-001
+  description: 'Add _build_context(run_paths: RunPaths) -> dict | None to export_service.py.
+    Reads routing_decision.yaml, research_brief.md, swarm_plan.yaml, upstream entity
+    IDs from run.yaml. Returns None when all source artifacts absent.'
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P1-005
+  estimated_effort: 2 pts
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+- id: P2-002
+  description: Each absent artifact sets context.* field to null (not omitted). When
+    all artifacts absent, context itself is null. Unit test BE-002 per-artifact.
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P2-001
+  estimated_effort: 0.5 pts
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+- id: P2-003
+  description: Extend R9 redaction pass to cover context.routing_decision, context.swarm_plan,
+    context.research_brief_md source URLs and work_sensitive-tagged text. Unit test
+    BE-003.
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P2-001
+  estimated_effort: 1 pt
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+- id: P2-004
+  description: 'Wire _build_context() into main export pipeline so run.json emits
+    context: {...} | null. Integration test: full export with realistic fixture emits
+    schema 1.3 with populated+redacted context.'
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P2-003
+  estimated_effort: 0.5 pts
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+- id: P2-005
+  description: 'Serialization barrier verification: ui-engineer-enhanced confirms
+    exported run.json context structure matches TS RunContext type exactly; no type-shape
+    mismatches.'
+  status: completed
+  assigned_to:
+  - ui-engineer-enhanced
+  dependencies:
+  - P2-004
+  - P1-002
+  estimated_effort: 0.5 pts
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
 parallelization:
-  batch_1: ["P2-001"]
-  batch_2: ["P2-002", "P2-003"]
-  batch_3: ["P2-004"]
-  batch_4: ["P2-005"]
-  critical_path: ["P2-001", "P2-003", "P2-004", "P2-005"]
-  estimated_total_time: "2-3 days"
-
+  batch_1:
+  - P2-001
+  batch_2:
+  - P2-002
+  - P2-003
+  batch_3:
+  - P2-004
+  batch_4:
+  - P2-005
+  critical_path:
+  - P2-001
+  - P2-003
+  - P2-004
+  - P2-005
+  estimated_total_time: 2-3 days
 blockers: []
-
 success_criteria:
-  - id: "SC-P2-1"
-    description: "_build_context() helper implemented and tested (all-present + each-absent-independently cases)"
-    status: pending
-  - id: "SC-P2-2"
-    description: "Null-fill semantics verified (absent field → null, not omitted)"
-    status: pending
-  - id: "SC-P2-3"
-    description: "R9 redaction extended to context.*; redaction unit test BE-003 passes"
-    status: pending
-  - id: "SC-P2-4"
-    description: "Export pipeline integration test passes; run.json emits schema 1.3"
-    status: pending
-  - id: "SC-P2-5"
-    description: "Export errors emit to stderr as structured JSON lines (not uncaught exceptions)"
-    status: pending
-  - id: "SC-P2-6"
-    description: "Serialization barrier verification (P2-005) complete — no type-shape mismatches"
-    status: pending
-  - id: "SC-P2-7"
-    description: "task-completion-validator sign-off"
-    status: pending
-
+- id: SC-P2-1
+  description: _build_context() helper implemented and tested (all-present + each-absent-independently
+    cases)
+  status: pending
+- id: SC-P2-2
+  description: "Null-fill semantics verified (absent field \u2192 null, not omitted)"
+  status: pending
+- id: SC-P2-3
+  description: R9 redaction extended to context.*; redaction unit test BE-003 passes
+  status: pending
+- id: SC-P2-4
+  description: Export pipeline integration test passes; run.json emits schema 1.3
+  status: pending
+- id: SC-P2-5
+  description: Export errors emit to stderr as structured JSON lines (not uncaught
+    exceptions)
+  status: pending
+- id: SC-P2-6
+  description: "Serialization barrier verification (P2-005) complete \u2014 no type-shape\
+    \ mismatches"
+  status: pending
+- id: SC-P2-7
+  description: task-completion-validator sign-off
+  status: pending
 files_modified:
-  - "src/research_foundry/services/export_service.py"
+- src/research_foundry/services/export_service.py
+progress: 100
 ---
 
 # runs-context-panels - Phase 2: Export Wiring & Redaction

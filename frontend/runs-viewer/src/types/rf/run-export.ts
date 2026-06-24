@@ -2,7 +2,7 @@
  * RF Run Export Types — hand-written to match the frozen run.json contract.
  *
  * Source of truth: docs/dev/architecture/rf-run-export-schema.json (JSON Schema draft-07)
- * Bound to schema_version "1.2".
+ * Bound to schema_version "1.3".
  *
  * Codegen evaluated (P1/SCH-003): json-schema-to-typescript was tested against
  * rf-run-export-schema.json. Rejected because: (1) codegen inlines all
@@ -280,7 +280,7 @@ export interface RFRunExport {
   artifact_schema_versions?: RFArtifactSchemaVersions | null;
   /** Markdown report draft emitted by the synthesizer step. Null when not yet generated. */
   report_draft?:             string | null;
-  /** Optional v2 context stack. Absent in schema 1.1 exports. */
+  /** Optional v2 context stack (schema 1.3: shape frozen with 4 keys). Absent in schema 1.1 exports. */
   context?:                  RFRunContextSummary | null;
   /** Optional v2 writeback summary. Absent in schema 1.1 exports. */
   writebacks?:               RFRunWritebacksSummary | null;

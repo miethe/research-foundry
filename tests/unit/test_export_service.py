@@ -250,7 +250,7 @@ def test_dangling_source_is_flagged_not_dropped(tmp_foundry: FoundryPaths) -> No
 def test_claim_counts_and_top_level_shape(tmp_foundry: FoundryPaths) -> None:
     build_run(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_test001")
-    assert data["schema_version"] == svc.EXPORT_SCHEMA_VERSION == "1.2"
+    assert data["schema_version"] == svc.EXPORT_SCHEMA_VERSION == "1.3"
     assert data["run_id"] == "rf_run_test001"
     assert data["claim_counts"]["total"] == 5
     assert data["claim_counts"]["supported"] == 3
@@ -539,10 +539,10 @@ def test_report_draft_falls_back_to_final(tmp_foundry: FoundryPaths) -> None:
     assert data["report_draft"] == final_content
 
 
-def test_schema_version_is_1_2(tmp_foundry: FoundryPaths) -> None:
+def test_schema_version_is_1_3(tmp_foundry: FoundryPaths) -> None:
     build_run(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_test001")
-    assert data["schema_version"] == "1.2"
+    assert data["schema_version"] == "1.3"
 
 
 # --------------------------------------------------------------------------
@@ -628,12 +628,12 @@ def test_metadata_fields_null_on_pre_migration_run(tmp_foundry: FoundryPaths) ->
     assert data["backlog_idea_id"] is None
 
 
-def test_schema_version_bumped_to_1_2(tmp_foundry: FoundryPaths) -> None:
-    """EXP-003: schema_version in export output is '1.2'."""
-    assert svc.EXPORT_SCHEMA_VERSION == "1.2"
+def test_schema_version_bumped_to_1_3(tmp_foundry: FoundryPaths) -> None:
+    """EXP-003: schema_version in export output is '1.3'."""
+    assert svc.EXPORT_SCHEMA_VERSION == "1.3"
     _build_run_with_metadata(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_meta001")
-    assert data["schema_version"] == "1.2"
+    assert data["schema_version"] == "1.3"
 
 
 def test_existing_fields_unaffected_by_metadata_addition(tmp_foundry: FoundryPaths) -> None:
@@ -648,7 +648,7 @@ def test_existing_fields_unaffected_by_metadata_addition(tmp_foundry: FoundryPat
 
     # Core fields still present and correct
     assert data["run_id"] == "rf_run_meta001"
-    assert data["schema_version"] == "1.2"
+    assert data["schema_version"] == "1.3"
     assert data["status_derived"] == "planned"
     assert "claims" in data
     assert "claim_counts" in data
@@ -888,8 +888,8 @@ def test_enrichment_extra_fields_all_present_on_full_run(tmp_foundry: FoundryPat
     assert data["context"] is not None
     assert data["context"]["routing_decision"] is not None
     assert data["context"]["swarm_plan"] is not None
-    # schema_version still 1.2
-    assert data["schema_version"] == "1.2"
+    # schema_version is now 1.3
+    assert data["schema_version"] == "1.3"
 
 
 def test_enrichment_extra_fields_null_on_pre_enrichment_run(
@@ -1246,3 +1246,458 @@ class TestExportRunIncludesTitle:
         # slug of "rf_run_test001" → "Test001" (stripped rf_run_ prefix)
         assert data["title"] is not None
         assert data["title"] != "rf_run_test001"  # must NOT be the raw slug
+
+
+# --------------------------------------------------------------------------
+# P1-004: schema 1.2 backward-compat regression
+# --------------------------------------------------------------------------
+
+def test_schema_12_run_json_loads_without_context_key(tmp_foundry: FoundryPaths) -> None:
+    """Backward-compat: a cached schema-1.2 run.json (no 'context' key) must not
+    raise when accessed through the existing consumer interface.
+
+    The export service always writes 1.3 now; this test ensures that a consumer
+    reading a previously-cached run.json at schema 1.2 (which lacks the 'context'
+    key entirely) can access all expected keys with safe optional access — matching
+    how the frontend guards every field with `?.`.
+
+    Concretely: build a run with no routing/swarm (context=None in 1.3), then
+    simulate a 1.2-era dict by removing 'context' entirely, and verify that all
+    1.2-era required keys are still present and that optional access on 'context'
+    is safe.
+    """
+    build_run(tmp_foundry, "rf_run_compat12")
+    data_13 = svc.export_run(tmp_foundry, "rf_run_compat12")
+
+    # Simulate a schema-1.2 cached run.json: drop the 'context' key entirely
+    data_12 = {k: v for k, v in data_13.items() if k != "context"}
+    data_12["schema_version"] = "1.2"
+
+    # 1. All 1.2-era required top-level keys must still be present
+    required_12 = {
+        "schema_version", "run_id", "status_derived", "status_raw",
+        "sensitivity", "sensitivity_threshold", "claim_counts",
+        "verification", "governance", "timeline", "claims",
+    }
+    assert required_12 <= set(data_12), required_12 - set(data_12)
+
+    # 2. Accessing the absent 'context' key with .get() returns None safely
+    ctx = data_12.get("context")
+    assert ctx is None
+
+    # 3. Optional chaining equivalents do not raise
+    routing = (data_12.get("context") or {}).get("routing_decision")
+    assert routing is None
+    brief = (data_12.get("context") or {}).get("research_brief_md")
+    assert brief is None
+
+    # 4. The 1.3 export itself emits 'context' as a key (null or object)
+    assert "context" in data_13  # key always present in 1.3 output
+
+
+def test_schema_13_context_null_when_no_v2_artifacts(tmp_foundry: FoundryPaths) -> None:
+    """Schema 1.3 runs without any v2 artifacts emit context=null (not key-omitted).
+
+    This is the 'pre-v2 run re-exported under 1.3' case: context key is present
+    but null, which is indistinguishable from the 1.3 null-placeholder shape from
+    the frontend's perspective.
+    """
+    # build_run creates a run without routing_decision, swarm_plan, or research_brief.md
+    build_run(tmp_foundry, "rf_run_noctx12")
+    data = svc.export_run(tmp_foundry, "rf_run_noctx12")
+
+    assert data["schema_version"] == "1.3"
+    assert "context" in data
+    assert data["context"] is None
+
+
+def test_schema_13_context_shape_complete_when_v2_artifacts_present(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """Schema 1.3: when v2 artifacts exist, context always has all 4 keys
+    (routing_decision, swarm_plan, research_brief_md, upstream_entities).
+    """
+    _build_run_with_routing(tmp_foundry, "rf_run_ctx13")
+    data = svc.export_run(tmp_foundry, "rf_run_ctx13")
+
+    assert data["schema_version"] == "1.3"
+    ctx = data.get("context")
+    assert ctx is not None
+
+    # All 4 keys must be present (even if null)
+    for key in ("routing_decision", "swarm_plan", "research_brief_md", "upstream_entities"):
+        assert key in ctx, f"context missing required key '{key}' in schema 1.3"
+
+    # P2 now populates these when artifacts exist; _build_run_with_routing
+    # writes neither a research_brief.md nor upstream IDs, so they stay null.
+    assert ctx["research_brief_md"] is None
+    assert ctx["upstream_entities"] is None
+    # Existing fields from 1.2 still populated
+    assert ctx["routing_decision"] is not None
+    assert ctx["swarm_plan"] is not None
+
+
+# --------------------------------------------------------------------------
+# P2: context population (research_brief_md + upstream_entities) + redaction
+# --------------------------------------------------------------------------
+
+def _build_run_with_full_context(
+    paths: FoundryPaths,
+    run_id: str = "rf_run_p2ctx",
+    *,
+    with_routing: bool = True,
+    with_swarm: bool = True,
+    with_brief: bool = True,
+    with_intent_id: bool = True,
+    with_ibom_id: bool = True,
+    with_node_id: bool = True,
+    routing_sensitivity: str | None = None,
+    swarm_sensitivity: str | None = None,
+    brief_sensitivity: str | None = None,
+) -> RunPaths:
+    """Build a run with optional routing/swarm/brief artifacts + upstream IDs.
+
+    Each source can be toggled independently to exercise the null-fill
+    semantics (P2-002).  Sensitivity labels on each artifact drive the
+    redaction pass (P2-003).
+    """
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+
+    run_yaml: dict[str, Any] = {
+        "schema_version": "0.1",
+        "type": "run",
+        "run_id": run_id,
+        "status": "planned",
+    }
+    if with_intent_id:
+        run_yaml["intent_id"] = "intent_p2_001"
+    if with_ibom_id:
+        run_yaml["ibom_id"] = "ibom_p2_001"
+    dump_yaml(run_yaml, rp.run_yaml)
+
+    if with_routing:
+        routing: dict[str, Any] = {
+            "schema_version": "0.1",
+            "type": "routing_decision",
+            "id": f"route_{run_id}",
+            "selected_abstraction_level": "L4",
+            "rationale": "ROUTING_RATIONALE_TEXT",
+            "human_required": False,
+        }
+        if with_node_id:
+            routing["active_node_id"] = "node_p2_001"
+        if routing_sensitivity is not None:
+            routing["sensitivity"] = routing_sensitivity
+        dump_yaml(routing, rp.routing_decision)
+
+    if with_swarm:
+        swarm: dict[str, Any] = {
+            "schema_version": "0.1",
+            "type": "swarm_plan",
+            "id": f"swarm_{run_id}",
+            "agents": [{"role": "source_scout"}, {"role": "synthesis_lead"}],
+            "required_outputs": ["source_cards", "report_draft.md"],
+            "swarm_notes": "SWARM_NOTES_TEXT",
+        }
+        if swarm_sensitivity is not None:
+            swarm["sensitivity"] = swarm_sensitivity
+        dump_yaml(swarm, rp.swarm_plan)
+
+    if with_brief:
+        if brief_sensitivity is not None:
+            brief = (
+                f"---\ntitle: Test Brief\nsensitivity: {brief_sensitivity}\n---\n\n"
+                "# Research Brief\n\nBRIEF_BODY_TEXT.\n"
+            )
+        else:
+            brief = "# Research Brief\n\nBRIEF_BODY_TEXT.\n"
+        rp.research_brief.write_text(brief, encoding="utf-8")
+
+    return rp
+
+
+def test_context_all_four_sources_present(tmp_foundry: FoundryPaths) -> None:
+    """BE-001: all 4 context sources present → all 4 keys populated correctly."""
+    _build_run_with_full_context(tmp_foundry, "rf_run_be001")
+    data = svc.export_run(
+        tmp_foundry, "rf_run_be001", sensitivity_threshold="client_sensitive"
+    )
+    ctx = data["context"]
+    assert ctx is not None
+
+    # routing_decision
+    assert ctx["routing_decision"] is not None
+    assert ctx["routing_decision"]["rationale"] == "ROUTING_RATIONALE_TEXT"
+
+    # swarm_plan
+    assert ctx["swarm_plan"] is not None
+    assert "source_scout" in ctx["swarm_plan"]["agents"]
+
+    # research_brief_md — verbatim Markdown
+    assert ctx["research_brief_md"] is not None
+    assert "BRIEF_BODY_TEXT" in ctx["research_brief_md"]
+
+    # upstream_entities — all three IDs
+    ue = ctx["upstream_entities"]
+    assert ue is not None
+    assert ue["intent_id"] == "intent_p2_001"
+    assert ue["ibom_id"] == "ibom_p2_001"
+    assert ue["intenttree_node_id"] == "node_p2_001"
+
+
+def test_context_research_brief_absent_independently(tmp_foundry: FoundryPaths) -> None:
+    """BE-002: research_brief absent → field None, others populated."""
+    _build_run_with_full_context(tmp_foundry, "rf_run_be002a", with_brief=False)
+    ctx = svc.export_run(tmp_foundry, "rf_run_be002a")["context"]
+    assert ctx is not None
+    assert ctx["research_brief_md"] is None
+    assert ctx["routing_decision"] is not None
+    assert ctx["swarm_plan"] is not None
+    assert ctx["upstream_entities"] is not None
+
+
+def test_context_routing_absent_independently(tmp_foundry: FoundryPaths) -> None:
+    """BE-002: routing_decision absent → field None, others populated."""
+    _build_run_with_full_context(
+        tmp_foundry, "rf_run_be002b", with_routing=False, with_node_id=False
+    )
+    ctx = svc.export_run(tmp_foundry, "rf_run_be002b")["context"]
+    assert ctx is not None
+    assert ctx["routing_decision"] is None
+    assert ctx["swarm_plan"] is not None
+    assert ctx["research_brief_md"] is not None
+    # node_id falls back to None (no routing, no bundle node id)
+    assert ctx["upstream_entities"]["intenttree_node_id"] is None
+    assert ctx["upstream_entities"]["intent_id"] == "intent_p2_001"
+
+
+def test_context_swarm_absent_independently(tmp_foundry: FoundryPaths) -> None:
+    """BE-002: swarm_plan absent → field None, others populated."""
+    _build_run_with_full_context(tmp_foundry, "rf_run_be002c", with_swarm=False)
+    ctx = svc.export_run(tmp_foundry, "rf_run_be002c")["context"]
+    assert ctx is not None
+    assert ctx["swarm_plan"] is None
+    assert ctx["routing_decision"] is not None
+    assert ctx["research_brief_md"] is not None
+
+
+def test_context_upstream_entities_absent_independently(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """BE-002: all upstream IDs absent → upstream_entities None, others populated."""
+    _build_run_with_full_context(
+        tmp_foundry,
+        "rf_run_be002d",
+        with_intent_id=False,
+        with_ibom_id=False,
+        with_node_id=False,
+    )
+    ctx = svc.export_run(tmp_foundry, "rf_run_be002d")["context"]
+    assert ctx is not None
+    # all three IDs None → upstream_entities collapses to None
+    assert ctx["upstream_entities"] is None
+    assert ctx["routing_decision"] is not None
+    assert ctx["swarm_plan"] is not None
+    assert ctx["research_brief_md"] is not None
+
+
+def test_context_partial_upstream_entities(tmp_foundry: FoundryPaths) -> None:
+    """BE-002: one ID present → upstream_entities dict with that ID, others None."""
+    _build_run_with_full_context(
+        tmp_foundry,
+        "rf_run_be002e",
+        with_ibom_id=False,
+        with_node_id=False,
+    )
+    ctx = svc.export_run(tmp_foundry, "rf_run_be002e")["context"]
+    ue = ctx["upstream_entities"]
+    assert ue is not None
+    assert ue["intent_id"] == "intent_p2_001"
+    assert ue["ibom_id"] is None
+    assert ue["intenttree_node_id"] is None
+
+
+def test_context_all_sources_absent_yields_null(tmp_foundry: FoundryPaths) -> None:
+    """BE-002: all 4 sources absent → context is None.
+
+    intent_id alone in run.yaml does NOT constitute a v2 context (backward
+    compat: pre-v2 runs always carried an intent_id).
+    """
+    _build_run_with_full_context(
+        tmp_foundry,
+        "rf_run_be002f",
+        with_routing=False,
+        with_swarm=False,
+        with_brief=False,
+        with_node_id=False,
+    )
+    data = svc.export_run(tmp_foundry, "rf_run_be002f")
+    assert "context" in data
+    assert data["context"] is None
+
+
+def test_context_node_id_falls_back_to_bundle(tmp_foundry: FoundryPaths) -> None:
+    """BE-001/002: intenttree_node_id falls back to evidence_bundle governance."""
+    rp = _build_run_with_full_context(
+        tmp_foundry, "rf_run_be_fb", with_node_id=False
+    )
+    # Provide node id only via evidence_bundle governance block.
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "run_id": "rf_run_be_fb",
+            "governance": {"intenttree_node_id": "node_from_bundle"},
+        },
+        rp.evidence_bundle,
+    )
+    ctx = svc.export_run(tmp_foundry, "rf_run_be_fb")["context"]
+    assert ctx["upstream_entities"]["intenttree_node_id"] == "node_from_bundle"
+
+
+def test_context_redacts_work_sensitive_routing_and_swarm(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """BE-003: work_sensitive routing/swarm content is redacted at public threshold."""
+    _build_run_with_full_context(
+        tmp_foundry,
+        "rf_run_be003a",
+        routing_sensitivity="work_sensitive",
+        swarm_sensitivity="work_sensitive",
+        with_brief=False,
+    )
+    # explicit public threshold; work_sensitive exceeds it → redact
+    data = svc.export_run(tmp_foundry, "rf_run_be003a", sensitivity_threshold="public")
+    blob = _json_blob(data)
+    assert "ROUTING_RATIONALE_TEXT" not in blob
+    assert "SWARM_NOTES_TEXT" not in blob
+    # Redaction marker present in the redacted string fields
+    ctx = data["context"]
+    assert ctx["routing_decision"]["rationale"] == svc.REDACTION_MARKER
+    # Non-string structural metadata survives redaction (human_required bool)
+    assert ctx["routing_decision"]["human_required"] is False
+
+
+def test_context_routing_swarm_not_redacted_when_threshold_raised(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """BE-003: raising the threshold lets work_sensitive context through."""
+    _build_run_with_full_context(
+        tmp_foundry,
+        "rf_run_be003b",
+        routing_sensitivity="work_sensitive",
+        swarm_sensitivity="work_sensitive",
+        with_brief=False,
+    )
+    data = svc.export_run(
+        tmp_foundry, "rf_run_be003b", sensitivity_threshold="work_sensitive"
+    )
+    blob = _json_blob(data)
+    assert "ROUTING_RATIONALE_TEXT" in blob
+    assert "SWARM_NOTES_TEXT" in blob
+
+
+def test_context_work_sensitive_not_redacted_at_production_threshold(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """BE-003: work_sensitive context passes through unredacted at the production default.
+
+    The distribution foundry.yaml pins ``viewer.sensitivity_threshold: client_sensitive``
+    (rank 3).  ``work_sensitive`` is rank 2.  Because 2 ≤ 3 the content is BELOW the
+    redaction cut-off and intentionally survives the export — this is the operator's
+    deliberate configuration choice, not a bug.
+
+    This test exists as a governance sentinel: if someone accidentally tightens the
+    production threshold (e.g. changes it to ``work_sensitive`` or lower) these
+    assertions will fail loudly, requiring a conscious decision to update them.
+    """
+    _build_run_with_full_context(
+        tmp_foundry,
+        "rf_run_be003_prod",
+        routing_sensitivity="work_sensitive",
+        swarm_sensitivity="work_sensitive",
+        with_brief=False,
+    )
+    # No sensitivity_threshold override → tmp_foundry uses the copied production
+    # foundry.yaml which sets viewer.sensitivity_threshold = client_sensitive.
+    data = svc.export_run(tmp_foundry, "rf_run_be003_prod")
+    blob = _json_blob(data)
+    # Sentinels must survive — work_sensitive is below client_sensitive threshold
+    assert "ROUTING_RATIONALE_TEXT" in blob, (
+        "work_sensitive routing rationale was unexpectedly redacted at the "
+        "production threshold (client_sensitive); check foundry.yaml viewer config"
+    )
+    assert "SWARM_NOTES_TEXT" in blob, (
+        "work_sensitive swarm notes were unexpectedly redacted at the "
+        "production threshold (client_sensitive); check foundry.yaml viewer config"
+    )
+    # Confirm no redaction marker crept in for these fields
+    ctx = data["context"]
+    assert ctx["routing_decision"]["rationale"] != svc.REDACTION_MARKER
+    assert ctx["routing_decision"]["rationale"] == "ROUTING_RATIONALE_TEXT"
+
+
+def test_context_redacts_work_sensitive_research_brief(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """BE-003: research_brief_md tagged work_sensitive → redacted wholesale."""
+    _build_run_with_full_context(
+        tmp_foundry,
+        "rf_run_be003c",
+        brief_sensitivity="work_sensitive",
+    )
+    data = svc.export_run(tmp_foundry, "rf_run_be003c", sensitivity_threshold="public")
+    ctx = data["context"]
+    assert ctx["research_brief_md"] == svc.REDACTION_MARKER
+    assert "BRIEF_BODY_TEXT" not in _json_blob(data)
+
+
+def test_context_public_research_brief_not_redacted(tmp_foundry: FoundryPaths) -> None:
+    """BE-003: a public/untagged research brief survives at public threshold."""
+    _build_run_with_full_context(
+        tmp_foundry, "rf_run_be003d", brief_sensitivity="public"
+    )
+    ctx = svc.export_run(tmp_foundry, "rf_run_be003d")["context"]
+    assert ctx["research_brief_md"] is not None
+    assert "BRIEF_BODY_TEXT" in ctx["research_brief_md"]
+
+
+def test_context_full_pipeline_round_trip(tmp_foundry: FoundryPaths) -> None:
+    """BE-004: full export pipeline round-trip → context present, schema 1.3.
+
+    Writes run.json to disk, reads it back, and asserts the populated +
+    redacted context survives JSON serialization with all 4 keys intact.
+    """
+    import json
+
+    _build_run_with_full_context(
+        tmp_foundry,
+        "rf_run_be004",
+        routing_sensitivity="work_sensitive",
+        brief_sensitivity="public",
+    )
+    out = svc.export_to_file(
+        tmp_foundry, "rf_run_be004", sensitivity_threshold="public"
+    )
+    assert out.exists()
+    data = json.loads(out.read_text(encoding="utf-8"))
+
+    assert data["schema_version"] == "1.3"
+    ctx = data["context"]
+    assert ctx is not None
+    for key in (
+        "routing_decision",
+        "swarm_plan",
+        "research_brief_md",
+        "upstream_entities",
+    ):
+        assert key in ctx, f"context missing key {key!r} after round-trip"
+
+    # work_sensitive routing redacted at default public threshold
+    assert ctx["routing_decision"]["rationale"] == svc.REDACTION_MARKER
+    # public brief survives
+    assert ctx["research_brief_md"] is not None
+    assert "BRIEF_BODY_TEXT" in ctx["research_brief_md"]
+    # upstream entities populated
+    assert ctx["upstream_entities"]["intent_id"] == "intent_p2_001"
+    assert ctx["upstream_entities"]["intenttree_node_id"] == "node_p2_001"

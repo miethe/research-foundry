@@ -359,11 +359,11 @@ describe("D1 — RunTable row click opens run modal", () => {
   });
 });
 
-// ── D6: Swarm tab present in RunDetailWorkspace ───────────────────────────────
+// ── D6: Context tab present in RunDetailWorkspace (FR-14: renamed from Swarm) ─
 
-describe("D6 — Swarm tab in RunDetailWorkspace (page + modal)", () => {
-  it("Swarm tab button is present in the workspace tab bar", () => {
-    const run = makeRun("test_run_swarm_page");
+describe("D6 — Context tab in RunDetailWorkspace (page + modal)", () => {
+  it("Context tab button is present in the workspace tab bar", () => {
+    const run = makeRun("test_run_context_page");
     const { container } = render(
       <RunDetailWorkspace
         run={run}
@@ -373,13 +373,13 @@ describe("D6 — Swarm tab in RunDetailWorkspace (page + modal)", () => {
       />,
       { wrapper: makeWrapper() },
     );
-    const swarmTab = container.querySelector("[data-testid='detail-tab-swarm']");
-    expect(swarmTab).not.toBeNull();
-    expect(swarmTab!.textContent).toBe("Swarm");
+    const contextTab = container.querySelector("[data-testid='detail-tab-context']");
+    expect(contextTab).not.toBeNull();
+    expect(contextTab!.textContent).toBe("Context");
   });
 
-  it("Swarm tab button is present in modal mode", () => {
-    const run = makeRun("test_run_swarm_modal");
+  it("Context tab button is present in modal mode", () => {
+    const run = makeRun("test_run_context_modal");
     const { container } = render(
       <RunDetailWorkspace
         run={run}
@@ -389,13 +389,13 @@ describe("D6 — Swarm tab in RunDetailWorkspace (page + modal)", () => {
       />,
       { wrapper: makeWrapper() },
     );
-    const swarmTab = container.querySelector("[data-testid='detail-tab-swarm']");
-    expect(swarmTab).not.toBeNull();
+    const contextTab = container.querySelector("[data-testid='detail-tab-context']");
+    expect(contextTab).not.toBeNull();
   });
 
-  it("clicking Swarm tab fires onTabChange with 'swarm'", () => {
+  it("clicking Context tab fires onTabChange with 'context'", () => {
     const onTabChange = vi.fn();
-    const run = makeRun("test_run_swarm_click");
+    const run = makeRun("test_run_context_click");
     const { container } = render(
       <RunDetailWorkspace
         run={run}
@@ -405,56 +405,59 @@ describe("D6 — Swarm tab in RunDetailWorkspace (page + modal)", () => {
       />,
       { wrapper: makeWrapper() },
     );
-    const swarmTab = container.querySelector("[data-testid='detail-tab-swarm']") as HTMLButtonElement;
-    expect(swarmTab).not.toBeNull();
-    act(() => { fireEvent.click(swarmTab); });
-    expect(onTabChange).toHaveBeenCalledWith("swarm");
+    const contextTab = container.querySelector("[data-testid='detail-tab-context']") as HTMLButtonElement;
+    expect(contextTab).not.toBeNull();
+    act(() => { fireEvent.click(contextTab); });
+    expect(onTabChange).toHaveBeenCalledWith("context");
   });
 
-  it("Swarm tabpanel renders SwarmPane with empty state when context absent", () => {
-    const run = makeRun("test_run_swarm_empty");
+  it("Context tabpanel renders ContextPane with unavailable state when schema < 1.3", () => {
+    // makeRun() sets schema_version "1.1" — context pane should show unavailable state
+    const run = makeRun("test_run_context_unavailable");
     const { container } = render(
       <RunDetailWorkspace
         run={run}
-        activeTab="swarm"
+        activeTab="context"
         mode="page"
         onTabChange={() => {}}
       />,
       { wrapper: makeWrapper() },
     );
-    const tabpanel = container.querySelector("[data-testid='tabpanel-swarm']");
+    const tabpanel = container.querySelector("[data-testid='tabpanel-context']");
     expect(tabpanel).not.toBeNull();
-    const swarmPane = container.querySelector("[data-testid='swarm-pane']");
-    expect(swarmPane).not.toBeNull();
-    // Empty state shown when context absent
-    const emptyState = container.querySelector("[data-testid='swarm-pane-context-empty']");
-    expect(emptyState).not.toBeNull();
-    expect(emptyState!.textContent).toContain("Swarm data not available");
+    const contextPane = container.querySelector("[data-testid='context-pane']");
+    expect(contextPane).not.toBeNull();
+    // Unavailable state shown when schema < 1.3
+    const unavailable = container.querySelector("[data-testid='context-pane-unavailable']");
+    expect(unavailable).not.toBeNull();
+    expect(unavailable!.textContent).toContain("Context not available for this run");
   });
 
-  it("Swarm tabpanel renders SwarmPane with content when context present", () => {
-    const run = makeRunWithSwarm("test_run_swarm_content");
+  it("Context tabpanel renders ContextPane with panels when schema >= 1.3 and context present", () => {
+    const run: RFRunExport = {
+      ...makeRunWithSwarm("test_run_context_content"),
+      schema_version: "1.3",
+    };
     const { container } = render(
       <RunDetailWorkspace
         run={run}
-        activeTab="swarm"
+        activeTab="context"
         mode="page"
         onTabChange={() => {}}
       />,
       { wrapper: makeWrapper() },
     );
-    const tabpanel = container.querySelector("[data-testid='tabpanel-swarm']");
+    const tabpanel = container.querySelector("[data-testid='tabpanel-context']");
     expect(tabpanel).not.toBeNull();
-    // Should show routing decision section
-    const routingSection = container.querySelector("[data-testid='swarm-pane-routing-section']");
+    // Should show collapsible sections (collapsed by default — headers visible)
+    const routingSection = container.querySelector("[data-testid='context-section-routing']");
     expect(routingSection).not.toBeNull();
-    // Should show swarm plan section
-    const planSection = container.querySelector("[data-testid='swarm-pane-plan-section']");
-    expect(planSection).not.toBeNull();
+    const swarmSection = container.querySelector("[data-testid='context-section-swarm']");
+    expect(swarmSection).not.toBeNull();
   });
 
-  it("RunDetailModal has Swarm tab in the workspace (via pre-seeded cache)", async () => {
-    const run = makeRunWithSwarm("test_run_modal_swarm");
+  it("RunDetailModal has Context tab in the workspace (via pre-seeded cache)", async () => {
+    const run = makeRunWithSwarm("test_run_modal_context");
     const qc = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
     });
@@ -473,9 +476,9 @@ describe("D6 — Swarm tab in RunDetailWorkspace (page + modal)", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    const swarmTab = container.querySelector("[data-testid='detail-tab-swarm']");
-    expect(swarmTab).not.toBeNull();
-    expect(swarmTab!.textContent).toBe("Swarm");
+    const contextTab = container.querySelector("[data-testid='detail-tab-context']");
+    expect(contextTab).not.toBeNull();
+    expect(contextTab!.textContent).toBe("Context");
   });
 
   it("Ledger tab is still present in RunDetailWorkspace", () => {

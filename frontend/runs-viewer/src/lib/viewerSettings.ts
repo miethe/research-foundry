@@ -43,7 +43,7 @@ export interface ViewerSettings {
 // ── Validation helpers ────────────────────────────────────────────────────────
 
 const VALID_THEMES  = new Set<string>(["light", "dark", "system"]);
-const VALID_TABS    = new Set<string>(["overview", "trust", "ledger", "report", "lineage", "writeback"]);
+const VALID_TABS    = new Set<string>(["overview", "trust", "ledger", "report", "lineage", "writeback", "context"]);
 
 function isValidTheme(v: string): v is ThemeSetting {
   return VALID_THEMES.has(v);

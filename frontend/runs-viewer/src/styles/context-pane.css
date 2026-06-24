@@ -1,0 +1,285 @@
+/* ============================================================================
+   Context Pane (FR-14) — BEM rv-context-pane* classes.
+   Uses only existing --it-* design tokens from tokens.css.
+   ============================================================================ */
+
+/* ── Pane container ── */
+
+.rv-context-pane {
+  max-width: 800px;
+  padding: var(--it-space-6);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-3);
+}
+
+/* ── Full unavailable empty-state (schema < 1.3 or context absent) ── */
+
+.rv-context-pane--unavailable {
+  /* inherits .rv-context-pane layout; empty-state is its only child */
+}
+
+.rv-context-pane__empty-state {
+  text-align: center;
+  padding: var(--it-space-16) var(--it-space-6);
+  color: var(--it-text-tertiary);
+}
+
+.rv-context-pane__empty-icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: var(--it-space-4);
+  opacity: 0.4;
+}
+
+.rv-context-pane__empty-message {
+  font-size: var(--it-text-lg);
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-secondary);
+  margin: 0 0 var(--it-space-2);
+}
+
+.rv-context-pane__empty-sub {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-tertiary);
+  margin: 0;
+}
+
+/* ── Collapsible section ── */
+
+.rv-context-pane__section {
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-lg);
+  overflow: hidden;
+  box-shadow: var(--it-shadow-xs);
+}
+
+/* Header button — full-width; chevron + title inline */
+
+.rv-context-pane__section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-2);
+  width: 100%;
+  padding: var(--it-space-4) var(--it-space-5);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--it-text-primary);
+  /* Slightly elevated surface to differentiate collapsed state */
+  background: var(--it-surface-raised, var(--it-surface-base));
+  border-radius: 0; /* section card handles rounding */
+  transition: background 0.1s;
+}
+
+.rv-context-pane__section-header:hover {
+  background: var(--it-surface-hover, var(--it-surface-sunken));
+}
+
+.rv-context-pane__section-header:focus-visible {
+  outline: 2px solid var(--it-accent-primary, var(--it-color-blue-500));
+  outline-offset: -2px;
+}
+
+.rv-context-pane__section-chevron {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--it-text-tertiary);
+}
+
+.rv-context-pane__section-title {
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+}
+
+/* Body — rendered when expanded */
+
+.rv-context-pane__section-body {
+  padding: var(--it-space-5);
+  border-top: 1px solid var(--it-border-soft);
+}
+
+/* ── Per-section empty-state ── */
+
+.rv-context-pane__field-empty {
+  color: var(--it-text-tertiary);
+  font-style: italic;
+  font-size: var(--it-text-sm);
+  margin: 0;
+}
+
+/* ── Upstream Entities section ── */
+
+.rv-context-pane__upstream-entities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--it-space-3);
+}
+
+.rv-context-pane__entity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--it-space-2);
+  background: var(--it-surface-sunken);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-md);
+  padding: var(--it-space-2) var(--it-space-3);
+}
+
+.rv-context-pane__entity-label {
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+  flex-shrink: 0;
+}
+
+.rv-context-pane__entity-value {
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+  color: var(--it-text-secondary);
+  word-break: break-all;
+}
+
+/* ── Routing Decision metadata (est cost / budget / sensitivity) ── */
+
+.rv-context-pane__routing-meta {
+  margin: var(--it-space-3) 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--it-space-2) var(--it-space-5);
+  border-top: 1px solid var(--it-border-soft);
+  padding-top: var(--it-space-3);
+}
+
+.rv-context-pane__routing-meta-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--it-space-2);
+  font-size: var(--it-text-sm);
+}
+
+.rv-context-pane__routing-meta-row dt {
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-tertiary);
+}
+
+.rv-context-pane__routing-meta-row dd {
+  color: var(--it-text-secondary);
+}
+
+.rv-context-pane__sensitivity-chip {
+  font-size: var(--it-text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+}
+
+/* ── Swarm Plan two-level tree (OQ-3) ── */
+
+.rv-context-pane__swarm-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+}
+
+.rv-context-pane__swarm-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--it-space-3);
+  font-size: var(--it-text-sm);
+  padding: var(--it-space-1) 0;
+}
+
+.rv-context-pane__swarm-label {
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-tertiary);
+  font-size: var(--it-text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  flex-shrink: 0;
+  min-width: 7rem;
+}
+
+.rv-context-pane__swarm-value {
+  color: var(--it-text-secondary);
+  font-size: var(--it-text-sm);
+}
+
+/* Sub-tree (level-2/3) */
+
+.rv-context-pane__swarm-subtree {
+  margin-left: var(--it-space-3);
+}
+
+.rv-context-pane__swarm-subtree-header {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-1);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--it-space-1) 0;
+  color: var(--it-text-primary);
+  font-size: var(--it-text-sm);
+}
+
+.rv-context-pane__swarm-subtree-header:hover .rv-context-pane__swarm-label {
+  color: var(--it-accent-primary, var(--it-color-blue-500));
+}
+
+.rv-context-pane__swarm-subtree-chevron {
+  display: flex;
+  align-items: center;
+  color: var(--it-text-tertiary);
+  flex-shrink: 0;
+}
+
+.rv-context-pane__swarm-subtree-body {
+  margin-left: var(--it-space-4);
+  border-left: 2px solid var(--it-border-soft);
+  padding-left: var(--it-space-3);
+  margin-top: var(--it-space-1);
+}
+
+/* Raw escape hatch */
+
+.rv-context-pane__swarm-raw-toggle {
+  margin-top: var(--it-space-2);
+  border-top: 1px solid var(--it-border-soft);
+  padding-top: var(--it-space-2);
+}
+
+.rv-context-pane__swarm-raw-btn {
+  background: none;
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-sm);
+  padding: var(--it-space-1) var(--it-space-3);
+  font-size: var(--it-text-xs);
+  color: var(--it-text-tertiary);
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+}
+
+.rv-context-pane__swarm-raw-btn:hover {
+  color: var(--it-text-secondary);
+  border-color: var(--it-border-default, var(--it-border-soft));
+}
+
+.rv-context-pane__swarm-raw-block {
+  margin-top: var(--it-space-2);
+  max-height: 20rem;
+  overflow: auto;
+  font-size: var(--it-text-xs);
+  background: var(--it-surface-sunken);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-md);
+  padding: var(--it-space-3);
+}

@@ -1,16 +1,18 @@
 import { getViewerSettings } from "../../lib/viewerSettings";
 
-export type DetailTab = "overview" | "trust" | "ledger" | "report" | "lineage" | "writeback" | "swarm";
+export type DetailTab = "overview" | "trust" | "ledger" | "report" | "lineage" | "writeback" | "context";
 
 export function coerceDetailTab(value: string | null): DetailTab {
   if (value === "audit" || value === "ledger") return "ledger";
+  // "swarm" is a legacy alias — forward to "context" (FR-14 tab rename).
+  if (value === "swarm") return "context";
   if (
     value === "overview" ||
     value === "trust" ||
     value === "report" ||
     value === "lineage" ||
     value === "writeback" ||
-    value === "swarm"
+    value === "context"
   ) {
     return value;
   }

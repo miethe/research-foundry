@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -33,7 +34,7 @@ from ..frontmatter import split_frontmatter
 from ..paths import FoundryPaths, RunPaths
 from ..yamlio import loads_yaml
 
-EXPORT_SCHEMA_VERSION = "1.2"
+EXPORT_SCHEMA_VERSION = "1.3"
 
 # --- sensitivity model -------------------------------------------------------
 # Ordering: lower index = less sensitive. The viewer threshold names the MOST
@@ -423,22 +424,75 @@ _SWARM_PLAN_ALLOWLIST: frozenset[str] = frozenset(
 )
 
 
-def _context_summary(rp: RunPaths, *, run_id: str | None) -> dict[str, Any] | None:
-    """Build the context summary block from routing_decision.yaml + swarm_plan.yaml.
+def _redact_str_values(obj: Any) -> Any:
+    """Recursively replace every string value in *obj* with :data:`REDACTION_MARKER`.
 
-    Only explicitly allowlisted keys are forwarded so no unanticipated or
-    unredacted keys from either file can leak into run.json.
+    Used by the context redaction pass (P2-003) to sanitize an entire
+    ``routing_decision`` or ``swarm_plan`` sub-object when the source artifact's
+    sensitivity label exceeds the active export threshold.  Non-string scalar
+    values (booleans, numbers, None) are left untouched so structural metadata
+    (e.g. ``human_required: false``) remains readable.
+    """
+    if isinstance(obj, str):
+        return REDACTION_MARKER
+    if isinstance(obj, dict):
+        return {k: _redact_str_values(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_redact_str_values(item) for item in obj]
+    return obj
 
-    Returns None when neither file exists (pre-v2 runs).
+
+def _context_summary(
+    rp: RunPaths,
+    *,
+    run_id: str | None,
+    run_meta: dict[str, Any] | None = None,
+    threshold_rank: int | None = None,
+) -> dict[str, Any] | None:
+    """Build the context summary block for schema v1.3.
+
+    Reads routing_decision.yaml, swarm_plan.yaml, research_brief.md, and
+    upstream entity IDs from *run_meta* (run.yaml fields).  Only explicitly
+    allowlisted keys from the YAML artifacts are forwarded to prevent
+    unanticipated key leakage (security invariant R9).
+
+    Returns ``None`` when **none of the three file artifacts** exists
+    (routing_decision.yaml, swarm_plan.yaml, research_brief.md absent
+    simultaneously) — this preserves backward compat with pre-v2 runs that
+    carry an ``intent_id`` in run.yaml but have no v2 planning artifacts.
+
+    The returned dict **always** contains all four keys:
+      - ``routing_decision``:  filtered routing-decision object or ``None``
+      - ``swarm_plan``:        filtered swarm-plan object or ``None``
+      - ``research_brief_md``: verbatim Markdown string or ``None``
+      - ``upstream_entities``: ``{intent_id, ibom_id, intenttree_node_id}``
+        dict when at least one ID is non-null, else ``None``
+
+    *run_meta*
+        The ``run.yaml`` dict already loaded by the caller.  When ``None`` the
+        upstream entity IDs all default to ``None``.
+
+    *threshold_rank*
+        If supplied, a redaction pass is applied over ``routing_decision``,
+        ``swarm_plan``, and ``research_brief_md`` before returning: string
+        values in the two plan objects are replaced with :data:`REDACTION_MARKER`
+        when the source artifact's ``sensitivity`` label exceeds the threshold;
+        ``research_brief_md`` is replaced wholesale when its YAML frontmatter
+        ``sensitivity`` label exceeds the threshold.
     """
     routing = _load_yaml_dict(rp.routing_decision, run_id=run_id)
     swarm = _load_yaml_dict(rp.swarm_plan, run_id=run_id)
+    brief_exists = rp.research_brief.exists()
 
-    if not routing and not swarm:
+    # Null guard: only FILE artifacts determine whether context is emitted.
+    # Upstream entity IDs in run.yaml alone do not constitute a v2 context
+    # (preserves backward compat — pre-v2 runs always had intent_id).
+    if not routing and not swarm and not brief_exists:
         return None
 
     ctx: dict[str, Any] = {}
 
+    # --- routing_decision --------------------------------------------------
     if routing:
         ctx["routing_decision"] = {
             "decision": routing.get("selected_abstraction_level"),
@@ -449,6 +503,7 @@ def _context_summary(rp: RunPaths, *, run_id: str | None) -> dict[str, Any] | No
     else:
         ctx["routing_decision"] = None
 
+    # --- swarm_plan --------------------------------------------------------
     if swarm:
         agents = swarm.get("agents")
         ctx["swarm_plan"] = {
@@ -462,6 +517,69 @@ def _context_summary(rp: RunPaths, *, run_id: str | None) -> dict[str, Any] | No
         }
     else:
         ctx["swarm_plan"] = None
+
+    # --- research_brief_md (P2-001) ----------------------------------------
+    if brief_exists:
+        try:
+            ctx["research_brief_md"] = _read_text(rp.research_brief)
+        except Exception as exc:  # noqa: BLE001
+            print(
+                json.dumps({"error": f"research_brief read failed: {exc}", "run_id": run_id}),
+                file=sys.stderr,
+            )
+            ctx["research_brief_md"] = None
+    else:
+        ctx["research_brief_md"] = None
+
+    # --- upstream_entities (P2-001) ----------------------------------------
+    _run_meta: dict[str, Any] = run_meta or {}
+    intent_id: str | None = _run_meta.get("intent_id")
+    ibom_id: str | None = _run_meta.get("ibom_id")
+
+    # intenttree_node_id: prefer routing_decision.yaml active_node_id;
+    # fall back to evidence_bundle.yaml governance block.
+    intenttree_node_id: str | None = routing.get("active_node_id") if routing else None
+    if intenttree_node_id is None:
+        try:
+            bundle = _load_yaml_dict(rp.evidence_bundle, run_id=run_id)
+            intenttree_node_id = (bundle.get("governance") or {}).get("intenttree_node_id")
+        except Exception:  # noqa: BLE001
+            pass
+
+    upstream: dict[str, Any] = {
+        "intent_id": intent_id,
+        "ibom_id": ibom_id,
+        "intenttree_node_id": intenttree_node_id,
+    }
+    ctx["upstream_entities"] = (
+        upstream if any(v is not None for v in upstream.values()) else None
+    )
+
+    # --- redaction pass over context block (P2-003) ------------------------
+    if threshold_rank is not None:
+        # routing_decision: redact string values when the source artifact's
+        # sensitivity label exceeds the threshold.
+        if ctx["routing_decision"] is not None:
+            rd_rank = _sensitivity_rank(routing.get("sensitivity"))
+            if rd_rank > threshold_rank:
+                ctx["routing_decision"] = _redact_str_values(ctx["routing_decision"])
+
+        # swarm_plan: same rule.
+        if ctx["swarm_plan"] is not None:
+            sp_rank = _sensitivity_rank(swarm.get("sensitivity"))
+            if sp_rank > threshold_rank:
+                ctx["swarm_plan"] = _redact_str_values(ctx["swarm_plan"])
+
+        # research_brief_md: redact the whole string when the brief's YAML
+        # frontmatter sensitivity label exceeds the threshold.
+        if ctx["research_brief_md"] is not None:
+            try:
+                brief_meta, _ = split_frontmatter(ctx["research_brief_md"])
+                brief_rank = _sensitivity_rank(brief_meta.get("sensitivity"))
+                if brief_rank > threshold_rank:
+                    ctx["research_brief_md"] = REDACTION_MARKER
+            except Exception:  # noqa: BLE001
+                pass
 
     return ctx
 
@@ -620,7 +738,9 @@ def export_run(
     # --- enrichment-extra fields (ENR-001, ENR-002, ENR-003 — schema 1.2 P7) ----
     cost_usd, model_profiles = _cost_and_model_profiles(run_meta)
     source_count_by_type = _source_count_by_type(cards)
-    context_summary = _context_summary(rp, run_id=run_id)
+    context_summary = _context_summary(
+        rp, run_id=run_id, run_meta=run_meta, threshold_rank=threshold_rank
+    )
 
     # Read report_draft once; reuse for title derivation and export field.
     report_draft = _read_report_draft(rp)

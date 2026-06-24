@@ -60,8 +60,12 @@ describe("coerceDetailTab — known tab values pass through", () => {
     expect(coerceDetailTab("writeback")).toBe("writeback");
   });
 
-  it("returns 'swarm' for 'swarm' (D6 — new tab)", () => {
-    expect(coerceDetailTab("swarm")).toBe("swarm");
+  it("returns 'context' for 'swarm' (FR-14 — legacy alias forwarded to context)", () => {
+    expect(coerceDetailTab("swarm")).toBe("context");
+  });
+
+  it("returns 'context' for 'context' (FR-14 — new tab)", () => {
+    expect(coerceDetailTab("context")).toBe("context");
   });
 });
 
@@ -78,7 +82,7 @@ describe("tabToQuery — alias and passthrough", () => {
     expect(tabToQuery("trust")).toBe("trust");
   });
 
-  it("returns 'swarm' unchanged (D6)", () => {
-    expect(tabToQuery("swarm")).toBe("swarm");
+  it("returns 'context' unchanged (FR-14)", () => {
+    expect(tabToQuery("context")).toBe("context");
   });
 });

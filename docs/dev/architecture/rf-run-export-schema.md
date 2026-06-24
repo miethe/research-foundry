@@ -2,11 +2,11 @@
 title: "RF Run Export Schema (run.json)"
 description: "Frozen denormalized claim-graph contract emitted by `rf run export --json`; the sole data source for the read-only runs viewer."
 status: stable
-schema_version: "1.2"
+schema_version: "1.3"
 doc_type: architecture
 created: 2026-06-19
-updated: 2026-06-21
-feature_slug: run-metadata-enrichment
+updated: 2026-06-24
+feature_slug: runs-context-panels-v1
 phase: "8"
 owners: ["python-backend-engineer", "backend-architect", "documentation-writer"]
 resolves: ["OQ-1", "OQ-2", "OQ-3"]
@@ -19,7 +19,7 @@ changelog_ref: "CHANGELOG.md → [Unreleased] Added → Run Metadata Enrichment"
 
 # RF Run Export Schema (`run.json`)
 
-> **Stable contract (v1.2).** This schema is bound to schema-version strings
+> **Stable contract (v1.3).** This schema is bound to schema-version strings
 > in `run.json` documents. Every TypeScript type and React Query hook binds to
 > this shape. Changes require a schema-version bump and `backend-architect`
 > re-review. See [Changelog](#changelog) for version history and migration notes.
@@ -50,7 +50,7 @@ Load-bearing invariants:
 
 ```jsonc
 {
-  "schema_version": "1.2",            // export contract version (this doc)
+  "schema_version": "1.3",            // export contract version (this doc)
   "run_id": "rf_run_20260613_...",    // canonical id
   "intent_id": "intent_research_...", // nullable
   "created_at": "2026-06-13T22:46:23-04:00", // from run.yaml, nullable
@@ -255,31 +255,86 @@ interactions without a second round-trip.
 - **No LLM transformation** — the file is read verbatim; no truncation, no
   per-sentence processing.
 
-## 9. `context` — Optional v2 Context Stack
+## 9. `context` — Run Context Block (v1.3)
 
-Optional v2 context (routing decision, research brief, swarm plan) when present.
-Absent in schema 1.0/1.1 exports. When present, contains:
+Optional context block introduced in schema 1.2; shape finalized and fully
+populated in schema 1.3. Absent (null) in schema 1.0/1.1 exports and on any
+run where no source artifact (`routing_decision.yaml`, `research_brief.md`,
+`swarm_plan.yaml`) is present.
+
+When non-null (schema ≥ 1.3), the block always contains all four keys. Each
+key is `null` when its backing artifact is absent; the block structure is never
+key-omitted:
 
 ```jsonc
 {
   "routing_decision": {
-    "decision": "Use sonnet for synthesis",
+    "decision": "Use sonnet for synthesis",   // selected_abstraction_level
     "rationale": "Fast iteration needed for research scope",
-    ...                               // additional context fields
+    // additional allowlisted fields from routing_decision.yaml
   },
-  "research_brief_md": "## Brief\n\nInvestigate...",
   "swarm_plan": {
-    "swarm": "rf_research_standard",
+    "swarm": "rf_research_standard",          // swarm id
     "agents": ["sonnet-extractor", "sonnet-synthesizer"],
     "adapters": ["claim-mapper", "report-critic"],
-    ...                               // additional context fields
+    // additional allowlisted fields from swarm_plan.yaml
   },
-  "upstream_entities": { ... }        // optional upstream routing info
+  "research_brief_md": "---\ntitle: ...\n---\n\n# Research Brief\n...", // verbatim research_brief.md
+  "upstream_entities": {
+    "intent_id": "intent_research_agentic_design",   // from run.yaml (already top-level)
+    "ibom_id": "ibom_core_research_skills",          // from run.yaml; null when absent
+    "intenttree_node_id": "node_rf_agentic_research" // from routing_decision.yaml active_node_id;
+                                                     // falls back to evidence_bundle.yaml governance;
+                                                     // null when both absent
+  }
 }
 ```
 
-- **All fields nullable:** each context element may be `null` when absent.
-- **Graceful degradation:** frontend uses optional access (`context?.routing_decision`).
+### Field contracts
+
+| Field | Type | Source artifact | Nullable |
+|---|---|---|---|
+| `routing_decision` | object \| null | `routing_decision.yaml` (allowlist-filtered) | Yes — null when file absent |
+| `swarm_plan` | object \| null | `swarm_plan.yaml` (allowlist-filtered) | Yes — null when file absent |
+| `research_brief_md` | string \| null | `research_brief.md` read verbatim (including any YAML frontmatter) | Yes — null when file absent |
+| `upstream_entities` | object \| null | `run.yaml` (`intent_id`, `ibom_id`) + `routing_decision.yaml` (`active_node_id` → `intenttree_node_id`) | Yes — null when all three IDs are absent |
+
+**`upstream_entities` sub-field sources:**
+
+| Sub-field | Source | Fallback |
+|---|---|---|
+| `intent_id` | `run.yaml` top-level (already emitted as top-level `run.json` field) | `null` |
+| `ibom_id` | `run.yaml` top-level `ibom_id` key | `null` |
+| `intenttree_node_id` | `routing_decision.yaml → active_node_id`; also in `evidence_bundle.yaml → governance.intenttree_node_id` | `null` (both absent) |
+
+**Null semantics:**
+
+- **All fields nullable:** each context element is `null` when its source artifact is absent or unreadable.
+- **Shape always complete (schema ≥ 1.3):** when `context` is non-null, all four keys are present.
+- **`context` itself is null** when none of the file-based source artifacts (`routing_decision.yaml`, `research_brief.md`, `swarm_plan.yaml`) is present. Upstream entity IDs in `run.yaml` alone do not cause `context` to be emitted.
+- **Graceful degradation:** frontend uses optional access (`context?.routing_decision`, `context?.research_brief_md`) throughout; hard destructuring of `context` is forbidden per NFR-CP-4.
+
+### Sensitivity redaction of `context.*`
+
+The R9 sensitivity gate (§4) is extended to cover `context.*` fields. Redaction
+uses the same `_sensitivity_rank` / `REDACTION_MARKER` / `resolve_threshold`
+model as `claims[].sources[].quote` — no separate mechanism.
+
+**Field-level redaction behavior:**
+
+| Field | Redaction rule |
+|---|---|
+| `routing_decision` | String values within the allowlisted dict are scanned; values tagged `sensitivity > threshold` are replaced with `"[redacted:sensitivity]"`. |
+| `swarm_plan` | Same as `routing_decision` — string values in the allowlisted dict are scanned per field sensitivity. |
+| `research_brief_md` | The entire string is replaced with `"[redacted:sensitivity]"` when the brief's YAML frontmatter `sensitivity:` key exceeds the active threshold. |
+| `upstream_entities` | Entity IDs are opaque keys, not governed text — **not redacted**. |
+
+**Default threshold behavior:** The production default in `foundry.yaml` is
+`viewer.sensitivity_threshold: client_sensitive` (rank 3). At this threshold,
+`work_sensitive` content (rank 2) passes through **unredacted** — this is
+deliberate operator configuration, not a gap. To suppress `work_sensitive`
+context content, set `viewer.sensitivity_threshold: work_sensitive` or use
+`rf run export --sensitivity-threshold work_sensitive`.
 
 ## 10. `writebacks` — Optional v2 Writeback Summary
 
@@ -575,42 +630,48 @@ if "Tags: researcher" filter is active.
 
 ## 14. Backwards Compatibility Notes
 
-Schema 1.2 is **fully backwards compatible** with schema 1.0 and 1.1:
+Schema 1.3 is **fully backwards compatible** with all prior schema versions (1.0, 1.1, 1.2):
 
-- All new fields (11 total: 5 metadata + 3 enrichment + 2 v2 context) are **optional/nullable**.
+- All fields introduced in 1.2 and 1.3 are **optional/nullable**.
 - Pre-migration runs (v1.0/1.1) carry `null` values or omit these fields entirely.
-- Frontend components use **optional access** (`run?.linked_projects`, etc.) and gracefully
-  degrade when fields are absent.
-- Static data rebuild (`rf run export --all`) automatically includes v1.2 fields for all runs
-  (backfill migration populates metadata; enrichment is optional per run).
+- Frontend components use **optional access** (`run?.linked_projects`, `run?.context`, etc.) and
+  gracefully degrade when fields are absent.
+- Static data rebuild (`rf run export --all`) automatically includes 1.3 fields for all runs;
+  context is populated when the source artifacts are present on disk.
 
 **Version detection:** Always check `schema_version` to determine which fields are available:
 - Schema `1.0`: no metadata, no enrichment, no context, no writebacks.
 - Schema `1.1`: adds `report_draft`.
-- Schema `1.2`: adds run metadata (5 fields), enrichment extras (3 fields), context, and writebacks.
+- Schema `1.2`: adds run metadata (5 fields), enrichment extras (3 fields), `context` stub (routing_decision + swarm_plan only), and writebacks.
+- Schema `1.3`: `context` fully populated — adds `research_brief_md` and `upstream_entities`; redaction extended to `context.*`.
 
-**Migration note (for developers):** When upgrading from v1.0/v1.1 exports to v1.2:
-1. Runs with metadata/enrichment fields will appear after backfill (P2) + re-export (P4).
+**Migration note (for developers):** When upgrading from v1.0/v1.1 exports to 1.3:
+1. Runs with metadata/enrichment fields will appear after backfill (P2) + re-export.
 2. Pre-migration runs remain queryable with `schema_version < "1.2"`.
 3. Frontend can show "[Metadata pending backfill]" or "[Pre-enrichment run]" labels for old runs.
+4. Context panels in the viewer display empty-states for runs where `context` is null (pre-1.3 exports or runs with no source artifacts).
 
-## 15. CLI Surface Changes (v1.2)
+## 15. CLI Surface Changes (v1.2 and v1.3)
 
-The export command remains stable; all v1.2 fields are included in `--json` output:
+The export command remains stable; all v1.2 and v1.3 fields are included in `--json` output:
 
 ```bash
-# Export with v1.2 fields
+# Export with all fields (schema 1.3)
 rf run export --json --run-id rf_run_20260613_...
 
-# Export all (includes backfill metadata)
+# Export all (includes backfill metadata and context where artifacts are present)
 rf run export --json --all
+
+# Export with a specific sensitivity threshold (controls context.* redaction)
+rf run export --json --run-id rf_run_20260613_... --sensitivity-threshold work_sensitive
 
 # List all runs with metadata stubs in RFRunSummary
 rf run list --json
 ```
 
-Schema version is automatically set to `"1.2"` in output when the run has been backfilled or
-created with v1.2 infrastructure (P2+). Pre-migration runs remain at their original version.
+Schema version is automatically set to `"1.3"` in all exports produced by the current
+`export_service.py`. Pre-migration `run.json` files generated by earlier versions retain their
+original `schema_version` value until re-exported.
 
 ## Changelog
 
@@ -619,3 +680,4 @@ created with v1.2 infrastructure (P2+). Pre-migration runs remain at their origi
 | 1.0 | 2026-06-19 | Initial frozen contract (Phase 1 exit gate). |
 | 1.1 | 2026-06-19 | **Additive post-freeze change** — added `report_draft: string \| null` top-level field to unblock the "read report → click claim chip → see quote" frontend journey. |
 | 1.2 | 2026-06-21 | **Run Metadata Enrichment** — added 5 metadata fields (`linked_projects`, `category`, `tags`, `backlog_idea_ref`, `backlog_idea_id`), 3 enrichment extras (`cost_usd`, `model_profiles`, `source_count_by_type`), and 2 v2 context fields (`context`, `writebacks`). All are optional/nullable for backwards compatibility. Includes backfill migration (P2) for pre-migration runs and idempotent re-export threading (P4). Frontend filtering, display, and enrichment widgets are enabled in P5–P7. |
+| 1.3 | 2026-06-24 | **Context block fully populated** — `research_brief_md` (verbatim `research_brief.md`, including YAML frontmatter) and `upstream_entities` (`intent_id` from `run.yaml`, `ibom_id` from `run.yaml`, `intenttree_node_id` from `routing_decision.yaml → active_node_id` with `evidence_bundle.yaml` fallback) are now populated. `context` is non-null whenever at least one file-based source artifact is present; `context` itself is null only when all three YAML/Markdown source files are absent. R9 sensitivity redaction extended to `context.routing_decision`, `context.swarm_plan`, and `context.research_brief_md`. Four context panels (Routing Decision, Research Brief, Swarm Plan, Upstream Entities) ship in the runs-viewer run detail view. Additive and backwards-compatible: schema 1.2 consumers using optional access are unaffected. |

@@ -11,6 +11,24 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Runs Viewer — Run Context Panels (FR-14)**
+
+- **Run context panels** — four collapsed, read-only panels in the run detail view: Routing
+  Decision, Research Brief, Swarm Plan, and Upstream Entities. Operators can now inspect why a
+  particular model profile was chosen, what research brief was given, which adapters ran and in
+  what sequence, and which upstream organizational intent triggered the run — without switching
+  to the CLI.
+- **`run.json` schema 1.3 `context` block** — `rf run export --json` now embeds a top-level
+  `context` object containing `routing_decision` (allowlist-filtered from `routing_decision.yaml`),
+  `research_brief_md` (verbatim Markdown from `research_brief.md`), `swarm_plan` (allowlist-filtered
+  from `swarm_plan.yaml`), and `upstream_entities` (`intent_id`, `ibom_id`, `intenttree_node_id`
+  from `run.yaml` and `routing_decision.yaml`). Each field is `null` when its source artifact is
+  absent; `context` itself is `null` on pre-1.3 runs. Additive and fully backwards-compatible.
+- **Context sensitivity redaction** — the R9 export-time sensitivity gate is extended to
+  `context.*` fields: string values in `routing_decision` and `swarm_plan` are redacted when they
+  exceed the active threshold; `research_brief_md` is redacted in full when its frontmatter
+  `sensitivity:` key exceeds the threshold. No governed content enters `run.json`.
+
 #### **Loopback API — Live Runs without Static Export**
 
 - **`rf serve` command** — Read-only FastAPI server for runs-viewer live data (loopback mode, 
