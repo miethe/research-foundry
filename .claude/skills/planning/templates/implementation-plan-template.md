@@ -2,11 +2,13 @@
 title: "Implementation Plan: Feature Name" # Human-readable implementation plan title
 schema_version: 2 # CCDash frontmatter schema version
 doc_type: implementation_plan # Must remain `implementation_plan`
+it_schema: 1 # Plan-frontmatter schema version (.claude/skills/planning/references/plan-frontmatter-schema.md). MUST.
 status: draft # draft|planning|in-progress|review|completed|superseded
 created: YYYY-MM-DD # Initial creation date (YYYY-MM-DD)
 updated: YYYY-MM-DD # Last edit date (YYYY-MM-DD)
 feature_slug: "feature-name" # Kebab-case feature identifier
 feature_version: "v1" # Version label for this feature document set
+tier: 2 # 0|1|2|3 complexity/routing tier. MUST.
 prd_ref: /docs/project_plans/PRDs/category/feature-name-v1.md # Parent PRD path (required)
 plan_ref: null # Root implementation plan should be null
 scope: "Describe implementation boundary in one sentence" # Scope summary used in dashboards
@@ -38,7 +40,25 @@ milestone: null # Optional release/milestone marker
 commit_refs: [] # Commit SHAs added during implementation
 pr_refs: [] # Pull request refs (e.g., #123)
 files_affected: [] # Key files expected to change
+# --- Canonical plan-frontmatter schema (it_schema: 1) — structural planning lens fields ---
+# Author open_questions and decisions as YAML lists (NOT body prose / linked files). The capture
+# pipeline projects these onto the command-center plan-lens. See plan-frontmatter-schema.md §5.4.
+planning_maturity: in_progress # idea|scoped|in_progress|shipped — derives from status if absent. SHOULD.
+open_questions: [] # SHOULD. List of str, or {q, owner, status}. Primary enrichment target.
+decisions: [] # SHOULD. List of {decision, rationale, status}. Canonical home for decisions.
+decision_gates: [] # SHOULD. List of {gate, status}; derived from decisions where status=pending.
+success_metrics: [] # SHOULD. List of measurable outcomes (CR-3 → Node.meta).
+contributors_note: null # (contributors above is the canonical author list)
+scores: {} # SHOULD (seed). {strategic_value, urgency, leverage, execution_readiness, risk, ...}. M2 engine owns runtime recompute.
+acceptance_criteria: [] # SHOULD (plan-level rollup; per-task AC lives on tasks[] in progress files).
+# Agent-facing context (projected onto Node.agent_* columns) — make delegation prompts PR-reviewable:
+execution_mode: unassigned # human|agent|hybrid|autonomous|system|unassigned. SHOULD.
+agent_title: null # SHOULD. Short delegation title for the feature/phase node.
+agent_summary: null # SHOULD. One-line summary for the agent picking up this node.
+agent_context: null # SHOULD (md). Context block the executing agent needs.
 # Optional: omit for sequential phase-number-ordered execution (safe fallback for Tier 0/1 and strictly sequential Tier 2 plans)
+# wave_plan.phases[] entries MAY carry phase-level agent_title/agent_summary/agent_context,
+# entry_criteria: [], exit_criteria: [], and node_type (work_package|milestone|...).
 wave_plan:
   serialization_barriers:           # Files that force serialization if written by >1 phase in the same wave
     - skillmeat/api/openapi.json    # Common barriers: openapi.json, CLAUDE.md, README.md, .claude/settings.json

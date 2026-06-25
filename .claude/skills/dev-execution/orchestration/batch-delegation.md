@@ -59,7 +59,22 @@ Success criteria:
 
 ## After Each Task Completes
 
-Update status via artifact-tracker:
+**Re-verify before you mark complete — a delegate self-report is a claim, not evidence.**
+Re-run the delegate's own gates in-session and inspect the on-disk result before
+trusting "done". In the Command Center v3 run, one delegate wrote a wrong test
+assertion, one hit `--max-turns` without reporting, and mypy errors landed in
+delegate-authored code — nothing shipped broken **only** because every delegate gate
+was re-run by the orchestrator. (Consistent with the `validator-confabulates-evidence`
+memory: a `task-completion-validator` can even APPROVE with fabricated citations.)
+
+- Re-run the relevant gates yourself (`tsc`/`pytest`/`ruff`/`eslint`), reading each
+  stage's PASS/FAIL line from the log — not the delegate's summary and not a wrapper
+  exit code (see [`../validation/quality-gates.md`](../validation/quality-gates.md) →
+  "Chained Gate Verification").
+- Verify changed files on disk (don't call `TaskOutput()` for file-writing delegates).
+- Treat a delegate that finished silently or hit max-turns as **incomplete**, not done.
+
+Then update status via artifact-tracker:
 
 ```
 Task("artifact-tracker", "Update ${PRD_NAME} phase ${phase_num}: Mark TASK-1.1 completed with commit abc1234")

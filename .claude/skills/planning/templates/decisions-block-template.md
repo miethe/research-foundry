@@ -1,6 +1,7 @@
 ---
 schema_version: 1
 doc_type: decisions_block
+it_schema: 1 # Plan-frontmatter schema version (.claude/skills/planning/references/plan-frontmatter-schema.md).
 title: "Decisions Block: [Feature Name]"
 description: "High-level planning scaffold for feature estimation, phase boundaries, risk mapping, and model routing. Expand this via implementation-planner (sonnet) into a full PRD+Plan pair."
 created: YYYY-MM-DD
@@ -9,6 +10,10 @@ feature_slug: "[kebab-case-slug]"
 estimated_points: "[N (8–13 for Tier 2; 13+ for Tier 3)]"
 tier: "[2 or 3]"
 related_feature_prd: "[path-to-prd-if-exists]"
+# Canonical decisions list (§5.4). Author resolved design decisions here as a YAML list; the
+# `## Decisions` body table below is a derived/equivalent source that capture link-follow (DI-140)
+# extracts when frontmatter omits the list. Keep the two in sync.
+decisions: [] # List of {decision, rationale, status}. e.g. {decision: "...", rationale: "...", status: locked}
 ---
 
 # Decisions Block: [Feature Name]
@@ -23,6 +28,22 @@ related_feature_prd: "[path-to-prd-if-exists]"
 **Feature Goal**: [One-sentence goal statement, e.g., "Enable users to deploy artifacts via CLI with validation and rollback support."]
 
 **This Decisions Block** captures phase boundaries, agent routing, risk hotspots, estimation anchors, and model routing to guide expansion into a full Implementation Plan. Opus authors this; sonnet `implementation-planner` expands it into the detailed plan template.
+
+---
+
+## Decisions
+
+<!-- CANONICAL DECISIONS TABLE — the IntentTree capture pipeline (link-follow, DI-140) parses the
+     first GFM table under a heading containing "decision". Columns MUST be `Decision | Rationale |
+     Status` (case-insensitive); each data row becomes one {decision, rationale, status} entry in the
+     plan-lens. Mirror these rows into the frontmatter `decisions:` list above. Status ∈
+     locked|pending|superseded. -->
+
+| Decision | Rationale | Status |
+|----------|-----------|--------|
+| [D1: the design decision made] | [why this choice over alternatives] | locked |
+| [D2: the design decision made] | [why this choice over alternatives] | locked |
+| [D3: a still-open decision] | [the tradeoff being weighed] | pending |
 
 ---
 

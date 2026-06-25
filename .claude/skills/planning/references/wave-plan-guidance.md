@@ -71,6 +71,8 @@ wave_plan:
 | `phases[].files_affected` | `string[]` | Recommended | `[]` | Files the phase is expected to write. Used by the decomposition algorithm to detect barrier intersections. Glob patterns are permitted but discourage overly broad entries. |
 | `phases[].model` | `string` | Optional | — | Default model for this phase's implementer dispatches. Values: `opus` \| `sonnet` \| `haiku` \| `gpt-5.3-codex` \| `gemini-3.1-pro` \| `gemini-3.1-flash` \| `nano-banana-pro`. Per-task `Model` column overrides this default. |
 | `phases[].effort` | `string` | Optional | — | Default thinking budget for this phase's implementers. Valid values depend on the chosen model — see Effort Vocabulary section below. Per-task `Effort` column overrides this default. |
+| `phases[].provider` | `string` | Optional | — | Default access transport for this phase's tasks (the model is the routing axis; the provider is how it is served). Values: `claude` \| `ica` \| `codex` \| `gemini`. Per-task `Provider` column overrides. Defaults resolve via the global model registry (`~/.claude/config/model-registry.yaml`) + the global `delegation-router` skill (`~/.claude/skills/delegation-router/`) — R2 policy: Opus/Sonnet/Haiku default to `claude`; ICA/Codex/Gemini are explicit opt-ins, never defaults. |
+| `phases[].profile` | `string` | Optional | — | Default provider profile for this phase. Examples: `free-tier` (ICA), `sandbox=read-only` (Codex), `web-search=on` (Gemini). Per-task `Profile` column overrides. See the global `delegation-router` skill (`~/.claude/skills/delegation-router/references/model-registry.md`). |
 | `waves` | `string[][]` | Derived | — | Computed output of the two-pass algorithm. Include explicitly in the plan so orchestrators and human reviewers can verify correctness without running the algorithm. |
 
 ---
@@ -337,3 +339,11 @@ Source of truth: `.claude/config/multi-model.toml` § `[models.effort_levels]`
 **Override precedence**: Per-task `Effort` values in phase task tables override per-phase `wave_plan.phases[].effort` defaults. Both are optional; absence means "use the model's own default."
 
 **Setting phase-level defaults**: Planners SHOULD set `model` and `effort` on each `wave_plan.phases[]` entry as a phase-wide default for that phase's implementer dispatches. This avoids repeating the same model/effort on every row in the task table when an entire phase shares a single model.
+
+**Provider / Profile precedence**: Provider and profile follow an inheritance cascade from global defaults to per-task overrides — first match wins downward:
+
+1. **Global default** — the model class's default transport from the global model registry (`~/.claude/config/model-registry.yaml`), resolved by the global `delegation-router` skill per the R2 policy: Opus/Sonnet/Haiku default to `provider: claude`; ICA/Codex/Gemini are explicit opt-ins.
+2. **Phase level** — `wave_plan.phases[].provider` / `.profile` applies to every task in the phase unless overridden.
+3. **Task level** — `Provider` / `Profile` columns in the phase task table override the phase default (e.g. a phase set `provider: ica, profile: free-tier` can keep one task on `provider: claude` as an explicit cost-shift back to primary).
+
+For the authoritative model-first assignment procedure and cost policy, see the global `delegation-router` skill (`~/.claude/skills/delegation-router/SPEC.md`).

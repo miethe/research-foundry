@@ -117,6 +117,23 @@ pnpm --filter "./packages/ui" storybook
 
 ## Gate Failure Protocol
 
+### Chained Gate Verification (read the log, not the exit code)
+
+A `build && lint && test` chain **short-circuits at the first failure** — every
+stage after the failing one never runs. Twice in the Command Center v3 run, mypy
+then ESLint failed early, so pytest/vitest "completed" without ever executing; once
+a background wrapper's exit code of `0` even masked it. A clean-looking run is **not**
+proof the later stages passed.
+
+- **Verify each stage's PASS/FAIL summary line from the log**, not the wrapper exit code.
+- On any failure, note **which later stages never ran**, then **re-run the full chain**
+  after the fix — do not assume the un-run stages would have passed.
+- Prefer a `gates.sh` that runs each stage independently and prints a per-stage
+  PASS/FAIL table, so a short-circuit can't masquerade as a full green run.
+- This applies doubly to delegate-run gates: see [`../orchestration/batch-delegation.md`](../orchestration/batch-delegation.md)
+  ("After Each Task Completes") — re-run the delegate's gates in-session; a self-report
+  is a claim, not evidence.
+
 ### Test Failures
 
 1. **If related to current work**: Fix immediately before proceeding

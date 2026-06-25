@@ -2,10 +2,23 @@
 
 Detailed guidance for multi-phase YAML-driven development with batch delegation.
 
+> **Execution Model Routing** — Before using this mode for a Tier 2/3 plan, check whether
+> the workflow path applies:
+>
+> | Condition | Recommended path |
+> |---|---|
+> | Plan has `wave_plan.waves`, all phases `phase_strategy: static`, active session | `/dev:execute-plan` → **workflow path** (`.claude/workflows/execute-plan.js`) |
+> | No `wave_plan` or `phase_strategy: adaptive` phases | This mode (sequential / phase-owner fallback) |
+>
+> The workflow is the **recommended** execution model for `execute-plan` / `execute-contract`.
+> This mode documents the `sequential` and `adaptive` fallback paths, retained pending the
+> Phase-1 pilot adoption decision.
+> Reference: `.claude/skills/dev-execution/SKILL.md` §"Execution Model Routing".
+
 ## When to Use
 
-- Multi-phase implementation plans (>1 day of work)
-- Features requiring PRD and progress tracking
+- Multi-phase implementation plans (>1 day of work) without a `wave_plan`, or with adaptive phases
+- Features requiring PRD and progress tracking where the workflow path does not apply
 - Cross-cutting concerns affecting multiple layers
 - Work tracked in `.claude/progress/{PRD_NAME}/phase-N-progress.md`
 
@@ -89,6 +102,47 @@ Success criteria:
 
 **If subagent invocation fails**: Document in progress tracker and proceed with direct implementation.
 
+### 2.3a IntentTree SDLC Sync — Task Start (optional, best-effort)
+
+If `INTENTTREE_SDLC_SYNC=1`, do three gated/non-fatal steps at task start. All skip silently if the
+CLI is absent or the API is unreachable — never block execution. Workspace/tree resolution and the
+gate are defined once in **`.claude/rules/intenttree-integration.md`**; `${ITT_NODE_ID}` is the bound
+node for the task (resolvable from the progress/plan frontmatter `intenttree_node`, when present).
+
+**(1) Lookup — pull node context before delegating (P2).** Surface the node's acceptance criteria,
+prior runs, and `agent_context` so they inform the delegation prompt:
+```bash
+if [ "${INTENTTREE_SDLC_SYNC:-0}" = "1" ] && [ -n "${ITT_NODE_ID:-}" ]; then
+    itt --json node get "${ITT_NODE_ID}" --include ancestors,agent_runs,artifacts 2>/dev/null \
+        | head -40 || echo "[sdlc-lookup] node context unavailable — skipping (non-fatal)"
+fi
+```
+
+**(2) Claim + in_progress (P3).** Claim the node for the executing actor and set `in_progress`.
+Set a real `INTENTTREE_ACTOR` handle (`agent:<handle>`) per `.claude/rules/agent-coordination.md` so
+the claim is attributable; `agent:operator` is only a fallback default.
+```bash
+if [ "${INTENTTREE_SDLC_SYNC:-0}" = "1" ] && [ -n "${ITT_NODE_ID:-}" ]; then
+    # --actor and --json are GLOBAL flags — they precede the subcommand.
+    itt --actor "${INTENTTREE_ACTOR:-agent:operator}" --json node assign "${ITT_NODE_ID}" --mode agent \
+        2>/dev/null || echo "[sdlc-update] claim skipped (non-fatal)"
+    itt --actor "${INTENTTREE_ACTOR:-agent:operator}" --json node update "${ITT_NODE_ID}" --status in_progress \
+        2>/dev/null || echo "[sdlc-update] status skipped (non-fatal)"
+fi
+```
+
+**(3) Status sync from the progress file.** Propagate the task's `in_progress` status to its bound
+node via the idempotent progress-file import:
+```bash
+if [ "${INTENTTREE_SDLC_SYNC:-0}" = "1" ]; then
+    itt sync import "${progress_file}" --apply --tree "${INTENTTREE_TREE:-}" 2>&1 \
+        | head -5 || echo "[sdlc-sync] itt sync unavailable or failed — skipping (non-fatal)"
+fi
+```
+
+> **Non-fatal contract**: any non-zero exit, missing CLI, or network error is logged and ignored.
+> The `itt sync import` call is idempotent — re-running after partial sync is safe.
+
 ### 2.4 Validate Task Completion
 
 After each major task:
@@ -123,6 +177,18 @@ git commit -m "feat(scope): implement {feature}
 - Added tests with {coverage}%
 
 Refs: Phase ${PHASE_NUM}, {task_id}"
+```
+
+### 2.5a IntentTree SDLC Sync — Task Done (optional, best-effort)
+
+After the commit, re-sync the progress file so the completed task's node reflects `completed`
+status. Gated by `INTENTTREE_SDLC_SYNC=1`; non-fatal.
+
+```bash
+if [ "${INTENTTREE_SDLC_SYNC:-0}" = "1" ]; then
+    itt sync import "${progress_file}" --apply --tree "${INTENTTREE_TREE:-}" 2>&1 \
+        | head -5 || echo "[sdlc-sync] itt sync unavailable or failed — skipping (non-fatal)"
+fi
 ```
 
 ## Phase 3: Continuous Testing
@@ -212,6 +278,32 @@ Task("artifact-tracker", "Finalize ${PRD_NAME} phase ${PHASE_NUM}:
 - Update completion to 100%
 - Generate phase completion summary")
 ```
+
+### 5.2a IntentTree SDLC Sync — Phase Done (optional, best-effort)
+
+After the phase tracker transitions to `completed`, sync the final state to IntentTree. Then
+optionally invoke the capsule hook (gated separately by `SKILLMEAT_CAPSULES_ENABLED=1`).
+
+```bash
+# SDLC sync: propagate phase-completed status to bound nodes
+if [ "${INTENTTREE_SDLC_SYNC:-0}" = "1" ]; then
+    itt sync import "${progress_file}" --apply --tree "${INTENTTREE_TREE:-}" 2>&1 \
+        | head -5 || echo "[sdlc-sync] itt sync unavailable or failed — skipping (non-fatal)"
+    # Explicit completion of the bound node (P3) — by id, no --tree needed; idempotent.
+    if [ -n "${ITT_NODE_ID:-}" ]; then
+        itt --json node complete "${ITT_NODE_ID}" 2>/dev/null \
+            || echo "[sdlc-update] node complete skipped (non-fatal)"
+    fi
+fi
+
+# Capsule hook (independent guard: SKILLMEAT_CAPSULES_ENABLED=1)
+PROGRESS_FILE="${progress_file}" PHASE_NUM="${PHASE_NUM}" PRD="${PRD_NAME}" \
+    .claude/skills/dev-execution/hooks/phase-complete-capsule.sh
+```
+
+> **Reference**: `docs/project_plans/implementation_plans/features/awpr-v2-task-node-contract.md`
+> (field projection + writeback policy). CLI: `client/src/intenttree_client/cli/commands/sync_cmd.py`.
+> Plan task: TASK-6.2 (FR-11, dev-execution skill wiring).
 
 ### 5.3 Push All Changes
 

@@ -67,6 +67,22 @@ The Planning Skill generates and optimizes Product Requirements Documents (PRDs)
 - Optimizing existing plans for better AI agent consumption
 - **Generating Planning Review Boards** to visualize all planning artifacts for a feature
 
+### Before You Scope — Check the Deferred Backlog (and IntentTree)
+
+Before authoring a PRD or implementation plan, scan the **deferred items backlog**
+(`.claude/rules/deferred-backlog.md` → `docs/project_plans/deferred-items-backlog.md`) for items on
+the same surface or higher-priority adjacent items. Pull related `DI-` rows into the plan when they
+fit — landing neighboring deferrals together is the cheapest time to clear them, and the backlog's
+"Next Polish Pass" section names the current recommended track. Reference pulled items by `DI-` ID in
+the plan, and flip their Status to `in-progress` when the plan commits.
+
+**Also check IntentTree first** (gated, best-effort). When `INTENTTREE_SDLC_SYNC=1`, query the bound
+tree for related/in-flight nodes so the plan reuses or links existing work instead of duplicating it,
+per the LOOKUP recipe in **`.claude/rules/intenttree-integration.md`**
+(`itt --json tree graph <id>` then filter `backlog`/`in_progress` over `.nodes[]` in jq — `node list`
+requires an off-tree/workspace scope, so the tree-scoped graph is the in-tree lookup). The markdown backlog stays the
+canonical "check first" source; the node query is the queryable complement.
+
 ## Quick Start
 
 ### Create PRD from Feature Request
@@ -167,10 +183,12 @@ Before authoring any planning artifact, determine the feature's tier. Tier drive
 | **2** | 8–13 pts | **strongly suggested** — required when no comparable past-feature anchor exists or `risk_level: high` | PRD + Implementation Plan | phase-by-phase orchestration | mandatory `task-completion-validator` per phase; `karen` at feature end | sonnet executor + sonnet `implementation-planner` + Opus decisions block |
 | **3** | 13+ pts | **strongly suggested** — required when no comparable past-feature anchor exists or `risk_level: high` | SPIKE + PRD + Implementation Plan | phase-by-phase orchestration | mandatory `karen` per phase milestone + end of feature | sonnet executor + sonnet `implementation-planner` + Opus decisions block |
 
+**Large-file override (capacity, not points)**: Story points size *behavior*; they don't size *agent context*. Any refactor that **deletes, relocates, splits, or substantially rewrites a single file >~2K lines** (>5K = always) is **Tier 2 minimum regardless of point estimate**. A Tier 1 single-agent sprint cannot hold the large source + its call-sites + edit targets at once and will blow context mid-sprint (observed: a 10,156-line deletion crashed a Tier 1 sprint with all wiring undone). Classify it as Tier 2 up front and decompose file-ownership-first per `.claude/specs/workflows/large-file-refactor-decomposition-spec.md`. Localized edits *inside* a large file (a few functions) are exempt.
+
 **How to apply**:
 
 1. Estimate the feature in story points before creating any artifact.
-2. Select the tier from the table above.
+2. Select the tier from the table above. **Then apply the large-file override**: if the work moves/deletes/splits any file >~2K lines, force Tier 2 minimum.
 3. For Tier 2/3, check whether pre-commitment exploration is warranted (see "Workflow: Pre-Commitment Exploration" below).
 4. Follow the matching workflow (Tier 0 → `/dev:quick-feature`; Tier 1 → "Workflow: Tier 1 Feature Contract"; Tier 2/3 → "Workflow 2: Create Implementation Plan from PRD").
 5. If scope expands during planning and crosses a tier boundary upward, promote — don't stretch. See promotion rule in the Tier 1 workflow.
@@ -184,7 +202,7 @@ Use CCDash-aligned frontmatter for all planning artifacts.
 - Reference: `.claude/skills/artifact-tracking/schemas/field-reference.md`
 - Baseline fields for all planning docs: `schema_version`, `doc_type`, `title`, `status`, `created`, `updated`, `feature_slug`
 - Linkage fields: `prd_ref`, `plan_ref`, `related_documents`
-- Lifecycle fields to update after implementation: `commit_refs`, `pr_refs`, `files_affected`
+- Lifecycle fields to update after implementation: `commit_refs`, `pr_refs`, `files_affected`; on merge to the destination branch: `merge_commit`, `merge_branch`
 
 ### Canonical Paths Table
 
@@ -294,13 +312,15 @@ Planning artifacts follow a structured lifecycle as they move through the SDLC. 
 | `commit_refs` | [] | [] | [refs...] | [refs...] |
 | `pr_refs` | [] | [] | [refs...] | [refs...] |
 | `files_affected` | [] | [] | [files...] | [files...] |
+| `merge_commit` | null | null | null | `<post-squash sha>` |
+| `merge_branch` | null | null | null | `main` (or destination) |
 
 **Lifecycle Phases**:
 
 - **Draft**: Initial creation with title, description, author. Status defaults to `draft`.
 - **Approved**: PRD/plan review complete. Set status to `approved` and populate cross-references (`prd_ref` / `plan_ref`).
 - **In-Progress**: Execution begins. Add implementation team to `contributors`, set `milestone` target, track `commit_refs` as work commits.
-- **Completed**: All tasks done. Finalize `commit_refs`, `pr_refs`, and `files_affected` list for audit trail.
+- **Completed**: All tasks done. Finalize `commit_refs`, `pr_refs`, and `files_affected` list, and — once merged to the destination branch — set `merge_commit` + `merge_branch` to the canonical landing SHA. For direct squash-merges with no PR, `merge_commit` is the only in-repo way to resolve where the feature actually landed (the branch SHA becomes an orphan).
 
 **Status Management**:
 
@@ -312,13 +332,21 @@ python .claude/skills/artifact-tracking/scripts/manage-plan-status.py \
   --status approved
 ```
 
-Use `update-field.py` to append to list fields (`contributors`, `commit_refs`, `pr_refs`, `files_affected`):
+Use `update-field.py` to append to list fields (`--append "key=value"`; lists: `contributors`, `commit_refs`, `pr_refs`, `files_affected`) or set scalar fields (`--set "key=value"`, both repeatable):
 
 ```bash
+# Append to a list field
 python .claude/skills/artifact-tracking/scripts/update-field.py \
-  --file docs/project_plans/implementation_plans/features/feature-name-v1.md \
-  --field pr_refs \
-  --append "https://github.com/owner/repo/pull/123"
+  -f docs/project_plans/implementation_plans/features/feature-name-v1.md \
+  --append "pr_refs=https://github.com/owner/repo/pull/123"
+
+# On merge to the destination branch, set the landing SHA + branch (scalar fields).
+# For direct squash-merges with no PR, merge_commit is the only in-repo way to
+# resolve where the feature landed (the branch SHA becomes an orphan).
+python .claude/skills/artifact-tracking/scripts/update-field.py \
+  -f docs/project_plans/implementation_plans/features/feature-name-v1.md \
+  --set "merge_commit=4e64e630" \
+  --set "merge_branch=main"
 ```
 
 **Full field lifecycle details**: `.claude/skills/artifact-tracking/schemas/field-reference.md`
@@ -670,7 +698,7 @@ Human sign-off is required for `go` and `no-go` verdicts. Opus recommendation al
 2. **Structure PRD**
    - Use template: `./templates/prd-template.md`
    - Follow MP architecture patterns (see `./references/mp-architecture.md`)
-   - Include frontmatter with proper metadata
+   - Include frontmatter with proper metadata — author the canonical plan frontmatter (`it_schema: 1`) per `./references/plan-frontmatter-schema.md`: the templates emit the MUST set + `open_questions`/`decisions` (YAML lists) + `agent_*`/`execution_mode`/`scores`; lint with `artifact-tracking/scripts/validate-plan-frontmatter.py` (advisory). When IntentTree sync is in use, also carry the binding (`intenttree_workspace` / `intenttree_tree`) so capture resolves to the bound human workspace/tree (see `.claude/rules/intenttree-integration.md`)
    - Organize into standard PRD sections
 
 3. **Add Implementation Context**
@@ -844,6 +872,58 @@ Sections:
    - Main plan: `docs/project_plans/implementation_plans/[category]/[feature-name]-v1.md`
    - Phase files (if needed): `docs/project_plans/implementation_plans/[category]/[feature-name]-v1/phase-[N]-[name].md`
    - Link phase files from parent plan
+
+10. **IntentTree SDLC Sync (gated: `INTENTTREE_SDLC_SYNC=1`)**
+
+    > Workspace/tree resolution, the `INTENTTREE_SDLC_SYNC` gate + default, and the human-vs-agent
+    > workspace rule are defined once in **`.claude/rules/intenttree-integration.md`** — the single
+    > config-story indirection point. This section is the planning-time *capture* recipe that consumes
+    > that binding; do not re-derive the config here.
+
+    When the env var `INTENTTREE_SDLC_SYNC=1` is set, run the following two-step sync after writing
+    the plan file to disk. This applies equally to PRDs, Implementation Plans, and Feature Contracts.
+
+    **Binding in plan frontmatter (P1-T2).** Author plans carry the binding so it is traceable and
+    overrides the project default (D2): set `intenttree_workspace` / `intenttree_tree` in the plan's
+    frontmatter (per `./references/plan-frontmatter-schema.md` §5.1). When absent, capture resolves to
+    the project default in the integration rule (this repo: workspace `agentic-os`, tree
+    `aos-intenttree`).
+
+    **Target the HUMAN/PROJECT workspace (D3).** Project plans capture into the project's
+    human/project workspace (`kind != agent`; `agentic-os`, `kind=project`, for this repo) — **not**
+    an agent-kind scratch workspace. Ensure `INTENTTREE_WORKSPACE` resolves to it before applying.
+
+    **Step A — dry-run preview** (always run first):
+    ```bash
+    itt sync import <plan-file>
+    ```
+    Parses the artifact's YAML frontmatter (`tasks[]`, `feature_slug`, `doc_type`) and prints what
+    would be registered and imported — no writes occur. Review the task count and frontmatter keys
+    before proceeding.
+
+    **Step B — apply** (after reviewing the preview):
+    ```bash
+    # --tree resolves per the integration rule: plan frontmatter intenttree_tree →
+    # project default (aos-intenttree / tree_01KVTH95FEG7Y23CA39T7BBSZJ) → $INTENTTREE_TREE.
+    itt sync import <plan-file> --apply --tree "${INTENTTREE_TREE:-<repo-intenttree-tree-id>}"
+    ```
+    Registers the plan file as a `SourceArtifact` and projects its `tasks[]` subtree onto the shared
+    node in the repo's IntentTree tree. The CLI stamps the resulting `intenttree_node` (the bound node
+    ID) and `intenttree_tree` (the target tree ID) back into the artifact's YAML frontmatter so the
+    binding is traceable from the markdown file itself.
+
+    **Invariants** (from the AWPR v2 contract):
+    - Markdown stays canonical — source→node only. The node tree is a derived projection.
+      Manual writeback (`WritebackPolicy: MANUAL`) is the default; the node never overwrites the file.
+    - Every import is idempotent: re-running with unchanged source is a no-op (no duplicate nodes).
+    - The step is **best-effort / non-fatal when offline** — if the IntentTree API is unreachable
+      (e.g., rocket-fedora node is down), log the error and continue. Do not block plan authoring.
+    - Unknown frontmatter fields survive verbatim in `binding.raw_source_task`.
+
+    **References**:
+    - Contract: `docs/project_plans/implementation_plans/features/awpr-v2-task-node-contract.md`
+    - CLI source: `client/src/intenttree_client/cli/commands/sync_cmd.py`
+    - Plan task: TASK-6.1 (FR-10, skill-wiring phase of AWPR v2)
 
 **Output**:
 - Implementation Plan at determined location

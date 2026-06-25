@@ -70,6 +70,16 @@ Reviewer agents must produce a structured report using this template:
 
 ---
 
+## Test-Rigor Acceptance Criteria (conditional)
+
+These ACs are **mandatory** when the trigger applies; a phase/sprint is not complete without them.
+
+**R1 — Real-session test (transaction/session/dedup tasks).** Any task touching DB transactions, sessions, savepoints, rollback, or dedup MUST ship ≥1 test against a **real session** (in-memory SQLite suffices for savepoint/rollback semantics), not only `MagicMock(spec=Session)`. Mocks have no transaction state and silently pass on `rollback()`-vs-`begin_nested()` bugs. *(Retro P1: a full-`rollback()` savepoint bug passed all mock tests; caught only by a real-SQLite savepoint test.)*
+
+**R2 — Production-path presence (wiring/dual-surface tasks).** Any task whose AC is "feature X is reachable from surface Y" MUST ship a test that renders/exercises through the **real production entry point** (the actual parent component or call site) and asserts the feature is **present** — not only a component-in-isolation test. Validators MUST trace from the real entry point, not the leaf unit. **A test asserting the feature is *absent* is a smell**, not a passing case. *(Retro P4: an extract button was invisible in production because parents never threaded `parentArtifactId`; 64 isolated tests passed, one even asserted the broken behavior as correct.)*
+
+---
+
 ## Story Completion
 
 A user story is complete when:
@@ -88,6 +98,7 @@ A user story is complete when:
 - [ ] E2E tests for critical user paths
 - [ ] Negative test cases included
 - [ ] All tests passing
+- [ ] **Mutation flows verified against the datastore (Postgres/API read), not the DOM** — optimistic caches and stale renders lie; assert the row/response (CC v3.1 doctrine; see `visual-fidelity.md` R14)
 
 ### Quality
 
@@ -162,6 +173,7 @@ An individual task is complete when:
 
 - [ ] Changes committed with descriptive message
 - [ ] References task ID in commit
+- [ ] **`git status` clean against the expected file set before pausing/handing off** — in CC v3.1 a single file missed its phase commit and sat dirty for a session; reconcile the working tree against intended changes at every pause
 
 ## Tier 1 Sprint Completion
 

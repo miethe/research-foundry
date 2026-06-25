@@ -11,6 +11,7 @@ Unified guidance for executing development workflows with token-efficient progre
 
 | Mode | When to Use | Command |
 |------|-------------|---------|
+| **Workflow (recommended)** | Tier 2/3 plan with `wave_plan`; static phases; active session | `/dev:execute-plan` → workflow path |
 | Tier 1 Sprint | Feature Contract approved (3–8 pts); ready for autonomous implementation | `feature-sprint-executor` agent (TBD: `/dev:tier1-sprint`) |
 | Phase | Multi-phase plans with YAML tracking | `/dev:execute-phase` |
 | Quick | Simple features, single-session | `/dev:quick-feature` |
@@ -18,12 +19,60 @@ Unified guidance for executing development workflows with token-efficient progre
 | Full Story | Complete story end-to-end | `/dev:complete-user-story` |
 | Scaffold | New feature structure | `/dev:create-feature` |
 
+## Execution Model Routing
+
+### execute-plan / execute-contract (Tier 2/3)
+
+The execution model for full Tier 2/3 plans is **workflow** (`.claude/workflows/execute-plan.js`) once the Phase-1 pilot is validated. Until then, both models are available; the workflow is the recommended route for new runs.
+
+| Model | When to use | Status |
+|---|---|---|
+| **`workflow`** | Plan has `wave_plan.waves`, all phases `phase_strategy: static`, active session | **Recommended** (default once piloted) |
+| `sequential` | No `wave_plan`; fall back to one-wave-per-phase phase-owner dispatch | Fallback — documented, retained |
+| `adaptive` (agentType:'phase-owner') | Phase has `phase_strategy: adaptive`; task list cannot be enumerated up-front | Narrow fallback — retained |
+
+> **Cutover is pilot-gated.** The `workflow` model becomes the hard default only after the Phase-1
+> execute-plan pilot passes its A/B gate (tokens ≤ manual baseline; quality ≥; wall-clock improved).
+> Pilots are deferred to the user. Until that decision, `sequential`/`adaptive` remain fully supported
+> fallback paths.
+>
+> Reference: `.claude/plans/workflow-orchestration-integration-v1.md` §7 (Phase 6 row + Phase 1 gate)
+> and §9 (retirement risk/mitigation).
+
+### Nesting as a within-workflow decomposition tool (pilot)
+
+The `adaptive` path's `phase-owner` agentType MAY nest its own implementers via the `Agent` tool,
+gated by the opt-in, default-OFF `phase_owner_nesting_enabled` args flag on the `execute-plan`
+workflow. This is a pilot capability; it is not auto-promoted.
+
+**Nesting is for decomposition, not throughput.** A single nested `Agent` call blocks until the
+child returns; batched nested spawns get ungoverned concurrency (no `parallel()` cap+queue). Keep
+governed parallelism at the workflow `parallel()`/`pipeline()` level. Use nesting only when the
+phase-owner cannot enumerate its sub-tasks up front and needs runtime judgment to break down its
+slice.
+
+**Hard rules** (full rationale in `.claude/specs/subagent-nesting-spec.md`; do not re-derive here):
+
+| Rule | Summary |
+|---|---|
+| Depth cap | Max 1 level of nesting below the phase-owner (phase-owner → helper; no deeper). |
+| Bounded helpers | Nested helpers must be bounded — < ~40 tool uses per level. |
+| Single committer | The phase-owner is the **only** committer. Children never `git add/commit/push/stash`. |
+| Mode-D at depth | Nested agents are prohibited from auth/payments/migrations/deletion/force-push/secret-rotation. On hitting Mode-D territory: STOP and bubble `{needs_opus, mode_d}` up the chain unchanged until Opus handles it interactively. |
+| Claude-primary only | Nesting runs on the primary subscription only. Router-offloaded executors (`ica-executor`, `codex-executor`, `gemini-executor`) never nest. |
+
+**Durability caveat.** The workflow caches the phase-owner's FINAL result only. A mid-nest blow-up
+re-runs the entire phase — there is no partial-subtree resume. Keep nests shallow.
+
+Canonical rules: `.claude/specs/subagent-nesting-spec.md`.
+
 ## Execution Modes
 
 Load only the mode-specific content you need:
 
 | Mode | Guide | When to Load |
 |------|-------|--------------|
+| [Workflow Execution](#execution-model-routing) | Tier 2/3 plans via `.claude/workflows/execute-plan.js`; see `/dev:execute-plan` §"Workflow Path" |
 | [Tier 1 Autonomous Sprint](#tier-1-autonomous-sprint) | Approved Feature Contract (3–8 pts); single autonomous sprint |
 | [Phase Execution](./modes/phase-execution.md) | Multi-phase YAML-driven work with batch delegation |
 | [Quick Execution](./modes/quick-execution.md) | Simple single-session features (~1-3 files) |
@@ -214,6 +263,7 @@ For detailed assignments: [./orchestration/agent-assignments.md]
 | Reference | Purpose |
 |-----------|---------|
 | [Quality Gates](./validation/quality-gates.md) | Test, lint, typecheck requirements |
+| [Visual Fidelity](./validation/visual-fidelity.md) | Sketch/mockup-faithful UI gate: capture → crop → adjudicate (when `ui_touched` + a visual reference exists) |
 | [Milestone Checks](./validation/milestone-checks.md) | Phase completion criteria |
 | [Completion Criteria](./validation/completion-criteria.md) | Story/feature done definition |
 
@@ -229,6 +279,48 @@ For phase execution, use artifact-tracking skill for:
 - ORCHESTRATE batch delegation
 
 Integration patterns: [./integrations/artifact-tracking.md]
+
+### IntentTree SDLC Sync (AWPR v2 — FR-11)
+
+When `INTENTTREE_SDLC_SYNC=1`, the execution flow re-runs `itt sync import <file> --apply --tree
+<tree>` at four status hook points to propagate task/phase status to bound IntentTree nodes:
+
+| Hook point | Location | What syncs |
+|---|---|---|
+| Task start | phase-execution.md §2.3a | progress file → task node set to `in_progress` |
+| Task done | phase-execution.md §2.5a | progress file → task node set to `completed` |
+| Phase done | phase-execution.md §5.2a | progress file → phase node set to `completed` |
+| Inter-wave merge | plan-execution.md §3c-sync | all wave progress files; plan file at end |
+
+**Non-fatal contract**: offline / CLI-missing / non-zero exit → log warning and continue. Never
+blocks execution. All sync calls are idempotent (re-running unchanged source is a no-op).
+
+**Thin hook script**: `.claude/skills/dev-execution/hooks/sdlc-sync.sh` (flag-gated; exits 0 on
+any error). Set `INTENTTREE_TREE=<tree-id>` or let the CLI infer from artifact frontmatter.
+
+**References**:
+- Contract: `docs/project_plans/implementation_plans/features/awpr-v2-task-node-contract.md`
+- CLI: `client/src/intenttree_client/cli/commands/sync_cmd.py`
+- P0 contract task: TASK-6.2 (FR-11)
+- Planning skill pattern: `.claude/skills/planning/SKILL.md` §10 (analogous planning-time sync)
+
+### Plan status-hygiene hooks (DI-135) — opt-in
+
+The IntentTree plan-lens reads `status`/`planning_maturity` from **plan-file frontmatter** (markdown
+is canonical). When a phase or feature ships, keep that frontmatter current so the lens does not show
+stale `not_started`/`in_progress` on completed work. Two opt-in, comment-preserving, dry-run-by-default
+hooks live in `.claude/skills/dev-execution/scripts/`:
+
+| Hook | What it does | Invocation |
+|---|---|---|
+| `complete-phase.py` | Rewrites plan `status` → `completed` and `planning_maturity` → `shipped` (idempotent no-op if already current) | `python .claude/skills/dev-execution/scripts/complete-phase.py <plan.md> [--apply]` |
+| `complete-task.py` | Updates one task's `status` inside a frontmatter `tasks:` list (preserves indentation/comments) | `python .claude/skills/dev-execution/scripts/complete-task.py <file> --task <id> --status completed [--apply]` |
+
+**Contract**: opt-in (no silent background mutation — dry-run is the default; you must pass `--apply`).
+For `.claude/progress/*` task completion, `update-status.py` (artifact-tracking) remains canonical —
+it enforces the completion gate (timestamps/evidence); `complete-task.py` is the lighter companion for
+keeping a plan-file `tasks[]` status current. After `--apply`, re-running `intenttree_capture.py
+--apply` propagates the new status to the bound node with no agent involvement (DI-135 closed at source).
 
 ### meatycapture-capture
 

@@ -1,1 +1,30 @@
-deployed = []
+[[deployed]]
+artifact_name = "planning"
+artifact_type = "skill"
+from_collection = "default"
+deployed_at = "2026-06-25T15:41:11.182795"
+artifact_path = "skills/planning"
+content_hash = "bfc2b00dccb71a4eca3e7369439b6c045c0965c20520ede6d11ac028372f1a71"
+local_modifications = false
+version_lineage = [
+    "bfc2b00dccb71a4eca3e7369439b6c045c0965c20520ede6d11ac028372f1a71",
+]
+merge_base_snapshot = "bfc2b00dccb71a4eca3e7369439b6c045c0965c20520ede6d11ac028372f1a71"
+deployment_profile_id = "claude_code"
+platform = "claude_code"
+profile_root_dir = ".claude"
+collection_sha = "bfc2b00dccb71a4eca3e7369439b6c045c0965c20520ede6d11ac028372f1a71"
+
+[[deployed]]
+artifact_name = "dev-execution"
+artifact_type = "skill"
+from_collection = "default"
+deployed_at = "2026-06-25T15:41:16.359604"
+artifact_path = "skills/dev-execution"
+content_hash = "ba6479916fa6fa76bbcefe72b00544557e7c642d923e194e42bda129e0c0e48d"
+local_modifications = false
+merge_base_snapshot = "ba6479916fa6fa76bbcefe72b00544557e7c642d923e194e42bda129e0c0e48d"
+deployment_profile_id = "claude_code"
+platform = "claude_code"
+profile_root_dir = ".claude"
+collection_sha = "ba6479916fa6fa76bbcefe72b00544557e7c642d923e194e42bda129e0c0e48d"

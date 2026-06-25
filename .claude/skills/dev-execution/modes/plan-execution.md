@@ -69,6 +69,17 @@ for wave in waves:
     checkpoint_sha = Bash("git rev-parse HEAD")
     # Store in plan frontmatter commit_refs for rollback traceability
 
+    # 3c-sync. IntentTree SDLC Sync — after wave merge (best-effort, gated)
+    # Propagates all phase progress files in the just-completed wave to bound nodes.
+    # Non-fatal: offline / CLI-missing → skip with warning, never block the wave loop.
+    #
+    #   if [ "${INTENTTREE_SDLC_SYNC:-0}" = "1" ]; then
+    #     for phase_id in wave:
+    #       progress_f=".claude/progress/${plan_slug}/phase-${N}-progress.md"
+    #       itt sync import "${progress_f}" --apply --tree "${INTENTTREE_TREE:-}" 2>&1 \
+    #           | head -5 || echo "[sdlc-sync] phase ${N} sync skipped (non-fatal)"
+    #   fi
+
     # 3d. Worktree merge-back (for any worktree-isolated phase in this wave)
     #     See §Worktree Merge Protocol
 
@@ -80,7 +91,16 @@ if tier == 3:
 else:
     Task("task-completion-validator", "Mode E: Reviewer. Review plan-level completion …")
 
-# 5. Write plan-level Completion Report
+# 5. IntentTree SDLC Sync — plan done (best-effort, gated)
+# After the reviewer approves, sync the plan file itself so the feature root node
+# reflects the final status. Non-fatal.
+#
+#   if [ "${INTENTTREE_SDLC_SYNC:-0}" = "1" ]; then
+#     itt sync import "<plan_path>" --apply --tree "${INTENTTREE_TREE:-}" 2>&1 \
+#         | head -5 || echo "[sdlc-sync] plan-level sync skipped (non-fatal)"
+#   fi
+
+# 6. Write plan-level Completion Report
 Write(
     path=f".claude/worknotes/{plan_slug}/completion-report.md",
     content=<wave summary, reviewer verdict, commit_refs>
@@ -230,6 +250,12 @@ git branch -D worktree-<slug>
 
 **Before next wave**: Verify the worktree's branch has been merged or explicitly preserved before
 proceeding. Record the merge commit SHA in the plan's `commit_refs` frontmatter.
+
+**Running scripts inside a worktree (editable install gotcha):** `python scripts/x.py` from a
+worktree imports the **installed** package (where `pip install -e` points = the main repo), **not**
+the worktree's copy — silent `ImportError` on worktree-only symbols. Prefix `PYTHONPATH=$(pwd)` or
+run as `python -m`. (`python -m pytest` from the worktree root already shadows correctly via cwd on
+`sys.path[0]`; bare `python scripts/x.py` does not.)
 
 ## Sequential Fallback
 

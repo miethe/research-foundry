@@ -93,6 +93,14 @@ These tasks are real, recurring, and routinely glossed in trailing bullets ("Ope
 
 **Application**: After summing per-phase estimates, add a "Cross-Cutting Plumbing" row at ~15–20% of subtotal. Prefer estimating it once at the plan level over scattering 0.1-pt fragments across every router task.
 
+### H7 — Huge-File Touch Multiplier
+
+> **Any task whose `files_affected` includes a file >2K lines costs ≥2× its point estimate in agent dispatches** — even for additive or localized edits.
+
+This is distinct from the whole-file-refactor Tier-2 override in `planning/SKILL.md` (which exempts in-place edits). A giant file forces repeated grep/sed navigation and is the dominant driver of context-blows and fix-cycles.
+
+**Application**: `wc -l` every file in scope at planning time. List files >2K lines in a plan-level **"High-Friction Surfaces"** note. Apply a ≥2× multiplier to each task touching one, and mandate the anti-blow guardrail prompt block (do-not-read-whole, grep -n + sed only, budget ≤40 tool uses, STOP-and-report-partial — see `.claude/specs/workflows/large-file-refactor-decomposition-spec.md`) for those tasks. Evidence: a ~5,100-line router drove 2–4× per task across an entire Tier-3 plan.
+
 ## Anti-Patterns
 
 | Anti-Pattern | Symptom | Fix |
@@ -104,6 +112,7 @@ These tasks are real, recurring, and routinely glossed in trailing bullets ("Ope
 | Capability bundling | 7 capability areas, 8.5 pt total | Apply H4; per-area sum is the floor |
 | No anchor | "Feels like a Medium" | Apply H5; cite a comparable completed feature |
 | Plumbing omission | DTOs, DI, OpenAPI, RLS implicit in "etc." | Apply H6; explicit 15–20% line item |
+| Huge-file glossing | Task touching a 5k-line file estimated at face points | Apply H7; 2× multiplier + High-Friction Surfaces note |
 
 ## Estimation Sanity Check Template
 
@@ -122,6 +131,7 @@ Insert this section into every implementation plan immediately after the Phase S
   | **Σ** | **<X> pts**    |       |
 **Anchor (H5)**: <feature-slug> cost <X pts>; this plan delta <±Y%>; justification: <...>
 **Plumbing budget (H6)**: <X pts> (~<Y%> of subtotal)
+**Huge-file touch (H7)**: <files >2K lines in scope + 2× applied? Y/N>
 
 **Bottom-up total**: <X pts>
 **Top-down intuition**: <Y pts>
