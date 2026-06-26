@@ -48,6 +48,11 @@ docs = [
 
 [project.scripts]
 rf = "research_foundry.cli:app"
+# Search-router MCP server (stdio). Optional: requires the `mcp` extra
+# (`pip install 'research-foundry[mcp]'` / `uv tool install --with mcp .`).
+# Without it the entrypoint raises a clear RuntimeError pointing to the extra.
+# Exposed over ssh-stdio by the launchpad's aos-mcp (AOS remote targeting).
+rf-mcp = "research_foundry.services.search_router.mcp_server:main"
 
 [build-system]
 requires = ["hatchling"]
