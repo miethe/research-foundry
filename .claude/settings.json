@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -m research_foundry.validators.guard_pretool"
+            "command": "/Users/miethe/dev/homelab/development/research-foundry/.venv/bin/python -m research_foundry.validators.guard_pretool"
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -m research_foundry.validators.scan_artifact"
+            "command": "/Users/miethe/dev/homelab/development/research-foundry/.venv/bin/python -m research_foundry.validators.scan_artifact"
           }
         ]
       }
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -m research_foundry.validators.emit_ccdash_event"
+            "command": "/Users/miethe/dev/homelab/development/research-foundry/.venv/bin/python -m research_foundry.validators.emit_ccdash_event"
           }
         ]
       }
