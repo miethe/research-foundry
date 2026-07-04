@@ -15,6 +15,11 @@ Endpoints registered by this factory:
   GET /api/runs/{run_id}/claims           — claim ledger  (→ fetchClaimLedger)
   GET /api/runs/{run_id}/sources/{sc_id}  — resolved source (→ fetchSourceCard)
   GET /data/governance.json    — governance config snapshot (→ fetchGovernanceConfig)
+  GET  /api/catalog/stats                — catalog counts (→ fetchCatalogStats)
+  GET  /api/catalog/search                — catalog search (→ fetchCatalogSearch)
+  GET  /api/catalog/items/{id}            — catalog item detail (→ fetchCatalogItem)
+  POST /api/catalog/import/run/{run_id}   — (re)import one run into the catalog
+  POST /api/catalog/import                — (re)import every discovered run
 
 Middleware stack (outermost → innermost):
   CORS → allowlist (optional) → auth (optional)
@@ -34,6 +39,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ..config import FoundryConfig
 from .middleware.allowlist import IPAllowlistMiddleware
 from .middleware.auth import TokenAuthMiddleware
+from .routers.catalog import router as catalog_router
 from .routers.runs import router as runs_router
 
 # Default origins covered by a plain wildcard pattern are not supported by
@@ -145,6 +151,8 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # --- Routers --------------------------------------------------------------
     # All run endpoints live under /api (client.ts: LOOPBACK_BASE = ".../api")
     app.include_router(runs_router, prefix="/api", tags=["runs"])
+    # Shared evidence catalog (public-multiuser-release Phase 1).
+    app.include_router(catalog_router, prefix="/api", tags=["catalog"])
 
     return app
 

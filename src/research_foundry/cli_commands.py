@@ -1234,6 +1234,155 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(run_app, name="run")
 
+    # ----- catalog (shared evidence catalog, public-multiuser-release Phase 1) -----
+    catalog_app = typer.Typer(help="Shared evidence catalog — search/import claims, sources, "
+                                    "inferences, reports across runs.")
+
+    @catalog_app.command("import")
+    def catalog_import(
+        run_id: str = typer.Argument(None, help="run id to import (omit with --all)"),
+        all_runs: bool = typer.Option(False, "--all", help="import every discovered run"),
+        json_out: bool = typer.Option(True, "--json/--no-json", help="JSON output"),
+    ) -> None:
+        """(Re)import a run — or every discovered run — into the catalog (idempotent)."""
+
+        import json as _json
+        import sys as _sys
+
+        from .paths import FoundryPaths
+        from .services import catalog_service as svc
+
+        paths = FoundryPaths.discover()
+        if all_runs:
+            result = svc.import_all(paths)
+            typer.echo(_json.dumps(result, ensure_ascii=False, indent=2))
+            return
+        if not run_id:
+            _fail(RFError("provide RUN_ID or --all"))
+        try:
+            result = svc.import_run(paths, run_id)
+        except svc.CatalogError as exc:
+            print(_json.dumps(exc.as_payload()), file=_sys.stderr)
+            raise typer.Exit(int(exc.exit_code)) from exc
+        typer.echo(_json.dumps(result, ensure_ascii=False, indent=2))
+
+    @catalog_app.command("search")
+    def catalog_search(
+        q: str = typer.Option(None, "--q", help="free-text search query"),
+        item_type: str = typer.Option(None, "--item-type", help="filter: claim|inference|source|report|reusable_output|writeback"),
+        project: str = typer.Option(None, "--project"),
+        status: str = typer.Option(None, "--status"),
+        sensitivity: str = typer.Option(None, "--sensitivity"),
+        run_id: str = typer.Option(None, "--run-id"),
+        sort: str = typer.Option("updated", "--sort", help="updated|title|confidence"),
+        page: int = typer.Option(1, "--page"),
+        page_size: int = typer.Option(25, "--page-size"),
+        json_out: bool = typer.Option(True, "--json/--no-json", help="JSON output"),
+    ) -> None:
+        """Search the catalog (over-threshold items are excluded, fail-closed)."""
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services import catalog_service as svc
+
+        paths = FoundryPaths.discover()
+        result = svc.search(
+            paths,
+            q=q,
+            item_type=item_type,
+            project=project,
+            status=status,
+            sensitivity=sensitivity,
+            run_id=run_id,
+            sort=sort,
+            page=page,
+            page_size=page_size,
+        )
+        if json_out:
+            typer.echo(_json.dumps(result, ensure_ascii=False, indent=2))
+            return
+        table = Table(title="rf catalog search")
+        table.add_column("ID")
+        table.add_column("Type")
+        table.add_column("Title")
+        table.add_column("Status")
+        table.add_column("Sensitivity")
+        for item in result["items"]:
+            table.add_row(
+                item["catalog_item_id"],
+                item["item_type"],
+                item["title"] or "",
+                item["status"] or "",
+                item["sensitivity"] or "",
+            )
+        console.print(table)
+        console.print(
+            f"[dim]{result['total']} total — page {result['page']} "
+            f"(page_size={result['page_size']})[/dim]"
+        )
+
+    @catalog_app.command("show")
+    def catalog_show(
+        catalog_item_id: str = typer.Argument(..., help="catalog_item_id (ci_...)"),
+        json_out: bool = typer.Option(True, "--json/--no-json", help="JSON output"),
+    ) -> None:
+        """Show full detail (summary + payload + links) for a catalog item."""
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services import catalog_service as svc
+
+        paths = FoundryPaths.discover()
+        item = svc.get_item(paths, catalog_item_id)
+        if item is None:
+            _fail(RFError(f"catalog item not found (or excluded by sensitivity threshold): "
+                          f"{catalog_item_id}"))
+        typer.echo(_json.dumps(item, ensure_ascii=False, indent=2))
+
+    @catalog_app.command("stats")
+    def catalog_stats(
+        json_out: bool = typer.Option(True, "--json/--no-json", help="JSON output"),
+    ) -> None:
+        """Show catalog aggregate counts (visible items only)."""
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services import catalog_service as svc
+
+        paths = FoundryPaths.discover()
+        result = svc.stats(paths)
+        if json_out:
+            typer.echo(_json.dumps(result, ensure_ascii=False, indent=2))
+            return
+        table = Table(title="rf catalog stats")
+        table.add_column("Item type")
+        table.add_column("Count")
+        for item_type, count in result["counts"].items():
+            table.add_row(item_type, str(count))
+        console.print(table)
+        console.print(
+            f"runs indexed: {result['runs_indexed']}  "
+            f"last import: {result['last_import_at']}"
+        )
+
+    @catalog_app.command("rebuild")
+    def catalog_rebuild() -> None:
+        """Drop + recreate the catalog schema, then re-import every discovered run."""
+
+        from .paths import FoundryPaths
+        from .services import catalog_service as svc
+
+        paths = FoundryPaths.discover()
+        result = svc.rebuild(paths)
+        console.print(f"[green]rebuilt[/green] {result['runs']} run(s), {result['items']} item(s)")
+        for err in result["errors"]:
+            err_console.print(f"[yellow]{err['run_id']}: {err['error']}[/yellow]")
+
+    app.add_typer(catalog_app, name="catalog")
+
     # ----- serve (loopback API) -----
     @app.command()
     def serve(
@@ -1278,6 +1427,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         # --- lazy import guard -----------------------------------------------
         try:
             import uvicorn
+
             from .api.app import create_app
         except ImportError as exc:
             err_console.print(
