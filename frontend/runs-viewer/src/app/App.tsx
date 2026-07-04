@@ -42,7 +42,8 @@ const router = createBrowserRouter([
       { path: "help",                    element: <HelpScreen /> },
       { path: "alerts",                  element: <AlertsFeed /> },
       { path: "policies",                element: <PoliciesScreen /> },
-      { path: "library",                 element: <LibraryScreen /> },
+      { path: "catalog",                  element: <LibraryScreen /> },
+      { path: "library",                  element: <Navigate to="/catalog" replace /> },
     ],
   },
 ]);

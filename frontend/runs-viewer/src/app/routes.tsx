@@ -7,7 +7,7 @@
  */
 import type { ReactElement } from "react";
 
-export type RouteName = "runList" | "runDetail" | "settings" | "help" | "alerts" | "swarm" | "policies" | "library";
+export type RouteName = "runList" | "runDetail" | "settings" | "help" | "alerts" | "swarm" | "policies" | "catalog";
 
 export interface RouteMeta {
   path: string;
@@ -24,7 +24,7 @@ export const ROUTES: Record<RouteName, RouteMeta> = {
   // Redirect alias: App.tsx redirects /runs/:runId/swarm → /runs/:runId?view=swarm. Not a standalone screen.
   swarm:     { path: "/runs/:runId/swarm",   label: "Swarm (→ ?view=swarm)" },
   policies:  { path: "/policies",            label: "Policies"   },
-  library:   { path: "/library",             label: "Library"    },
+  catalog:   { path: "/catalog",             label: "Catalog"    },
 };
 
 export interface ScreenRoute {

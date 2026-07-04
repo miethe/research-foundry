@@ -20,7 +20,7 @@
 
 import { describe, it, expect } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { LibraryScreen } from "@/screens/LibraryScreen";
@@ -138,63 +138,95 @@ function renderLibrary(opts: { summaries?: RFRunSummary[]; runExports?: RFRunExp
   );
 }
 
-// ── SMOKE-G4-01: Library nav item enabled ─────────────────────────────────────
+// ── SMOKE-G4-01: Catalog nav item enabled ─────────────────────────────────────
 
-describe("isActiveNav — Library nav item (AC G4-1, AC G4-2, SMOKE-G4-01)", () => {
-  it("Library nav button is NOT disabled at /library", () => {
+describe("isActiveNav — Catalog nav item (AC G4-1, AC G4-2, SMOKE-G4-01)", () => {
+  it("Catalog nav button is NOT disabled at /catalog", () => {
     const { container } = render(
-      <MemoryRouter initialEntries={["/library"]}>
+      <MemoryRouter initialEntries={["/catalog"]}>
         <AppShell />
       </MemoryRouter>,
     );
     const navButtons = container.querySelectorAll(".rv-shell-nav__item");
-    const libBtn = Array.from(navButtons).find(
-      (btn) => btn.querySelector("strong")?.textContent === "Library",
+    const catBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Catalog",
     ) as HTMLButtonElement | undefined;
-    expect(libBtn).not.toBeUndefined();
-    expect(libBtn!.disabled).toBe(false);
+    expect(catBtn).not.toBeUndefined();
+    expect(catBtn!.disabled).toBe(false);
   });
 
-  it("Library nav button does NOT have data-state='disabled' at /library", () => {
+  it("Catalog nav button does NOT have data-state='disabled' at /catalog", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/catalog"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
+    const catBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Catalog",
+    );
+    expect(catBtn!.getAttribute("data-state")).toBe("enabled");
+  });
+
+  // SMOKE-G4-02: aria-current at /catalog
+  it("Catalog nav button has aria-current='page' at /catalog", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/catalog"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
+    const catBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Catalog",
+    );
+    expect(catBtn).not.toBeUndefined();
+    expect(catBtn!.getAttribute("aria-current")).toBe("page");
+  });
+
+  // Redirect alias: Catalog stays active at /library (isActiveNav covers the redirect path)
+  it("Catalog nav button has aria-current='page' at /library (redirect alias)", () => {
     const { container } = render(
       <MemoryRouter initialEntries={["/library"]}>
         <AppShell />
       </MemoryRouter>,
     );
     const navButtons = container.querySelectorAll(".rv-shell-nav__item");
-    const libBtn = Array.from(navButtons).find(
-      (btn) => btn.querySelector("strong")?.textContent === "Library",
+    const catBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Catalog",
     );
-    expect(libBtn!.getAttribute("data-state")).toBe("enabled");
-  });
-
-  // SMOKE-G4-02: aria-current at /library
-  it("Library nav button has aria-current='page' at /library", () => {
-    const { container } = render(
-      <MemoryRouter initialEntries={["/library"]}>
-        <AppShell />
-      </MemoryRouter>,
-    );
-    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
-    const libBtn = Array.from(navButtons).find(
-      (btn) => btn.querySelector("strong")?.textContent === "Library",
-    );
-    expect(libBtn).not.toBeUndefined();
-    expect(libBtn!.getAttribute("aria-current")).toBe("page");
+    expect(catBtn).not.toBeUndefined();
+    expect(catBtn!.getAttribute("aria-current")).toBe("page");
   });
 
   // SMOKE-G4-03: aria-current NOT set elsewhere
-  it("Library nav button does NOT have aria-current='page' at /runs", () => {
+  it("Catalog nav button does NOT have aria-current='page' at /runs", () => {
     const { container } = render(
       <MemoryRouter initialEntries={["/runs"]}>
         <AppShell />
       </MemoryRouter>,
     );
     const navButtons = container.querySelectorAll(".rv-shell-nav__item");
-    const libBtn = Array.from(navButtons).find(
-      (btn) => btn.querySelector("strong")?.textContent === "Library",
+    const catBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Catalog",
     );
-    expect(libBtn!.getAttribute("aria-current")).toBeNull();
+    expect(catBtn!.getAttribute("aria-current")).toBeNull();
+  });
+
+  // /library redirects to /catalog via Navigate
+  it("/library redirects to /catalog", () => {
+    function LocationDisplay() {
+      const location = useLocation();
+      return <div data-testid="location">{location.pathname}</div>;
+    }
+    const { container } = render(
+      <MemoryRouter initialEntries={["/library"]}>
+        <Routes>
+          <Route path="/library" element={<Navigate to="/catalog" replace />} />
+          <Route path="/catalog" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(container.querySelector("[data-testid='location']")?.textContent).toBe("/catalog");
   });
 });
 
@@ -214,7 +246,7 @@ describe("Library nav — regression on existing nav items (TEST-G4-08, TEST-G4-
     expect(pfBtn!.getAttribute("aria-current")).toBe("page");
   });
 
-  it("Alerts is still active at /alerts and Library is not", () => {
+  it("Alerts is still active at /alerts and Catalog is not", () => {
     const { container } = render(
       <MemoryRouter initialEntries={["/alerts"]}>
         <AppShell />
@@ -225,13 +257,13 @@ describe("Library nav — regression on existing nav items (TEST-G4-08, TEST-G4-
       (btn) => btn.querySelector("strong")?.textContent === "Alerts",
     );
     expect(alertsBtn!.getAttribute("aria-current")).toBe("page");
-    const libBtn = Array.from(navButtons).find(
-      (btn) => btn.querySelector("strong")?.textContent === "Library",
+    const catBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Catalog",
     );
-    expect(libBtn!.getAttribute("aria-current")).toBeNull();
+    expect(catBtn!.getAttribute("aria-current")).toBeNull();
   });
 
-  it("Policies is still active at /policies and Library is not", () => {
+  it("Policies is still active at /policies and Catalog is not", () => {
     const { container } = render(
       <MemoryRouter initialEntries={["/policies"]}>
         <AppShell />
@@ -242,10 +274,72 @@ describe("Library nav — regression on existing nav items (TEST-G4-08, TEST-G4-
       (btn) => btn.querySelector("strong")?.textContent === "Policies",
     );
     expect(policiesBtn!.getAttribute("aria-current")).toBe("page");
-    const libBtn = Array.from(navButtons).find(
-      (btn) => btn.querySelector("strong")?.textContent === "Library",
+    const catBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Catalog",
     );
-    expect(libBtn!.getAttribute("aria-current")).toBeNull();
+    expect(catBtn!.getAttribute("aria-current")).toBeNull();
+  });
+});
+
+// ── Builder + Agents disabled nav items ───────────────────────────────────────
+
+describe("Builder and Agents disabled nav items", () => {
+  it("Builder nav item has aria-disabled='true'", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/runs"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
+    const builderBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Builder",
+    );
+    expect(builderBtn).not.toBeUndefined();
+    expect(builderBtn!.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("Builder nav item title contains its disabled reason", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/runs"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
+    const builderBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Builder",
+    );
+    expect(builderBtn!.getAttribute("title")).toBe(
+      "Planned — report composition workspace (Phase 3)",
+    );
+  });
+
+  it("Agents nav item has aria-disabled='true'", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/runs"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
+    const agentsBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Agents",
+    );
+    expect(agentsBtn).not.toBeUndefined();
+    expect(agentsBtn!.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("Agents nav item title contains its disabled reason", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/runs"]}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const navButtons = container.querySelectorAll(".rv-shell-nav__item");
+    const agentsBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Agents",
+    );
+    expect(agentsBtn!.getAttribute("title")).toBe(
+      "Planned — governed agent research (Phase 4)",
+    );
   });
 });
 
