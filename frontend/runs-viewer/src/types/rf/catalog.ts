@@ -13,7 +13,7 @@
  *                    modes are behaviorally equivalent.
  */
 
-import type { RFSensitivity } from "./run-export.js";
+import type { RFClaimConfidence, RFSensitivity } from "./run-export.js";
 
 // ── Item type ────────────────────────────────────────────────────────────────
 
@@ -48,8 +48,8 @@ export interface CatalogItemSummary {
   status: string | null;
   sensitivity: RFSensitivity | null;
   trust_label: string | null;
-  /** Normalized 0-1 confidence, derived from RFClaimConfidence for claim/inference items; null otherwise. */
-  confidence: number | null;
+  /** Raw confidence label for claim/inference items, as returned by the API; null otherwise. */
+  confidence: RFClaimConfidence | null;
   source_count: number;
   created_at: string | null;
   updated_at: string | null;
@@ -57,17 +57,16 @@ export interface CatalogItemSummary {
 
 // ── Link (provenance edge) ────────────────────────────────────────────────────
 
-/**
- * One directed provenance edge, stored on the "from" item's `links` array.
- * Per the import contract's Links table:
- *   claim → source      (rel "supports")
- *   inference → claim   (rel "inferred_from")
- *   report → claim      (rel "contains")
- */
-export interface CatalogLink {
-  rel: string;
-  target_catalog_item_id: string;
-  target_item_type: CatalogItemType;
+/** One end of a directed provenance edge, as returned by GET /api/catalog/items/{id}. */
+export interface CatalogLinkEdge {
+  catalog_item_id: string;
+  relation: string;
+}
+
+/** Outgoing + incoming directed provenance edges for a catalog item. */
+export interface CatalogItemLinks {
+  outgoing: CatalogLinkEdge[];
+  incoming: CatalogLinkEdge[];
 }
 
 // ── Detail (single-item fetch) ────────────────────────────────────────────────
@@ -75,7 +74,7 @@ export interface CatalogLink {
 export interface CatalogItemDetail extends CatalogItemSummary {
   /** Item-type-specific extra fields (claim text/materiality, source trust/usage, report draft, etc.). */
   payload: Record<string, unknown>;
-  links: CatalogLink[];
+  links: CatalogItemLinks;
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────

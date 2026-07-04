@@ -224,10 +224,9 @@ describe("buildCatalogIndex — item mapping", () => {
     const inferenceId = catalogItemId("inference", "run_a", "c2");
     const claimId = catalogItemId("claim", "run_a", "c1");
     const item = getCatalogItem(index, inferenceId);
-    expect(item?.links).toContainEqual({
-      rel: "inferred_from",
-      target_catalog_item_id: claimId,
-      target_item_type: "claim",
+    expect(item?.links.outgoing).toContainEqual({
+      relation: "inferred_from",
+      catalog_item_id: claimId,
     });
   });
 
@@ -238,10 +237,9 @@ describe("buildCatalogIndex — item mapping", () => {
 
   it("links claim → source with rel 'supports'", () => {
     const c1Item = getCatalogItem(index, catalogItemId("claim", "run_a", "c1"));
-    expect(c1Item?.links).toContainEqual({
-      rel: "supports",
-      target_catalog_item_id: catalogItemId("source", "run_a", "src_shared"),
-      target_item_type: "source",
+    expect(c1Item?.links.outgoing).toContainEqual({
+      relation: "supports",
+      catalog_item_id: catalogItemId("source", "run_a", "src_shared"),
     });
   });
 
@@ -255,10 +253,9 @@ describe("buildCatalogIndex — item mapping", () => {
 
   it("links report → claim with rel 'contains' for claims with report_locations", () => {
     const reportItem = getCatalogItem(index, catalogItemId("report", "run_a", "report"));
-    expect(reportItem?.links).toContainEqual({
-      rel: "contains",
-      target_catalog_item_id: catalogItemId("claim", "run_a", "c1"),
-      target_item_type: "claim",
+    expect(reportItem?.links.outgoing).toContainEqual({
+      relation: "contains",
+      catalog_item_id: catalogItemId("claim", "run_a", "c1"),
     });
   });
 
@@ -341,12 +338,12 @@ describe("searchCatalog", () => {
   });
 
   it("sorts by confidence descending, nulls last", () => {
+    const ORDINAL: Record<string, number> = { high: 2, medium: 1, low: 0 };
+    const ord = (c: string | null | undefined) => (c != null ? (ORDINAL[c] ?? -1) : -1);
     const result = searchCatalog(index, { sort: "confidence", page_size: 200 });
     const confidences = result.items.map((i) => i.confidence);
     for (let i = 1; i < confidences.length; i++) {
-      const prev = confidences[i - 1] ?? -1;
-      const cur = confidences[i] ?? -1;
-      expect(prev).toBeGreaterThanOrEqual(cur);
+      expect(ord(confidences[i - 1])).toBeGreaterThanOrEqual(ord(confidences[i]));
     }
   });
 

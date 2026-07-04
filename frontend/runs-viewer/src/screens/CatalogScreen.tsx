@@ -186,7 +186,7 @@ function CatalogResultsTable({ items, selectedId, onSelect, emptyLabel, emptyMes
                 <td className="rv-catalog-td">
                   <span className={`it-chip ${trust.color}`}>
                     {trust.label}
-                    {item.confidence != null && ` ${Math.round(item.confidence * 100)}%`}
+                    {item.confidence != null && ` ${item.confidence}`}
                   </span>
                 </td>
                 <td className="rv-catalog-td">
@@ -301,7 +301,7 @@ function CatalogInspector({ item, isLoading, onOpenRun, onSelectItem }: CatalogI
   const isClaimLike = item.item_type === "claim" || item.item_type === "inference";
   const sources = isClaimLike ? ((item.payload.sources as RFResolvedSource[] | undefined) ?? []) : [];
   const provenance = isClaimLike ? (item.payload.provenance as CatalogProvenance | undefined) : undefined;
-  const inferenceLinks = item.links.filter((l) => l.rel === "inferred_from");
+  const inferenceLinks = item.links.outgoing.filter((l) => l.relation === "inferred_from");
   const reasoningSummary = item.item_type === "inference" ? item.summary : null;
 
   return (
@@ -345,13 +345,13 @@ function CatalogInspector({ item, isLoading, onOpenRun, onSelectItem }: CatalogI
             {inferenceLinks.length > 0 ? (
               inferenceLinks.map((link) => (
                 <button
-                  key={link.target_catalog_item_id}
+                  key={link.catalog_item_id}
                   type="button"
                   className="it-chip blue"
-                  onClick={() => onSelectItem(link.target_catalog_item_id)}
-                  data-testid={`catalog-inference-from-${link.target_catalog_item_id}`}
+                  onClick={() => onSelectItem(link.catalog_item_id)}
+                  data-testid={`catalog-inference-from-${link.catalog_item_id}`}
                 >
-                  {link.target_catalog_item_id}
+                  {link.catalog_item_id}
                 </button>
               ))
             ) : (

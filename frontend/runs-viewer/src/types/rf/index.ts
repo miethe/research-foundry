@@ -42,7 +42,8 @@ export type {
 export type {
   CatalogItemType,
   CatalogItemSummary,
-  CatalogLink,
+  CatalogLinkEdge,
+  CatalogItemLinks,
   CatalogItemDetail,
   CatalogSortKey,
   CatalogSearchParams,

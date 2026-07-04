@@ -39,7 +39,7 @@ import type {
   CatalogItemDetail,
   CatalogItemSummary,
   CatalogItemType,
-  CatalogLink,
+  CatalogLinkEdge,
   CatalogSearchFacets,
   CatalogSearchParams,
   CatalogSearchResult,
@@ -171,15 +171,11 @@ function maxSensitivity(...labels: Array<string | null | undefined>): RFSensitiv
   return best as RFSensitivity;
 }
 
-const CONFIDENCE_NUMERIC: Record<RFClaimConfidence, number> = {
-  low: 0.35,
-  medium: 0.65,
-  high: 0.9,
-};
+const CONFIDENCE_ORDINAL: Record<RFClaimConfidence, number> = { low: 0, medium: 1, high: 2 };
 
-function mapConfidence(confidence?: RFClaimConfidence | null): number | null {
-  if (!confidence) return null;
-  return CONFIDENCE_NUMERIC[confidence] ?? null;
+function confidenceOrdinal(c: RFClaimConfidence | null | undefined): number {
+  if (!c) return -1;
+  return CONFIDENCE_ORDINAL[c] ?? -1;
 }
 
 function truncate(text: string, max: number): string {
@@ -281,7 +277,7 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
       itemType: CatalogItemType;
       itemId: string;
       usedByInferences: string[];
-      links: CatalogLink[];
+      links: CatalogLinkEdge[];
     }
 
     // ── Pass 1: classify claims/inferences, assign deterministic IDs ──
@@ -305,9 +301,8 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
         const target = claimAccums.get(fromId);
         if (!target) continue;
         accum.links.push({
-          rel: "inferred_from",
-          target_catalog_item_id: target.itemId,
-          target_item_type: target.itemType,
+          relation: "inferred_from",
+          catalog_item_id: target.itemId,
         });
         target.usedByInferences.push(accum.itemId);
       }
@@ -349,9 +344,8 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
           quote: source.quote ?? null,
         });
         accum.links.push({
-          rel: "supports",
-          target_catalog_item_id: sAccum.itemId,
-          target_item_type: "source",
+          relation: "supports",
+          catalog_item_id: sAccum.itemId,
         });
       }
     }
@@ -382,7 +376,7 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
           usage: source.usage ?? null,
           evidence_uses: evidenceUses,
         },
-        links: [],
+        links: { outgoing: [], incoming: [] },
       };
       entries.push({
         detail,
@@ -394,7 +388,7 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
     }
 
     // ── Emit claim/inference items ──
-    const reportContainsLinks: CatalogLink[] = [];
+    const reportContainsLinks: CatalogLinkEdge[] = [];
     for (const accum of claimAccums.values()) {
       const { claim, itemType, itemId, usedByInferences, links } = accum;
       const sourceList = claim.sources ?? [];
@@ -403,9 +397,8 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
       const inReport = hasReportLocation && run.report_draft != null;
       if (inReport) {
         reportContainsLinks.push({
-          rel: "contains",
-          target_catalog_item_id: itemId,
-          target_item_type: itemType,
+          relation: "contains",
+          catalog_item_id: itemId,
         });
       }
       const provenance: CatalogProvenance = {
@@ -426,7 +419,7 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
         status: claim.status ?? null,
         sensitivity,
         trust_label: claim.status ?? null,
-        confidence: mapConfidence(claim.confidence),
+        confidence: claim.confidence ?? null,
         source_count: sourceList.length,
         created_at: run.created_at ?? null,
         updated_at: run.created_at ?? null,
@@ -440,7 +433,7 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
           used_by_inferences: usedByInferences,
           provenance,
         },
-        links,
+        links: { outgoing: links, incoming: [] },
       };
       entries.push({
         detail,
@@ -471,7 +464,7 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
           writebacks: run.writebacks ?? null,
           claim_counts: run.claim_counts ?? null,
         },
-        links: reportContainsLinks,
+        links: { outgoing: reportContainsLinks, incoming: [] },
       };
       entries.push({ detail, searchBody: searchBodyOf(detail, [run.report_draft]) });
     }
@@ -500,7 +493,7 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
           is_skillbom_candidate: candidate.is_skillbom_candidate ?? false,
           source_run_id: candidate.source_run_id ?? null,
         },
-        links: [],
+        links: { outgoing: [], incoming: [] },
       };
       entries.push({ detail, searchBody: searchBodyOf(detail) });
     });
@@ -531,7 +524,7 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
           url: target.url ?? null,
           raw_status: target.status ?? null,
         },
-        links: [],
+        links: { outgoing: [], incoming: [] },
       };
       entries.push({ detail, searchBody: searchBodyOf(detail) });
     });
@@ -569,7 +562,7 @@ export function sortCatalogItems<T extends CatalogItemSummary>(items: T[], sort:
   const copy = [...items];
   copy.sort((a, b) => {
     if (sort === "title") return a.title.localeCompare(b.title);
-    if (sort === "confidence") return (b.confidence ?? -1) - (a.confidence ?? -1);
+    if (sort === "confidence") return confidenceOrdinal(b.confidence) - confidenceOrdinal(a.confidence);
     // "updated" (default) — newest first; nulls sort last
     const av = a.updated_at ?? "";
     const bv = b.updated_at ?? "";
