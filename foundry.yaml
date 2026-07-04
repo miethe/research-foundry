@@ -24,8 +24,20 @@ foundry:
   # leave the workspace. Default 'public' redacts personal/work_sensitive/
   # client_sensitive content. Ordering: public < personal < work_sensitive <
   # client_sensitive.
+  #
+  # Fail-closed default (public-multiuser P0/P1): this shipped/canonical
+  # foundry.yaml is copied verbatim by `rf init` and by every test's
+  # `tmp_foundry` fixture, so its ambient value IS the default every fresh
+  # workspace and CI run gets unless an operator explicitly opts into a wider
+  # threshold. It was flipped to `client_sensitive` (max-permissive, i.e. no
+  # redaction) in bbf6341 for a personal, single-user, LAN-only viewer; that
+  # assumption no longer holds once the export/catalog surface is reachable by
+  # multiple users, so the ambient default reverts to `public` here. A single
+  # operator who wants the old fully-open personal-LAN view can still set
+  # this back to `client_sensitive` in their own deployment's foundry.yaml, or
+  # pass `--sensitivity-threshold client_sensitive` per-invocation.
   viewer:
-    sensitivity_threshold: client_sensitive
+    sensitivity_threshold: public
 
   adapters:
     claude_agent_sdk: enabled
