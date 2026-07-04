@@ -19,11 +19,13 @@ import {
   catalogItemId,
   catalogStats,
   getCatalogItem,
+  normalizeCatalogItemDetail,
   normalizeWritebackStatus,
   searchCatalog,
   sha1Hex,
   sortCatalogItems,
 } from "./catalog";
+import type { CatalogItemDetail } from "@/types/rf/catalog";
 import type { RFClaim, RFResolvedSource, RFRunExport, RFSensitivity } from "@/types/rf/run-export";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -119,7 +121,8 @@ const runB: RFRunExport = {
     { description: "Reusable retrieval eval harness", is_skillbom_candidate: true },
   ],
   writebacks: {
-    targets: [{ name: "MeatyWiki", destination: "meatywiki://kb", status: "Published" }],
+    // target field (system identifier) is what the backend uses for local_ref derivation (F6).
+    targets: [{ target: "meatywiki", name: "MeatyWiki", destination: "meatywiki://kb", status: "Published" }],
     approved_for_writeback: true,
   },
 };
@@ -272,8 +275,9 @@ describe("buildCatalogIndex — item mapping", () => {
   });
 
   it("maps writebacks.targets[] to 'writeback' items with normalized status", () => {
-    const item = getCatalogItem(index, catalogItemId("writeback", "run_b", "wb_0"));
-    expect(item?.title).toBe("MeatyWiki");
+    // F6: local_ref uses target.target field ("meatywiki"), not the array index.
+    const item = getCatalogItem(index, catalogItemId("writeback", "run_b", "wb_meatywiki"));
+    expect(item?.local_ref).toBe("wb_meatywiki");
     expect(item?.status).toBe("published"); // normalizeWritebackStatus("Published")
   });
 
@@ -391,5 +395,230 @@ describe("sortCatalogItems", () => {
     const original = [...items];
     sortCatalogItems(items, "title");
     expect(items).toEqual(original);
+  });
+});
+
+// ── F-parity sensitivity rules ─────────────────────────────────────────────────
+
+describe("buildCatalogIndex — F-parity sensitivity derivation", () => {
+  it("(a) source item sensitivity = max(run sensitivity, source own sensitivity)", () => {
+    const runPersonal: RFRunExport = {
+      schema_version: "1.3",
+      run_id: "run_parity",
+      status_derived: "verified",
+      // run has 'personal' sensitivity; the source has 'public'
+      sensitivity: "personal",
+      created_at: "2026-03-01T00:00:00Z",
+      claims: [
+        {
+          claim_id: "cp1",
+          text: "Parity claim",
+          sources: [makeSource({ source_card_id: "src_public", sensitivity: "public" })],
+        },
+      ],
+      claim_counts: null,
+      verification: null,
+      governance: null,
+      timeline: null,
+    };
+    const idx = buildCatalogIndex([runPersonal]);
+    const srcItem = getCatalogItem(idx, catalogItemId("source", "run_parity", "src_public"));
+    // max("personal", "public") = "personal"
+    expect(srcItem?.sensitivity).toBe("personal");
+  });
+
+  it("(b) report sensitivity = run_content_max (max over run + all cited sources)", () => {
+    // run_a has sources with mystery_level; run_content_max = mystery_level
+    const index = buildCatalogIndex([runA]);
+    const reportItem = getCatalogItem(index, catalogItemId("report", "run_a", "report"));
+    expect(reportItem?.sensitivity).toBe("mystery_level");
+  });
+
+  it("(b) reusable_output sensitivity = run_content_max", () => {
+    // runC: sensitivity=public, one source with work_sensitive — run_content_max=work_sensitive
+    const runC: RFRunExport = {
+      schema_version: "1.3",
+      run_id: "run_c",
+      status_derived: "synthesized",
+      sensitivity: "public",
+      created_at: "2026-03-01T00:00:00Z",
+      claims: [
+        {
+          claim_id: "cc1",
+          text: "Claim with work-sensitive source",
+          sources: [makeSource({ source_card_id: "src_ws", sensitivity: "work_sensitive" })],
+        },
+      ],
+      claim_counts: null,
+      verification: null,
+      governance: null,
+      timeline: null,
+      reusable_output_candidates: [{ description: "Output candidate" }],
+    };
+    const idx = buildCatalogIndex([runC]);
+    const roItem = getCatalogItem(idx, catalogItemId("reusable_output", "run_c", "ro_0"));
+    expect(roItem?.sensitivity).toBe("work_sensitive");
+  });
+
+  it("(b) report and reusable_output stay at run sensitivity when there are no sources", () => {
+    // run_b has no claims/sources; runContentMax = runSensitivity = "public"
+    const index = buildCatalogIndex([runB]);
+    const roItem = getCatalogItem(index, catalogItemId("reusable_output", "run_b", "ro_0"));
+    expect(roItem?.sensitivity).toBe("public");
+  });
+
+  it("(c) writeback sensitivity = run sensitivity (unchanged)", () => {
+    const index = buildCatalogIndex([runB]);
+    const wbItem = getCatalogItem(index, catalogItemId("writeback", "run_b", "wb_meatywiki"));
+    // run_b.sensitivity = null → "public"; writebacks always get run sensitivity
+    expect(wbItem?.sensitivity).toBe("public");
+  });
+
+  it("F6: writeback local_ref uses target.target field, falls back to 'unknown'", () => {
+    const runWb: RFRunExport = {
+      schema_version: "1.3",
+      run_id: "run_wb",
+      status_derived: "published",
+      sensitivity: "public",
+      created_at: "2026-03-01T00:00:00Z",
+      claims: [],
+      claim_counts: null,
+      verification: null,
+      governance: null,
+      timeline: null,
+      writebacks: {
+        // No 'target' field → falls back to "unknown"
+        targets: [{ name: "SomeTool", status: "Published" }],
+        approved_for_writeback: true,
+      },
+    };
+    const idx = buildCatalogIndex([runWb]);
+    const wbItem = getCatalogItem(idx, catalogItemId("writeback", "run_wb", "wb_unknown"));
+    expect(wbItem?.local_ref).toBe("wb_unknown");
+  });
+});
+
+// ── normalizeCatalogItemDetail ─────────────────────────────────────────────────
+
+describe("normalizeCatalogItemDetail — F5 fetch-boundary normalizer", () => {
+  function makeDetail(overrides: Partial<CatalogItemDetail>): CatalogItemDetail {
+    return {
+      catalog_item_id: "ci_test000001",
+      item_type: "claim",
+      title: "Test claim",
+      summary: null,
+      run_id: "run_test",
+      local_ref: "c_test",
+      project: null,
+      status: "supported",
+      sensitivity: "public",
+      trust_label: null,
+      confidence: "high",
+      source_count: 1,
+      created_at: null,
+      updated_at: null,
+      payload: {},
+      links: { outgoing: [], incoming: [] },
+      ...overrides,
+    };
+  }
+
+  it("pass-through: non-claim/inference items are returned unchanged", () => {
+    const item = makeDetail({ item_type: "source", payload: { url: "https://example.com" } });
+    const result = normalizeCatalogItemDetail(item);
+    expect(result).toBe(item); // strict reference equality — no allocation
+  });
+
+  it("pass-through (idempotent): claim with sources+provenance already set is returned unchanged", () => {
+    const item = makeDetail({
+      item_type: "claim",
+      payload: {
+        sources: [{ source_card_id: "s1", evidence_id: "e1", relation: "supports", resolved: true, dangling: false }],
+        provenance: { source_card: true, extraction: false, inference: false, report: false, writeback: false },
+      },
+    });
+    const result = normalizeCatalogItemDetail(item);
+    expect(result).toBe(item); // strict reference equality — no allocation
+  });
+
+  it("maps backend cited_sources to sources as minimal RFResolvedSource shapes", () => {
+    const item = makeDetail({
+      item_type: "claim",
+      payload: {
+        inference_basis: { from_claims: [], reasoning_summary: null },
+        report_locations: [],
+        cited_sources: [
+          { source_card_id: "sc_a", evidence_id: "ev_a", relation: "supports", locator: "p.1" },
+          { source_card_id: "sc_b", evidence_id: "ev_b", relation: "context", locator: null },
+        ],
+      },
+    });
+    const result = normalizeCatalogItemDetail(item);
+    const sources = result.payload.sources as unknown[];
+    expect(sources).toHaveLength(2);
+    expect(sources[0]).toMatchObject({
+      source_card_id: "sc_a",
+      evidence_id: "ev_a",
+      relation: "supports",
+      locator: "p.1",
+      resolved: true,
+      dangling: false,
+    });
+    expect(sources[1]).toMatchObject({ source_card_id: "sc_b", relation: "context", locator: null });
+  });
+
+  it("synthesizes provenance from cited_sources and inference_basis", () => {
+    const item = makeDetail({
+      item_type: "inference",
+      payload: {
+        inference_basis: { from_claims: ["c1"], reasoning_summary: "Derived." },
+        report_locations: [{ heading: "Findings" }],
+        cited_sources: [
+          { source_card_id: "sc_a", evidence_id: "ev_a", relation: "supports", locator: "p.1" },
+        ],
+      },
+    });
+    const result = normalizeCatalogItemDetail(item);
+    const prov = result.payload.provenance as Record<string, boolean>;
+    expect(prov.source_card).toBe(true);
+    expect(prov.extraction).toBe(true); // locator present
+    expect(prov.inference).toBe(true);  // item_type === "inference"
+    expect(prov.report).toBe(true);     // report_locations non-empty
+    expect(prov.writeback).toBe(false); // cannot determine from payload alone
+  });
+
+  it("synthesizes provenance with source_card=false when cited_sources is empty", () => {
+    const item = makeDetail({
+      item_type: "inference",
+      payload: {
+        inference_basis: { from_claims: ["c_base"], reasoning_summary: null },
+        report_locations: [],
+        cited_sources: [],
+      },
+    });
+    const result = normalizeCatalogItemDetail(item);
+    const prov = result.payload.provenance as Record<string, boolean>;
+    expect(prov.source_card).toBe(false);
+    expect(prov.extraction).toBe(false);
+    expect(prov.inference).toBe(true); // from_claims non-empty → inference
+    expect(prov.report).toBe(false);
+  });
+
+  it("synthesizes provenance for claim type (not inference)", () => {
+    const item = makeDetail({
+      item_type: "claim",
+      payload: {
+        inference_basis: { from_claims: [], reasoning_summary: null },
+        report_locations: [],
+        cited_sources: [
+          { source_card_id: "sc_x", evidence_id: "ev_x", relation: "supports", locator: null },
+        ],
+      },
+    });
+    const result = normalizeCatalogItemDetail(item);
+    const prov = result.payload.provenance as Record<string, boolean>;
+    expect(prov.source_card).toBe(true);
+    expect(prov.extraction).toBe(false); // no locator
+    expect(prov.inference).toBe(false);  // claim type, no from_claims
   });
 });

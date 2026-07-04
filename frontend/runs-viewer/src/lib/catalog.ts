@@ -33,6 +33,7 @@ import type {
   RFResolvedSource,
   RFRunExport,
   RFSensitivity,
+  RFSourceRelation,
   RFWritebackTarget,
 } from "@/types/rf/run-export.js";
 import type {
@@ -350,10 +351,18 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
       }
     }
 
+    // F-parity (b): run_content_max = max(run sensitivity, effective sensitivity of all
+    // cited sources in the run) — used for report and reusable_output item sensitivity.
+    const runContentMax = maxSensitivity(
+      runSensitivity,
+      ...Array.from(sourceAccums.values()).map((sAccum) => sAccum.source.sensitivity),
+    );
+
     // ── Emit source items ──
     for (const sAccum of sourceAccums.values()) {
       const { source, itemId, evidenceUses } = sAccum;
-      const sensitivity = maxSensitivity(source.sensitivity);
+      // F-parity (a): source sensitivity = max(run sensitivity, source's own effective sensitivity).
+      const sensitivity = maxSensitivity(runSensitivity, source.sensitivity);
       const detail: CatalogItemDetail = {
         catalog_item_id: itemId,
         item_type: "source",
@@ -453,7 +462,8 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
         local_ref: "report",
         project,
         status: writebackApproved ? "published" : "draft",
-        sensitivity: runSensitivity,
+        // F-parity (b): report sensitivity = run_content_max.
+        sensitivity: runContentMax,
         trust_label: null,
         confidence: null,
         source_count: 0,
@@ -482,7 +492,8 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
         local_ref: localRef,
         project,
         status: null,
-        sensitivity: runSensitivity,
+        // F-parity (b): reusable_output sensitivity = run_content_max.
+        sensitivity: runContentMax,
         trust_label: candidate.is_skillbom_candidate ? "SkillBOM candidate" : null,
         confidence: null,
         source_count: 0,
@@ -499,8 +510,12 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
     });
 
     // ── Writeback targets ──
-    (run.writebacks?.targets ?? []).forEach((target: RFWritebackTarget, index) => {
-      const localRef = `wb_${index}`;
+    (run.writebacks?.targets ?? []).forEach((target: RFWritebackTarget) => {
+      // F6: local_ref matches backend rule `wb_<target.target or "unknown">`.
+      // RFWritebackTarget.target is the system-identifier key (e.g. "meatywiki"),
+      // accessed via the index signature — distinct from the display-name `name` field.
+      const targetId = String((target as Record<string, unknown>)["target"] ?? "unknown");
+      const localRef = `wb_${targetId}`;
       const itemId = catalogItemId("writeback", runId, localRef);
       const status = normalizeWritebackStatus(target.status);
       const detail: CatalogItemDetail = {
@@ -647,4 +662,69 @@ export function catalogStats(index: CatalogIndex): CatalogStats {
 /** Look up a single item's full detail by catalog_item_id. Returns null when absent. */
 export function getCatalogItem(index: CatalogIndex, catalogItemId: string): CatalogItemDetail | null {
   return index.entries.find((e) => e.detail.catalog_item_id === catalogItemId)?.detail ?? null;
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// F5: Fetch-boundary normalizer — unifies loopback and static payload shapes
+// ═════════════════════════════════════════════════════════════════════════
+
+/**
+ * Normalize a CatalogItemDetail to the view-model shape CatalogScreen consumes.
+ *
+ * The backend (loopback mode) emits claim/inference items with:
+ *   payload.cited_sources: [{source_card_id, evidence_id, relation, locator}]
+ *   (no payload.sources, no payload.provenance)
+ *
+ * The static mode already produces:
+ *   payload.sources: RFResolvedSource[]
+ *   payload.provenance: CatalogProvenance
+ *
+ * This function normalizes loopback-mode payloads so CatalogScreen.tsx can
+ * consume sources and provenance identically across both modes. It is
+ * idempotent: when sources/provenance already exist, the item is returned
+ * unchanged (static-mode items pass through without allocation).
+ *
+ * Apply to every fetchCatalogItem result in both modes.
+ */
+export function normalizeCatalogItemDetail(item: CatalogItemDetail): CatalogItemDetail {
+  if (item.item_type !== "claim" && item.item_type !== "inference") return item;
+
+  const raw = item.payload;
+  let sources = raw.sources as RFResolvedSource[] | undefined;
+  let provenance = raw.provenance as CatalogProvenance | undefined;
+
+  // Map cited_sources → sources when the full source list is absent (loopback mode).
+  if (!sources) {
+    type CitedSource = { source_card_id: string; evidence_id: string; relation: string; locator?: string | null };
+    const cited = ((raw.cited_sources ?? []) as CitedSource[]);
+    sources = cited.map((cs) => ({
+      source_card_id: cs.source_card_id,
+      evidence_id: cs.evidence_id,
+      relation: cs.relation as RFSourceRelation,
+      locator: cs.locator ?? null,
+      resolved: true,
+      dangling: false,
+    }));
+  }
+
+  // Synthesize provenance when absent (loopback mode).
+  if (!provenance) {
+    const inferenceBasis = raw.inference_basis as { from_claims?: string[] } | null | undefined;
+    const fromClaims = inferenceBasis?.from_claims ?? [];
+    const reportLocations = raw.report_locations as unknown[] | undefined;
+    provenance = {
+      source_card: sources.length > 0,
+      extraction: sources.some((s) => Boolean(s.locator || s.evidence_locator)),
+      inference: item.item_type === "inference" || fromClaims.length > 0,
+      // Best-effort: report_locations present implies the item was included in a report.
+      report: (reportLocations?.length ?? 0) > 0,
+      // Writeback approval cannot be determined from item payload alone.
+      writeback: false,
+    };
+  }
+
+  // Return the original object when no normalization was needed (static mode fast-path).
+  if (raw.sources === sources && raw.provenance === provenance) return item;
+
+  return { ...item, payload: { ...raw, sources, provenance } };
 }

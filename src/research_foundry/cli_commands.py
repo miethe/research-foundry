@@ -1278,6 +1278,11 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         page: int = typer.Option(1, "--page"),
         page_size: int = typer.Option(25, "--page-size"),
         json_out: bool = typer.Option(True, "--json/--no-json", help="JSON output"),
+        sensitivity_threshold: str = typer.Option(
+            None,
+            "--sensitivity-threshold",
+            help="Override foundry.yaml viewer.sensitivity_threshold (default: public)",
+        ),
     ) -> None:
         """Search the catalog (over-threshold items are excluded, fail-closed)."""
 
@@ -1298,6 +1303,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             sort=sort,
             page=page,
             page_size=page_size,
+            sensitivity_threshold=sensitivity_threshold,
         )
         if json_out:
             typer.echo(_json.dumps(result, ensure_ascii=False, indent=2))
@@ -1326,6 +1332,11 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
     def catalog_show(
         catalog_item_id: str = typer.Argument(..., help="catalog_item_id (ci_...)"),
         json_out: bool = typer.Option(True, "--json/--no-json", help="JSON output"),
+        sensitivity_threshold: str = typer.Option(
+            None,
+            "--sensitivity-threshold",
+            help="Override foundry.yaml viewer.sensitivity_threshold (default: public)",
+        ),
     ) -> None:
         """Show full detail (summary + payload + links) for a catalog item."""
 
@@ -1335,7 +1346,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         from .services import catalog_service as svc
 
         paths = FoundryPaths.discover()
-        item = svc.get_item(paths, catalog_item_id)
+        item = svc.get_item(paths, catalog_item_id, sensitivity_threshold=sensitivity_threshold)
         if item is None:
             _fail(RFError(f"catalog item not found (or excluded by sensitivity threshold): "
                           f"{catalog_item_id}"))
@@ -1344,6 +1355,11 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
     @catalog_app.command("stats")
     def catalog_stats(
         json_out: bool = typer.Option(True, "--json/--no-json", help="JSON output"),
+        sensitivity_threshold: str = typer.Option(
+            None,
+            "--sensitivity-threshold",
+            help="Override foundry.yaml viewer.sensitivity_threshold (default: public)",
+        ),
     ) -> None:
         """Show catalog aggregate counts (visible items only)."""
 
@@ -1353,7 +1369,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         from .services import catalog_service as svc
 
         paths = FoundryPaths.discover()
-        result = svc.stats(paths)
+        result = svc.stats(paths, sensitivity_threshold=sensitivity_threshold)
         if json_out:
             typer.echo(_json.dumps(result, ensure_ascii=False, indent=2))
             return

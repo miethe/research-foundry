@@ -51,6 +51,8 @@ def build_catalog_run(
     sensitivity: str = "personal",
     linked_projects: list[str] | None = None,
     category: str | None = "AI Engineering",
+    include_unknown: bool = True,
+    include_multi_source_claim: bool = False,
 ) -> RunPaths:
     """A run exercising every item_type + the mixed-point / unknown-label cases.
 
@@ -58,16 +60,30 @@ def build_catalog_run(
     derived expectations):
       - source items: src_alpha (plain public), src_mixed (public card, one
         work_sensitive point — exercises per-citation rank probing),
-        src_unknown (bogus/unrecognized card sensitivity — fail-closed).
+        src_unknown (bogus/unrecognized card sensitivity — fail-closed; only
+        planted when ``include_unknown``).
       - claim items: clm_001 (cites src_alpha; has report_locations),
         clm_mixed (cites both src_mixed points), clm_unknown (cites
-        src_unknown), clm_dangling (cites a source card that does not exist).
+        src_unknown; only planted when ``include_unknown``), clm_dangling
+        (cites a source card that does not exist).
       - inference item: clm_inf (from_claims=["clm_001"]; has
         report_locations).
       - report item: one, from the report_draft below.
       - writeback items: meatywiki + ccdash (both writeback files planted).
       - reusable_output items: none (export_run() never emits
         reusable_output_candidates — see catalog_service's module docstring).
+
+    ``include_unknown=False`` omits src_unknown/clm_unknown entirely — used
+    by tests that need the report/reusable_output item to stay *visible*
+    (F1's ``run_content_max`` would otherwise permanently fail-closed to the
+    unknown rank for every item in the run, since it maxes over ALL claims
+    and cited sources).
+
+    ``include_multi_source_claim=True`` additionally plants clm_multi, which
+    cites BOTH src_alpha (low rank) and src_mixed's elevated point — giving a
+    source (src_alpha) an incoming "supports" edge from a claim (clm_multi)
+    whose own rank is strictly higher than the source's, the scenario F3's
+    link-visibility fix targets.
     """
 
     if linked_projects is None:
@@ -143,124 +159,161 @@ def build_catalog_run(
         rp.sources / "src_mixed.md",
     )
 
-    dump_md(
+    if include_unknown:
+        dump_md(
+            {
+                "type": "source_card",
+                "source_card_id": "src_unknown",
+                "sensitivity": "bogus_label",
+                "source": {"title": "Unknown Sensitivity Source", "source_type": "web"},
+                "trust": "low",
+                "usage": "direct",
+                "extracted_points": [
+                    {
+                        "evidence_id": "ev_001",
+                        "locator": "u1",
+                        "summary": "unknown summary",
+                        "quote": "UNKNOWN QUOTE",
+                    }
+                ],
+            },
+            "",
+            rp.sources / "src_unknown.md",
+        )
+
+    claims: list[dict[str, Any]] = [
         {
-            "type": "source_card",
-            "source_card_id": "src_unknown",
-            "sensitivity": "bogus_label",
-            "source": {"title": "Unknown Sensitivity Source", "source_type": "web"},
-            "trust": "low",
-            "usage": "direct",
-            "extracted_points": [
+            "claim_id": "clm_001",
+            "text": "Alpha is true and holds under scrutiny for the thesis.",
+            "materiality": "core",
+            "claim_type": "factual",
+            "status": "supported",
+            "confidence": "high",
+            "sources": [
                 {
+                    "source_card_id": "src_alpha",
                     "evidence_id": "ev_001",
-                    "locator": "u1",
-                    "summary": "unknown summary",
-                    "quote": "UNKNOWN QUOTE",
+                    "relation": "supports",
+                    "locator": "p1",
                 }
             ],
+            "inference_basis": {"from_claims": [], "reasoning_summary": None},
+            "report_locations": [{"file": "report_draft.md", "heading": "Alpha"}],
         },
-        "",
-        rp.sources / "src_unknown.md",
+        {
+            "claim_id": "clm_mixed",
+            "text": "Mixed evidence claim.",
+            "materiality": "core",
+            "claim_type": "factual",
+            "status": "mixed",
+            "confidence": "medium",
+            "sources": [
+                {
+                    "source_card_id": "src_mixed",
+                    "evidence_id": "ev_pub",
+                    "relation": "supports",
+                    "locator": "m1",
+                },
+                {
+                    "source_card_id": "src_mixed",
+                    "evidence_id": "ev_sens",
+                    "relation": "supports",
+                    "locator": "m2",
+                },
+            ],
+            "inference_basis": {"from_claims": [], "reasoning_summary": None},
+            "report_locations": [],
+        },
+    ]
+    if include_unknown:
+        claims.append(
+            {
+                "claim_id": "clm_unknown",
+                "text": "Unknown sensitivity claim.",
+                "materiality": "background",
+                "claim_type": "factual",
+                "status": "supported",
+                "confidence": "low",
+                "sources": [
+                    {
+                        "source_card_id": "src_unknown",
+                        "evidence_id": "ev_001",
+                        "relation": "supports",
+                        "locator": "u1",
+                    }
+                ],
+                "inference_basis": {"from_claims": [], "reasoning_summary": None},
+                "report_locations": [],
+            }
+        )
+    claims.append(
+        {
+            "claim_id": "clm_inf",
+            "text": "Derived inference.",
+            "materiality": "core",
+            "claim_type": "inference",
+            "status": "inference",
+            "confidence": "low",
+            "sources": [],
+            "inference_basis": {
+                "from_claims": ["clm_001"],
+                "reasoning_summary": "Because alpha holds.",
+            },
+            "report_locations": [{"file": "report_draft.md", "heading": "Inference"}],
+        }
     )
+    claims.append(
+        {
+            "claim_id": "clm_dangling",
+            "text": "Dangling claim.",
+            "materiality": "background",
+            "claim_type": "factual",
+            "status": "unsupported",
+            "confidence": "low",
+            "sources": [
+                {
+                    "source_card_id": "src_missing",
+                    "evidence_id": "ev_999",
+                    "relation": "supports",
+                    "locator": "x",
+                }
+            ],
+            "inference_basis": {"from_claims": [], "reasoning_summary": None},
+            "report_locations": [],
+        }
+    )
+    if include_multi_source_claim:
+        claims.append(
+            {
+                "claim_id": "clm_multi",
+                "text": "Claim citing both a low- and a high-sensitivity source.",
+                "materiality": "core",
+                "claim_type": "factual",
+                "status": "supported",
+                "confidence": "medium",
+                "sources": [
+                    {
+                        "source_card_id": "src_alpha",
+                        "evidence_id": "ev_001",
+                        "relation": "supports",
+                        "locator": "p1",
+                    },
+                    {
+                        "source_card_id": "src_mixed",
+                        "evidence_id": "ev_sens",
+                        "relation": "supports",
+                        "locator": "m2",
+                    },
+                ],
+                "inference_basis": {"from_claims": [], "reasoning_summary": None},
+                "report_locations": [],
+            }
+        )
 
     dump_yaml(
         {
             "id": f"ledger_{run_id}",
-            "claims": [
-                {
-                    "claim_id": "clm_001",
-                    "text": "Alpha is true and holds under scrutiny for the thesis.",
-                    "materiality": "core",
-                    "claim_type": "factual",
-                    "status": "supported",
-                    "confidence": "high",
-                    "sources": [
-                        {
-                            "source_card_id": "src_alpha",
-                            "evidence_id": "ev_001",
-                            "relation": "supports",
-                            "locator": "p1",
-                        }
-                    ],
-                    "inference_basis": {"from_claims": [], "reasoning_summary": None},
-                    "report_locations": [{"file": "report_draft.md", "heading": "Alpha"}],
-                },
-                {
-                    "claim_id": "clm_mixed",
-                    "text": "Mixed evidence claim.",
-                    "materiality": "core",
-                    "claim_type": "factual",
-                    "status": "mixed",
-                    "confidence": "medium",
-                    "sources": [
-                        {
-                            "source_card_id": "src_mixed",
-                            "evidence_id": "ev_pub",
-                            "relation": "supports",
-                            "locator": "m1",
-                        },
-                        {
-                            "source_card_id": "src_mixed",
-                            "evidence_id": "ev_sens",
-                            "relation": "supports",
-                            "locator": "m2",
-                        },
-                    ],
-                    "inference_basis": {"from_claims": [], "reasoning_summary": None},
-                    "report_locations": [],
-                },
-                {
-                    "claim_id": "clm_unknown",
-                    "text": "Unknown sensitivity claim.",
-                    "materiality": "background",
-                    "claim_type": "factual",
-                    "status": "supported",
-                    "confidence": "low",
-                    "sources": [
-                        {
-                            "source_card_id": "src_unknown",
-                            "evidence_id": "ev_001",
-                            "relation": "supports",
-                            "locator": "u1",
-                        }
-                    ],
-                    "inference_basis": {"from_claims": [], "reasoning_summary": None},
-                    "report_locations": [],
-                },
-                {
-                    "claim_id": "clm_inf",
-                    "text": "Derived inference.",
-                    "materiality": "core",
-                    "claim_type": "inference",
-                    "status": "inference",
-                    "confidence": "low",
-                    "sources": [],
-                    "inference_basis": {
-                        "from_claims": ["clm_001"],
-                        "reasoning_summary": "Because alpha holds.",
-                    },
-                    "report_locations": [{"file": "report_draft.md", "heading": "Inference"}],
-                },
-                {
-                    "claim_id": "clm_dangling",
-                    "text": "Dangling claim.",
-                    "materiality": "background",
-                    "claim_type": "factual",
-                    "status": "unsupported",
-                    "confidence": "low",
-                    "sources": [
-                        {
-                            "source_card_id": "src_missing",
-                            "evidence_id": "ev_999",
-                            "relation": "supports",
-                            "locator": "x",
-                        }
-                    ],
-                    "inference_basis": {"from_claims": [], "reasoning_summary": None},
-                    "report_locations": [],
-                },
-            ],
+            "claims": claims,
         },
         rp.claim_ledger,
     )
@@ -394,20 +447,26 @@ def test_import_unknown_run_raises_catalog_error(tmp_foundry: FoundryPaths) -> N
 
 
 def test_import_all_and_stats(tmp_foundry: FoundryPaths) -> None:
-    build_catalog_run(tmp_foundry, run_id="rf_run_a", sensitivity="public")
-    build_catalog_run(tmp_foundry, run_id="rf_run_b", sensitivity="public")
+    # include_unknown=False: an unknown-sensitivity claim/source anywhere in
+    # the run now (correctly, per F1) poisons run_content_max for the
+    # report item too, hiding it at every defined threshold. Unknown-label
+    # exclusion itself is covered by test_unknown_sensitivity_fails_closed_*;
+    # this test is about the counts/aggregation shape, so it uses a "clean"
+    # fixture that keeps the report visible and counts stable.
+    build_catalog_run(tmp_foundry, run_id="rf_run_a", sensitivity="public", include_unknown=False)
+    build_catalog_run(tmp_foundry, run_id="rf_run_b", sensitivity="public", include_unknown=False)
     result = svc.import_all(tmp_foundry)
     assert result["runs"] == 2
-    assert result["items"] == 22
+    assert result["items"] == 18  # (3 claim + 1 inference + 2 source + 1 report + 2 writeback) * 2
     assert result["errors"] == []
 
     _write_threshold(tmp_foundry, "client_sensitive")
     s = svc.stats(tmp_foundry)
     assert s["runs_indexed"] == 2
     assert s["last_import_at"] is not None
-    assert s["counts"]["claim"] == 6  # 3 visible claims/run (clm_unknown excluded) * 2 runs
+    assert s["counts"]["claim"] == 6  # clm_001 + clm_mixed + clm_dangling, * 2 runs
     assert s["counts"]["inference"] == 2
-    assert s["counts"]["source"] == 4  # src_alpha + src_mixed visible, src_unknown excluded, *2
+    assert s["counts"]["source"] == 4  # src_alpha + src_mixed, * 2 runs
     assert s["counts"]["report"] == 2
     assert s["counts"]["writeback"] == 4
 
@@ -472,7 +531,16 @@ def test_source_mapping_and_dedupe(tmp_foundry: FoundryPaths) -> None:
 
 
 def test_report_mapping(tmp_foundry: FoundryPaths) -> None:
-    build_catalog_run(tmp_foundry)
+    # include_unknown=False: F1 floors the report's sensitivity to
+    # run_content_max (max over every claim/source in the run, not just
+    # report_locations-linked ones); the default fixture's unknown-label
+    # claim/source would push that to the unknown rank and hide the report
+    # at every defined threshold. This test is about field mapping, not
+    # sensitivity, so it uses the unknown-free variant to keep the report
+    # visible at client_sensitive (see
+    # test_report_sensitivity_propagates_unknown_label_fail_closed for the
+    # unknown-propagation case).
+    build_catalog_run(tmp_foundry, include_unknown=False)
     svc.import_run(tmp_foundry, "rf_run_catalog001")
     _write_threshold(tmp_foundry, "client_sensitive")
 
@@ -524,7 +592,7 @@ def test_reusable_output_mapping_is_a_noop_today(tmp_foundry: FoundryPaths) -> N
     # synthetic export dict with the field the plan describes.
     fake_export = {"reusable_output_candidates": [{"description": "A candidate output."}]}
     rows = svc._build_reusable_output_rows(
-        fake_export, "run_x", project=None, created_at=None, run_sensitivity_rank=0
+        fake_export, "run_x", project=None, created_at=None, sensitivity_rank=0
     )
     assert len(rows) == 1
     assert rows[0]["title"] == "A candidate output."
@@ -537,15 +605,20 @@ def test_reusable_output_mapping_is_a_noop_today(tmp_foundry: FoundryPaths) -> N
 
 
 def test_sensitivity_exclusion_at_public_threshold(tmp_foundry: FoundryPaths) -> None:
+    """F2: every item floors at the run's own sensitivity — src_alpha is
+    card-labeled "public", but the run itself is "personal", so it must NOT
+    leak at threshold=public (previously it leaked at its own rank alone)."""
+
     build_catalog_run(tmp_foundry)
     svc.import_run(tmp_foundry, "rf_run_catalog001")
     _write_threshold(tmp_foundry, "public")
 
     result = svc.search(tmp_foundry, run_id="rf_run_catalog001", page_size=200)
-    local_refs = {i["local_ref"] for i in result["items"]}
-    # src_alpha is public (rank 0); everything with run sensitivity="personal"
-    # (rank 1) or above is excluded at threshold=public.
-    assert local_refs == {"src_alpha"}
+    # Run sensitivity is "personal" (rank 1); every item in the run — sources
+    # included — now floors at rank >= 1, so nothing is visible at
+    # threshold=public (rank 0).
+    assert result["items"] == []
+    assert result["total"] == 0
 
 
 def test_sensitivity_exclusion_at_personal_threshold(tmp_foundry: FoundryPaths) -> None:
@@ -560,7 +633,6 @@ def test_sensitivity_exclusion_at_personal_threshold(tmp_foundry: FoundryPaths) 
         "clm_001",
         "clm_dangling",
         "clm_inf",
-        "report",
         "wb_meatywiki",
         "wb_ccdash",
     }
@@ -570,6 +642,11 @@ def test_sensitivity_exclusion_at_personal_threshold(tmp_foundry: FoundryPaths) 
     assert "clm_mixed" not in local_refs
     assert "src_unknown" not in local_refs
     assert "clm_unknown" not in local_refs
+    # F1: the report's sensitivity is run_content_max — the strictest rank
+    # across every claim/source in the run (clm_mixed/src_mixed alone push it
+    # to work_sensitive, before even counting the unknown-label items) — not
+    # just the run's own "personal" label, so it is excluded here too.
+    assert "report" not in local_refs
 
 
 def test_unknown_sensitivity_fails_closed_even_at_loosest_threshold(
@@ -586,6 +663,120 @@ def test_unknown_sensitivity_fails_closed_even_at_loosest_threshold(
 
     item_id = svc._make_item_id("source", "rf_run_catalog001", "src_unknown")
     assert svc.get_item(tmp_foundry, item_id) is None
+
+
+def test_source_sensitivity_floors_to_run_rank(tmp_foundry: FoundryPaths) -> None:
+    """F2: a source item's sensitivity is max(run sensitivity, its own
+    effective rank) — a card labeled "public" inside a "personal" run must
+    not be visible at threshold=public, only from threshold=personal on."""
+
+    build_catalog_run(tmp_foundry, sensitivity="personal")
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    src_alpha_id = svc._make_item_id("source", "rf_run_catalog001", "src_alpha")
+
+    _write_threshold(tmp_foundry, "public")
+    assert svc.get_item(tmp_foundry, src_alpha_id) is None
+    result = svc.search(tmp_foundry, run_id="rf_run_catalog001", item_type="source", page_size=200)
+    assert result["items"] == []
+
+    _write_threshold(tmp_foundry, "personal")
+    item = svc.get_item(tmp_foundry, src_alpha_id)
+    assert item is not None
+    assert item["sensitivity"] == "personal"
+
+
+def test_report_sensitivity_floors_to_max_content_rank(tmp_foundry: FoundryPaths) -> None:
+    """F1: report/reusable_output sensitivity is run_content_max — the
+    strictest effective rank across every claim/source in the run — not just
+    the run's own label. clm_mixed/src_mixed are work_sensitive even though
+    the run itself is "personal", so the report must NOT be visible at
+    threshold=personal (it would have been, pre-fix)."""
+
+    build_catalog_run(tmp_foundry, sensitivity="personal", include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    report_id = svc._make_item_id("report", "rf_run_catalog001", "report")
+
+    _write_threshold(tmp_foundry, "personal")
+    assert svc.get_item(tmp_foundry, report_id) is None
+
+    _write_threshold(tmp_foundry, "work_sensitive")
+    item = svc.get_item(tmp_foundry, report_id)
+    assert item is not None
+    assert item["sensitivity"] == "work_sensitive"
+
+
+def test_report_sensitivity_propagates_unknown_label_fail_closed(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """F1 + fail-closed: an unrecognized sensitivity label ANYWHERE in the
+    run (even on a claim/source with no report_locations) poisons
+    run_content_max, hiding the report at every defined threshold — including
+    the loosest (client_sensitive). writeback items stay pinned to the run's
+    own sensitivity and are unaffected."""
+
+    build_catalog_run(tmp_foundry, sensitivity="personal")  # include_unknown=True (default)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+
+    report_id = svc._make_item_id("report", "rf_run_catalog001", "report")
+    assert svc.get_item(tmp_foundry, report_id) is None
+
+    rows, _links = svc._build_catalog_rows(tmp_foundry, "rf_run_catalog001")
+    report_row = next(r for r in rows if r["item_type"] == "report")
+    assert report_row["sensitivity_rank"] == svc._UNKNOWN_RANK
+    assert report_row["sensitivity"] == "unknown"
+
+    writeback_rows = [r for r in rows if r["item_type"] == "writeback"]
+    assert writeback_rows
+    assert all(r["sensitivity_rank"] == svc._rank("personal") for r in writeback_rows)
+
+
+def test_get_item_filters_hidden_link_endpoints(tmp_foundry: FoundryPaths) -> None:
+    """F3: get_item() must not surface a link edge to an item that is itself
+    over-threshold — that leaks a hidden catalog_item_id (and its relation)
+    even though the requested item is visible. clm_multi cites both src_alpha
+    (low rank) and src_mixed's elevated point, so clm_multi's own rank
+    (work_sensitive) exceeds src_alpha's (personal) — src_alpha's incoming
+    "supports" edge from clm_multi must disappear once clm_multi itself is
+    over-threshold."""
+
+    build_catalog_run(tmp_foundry, sensitivity="personal", include_multi_source_claim=True)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+
+    src_alpha_id = svc._make_item_id("source", "rf_run_catalog001", "src_alpha")
+    clm_001_id = svc._make_item_id("claim", "rf_run_catalog001", "clm_001")
+    clm_multi_id = svc._make_item_id("claim", "rf_run_catalog001", "clm_multi")
+
+    _write_threshold(tmp_foundry, "personal")
+    item = svc.get_item(tmp_foundry, src_alpha_id)
+    assert item is not None
+    incoming_ids = {link["catalog_item_id"] for link in item["links"]["incoming"]}
+    assert clm_001_id in incoming_ids  # visible citer stays
+    assert clm_multi_id not in incoming_ids  # over-threshold citer must not leak
+
+    _write_threshold(tmp_foundry, "work_sensitive")
+    item2 = svc.get_item(tmp_foundry, src_alpha_id)
+    assert item2 is not None
+    incoming_ids2 = {link["catalog_item_id"] for link in item2["links"]["incoming"]}
+    assert clm_multi_id in incoming_ids2  # visible once threshold covers it too
+
+
+def test_stats_runs_indexed_excludes_fully_hidden_runs(tmp_foundry: FoundryPaths) -> None:
+    """F7: runs_indexed counts only runs with >=1 item visible at the
+    resolved threshold — a global COUNT(*) over catalog_import_log leaks the
+    existence of a run that is entirely above threshold."""
+
+    build_catalog_run(tmp_foundry, run_id="rf_run_pub", sensitivity="public", include_unknown=False)
+    build_catalog_run(
+        tmp_foundry, run_id="rf_run_hidden", sensitivity="client_sensitive", include_unknown=False
+    )
+    result = svc.import_all(tmp_foundry)
+    assert result["errors"] == []
+
+    _write_threshold(tmp_foundry, "public")
+    s = svc.stats(tmp_foundry)
+    assert s["runs_indexed"] == 1  # rf_run_hidden has zero visible items at "public"
+    assert s["last_import_at"] is not None  # last_import_at stays global
 
 
 def test_visible_source_evidence_point_redaction(tmp_foundry: FoundryPaths) -> None:
@@ -615,6 +806,72 @@ def test_get_item_unknown_id_returns_none(tmp_foundry: FoundryPaths) -> None:
 # ---------------------------------------------------------------------------
 # Search: FTS + LIKE fallback
 # ---------------------------------------------------------------------------
+
+
+def test_fts_query_strips_degenerate_tokens() -> None:
+    """F9: a trailing bare quote must not degenerate into an empty ""* token
+    that ANDs the whole match to zero results; NUL/control chars are also
+    stripped rather than reaching the FTS5 parser."""
+
+    assert svc._fts_query("alpha") == '"alpha"*'
+    # 'alpha "' previously produced '"alpha"* AND ""*' (matches nothing).
+    assert svc._fts_query('alpha "') == '"alpha"*'
+    # A lone quote mark has no valid token left at all.
+    assert svc._fts_query('"') is None
+    assert svc._fts_query("   ") is None
+    # Control characters (including NUL) are stripped, not treated as
+    # separators — they simply vanish from the token.
+    assert svc._fts_query("a\x00b") == '"ab"*'
+    assert svc._fts_query("\x00\x01\x02") is None
+
+
+def test_search_trailing_quote_query_still_matches(tmp_foundry: FoundryPaths) -> None:
+    """F9 regression: q='alpha "' must behave like q='alpha', not return
+    zero results."""
+
+    build_catalog_run(tmp_foundry)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+
+    result = svc.search(tmp_foundry, q='alpha "')
+    refs = {i["local_ref"] for i in result["items"]}
+    assert "clm_001" in refs
+    assert "src_alpha" in refs
+
+
+def test_search_null_byte_query_does_not_raise(tmp_foundry: FoundryPaths) -> None:
+    """F9 regression: a NUL byte in the query string must not raise
+    sqlite3.OperationalError — it is stripped, and an all-control-character
+    query is treated as no query at all."""
+
+    build_catalog_run(tmp_foundry)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+
+    result = svc.search(tmp_foundry, q="alpha\x00")
+    refs = {i["local_ref"] for i in result["items"]}
+    assert "src_alpha" in refs
+
+    result_all_control = svc.search(tmp_foundry, q="\x00\x01", run_id="rf_run_catalog001")
+    assert result_all_control["total"] > 0  # no valid token -> treated as no query
+
+
+def test_search_falls_back_to_like_on_fts_operational_error(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F9: any FTS5 MATCH syntax error we didn't sanitize away must fall back
+    to the LIKE path instead of propagating as a 500."""
+
+    build_catalog_run(tmp_foundry)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+
+    # Simulate a malformed MATCH expression slipping past sanitization.
+    monkeypatch.setattr(svc, "_fts_query", lambda q: '"unterminated')
+    result = svc.search(tmp_foundry, q="alpha")
+    refs = {i["local_ref"] for i in result["items"]}
+    assert "clm_001" in refs
+    assert "src_alpha" in refs
 
 
 def test_search_fts_match(tmp_foundry: FoundryPaths) -> None:
@@ -705,3 +962,62 @@ def test_rebuild_reimports_everything(tmp_foundry: FoundryPaths) -> None:
     with svc._db(tmp_foundry) as conn:
         (count,) = conn.execute("SELECT COUNT(DISTINCT run_id) FROM catalog_items").fetchone()
         assert count == 2
+
+
+# ---------------------------------------------------------------------------
+# --sensitivity-threshold override (CLI-local; service layer)
+# ---------------------------------------------------------------------------
+
+
+def test_sensitivity_threshold_override_search_reveals_hidden_items(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """search() with sensitivity_threshold='client_sensitive' reveals items that
+    ambient 'public' default hides."""
+
+    build_catalog_run(tmp_foundry, sensitivity="client_sensitive", include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "public")
+
+    # Ambient threshold = public; run sensitivity = client_sensitive → nothing visible.
+    ambient = svc.search(tmp_foundry, run_id="rf_run_catalog001", page_size=200)
+    assert ambient["total"] == 0
+
+    # Override to client_sensitive unlocks the run's items.
+    with_override = svc.search(
+        tmp_foundry,
+        run_id="rf_run_catalog001",
+        page_size=200,
+        sensitivity_threshold="client_sensitive",
+    )
+    assert with_override["total"] > 0
+
+
+def test_sensitivity_threshold_override_stats_reveals_hidden_items(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """stats() with sensitivity_threshold='client_sensitive' reveals runs/counts
+    that ambient 'public' default hides."""
+
+    build_catalog_run(tmp_foundry, sensitivity="client_sensitive", include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "public")
+
+    ambient = svc.stats(tmp_foundry)
+    assert ambient["runs_indexed"] == 0
+
+    with_override = svc.stats(tmp_foundry, sensitivity_threshold="client_sensitive")
+    assert with_override["runs_indexed"] == 1
+    assert with_override["counts"]["claim"] > 0
+
+
+def test_sensitivity_threshold_override_unknown_label_raises(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """An unrecognized --sensitivity-threshold label raises ExportError (fail-closed)."""
+
+    with pytest.raises(svc.ExportError):
+        svc.stats(tmp_foundry, sensitivity_threshold="bogus_label")
+
+    with pytest.raises(svc.ExportError):
+        svc.search(tmp_foundry, sensitivity_threshold="bogus_label")

@@ -564,9 +564,15 @@ def _build_source_rows(
     *,
     project: str | None,
     created_at: str | None,
+    run_sensitivity_rank: int,
     citation_ranks: dict[_CitationKey, int],
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
-    """Dedup resolved (non-dangling) sources by ``source_card_id`` (plan row 3)."""
+    """Dedup resolved (non-dangling) sources by ``source_card_id`` (plan row 3).
+
+    Sensitivity floors to ``max(run_sensitivity_rank, own effective rank)`` —
+    matching claim/inference rows — so a loosely-labeled source card cannot
+    read as less sensitive than the run it was gathered under (F2).
+    """
 
     aggregated: dict[str, dict[str, Any]] = {}
     order: list[str] = []
@@ -643,7 +649,7 @@ def _build_source_rows(
             title=str(entry["title"]),
             summary=str(source_type) if source_type is not None else None,
             status=None,
-            sensitivity_rank=entry["max_rank"],
+            sensitivity_rank=max(run_sensitivity_rank, entry["max_rank"]),
             trust_label=_trust_label_of(entry["trust"]),
             confidence=None,
             source_count=len(entry["citing_claims"]),
@@ -664,9 +670,18 @@ def _build_report_row(
     *,
     project: str | None,
     created_at: str | None,
-    run_sensitivity_rank: int,
+    sensitivity_rank: int,
     total_sources: int,
 ) -> dict[str, Any] | None:
+    """Build the ``report`` row.
+
+    ``sensitivity_rank`` is the caller-computed ``run_content_max`` (F1) —
+    ``max(run sensitivity, every claim's, every source's effective rank)`` —
+    not just the run's own label, because ``report_draft`` free text can
+    embed content synthesized from any claim/source in the run, regardless of
+    whether that claim/source is linked via ``report_locations``.
+    """
+
     report_draft = export_data.get("report_draft")
     if not report_draft:
         return None
@@ -686,7 +701,7 @@ def _build_report_row(
         title=str(title),
         summary=summary,
         status=export_data.get("status_derived"),
-        sensitivity_rank=run_sensitivity_rank,
+        sensitivity_rank=sensitivity_rank,
         trust_label=None,
         confidence=None,
         source_count=total_sources,
@@ -703,9 +718,13 @@ def _build_reusable_output_rows(
     *,
     project: str | None,
     created_at: str | None,
-    run_sensitivity_rank: int,
+    sensitivity_rank: int,
 ) -> list[dict[str, Any]]:
     """``reusable_output_candidates[]`` → ``reusable_output`` (plan row 5).
+
+    ``sensitivity_rank`` is the caller-computed ``run_content_max`` (F1) — see
+    :func:`_build_report_row`'s docstring; reusable outputs can likewise be
+    derived from any claim/source in the run, not only ones they cite.
 
     NOTE (documented deviation): the current ``export_run()`` implementation
     (schema 1.3) never emits a ``reusable_output_candidates`` key — the field
@@ -737,7 +756,7 @@ def _build_reusable_output_rows(
             title=_truncate(description, 160),
             summary=description,
             status=None,
-            sensitivity_rank=run_sensitivity_rank,
+            sensitivity_rank=sensitivity_rank,
             trust_label=None,
             confidence=None,
             source_count=0,
@@ -870,14 +889,30 @@ def _build_catalog_rows(
         run_id,
         project=project,
         created_at=created_at,
+        run_sensitivity_rank=run_sensitivity_rank,
         citation_ranks=citation_ranks,
     )
+
+    # F1: report_draft (and any future reusable-output derivation) can embed
+    # content synthesized from ANY claim/source in the run — not just ones
+    # linked via report_locations — so both item types must be gated by the
+    # strictest sensitivity anywhere in the run, not merely the run's own
+    # label. Each row's sensitivity_rank already folds in the run floor (see
+    # _build_claim_and_inference_rows / _build_source_rows), and an unknown
+    # label (rank _UNKNOWN_RANK) naturally wins the max, keeping this
+    # fail-closed.
+    run_content_max = max(
+        [run_sensitivity_rank]
+        + [row["sensitivity_rank"] for row in claim_rows]
+        + [row["sensitivity_rank"] for row in source_rows]
+    )
+
     report_row = _build_report_row(
         export_data,
         run_id,
         project=project,
         created_at=created_at,
-        run_sensitivity_rank=run_sensitivity_rank,
+        sensitivity_rank=run_content_max,
         total_sources=len(source_rows),
     )
     reusable_output_rows = _build_reusable_output_rows(
@@ -885,7 +920,7 @@ def _build_catalog_rows(
         run_id,
         project=project,
         created_at=created_at,
-        run_sensitivity_rank=run_sensitivity_rank,
+        sensitivity_rank=run_content_max,
     )
     writeback_rows = _build_writeback_rows(
         export_data,
@@ -1082,6 +1117,7 @@ def search(
     sort: str = "updated",
     page: int = 1,
     page_size: int = _DEFAULT_PAGE_SIZE,
+    sensitivity_threshold: str | None = None,
 ) -> dict[str, Any]:
     """Search the catalog. Over-threshold items are excluded (fail-closed)."""
 
@@ -1090,7 +1126,7 @@ def search(
     page = max(page, 1)
     page_size = max(1, min(page_size, _MAX_PAGE_SIZE))
 
-    threshold_rank = _rank(resolve_threshold(paths))
+    threshold_rank = _rank(resolve_threshold(paths, sensitivity_threshold))
 
     where = ["sensitivity_rank <= ?"]
     params: list[Any] = [threshold_rank]
@@ -1120,16 +1156,31 @@ def search(
         fts_on = _fts_available(conn)
         match_ids: list[str] | None = None
         if q:
-            if fts_on:
-                fts_rows = conn.execute(
-                    "SELECT catalog_item_id FROM catalog_fts WHERE catalog_fts MATCH ? "
-                    "ORDER BY bm25(catalog_fts)",
-                    (_fts_query(q),),
-                ).fetchall()
-                match_ids = [r["catalog_item_id"] for r in fts_rows]
-            else:
+            if not fts_on:
                 where.append("search_text LIKE ?")
                 params.append(f"%{q.lower()}%")
+            else:
+                fts_query = _fts_query(q)
+                if fts_query is None:
+                    # No valid token after sanitization (e.g. a lone quote
+                    # mark, or an all-control-character string) — treat as no
+                    # query at all rather than execute a degenerate MATCH
+                    # that would spuriously return zero rows (F9).
+                    pass
+                else:
+                    try:
+                        fts_rows = conn.execute(
+                            "SELECT catalog_item_id FROM catalog_fts WHERE catalog_fts MATCH ? "
+                            "ORDER BY bm25(catalog_fts)",
+                            (fts_query,),
+                        ).fetchall()
+                        match_ids = [r["catalog_item_id"] for r in fts_rows]
+                    except sqlite3.OperationalError:
+                        # Defense in depth: any FTS5 syntax edge case we
+                        # didn't sanitize away (F9) falls back to the plain
+                        # LIKE path instead of a 500.
+                        where.append("search_text LIKE ?")
+                        params.append(f"%{q.lower()}%")
 
         # Facets always reflect the full (sensitivity-gated) catalog, not the
         # current filter/query selection — so filter dropdowns stay complete.
@@ -1180,18 +1231,32 @@ def search(
     }
 
 
-def _fts_query(q: str) -> str:
-    """Build a permissive prefix MATCH query from free text (AND across terms)."""
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
-    terms = [t for t in re.split(r"\s+", q.strip()) if t]
-    if not terms:
-        return '""'
 
-    def _escape(term: str) -> str:
-        cleaned = term.replace('"', "")
+def _fts_query(q: str) -> str | None:
+    """Build a permissive prefix MATCH query from free text (AND across terms).
+
+    Returns ``None`` when no valid token remains after stripping control
+    characters and bare quote marks (e.g. ``'alpha "'`` degenerating to a
+    lone empty token) — callers must treat that as "no query" rather than
+    execute a MATCH expression, since an empty/degenerate token (``""*``)
+    matches nothing and would silently hide otherwise-visible results (F9).
+    """
+
+    cleaned_q = _CONTROL_CHARS_RE.sub("", q)
+    terms = [t for t in re.split(r"\s+", cleaned_q.strip()) if t]
+
+    def _escape(term: str) -> str | None:
+        cleaned = term.replace('"', "").strip()
+        if not cleaned:
+            return None
         return f'"{cleaned}"*'
 
-    return " AND ".join(_escape(t) for t in terms)
+    tokens = [tok for tok in (_escape(t) for t in terms) if tok is not None]
+    if not tokens:
+        return None
+    return " AND ".join(tokens)
 
 
 def _facets(conn: sqlite3.Connection, threshold_rank: int) -> dict[str, list[str]]:
@@ -1211,7 +1276,12 @@ def _facets(conn: sqlite3.Connection, threshold_rank: int) -> dict[str, list[str
     }
 
 
-def get_item(paths: FoundryPaths, catalog_item_id: str) -> dict[str, Any] | None:
+def get_item(
+    paths: FoundryPaths,
+    catalog_item_id: str,
+    *,
+    sensitivity_threshold: str | None = None,
+) -> dict[str, Any] | None:
     """Return the full detail for *catalog_item_id*, or ``None`` if unknown or
 
     excluded by the resolved sensitivity threshold (fail-closed — callers
@@ -1219,7 +1289,7 @@ def get_item(paths: FoundryPaths, catalog_item_id: str) -> dict[str, Any] | None
     from "not visible").
     """
 
-    threshold_rank = _rank(resolve_threshold(paths))
+    threshold_rank = _rank(resolve_threshold(paths, sensitivity_threshold))
 
     with _db(paths) as conn:
         row = conn.execute(
@@ -1232,13 +1302,27 @@ def get_item(paths: FoundryPaths, catalog_item_id: str) -> dict[str, Any] | None
         if row["item_type"] == "source":
             payload = _redact_evidence_points(payload, threshold_rank)
 
+        # F3: only surface an edge when the *other* endpoint is itself visible
+        # at the resolved threshold — otherwise the edge leaks a hidden
+        # catalog_item_id (and its relation) even though the requested item
+        # is visible. Same rule as search()'s WHERE sensitivity_rank <= ?.
         outgoing = conn.execute(
-            "SELECT to_item_id, relation FROM catalog_links WHERE from_item_id = ?",
-            (catalog_item_id,),
+            """
+            SELECT l.to_item_id AS to_item_id, l.relation AS relation
+            FROM catalog_links l
+            JOIN catalog_items i ON i.catalog_item_id = l.to_item_id
+            WHERE l.from_item_id = ? AND i.sensitivity_rank <= ?
+            """,
+            (catalog_item_id, threshold_rank),
         ).fetchall()
         incoming = conn.execute(
-            "SELECT from_item_id, relation FROM catalog_links WHERE to_item_id = ?",
-            (catalog_item_id,),
+            """
+            SELECT l.from_item_id AS from_item_id, l.relation AS relation
+            FROM catalog_links l
+            JOIN catalog_items i ON i.catalog_item_id = l.from_item_id
+            WHERE l.to_item_id = ? AND i.sensitivity_rank <= ?
+            """,
+            (catalog_item_id, threshold_rank),
         ).fetchall()
 
     summary = _row_to_summary(row)
@@ -1250,10 +1334,10 @@ def get_item(paths: FoundryPaths, catalog_item_id: str) -> dict[str, Any] | None
     return summary
 
 
-def stats(paths: FoundryPaths) -> dict[str, Any]:
+def stats(paths: FoundryPaths, *, sensitivity_threshold: str | None = None) -> dict[str, Any]:
     """Aggregate counts (visible items only, per the resolved threshold)."""
 
-    threshold_rank = _rank(resolve_threshold(paths))
+    threshold_rank = _rank(resolve_threshold(paths, sensitivity_threshold))
 
     with _db(paths) as conn:
         counts = {t: 0 for t in ITEM_TYPES}
@@ -1266,14 +1350,25 @@ def stats(paths: FoundryPaths) -> dict[str, Any]:
             if r["item_type"] in counts:
                 counts[r["item_type"]] = r["n"]
 
+        # F7: runs_indexed must reflect only runs with >=1 item visible at the
+        # resolved threshold — a global COUNT(*) over catalog_import_log would
+        # leak the existence of a run that is entirely above threshold (e.g.
+        # a whole run tagged client_sensitive, viewed at a public threshold).
+        runs_row = conn.execute(
+            "SELECT COUNT(DISTINCT run_id) AS n FROM catalog_items WHERE sensitivity_rank <= ?",
+            (threshold_rank,),
+        ).fetchone()
+        runs_indexed = runs_row["n"] if runs_row else 0
+
+        # last_import_at stays global — it is a housekeeping timestamp, not a
+        # per-run existence signal.
         log_row = conn.execute(
-            "SELECT COUNT(*) AS runs, MAX(imported_at) AS last_import_at "
-            "FROM catalog_import_log"
+            "SELECT MAX(imported_at) AS last_import_at FROM catalog_import_log"
         ).fetchone()
 
     return {
         "counts": counts,
-        "runs_indexed": log_row["runs"] if log_row else 0,
+        "runs_indexed": runs_indexed,
         "last_import_at": log_row["last_import_at"] if log_row else None,
     }
 

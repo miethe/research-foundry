@@ -27,7 +27,7 @@ import type { RFRunExport, RFRunSummary } from "@/types/rf";
 import type { GovernanceConfig } from "@/types/governance";
 import type { CatalogItemDetail, CatalogSearchParams, CatalogSearchResult, CatalogStats } from "@/types/rf/catalog";
 import { getViewerSettings } from "@/lib/viewerSettings";
-import { buildCatalogIndex, catalogStats as computeCatalogStats, getCatalogItem, searchCatalog } from "@/lib/catalog";
+import { buildCatalogIndex, catalogStats as computeCatalogStats, getCatalogItem, normalizeCatalogItemDetail, searchCatalog } from "@/lib/catalog";
 import type { CatalogIndex } from "@/lib/catalog";
 
 // ── Env flag ─────────────────────────────────────────────────────────────────
@@ -323,16 +323,22 @@ export async function fetchCatalogSearch(params: CatalogSearchParams = {}): Prom
  *
  * Returns null when the item is not found (404 in loopback mode; absent from
  * the index in static mode) — never throws for a plain not-found.
+ *
+ * normalizeCatalogItemDetail() is applied in both modes so CatalogScreen
+ * always receives a consistent view-model (payload.sources + payload.provenance)
+ * regardless of whether the backend or the static index produced the item.
  */
 export async function fetchCatalogItem(catalogItemId: string): Promise<CatalogItemDetail | null> {
   if (LOOPBACK_ENABLED) {
     try {
-      return await loopbackGet<CatalogItemDetail>(`/catalog/items/${encodeURIComponent(catalogItemId)}`);
+      const raw = await loopbackGet<CatalogItemDetail>(`/catalog/items/${encodeURIComponent(catalogItemId)}`);
+      return normalizeCatalogItemDetail(raw);
     } catch (err) {
       if (err instanceof ClientError && err.status === 404) return null;
       throw err;
     }
   }
   const index = await getCatalogIndex();
-  return getCatalogItem(index, catalogItemId);
+  const item = getCatalogItem(index, catalogItemId);
+  return item ? normalizeCatalogItemDetail(item) : null;
 }

@@ -26,7 +26,7 @@ constraint. Mockup target: `assets/public-multiuser-release/mockup-evidence-cata
 | D1 | Catalog store = stdlib `sqlite3` + FTS5 at `<workspace>/.rf_cache/catalog.db` (already gitignored). Derived, rebuildable read model; `PRAGMA user_version = 1`; on version mismatch drop + rebuild. No new runtime dependency, no migration framework. | Files stay canonical; DB is derived (AOS constraint 2). 38 runs / ~3.3k claims is trivially in FTS5 range. |
 | D2 | Import runs through `export_service.export_run()` live (NOT by reading stale `run.json` files), with `threshold="client_sensitive"` (max permissive) at import; sensitivity is gated at READ time in `catalog_service` reusing `SENSITIVITY_ORDER` / `resolve_threshold` semantics (fail-closed on unknown labels). Over-threshold items are EXCLUDED from search/list; source quotes/summaries inside payloads are redacted with `REDACTION_MARKER`. | Mirrors the export layer's store-raw/gate-on-read model; server-side enforcement per spec §11. |
 | D3 | `/library` → redirect to `/catalog`. Nav item Library replaced by Catalog. Builder + Agents added as `disabled` nav entries with `disabledReason` (existing `NavState` pattern). Reusable outputs / reports / writebacks become catalog tabs, so no capability is lost. | Spec §5: don't keep overlapping top-level concepts; no false affordances. |
-| D4 | Frontend catalog is dual-mode like every other data path: loopback mode calls `/api/catalog/*`; static mode builds the SAME index client-side in `src/lib/catalog.ts` from batch-loaded run exports (existing `useQueries` pattern from LibraryScreen). Shared pure functions keep semantics identical and unit-testable. | Static mode is the default deployment; catalog must work there. |
+| D4 | Frontend catalog is dual-mode like every other data path: loopback mode calls `/api/catalog/*`; static mode builds the SAME index client-side in `src/lib/catalog.ts` from batch-loaded run exports (existing `useQueries` pattern from LibraryScreen). Shared pure functions keep semantics identical and unit-testable. The static index applies NO read-time sensitivity threshold by design: a static bundle is pre-gated at export/publish time (`rf run export` under the publisher's threshold IS the audience gate), and client-side filtering of JSON already shipped to the browser would be cosmetic security. Operators publishing a static bundle for a wider audience MUST export at the audience's threshold. | Static mode is the default deployment; catalog must work there. Reviewed 2026-07-04 (adversarial pass finding 4): documented as a deployment rule rather than "fixed" client-side. |
 | D5 | Deterministic IDs: `catalog_item_id = "ci_" + sha1("{item_type}:{run_id}:{local_ref}").hexdigest()[:12]`. `run_id` + `local_ref` preserved as alias columns/fields (spec §6 requires run-local IDs preserved as aliases). Re-import of a run is delete-then-insert in one transaction → idempotent. | Stable across imports, debuggable via alias fields. |
 | D6 | No auth/RBAC/workspace tables in this pass (Phase 5, Mode-D). `workspace_id` is NOT added yet; the item model keeps `project` (from `linked_projects[0]`/`category`) for filtering. | Spec phases it later; auth is an open question (§14). |
 
@@ -43,10 +43,19 @@ From `export_run(rp, threshold="client_sensitive")` output:
 | `reusable_output_candidates[]` | `reusable_output` | as-is. |
 | `writebacks.targets[]` | `writeback` | status normalized like LibraryScreen's `normalizeWritebackStatus`. |
 
-Item `sensitivity`: source item → its own effective label (max of card/point rank);
-claim/inference → max(run sensitivity, max source effective sensitivity);
-report / reusable_output / writeback → run sensitivity. Unknown labels rank as
-strictest (fail-closed, same as export layer).
+Item `sensitivity` (all ranks floor at the run's own sensitivity — nothing can
+read as *less* sensitive than the run it came from; unknown labels always
+rank strictest, fail-closed, same as the export layer):
+
+- `source` → `max(run sensitivity, its own effective label [max of card/point rank])`.
+- `claim` / `inference` → `max(run sensitivity, max effective sensitivity of its cited sources)`.
+- `report` / `reusable_output` → `run_content_max = max(run sensitivity, max
+  effective sensitivity across ALL of the run's claims and cited sources)` —
+  not just the ones referenced by `report_locations`, because `report_draft`
+  free text (and any future reusable-output derivation) can embed content
+  synthesized from anything in the run's claim graph.
+- `writeback` → run sensitivity only (target/status metadata, no claim/source
+  content).
 
 Links table rows: `claim → source` (`supports`), `inference → claim`
 (`inferred_from`), `report → claim` (`contains`, from claims with

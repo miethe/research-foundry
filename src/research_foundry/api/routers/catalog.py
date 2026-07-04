@@ -104,9 +104,17 @@ def post_catalog_import_run(
 
 @router.post("/catalog/import", summary="(Re)import every discovered run")
 def post_catalog_import_all(paths: FoundryPaths = _PATHS_DEP) -> dict[str, Any]:
-    """(Re)import every discovered run. Best-effort — a malformed run is skipped."""
+    """(Re)import every discovered run. Best-effort — a malformed run is skipped.
+
+    ``errors`` carries ``import_all()``'s per-run failure list through to the
+    caller (``[]`` when every run imported cleanly) instead of silently
+    dropping it.
+    """
     result = svc.import_all(paths)
-    return {"imported": {"runs": result["runs"], "items": result["items"]}}
+    return {
+        "imported": {"runs": result["runs"], "items": result["items"]},
+        "errors": result["errors"],
+    }
 
 
 __all__ = ["router"]

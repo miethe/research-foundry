@@ -326,7 +326,31 @@ def test_post_import_all(tmp_path):
     resp = client.post("/api/catalog/import")
     assert resp.status_code == 200
     data = resp.json()
-    assert data == {"imported": {"runs": 2, "items": 4}}
+    assert data == {"imported": {"runs": 2, "items": 4}, "errors": []}
 
     stats_resp = client.get("/api/catalog/stats")
     assert stats_resp.json()["runs_indexed"] == 2
+
+
+def test_post_import_all_passes_through_errors(tmp_path, monkeypatch):
+    """F8: POST /api/catalog/import must not drop import_all()'s per-run
+    errors list — the router previously discarded it entirely."""
+
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="client_sensitive")
+    _plant_run(cfg.paths, "rf_run_ok")
+
+    def _fake_import_all(paths):
+        return {
+            "runs": 1,
+            "items": 2,
+            "errors": [{"run_id": "rf_run_bad", "error": "boom"}],
+        }
+
+    monkeypatch.setattr(svc, "import_all", _fake_import_all)
+
+    resp = client.post("/api/catalog/import")
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "imported": {"runs": 1, "items": 2},
+        "errors": [{"run_id": "rf_run_bad", "error": "boom"}],
+    }
