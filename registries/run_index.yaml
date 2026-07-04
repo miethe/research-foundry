@@ -584,5 +584,21 @@ items:
   - agentic-sdlc
   backlog_idea_ref: RIB-047
   backlog_idea_id: idea_closed-loop-telemetry-artifact-improvement
-count: 38
-updated_at: '2026-06-21T01:23:41-04:00'
+- id: rf_run_20260626_agentic_sdlc_governance_prior_art_landscape
+  intent_id: intent_research_20260626_agentic_sdlc_governance_prior_art_landscape
+  status: planned
+  created_at: '2026-06-26T10:16:34-04:00'
+  brief_id: brief_20260626_agentic_sdlc_governance_prior_art_landscape
+  swarm_id: swarm_20260626_agentic_sdlc_governance_prior_art_landscape
+  routing_id: route_20260626_agentic_sdlc_governance_prior_art_landscape
+  human_required: false
+  run_dir: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260626_agentic_sdlc_governance_prior_art_landscape
+  linked_projects:
+  - patent-review-council
+  category: null
+  tags: null
+  backlog_idea_ref: null
+  backlog_idea_id: null
+  indexed_at: '2026-06-26T10:16:34-04:00'
+count: 39
+updated_at: '2026-06-26T10:16:34-04:00'

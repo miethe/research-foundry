@@ -1,0 +1,67 @@
+id: ext_20260626_01ac8415_001
+source_card_id: src_20260626_slsa_provenance_v1_0_specification_3d7b6f77
+created_at: '2026-06-26T10:19:54-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: SLSA • Provenance
+  locator: para/1
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Home
+  locator: para/2
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Current activities
+  locator: para/3
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: SLSA Specification 1.0
+  locator: para/4
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Understanding SLSA
+  locator: para/5
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: What&#39;s new in v1.0
+  locator: para/6
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: About SLSA
+  locator: para/7
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: Supply chain threats
+  locator: para/8
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: para/4
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: para/6
+contradictions_or_cautions: []

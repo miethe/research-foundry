@@ -1,0 +1,19 @@
+id: ext_20260626_01640a59_001
+source_card_id: src_20260626_cyclonedx_ml_bom_ai_bill_of_7ea0a120
+created_at: '2026-06-26T10:19:54-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Content not retrieved; locator recorded for follow-up.
+  locator: para/0
+  confidence: medium
+  quote_available: false
+  notes: flagged needs_content
+extracted_definitions: []
+extracted_metrics: []
+contradictions_or_cautions:
+- text: content_not_retrieved
+  locator: card/trust
+- text: Content could not be fetched/read.
+  locator: card/limitations

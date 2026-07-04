@@ -341,5 +341,12 @@ items:
   requires_review: false
   path: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260614_closed_loop_telemetry_to_artifact_feedback/reports/report_draft.md
   indexed_at: '2026-06-15T11:50:08-04:00'
-count: 38
-updated_at: '2026-06-15T11:50:08-04:00'
+- id: report_20260626_agentic_sdlc_governance_prior_art_landscape
+  run_id: rf_run_20260626_agentic_sdlc_governance_prior_art_landscape
+  intent_id: intent_research_20260626_agentic_sdlc_governance_prior_art_landscape
+  path: /Users/miethe/dev/homelab/development/research-foundry/runs/rf_run_20260626_agentic_sdlc_governance_prior_art_landscape/reports/report_draft.md
+  status: draft
+  verification_status: pending
+  indexed_at: '2026-06-26T10:19:55-04:00'
+count: 39
+updated_at: '2026-06-26T10:19:55-04:00'

@@ -255,5 +255,13 @@ items:
     supported: 79
   path: runs/rf_run_20260614_closed_loop_telemetry_to_artifact_feedback/claims/claim_ledger.yaml
   indexed_at: '2026-06-15T11:34:50-04:00'
-count: 32
-updated_at: '2026-06-15T11:34:50-04:00'
+- id: claims_20260626_rf_run_20260626_agentic_sdlc_governance
+  run_id: rf_run_20260626_agentic_sdlc_governance_prior_art_landscape
+  intent_id: intent_research_20260626_agentic_sdlc_governance_prior_art_landscape
+  claims_total: 143
+  by_status:
+    supported: 143
+  path: runs/rf_run_20260626_agentic_sdlc_governance_prior_art_landscape/claims/claim_ledger.yaml
+  indexed_at: '2026-06-26T10:19:55-04:00'
+count: 33
+updated_at: '2026-06-26T10:19:55-04:00'

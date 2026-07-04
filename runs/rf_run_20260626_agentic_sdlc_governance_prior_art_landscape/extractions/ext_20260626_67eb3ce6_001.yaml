@@ -1,0 +1,67 @@
+id: ext_20260626_67eb3ce6_001
+source_card_id: src_20260626_model_context_protocol_specification_e299d861
+created_at: '2026-06-26T10:19:54-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'Specification - Model Context Protocol Documentation Index Fetch the complete documentation index
+    at: /llms.txt Use this file to discover all available pages before exploring further.'
+  locator: para/1
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_002
+  text: Share contextual information with language models Expose tools and capabilities to AI systems
+    Build composable integrations and workflows
+  locator: para/2
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: 'The protocol uses JSON-RPC 2.0 messages to establish communication between:'
+  locator: para/3
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'Hosts : LLM applications that initiate connections Clients : Connectors within the host application
+    Servers : Services that provide context and capabilities'
+  locator: para/4
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: MCP takes some inspiration from the Language Server Protocol , which standardizes how to add support
+    for programming languages across a whole ecosystem of development tools.
+  locator: para/5
+  confidence: medium
+  quote_available: false
+  notes: ''
+- evidence_id: ev_006
+  text: JSON-RPC message format Stateful connections Server and client capability negotiation
+  locator: para/6
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: '​ Features Servers offer any of the following features to clients:'
+  locator: para/7
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: 'Resources : Context and data, for the user or the AI model to use Prompts : Templated messages
+    and workflows for users Tools : Functions for the AI model to execute'
+  locator: para/8
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: para/3
+contradictions_or_cautions: []

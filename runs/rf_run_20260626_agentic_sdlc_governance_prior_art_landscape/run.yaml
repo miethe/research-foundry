@@ -1,0 +1,29 @@
+schema_version: 0.1
+type: run
+run_id: rf_run_20260626_agentic_sdlc_governance_prior_art_landscape
+intent_id: intent_research_20260626_agentic_sdlc_governance_prior_art_landscape
+ibom_id: ibom_research_20260626_agentic_sdlc_governance_prior_art_landscape
+brief_id: brief_20260626_agentic_sdlc_governance_prior_art_landscape
+swarm_id: swarm_20260626_agentic_sdlc_governance_prior_art_landscape
+routing_id: route_20260626_agentic_sdlc_governance_prior_art_landscape
+created_at: '2026-06-26T10:16:34-04:00'
+status: planned
+sensitivity: personal
+human_required: false
+project: patent-review-council
+notebook_id: null
+linked_projects:
+- patent-review-council
+category: null
+tags: null
+backlog_idea_ref: null
+backlog_idea_id: null
+profile:
+  depth: standard
+  audience: technical
+  max_cost_usd: 5.0
+  max_runtime_minutes: 60
+  freshness_days: 3650
+  extraction_model_profile: rf_extract_cheap
+  synthesis_model_profile: rf_synthesize_deep
+  verification_model_profile: rf_verify_balanced

@@ -1,0 +1,2344 @@
+id: claims_20260626_rf_run_20260626_agentic_sdlc_governance
+intent_id: intent_research_20260626_agentic_sdlc_governance_prior_art_landscape
+report_ref: reports/report_draft.md
+verification_status: passed
+claims:
+- claim_id: clm_001
+  text: Content not retrieved; locator recorded for follow-up.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_cyclonedx_ml_bom_ai_bill_of_7ea0a120
+    evidence_id: ev_001
+    relation: supports
+    locator: para/0
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_002
+  text: SLSA • Provenance
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_slsa_provenance_v1_0_specification_3d7b6f77
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_003
+  text: Home
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_slsa_provenance_v1_0_specification_3d7b6f77
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_004
+  text: Current activities
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_slsa_provenance_v1_0_specification_3d7b6f77
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_005
+  text: SLSA Specification 1.0
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_slsa_provenance_v1_0_specification_3d7b6f77
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_006
+  text: Understanding SLSA
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_slsa_provenance_v1_0_specification_3d7b6f77
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_007
+  text: What&#39;s new in v1.0
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_slsa_provenance_v1_0_specification_3d7b6f77
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_008
+  text: About SLSA
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_slsa_provenance_v1_0_specification_3d7b6f77
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_009
+  text: Supply chain threats
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_slsa_provenance_v1_0_specification_3d7b6f77
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_010
+  text: 'Using artifact attestations to establish provenance for builds - GitHub Docs Skip to main content
+    GitHub Docs Version: Free, Pro, &amp; Team Search or ask Copilot Search or ask Copilot Select language'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_actions_artifact_attestations_737c38ae
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_011
+  text: Ensure you have the appropriate permissions configured in your workflow.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_actions_artifact_attestations_737c38ae
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_012
+  text: When you run your updated workflows, they will build your artifacts and generate an artifact attestation
+    that establishes build provenance.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_actions_artifact_attestations_737c38ae
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_013
+  text: In the workflow that builds the binary you would like to attest, add the following permissions.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_actions_artifact_attestations_737c38ae
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_014
+  text: After the step where the binary has been built, add the following step.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_actions_artifact_attestations_737c38ae
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_015
+  text: The value of the subject-path parameter should be set to the path to the binary you want to attest.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_actions_artifact_attestations_737c38ae
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_016
+  text: Generating build provenance for container images
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_actions_artifact_attestations_737c38ae
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_017
+  text: In the workflow that builds the container image you would like to attest, add the following permissions.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_actions_artifact_attestations_737c38ae
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_018
+  text: Open Policy Agent (OPA) | Open Policy Agent
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_open_policy_agent_opa_policy_as_7fbf951c
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_019
+  text: Skip to main content Open Policy Agent Docs Resources Security Support Community Survey Blog Projects
+    OPA Regal OPA Gatekeeper Conftest Ecosystem Play
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_open_policy_agent_opa_policy_as_7fbf951c
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_020
+  text: Search Ctrl K
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_open_policy_agent_opa_policy_as_7fbf951c
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_021
+  text: Core Documentation
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_open_policy_agent_opa_policy_as_7fbf951c
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_022
+  text: Introduction Philosophy Policy Language Policy Reference Policy Testing Policy Performance External
+    Data
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_open_policy_agent_opa_policy_as_7fbf951c
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_023
+  text: Use Cases
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_open_policy_agent_opa_policy_as_7fbf951c
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_024
+  text: Data Filtering Envoy &amp; Istio Kubernetes CI/CD AWS CloudFormation Hooks Docker HTTP APIs GraphQL
+    APIs Kafka SSH and sudo Terraform
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_open_policy_agent_opa_policy_as_7fbf951c
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_025
+  text: Operations
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_open_policy_agent_opa_policy_as_7fbf951c
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_026
+  text: 'Agentforce: The AI Agent Platform | Salesforce'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_salesforce_agentforce_20ad4336
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_027
+  text: Skip to content
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_salesforce_agentforce_20ad4336
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_028
+  text: Products Back Products All Products Agentforce Back Agentforce Humans with Agents drive customer
+    success together.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_salesforce_agentforce_20ad4336
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_029
+  text: See all service solutions Customer Service Management Field Service and Operations Contact Center
+    IT Service Service Portal Service Analytics Customer Service AI HR Service Service Pricing Marketing
+    B
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_salesforce_agentforce_20ad4336
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_030
+  text: Explore travel, transportation, and hospitality experiences Travel Transportation and Logistics
+    Hospitality See all industries Explore Salesforce for industries.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_salesforce_agentforce_20ad4336
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_031
+  text: Learn how to create AI agents from real-world builders
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_salesforce_agentforce_20ad4336
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_032
+  text: Watch the Demo Day replay
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_salesforce_agentforce_20ad4336
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_033
+  text: Build, deploy, and manage AI agents at scale.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_salesforce_agentforce_20ad4336
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_034
+  text: Backstage Software Templates | Backstage Software Catalog and Developer Platform
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_backstage_software_templates_9f4cc446
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_035
+  text: Skip to main content Docs Plugins Reference Stable (v1.52.0) Next Releases Blog Demos Community
+    Stable Next Stable Search Overview Getting Started Core Features AI Auth and Identity Kubernetes Notific
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_backstage_software_templates_9f4cc446
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_036
+  text: Choose a template ​ When you select a template that you want to create, you&#x27;ll be taken to
+    the next page which may or may not look different for each template.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_backstage_software_templates_9f4cc446
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_037
+  text: Templates generally consist of a set of steps, and each step can have its own set of required
+    or optional inputs, as you can see in the image below we are now prompted to input some GitHub repository
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_backstage_software_templates_9f4cc446
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_038
+  text: Review page ​ Before you run the template, you&#x27;ll be taken to a summary page where you can
+    verify the inputs you have provided before we run the template.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_backstage_software_templates_9f4cc446
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_039
+  text: Run the template ​ Once you are happy with the inputs you have provided, you can click on the
+    Create button to run the template.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_backstage_software_templates_9f4cc446
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_040
+  text: Success ​ Once the template has finished running, you&#x27;ll be taken to a success page where
+    you can see the results of the template.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_backstage_software_templates_9f4cc446
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_041
+  text: Failure ​ If it fails, you&#x27;ll be able to click on each section to get the log from the step
+    that failed which can be helpful in debugging.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_backstage_software_templates_9f4cc446
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_042
+  text: 'PROV-O: The PROV Ontology'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_w3c_prov_o_provenance_ontology_54594b79
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_043
+  text: 'PROV-O: The PROV Ontology W3C Recommendation 30 April 2013 This version: http://www.w3.org/TR/2013/REC-prov-o-20130430/
+    Latest published version: http://www.w3.org/TR/prov-o/ Implementation report: ht'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_w3c_prov_o_provenance_ontology_54594b79
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_044
+  text: 'Editors: Timothy Lebo , Rensselaer Polytechnic Institute, USA Satya Sahoo , Case Western Reserve
+    University, USA Deborah McGuinness , Rensselaer Polytechnic Institute, USA Contributors: (In alphabetic'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_w3c_prov_o_provenance_ontology_54594b79
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_045
+  text: Please refer to the errata for this document, which may include some normative corrections.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_w3c_prov_o_provenance_ontology_54594b79
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_046
+  text: The English version of this specification is the only normative version.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_w3c_prov_o_provenance_ontology_54594b79
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_047
+  text: Copyright © 2011-2013 W3C ® ( MIT , ERCIM , Keio , Beihang ), All Rights Reserved.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_w3c_prov_o_provenance_ontology_54594b79
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_048
+  text: Abstract The PROV Ontology (PROV-O) expresses the PROV Data Model [ PROV-DM ] using the OWL2 Web
+    Ontology Language (OWL2) [ OWL2-OVERVIEW ].
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_w3c_prov_o_provenance_ontology_54594b79
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_049
+  text: The namespace for all PROV-O terms is http://www.w3.org/ns/prov# .
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_w3c_prov_o_provenance_ontology_54594b79
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_050
+  text: 'GitHub - modelcontextprotocol/registry: A community driven registry service for Model Context
+    Protocol (MCP) servers.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_registry_64720384
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_051
+  text: Skip to content
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_registry_64720384
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_052
+  text: Navigation Menu
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_registry_64720384
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_053
+  text: Toggle navigation
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_registry_64720384
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_054
+  text: Sign in
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_registry_64720384
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_055
+  text: Appearance settings
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_registry_64720384
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_056
+  text: Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Copilot app Direct agents
+    from issue to merge MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate
+    a
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_registry_64720384
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_057
+  text: Search or jump to...
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_registry_64720384
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_058
+  text: 'GitHub - in-toto/attestation: in-toto Attestation Framework · GitHub'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_in_toto_attestation_framework_ebc3f349
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_059
+  text: Skip to content
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_in_toto_attestation_framework_ebc3f349
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_060
+  text: Navigation Menu
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_in_toto_attestation_framework_ebc3f349
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_061
+  text: Toggle navigation
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_in_toto_attestation_framework_ebc3f349
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_062
+  text: Sign in
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_in_toto_attestation_framework_ebc3f349
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_063
+  text: Appearance settings
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_in_toto_attestation_framework_ebc3f349
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_064
+  text: Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Copilot app Direct agents
+    from issue to merge MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate
+    a
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_in_toto_attestation_framework_ebc3f349
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_065
+  text: Search or jump to...
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_in_toto_attestation_framework_ebc3f349
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_066
+  text: Temporal Workflow Definition | Temporal Platform Documentation
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_temporal_deterministic_workflow_replay_9a591445
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_067
+  text: Skip to main content Home Courses SDKs AI Cookbook Code Exchange Temporal Cloud Ask AI Search
+    Home Quickstarts Evaluate Develop Temporal Cloud Deploy to production CLI (temporal) References Troublesho
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_temporal_deterministic_workflow_replay_9a591445
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_068
+  text: What is a Workflow Definition?
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_temporal_deterministic_workflow_replay_9a591445
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_069
+  text: A Temporal Workflow defines the overall flow of the application.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_temporal_deterministic_workflow_replay_9a591445
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_070
+  text: The input parameters, return values, and execution timeouts of Child Workflows and Activities
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_temporal_deterministic_workflow_replay_9a591445
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_071
+  text: However, it is not safe to change the types or IDs of Child Workflows or Activities
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_temporal_deterministic_workflow_replay_9a591445
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_072
+  text: The input parameters used to Signal an external Workflow The duration of Timers (although changing
+    them to 0 is not safe in all SDKs) Add or remove calls to Workflow APIs that don't produce Commands
+    (
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_temporal_deterministic_workflow_replay_9a591445
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_073
+  text: 'The following Workflow API calls all can produce Commands, and thus must not be reordered, added,
+    or removed without proper Versioning techniques :'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_temporal_deterministic_workflow_replay_9a591445
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_074
+  text: 'Moved: Generative AI semantic conventions | OpenTelemetry The OpenTelemetry Logo OpenTelemetry
+    Docs Ecosystem Status Community Training Blog English EN বাংলা English Español Français 日本語 한국어 Polski
+    Po'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_opentelemetry_genai_semantic_conventions_e0097b7c
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_075
+  text: Light
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_opentelemetry_genai_semantic_conventions_e0097b7c
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_076
+  text: Dark
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_opentelemetry_genai_semantic_conventions_e0097b7c
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_077
+  text: Auto Ask AI (&amp;#x2318;-K)" class="td-search__input form-control td-search-input" placeholder="Ask
+    AI or search…" aria-label="Ask AI or search…" autocomplete=off> Ask AI (&amp;#x2318;-K)" class="td-
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_opentelemetry_genai_semantic_conventions_e0097b7c
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_078
+  text: Content not retrieved; locator recorded for follow-up.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_cyclonedx_specification_overview_b2783b3f
+    evidence_id: ev_001
+    relation: supports
+    locator: para/0
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_079
+  text: Content not retrieved; locator recorded for follow-up.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_servicenow_ai_control_tower_bf35fd0b
+    evidence_id: ev_001
+    relation: supports
+    locator: para/0
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_080
+  text: 'Specification - Model Context Protocol Documentation Index Fetch the complete documentation index
+    at: /llms.txt Use this file to discover all available pages before exploring further.'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_specification_e299d861
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_081
+  text: Share contextual information with language models Expose tools and capabilities to AI systems
+    Build composable integrations and workflows
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_specification_e299d861
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_082
+  text: 'The protocol uses JSON-RPC 2.0 messages to establish communication between:'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_specification_e299d861
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_083
+  text: 'Hosts : LLM applications that initiate connections Clients : Connectors within the host application
+    Servers : Services that provide context and capabilities'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_specification_e299d861
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_084
+  text: MCP takes some inspiration from the Language Server Protocol , which standardizes how to add support
+    for programming languages across a whole ecosystem of development tools.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_specification_e299d861
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_085
+  text: JSON-RPC message format Stateful connections Server and client capability negotiation
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_specification_e299d861
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_086
+  text: '​ Features Servers offer any of the following features to clients:'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_specification_e299d861
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_087
+  text: 'Resources : Context and data, for the user or the AI model to use Prompts : Templated messages
+    and workflows for users Tools : Functions for the AI model to execute'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_model_context_protocol_specification_e299d861
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_088
+  text: IBM watsonx Orchestrate
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_ibm_watsonx_orchestrate_de5b8629
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_089
+  text: 15ANP > 177EB > 20AJ5 > 30AS5"/> 15ANP - Data Platform > 177EB - AI Productivity > 20AJ5 - AI
+    Assistants > 30AS5 - watsonx Orchestrate"/>
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_ibm_watsonx_orchestrate_de5b8629
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_090
+  text: Home
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_ibm_watsonx_orchestrate_de5b8629
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_091
+  text: Products
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_ibm_watsonx_orchestrate_de5b8629
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_092
+  text: watsonx Orchestrate
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_ibm_watsonx_orchestrate_de5b8629
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_093
+  text: watsonx Orchestrate
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_ibm_watsonx_orchestrate_de5b8629
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_094
+  text: The agentic control plane for scaling and governing your AI
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_ibm_watsonx_orchestrate_de5b8629
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_095
+  text: See watsonx Orchestrate in action
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_ibm_watsonx_orchestrate_de5b8629
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_096
+  text: LLM Observability &amp; Application Tracing (Open Source) - Langfuse Docs 🐐 Hiring in Europe and
+    SF Looking for GOATS!
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_langfuse_llm_tracing_e5dd58ed
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_097
+  text: 🎥 Watch this walkthrough of Langfuse Observability and how to integrate it with your application.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_langfuse_llm_tracing_e5dd58ed
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_098
+  text: Group traces into sessions for multi-turn applications Split traces into environments for different
+    stages of your application Add attributes to your traces so you can filter them in the future Use
+    cu
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_langfuse_llm_tracing_e5dd58ed
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_099
+  text: Already know what you want?
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_langfuse_llm_tracing_e5dd58ed
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_100
+  text: SPDX Specification 2.3.0
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_spdx_specification_current_79e51945
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_101
+  text: SPDX Specification 2.3.0
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_spdx_specification_current_79e51945
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_102
+  text: Copyright
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_spdx_specification_current_79e51945
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_103
+  text: Introduction
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_spdx_specification_current_79e51945
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_104
+  text: 'Clause 1: Scope'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_spdx_specification_current_79e51945
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_105
+  text: 'Clause 2: Normative references'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_spdx_specification_current_79e51945
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_106
+  text: 'Clause 3: Terms and definitions'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_spdx_specification_current_79e51945
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_107
+  text: 'Clause 4: Conformance'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_spdx_specification_current_79e51945
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_108
+  text: Event Sourcing
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_event_sourcing_fowler_a509ae22
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_109
+  text: Refactoring
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_event_sourcing_fowler_a509ae22
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_110
+  text: Agile
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_event_sourcing_fowler_a509ae22
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_111
+  text: Architecture
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_event_sourcing_fowler_a509ae22
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_112
+  text: About
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_event_sourcing_fowler_a509ae22
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_113
+  text: Thoughtworks
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_event_sourcing_fowler_a509ae22
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_114
+  text: Topics
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_event_sourcing_fowler_a509ae22
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_115
+  text: Architecture
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_event_sourcing_fowler_a509ae22
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_116
+  text: Cursor Docs — Agent, Rules, MCP, Skills &amp; CLI
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_cursor_project_rules_ddb61a39
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_117
+  text: Content not retrieved; locator recorded for follow-up.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_jfrog_ml_model_management_ai_catalog_0a93c90f
+    evidence_id: ev_001
+    relation: supports
+    locator: para/0
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_118
+  text: 'Introduction to GitHub Packages - GitHub Docs Skip to main content GitHub Docs Version: Free,
+    Pro, &amp; Team Search or ask Copilot Search or ask Copilot Select language: current language is English
+    S'
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_packages_documentation_5c34159c
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_119
+  text: Alongside GitHub Packages, as a complementary view focused on the compliance and security aspects
+    of package consumption As an alternative to GitHub Packages, allowing you to store your packages on
+    an
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_packages_documentation_5c34159c
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_120
+  text: For more information, see About linked artifacts .
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_packages_documentation_5c34159c
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_121
+  text: Language Description Package format Package client JavaScript Node package manager package.json
+    npm Ruby RubyGems package manager Gemfile gem Java Apache Maven project management and comprehension
+    too
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_packages_documentation_5c34159c
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_122
+  text: GitHub Packages only supports authentication using a personal access token (classic).
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_packages_documentation_5c34159c
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_123
+  text: You need an access token to publish, install, and delete private, internal, and public packages.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_packages_documentation_5c34159c
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_124
+  text: GITHUB_TOKEN to publish packages associated with the workflow repository.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_packages_documentation_5c34159c
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_125
+  text: For more information about GITHUB_TOKEN used in GitHub Actions workflows, see Use GITHUB_TOKEN
+    for authentication in workflows .
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_github_packages_documentation_5c34159c
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_126
+  text: Content not retrieved; locator recorded for follow-up.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_jfrog_artifactory_repository_management_remote_v_ac527c1c
+    evidence_id: ev_001
+    relation: supports
+    locator: para/0
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_127
+  text: Software Bill of Materials (SBOM) | CISA
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_cisa_software_bill_of_materials_sbom_851afea9
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_128
+  text: Skip to main content
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_cisa_software_bill_of_materials_sbom_851afea9
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_129
+  text: An official website of the United States government Here’s how you know
+  materiality: background
+  claim_type: attribution
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_cisa_software_bill_of_materials_sbom_851afea9
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_130
+  text: Here’s how you know
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_cisa_software_bill_of_materials_sbom_851afea9
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_131
+  text: Official websites use .gov A .gov website belongs to an official government organization in the
+    United States.
+  materiality: background
+  claim_type: attribution
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_cisa_software_bill_of_materials_sbom_851afea9
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_132
+  text: Secure .gov websites use HTTPS A lock ( Lock A locked padlock ) or https:// means you’ve safely
+    connected to the .gov website.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_cisa_software_bill_of_materials_sbom_851afea9
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_133
+  text: Staying Secure at Events no-cost Cyber Services Secure by design&nbsp; Secure Your Business Report
+    A Cyber Issue &nbsp;
+  materiality: background
+  claim_type: attribution
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_cisa_software_bill_of_materials_sbom_851afea9
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_134
+  text: Search
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_cisa_software_bill_of_materials_sbom_851afea9
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_135
+  text: A2A Protocol
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_agent2agent_a2a_protocol_1a5f062c
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_136
+  text: Skip to content
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_agent2agent_a2a_protocol_1a5f062c
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_137
+  text: Join the DeepLearning.AI course to explore the A2A Protocol
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_agent2agent_a2a_protocol_1a5f062c
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_138
+  text: Enroll for free
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_agent2agent_a2a_protocol_1a5f062c
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_139
+  text: A2A Protocol
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_agent2agent_a2a_protocol_1a5f062c
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_140
+  text: Home
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_agent2agent_a2a_protocol_1a5f062c
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_141
+  text: Initializing search
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_agent2agent_a2a_protocol_1a5f062c
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_142
+  text: a2aproject/A2A
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_agent2agent_a2a_protocol_1a5f062c
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_143
+  text: Content not retrieved; locator recorded for follow-up.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260626_arize_phoenix_llm_tracing_71f2bd40
+    evidence_id: ev_001
+    relation: supports
+    locator: para/0
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+unresolved_questions: []

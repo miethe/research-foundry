@@ -1,0 +1,39 @@
+run_id: rf_run_20260626_agentic_sdlc_governance_prior_art_landscape
+generated_at: '2026-06-26T10:19:55-04:00'
+contradictions:
+- source_card_id: src_20260626_cyclonedx_ml_bom_ai_bill_of_7ea0a120
+  text: content_not_retrieved
+  locator: card/trust
+- source_card_id: src_20260626_cyclonedx_ml_bom_ai_bill_of_7ea0a120
+  text: Content could not be fetched/read.
+  locator: card/limitations
+- source_card_id: src_20260626_cyclonedx_specification_overview_b2783b3f
+  text: content_not_retrieved
+  locator: card/trust
+- source_card_id: src_20260626_cyclonedx_specification_overview_b2783b3f
+  text: Content could not be fetched/read.
+  locator: card/limitations
+- source_card_id: src_20260626_servicenow_ai_control_tower_bf35fd0b
+  text: content_not_retrieved
+  locator: card/trust
+- source_card_id: src_20260626_servicenow_ai_control_tower_bf35fd0b
+  text: Content could not be fetched/read.
+  locator: card/limitations
+- source_card_id: src_20260626_jfrog_ml_model_management_ai_catalog_0a93c90f
+  text: content_not_retrieved
+  locator: card/trust
+- source_card_id: src_20260626_jfrog_ml_model_management_ai_catalog_0a93c90f
+  text: Content could not be fetched/read.
+  locator: card/limitations
+- source_card_id: src_20260626_jfrog_artifactory_repository_management_remote_v_ac527c1c
+  text: content_not_retrieved
+  locator: card/trust
+- source_card_id: src_20260626_jfrog_artifactory_repository_management_remote_v_ac527c1c
+  text: Content could not be fetched/read.
+  locator: card/limitations
+- source_card_id: src_20260626_arize_phoenix_llm_tracing_71f2bd40
+  text: content_not_retrieved
+  locator: card/trust
+- source_card_id: src_20260626_arize_phoenix_llm_tracing_71f2bd40
+  text: Content could not be fetched/read.
+  locator: card/limitations
