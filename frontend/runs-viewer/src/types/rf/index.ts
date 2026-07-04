@@ -38,6 +38,20 @@ export type {
   ReusableOutputCandidate,
 } from "./run-export.js";
 
+// Evidence Catalog types (public-multiuser-p0p1, Phase 1)
+export type {
+  CatalogItemType,
+  CatalogItemSummary,
+  CatalogLinkEdge,
+  CatalogItemLinks,
+  CatalogItemDetail,
+  CatalogSortKey,
+  CatalogSearchParams,
+  CatalogSearchFacets,
+  CatalogSearchResult,
+  CatalogStats,
+} from "./catalog.js";
+
 // Auto-generated schema types (run `pnpm codegen` to regenerate)
 export type { SourceCard }                from "./source_card.generated.js";
 export type { ClaimLedger }               from "./claim_ledger.generated.js";

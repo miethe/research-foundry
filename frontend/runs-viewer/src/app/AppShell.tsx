@@ -24,7 +24,9 @@ interface NavCapability {
 // Run-scoped detail tabs (Ledger, Report, Swarm) live on the run detail surface.
 const NAV_ITEMS: NavCapability[] = [
   { label: "Portfolio", short: "PF", state: "enabled", resolveTarget: () => "/runs" },
-  { label: "Library", short: "LB", state: "enabled", resolveTarget: () => "/library" },
+  { label: "Catalog", short: "CT", state: "enabled", resolveTarget: () => "/catalog" },
+  { label: "Builder", short: "BD", state: "disabled", disabledReason: "Planned — report composition workspace (Phase 3)" },
+  { label: "Agents", short: "AG", state: "disabled", disabledReason: "Planned — governed agent research (Phase 4)" },
   { label: "Policies", short: "PL", state: "enabled", resolveTarget: () => "/policies" },
   { label: "Alerts", short: "AL", state: "enabled", resolveTarget: () => "/alerts" },
   { label: "Settings", short: "ST", state: "enabled", resolveTarget: () => "/settings" },
@@ -105,7 +107,7 @@ function extractRunId(pathname: string): string | null {
 // D2: isActiveNav simplified — only global nav items remain.
 function isActiveNav(label: string, ctx: ShellNavContext): boolean {
   if (label === "Portfolio") return ctx.pathname === "/runs" || Boolean(ctx.routeRunId);
-  if (label === "Library") return ctx.pathname === "/library";
+  if (label === "Catalog") return ctx.pathname === "/catalog" || ctx.pathname === "/library";
   if (label === "Policies") return ctx.pathname === "/policies";
   if (label === "Alerts") return ctx.pathname === "/alerts";
   if (label === "Settings") return ctx.pathname === "/settings";

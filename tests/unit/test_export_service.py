@@ -1597,19 +1597,24 @@ def test_context_routing_swarm_not_redacted_when_threshold_raised(
     assert "SWARM_NOTES_TEXT" in blob
 
 
-def test_context_work_sensitive_not_redacted_at_production_threshold(
+def test_context_work_sensitive_redacted_at_production_threshold(
     tmp_foundry: FoundryPaths,
 ) -> None:
-    """BE-003: work_sensitive context passes through unredacted at the production default.
+    """BE-003 / R9 fail-closed: work_sensitive context is redacted at the production default.
 
-    The distribution foundry.yaml pins ``viewer.sensitivity_threshold: client_sensitive``
-    (rank 3).  ``work_sensitive`` is rank 2.  Because 2 ≤ 3 the content is BELOW the
-    redaction cut-off and intentionally survives the export — this is the operator's
-    deliberate configuration choice, not a bug.
+    The distribution ``foundry.yaml`` ships ``viewer.sensitivity_threshold: public``
+    (rank 0). ``work_sensitive`` is rank 2, which is ABOVE the public cut-off, so the
+    content MUST be redacted whenever no explicit override widens the threshold — this
+    is the fail-closed default for a workspace whose export/catalog surface may be
+    reachable by more than the operator alone (public-multiuser P0/P1).
 
-    This test exists as a governance sentinel: if someone accidentally tightens the
-    production threshold (e.g. changes it to ``work_sensitive`` or lower) these
-    assertions will fail loudly, requiring a conscious decision to update them.
+    Previously the shipped default was ``client_sensitive`` (max-permissive), which let
+    work_sensitive content survive the ambient/no-override export unredacted — a
+    fail-open governance gap (R9). This test previously encoded that fail-open behavior
+    as an intentional "governance sentinel"; it has been corrected to guard the fail-closed
+    contract instead. If someone accidentally widens the shipped default back to
+    ``client_sensitive`` or higher, this assertion will fail loudly, requiring a
+    conscious decision to update it.
     """
     _build_run_with_full_context(
         tmp_foundry,
@@ -1619,22 +1624,21 @@ def test_context_work_sensitive_not_redacted_at_production_threshold(
         with_brief=False,
     )
     # No sensitivity_threshold override → tmp_foundry uses the copied production
-    # foundry.yaml which sets viewer.sensitivity_threshold = client_sensitive.
+    # foundry.yaml which sets viewer.sensitivity_threshold = public (fail-closed).
     data = svc.export_run(tmp_foundry, "rf_run_be003_prod")
     blob = _json_blob(data)
-    # Sentinels must survive — work_sensitive is below client_sensitive threshold
-    assert "ROUTING_RATIONALE_TEXT" in blob, (
-        "work_sensitive routing rationale was unexpectedly redacted at the "
-        "production threshold (client_sensitive); check foundry.yaml viewer config"
+    # Sentinels must NOT survive — work_sensitive exceeds the public threshold.
+    assert "ROUTING_RATIONALE_TEXT" not in blob, (
+        "work_sensitive routing rationale leaked at the production default "
+        "(public); check foundry.yaml viewer config"
     )
-    assert "SWARM_NOTES_TEXT" in blob, (
-        "work_sensitive swarm notes were unexpectedly redacted at the "
-        "production threshold (client_sensitive); check foundry.yaml viewer config"
+    assert "SWARM_NOTES_TEXT" not in blob, (
+        "work_sensitive swarm notes leaked at the production default "
+        "(public); check foundry.yaml viewer config"
     )
-    # Confirm no redaction marker crept in for these fields
+    # Confirm the redaction marker is present for these fields.
     ctx = data["context"]
-    assert ctx["routing_decision"]["rationale"] != svc.REDACTION_MARKER
-    assert ctx["routing_decision"]["rationale"] == "ROUTING_RATIONALE_TEXT"
+    assert ctx["routing_decision"]["rationale"] == svc.REDACTION_MARKER
 
 
 def test_context_redacts_work_sensitive_research_brief(

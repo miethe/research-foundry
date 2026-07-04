@@ -11,7 +11,7 @@
 @import "./alerts.css";
 @import "./swarm.css";
 @import "./policies.css";
-@import "./library.css";
+@import "./catalog.css";
 
 /* Accessibility — visually-hidden live regions for screen-reader status */
 .sr-only {

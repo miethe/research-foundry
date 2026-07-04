@@ -118,6 +118,21 @@ class FoundryPaths:
     def foundry_yaml(self) -> Path:
         return self.root / "foundry.yaml"
 
+    # --- derived/local caches (gitignored; never canonical) ---
+    @property
+    def rf_cache(self) -> Path:
+        return self.root / ".rf_cache"
+
+    @property
+    def catalog_db(self) -> Path:
+        """Path to the derived, rebuildable shared-evidence-catalog sqlite3 DB.
+
+        Public-multiuser-release Phase 1 (catalog_service). Lives under
+        ``.rf_cache/`` (gitignored) — files stay canonical, this DB is a
+        rebuildable read model (AOS constraint 2).
+        """
+        return self.rf_cache / "catalog.db"
+
     # --- run sub-tree (spec §5 runs/rf_run_*/...) ---
     def run_dir(self, run_id: str) -> Path:
         return self.runs / run_id

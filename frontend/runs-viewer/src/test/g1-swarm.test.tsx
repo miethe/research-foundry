@@ -150,18 +150,18 @@ describe("D2 — sidebar cleanup: run-scoped items absent from NAV_ITEMS", () =>
     expect(pfBtn!.getAttribute("aria-current")).toBe("page");
   });
 
-  it("Library nav item is present", () => {
+  it("Catalog nav item is present (was Library, renamed Phase 0)", () => {
     const { container } = render(
-      <MemoryRouter initialEntries={["/library"]}>
+      <MemoryRouter initialEntries={["/catalog"]}>
         <AppShell />
       </MemoryRouter>,
     );
     const navButtons = container.querySelectorAll(".rv-shell-nav__item");
-    const lbBtn = Array.from(navButtons).find(
-      (btn) => btn.querySelector("strong")?.textContent === "Library",
+    const catBtn = Array.from(navButtons).find(
+      (btn) => btn.querySelector("strong")?.textContent === "Catalog",
     );
-    expect(lbBtn).not.toBeUndefined();
-    expect(lbBtn!.getAttribute("aria-current")).toBe("page");
+    expect(catBtn).not.toBeUndefined();
+    expect(catBtn!.getAttribute("aria-current")).toBe("page");
   });
 
   it("Policies nav item is present and active at /policies", () => {
@@ -220,14 +220,14 @@ describe("D2 — sidebar cleanup: run-scoped items absent from NAV_ITEMS", () =>
     expect(hpBtn!.getAttribute("aria-current")).toBe("page");
   });
 
-  it("exactly 6 nav items are present (Portfolio, Library, Policies, Alerts, Settings, Help)", () => {
+  it("exactly 8 nav items are present (Portfolio, Catalog, Builder, Agents, Policies, Alerts, Settings, Help)", () => {
     const { container } = render(
       <MemoryRouter initialEntries={["/runs"]}>
         <AppShell />
       </MemoryRouter>,
     );
     const navButtons = container.querySelectorAll(".rv-shell-nav__item");
-    expect(navButtons.length).toBe(6);
+    expect(navButtons.length).toBe(8);
   });
 });
 
