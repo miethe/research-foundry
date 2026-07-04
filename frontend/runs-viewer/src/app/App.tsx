@@ -20,7 +20,7 @@ import { SettingsScreen } from "@/screens/SettingsScreen";
 import { HelpScreen } from "@/screens/HelpScreen";
 import { AlertsFeed } from "@/screens/AlertsFeed";
 import { PoliciesScreen } from "@/screens/PoliciesScreen";
-import { LibraryScreen } from "@/screens/LibraryScreen";
+import { CatalogScreen } from "@/screens/CatalogScreen";
 
 /** D6: Thin redirect component — /runs/:runId/swarm → /runs/:runId?view=swarm */
 function SwarmRedirect() {
@@ -42,7 +42,7 @@ const router = createBrowserRouter([
       { path: "help",                    element: <HelpScreen /> },
       { path: "alerts",                  element: <AlertsFeed /> },
       { path: "policies",                element: <PoliciesScreen /> },
-      { path: "catalog",                  element: <LibraryScreen /> },
+      { path: "catalog",                  element: <CatalogScreen /> },
       { path: "library",                  element: <Navigate to="/catalog" replace /> },
     ],
   },

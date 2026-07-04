@@ -25,7 +25,10 @@
 
 import type { RFRunExport, RFRunSummary } from "@/types/rf";
 import type { GovernanceConfig } from "@/types/governance";
+import type { CatalogItemDetail, CatalogSearchParams, CatalogSearchResult, CatalogStats } from "@/types/rf/catalog";
 import { getViewerSettings } from "@/lib/viewerSettings";
+import { buildCatalogIndex, catalogStats as computeCatalogStats, getCatalogItem, searchCatalog } from "@/lib/catalog";
+import type { CatalogIndex } from "@/lib/catalog";
 
 // ── Env flag ─────────────────────────────────────────────────────────────────
 
@@ -239,4 +242,97 @@ export async function fetchSourceCard(
     if (src) return src;
   }
   return null;
+}
+
+// ── Evidence Catalog (public-multiuser-p0p1, Phase 1) ────────────────────────
+
+/**
+ * Static-mode index build is expensive (fetchRunList + N×fetchRunDetail), so
+ * it is memoized as a module-level promise (D4: "cache the built index in
+ * module/queryClient"). The memoization is intentionally NOT tied to any
+ * TanStack QueryClient instance so it behaves identically whichever
+ * QueryClientProvider wraps the app (real app vs. test harness).
+ */
+let catalogIndexPromise: Promise<CatalogIndex> | null = null;
+
+async function getCatalogIndex(): Promise<CatalogIndex> {
+  if (!catalogIndexPromise) {
+    catalogIndexPromise = (async () => {
+      const summaries = await fetchRunList();
+      const runs = await Promise.all(summaries.map((s) => fetchRunDetail(s.run_id)));
+      return buildCatalogIndex(runs);
+    })();
+  }
+  return catalogIndexPromise;
+}
+
+/**
+ * Test-only escape hatch: forces the next getCatalogIndex() call to rebuild
+ * from the CURRENT fetchRunList/fetchRunDetail responses instead of reusing
+ * the memoized static-mode index. Not used by app code.
+ */
+export function __resetCatalogIndexCacheForTests(): void {
+  catalogIndexPromise = null;
+}
+
+function catalogSearchQueryString(params: CatalogSearchParams): string {
+  const query = new URLSearchParams();
+  if (params.q) query.set("q", params.q);
+  if (params.item_type) query.set("item_type", params.item_type);
+  if (params.project) query.set("project", params.project);
+  if (params.status) query.set("status", params.status);
+  if (params.sensitivity) query.set("sensitivity", params.sensitivity);
+  if (params.run_id) query.set("run_id", params.run_id);
+  if (params.sort) query.set("sort", params.sort);
+  if (params.page) query.set("page", String(params.page));
+  if (params.page_size) query.set("page_size", String(params.page_size));
+  const qs = query.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/**
+ * GET /api/catalog/stats → per-item-type counts + runs_indexed + last_import_at.
+ *
+ * Static mode: derived from the client-built catalog index (see getCatalogIndex).
+ * Loopback mode: calls the RF catalog API.
+ */
+export async function fetchCatalogStats(): Promise<CatalogStats> {
+  if (LOOPBACK_ENABLED) {
+    return loopbackGet<CatalogStats>("/catalog/stats");
+  }
+  const index = await getCatalogIndex();
+  return computeCatalogStats(index);
+}
+
+/**
+ * GET /api/catalog/search?... → paginated, filtered, sorted catalog items + facets.
+ *
+ * Static mode: filters/sorts/paginates the client-built index via searchCatalog().
+ * Loopback mode: calls the RF catalog API with the same query param contract.
+ */
+export async function fetchCatalogSearch(params: CatalogSearchParams = {}): Promise<CatalogSearchResult> {
+  if (LOOPBACK_ENABLED) {
+    return loopbackGet<CatalogSearchResult>(`/catalog/search${catalogSearchQueryString(params)}`);
+  }
+  const index = await getCatalogIndex();
+  return searchCatalog(index, params);
+}
+
+/**
+ * GET /api/catalog/items/:catalogItemId → full item detail (summary + payload + links).
+ *
+ * Returns null when the item is not found (404 in loopback mode; absent from
+ * the index in static mode) — never throws for a plain not-found.
+ */
+export async function fetchCatalogItem(catalogItemId: string): Promise<CatalogItemDetail | null> {
+  if (LOOPBACK_ENABLED) {
+    try {
+      return await loopbackGet<CatalogItemDetail>(`/catalog/items/${encodeURIComponent(catalogItemId)}`);
+    } catch (err) {
+      if (err instanceof ClientError && err.status === 404) return null;
+      throw err;
+    }
+  }
+  const index = await getCatalogIndex();
+  return getCatalogItem(index, catalogItemId);
 }
