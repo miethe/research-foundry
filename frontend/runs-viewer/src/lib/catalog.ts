@@ -30,6 +30,7 @@
 import type {
   RFClaim,
   RFClaimConfidence,
+  RFReportAnchorBlock,
   RFResolvedSource,
   RFRunExport,
   RFSensitivity,
@@ -396,20 +397,40 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
       });
     }
 
-    // ── Emit claim/inference items ──
+    // ── Derive report→claim "contains" links from report_anchors (D4 parity) ──
+    // Source: run.report_anchors claim_links (P2 Wave B). When report_anchors is
+    // absent or null (pre-1.4 export, no report draft), no report→claim links
+    // are emitted. Dedup by (catalog_item_id, relation) via a Set.
     const reportContainsLinks: CatalogLinkEdge[] = [];
+    {
+      const anchors: RFReportAnchorBlock[] | null | undefined = run.report_anchors;
+      if (anchors != null) {
+        const seen = new Set<string>();
+        for (const block of anchors) {
+          for (const cl of block.claim_links) {
+            if (cl.link_status === "missing_claim") continue;
+            const targetAccum = claimAccums.get(cl.claim_id);
+            if (!targetAccum) continue;
+            const dedupKey = `${targetAccum.itemId}:contains`;
+            if (seen.has(dedupKey)) continue;
+            seen.add(dedupKey);
+            reportContainsLinks.push({
+              relation: "contains",
+              catalog_item_id: targetAccum.itemId,
+            });
+          }
+        }
+      }
+    }
+
+    // ── Emit claim/inference items ──
     for (const accum of claimAccums.values()) {
       const { claim, itemType, itemId, usedByInferences, links } = accum;
       const sourceList = claim.sources ?? [];
       const sensitivity = maxSensitivity(run.sensitivity, ...sourceList.map((s) => s.sensitivity));
+      // provenance.report uses report_locations for backward compat (payload metadata only).
       const hasReportLocation = (claim.report_locations?.length ?? 0) > 0;
       const inReport = hasReportLocation && run.report_draft != null;
-      if (inReport) {
-        reportContainsLinks.push({
-          relation: "contains",
-          catalog_item_id: itemId,
-        });
-      }
       const provenance: CatalogProvenance = {
         source_card: sourceList.length > 0,
         extraction: sourceList.some((s) => Boolean(s.evidence_locator || s.locator)),

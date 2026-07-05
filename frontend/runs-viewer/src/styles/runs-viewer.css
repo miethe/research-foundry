@@ -3603,6 +3603,198 @@ button.active .rv-tab-count {
 }
 
 /* =========================================================================
+   P2 Wave C — REPORT ANCHORS (report_anchors, schema 1.4)
+   Paragraph selection, block-based highlight, coverage strip, filter pills,
+   and the ParagraphInspector claim-link list. No-op in legacy mode (D9).
+   ========================================================================= */
+
+.rv-report-p--anchored {
+  cursor: pointer;
+  transition: background var(--it-dur-fast) var(--it-ease-out);
+}
+
+.rv-report-p--anchored:hover {
+  background: var(--it-neutral-50, rgba(0, 0, 0, 0.02));
+  border-radius: 6px;
+}
+
+.rv-report-block--selected {
+  box-shadow: 0 0 0 2px var(--it-blue-400);
+}
+
+.rv-coverage-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-subtle);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.rv-coverage-strip__header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.rv-coverage-strip__score {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.rv-coverage-strip__score-value {
+  font-size: var(--it-text-lg);
+  font-weight: 700;
+  color: var(--it-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.rv-coverage-strip__score-label {
+  font-size: var(--it-text-xs);
+  color: var(--it-text-tertiary);
+}
+
+.rv-coverage-strip__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rv-anchor-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--it-radius-pill);
+  border: 1px solid var(--it-border-subtle);
+  background: var(--it-surface-base);
+  color: var(--it-text-secondary);
+  font-size: var(--it-text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--it-dur-fast) var(--it-ease-out),
+              border-color var(--it-dur-fast) var(--it-ease-out);
+}
+
+.rv-anchor-filter-pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.rv-anchor-filter-pill:not(:disabled):hover {
+  background: var(--it-neutral-100);
+}
+
+.rv-anchor-filter-pill__count {
+  font-variant-numeric: tabular-nums;
+  color: var(--it-text-tertiary);
+}
+
+.rv-anchor-filter-pill.red.rv-anchor-filter-pill--active    { background: var(--it-red-50);    border-color: rgba(176,52,52,0.30);  color: var(--it-red-600);    }
+.rv-anchor-filter-pill.blue.rv-anchor-filter-pill--active   { background: var(--it-blue-50);   border-color: rgba(59,111,189,0.30); color: var(--it-blue-700);   }
+.rv-anchor-filter-pill.orange.rv-anchor-filter-pill--active { background: var(--it-orange-50); border-color: rgba(194,100,26,0.30); color: var(--it-orange-600); }
+.rv-anchor-filter-pill.gold.rv-anchor-filter-pill--active   { background: var(--it-gold-50);   border-color: rgba(184,138,43,0.30); color: var(--it-gold-500);   }
+
+.rv-coverage-strip__sections {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.rv-coverage-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 96px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--it-border-subtle);
+  background: var(--it-surface-base);
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.rv-coverage-pill:hover {
+  background: var(--it-neutral-100);
+}
+
+.rv-coverage-pill--issues {
+  border-color: rgba(176, 52, 52, 0.30);
+}
+
+.rv-coverage-pill__label {
+  font-size: var(--it-text-xs);
+  font-weight: 600;
+  color: var(--it-text-primary);
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-coverage-pill__bar {
+  display: block;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--it-neutral-200, rgba(0,0,0,0.08));
+  overflow: hidden;
+}
+
+.rv-coverage-pill__bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--it-green-500);
+  border-radius: 2px;
+}
+
+.rv-coverage-pill__issue-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--it-red-600);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rv-paragraph-link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rv-paragraph-link {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--it-neutral-50, rgba(0,0,0,0.02));
+  border: 1px solid var(--it-border-subtle);
+}
+
+/* =========================================================================
    P4 — COMPOSITION SIDEBAR (CompositionSidebar.tsx)
    ========================================================================= */
 

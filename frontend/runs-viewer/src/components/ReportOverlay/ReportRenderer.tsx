@@ -9,13 +9,22 @@
  * (and the backing claim's status) using rv-sentence--inference/speculation CSS classes.
  *
  * AC P4-REPORT-001-1: every [claim:clm_NNN] pattern renders as a ClaimChip.
+ *
+ * P2 Wave C (report_anchors, schema 1.4, D9): when `reportAnchors` is
+ * provided (non-null), each top-level paragraph is keyed to its backend
+ * `block_id` (DOM `id` + `data-block-id`), enabling paragraph selection
+ * (`onParagraphSelect`) and block-based highlighting (`selectedBlockId` /
+ * `activeBlockIds`) independent of claim-id text matching. When
+ * `reportAnchors` is absent/null (pre-1.4 export), this component behaves
+ * EXACTLY as before — the legacy regex chip/highlight path is unchanged.
  */
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm     from "remark-gfm";
-import type { RFClaim } from "@/types/rf";
+import type { RFClaim, RFReportAnchorBlock } from "@/types/rf";
 import { ClaimChip }    from "./ClaimChip";
 import { slugify }      from "./reportOutlineUtils";
+import { buildParagraphAnchorSequence } from "@/lib/reportAnchors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,10 +37,18 @@ export interface ReportRendererProps {
   dimmedClaimIds?: Set<string> | null;
   /** Active claim IDs for composition or selected-claim highlighting. */
   activeClaimIds?: Set<string> | null;
-  highlightMode?: "none" | "composition" | "selected-claim";
+  highlightMode?: "none" | "composition" | "selected-claim" | "selected-paragraph" | "anchor-filter";
   highlightText?: boolean;
   selectedClaimId?: string | null;
   compact?: boolean;
+  /** P2 Wave C: schema-1.4 report_anchors block list. Null/undefined = legacy mode (D9). */
+  reportAnchors?: RFReportAnchorBlock[] | null;
+  /** P2 Wave C: block_id of the currently-selected paragraph, or null. Forces highlight-by-block-id. */
+  selectedBlockId?: string | null;
+  /** P2 Wave C: block_ids matching the active anchor filter set. A defined Set (even empty) activates block-based dim/highlight. */
+  activeBlockIds?: Set<string> | null;
+  /** P2 Wave C: fired when an anchored paragraph is clicked (block_id resolved). */
+  onParagraphSelect?: (blockId: string) => void;
 }
 
 // ── Claim chip regex ──────────────────────────────────────────────────────────
@@ -153,6 +170,32 @@ function blockHighlightClass(text: string, activeClaimIds: Set<string> | null | 
     : "rv-report-block--dimmed";
 }
 
+/**
+ * P2 Wave C — block_id-based highlight/dim, used instead of
+ * blockHighlightClass() whenever anchor-mode (selectedBlockId or
+ * activeBlockIds) is active. Highlights by block_id DIRECTLY so a paragraph
+ * with zero claim_links (e.g. "citation needed") still highlights correctly
+ * when it IS the selected paragraph — claim-id text matching alone cannot
+ * express that.
+ */
+function anchorBlockClass(
+  blockId: string | null,
+  selectedBlockId: string | null | undefined,
+  activeBlockIds: Set<string> | null | undefined,
+  highlightText: boolean,
+): string {
+  if (!highlightText) return "";
+  if (selectedBlockId) {
+    return blockId === selectedBlockId ? "rv-report-block--highlighted rv-report-block--selected" : "rv-report-block--dimmed";
+  }
+  if (activeBlockIds) {
+    // A defined Set (even empty — "filter matched nothing") activates
+    // block-based dim/highlight; empty correctly dims every paragraph.
+    return blockId && activeBlockIds.has(blockId) ? "rv-report-block--highlighted" : "rv-report-block--dimmed";
+  }
+  return "";
+}
+
 // ── Custom renderer ───────────────────────────────────────────────────────────
 
 interface ParagraphProps {
@@ -176,9 +219,19 @@ function buildComponents(
   activeClaimIds?: Set<string> | null,
   selectedClaimId?: string | null,
   highlightText = false,
+  bodyMarkdown = "",
+  reportAnchors?: RFReportAnchorBlock[] | null,
+  selectedBlockId?: string | null,
+  activeBlockIds?: Set<string> | null,
+  onParagraphSelect?: (blockId: string) => void,
 ) {
   // Shared slug counter: deduplicates headings in the same order as extractHeadings
   const nextSlug = makeSlugCounter();
+  // P2 Wave C: block_id per rendered <p>, in render order (D9 legacy mode
+  // when reportAnchors is null/undefined — sequence is then all-null and a
+  // no-op for every paragraph).
+  const paragraphSequence = buildParagraphAnchorSequence(bodyMarkdown, reportAnchors);
+  let pOrdinal = 0;
   /**
    * Walk a react-markdown children tree and expand any string nodes that
    * contain [claim:clm_NNN] patterns into [string, ClaimChip, string, ...].
@@ -208,9 +261,28 @@ function buildComponents(
       const textContent = typeof children === "string" ? children :
         Array.isArray(children) ? (children as React.ReactNode[]).map((c) => (typeof c === "string" ? c : "")).join("") : "";
       const extraClass = paragraphClass(textContent);
-      const highlightClass = blockHighlightClass(textContent, activeClaimIds, highlightText);
+
+      // P2 Wave C: resolve this paragraph's block_id from the precomputed
+      // render-order sequence (empty array / no-op in legacy mode).
+      const blockId = paragraphSequence[pOrdinal]?.blockId ?? null;
+      pOrdinal += 1;
+
+      const anchorMode = selectedBlockId !== undefined || activeBlockIds !== undefined;
+      const highlightClass = anchorMode
+        ? anchorBlockClass(blockId, selectedBlockId, activeBlockIds, highlightText)
+        : blockHighlightClass(textContent, activeClaimIds, highlightText);
+
+      const anchored = blockId != null && typeof onParagraphSelect === "function";
+      const anchoredClass = anchored ? " rv-report-p--anchored" : "";
+      const className = `rv-report-p${extraClass ? ` ${extraClass}` : ""}${highlightClass ? ` ${highlightClass}` : ""}${anchoredClass}`;
+
       return (
-        <p className={`rv-report-p${extraClass ? ` ${extraClass}` : ""}${highlightClass ? ` ${highlightClass}` : ""}`}>
+        <p
+          id={blockId ?? undefined}
+          data-block-id={blockId ?? undefined}
+          className={className}
+          onClick={anchored ? () => onParagraphSelect!(blockId!) : undefined}
+        >
           {expandChildren(children)}
         </p>
       );
@@ -258,6 +330,10 @@ export function ReportRenderer({
   highlightText = false,
   selectedClaimId,
   compact = false,
+  reportAnchors,
+  selectedBlockId,
+  activeBlockIds,
+  onParagraphSelect,
 }: ReportRendererProps) {
   const bodyMarkdown = stripReportMetadata(markdown);
   const activeIds = activeClaimIds ?? dimmedClaimIds ?? (highlightMode === "selected-claim" && selectedClaimId ? new Set([selectedClaimId]) : null);
@@ -278,7 +354,18 @@ export function ReportRenderer({
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        components={buildComponents(claims, onClaimSelect, activeIds, selectedClaimId, highlightText)}
+        components={buildComponents(
+          claims,
+          onClaimSelect,
+          activeIds,
+          selectedClaimId,
+          highlightText,
+          bodyMarkdown,
+          reportAnchors,
+          selectedBlockId,
+          activeBlockIds,
+          onParagraphSelect,
+        )}
       >
         {bodyMarkdown}
       </ReactMarkdown>

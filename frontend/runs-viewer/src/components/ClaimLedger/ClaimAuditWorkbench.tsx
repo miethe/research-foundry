@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RFClaim, RFRunExport } from "@/types/rf";
+import type { RFClaim, RFReportAnchorBlock, RFResolvedSource, RFRunExport } from "@/types/rf";
 import { deriveClaimTitle, deriveReportLocationTitle, deriveSourceTitle, shouldRedactSource, titleFromSlug } from "@/lib/runs";
 import { deriveAuditHighlight, isFacetEmpty } from "@/lib/auditStateMachine";
+import type { AuditAnchorState } from "@/lib/auditStateMachine";
+import {
+  computeBlockCoverage,
+  computeOverallCoverage,
+  computeSectionCoverage,
+  findAnchorBlock,
+} from "@/lib/reportAnchors";
+import type { AnchorFilterKey } from "@/lib/reportAnchors";
 import type { LedgerFacetState } from "@/components/ClaimLedger/LedgerFacets";
 import { ClaimLedgerTable } from "./ClaimLedgerTable";
 import { LedgerFacets } from "./LedgerFacets";
@@ -10,6 +18,7 @@ import type { ProvenanceModalHandle } from "@/components/ProvenanceModal/Provena
 import { DetailModal } from "@/components/RunDetail/DetailModal";
 import type { DetailModalPayload } from "@/components/RunDetail/DetailModal";
 import { ReportRenderer } from "@/components/ReportOverlay/ReportRenderer";
+import { ReportCoverageStrip } from "@/components/ReportOverlay/ReportCoverageStrip";
 import { SourceCard } from "@/components/SourceCard/SourceCard";
 
 interface ClaimAuditWorkbenchProps {
@@ -28,6 +37,11 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
   const [activeFacets, setActiveFacets] = useState<LedgerFacetState>({
     status: new Set(), materiality: new Set(), claim_type: new Set(), confidence: new Set(),
   });
+  // P2 Wave C (report_anchors) — paragraph selection + anchor coverage filters.
+  // Both are no-ops in legacy mode (reportAnchors null/absent, D9).
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [anchorFilters, setAnchorFilters] = useState<Set<AnchorFilterKey>>(new Set());
+  const reportAnchors = run.report_anchors ?? null;
 
   useEffect(() => {
     setFilteredClaims(run.claims);
@@ -45,14 +59,28 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
     [run.claims, selectedClaimId],
   );
 
+  // P2 Wave C — per-paragraph/per-section coverage, derived once per anchors+claims change.
+  const blockCoverage = useMemo(
+    () => computeBlockCoverage(reportAnchors, run.claims),
+    [reportAnchors, run.claims],
+  );
+  const sectionCoverage = useMemo(() => computeSectionCoverage(blockCoverage), [blockCoverage]);
+  const overallCoverage = useMemo(() => computeOverallCoverage(blockCoverage), [blockCoverage]);
+
+  const anchorState: AuditAnchorState | undefined = reportAnchors
+    ? { selectedBlockId, anchorFilters, anchors: reportAnchors }
+    : undefined;
+
   // Derive the state machine output (highlight mode, active IDs, text flag)
   const auditHighlight = useMemo(
-    () => deriveAuditHighlight(activeFacets, selectedClaimId, run.claims),
-    [activeFacets, selectedClaimId, run.claims],
+    () => deriveAuditHighlight(activeFacets, selectedClaimId, run.claims, anchorState),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- anchorState is a fresh object per render; its identity is derived from these primitives
+    [activeFacets, selectedClaimId, run.claims, reportAnchors, selectedBlockId, anchorFilters],
   );
 
   const selectClaim = useCallback((claimId: string) => {
     // Toggle: clicking the already-selected claim deselects it
+    setSelectedBlockId(null);
     setSelectedClaimId((prev) => {
       const next = prev === claimId ? null : claimId;
       if (next !== null) onClaimChange?.(next);
@@ -60,8 +88,32 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
     });
   }, [onClaimChange]);
 
+  // P2 Wave C — selecting a report paragraph clears claim selection (the two
+  // are mutually exclusive right-panel states; see deriveAuditHighlight's
+  // precedence note). Toggle: clicking the already-selected paragraph
+  // deselects it.
+  const selectBlock = useCallback((blockId: string) => {
+    setSelectedClaimId(null);
+    setSelectedBlockId((prev) => (prev === blockId ? null : blockId));
+  }, []);
+
+  const toggleAnchorFilter = useCallback((key: AnchorFilterKey) => {
+    setAnchorFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const scrollToSection = useCallback((sectionId: string | null) => {
+    if (!sectionId) return;
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
   const clearSelection = useCallback(() => {
     setSelectedClaimId(null);
+    setSelectedBlockId(null);
   }, []);
 
   const reportTitle = run.title ?? titleFromSlug(run.run_id) ?? run.run_id;
@@ -126,12 +178,21 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
               type="button"
               className="it-btn ghost xs rv-audit-report__clear-btn"
               aria-label="Clear claim selection"
-              disabled={selectedClaimId === null && isFacetEmpty(activeFacets)}
+              disabled={selectedClaimId === null && selectedBlockId === null && isFacetEmpty(activeFacets)}
               onClick={clearSelection}
             >
               Clear
             </button>
           </div>
+          {reportAnchors && (
+            <ReportCoverageStrip
+              sections={sectionCoverage}
+              overall={overallCoverage}
+              activeFilters={anchorFilters}
+              onFilterToggle={toggleAnchorFilter}
+              onSectionClick={scrollToSection}
+            />
+          )}
           <div className="rv-audit-report__body">
             <ReportRenderer
               markdown={run.report_draft ?? ""}
@@ -141,20 +202,34 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
               highlightMode={auditHighlight.highlightMode}
               highlightText={auditHighlight.highlightText}
               onClaimSelect={(claimId) => selectClaim(claimId)}
+              reportAnchors={reportAnchors}
+              selectedBlockId={auditHighlight.selectedBlockId}
+              activeBlockIds={auditHighlight.activeBlockIds}
+              onParagraphSelect={selectBlock}
               compact
             />
           </div>
         </main>
 
-        <ClaimInspector
-          runClaims={run.claims}
-          claim={selectedClaim}
-          threshold={run.sensitivity_threshold}
-          runMeta={{ tags: run.tags, category: run.category }}
-          onOpenModal={openClaimModal}
-          onExpandClaim={openDetailModal}
-          onSelectClaim={(claimId) => selectClaim(claimId)}
-        />
+        {selectedBlockId && reportAnchors ? (
+          <ParagraphInspector
+            block={findAnchorBlock(reportAnchors, selectedBlockId)}
+            claims={run.claims}
+            threshold={run.sensitivity_threshold}
+            onSelectClaim={(claimId) => selectClaim(claimId)}
+            onOpenModal={openClaimModal}
+          />
+        ) : (
+          <ClaimInspector
+            runClaims={run.claims}
+            claim={selectedClaim}
+            threshold={run.sensitivity_threshold}
+            runMeta={{ tags: run.tags, category: run.category }}
+            onOpenModal={openClaimModal}
+            onExpandClaim={openDetailModal}
+            onSelectClaim={(claimId) => selectClaim(claimId)}
+          />
+        )}
       </div>
 
       <SelectedClaimLineage
@@ -374,6 +449,135 @@ function ClaimInspector({
       )}
     </aside>
   );
+}
+
+/**
+ * ParagraphInspector — P2 Wave C (report_anchors, schema 1.4).
+ *
+ * Right-panel replacement for ClaimInspector when a report paragraph
+ * (rather than a ledger claim) is selected. Shows the paragraph's exact
+ * claim links (relation + link_status), and the union of source cards +
+ * locators across every linked claim — the "exact sources + locators"
+ * requirement, per the mockup's Audit Inspector right panel.
+ */
+function ParagraphInspector({
+  block,
+  claims,
+  threshold,
+  onSelectClaim,
+  onOpenModal,
+}: {
+  block: RFReportAnchorBlock | null;
+  claims: RFClaim[];
+  threshold: RFRunExport["sensitivity_threshold"];
+  onSelectClaim: (claimId: string) => void;
+  onOpenModal: (claimId: string) => void;
+}) {
+  if (!block) {
+    return (
+      <aside className="rv-claim-inspector it-card" data-testid="paragraph-inspector">
+        <div className="rv-pane-title">
+          <h3>Selected Paragraph</h3>
+        </div>
+        <p className="rv-muted">Paragraph anchor not found.</p>
+      </aside>
+    );
+  }
+
+  const resolvedLinks = block.claim_links.filter((link) => link.link_status !== "missing_claim");
+  const missingCount = block.claim_links.length - resolvedLinks.length;
+  const staleCount = block.claim_links.filter((link) => link.link_status === "stale").length;
+
+  // Union of source cards across every linked claim, deduped by source_card_id.
+  const sourcesByCardId = new Map<string, RFResolvedSource>();
+  for (const link of resolvedLinks) {
+    const claim = claims.find((c) => c.claim_id === link.claim_id);
+    for (const source of claim?.sources ?? []) {
+      if (!sourcesByCardId.has(source.source_card_id)) sourcesByCardId.set(source.source_card_id, source);
+    }
+  }
+
+  return (
+    <aside className="rv-claim-inspector it-card" data-testid="paragraph-inspector" data-block-id={block.block_id}>
+      <div className="rv-pane-title">
+        <h3>Selected Paragraph</h3>
+      </div>
+
+      <div className="rv-inspector-title">
+        <h4>{block.section_id ?? "Introduction"} — paragraph {block.paragraph_ordinal + 1}</h4>
+        <code>{block.block_id}</code>
+      </div>
+
+      <section className="rv-inspector-section">
+        <h4>Coverage</h4>
+        <dl className="rv-inspector-dl">
+          <div><dt>Linked claims</dt><dd>{resolvedLinks.length}</dd></div>
+          <div><dt>Stale links</dt><dd>{staleCount}</dd></div>
+          <div><dt>Missing claims</dt><dd>{missingCount}</dd></div>
+        </dl>
+      </section>
+
+      <section className="rv-inspector-section">
+        <h4>Claim Links</h4>
+        {block.claim_links.length === 0 ? (
+          <p className="rv-muted">No [claim:] tags in this paragraph — citation may be needed.</p>
+        ) : (
+          <ul className="rv-paragraph-link-list" data-testid="paragraph-link-list">
+            {block.claim_links.map((link, index) => {
+              const claim = claims.find((c) => c.claim_id === link.claim_id);
+              return (
+                <li key={`${link.claim_id}-${index}`} className="rv-paragraph-link" data-testid={`paragraph-link-${link.claim_id}`}>
+                  <button
+                    type="button"
+                    className="rv-basis-flow__claim"
+                    onClick={() => onSelectClaim(link.claim_id)}
+                    disabled={!claim}
+                    title={claim?.text}
+                  >
+                    {link.claim_id}
+                  </button>
+                  {link.relation && <span className={`it-chip ${relationTone(link.relation)}`}>{link.relation}</span>}
+                  <span className={`it-chip ${linkStatusTone(link.link_status)}`}>{link.link_status}</span>
+                  {claim && (
+                    <button type="button" className="it-btn ghost xs" onClick={() => onOpenModal(claim.claim_id)}>
+                      Provenance
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section className="rv-inspector-section">
+        <h4>Source Cards</h4>
+        {sourcesByCardId.size > 0 ? (
+          <div className="rv-inspector-source-list">
+            {Array.from(sourcesByCardId.values()).map((source) => (
+              <SourceCard key={source.source_card_id} source={source} sensitivityThreshold={threshold} compact />
+            ))}
+          </div>
+        ) : (
+          <p className="rv-muted">No source cards linked.</p>
+        )}
+      </section>
+    </aside>
+  );
+}
+
+function relationTone(relation: string): string {
+  if (relation === "supports") return "green";
+  if (relation === "contradicts") return "red";
+  if (relation === "inferred_from") return "blue";
+  return "";
+}
+
+function linkStatusTone(status: string): string {
+  if (status === "linked") return "green";
+  if (status === "stale") return "gold";
+  if (status === "missing_claim") return "red";
+  return "";
 }
 
 function ClaimBasisFlow({

@@ -864,6 +864,111 @@ describe("ReportRenderer — claim chips", () => {
   });
 });
 
+// ── (6b) ReportRenderer — report_anchors consumption (P2 Wave C) ─────────────
+
+describe("ReportRenderer — report_anchors consumption", () => {
+  const CLAIMS: RFClaim[] = [
+    makeClaim({ claim_id: "clm_001", text: "First claim.", status: "supported" }),
+    makeClaim({ claim_id: "clm_002", text: "Second claim.", status: "inference" }),
+  ];
+  const md = "Supported paragraph [claim:clm_001].\n\nInference paragraph [claim:clm_002].";
+  const ANCHORS = [
+    {
+      block_id: "anchor0001aa",
+      section_id: null,
+      paragraph_ordinal: 0,
+      text_hash: "hash0",
+      claim_links: [
+        { claim_id: "clm_001", span_start: 20, span_end: 33, relation: "supports" as const, link_status: "linked" as const },
+      ],
+    },
+    {
+      block_id: "anchor0002bb",
+      section_id: null,
+      paragraph_ordinal: 1,
+      text_hash: "hash1",
+      claim_links: [
+        { claim_id: "clm_002", span_start: 21, span_end: 34, relation: "inferred_from" as const, link_status: "linked" as const },
+      ],
+    },
+  ];
+
+  it("legacy mode (reportAnchors absent): no id/data-block-id on paragraphs, no crash", () => {
+    const { container } = render(
+      <ReportRenderer markdown={md} claims={CLAIMS} onClaimSelect={() => {}} />,
+      { wrapper: makeWrapper() },
+    );
+    const paragraphs = container.querySelectorAll("p.rv-report-p");
+    expect(paragraphs.length).toBeGreaterThan(0);
+    paragraphs.forEach((p) => expect(p.getAttribute("data-block-id")).toBeNull());
+  });
+
+  it("assigns block_id as DOM id + data-block-id when reportAnchors is present", () => {
+    const { container } = render(
+      <ReportRenderer markdown={md} claims={CLAIMS} onClaimSelect={() => {}} reportAnchors={ANCHORS} />,
+      { wrapper: makeWrapper() },
+    );
+    expect(container.querySelector("#anchor0001aa")).not.toBeNull();
+    expect(container.querySelector("[data-block-id='anchor0002bb']")).not.toBeNull();
+  });
+
+  it("fires onParagraphSelect with the paragraph's block_id when clicked", () => {
+    const onParagraphSelect = vi.fn();
+    const { container } = render(
+      <ReportRenderer
+        markdown={md}
+        claims={CLAIMS}
+        onClaimSelect={() => {}}
+        reportAnchors={ANCHORS}
+        onParagraphSelect={onParagraphSelect}
+      />,
+      { wrapper: makeWrapper() },
+    );
+    const anchoredParagraph = container.querySelector("[data-block-id='anchor0001aa']") as HTMLElement;
+    expect(anchoredParagraph.className).toContain("rv-report-p--anchored");
+    act(() => { fireEvent.click(anchoredParagraph); });
+    expect(onParagraphSelect).toHaveBeenCalledWith("anchor0001aa");
+  });
+
+  it("selectedBlockId highlights only the matching paragraph, dims the other, regardless of claim membership", () => {
+    const { container } = render(
+      <ReportRenderer
+        markdown={md}
+        claims={CLAIMS}
+        onClaimSelect={() => {}}
+        reportAnchors={ANCHORS}
+        selectedBlockId="anchor0001aa"
+        activeClaimIds={new Set(["clm_001"])}
+        highlightMode="selected-paragraph"
+        highlightText
+      />,
+      { wrapper: makeWrapper() },
+    );
+    const selected = container.querySelector("#anchor0001aa");
+    expect(selected?.className).toContain("rv-report-block--highlighted");
+    expect(selected?.className).toContain("rv-report-block--selected");
+    const other = container.querySelector("#anchor0002bb");
+    expect(other?.className).toContain("rv-report-block--dimmed");
+  });
+
+  it("activeBlockIds (anchor-filter mode) highlights matching blocks and dims the rest, even an empty set dims everything", () => {
+    const { container } = render(
+      <ReportRenderer
+        markdown={md}
+        claims={CLAIMS}
+        onClaimSelect={() => {}}
+        reportAnchors={ANCHORS}
+        activeBlockIds={new Set()}
+        highlightMode="anchor-filter"
+        highlightText
+      />,
+      { wrapper: makeWrapper() },
+    );
+    const paragraphs = container.querySelectorAll("p.rv-report-p");
+    paragraphs.forEach((p) => expect(p.className).toContain("rv-report-block--dimmed"));
+  });
+});
+
 // ── ClaimChip direct tests ────────────────────────────────────────────────────
 
 describe("ClaimChip", () => {
