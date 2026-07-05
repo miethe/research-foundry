@@ -20,6 +20,7 @@ Hard invariants (see ``docs/dev/architecture/rf-run-export-schema.md``):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -28,13 +29,15 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from markdown_it import MarkdownIt
+
 from ..config import FoundryConfig
 from ..errors import ExitCode, RFError
 from ..frontmatter import split_frontmatter
 from ..paths import FoundryPaths, RunPaths
 from ..yamlio import loads_yaml
 
-EXPORT_SCHEMA_VERSION = "1.3"
+EXPORT_SCHEMA_VERSION = "1.4"
 
 # --- sensitivity model -------------------------------------------------------
 # Ordering: lower index = less sensitive. The viewer threshold names the MOST
@@ -64,6 +67,278 @@ STATUS_LADDER = [
 ]
 
 _CLAIM_TAG_RE = re.compile(r"\[claim:(clm_[A-Za-z0-9]+)\]")
+
+# --- report anchor derivation (P2 Wave A — D7/D8) ---------------------------
+# Regex used to extract [claim:clm_XXX] spans from *normalized* block text
+# when deriving report_anchors. Deliberately broader than the module-level
+# _CLAIM_TAG_RE above (`[A-Za-z0-9]+`): real claim ids may contain
+# underscores (e.g. "clm_guard_001" in the schema-guard fixture), and the
+# frontend's existing chip regex (ReportRenderer.tsx) already matches on
+# `\w+`. Anchors must agree with the frontend's tag surface, not the
+# narrower legacy helper.
+_ANCHOR_CLAIM_TAG_RE = re.compile(r"\[claim:(clm_\w+)\]")
+
+# Markdown container block types that bound *nested* content (blockquotes,
+# list items). Paragraphs inside these are not top-level report prose and are
+# excluded from report_anchors in this pass — see derive_report_anchors()'s
+# docstring for the rationale.
+_ANCHOR_CONTAINER_OPEN: frozenset[str] = frozenset(
+    {"blockquote_open", "bullet_list_open", "ordered_list_open", "list_item_open"}
+)
+_ANCHOR_CONTAINER_CLOSE: frozenset[str] = frozenset(
+    {"blockquote_close", "bullet_list_close", "ordered_list_close", "list_item_close"}
+)
+
+# claim.status -> report_anchors claim_links[].relation. A bare [claim:] tag
+# carries no directional information of its own, so relation is inferred
+# deterministically from the current state of the linked claim in the ledger.
+_ANCHOR_RELATION_BY_STATUS: dict[str, str] = {
+    "supported": "supports",
+    "mixed": "supports",
+    "contradicted": "contradicts",
+    "inference": "inferred_from",
+    "speculation": "inferred_from",
+    "unsupported": "context",
+}
+
+# Heading markup stripped, in this order, before slugifying — mirrors
+# frontend/runs-viewer/src/components/ReportOverlay/reportOutlineUtils.ts
+# extractHeadings() exactly, so section_id matches the heading `id` the
+# viewer already renders in the DOM (audit-surface + dual-mode parity).
+_HEADING_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+_HEADING_ITALIC_RE = re.compile(r"\*(.+?)\*")
+_HEADING_CODE_RE = re.compile(r"`(.+?)`")
+_HEADING_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+# re.ASCII matches JS's non-unicode \w/\s used by reportOutlineUtils.slugify().
+_SLUG_STRIP_RE = re.compile(r"[^\w\s-]", re.ASCII)
+_SLUG_WHITESPACE_RE = re.compile(r"\s+")
+_SLUG_DASH_RE = re.compile(r"-+")
+
+_ANCHOR_MD = MarkdownIt("commonmark")
+
+
+def _normalize_anchor_text(raw: str) -> str:
+    """Collapse whitespace runs (incl. soft-wrapped newlines) to single spaces.
+
+    This is the "normalized paragraph text" the spec's Report Location V2
+    model defines ``span_start``/``span_end`` against (§7). Pure string
+    operation — no locale/unicode dependence beyond ``str.split()``.
+    """
+    return " ".join(raw.split())
+
+
+def _slugify_heading_text(raw_heading_source: str) -> str:
+    """Slugify heading source text identically to the frontend's ``extractHeadings()``.
+
+    Strips inline markup (bold/italic/code/links) then applies the exact
+    lowercase/strip/hyphenate pipeline used by
+    ``reportOutlineUtils.ts::slugify`` so ``section_id`` matches the heading
+    ``id`` already rendered by the viewer today.
+    """
+    text = _HEADING_BOLD_RE.sub(r"\1", raw_heading_source)
+    text = _HEADING_ITALIC_RE.sub(r"\1", text)
+    text = _HEADING_CODE_RE.sub(r"\1", text)
+    text = _HEADING_LINK_RE.sub(r"\1", text)
+    text = text.strip().lower()
+    text = _SLUG_STRIP_RE.sub("", text)
+    text = _SLUG_WHITESPACE_RE.sub("-", text)
+    text = _SLUG_DASH_RE.sub("-", text)
+    return text.strip("-")
+
+
+def _anchor_text_hash(normalized_text: str) -> str:
+    return hashlib.sha1(normalized_text.encode("utf-8")).hexdigest()[:12]
+
+
+def _anchor_block_id(section_id: str | None, normalized_text: str, ordinal: int) -> str:
+    """``block_id = sha1(section_slug + normalized_text + ordinal)[:12]`` (D8).
+
+    Fields are joined with an ASCII unit-separator (``\\x1f``, never present
+    in normalized text) rather than bare concatenation, so a text/ordinal
+    boundary can never be ambiguous between two distinct blocks.
+    """
+    key = f"{section_id or ''}\x1f{normalized_text}\x1f{ordinal}"
+    return hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
+
+
+def _anchor_relation_for_claim(claim: dict[str, Any] | None) -> str | None:
+    if claim is None:
+        return None
+    return _ANCHOR_RELATION_BY_STATUS.get(str(claim.get("status")), "context")
+
+
+def derive_report_anchors(
+    report_draft: str | None,
+    claims: list[dict[str, Any]] | None = None,
+    *,
+    previous_blocks: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]] | None:
+    """Derive stable report anchors from ``report_draft`` markdown (D7/D8).
+
+    Pure function: the same ``(report_draft, claims, previous_blocks)`` tuple
+    always yields byte-identical output — no timestamps, no randomness, no
+    I/O. Returns ``None`` when *report_draft* is empty/absent, mirroring the
+    ``report_draft`` field's own null semantics (nothing to anchor).
+
+    Anchors are derived from the CommonMark AST via ``markdown-it-py``, never
+    regex over rendered output (spec §7: "Avoid regex-only report rewriting
+    for anything that affects persisted anchors"). Only **top-level**
+    paragraphs (not nested inside a list item or blockquote) are anchored in
+    this pass — report prose produced by the synthesis service is flat
+    headings+paragraphs; list/blockquote paragraph anchoring is a documented
+    gap for a later wave, not a silent omission.
+
+    Each returned block dict has exactly the D8 fields::
+
+        {
+            "block_id": str,            # sha1(section_id + normalized_text + ordinal)[:12]
+            "section_id": str | None,   # nearest preceding h2/h3 slug; None before first heading
+            "paragraph_ordinal": int,   # 0-based index of this paragraph within its section
+            "text_hash": str,           # sha1(normalized_text)[:12]
+            "claim_links": [
+                {
+                    "claim_id": str,
+                    "span_start": int,      # offset into the *normalized* block text
+                    "span_end": int,
+                    "relation": str | None, # supports|contradicts|inferred_from|context; None if missing_claim
+                    "link_status": str,     # linked|stale|missing_claim
+                },
+                ...
+            ],
+        }
+
+    No paragraph prose is ever included in the output — only hashes, slugs,
+    and integer offsets — so this field introduces no new sensitivity
+    redaction surface (R9 is unaffected; nothing here can leak governed quote
+    text, unlike ``claims[].sources[].quote``).
+
+    *claims* is the already-resolved ``claims[]`` list from this export pass
+    (``_build_claims`` output) — used only to look up a linked claim's
+    ``status`` for ``relation`` inference and to flag a dangling ``[claim:]``
+    tag as ``link_status: "missing_claim"``. Never mutated.
+
+    *previous_blocks* is an optional prior ``report_anchors`` value (same
+    shape as this function's return value) used purely for hash-drift
+    detection: a ``claim_links[]`` entry's ``link_status`` becomes
+    ``"stale"`` when the block at the same ``(section_id,
+    paragraph_ordinal)`` position previously carried a *different*
+    ``text_hash`` (i.e. the paragraph was edited since the claim was
+    anchored there). ``export_run()`` does not wire this parameter up — Wave
+    A keeps the export a function of on-disk source artifacts only, never of
+    its own prior output — but the capability is production-ready for a
+    caller that does hold a persisted anchor set to diff against (e.g. a
+    builder draft revision in a later wave). Absent this argument, every
+    resolved claim link is ``"linked"`` (nothing to have drifted from yet).
+    """
+
+    if not report_draft:
+        return None
+
+    claims_by_id: dict[str, dict[str, Any]] = {
+        str(c["claim_id"]): c
+        for c in (claims or [])
+        if isinstance(c, dict) and c.get("claim_id")
+    }
+
+    previous_hash_by_position: dict[tuple[str | None, int], str] = {}
+    for prev_block in previous_blocks or []:
+        if not isinstance(prev_block, dict):
+            continue
+        prev_hash = prev_block.get("text_hash")
+        prev_ordinal = prev_block.get("paragraph_ordinal")
+        if prev_hash is None or not isinstance(prev_ordinal, int):
+            continue
+        prev_section = prev_block.get("section_id")
+        key: tuple[str | None, int] = (
+            str(prev_section) if prev_section is not None else None,
+            prev_ordinal,
+        )
+        previous_hash_by_position[key] = str(prev_hash)
+
+    tokens = _ANCHOR_MD.parse(report_draft)
+    n = len(tokens)
+
+    blocks: list[dict[str, Any]] = []
+    section_id: str | None = None
+    section_slug_counts: dict[str, int] = {}
+    ordinal_by_section: dict[str | None, int] = {}
+    container_depth = 0
+
+    i = 0
+    while i < n:
+        tok = tokens[i]
+
+        if tok.type in _ANCHOR_CONTAINER_OPEN:
+            container_depth += 1
+            i += 1
+            continue
+        if tok.type in _ANCHOR_CONTAINER_CLOSE:
+            container_depth -= 1
+            i += 1
+            continue
+
+        if tok.type == "heading_open":
+            next_tok = tokens[i + 1] if i + 1 < n else None
+            has_inline = next_tok is not None and next_tok.type == "inline"
+            if container_depth == 0 and has_inline and next_tok is not None:
+                tag_level = tok.tag[1:]
+                level = int(tag_level) if tag_level.isdigit() else None
+                if level in (2, 3):
+                    base_slug = _slugify_heading_text(next_tok.content)
+                    if base_slug:
+                        count = section_slug_counts.get(base_slug, 0)
+                        section_slug_counts[base_slug] = count + 1
+                        section_id = base_slug if count == 0 else f"{base_slug}-{count + 1}"
+            i += 3 if has_inline else 1
+            continue
+
+        if tok.type == "paragraph_open":
+            next_tok = tokens[i + 1] if i + 1 < n else None
+            has_inline = next_tok is not None and next_tok.type == "inline"
+            if container_depth == 0 and has_inline and next_tok is not None:
+                normalized = _normalize_anchor_text(next_tok.content)
+                if normalized:
+                    ordinal = ordinal_by_section.get(section_id, 0)
+                    ordinal_by_section[section_id] = ordinal + 1
+                    text_hash = _anchor_text_hash(normalized)
+                    block_id = _anchor_block_id(section_id, normalized, ordinal)
+                    prev_hash = previous_hash_by_position.get((section_id, ordinal))
+
+                    claim_links: list[dict[str, Any]] = []
+                    for match in _ANCHOR_CLAIM_TAG_RE.finditer(normalized):
+                        claim_id = match.group(1)
+                        claim = claims_by_id.get(claim_id)
+                        if claim is None:
+                            link_status = "missing_claim"
+                        elif prev_hash is None or prev_hash == text_hash:
+                            link_status = "linked"
+                        else:
+                            link_status = "stale"
+                        claim_links.append(
+                            {
+                                "claim_id": claim_id,
+                                "span_start": match.start(),
+                                "span_end": match.end(),
+                                "relation": _anchor_relation_for_claim(claim),
+                                "link_status": link_status,
+                            }
+                        )
+
+                    blocks.append(
+                        {
+                            "block_id": block_id,
+                            "section_id": section_id,
+                            "paragraph_ordinal": ordinal,
+                            "text_hash": text_hash,
+                            "claim_links": claim_links,
+                        }
+                    )
+            i += 3 if has_inline else 1
+            continue
+
+        i += 1
+
+    return blocks
 
 
 class ExportError(RFError):
@@ -745,6 +1020,13 @@ def export_run(
     # Read report_draft once; reuse for title derivation and export field.
     report_draft = _read_report_draft(rp)
 
+    # P2 Wave A (D7/D8): deterministic AST-derived report anchors. Pure
+    # function of (report_draft, claims) — no previous-anchor comparison is
+    # wired in here, so every resolved claim link is "linked" or
+    # "missing_claim" in export_run() output; "stale" is a capability of
+    # derive_report_anchors() itself for callers that hold a prior anchor set.
+    report_anchors = derive_report_anchors(report_draft, claims)
+
     # ENR-004: writebacks emitted as null (no writeback files) or RFRunWritebacksSummary object.
     # Thread approved_for_writeback from the governance block into the summary so FE can
     # render the approval state without reading the bundle separately.
@@ -774,6 +1056,10 @@ def export_run(
         "claims": claims,
         "artifact_schema_versions": schema_versions,
         "report_draft": report_draft,
+        # Report anchors (schema 1.4 — P2 Wave A / D7-D8): AST-derived block/
+        # paragraph anchors + claim spans. Additive/nullable — null when
+        # report_draft is absent (pre-1.4 exports omit this key entirely).
+        "report_anchors": report_anchors,
         # Optional v2 context (ENR-003): routing_decision + swarm_plan; null on pre-v2 runs
         "context": context_summary,
         # Metadata enrichment (schema 1.2) — null for pre-migration runs
@@ -965,6 +1251,7 @@ __all__ = [
     "discover_run_yamls",
     "resolve_run_paths",
     "derive_status",
+    "derive_report_anchors",
     "export_run",
     "export_to_file",
     "export_all",

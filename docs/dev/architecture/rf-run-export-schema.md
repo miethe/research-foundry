@@ -2,10 +2,10 @@
 title: "RF Run Export Schema (run.json)"
 description: "Frozen denormalized claim-graph contract emitted by `rf run export --json`; the sole data source for the read-only runs viewer."
 status: stable
-schema_version: "1.3"
+schema_version: "1.4"
 doc_type: architecture
 created: 2026-06-19
-updated: 2026-06-24
+updated: 2026-07-05
 feature_slug: runs-context-panels-v1
 phase: "8"
 owners: ["python-backend-engineer", "backend-architect", "documentation-writer"]
@@ -19,7 +19,7 @@ changelog_ref: "CHANGELOG.md → [Unreleased] Added → Run Metadata Enrichment"
 
 # RF Run Export Schema (`run.json`)
 
-> **Stable contract (v1.3).** This schema is bound to schema-version strings
+> **Stable contract (v1.4).** This schema is bound to schema-version strings
 > in `run.json` documents. Every TypeScript type and React Query hook binds to
 > this shape. Changes require a schema-version bump and `backend-architect`
 > re-review. See [Changelog](#changelog) for version history and migration notes.
@@ -50,7 +50,7 @@ Load-bearing invariants:
 
 ```jsonc
 {
-  "schema_version": "1.3",            // export contract version (this doc)
+  "schema_version": "1.4",            // export contract version (this doc)
   "run_id": "rf_run_20260613_...",    // canonical id
   "intent_id": "intent_research_...", // nullable
   "created_at": "2026-06-13T22:46:23-04:00", // from run.yaml, nullable
@@ -67,6 +67,7 @@ Load-bearing invariants:
     "run": "0.1", "evidence_bundle": "0.1", "claim_ledger": "0.1"
   },
   "report_draft": "# Report\n\n...",  // see §8 — verbatim markdown, null if absent
+  "report_anchors": [ { ... } ],      // see §16 — v1.4 AST-derived block/claim anchors, null if absent
   "context": { ... },                 // see §9 — v2 optional context stack, null if absent
   "writebacks": { ... },              // see §10 — v2 optional writeback summary, null if absent
 
@@ -630,20 +631,21 @@ if "Tags: researcher" filter is active.
 
 ## 14. Backwards Compatibility Notes
 
-Schema 1.3 is **fully backwards compatible** with all prior schema versions (1.0, 1.1, 1.2):
+Schema 1.4 is **fully backwards compatible** with all prior schema versions (1.0-1.3):
 
-- All fields introduced in 1.2 and 1.3 are **optional/nullable**.
+- All fields introduced in 1.2, 1.3, and 1.4 are **optional/nullable**.
 - Pre-migration runs (v1.0/1.1) carry `null` values or omit these fields entirely.
-- Frontend components use **optional access** (`run?.linked_projects`, `run?.context`, etc.) and
-  gracefully degrade when fields are absent.
-- Static data rebuild (`rf run export --all`) automatically includes 1.3 fields for all runs;
-  context is populated when the source artifacts are present on disk.
+- Frontend components use **optional access** (`run?.linked_projects`, `run?.context`,
+  `run?.report_anchors`, etc.) and gracefully degrade when fields are absent.
+- Static data rebuild (`rf run export --all`) automatically includes 1.4 fields for all runs;
+  context and report_anchors are populated when the source artifacts are present on disk.
 
 **Version detection:** Always check `schema_version` to determine which fields are available:
 - Schema `1.0`: no metadata, no enrichment, no context, no writebacks.
 - Schema `1.1`: adds `report_draft`.
 - Schema `1.2`: adds run metadata (5 fields), enrichment extras (3 fields), `context` stub (routing_decision + swarm_plan only), and writebacks.
 - Schema `1.3`: `context` fully populated — adds `research_brief_md` and `upstream_entities`; redaction extended to `context.*`.
+- Schema `1.4`: adds `report_anchors` (§16) — AST-derived report block/paragraph anchors + claim spans. Absent (key omitted) on schema < 1.4; the frontend falls back to legacy client-side regex chip parsing in that case.
 
 **Migration note (for developers):** When upgrading from v1.0/v1.1 exports to 1.3:
 1. Runs with metadata/enrichment fields will appear after backfill (P2) + re-export.
@@ -651,12 +653,12 @@ Schema 1.3 is **fully backwards compatible** with all prior schema versions (1.0
 3. Frontend can show "[Metadata pending backfill]" or "[Pre-enrichment run]" labels for old runs.
 4. Context panels in the viewer display empty-states for runs where `context` is null (pre-1.3 exports or runs with no source artifacts).
 
-## 15. CLI Surface Changes (v1.2 and v1.3)
+## 15. CLI Surface Changes (v1.2-v1.4)
 
-The export command remains stable; all v1.2 and v1.3 fields are included in `--json` output:
+The export command remains stable; all v1.2-v1.4 fields are included in `--json` output:
 
 ```bash
-# Export with all fields (schema 1.3)
+# Export with all fields (schema 1.4)
 rf run export --json --run-id rf_run_20260613_...
 
 # Export all (includes backfill metadata and context where artifacts are present)
@@ -669,9 +671,68 @@ rf run export --json --run-id rf_run_20260613_... --sensitivity-threshold work_s
 rf run list --json
 ```
 
-Schema version is automatically set to `"1.3"` in all exports produced by the current
+Schema version is automatically set to `"1.4"` in all exports produced by the current
 `export_service.py`. Pre-migration `run.json` files generated by earlier versions retain their
 original `schema_version` value until re-exported.
+
+## 16. `report_anchors` — Report Anchor Model (v1.4 — New in schema 1.4)
+
+Added for the Granular Report Audit feature (public multi-user release, Phase 2 Wave A;
+design decisions D7/D8). Backend owns anchor derivation — the frontend **consumes**
+`report_anchors`, it never re-derives it from markdown at render time.
+
+```jsonc
+"report_anchors": [
+  {
+    "block_id": "0f1a2b3c4d5e",          // sha1(section_id + normalized_text + ordinal)[:12]
+    "section_id": "findings",             // nearest preceding h2/h3 slug; null before first heading
+    "paragraph_ordinal": 2,               // 0-based index of this paragraph within its section
+    "text_hash": "9a8b7c6d5e4f",          // sha1(normalized_text)[:12] — drift-detection hash
+    "claim_links": [
+      {
+        "claim_id": "clm_043",
+        "span_start": 42,                 // offset into the *normalized* block text
+        "span_end": 55,
+        "relation": "supports",           // supports | contradicts | inferred_from | context | null
+        "link_status": "linked"           // linked | stale | missing_claim
+      }
+    ]
+  }
+]
+```
+
+- **Source:** parsed from `report_draft` (§8) via `markdown-it-py` (CommonMark AST) — never
+  regex over rendered output, per spec §7 ("Avoid regex-only report rewriting for anything
+  that affects persisted anchors").
+- **Null when `report_draft` is null.** Absent entirely (key omitted) on pre-1.4 exports; the
+  frontend treats a missing/null `report_anchors` as *legacy mode* and falls back to today's
+  client-side regex chip parsing (D8) — `"legacy"` is a frontend-only fallback concept and is
+  never a value the backend writes into `link_status`.
+- **Scope (v1.4):** only **top-level paragraphs** are anchored — paragraphs nested inside a
+  list item or blockquote are not yet anchored. Report prose from the synthesis service is
+  flat headings+paragraphs today, so this covers the material case; list/blockquote paragraph
+  anchoring is a documented gap for a later wave.
+- **`section_id`** is computed with the *exact* same slugify + duplicate-suffix algorithm as
+  `frontend/runs-viewer/src/components/ReportOverlay/reportOutlineUtils.ts::slugify` /
+  `extractHeadings` (lowercase, strip non-word/space/hyphen chars, collapse hyphens, `-2`/`-3`
+  suffix on repeated headings), so it matches the heading `id` the viewer already renders —
+  only h2/h3 headings count as section boundaries (h1 is the run title; h4+ do not reset the
+  counter), matching the existing outline behavior exactly.
+- **`text_hash`** is computed over `" ".join(raw.split())` — whitespace-collapsed, trimmed
+  paragraph source text (the same normalization `span_start`/`span_end` are measured against).
+- **`claim_links[].relation`** is inferred from the *linked claim's* `status` at export time
+  (a bare `[claim:...]` tag carries no relation of its own): `supported`/`mixed` → `supports`,
+  `contradicted` → `contradicts`, `inference`/`speculation` → `inferred_from`, anything else →
+  `context`. `null` only when `link_status` is `missing_claim`.
+- **`claim_links[].link_status`:** `"missing_claim"` when the tagged id does not resolve in the
+  current `claims[]` list (dangling `[claim:]` tag); otherwise `"linked"` in `export_run()`
+  output today. `"stale"` is a capability of the underlying `derive_report_anchors()` function
+  (hash-drift detection against a previously-derived anchor set) that `export_run()` does not
+  yet wire up — see the function's docstring in `export_service.py`. No verification check
+  currently consumes it; that lands with D13 in a later wave.
+- **No new redaction surface:** anchors carry only hashes, slugs, and integer offsets — never
+  paragraph prose — so the R9 sensitivity gate (§4) is unaffected. This field cannot leak
+  governed quote text.
 
 ## Changelog
 
@@ -680,4 +741,5 @@ original `schema_version` value until re-exported.
 | 1.0 | 2026-06-19 | Initial frozen contract (Phase 1 exit gate). |
 | 1.1 | 2026-06-19 | **Additive post-freeze change** — added `report_draft: string \| null` top-level field to unblock the "read report → click claim chip → see quote" frontend journey. |
 | 1.2 | 2026-06-21 | **Run Metadata Enrichment** — added 5 metadata fields (`linked_projects`, `category`, `tags`, `backlog_idea_ref`, `backlog_idea_id`), 3 enrichment extras (`cost_usd`, `model_profiles`, `source_count_by_type`), and 2 v2 context fields (`context`, `writebacks`). All are optional/nullable for backwards compatibility. Includes backfill migration (P2) for pre-migration runs and idempotent re-export threading (P4). Frontend filtering, display, and enrichment widgets are enabled in P5–P7. |
+| 1.4 | 2026-07-05 | **Report Anchors (P2 Wave A, D7/D8)** — added `report_anchors: RFReportAnchorBlock[] \| null`, AST-derived (`markdown-it-py`) block/paragraph anchors with `[claim:]` span extraction. Additive/nullable; absent entirely on pre-1.4 exports (frontend legacy-regex fallback). No sensitivity-redaction impact (carries no prose). |
 | 1.3 | 2026-06-24 | **Context block fully populated** — `research_brief_md` (verbatim `research_brief.md`, including YAML frontmatter) and `upstream_entities` (`intent_id` from `run.yaml`, `ibom_id` from `run.yaml`, `intenttree_node_id` from `routing_decision.yaml → active_node_id` with `evidence_bundle.yaml` fallback) are now populated. `context` is non-null whenever at least one file-based source artifact is present; `context` itself is null only when all three YAML/Markdown source files are absent. R9 sensitivity redaction extended to `context.routing_decision`, `context.swarm_plan`, and `context.research_brief_md`. Four context panels (Routing Decision, Research Brief, Swarm Plan, Upstream Entities) ship in the runs-viewer run detail view. Additive and backwards-compatible: schema 1.2 consumers using optional access are unaffected. |

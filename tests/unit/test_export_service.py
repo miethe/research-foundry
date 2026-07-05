@@ -250,7 +250,7 @@ def test_dangling_source_is_flagged_not_dropped(tmp_foundry: FoundryPaths) -> No
 def test_claim_counts_and_top_level_shape(tmp_foundry: FoundryPaths) -> None:
     build_run(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_test001")
-    assert data["schema_version"] == svc.EXPORT_SCHEMA_VERSION == "1.3"
+    assert data["schema_version"] == svc.EXPORT_SCHEMA_VERSION == "1.4"
     assert data["run_id"] == "rf_run_test001"
     assert data["claim_counts"]["total"] == 5
     assert data["claim_counts"]["supported"] == 3
@@ -539,10 +539,10 @@ def test_report_draft_falls_back_to_final(tmp_foundry: FoundryPaths) -> None:
     assert data["report_draft"] == final_content
 
 
-def test_schema_version_is_1_3(tmp_foundry: FoundryPaths) -> None:
+def test_schema_version_is_1_4(tmp_foundry: FoundryPaths) -> None:
     build_run(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_test001")
-    assert data["schema_version"] == "1.3"
+    assert data["schema_version"] == "1.4"
 
 
 # --------------------------------------------------------------------------
@@ -628,12 +628,12 @@ def test_metadata_fields_null_on_pre_migration_run(tmp_foundry: FoundryPaths) ->
     assert data["backlog_idea_id"] is None
 
 
-def test_schema_version_bumped_to_1_3(tmp_foundry: FoundryPaths) -> None:
-    """EXP-003: schema_version in export output is '1.3'."""
-    assert svc.EXPORT_SCHEMA_VERSION == "1.3"
+def test_schema_version_bumped_to_1_4(tmp_foundry: FoundryPaths) -> None:
+    """EXP-003: schema_version in export output is '1.4'."""
+    assert svc.EXPORT_SCHEMA_VERSION == "1.4"
     _build_run_with_metadata(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_meta001")
-    assert data["schema_version"] == "1.3"
+    assert data["schema_version"] == "1.4"
 
 
 def test_existing_fields_unaffected_by_metadata_addition(tmp_foundry: FoundryPaths) -> None:
@@ -648,7 +648,7 @@ def test_existing_fields_unaffected_by_metadata_addition(tmp_foundry: FoundryPat
 
     # Core fields still present and correct
     assert data["run_id"] == "rf_run_meta001"
-    assert data["schema_version"] == "1.3"
+    assert data["schema_version"] == "1.4"
     assert data["status_derived"] == "planned"
     assert "claims" in data
     assert "claim_counts" in data
@@ -888,8 +888,8 @@ def test_enrichment_extra_fields_all_present_on_full_run(tmp_foundry: FoundryPat
     assert data["context"] is not None
     assert data["context"]["routing_decision"] is not None
     assert data["context"]["swarm_plan"] is not None
-    # schema_version is now 1.3
-    assert data["schema_version"] == "1.3"
+    # schema_version is now 1.4
+    assert data["schema_version"] == "1.4"
 
 
 def test_enrichment_extra_fields_null_on_pre_enrichment_run(
@@ -1256,7 +1256,7 @@ def test_schema_12_run_json_loads_without_context_key(tmp_foundry: FoundryPaths)
     """Backward-compat: a cached schema-1.2 run.json (no 'context' key) must not
     raise when accessed through the existing consumer interface.
 
-    The export service always writes 1.3 now; this test ensures that a consumer
+    The export service always writes the current schema version now (1.4); this test ensures that a consumer
     reading a previously-cached run.json at schema 1.2 (which lacks the 'context'
     key entirely) can access all expected keys with safe optional access — matching
     how the frontend guards every field with `?.`.
@@ -1306,7 +1306,7 @@ def test_schema_13_context_null_when_no_v2_artifacts(tmp_foundry: FoundryPaths) 
     build_run(tmp_foundry, "rf_run_noctx12")
     data = svc.export_run(tmp_foundry, "rf_run_noctx12")
 
-    assert data["schema_version"] == "1.3"
+    assert data["schema_version"] == "1.4"
     assert "context" in data
     assert data["context"] is None
 
@@ -1320,7 +1320,7 @@ def test_schema_13_context_shape_complete_when_v2_artifacts_present(
     _build_run_with_routing(tmp_foundry, "rf_run_ctx13")
     data = svc.export_run(tmp_foundry, "rf_run_ctx13")
 
-    assert data["schema_version"] == "1.3"
+    assert data["schema_version"] == "1.4"
     ctx = data.get("context")
     assert ctx is not None
 
@@ -1667,7 +1667,7 @@ def test_context_public_research_brief_not_redacted(tmp_foundry: FoundryPaths) -
 
 
 def test_context_full_pipeline_round_trip(tmp_foundry: FoundryPaths) -> None:
-    """BE-004: full export pipeline round-trip → context present, schema 1.3.
+    """BE-004: full export pipeline round-trip → context present, schema 1.4.
 
     Writes run.json to disk, reads it back, and asserts the populated +
     redacted context survives JSON serialization with all 4 keys intact.
@@ -1686,7 +1686,7 @@ def test_context_full_pipeline_round_trip(tmp_foundry: FoundryPaths) -> None:
     assert out.exists()
     data = json.loads(out.read_text(encoding="utf-8"))
 
-    assert data["schema_version"] == "1.3"
+    assert data["schema_version"] == "1.4"
     ctx = data["context"]
     assert ctx is not None
     for key in (

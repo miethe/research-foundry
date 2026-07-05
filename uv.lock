@@ -4447,6 +4447,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
+    { name = "markdown-it-py" },
     { name = "pyyaml" },
     { name = "rich" },
     { name = "typer" },
@@ -4493,6 +4494,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'search'", specifier = ">=0.27" },
     { name = "jsonschema", specifier = ">=4.20" },
     { name = "litellm", marker = "extra == 'llm'", specifier = ">=1.40" },
+    { name = "markdown-it-py", specifier = ">=3.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
     { name = "mkdocs-material", marker = "extra == 'docs'" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
