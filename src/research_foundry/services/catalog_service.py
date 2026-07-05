@@ -810,8 +810,18 @@ def _build_links(
     source_id_to_item_id: dict[str, str],
     export_data: dict[str, Any],
     report_row: dict[str, Any] | None,
-    report_claim_ids: list[str],
+    report_anchors: list[dict[str, Any]] | None,
 ) -> list[dict[str, str]]:
+    """Build catalog link rows from a run's export data.
+
+    report→claim ("contains") links are now sourced from ``report_anchors``
+    (P2 Wave B / D4 parity): iterate every anchor block's ``claim_links``,
+    skip entries with ``link_status="missing_claim"``, resolve each
+    ``claim_id`` to its catalog item id, dedup by (from_id, to_id, relation).
+    Pre-1.4 exports (``report_anchors`` absent/null) produce no report→claim
+    links (graceful degradation — old behavior was report_locations which
+    those exports also lack when the report hasn't been re-exported).
+    """
     links: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
 
@@ -846,11 +856,20 @@ def _build_links(
                     "inferred_from",
                 )
 
-    # report -> claim ("contains"), from claims with non-empty report_locations.
-    if report_row is not None:
+    # report -> claim ("contains"), sourced from report_anchors claim_links (D4 parity).
+    # Pre-1.4 exports have report_anchors=None → no links (graceful degradation).
+    if report_row is not None and report_anchors is not None:
         report_id = report_row["catalog_item_id"]
-        for claim_id in report_claim_ids:
-            _add(report_id, claim_id_to_item_id.get(claim_id), "contains")
+        for block in report_anchors:
+            if not isinstance(block, dict):
+                continue
+            for cl in block.get("claim_links") or []:
+                if not isinstance(cl, dict):
+                    continue
+                if cl.get("link_status") == "missing_claim":
+                    continue
+                claim_id = str(cl.get("claim_id") or "")
+                _add(report_id, claim_id_to_item_id.get(claim_id), "contains")
 
     return links
 
@@ -930,12 +949,16 @@ def _build_catalog_rows(
         run_sensitivity_rank=run_sensitivity_rank,
     )
 
+    # report_anchors from export_data (schema 1.4 / P2 Wave A). None on pre-1.4 exports
+    # (key absent) or when report_draft is null. _build_links handles both gracefully.
+    report_anchors: list[dict[str, Any]] | None = export_data.get("report_anchors")
+
     links = _build_links(
         claim_id_to_item_id=claim_id_to_item_id,
         source_id_to_item_id=source_id_to_item_id,
         export_data=export_data,
         report_row=report_row,
-        report_claim_ids=report_claim_ids,
+        report_anchors=report_anchors,
     )
 
     rows: list[dict[str, Any]] = [*claim_rows, *source_rows]
