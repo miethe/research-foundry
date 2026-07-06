@@ -17,14 +17,34 @@
  * `activeBlockIds`) independent of claim-id text matching. When
  * `reportAnchors` is absent/null (pre-1.4 export), this component behaves
  * EXACTLY as before — the legacy regex chip/highlight path is unchanged.
+ *
+ * R1 fix (bug #2, HIGH): `report_anchors[]` is emitted by the backend in
+ * strict document order for exactly the TOP-LEVEL paragraphs (its
+ * `container_depth == 0` rule — never a paragraph nested inside a list item
+ * or blockquote). The frontend must consume that same array, in order,
+ * ONLY for the top-level `<p>` renders it produces — never for a `<p>`
+ * nested inside `<li>`/`<blockquote>`. `ReportAnchorContainerContext` (set
+ * by the `li`/`blockquote` custom renderers below) is the ground truth for
+ * "am I nested" because it reflects the ACTUAL rendered React tree, not a
+ * markdown-text guess — this is robust to both tight and loose lists (a
+ * loose list renders a real `<p>` per item; a tight list renders inline
+ * content directly inside `<li>`, no `<p>` at all — either way, `p()` below
+ * only advances the anchor cursor when NOT inside a container).
  */
 
+import { createContext, useContext } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm     from "remark-gfm";
 import type { RFClaim, RFReportAnchorBlock } from "@/types/rf";
 import { ClaimChip }    from "./ClaimChip";
 import { slugify }      from "./reportOutlineUtils";
-import { buildParagraphAnchorSequence } from "@/lib/reportAnchors";
+
+/**
+ * True when the current render is nested inside a `<li>` or `<blockquote>`
+ * (set by those custom renderers below). Read by `p()` to decide whether
+ * this paragraph is anchorable (mirrors the backend's container_depth==0).
+ */
+const ReportAnchorContainerContext = createContext(false);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -219,7 +239,6 @@ function buildComponents(
   activeClaimIds?: Set<string> | null,
   selectedClaimId?: string | null,
   highlightText = false,
-  bodyMarkdown = "",
   reportAnchors?: RFReportAnchorBlock[] | null,
   selectedBlockId?: string | null,
   activeBlockIds?: Set<string> | null,
@@ -227,11 +246,13 @@ function buildComponents(
 ) {
   // Shared slug counter: deduplicates headings in the same order as extractHeadings
   const nextSlug = makeSlugCounter();
-  // P2 Wave C: block_id per rendered <p>, in render order (D9 legacy mode
-  // when reportAnchors is null/undefined — sequence is then all-null and a
-  // no-op for every paragraph).
-  const paragraphSequence = buildParagraphAnchorSequence(bodyMarkdown, reportAnchors);
-  let pOrdinal = 0;
+  // P2 Wave C (R1 fix #2): `reportAnchors` is a flat, document-order array of
+  // exactly the top-level paragraphs the backend anchored. `topLevelIndex`
+  // advances ONLY when `p()` fires with ReportAnchorContainerContext=false
+  // (see that renderer, and the `li`/`blockquote` renderers that set the
+  // context true for their descendants) — never for a nested <p>. No-op
+  // (stays 0, every lookup null) when reportAnchors is null/undefined.
+  let topLevelIndex = 0;
   /**
    * Walk a react-markdown children tree and expand any string nodes that
    * contain [claim:clm_NNN] patterns into [string, ClaimChip, string, ...].
@@ -256,16 +277,29 @@ function buildComponents(
   }
 
   return {
-    // Paragraph: color-code inference/speculation; expand claim chips
-    p({ children }: ParagraphProps) {
+    // Paragraph: color-code inference/speculation; expand claim chips.
+    // Named as a PascalCase function expression (not object-method shorthand)
+    // so eslint's react-hooks/rules-of-hooks recognizes it as a component
+    // eligible to call useContext below — the "p" object KEY (what
+    // react-markdown actually dispatches on) is unaffected by the function's
+    // own name.
+    p: function ParagraphRenderer({ children }: ParagraphProps) {
       const textContent = typeof children === "string" ? children :
         Array.isArray(children) ? (children as React.ReactNode[]).map((c) => (typeof c === "string" ? c : "")).join("") : "";
       const extraClass = paragraphClass(textContent);
 
-      // P2 Wave C: resolve this paragraph's block_id from the precomputed
-      // render-order sequence (empty array / no-op in legacy mode).
-      const blockId = paragraphSequence[pOrdinal]?.blockId ?? null;
-      pOrdinal += 1;
+      // P2 Wave C (R1 fix #2): only a TOP-LEVEL <p> (not nested inside
+      // <li>/<blockquote>, per the Context flag) consumes the next
+      // report_anchors entry. This mirrors the backend's container_depth==0
+      // rule via the ACTUAL rendered tree — correct for tight AND loose
+      // lists (a nested <p> never advances topLevelIndex, so content AFTER
+      // a loose list stays aligned).
+      const insideContainer = useContext(ReportAnchorContainerContext);
+      let blockId: string | null = null;
+      if (!insideContainer) {
+        blockId = reportAnchors?.[topLevelIndex]?.block_id ?? null;
+        topLevelIndex += 1;
+      }
 
       const anchorMode = selectedBlockId !== undefined || activeBlockIds !== undefined;
       const highlightClass = anchorMode
@@ -293,11 +327,36 @@ function buildComponents(
       return <strong>{expandChildren(children)}</strong>;
     },
 
+    // P2 Wave C (R1 fix #2): sets ReportAnchorContainerContext=true for its
+    // descendants so any nested <p> (a LOOSE list renders one per item; a
+    // TIGHT list renders no <p> at all and never reaches this context) is
+    // correctly excluded from anchor-slot consumption.
     li({ children }: ParagraphProps) {
       const textContent = typeof children === "string" ? children :
         Array.isArray(children) ? (children as React.ReactNode[]).map((c) => (typeof c === "string" ? c : "")).join("") : "";
       const highlightClass = blockHighlightClass(textContent, activeClaimIds, highlightText);
-      return <li className={`rv-report-li${highlightClass ? ` ${highlightClass}` : ""}`}>{expandChildren(children)}</li>;
+      return (
+        <li className={`rv-report-li${highlightClass ? ` ${highlightClass}` : ""}`}>
+          <ReportAnchorContainerContext.Provider value={true}>
+            {expandChildren(children)}
+          </ReportAnchorContainerContext.Provider>
+        </li>
+      );
+    },
+
+    // P2 Wave C (R1 fix #2): blockquote content is never anchored by the
+    // backend (container_depth > 0) even though react-markdown renders a
+    // real nested <p> for it — set the same context flag so that nested <p>
+    // is excluded from anchor-slot consumption. No visual/behavior change
+    // vs. react-markdown's default blockquote rendering otherwise.
+    blockquote({ children }: ParagraphProps) {
+      return (
+        <blockquote>
+          <ReportAnchorContainerContext.Provider value={true}>
+            {children}
+          </ReportAnchorContainerContext.Provider>
+        </blockquote>
+      );
     },
 
     // D5: h2/h3 heading renderers emit id={slug} for anchor-link navigation.
@@ -360,7 +419,6 @@ export function ReportRenderer({
           activeIds,
           selectedClaimId,
           highlightText,
-          bodyMarkdown,
           reportAnchors,
           selectedBlockId,
           activeBlockIds,

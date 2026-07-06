@@ -1,40 +1,34 @@
 /**
  * reportAnchors.ts — pure utilities for consuming `report_anchors` (schema
- * 1.4, §16) in the audit UI: paragraph <-> DOM correlation, per-block/
+ * 1.4, §16) in the audit UI: a block_id position lookup, per-block/
  * per-section coverage aggregation, and anchor-driven highlight filter sets.
  *
  * D7/D9 discipline: the backend is the sole source of anchor DERIVATION
  * (which claims link where, relation inference, drift detection). This
- * module never re-derives that. It only:
- *   (a) positionally correlates ReportRenderer's rendered `<p>` elements back
- *       to the backend-provided `block_id`, using the SAME
- *       heading-slug/ordinal-tracking approach reportOutlineUtils.ts already
- *       uses to mirror the backend's section_id computation for DOM anchor
- *       ids — this is precedent already established in this codebase, not a
- *       new re-derivation of claim/relation semantics; and
- *   (b) aggregates the anchor data the backend already computed into
- *       UI-shaped coverage summaries.
+ * module never re-derives that — it only aggregates the anchor data the
+ * backend already computed into UI-shaped coverage summaries.
  *
- * KNOWN GAP (matches the backend's own documented v1.4 scope, see
- * export_service.py::derive_report_anchors docstring): only top-level
- * paragraphs are anchored. buildParagraphAnchorSequence() degrades
- * gracefully (returns `blockId: null`, never throws) for content it cannot
- * confidently position — a blockquoted paragraph still consumes a render
- * slot (react-markdown renders it as a nested `<p>`) but is never anchored;
- * a *tight* list item does not render as `<p>` at all (react-markdown
- * renders it inline inside `<li>`) so it is excluded from the sequence
- * entirely. Loose lists are an edge case this module does not attempt to
- * disambiguate from tight ones (the backend doesn't handle them either); a
- * mispositioned tail after a loose list is a bounded, self-correcting-at-
- * next-section-boundary degradation, not a crash.
+ * R1 FIX (bug #2, HIGH): paragraph<->block_id RENDER-ORDER correlation used
+ * to live here as `buildParagraphAnchorSequence()`, a markdown-text heuristic
+ * that guessed which paragraphs were "top-level" (not inside a list item or
+ * blockquote) by regex-matching list/blockquote MARKERS on raw source lines.
+ * That heuristic assumed every list item consumes ZERO render slots — true
+ * only for TIGHT lists. A LOOSE list (blank line between items — common in
+ * LLM-generated markdown) renders a real `<p>` PER ITEM, desyncing the flat
+ * paragraph counter for the rest of the document after the list. It has been
+ * REMOVED. The correlation now lives in ReportRenderer.tsx itself, using a
+ * React Context flag set by the `li`/`blockquote` custom renderers (ground
+ * truth: the ACTUAL rendered React tree, not a markdown-text guess) so a
+ * `<p>` rendered inside either container never consumes an anchor slot,
+ * regardless of tight vs. loose lists or nested blockquotes. This exactly
+ * mirrors the backend's `container_depth == 0` rule.
  *
  * Consumers: ReportRenderer.tsx, auditStateMachine.ts, ClaimAuditWorkbench.tsx.
  */
 
 import type { RFClaim, RFReportAnchorBlock } from "@/types/rf";
-import { slugify } from "@/components/ReportOverlay/reportOutlineUtils";
 
-// ── Paragraph <-> block_id positional correlation ────────────────────────────
+// ── Position lookup (used by callers that need a block by (section, ordinal)) ─
 
 function positionKey(sectionId: string | null, ordinal: number): string {
   return `${sectionId ?? ""}::${ordinal}`;
@@ -49,102 +43,6 @@ export function buildAnchorPositionMap(
     map.set(positionKey(block.section_id, block.paragraph_ordinal), block);
   }
   return map;
-}
-
-export interface ParagraphAnchorSlot {
-  blockId: string | null;
-}
-
-/**
- * Walks the raw report markdown and returns, IN THE SAME ORDER react-markdown
- * invokes the `p()` custom renderer, the resolved `block_id` (or null) for
- * each rendered paragraph. See module docstring for the documented gap on
- * blockquote/list nesting.
- */
-export function buildParagraphAnchorSequence(
-  markdown: string,
-  anchors: RFReportAnchorBlock[] | null | undefined,
-): ParagraphAnchorSlot[] {
-  // D9 legacy-mode short-circuit: no anchors to correlate, no work to do.
-  if (anchors == null) return [];
-
-  const positionMap = buildAnchorPositionMap(anchors);
-  const sequence: ParagraphAnchorSlot[] = [];
-
-  const lines = markdown.split(/\r?\n/);
-  let inFence = false;
-  let sectionId: string | null = null;
-  const sectionSlugCounts: Record<string, number> = {};
-  const ordinalBySection: Record<string, number> = {};
-
-  let i = 0;
-  while (i < lines.length) {
-    const rawLine = lines[i] ?? "";
-    const trimmed = rawLine.trim();
-
-    if (/^```/.test(trimmed)) {
-      inFence = !inFence;
-      i += 1;
-      continue;
-    }
-    if (inFence) { i += 1; continue; }
-    if (!trimmed) { i += 1; continue; }
-
-    const headingMatch = rawLine.match(/^(#{2,3})\s+(.+)$/);
-    if (headingMatch) {
-      const rawText = (headingMatch[2] ?? "")
-        .trim()
-        .replace(/\*\*(.+?)\*\*/g, "$1")
-        .replace(/\*(.+?)\*/g, "$1")
-        .replace(/`(.+?)`/g, "$1")
-        .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
-      const baseSlug = slugify(rawText);
-      if (baseSlug) {
-        const count = sectionSlugCounts[baseSlug] ?? 0;
-        sectionSlugCounts[baseSlug] = count + 1;
-        sectionId = count === 0 ? baseSlug : `${baseSlug}-${count + 1}`;
-      }
-      i += 1;
-      continue;
-    }
-
-    // Gather a block of consecutive non-blank, non-heading, non-fence lines.
-    const blockLines: string[] = [];
-    while (
-      i < lines.length &&
-      (lines[i] ?? "").trim() &&
-      !/^```/.test((lines[i] ?? "").trim()) &&
-      !/^(#{2,3})\s+/.test(lines[i] ?? "")
-    ) {
-      blockLines.push(lines[i] ?? "");
-      i += 1;
-    }
-    if (blockLines.length === 0) { i += 1; continue; }
-
-    const firstLine = (blockLines[0] ?? "").trimStart();
-    const isBlockquote = firstLine.startsWith(">");
-    const isListItem = /^(\s*)([-*+]|\d+[.)])\s+/.test(blockLines[0] ?? "");
-
-    if (isListItem) {
-      // Tight-list assumption: react-markdown renders this inline inside
-      // <li>, never as a standalone <p> — no sequence slot is consumed.
-      continue;
-    }
-
-    if (isBlockquote) {
-      // Renders as a nested <p> (consumes a slot) but is never anchored.
-      sequence.push({ blockId: null });
-      continue;
-    }
-
-    const sectionKey = sectionId ?? "";
-    const ordinal = ordinalBySection[sectionKey] ?? 0;
-    ordinalBySection[sectionKey] = ordinal + 1;
-    const block = positionMap.get(positionKey(sectionId, ordinal));
-    sequence.push({ blockId: block?.block_id ?? null });
-  }
-
-  return sequence;
 }
 
 // ── Coverage aggregation ──────────────────────────────────────────────────────

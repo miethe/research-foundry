@@ -969,6 +969,105 @@ describe("ReportRenderer — report_anchors consumption", () => {
   });
 });
 
+// ── (6c) ReportRenderer — R1 fix #2: loose-list / blockquote anchor correlation ──
+//
+// R1 review found that the ORIGINAL implementation (a markdown-text heuristic,
+// `buildParagraphAnchorSequence`) assumed every list-item paragraph consumes
+// ZERO render slots — true only for TIGHT lists. A LOOSE list (blank line
+// between items) makes react-markdown render a real <p> PER ITEM, desyncing
+// the flat paragraph counter for the REST OF THE DOCUMENT. The fix replaces
+// the heuristic with a React Context flag set by the `li`/`blockquote`
+// custom renderers (ground truth: the actual rendered tree) so a nested <p>
+// never consumes an anchor slot, regardless of tight vs. loose lists.
+
+describe("ReportRenderer — R1 fix #2: anchor correlation across containers", () => {
+  it("a LOOSE list does not desync the anchor sequence: list-item <p>s get no anchor, the following top-level paragraph gets the correct one", () => {
+    const looseListMd = "- item a\n\n- item b\n\nReal paragraph after the list.";
+    const anchors = [
+      { block_id: "realpara001", section_id: null, paragraph_ordinal: 0, text_hash: "h1", claim_links: [] },
+    ];
+    const { container } = render(
+      <ReportRenderer markdown={looseListMd} claims={[]} onClaimSelect={() => {}} reportAnchors={anchors} />,
+      { wrapper: makeWrapper() },
+    );
+
+    // A loose list renders <li><p>...</p></li> per item — prove this fixture
+    // actually exercises the loose-list code path (not a silently-tight one).
+    const listParagraphs = container.querySelectorAll("li p");
+    expect(listParagraphs.length).toBeGreaterThan(0);
+    listParagraphs.forEach((p) => {
+      expect(p.getAttribute("data-block-id")).toBeNull();
+      expect(p.getAttribute("id")).toBeNull();
+    });
+
+    // The single top-level (direct child of .rv-report-content) paragraph
+    // must get the ONLY anchor entry — not null, not misassigned.
+    const topLevelParagraphs = container.querySelectorAll(":scope > .rv-report-content > p, .rv-report-content > p");
+    expect(topLevelParagraphs).toHaveLength(1);
+    expect(topLevelParagraphs[0]!.getAttribute("data-block-id")).toBe("realpara001");
+    expect(topLevelParagraphs[0]!.id).toBe("realpara001");
+  });
+
+  it("a TIGHT list renders no <p> for its items (sanity: does not consume anchor slots either way)", () => {
+    const tightListMd = "- item a\n- item b\n\nReal paragraph after the list.";
+    const anchors = [
+      { block_id: "realpara003", section_id: null, paragraph_ordinal: 0, text_hash: "h3", claim_links: [] },
+    ];
+    const { container } = render(
+      <ReportRenderer markdown={tightListMd} claims={[]} onClaimSelect={() => {}} reportAnchors={anchors} />,
+      { wrapper: makeWrapper() },
+    );
+
+    // Tight list items render inline inside <li>, no nested <p> at all.
+    expect(container.querySelectorAll("li p")).toHaveLength(0);
+
+    const topLevelParagraphs = container.querySelectorAll(".rv-report-content > p");
+    expect(topLevelParagraphs).toHaveLength(1);
+    expect(topLevelParagraphs[0]!.getAttribute("data-block-id")).toBe("realpara003");
+  });
+
+  it("a blockquoted paragraph consumes no anchor (backend never anchors container_depth>0 content)", () => {
+    const blockquoteMd = "> A quoted paragraph.\n\nReal paragraph.";
+    const anchors = [
+      { block_id: "realpara002", section_id: null, paragraph_ordinal: 0, text_hash: "h2", claim_links: [] },
+    ];
+    const { container } = render(
+      <ReportRenderer markdown={blockquoteMd} claims={[]} onClaimSelect={() => {}} reportAnchors={anchors} />,
+      { wrapper: makeWrapper() },
+    );
+
+    const quotedParagraph = container.querySelector("blockquote p");
+    expect(quotedParagraph).not.toBeNull();
+    expect(quotedParagraph!.getAttribute("data-block-id")).toBeNull();
+
+    const topLevelParagraphs = container.querySelectorAll(".rv-report-content > p");
+    expect(topLevelParagraphs).toHaveLength(1);
+    expect(topLevelParagraphs[0]!.getAttribute("data-block-id")).toBe("realpara002");
+  });
+
+  it("alignment holds for content AFTER a loose list: two top-level paragraphs correctly map to anchors[0] and anchors[1]", () => {
+    const md = "First paragraph.\n\n- item a\n\n- item b\n\nSecond paragraph.";
+    const anchors = [
+      { block_id: "first0001aa", section_id: null, paragraph_ordinal: 0, text_hash: "h1", claim_links: [] },
+      { block_id: "second002bb", section_id: null, paragraph_ordinal: 1, text_hash: "h2", claim_links: [] },
+    ];
+    const { container } = render(
+      <ReportRenderer markdown={md} claims={[]} onClaimSelect={() => {}} reportAnchors={anchors} />,
+      { wrapper: makeWrapper() },
+    );
+
+    const topLevelParagraphs = container.querySelectorAll(".rv-report-content > p");
+    expect(topLevelParagraphs).toHaveLength(2);
+    expect(topLevelParagraphs[0]!.getAttribute("data-block-id")).toBe("first0001aa");
+    expect(topLevelParagraphs[1]!.getAttribute("data-block-id")).toBe("second002bb");
+
+    // Neither list-item paragraph may have consumed one of the two anchor slots.
+    const listParagraphs = container.querySelectorAll("li p");
+    expect(listParagraphs.length).toBeGreaterThan(0);
+    listParagraphs.forEach((p) => expect(p.getAttribute("data-block-id")).toBeNull());
+  });
+});
+
 // ── ClaimChip direct tests ────────────────────────────────────────────────────
 
 describe("ClaimChip", () => {

@@ -1,13 +1,20 @@
 /**
  * reportAnchors.test.ts — P2 Wave C unit tests for report_anchors consumption
- * utilities: paragraph<->block_id positional correlation, per-block/
- * per-section coverage aggregation, and anchor filter matching.
+ * utilities: block_id position lookup, per-block/per-section coverage
+ * aggregation, and anchor filter matching.
+ *
+ * R1 fix (bug #2): the paragraph<->block_id RENDER-ORDER correlation
+ * (formerly `buildParagraphAnchorSequence`, a buggy markdown-text heuristic)
+ * has been removed from this module — that correlation now lives in
+ * ReportRenderer.tsx via a React Context flag set by the `li`/`blockquote`
+ * custom renderers (ground truth: the actual rendered tree). See
+ * p4-components.test.tsx for the render-order regression tests (loose list,
+ * blockquote, and post-list realignment).
  */
 
 import { describe, it, expect } from "vitest";
 import {
   buildAnchorPositionMap,
-  buildParagraphAnchorSequence,
   computeAnchorFilterMatches,
   computeBlockCoverage,
   computeOverallCoverage,
@@ -35,106 +42,6 @@ function makeBlock(overrides: Partial<RFReportAnchorBlock> & { block_id: string 
     ...overrides,
   };
 }
-
-// ── buildParagraphAnchorSequence ─────────────────────────────────────────────
-
-describe("buildParagraphAnchorSequence", () => {
-  it("returns [] when anchors is null/undefined (D9 legacy mode short-circuit)", () => {
-    const md = "# Title\n\nFirst paragraph.\n\nSecond paragraph.";
-    expect(buildParagraphAnchorSequence(md, null)).toEqual([]);
-    expect(buildParagraphAnchorSequence(md, undefined)).toEqual([]);
-  });
-
-  it("resolves flat headings+paragraphs in document order", () => {
-    const anchors: RFReportAnchorBlock[] = [
-      makeBlock({ block_id: "b0", section_id: null, paragraph_ordinal: 0 }),
-      makeBlock({ block_id: "b1", section_id: "findings", paragraph_ordinal: 0 }),
-      makeBlock({ block_id: "b2", section_id: "findings", paragraph_ordinal: 1 }),
-    ];
-    const md = [
-      "Intro paragraph before any heading.",
-      "",
-      "## Findings",
-      "",
-      "First finding paragraph.",
-      "",
-      "Second finding paragraph.",
-    ].join("\n");
-
-    const sequence = buildParagraphAnchorSequence(md, anchors);
-    expect(sequence.map((s) => s.blockId)).toEqual(["b0", "b1", "b2"]);
-  });
-
-  it("resets paragraph_ordinal per section and matches duplicated heading slugs", () => {
-    const anchors: RFReportAnchorBlock[] = [
-      makeBlock({ block_id: "b0", section_id: "overview", paragraph_ordinal: 0 }),
-      makeBlock({ block_id: "b1", section_id: "overview-2", paragraph_ordinal: 0 }),
-    ];
-    const md = [
-      "## Overview",
-      "",
-      "First overview paragraph.",
-      "",
-      "## Overview",
-      "",
-      "Second overview (duplicate heading) paragraph.",
-    ].join("\n");
-
-    const sequence = buildParagraphAnchorSequence(md, anchors);
-    expect(sequence.map((s) => s.blockId)).toEqual(["b0", "b1"]);
-  });
-
-  it("excludes tight list items from the sequence entirely (no <p> rendered for them)", () => {
-    const anchors: RFReportAnchorBlock[] = [
-      makeBlock({ block_id: "b0", section_id: null, paragraph_ordinal: 0 }),
-      makeBlock({ block_id: "b1", section_id: null, paragraph_ordinal: 1 }),
-    ];
-    const md = [
-      "First paragraph.",
-      "",
-      "- item one",
-      "- item two",
-      "",
-      "Second paragraph.",
-    ].join("\n");
-
-    const sequence = buildParagraphAnchorSequence(md, anchors);
-    // List items consume no slot; ordinal continues 0, 1 for the two real paragraphs.
-    expect(sequence.map((s) => s.blockId)).toEqual(["b0", "b1"]);
-  });
-
-  it("blockquote paragraphs consume a render slot but resolve to null (documented gap)", () => {
-    const anchors: RFReportAnchorBlock[] = [
-      makeBlock({ block_id: "b0", section_id: null, paragraph_ordinal: 0 }),
-    ];
-    const md = [
-      "> A quoted paragraph.",
-      "",
-      "First real paragraph.",
-    ].join("\n");
-
-    const sequence = buildParagraphAnchorSequence(md, anchors);
-    expect(sequence).toHaveLength(2);
-    expect(sequence[0]!.blockId).toBeNull();
-    expect(sequence[1]!.blockId).toBe("b0");
-  });
-
-  it("skips fenced code blocks entirely", () => {
-    const anchors: RFReportAnchorBlock[] = [
-      makeBlock({ block_id: "b0", section_id: null, paragraph_ordinal: 0 }),
-    ];
-    const md = [
-      "```js",
-      "const x = 1; // not a paragraph",
-      "```",
-      "",
-      "Real paragraph.",
-    ].join("\n");
-
-    const sequence = buildParagraphAnchorSequence(md, anchors);
-    expect(sequence.map((s) => s.blockId)).toEqual(["b0"]);
-  });
-});
 
 describe("buildAnchorPositionMap", () => {
   it("keys by (section_id, paragraph_ordinal)", () => {
