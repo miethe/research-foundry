@@ -1,17 +1,20 @@
 ---
-title: "Public Multi-User Release — P2+P3 Execution Handoff (Opus 4.8)"
+title: "Public Multi-User Release \u2014 P2+P3 Execution Handoff (Opus 4.8)"
 doc_type: implementation_plan
-status: ready-for-execution
+status: completed
 created: 2026-07-04
 feature_slug: public-multiuser-release
 feature_version: v1
-phases_covered: [2, 3]
+phases_covered:
+- 2
+- 3
 source_spec: docs/project_plans/design-specs/public-multiuser-release-handoff-v1.md
 prior_plan: docs/project_plans/implementation_plans/public-multiuser-p0p1-plan.md
 branch: feat/public-multiuser-p2 (then feat/public-multiuser-p3)
 owner: nick
 orchestrator: opus-4-8
 prepared_by: fable-5
+updated: '2026-07-05'
 ---
 
 # P2+P3 Execution Handoff — Opus 4.8
