@@ -107,7 +107,7 @@ serve this spike's own LAN/air-gapped target.
 
 | # | Finding | Confidence |
 |---|---------|-----------|
-| G1 | **Ambient-env cross-profile bleed.** Adapters are in-process imports (`base.py` gates on `importlib.util.find_spec`; no `subprocess`/`Popen` anywhere); `litellm_router.py` reads keys from `dict(os.environ)`. Any in-process adapter can read any key in `os.environ` regardless of declared `key_profile`. `governance.py::no_work_keys_for_personal_runs` checks the *declared profile name*, not key material — it cannot catch this. | 0.8 |
+| G1 | **Ambient-env cross-profile bleed.** Most adapters are in-process imports (`base.py` gates on `importlib.util.find_spec`); `litellm_router.py` reads keys from `dict(os.environ)`. **One existing adapter is already a subprocess exception**: `notebooklm.py` shells out via `subprocess.run(["notebooklm", ...])` with no `env=` filter, so the child inherits the *full* ambient environment — an unscoped subprocess is not safer than an in-process import here, it is a strictly larger exposure surface. `governance.py::no_work_keys_for_personal_runs` checks the *declared profile name*, not key material — it cannot catch either case. | 0.8 |
 | G2 | **Artifact / event-stream leakage.** `AdapterResult.artifacts`/notes serialize via `dumps_yaml`/`append_jsonl` into the run trace, which the runs-viewer statically exports to the browser. No write-time redaction guard exists — only `scan_secrets`/`scan_paths` invoked as a post-hoc *scan*. | 0.75 |
 | G3 | **Prompt-injection exfiltration.** `openai_agents` is spec'd as server-owned orchestration with tools + a live tool-execution loop — a genuinely new risk class vs today's static adapters (`gpt_researcher`, `paperqa2`, …), which the credential-isolation charter itself rates low-risk. | 0.7 |
 | G4 | **P4 is greenfield.** No `openai_agents.py` adapter exists yet → isolation can be designed in, not retrofitted. | HIGH |
@@ -120,9 +120,14 @@ serve this spike's own LAN/air-gapped target.
 / `claude_agent_sdk`), spawned at job launch with a per-job resolved credential set delivered via a
 **temp file** (`0600`, job-scoped path, unlinked immediately after the child reads it) — **not** an
 env var, since env inheritance into any tool-spawned grandchild reintroduces the leak. **Existing
-static adapters** (`gpt_researcher`, `paperqa2`, `litellm_router`, `opencode`, `arc_council`,
-`notebooklm`) **stay in-process** per the charter's no-go rationale — this ADR does not reopen the
-RF-wide isolation question.
+static adapters** (`gpt_researcher`, `paperqa2`, `litellm_router`, `opencode`, `arc_council`) **stay
+in-process** per the charter's no-go rationale — this ADR does not reopen the RF-wide isolation
+question. **`notebooklm` is the one pre-existing exception**: it already shells out via
+`subprocess.run` with no per-job credential scoping (full ambient-env inheritance, see G1). This
+ADR does **not** claim the current adapter class carries zero subprocess risk, and it does **not**
+re-architect `notebooklm`'s existing subprocess in P4 — that credential handling is acknowledged as
+a residual gap and carried forward as a reviewed/hardened follow-up (FU-5), not folded into this
+ADR's new agent-job isolation boundary.
 
 **Credential firewall.** Reuse `governance.py`'s `scan_secrets`/`_redact` as a **write-time guard**
 on artifacts + event payloads (not just post-hoc scan). Key **fingerprint = salted HMAC** (server
@@ -154,7 +159,7 @@ fallback if a spawn-latency prototype shows prohibitive cost.
 | Seam | Verdict | Feeds | Load-bearing decision |
 |------|---------|-------|----------------------|
 | SEAM-1 auth | **Conditional GO** | P5 plan | Auth-provider *port* is the deliverable; `local_static` default; Clerk opt-in; `oidc`/BYO seam defined |
-| SEAM-2 creds | **GO** | P4 plan | Subprocess-per-agent-job + temp-file creds; static adapters stay in-process; write-time firewall + HMAC fingerprint + HITL exit-7 gate |
+| SEAM-2 creds | **GO** | P4 plan | Subprocess-per-agent-job + temp-file creds; static adapters stay in-process (notebooklm's pre-existing subprocess is a noted exception, FU-5); write-time firewall + HMAC fingerprint + HITL exit-7 gate |
 
 ### Mode-D human sign-off gates (must fire during execution — encode in both decisions-blocks)
 
@@ -173,3 +178,13 @@ adapter is enabled.
 - **FU-2** Concrete `oidc`/BYO adapter implementation may defer past P5 v1 if no on-prem-IdP consumer exists at ship (the *seam* still lands in P5).
 - **FU-3** Clerk paid-plan procurement is an operator action, not an engineering task — Clerk adapter ships behind a config flag, dark by default.
 - **FU-4** Deferred sensitivity items P5 must also close: [[runs-api-no-sensitivity-existence-gate]]; the P3 blank-origin-draft body-sensitivity residual (needs a global source index); draft→run/claim reverse catalog links.
+- **FU-5** `notebooklm.py`'s pre-existing `subprocess.run` call inherits the full ambient environment (no `env=` scoping) — a residual credential-exposure gap this SPIKE did not re-architect (ADR-002 scopes new isolation to the P4 SDK adapters only). Review/harden its credential handling (e.g. explicit `env=` allowlist) as a follow-up, not a P4 blocker.
+
+### Hard release/exposure gate (P4 → P5)
+
+`agents.enabled` may be `true` pre-P5 **only** in loopback / single-operator mode. Enabling `/agents`
+on shared LAN or public exposure requires **P5.2** (server-side RBAC) **and** **P5.3** (workspace
+isolation) both green — default is `agents.enabled=false`. `openai_agents` (P4.6) is the higher-risk
+case (SPIKE G3 — live tool-use loop) and must stay loopback-only until that gate clears; this is a
+hard constraint, not a recommendation, given P4 ships under the loopback/single-operator assumption
+with nullable, unenforced `workspace_id`/`created_by` (D7/D12).

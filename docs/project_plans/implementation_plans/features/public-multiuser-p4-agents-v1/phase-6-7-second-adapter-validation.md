@@ -32,6 +32,14 @@ exit_criteria:
 **Assigned Subagent(s)**: python-backend-engineer (primary), backend-architect (secondary)
 **Agent Routing**: MUST-stay — second provider adapter, reuses P4.2's isolation boundary unchanged; no new credential-handling code, so risk is lower than P4.3, but still no ICA/Codex offload for implementation per the decisions block's blanket MUST-stay on provider adapters.
 
+**Release constraint (hard gate, not a recommendation)**: `agents.enabled` for this provider must
+remain loopback / single-operator only pre-P5 — do not enable `openai_agents` on shared LAN or
+public exposure until **P5.2** (server-side RBAC) **and** **P5.3** (workspace isolation) are both
+green. `openai_agents` runs a live tool-use loop (SPIKE finding G3 — prompt-injection exfiltration
+risk), making it the higher-risk case referenced in the parent plan's "Release / Exposure Constraint
+(Hard Gate)" section; this constraint applies independently of and in addition to that phase's own
+quality gates below.
+
 ### Overview
 
 `openai_agents.py` is greenfield (SPIKE finding G4 — no adapter file exists yet). Implements the same `ResearchAgentProvider` Protocol via the OpenAI Agents SDK, running inside the *same* subprocess/temp-file/redaction-firewall boundary built in P4.2 — this phase adds no new isolation code, only a second Protocol implementation and its SDK-native guardrail wiring.
@@ -48,6 +56,7 @@ exit_criteria:
 - [ ] Parity job runs on `openai_agents` through the unchanged isolation boundary.
 - [ ] Provider-parametrized test suite green for both providers.
 - [ ] No isolation-layer (P4.2) files modified by this phase — confirmed via diff review.
+- [ ] Confirmed `agents.enabled` (and any provider-level enable flag) stays loopback/single-operator only for `openai_agents` — no shared-LAN/public flip until P5.2 (RBAC) + P5.3 (workspace isolation) are both green (hard exposure gate, parent plan).
 - [ ] `task-completion-validator` review passed.
 
 ---

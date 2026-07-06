@@ -67,6 +67,9 @@ files_affected:
   - frontend/runs-viewer/e2e/p5-auth-rbac.spec.ts
   - src/research_foundry/cli.py
   - src/research_foundry/cli_commands.py
+  - src/research_foundry/services/source_cards.py
+  - src/research_foundry/services/writeback.py
+  - tests/unit/test_cli_mutation_surface.py
 open_questions:
   - "Where do user/workspace/membership/role/audit tables live — a new durable SQLite store (e.g. `<workspace>/.rf_state/rbac.db`) vs extending `catalog.db`? Recommendation: new durable store; `catalog.db` is disposable (drop+rebuild on `user_version` mismatch per P2/P3 D10/landmine #3) and would destroy auth state on cache rebuild."
   - "Sequencing vs Phase 4: AC-3 ('agent credentials never reach browser payloads') composes with P4's ADR-002 credential firewall. Does P5 block on P4 landing first, or can AC-3 be validated against a stub/contract test if P4 ships later?"
@@ -83,12 +86,12 @@ decisions:
   - decision: "P4's agent-job credential isolation (ADR-002: subprocess + temp-file credentials) is P4-owned; P5 only composes with it via regression tests, not by re-implementing it."
     rationale: "SPIKE explicitly scopes ADR-002 to P4 agent jobs only; P5's job-permission regression suite must exercise the boundary without duplicating the isolation mechanism."
     status: accepted
-  - decision: "D12's nullable `workspace_id`/`created_by` columns (catalog_service.py, builder_service.py) become enforced via a real data migration in this phase, not a fresh schema."
-    rationale: "P2/P3 explicitly deferred enforcement (D12: 'cheap forward-compat, unenforced'); the columns already exist, so P5's job is migration + enforcement, not schema design."
+  - decision: "D12's nullable `workspace_id`/`created_by` fields become enforced via a real data migration in this phase; the schema state is mixed, not uniform — some surfaces need only enforcement, `catalog_items` needs the column added first."
+    rationale: "P2/P3's D12 forward-compat only reached `builder_service.py`'s durable draft persistence and `catalog_service.py`'s derived `catalog_report_drafts` index; `catalog_service.py`'s `catalog_items` table (the run-derived rows) never received the columns at all. P5's job is therefore a schema addition for `catalog_items` plus migration + enforcement everywhere the fields already exist — not a fresh schema design, but not schema-free either."
     status: accepted
 success_metrics:
   - "2 auth providers shipped (local_static, clerk) + 1 documented BYO seam (oidc), selectable via foundry.yaml with zero call-site branching on provider identity"
-  - "100% of catalog/report mutation routes enforce server-side RBAC (0 UI-only gates)"
+  - "100% of HTTP-routed catalog/report mutation routes enforce server-side RBAC (0 UI-only gates); CLI/service-direct mutation surface classified admin-only/single-operator-trust and covered by a dedicated static contract test (FR-6a)"
   - "0 of 4 run-detail-family endpoints (`/runs/{id}`, `/claims`, `/sources/{id}`, `/reports/{id}/anchors`) lack the no-existence-leak gate (currently 3 of 4 lack it)"
   - "100% of governed mutation types produce an audit_event row (catalog mutation, report edit, agent-job launch, artifact acceptance, publish preview, writeback)"
   - "0 sensitivity regressions in the fail-closed regression suite (report text, catalog visibility, job permissions, writeback approvals) across static + live modes"
@@ -174,10 +177,14 @@ granular report-audit anchors (`report_anchors`, D8), and a file-canonical repor
 (`builder_service.py`) — all reachable over `TokenAuthMiddleware`
 (`src/research_foundry/api/middleware/auth.py`): a single shared bearer token gated by
 `auth_mode: none|token` in `foundry.yaml`. There is no user identity, no roles, and no enforced
-workspace scoping. `workspace_id`/`created_by` columns exist in `catalog_service.py` (schema DDL,
-`catalog.py:184-185`) and `builder_service.py` (draft metadata) but are **nullable and unenforced**
-by explicit P2/P3 decision (D12: "cheap forward-compat"). Every current API caller is implicitly
-the single trusted operator.
+workspace scoping. `workspace_id`/`created_by` fields exist on **some** surfaces — the durable,
+canonical `draft.yaml` persisted by `builder_service.py` and `catalog_service.py`'s *derived*
+`catalog_report_drafts` index table (schema DDL, `catalog_service.py:184-185`) — but are **nullable
+and unenforced** by explicit P2/P3 decision (D12: "cheap forward-compat"). Critically,
+`catalog_service.py`'s `catalog_items` table (the run-derived catalog rows, DDL at
+`catalog_service.py:122-141`) has **no** `workspace_id`/`created_by` column at all today — D12's
+forward-compat treatment never reached it. Every current API caller is implicitly the single
+trusted operator.
 
 ### Problem Space
 
@@ -204,8 +211,14 @@ workspace-scoped record from leaking to a second user once multi-user access exi
 - `builder_service.py` (`create_draft`, `update_draft`) already threads `workspace_id`/`created_by`
   parameters end-to-end (lines 340-380, 862-957) but nothing in the router or service layer checks
   them against a request identity — any caller may read/write any draft.
-- `catalog_service.py` persists `workspace_id`/`created_by` per-row (schema DDL + `_ALLOWED_FIELDS`
-  at line 1507-1508) with the same unenforced status.
+- `catalog_service.py`'s `catalog_report_drafts` table (a *derived, rebuildable* index of the
+  durable `draft.yaml` files, not `catalog_items`) persists `workspace_id`/`created_by` per-row
+  (schema DDL at `catalog_service.py:184-185`; indexed via `_DRAFT_INDEX_COLUMNS` at
+  `catalog_service.py:1498-1516`) with the same unenforced status. `catalog_service.py`'s
+  `catalog_items` table has **no such column** and needs a schema addition (`SCHEMA_VERSION` bump +
+  `rebuild()`) before it can carry `workspace_id` at all — see the P5.3 phase file's "Critical Schema
+  Findings" for the full breakdown of which surface is durable-canonical (`draft.yaml`), which is a
+  disposable derived cache (`catalog_report_drafts`, `catalog_items`), and which needs a net-new column.
 
 ### Architectural Context
 
@@ -232,8 +245,9 @@ workspace-scoped record from leaking to a second user once multi-user access exi
 
 **Technical Root Cause:**
 - No identity model exists above a shared bearer token (`TokenAuthMiddleware`).
-- `workspace_id`/`created_by` columns exist but are never read as an authorization boundary
-  (`catalog_service.py`, `builder_service.py`).
+- `workspace_id`/`created_by` fields exist on `builder_service.py`'s durable draft records and
+  `catalog_service.py`'s derived `catalog_report_drafts` index but are never read as an
+  authorization boundary; `catalog_service.py`'s `catalog_items` table lacks the column entirely.
 - No audit-event table or service exists anywhere in the codebase.
 - The no-existence-leak convention is applied inconsistently across sibling endpoints
   (`api/routers/runs.py`).
@@ -255,9 +269,15 @@ workspace-scoped record from leaking to a second user once multi-user access exi
   provider identity.
 
 **Goal 2: Enforce 5-role RBAC server-side**
-- Roles: owner, admin, researcher, reviewer, viewer. Every mutation route depends on a role check.
-- Success: 100% of catalog/report mutation routes reject an under-privileged `AuthIdentity` with a
-  consistent 403/404 contract (never a silent UI-only block).
+- Roles: owner, admin, researcher, reviewer, viewer. Every HTTP mutation route depends on a role
+  check. The CLI/service-direct mutation surface (`rf ingest`, `rf source-card create`,
+  `rf catalog rebuild`, `rf writeback`, `rf workspace migrate/enforce/rollback`) bypasses the HTTP
+  request context `require_role(...)` reads from entirely — it is a distinct trust boundary, not an
+  ungated instance of the same one, and is classified rather than gated (see FR-6a).
+- Success: 100% of **HTTP-routed** catalog/report mutation routes reject an under-privileged
+  `AuthIdentity` with a consistent 403/404 contract (never a silent UI-only block). The CLI/service
+  mutation surface is separately classified admin-only/single-operator-trust, verified by a
+  dedicated static contract test enumerating every such entry point (FR-6a).
 
 **Goal 3: Enforce workspace isolation via real data migration**
 - Backfill `workspace_id`/`created_by` on existing catalog/draft records; every read/write repository
@@ -270,6 +290,12 @@ workspace-scoped record from leaking to a second user once multi-user access exi
 - New `audit_event` record for every catalog mutation, report edit, agent-job launch, accepted
   artifact, publish preview, and writeback — who/what/source/policy-snapshot.
 - Success: 100% of the six governed mutation types produce a queryable audit row.
+- Individual audit writes remain **fail-open** by design (never block or corrupt the mutation
+  they record), but a persistently-degraded audit store must never be silent: a durable
+  degraded-health state, a startup/on-demand write probe, and an admin-visible warning make the
+  degradation observable, and a dedicated public-exposure gate **requires the audit store to be
+  writable before shared/public exposure is allowed** (mutations themselves are never gated on
+  audit health — only the exposure decision is).
 
 **Goal 5: Close the 3 FU-4 deferred sensitivity gaps**
 - Existence-gate parity across the run-detail endpoint family; a global source index closing the
@@ -281,7 +307,7 @@ workspace-scoped record from leaking to a second user once multi-user access exi
 | Metric | Baseline | Target | Measurement Method |
 |--------|----------|--------|-------------------|
 | Auth providers shipped | 0 (bearer-token only) | 2 (`local_static`, `clerk`) + 1 documented seam (`oidc`) | Provider registry unit test matrix |
-| RBAC-enforced mutation routes | 0% | 100% of catalog/report(/agent-job) mutation routes | Route-level RBAC sweep test |
+| RBAC-enforced mutation routes | 0% | 100% of **HTTP-routed** catalog/report(/agent-job) mutation routes; CLI/service-direct mutation surface separately classified (not counted in this %) | Route-level RBAC sweep test + CLI/service mutation-surface contract test (FR-6a) |
 | Run-detail endpoints with existence-gate parity | 1 of 4 (`anchors` only) | 4 of 4 | Existence-gate parity regression suite |
 | Governed mutation types producing an audit row | 0 | 6 of 6 (catalog mutation, report edit, agent launch, artifact acceptance, publish preview, writeback) | Audit-log completeness test |
 | Cross-workspace leakage in regression suite | untested (isolation unenforced) | 0 leaks across catalog/report/(agent-job) reads and writes | Cross-workspace isolation regression suite |
@@ -347,9 +373,11 @@ graph TD
 | FR-3 | Ship `clerk` adapter (OPT-IN): pure-Python JWKS verification (PyJWT + `cryptography`), no Node SDK, no self-host. Map Clerk Organizations roles 1:1 to RF's 5 roles. | Should | Custom roles require a paid Clerk plan in production (FU-3, operator action, not blocking). Dark by default (config flag). |
 | FR-4 | Define the `oidc`/BYO adapter seam (Protocol conformance point) in `api/auth/adapters/`; concrete implementation MAY defer past v1 if no on-prem-IdP consumer exists at ship. | Should | FU-2. The seam must land even if the impl doesn't. |
 | FR-5 | Wire provider selection via `foundry.yaml: auth.provider` (`none\|local_static\|clerk\|oidc`); `create_app` resolves middleware/dependency from the registry. Preserve invariants: `auth_mode="none"` adds no middleware (true no-op); 401s stay generic; route/RBAC code never branches on provider identity. | Must | `api/app.py`, `config.py`. |
-| FR-6 | Define 5 roles (owner, admin, researcher, reviewer, viewer) with an explicit capability matrix; add a `require_role(...)` FastAPI dependency enforced on every mutation route across catalog, reports/builder (and P4 agent-job routes when they land). | Must | Server-side only — UI hiding is not a substitute (Mode-D gate 6). |
-| FR-7 | Enforce workspace isolation: migrate existing catalog/draft records to backfill `workspace_id`/`created_by` (D12 follow-through); every repository read/write is scoped to `AuthIdentity.workspace_id` unless role is owner/admin with explicit cross-workspace intent. | Must | Real data migration — Mode-D gate 5. Touches `catalog_service.py`, `builder_service.py`. |
+| FR-6 | Define 5 roles (owner, admin, researcher, reviewer, viewer) with an explicit capability matrix; add a `require_role(...)` FastAPI dependency enforced on every **HTTP** mutation route across catalog, reports/builder (and P4 agent-job routes when they land). | Must | Server-side only — UI hiding is not a substitute (Mode-D gate 6). Scope is the HTTP request surface — see FR-6a for the CLI/service-direct mutation surface, which `require_role(...)` cannot gate (no request-scoped identity). |
+| FR-6a | Enumerate every CLI/service-layer mutation entry point that bypasses the HTTP RBAC layer entirely — `rf ingest`/`source_cards.py::ingest_source`, `rf source-card create`/`create_source_card`, `rf catalog rebuild`/`catalog_service.import_all`, `rf writeback`/`writeback.py::writeback`, and (forward-looking, P5.3) `rf workspace migrate\|enforce\|rollback` — and classify this surface as admin-only/single-operator-trust (the local-first threat model: CLI execution already implies filesystem-level access equivalent to admin). Add a static contract test enumerating these entry points and asserting no HTTP-routed bypass exists into any of them outside the gated routers. | Must | Sharpens the otherwise-implicit "no direct-write code path exists" claim into a concrete, enumerated, tested contract rather than an assumption. See P5.2 phase file task RBAC-006. |
+| FR-7 | Enforce workspace isolation: add the missing `workspace_id` column to `catalog_service.py`'s `catalog_items` table (schema version bump + rebuild) and migrate existing catalog/draft records to backfill `workspace_id`/`created_by` (D12 follow-through where the fields already exist); every repository read/write is scoped to `AuthIdentity.workspace_id` unless role is owner/admin with explicit cross-workspace intent. | Must | Real data migration — Mode-D gate 5. Touches `catalog_service.py` (schema add + backfill), `builder_service.py` (backfill of already-present fields). |
 | FR-8 | Add an `audit_event` record + `audit_service.py`: capture catalog mutations, report edits, agent-job launches, accepted artifacts, publish previews, and writebacks — `who`, `what`, `source_ref`, `policy_snapshot`, `timestamp`. Expose via API + CLI (`rf audit list\|show`). | Must | New durable store (see OQ-1/Decision row) — never the disposable `catalog.db`. |
+| FR-8a | Add an audit-store health probe + durable degraded-health state + admin warning (`rf audit health`, `GET /api/audit/health`), and a public-exposure gate (`is_healthy_for_exposure()`) that blocks shared/public exposure while the audit store is unwritable. Individual mutation writes stay fail-open per FR-8 — only the exposure decision is gated. | Must | A silently-broken audit store defeats FR-8's "100% of governed mutation types produce a row" guarantee without ever surfacing that fact. See P5.5 phase file task AUDIT-004. |
 | FR-9 | Add per-identity + per-route rate limiting (config-driven budget in `foundry.yaml`); return 429 with `Retry-After` on exceed. | Should | See OQ-4 for granularity default. |
 | FR-10 | Add admin settings surface: workspace/member/role management, auth-provider status, rate-limit config — backend API + minimal admin UI panel. | Must | `/settings` route already exists in the shell; extend, don't fork a new top-level route. |
 | FR-11 | Extend public sharing + publish-preview gates: reuse/extend P3's D13 fail-closed checks (`reports.py::publish_preview`) to a dedicated sharing flow; sensitivity fail-closed is enforced independent of role (an owner cannot bypass a sensitivity failure by role alone). | Must | Composes with existing `verify_draft`/D13. |
@@ -450,9 +478,11 @@ graph TD
 
 ### Internal Dependencies
 
-- **P2/P3 catalog + builder services** (`catalog_service.py`, `builder_service.py`): already carry
-  the `workspace_id`/`created_by` columns this phase enforces (D12) — status: merged (`8b9d8be`,
-  `cb6af8b`).
+- **P2/P3 catalog + builder services** (`catalog_service.py`, `builder_service.py`): mixed schema
+  state — `builder_service.py`'s durable draft records and `catalog_service.py`'s derived
+  `catalog_report_drafts` table already carry the `workspace_id`/`created_by` fields this phase
+  enforces (D12); `catalog_service.py`'s `catalog_items` table does not and needs the column added
+  (schema version bump + rebuild) before enforcement — status: merged (`8b9d8be`, `cb6af8b`).
 - **P4 Embedded Agent Research** (`public-multiuser-p4-agents-v1`, planned): P5's job-permission
   regression suite composes with P4's ADR-002 credential firewall. See OQ-2 for sequencing.
 - **Export/verification services** (`export_service.py`, `verification.py`): existing fail-closed
@@ -539,11 +569,18 @@ graph TD
     - src/research_foundry/api/routers/catalog.py
     - src/research_foundry/api/routers/reports.py
     - src/research_foundry/api/auth/provider.py
+    - src/research_foundry/cli_commands.py
 - propagation_contract: >
     Every repository read/write call receives `AuthIdentity.workspace_id` from the request-scoped
     dependency and applies it as a `WHERE workspace_id = :identity_workspace_id` predicate (or an
     explicit owner/admin cross-workspace override), consistently across catalog and
-    report/builder services.
+    report/builder services. CLI-invoked mutations (`rf catalog rebuild`, `rf ingest`,
+    `rf workspace migrate\|enforce\|rollback`) reuse the same workspace-scoped repository
+    functions — there is no separate CLI-only write path that bypasses the `WHERE workspace_id`
+    predicate; a CLI caller without a resolved `AuthIdentity` operates against an explicit
+    `--workspace` argument or the single default workspace, never an unscoped write. (This is
+    distinct from RBAC role-gating, which the CLI surface is separately classified against — see
+    FR-6a.)
 - resilience: >
     A record whose `workspace_id` does not match the caller's identity is treated identically to a
     non-existent record (404), never a 403 that would leak existence — matching the existing
@@ -593,10 +630,16 @@ graph TD
     - frontend/runs-viewer/e2e/p5-auth-rbac.spec.ts
     - frontend/runs-viewer/e2e/w1-claim-audit.spec.ts
     - frontend/runs-viewer/e2e/w3-report-chip-navigation.spec.ts
+    - tests/unit/test_cli_mutation_surface.py
+    - src/research_foundry/services/audit_service.py
 - propagation_contract: >
     New `p5-auth-rbac.spec.ts` covers login (per provider), role-bounded catalog/builder actions,
     and a sharing scenario, in both static-export and live-API modes; existing `w1`/`w3` specs are
-    extended (not rewritten) to exercise an authenticated context.
+    extended (not rewritten) to exercise an authenticated context. Coverage is not limited to the
+    browser: the CLI/service-direct mutation surface is covered by FR-6a's static contract test
+    (`tests/unit/test_cli_mutation_surface.py`, not a Playwright spec — the CLI has no
+    browser), and each exercised workflow's audit-event emission (`audit_service.py`) is asserted
+    as part of the regression suite (P5.9 TEST-001), not only the E2E flow.
 - resilience: >
     Static-export mode has no server; auth-gated scenarios in static mode assert the read-only
     public degradation instead of a login flow.
@@ -604,6 +647,7 @@ graph TD
 - verified_by:
     - e2e-static-mode-run
     - e2e-live-mode-run
+    - cli-mutation-surface-contract-test
 
 #### AC-5: Frontend auth-context abstraction degrades correctly per provider/mode
 - target_surfaces:
@@ -760,8 +804,8 @@ graph TD
 | Phase | Name | FRs | Estimate | Owner(s) | Key Tasks |
 |-------|------|-----|----------|----------|-----------|
 | 5a | AuthProvider Port + local_static | FR-1,2,5 | ~8-10 pts | `backend-architect` (design), `python-backend-engineer` | Protocol+registry (`api/auth/provider.py`); `local_static` multi-token→role mapping; `foundry.yaml: auth.provider` wiring (preserve `auth_mode="none"` no-op); new durable store scaffold (OQ-1). |
-| 5b | RBAC + Workspace Isolation + Migration | FR-6,7 | ~10-12 pts | `backend-architect`, `data-layer-expert`, `python-backend-engineer` | 5-role capability matrix + `require_role(...)`; apply to every catalog/report mutation route; data migration backfilling `workspace_id`/`created_by` (Mode-D gate 1); cross-workspace isolation regression suite. |
-| 5c | Audit Log + Rate Limits + Admin Settings | FR-8,9,10 | ~7-9 pts | `python-backend-engineer`, `ui-engineer-enhanced` | `audit_event` schema + `audit_service.py` wired into all 6 mutation types; rate-limit middleware; admin settings API + `/settings` UI extension. |
+| 5b | RBAC + Workspace Isolation + Migration | FR-6,6a,7 | ~10-12 pts | `backend-architect`, `data-layer-expert`, `python-backend-engineer` | 5-role capability matrix + `require_role(...)`; apply to every HTTP catalog/report mutation route; classify the CLI/service-direct mutation surface (FR-6a); add missing `workspace_id` column to `catalog_items` + backfill `workspace_id`/`created_by` elsewhere (Mode-D gate 1); cross-workspace isolation regression suite. |
+| 5c | Audit Log + Rate Limits + Admin Settings | FR-8,8a,9,10 | ~7-9 pts | `python-backend-engineer`, `ui-engineer-enhanced` | `audit_event` schema + `audit_service.py` wired into all 6 mutation types; audit-store health probe + degraded-health state + admin warning + public-exposure gate; rate-limit middleware; admin settings API + `/settings` UI extension. |
 | 5d | Clerk Adapter + Frontend Auth-Context | FR-3,4,12 | ~7-9 pts | `python-backend-engineer` (JWKS), `frontend-architect`/`ui-engineer-enhanced` | `clerk` adapter (pure-Python JWKS verify, role mapping); `oidc`/BYO Protocol seam (impl optional); `AuthContext.tsx` 3-mode degradation; static-export read-only-public verified. |
 | 5e | Public Sharing/Publish Gates + FU-4 Closures | FR-11,13,14,15 | ~6-8 pts | `python-backend-engineer`, `senior-code-reviewer` | Sharing flow reusing D13 fail-closed checks; existence-gate parity fix (`runs.py` family); global source index; draft→run/claim reverse catalog links. |
 | 5f | Regression, E2E, Validation | FR-16,17 | ~5-7 pts | `task-completion-validator`, `senior-code-reviewer` | Sensitivity/catalog-visibility/job-permission/writeback regression suite; `p5-auth-rbac.spec.ts` (static+live), extend `w1`/`w3`; Mode-D sign-offs (AC-GATE-1/2/3); runtime smoke covering AC-5 `target_surfaces` (R-P4). |
@@ -774,9 +818,11 @@ graph TD
 | S5-02 | local_static adapter | Multi-token→role mapping, default provider | FR-2 | 4 |
 | S5-03 | Clerk adapter | Pure-Python JWKS verify, opt-in | FR-3 | 5 |
 | S5-04 | OIDC/BYO seam | Protocol conformance point, impl optional | FR-4 | 2 |
-| S5-05 | RBAC capability matrix + enforcement | 5 roles, `require_role` on every mutation route | FR-6, AC-1 | 8 |
-| S5-06 | Workspace isolation migration | Backfill + enforce `workspace_id`/`created_by` | FR-7, AC-1, AC-GATE-1 | 6 |
+| S5-05 | RBAC capability matrix + enforcement | 5 roles, `require_role` on every HTTP mutation route | FR-6, AC-1 | 8 |
+| S5-05a | CLI/service-layer mutation-surface classification | Enumerate + classify `rf ingest`/`rf writeback`/`rf catalog rebuild`/`rf source-card create` as admin-only/single-operator-trust; static contract test | FR-6a, AC-4 | 2 |
+| S5-06 | Workspace isolation migration | Add missing `workspace_id` column to `catalog_items`; backfill + enforce `workspace_id`/`created_by` everywhere | FR-7, AC-1, AC-GATE-1 | 6 |
 | S5-07 | Audit log | `audit_event` + `audit_service.py`, 6 mutation types | FR-8 | 5 |
+| S5-07a | Audit-store health probe + exposure gate | Degraded-health state, admin warning, `is_healthy_for_exposure()` public-exposure gate | FR-8a | 2 |
 | S5-08 | Rate limiting | Per-identity+per-route budget | FR-9 | 3 |
 | S5-09 | Admin settings | Member/role/provider/rate-limit management UI | FR-10 | 4 |
 | S5-10 | Public sharing + publish gates | Fail-closed sharing flow | FR-11, AC-2 | 4 |

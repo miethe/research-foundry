@@ -462,6 +462,13 @@ Expanded from spec §12.4's four Phase 4 acceptance bullets. Structured ACs use 
 
 ### AC-5: Credential isolation gates (ADR-002 structural requirements — automated verification)
 
+- target_surfaces:
+    - subprocess spawn (`agent_job_service.py` child-process launch — no ambient-env inheritance beyond the job's own resolved credential set)
+    - temp-file credential delivery (`0600` job-scoped file + the child's read-once-then-unlink contract, SEC-2.2)
+    - event stream (SSE `agent_job_event` payloads, both persisted and streamed)
+    - artifact store (persisted `agent_job_artifact` files)
+    - telemetry (CCDash `key_fingerprint` / `key_profile_used` events)
+    - browser payload (any of the above surfaces as ultimately delivered to the frontend `/agents` route)
 - **AC-5.1**: A secret-scan test over persisted job artifacts, event payloads, and CCDash telemetry for a completed job with a real (test) credential asserts 0 raw credential matches.
 - **AC-5.2**: A crash-safety test kills the job subprocess mid-run and asserts the credential temp file no longer exists on disk afterward.
 - **AC-5.3**: A code-path test asserts no job-related code passes a credential via `os.environ`/subprocess `env=` inheritance — only the temp-file path is exercised.

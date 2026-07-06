@@ -20,6 +20,7 @@ related_documents:
   - docs/project_plans/implementation_plans/public-multiuser-p2p3-opus-handoff.md
   - docs/project_plans/human-briefs/public-multiuser-p4-agents.md
   - .claude/worknotes/public-multiuser-p4-agents/decisions-block.md
+  - docs/project_plans/implementation_plans/features/public-multiuser-p5-auth-rbac-v1.md
 references:
   user_docs: []
   context:
@@ -260,7 +261,7 @@ graph LR
 | P4.3 | First provider adapter (`claude_agent_sdk`) e2e | 3 pts | python-backend-engineer | sonnet (adaptive) | MUST-stay. Mode-D Gate #2 before real keys. |
 | P4.4 | Agent-job APIs + event streaming + acceptance | 4 pts | python-backend-engineer | sonnet (adaptive) + **ICA Sonnet 4.6** (bounded endpoints, behind review gate) | Write-path (accept) stays MUST-stay. |
 | P4.5 | Frontend `/agents` route | 4 pts | ui-engineer-enhanced | sonnet (adaptive) + **ICA Sonnet 4.6** (job-list/event-log subcomponents, behind review gate) | Launch form/gates stay on primary (governance-visible UI). |
-| P4.6 | Second provider adapter (`openai_agents`) | 2 pts | python-backend-engineer, backend-architect | sonnet (adaptive) | Reuses P4.3 pattern; no new isolation code. |
+| P4.6 | Second provider adapter (`openai_agents`) | 2 pts | python-backend-engineer, backend-architect | sonnet (adaptive) | Reuses P4.3 pattern; no new isolation code. **Loopback-only until P5.2+P5.3 green — hard exposure gate, see below.** |
 | P4.7 | Testing, benchmark, docs | 3 pts | python-backend-engineer, documentation-writer | sonnet (adaptive) / haiku (docs) + **Codex gpt-5.5** (read-only adversarial review) | Mode-D Gates #3/#4. |
 | **Total** | — | **24 pts** | — | — | — |
 
@@ -278,6 +279,21 @@ Four explicit, sequential human approvals are required **during execution**, not
 | #4 | Sign-off on the **server pepper storage location** before the key-fingerprint feature ships | P4.7 | AC-6.4 |
 
 Detail and task-level placement: see phase files linked below.
+
+## Release / Exposure Constraint (Hard Gate)
+
+| Constraint | Scope | Requires | Default |
+|------------|-------|----------|---------|
+| `agents.enabled=true` permitted **only** in loopback / single-operator mode pre-P5 | All of Phase 4 — the `/agents` route (P4.5) and, **especially**, `openai_agents` (P4.6, the riskier live tool-loop provider, SPIKE finding G3) | Enabling `/agents` on shared LAN or public exposure requires **P5.2** (server-side RBAC enforcement) **and** **P5.3** (workspace isolation + migration) both green | `agents.enabled=false` (foundry.yaml) |
+
+This is a hard release constraint, not a soft recommendation. P4 ships and is validated entirely
+under the loopback/single-operator assumption (PRD §8 Assumptions); nothing in P4 enforces
+per-user/per-workspace access control — `workspace_id`/`created_by` on every new agent-job record
+are nullable and unenforced (D7/D12). `openai_agents` is the higher-risk case: it runs a live
+tool-use loop (SPIKE G3 — prompt-injection exfiltration risk), so it must not be flipped on for any
+multi-user-reachable deployment until **P5.2 + P5.3** are both sealed
+(`docs/project_plans/implementation_plans/features/public-multiuser-p5-auth-rbac-v1.md`). This
+mirrors the SPIKE's "Hard release/exposure gate (P4 → P5)" verdict verbatim.
 
 ## Phase Files
 

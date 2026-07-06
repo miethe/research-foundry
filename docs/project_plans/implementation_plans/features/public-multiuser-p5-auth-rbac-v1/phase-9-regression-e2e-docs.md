@@ -45,6 +45,8 @@ target_surfaces:
   - src/research_foundry/services/export_service.py
   - src/research_foundry/services/audit_service.py
   - src/research_foundry/services/governance.py
+  - src/research_foundry/cli_commands.py
+  - tests/unit/test_cli_mutation_surface.py
   - frontend/runs-viewer/e2e/p5-auth-rbac.spec.ts
   - frontend/runs-viewer/e2e/w1-claim-audit.spec.ts
   - frontend/runs-viewer/e2e/w3-report-chip-navigation.spec.ts
@@ -154,7 +156,7 @@ architecture, plus a review gate:
 | DOC-002 | Auth/RBAC operator & admin guide | Document `foundry.yaml: auth.provider` (4 values) with the same care as `viewer.sensitivity_threshold`; admin guide for enabling Clerk (prerequisites: outbound internet, public domain, paid-plan custom roles) | New guide published; `foundry.yaml` comment block updated | 0.25 pts | documentation-writer | haiku | adaptive | Phase entry criteria only |
 | DOC-003 | Workspace-migration operator runbook | Polished operator-facing doc for the Phase 3 dry-run/enforce/rollback procedure — distinct from, and references, Phase 3's internal rollback-runbook task | New runbook published, cross-references Phase 3 | 0.25 pts | documentation-writer | haiku | adaptive | Phase entry criteria only |
 | DOC-004 | FU-2 design-spec (OIDC/BYO adapter) + FU-3 N/A note | Author `maturity: idea` design-spec for the concrete OIDC/BYO adapter (FU-2); explicitly mark FU-3 (Clerk paid-plan procurement) N/A for design-spec authoring (operator/procurement action, not an engineering deferred item — mirrors parent plan rationale, not re-litigated) | Design-spec file exists at correct path with correct frontmatter; FU-3 N/A note recorded; follow-up flagged (see AC) | 0.25 pts | documentation-writer | haiku | adaptive | Phase entry criteria only |
-| REVIEW-001 | Codex adversarial review: RBAC completeness, migration safety, sensitivity fail-closed | Read-only review scoped to Phase 2 `target_surfaces` (RBAC), Phase 3 migration (safety), Phase 7 sensitivity closes + ongoing P2/P3 regression suite (fail-closed) | Findings list produced; each finding triaged fixed-now or filed as a follow-up task — Codex never implements | 0.5 pts | Codex gpt-5.5 (external, read-only) | gpt-5.5-codex | high | TEST-001, TEST-002 |
+| REVIEW-001 | Codex adversarial review: RBAC completeness (incl. CLI/service classification), migration safety, audit exposure-gating, sensitivity fail-closed | Read-only review scoped to Phase 2 `target_surfaces` (RBAC, incl. RBAC-006's CLI/service classification), Phase 3 migration (safety), Phase 5 audit degraded-health/exposure-gating (AUDIT-004 + P5.6 wiring), Phase 7 sensitivity closes + ongoing P2/P3 regression suite (fail-closed) | Findings list produced; each finding triaged fixed-now or filed as a follow-up task — Codex never implements | 0.5 pts | Codex gpt-5.5 (external, read-only) | gpt-5.5-codex | high | TEST-001, TEST-002 |
 | **Total** | — | — | — | **4.0 pts** | — | — | — | — |
 
 **Model Selection Guidance**: Sonnet (`python-backend-engineer`) for regression/E2E authoring;
@@ -185,7 +187,11 @@ permissions, and writeback approvals — parametrized across both auth providers
 `tests/integration/test_p5_regression_suite.py`; extends existing sensitivity coverage in
 `tests/unit/test_sensitivity_redaction.py` where the P2/P3 suite already lives (do not duplicate,
 extend). Job-permission tests compose with P4's ADR-002 credential firewall — this task is the
-verification point for PRD AC-3.
+verification point for PRD AC-3. Coverage is not limited to HTTP routes and UI: this task also
+confirms (a) P5.2's `tests/unit/test_cli_mutation_surface.py` (RBAC-006) is still green — the
+CLI/service-direct mutation surface's classification hasn't silently regressed — and (b) P5.6 has
+actually wired P5.5's `audit_service.is_healthy_for_exposure()` (AUDIT-004) into its sharing/
+publish-preview flow, per the coordination note flagged in both those phase files.
 
 #### Structured AC (reproduced verbatim from PRD §11 AC-3)
 
@@ -215,6 +221,13 @@ verification point for PRD AC-3.
       credential-shaped payload rejected by the redaction guard) and record which mode was used in
       the Completion Report, per AC-3's resilience note above.
 - [ ] Writeback-approval regression green across both providers and both modes.
+- [ ] `tests/unit/test_cli_mutation_surface.py` (P5.2 RBAC-006) is confirmed still green as part of
+      this suite's run — the CLI/service-direct mutation surface remains correctly classified and
+      free of an ungated HTTP bypass.
+- [ ] A dedicated assertion confirms `is_healthy_for_exposure()` (P5.5 AUDIT-004) is actually called
+      by P5.6's sharing/publish-preview flow before allowing exposure (e.g., a forced-degraded audit
+      fixture makes the sharing/publish flow fail closed) — closing the coordination note P5.5
+      flagged as pending confirmation by this phase.
 - [ ] All regression subsuites pass under `PYTHONPATH`-correct venv invocation (see project memory
       note: `./.venv/bin/python -m pytest`, never the pyenv shim).
 - [ ] Existing P2/P3 sensitivity regression suite (`tests/unit/test_sensitivity_redaction.py`,
@@ -234,9 +247,11 @@ verification point for PRD AC-3.
 
 **Files Involved**:
 - `tests/integration/test_p5_regression_suite.py` - new regression suite (sensitivity, catalog
-  visibility, job permissions, writeback approvals; provider × mode matrix)
+  visibility, job permissions, writeback approvals; provider × mode matrix); includes the
+  audit-exposure-gate cross-check (AUDIT-004/P5.6 wiring confirmation)
 - `tests/unit/test_sensitivity_redaction.py` - verify still green (no edits expected)
 - `tests/unit/test_export_service.py` - verify still green (no edits expected)
+- `tests/unit/test_cli_mutation_surface.py` - verify still green (P5.2 RBAC-006, no edits expected)
 
 ---
 
@@ -269,10 +284,16 @@ here).
     - frontend/runs-viewer/e2e/p5-auth-rbac.spec.ts
     - frontend/runs-viewer/e2e/w1-claim-audit.spec.ts
     - frontend/runs-viewer/e2e/w3-report-chip-navigation.spec.ts
+    - tests/unit/test_cli_mutation_surface.py
+    - src/research_foundry/services/audit_service.py
 - propagation_contract: >
     New `p5-auth-rbac.spec.ts` covers login (per provider), role-bounded catalog/builder actions,
     and a sharing scenario, in both static-export and live-API modes; existing `w1`/`w3` specs are
-    extended (not rewritten) to exercise an authenticated context.
+    extended (not rewritten) to exercise an authenticated context. Coverage is not limited to the
+    browser: the CLI/service-direct mutation surface is covered by P5.2's static contract test
+    (`tests/unit/test_cli_mutation_surface.py`, not a Playwright spec — the CLI has no browser to
+    drive), and audit-event emission (`audit_service.py`) for each exercised workflow is asserted as
+    part of TEST-001's regression suite, not only the E2E flow.
 - resilience: >
     Static-export mode has no server; auth-gated scenarios in static mode assert the read-only
     public degradation instead of a login flow.
@@ -280,6 +301,7 @@ here).
 - verified_by:
     - e2e-static-mode-run
     - e2e-live-mode-run
+    - cli-mutation-surface-contract-test
 
 **Acceptance Criteria**:
 - [ ] `p5-auth-rbac.spec.ts` exists and covers: login per provider (`local_static`, `clerk`),
@@ -304,6 +326,10 @@ here).
   — diff the existing spec files, do not replace their contents wholesale.
 - The sharing scenario should reuse P5.6's read-only sensitivity-scoped share link, not a
   speculative new sharing surface.
+- The CLI/service-direct mutation surface is **not** in this task's own scope — it has no browser to
+  drive a Playwright spec against. This task cross-references `tests/unit/test_cli_mutation_surface.py`
+  (P5.2 RBAC-006) only for AC-4's target_surfaces completeness; re-verifying that test stays green is
+  TEST-001's job, not this one's.
 - Screenshot evidence path convention: `.claude/evidence/phase-9/auth-context-<provider>.png`
   (one per provider state: `clerk`, `local-static`, `none`).
 
@@ -510,21 +536,26 @@ re-litigate it here, just execute the N/A by recording it in this task's evidenc
 **evidence**: []
 
 **Description**:
-One read-only adversarial review, scoped to three surfaces: **Phase 2's** `target_surfaces`
-(RBAC completeness — every mutation route across catalog/reports/builder/(agent-jobs) enforces
-`require_role`), **Phase 3's** migration (safety — dry-run/enforce/rollback correctness, backfill
-completeness for the synthetic `default` workspace), and **Phase 7's** deferred-sensitivity
-closes plus the ongoing P2/P3 regression suite (fail-closed guarantees — existence-gate parity,
-global source index, no sensitivity fail-open regression introduced by this feature's refactor).
-This is **read-only**: Codex proposes findings, it does not implement fixes. Effort is set to
-`high` — the top of the codex effort vocabulary (`none`/`low`/`medium`/`high`/`xhigh`) short of
-`xhigh` — because adversarial review of RBAC/migration/sensitivity completeness across an entire
-Tier-3 feature warrants a high reasoning budget, but this is a review pass, not a debug-escalation
-scenario that would justify `xhigh`.
+One read-only adversarial review, scoped to four surfaces: **Phase 2's** `target_surfaces`
+(RBAC completeness — every HTTP mutation route across catalog/reports/builder/(agent-jobs) enforces
+`require_role`, **and** the CLI/service-direct mutation surface is genuinely classified
+admin-only/single-operator-trust with no undocumented HTTP bypass — RBAC-006), **Phase 3's**
+migration (safety — dry-run/enforce/rollback correctness, backfill completeness for the synthetic
+`default` workspace), **Phase 5's** audit-store degraded-health handling (AUDIT-004 — the health
+probe/degraded state is real, not cosmetic, and P5.6 actually gates shared/public exposure on
+`is_healthy_for_exposure()` rather than the check existing unused), and **Phase 7's**
+deferred-sensitivity closes plus the ongoing P2/P3 regression suite (fail-closed guarantees —
+existence-gate parity, global source index, no sensitivity fail-open regression introduced by this
+feature's refactor). This is **read-only**: Codex proposes findings, it does not implement fixes.
+Effort is set to `high` — the top of the codex effort vocabulary (`none`/`low`/`medium`/`high`/
+`xhigh`) short of `xhigh` — because adversarial review of RBAC/migration/audit/sensitivity
+completeness across an entire Tier-3 feature warrants a high reasoning budget, but this is a review
+pass, not a debug-escalation scenario that would justify `xhigh`.
 
 **Acceptance Criteria**:
-- [ ] Review report covers all three scoped surfaces (RBAC completeness, migration safety,
-      sensitivity fail-closed) with explicit findings, not a general narrative.
+- [ ] Review report covers all four scoped surfaces (RBAC completeness including the CLI/service
+      classification, migration safety, audit degraded-health/exposure-gating, sensitivity
+      fail-closed) with explicit findings, not a general narrative.
 - [ ] Every finding is triaged: either **fixed-now** (a small, targeted follow-up commit made by
       a Claude agent, never by Codex itself) or **filed as a follow-up task** (new task, not
       silently absorbed into this phase's scope).
@@ -532,8 +563,11 @@ scenario that would justify `xhigh`.
       attributable to the Codex session.
 - [ ] Review explicitly checks the RBAC route-sweep completeness (every mutation route across
       catalog/reports/builder/agent-jobs has a `require_role` dependency — R-P1 target-surfaces
-      enumeration from Phase 2), the migration's `default`-workspace backfill completeness
-      (OQ-B), and existence-gate parity across all 4 run-detail-family endpoints (FR-13).
+      enumeration from Phase 2), the CLI/service mutation-surface classification's honesty (RBAC-006
+      — is the "no HTTP bypass" claim actually enumerated and tested, or asserted without proof?),
+      the migration's `default`-workspace backfill completeness (OQ-B), whether P5.6 genuinely calls
+      `is_healthy_for_exposure()` before exposure or merely built the check without wiring it
+      (AUDIT-004), and existence-gate parity across all 4 run-detail-family endpoints (FR-13).
 
 **Implementation Notes**:
 - Route this task to Codex gpt-5.5 in **read-only mode** — no write/edit tool access. If the

@@ -14,8 +14,9 @@ plan_ref: docs/project_plans/implementation_plans/features/public-multiuser-p5-a
 entry_criteria:
   - "P5.1 identity contract frozen (AuthIdentity Protocol + local_static merged)"
 exit_criteria:
-  - "Non-role mutation attempt returns 403 across all 4 target_surfaces"
+  - "Non-role mutation attempt returns 403 across all 4 HTTP target_surfaces"
   - "route-sweep seam task RBAC-901 passes"
+  - "CLI/service mutation-surface classification test (RBAC-006) passes"
   - "Human gate #2 signed off"
   - "task-completion-validator sign-off"
 related_documents:
@@ -54,13 +55,18 @@ files_affected:
   - src/research_foundry/services/builder_service.py
   - src/research_foundry/api/routers/runs.py
   - src/research_foundry/api/routers/agent_jobs.py
+  - src/research_foundry/cli_commands.py
+  - src/research_foundry/services/catalog_service.py
+  - src/research_foundry/services/source_cards.py
+  - src/research_foundry/services/writeback.py
+  - tests/unit/test_cli_mutation_surface.py
 ---
 
 # Phase 2: RBAC Enforcement (5-Role, Server-Side)
 
 **Parent Plan**: [Public Multi-User P5 — Auth/RBAC/Isolation/Audit Hardening](../public-multiuser-p5-auth-rbac-v1.md)
 **Duration**: 3-4 days
-**Effort**: 6 story points
+**Effort**: 6.5 story points
 **Dependencies**: Phase 1 (P5.1 — Auth-provider port + local_static + durable RBAC store) complete
 **Team Members**: python-backend-engineer (primary), backend-architect (secondary, integration_owner)
 
@@ -96,6 +102,10 @@ satisfies this phase's exit gate (PRD FR-6, NFR Security, Mode-D gate 2 / AC-GAT
 - Implement `require_role(...)` as a single shared FastAPI dependency (locked design, not decorators).
 - Apply `require_role(...)` to every mutation route in the 4 enumerated `target_surfaces` below.
 - Prove enforcement holistically via a mandatory route-sweep seam task (RBAC-901).
+- Enumerate and classify the CLI/service-layer mutation surface that `require_role(...)` cannot
+  reach (no HTTP request context) — `rf ingest`, `rf source-card create`, `rf catalog rebuild`,
+  `rf writeback` — as its own admin-only/single-operator-trust boundary, backed by a static contract
+  test (RBAC-006), rather than leaving it silently ungated or conflating it with the HTTP route sweep.
 - Record the forward-compat contract for P4's `agent_jobs.py` (not yet landed) without gating this
   phase's exit on that file's existence.
 - Record the `roles`-array resilience contract (RBAC-900) that Phase 8's frontend work consumes.
@@ -130,6 +140,32 @@ in scope for this phase:
    lands, `agent_jobs.py` mutation routes **MUST** carry the same `require_role` dependency as the
    other 3 surfaces (see RBAC-005). **This phase's exit is not gated on P4 existing.**
 
+### CLI / Service-Layer Mutation Surface (separately classified, not counted in the HTTP route sweep)
+
+The 4 `target_surfaces` above are **HTTP routers only**. Research Foundry also has a real,
+independent mutation surface that never goes through a FastAPI request/response cycle at all, so
+`require_role(...)` (which reads `request.state.identity`) structurally cannot gate it:
+
+- `rf ingest` / `rf source-card create` → `src/research_foundry/services/source_cards.py`
+  (`ingest_source()`, `create_source_card()`)
+- `rf catalog rebuild` → `src/research_foundry/services/catalog_service.py` (`import_all()`,
+  `rebuild()`)
+- `rf writeback` → `src/research_foundry/services/writeback.py` (`writeback()`)
+- `rf workspace migrate\|enforce\|rollback` (forward-looking, P5.3) →
+  `src/research_foundry/services/workspace_migration_service.py`
+
+This phase does **not** attempt to bolt an HTTP-shaped role check onto the CLI. Instead it makes an
+explicit, tested classification decision (Task RBAC-006, below): the CLI mutation surface is
+**admin-only / single-operator-trust** — anyone who can execute the CLI already has filesystem-level
+access to the workspace (drafts, `catalog.db`, secrets), which is a strictly higher privilege level
+than any HTTP role the RBAC matrix defines, so gating it with `require_role` would be theater, not a
+control. What this phase *does* require is proof that this classification is true and stays true: a
+static contract test enumerating every CLI mutation entry point above and asserting none of them is
+also reachable via an ungated HTTP route (i.e., there is no second, HTTP-routed bypass into
+`ingest_source()`/`import_all()`/`writeback()` that sidesteps `catalog.py`/`reports.py`'s
+`require_role(...)` gating). This sharpens what would otherwise be an unverified "no direct-write
+code path exists" assumption into a concrete, enumerated, tested contract — see RBAC-006.
+
 ---
 
 ## Phase Acceptance Criteria (structured, AC-schema format)
@@ -137,7 +173,7 @@ in scope for this phase:
 Per `.claude/skills/planning/references/ac-schema.md`, structured for FR-6 / cross-referencing
 PRD AC-1's format and `verified_by` linkage.
 
-#### AC RBAC-P2.1: Every mutation route in the 4 target_surfaces rejects an under-privileged identity
+#### AC RBAC-P2.1: Every HTTP mutation route in the 4 target_surfaces rejects an under-privileged identity
 - target_surfaces:
     - src/research_foundry/api/routers/catalog.py
     - src/research_foundry/api/routers/reports.py
@@ -149,6 +185,8 @@ PRD AC-1's format and `verified_by` linkage.
     `AuthProvider` middleware), checks membership against the route's declared allowed-roles set
     from the capability matrix (RBAC-001), and raises `HTTPException(403)` on failure before the
     route handler body executes. `agent_jobs.py` is a forward-compat entry only until P4 lands.
+    This AC covers the HTTP request surface only — see AC RBAC-P2.2 for the CLI/service-direct
+    mutation surface, which is a separate classified boundary, not an ungated instance of this one.
 - resilience: >
     An identity with no matching role, an identity with an empty/missing `roles` array, and a
     request with no resolved identity at all (`auth_mode=none` aside) are all treated identically:
@@ -157,6 +195,29 @@ PRD AC-1's format and `verified_by` linkage.
 - visual_evidence_required: false
 - verified_by:
     - RBAC-901
+
+#### AC RBAC-P2.2: CLI/service-direct mutation surface is classified admin-only/single-operator-trust and has no HTTP-routed bypass
+- target_surfaces:
+    - src/research_foundry/cli_commands.py
+    - src/research_foundry/services/source_cards.py
+    - src/research_foundry/services/catalog_service.py
+    - src/research_foundry/services/writeback.py
+- propagation_contract: >
+    A static contract test (`tests/unit/test_cli_mutation_surface.py`) enumerates every CLI mutation
+    command (`rf ingest`, `rf source-card create`, `rf catalog rebuild`, `rf writeback`) and its
+    underlying service function, and asserts (a) each is documented as admin-only/single-operator-
+    trust rather than silently ungated, and (b) none of these service functions is also reachable via
+    an HTTP route that lacks a `require_role(...)` dependency — i.e., the only HTTP-routed path into
+    `create_draft`/`update_draft`-equivalent write functions is through the already-gated
+    `catalog.py`/`reports.py` routers (RBAC-P2.1), never a second, ungated entry point.
+- resilience: >
+    This AC does not attempt to make the CLI itself role-aware (there is no HTTP request context to
+    read a role from); it fails closed on the *verification* side — if a future change adds an
+    HTTP-routed call into one of these service functions without also adding `require_role(...)`, the
+    static test fails, rather than the gap going unnoticed.
+- visual_evidence_required: false
+- verified_by:
+    - RBAC-006
 
 #### AC RBAC-900: FE handles missing/least-privilege `roles` array (R-P2, backend contract)
 - target_surfaces:
@@ -194,9 +255,10 @@ PRD AC-1's format and `verified_by` linkage.
 | RBAC-004 | Apply to `reports.py` (+ `builder_service.py` mutations) | Gate every mutation route in `reports.py`, covering the `builder_service.py` mutations it fronts | 403 on under-privileged role for report/builder mutations; unit test per mutation route | 1 pt | python-backend-engineer | sonnet | extended | RBAC-002 |
 | RBAC-005 | Apply to `runs.py` + `agent_jobs.py` forward-compat note | Audit `runs.py` for any mutation (non-GET) routes and gate them; document the `agent_jobs.py` N/A-until-P4 contract in code comment + this phase file | 403 on under-privileged role for any `runs.py` mutation route found; forward-compat contract documented for P4 to consume | 0.5 pt | python-backend-engineer | sonnet | extended | RBAC-002 |
 | RBAC-900 | AC: FE handles missing/least-privilege roles array | Backend-side contract task (R-P2): guarantee `AuthIdentity.roles` always serializes as a list (default `[]`), never null/omitted; add a contract test. FE implementation lands in Phase 8. | Serialization contract test green; Phase 8 phase file references this exact ID | 0.5 pt | python-backend-engineer | sonnet | extended | RBAC-001 |
-| RBAC-901 | Seam verification: route-sweep — every mutation route across the 4 target_surfaces above carries a `require_role` dependency | Enumerate every mutation (POST/PUT/PATCH/DELETE) route in the 4 `target_surfaces`; assert each carries a `require_role(...)` dependency (or is documented N/A for `agent_jobs.py` pre-P4). This is the `rbac-route-sweep-test` referenced by PRD AC-1's `verified_by`. | Sweep test enumerates 100% of mutation routes in the 3 existing surfaces + explicit N/A marker for `agent_jobs.py`; 0 ungated mutation routes found | 0.5 pt | python-backend-engineer, backend-architect | sonnet | extended | RBAC-003, RBAC-004, RBAC-005 |
+| RBAC-901 | Seam verification: route-sweep — every mutation route across the 4 target_surfaces above carries a `require_role` dependency | Enumerate every mutation (POST/PUT/PATCH/DELETE) route in the 4 `target_surfaces`; assert each carries a `require_role(...)` dependency (or is documented N/A for `agent_jobs.py` pre-P4). This is the `rbac-route-sweep-test` referenced by PRD AC-1's `verified_by`. | Sweep test enumerates 100% of mutation routes in the 3 existing HTTP surfaces + explicit N/A marker for `agent_jobs.py`; 0 ungated mutation routes found | 0.5 pt | python-backend-engineer, backend-architect | sonnet | extended | RBAC-003, RBAC-004, RBAC-005 |
+| RBAC-006 | CLI/service-layer mutation-surface classification (AC RBAC-P2.2, PRD FR-6a) | Enumerate every CLI-invoked mutation entry point (`rf ingest`, `rf source-card create`, `rf catalog rebuild`, `rf writeback`) and its underlying service function; classify the surface admin-only/single-operator-trust; add a static contract test asserting no HTTP-routed bypass exists into any of them outside the gated routers | New `tests/unit/test_cli_mutation_surface.py` green; classification documented in `api/auth/rbac.py`'s module docstring alongside `ROLE_PERMISSIONS` | 0.5 pt | python-backend-engineer | sonnet | extended | RBAC-003, RBAC-004, RBAC-005 |
 
-**Total**: 6 pts
+**Total**: 6.5 pts
 
 **Model Selection Guidance**: This entire phase is `sonnet` / effort `extended` per decisions block
 §6, MUST-stay on the Claude subscription (no ICA Sonnet 4.6, no Codex) — Mode-D classification per
@@ -493,6 +555,72 @@ sweep's coverage report).
 
 ---
 
+### Task RBAC-006: CLI/service-layer mutation-surface classification
+
+**Estimate**: 0.5 point
+**Assigned Subagent(s)**: python-backend-engineer
+**Model**: sonnet
+**Effort**: extended
+**Dependencies**: RBAC-003, RBAC-004, RBAC-005
+**started**: null
+**completed**: null
+**verified_by**: []
+**evidence**: []
+
+**Description**:
+RBAC-901's route-sweep only covers the HTTP request surface. Research Foundry has a second,
+independent mutation surface that never passes through a FastAPI request — the CLI (`cli_commands.py`)
+and the service functions it invokes directly: `rf ingest`/`rf source-card create`
+(`services/source_cards.py::ingest_source`/`create_source_card`), `rf catalog rebuild`
+(`services/catalog_service.py::import_all`/`rebuild`), and `rf writeback`
+(`services/writeback.py::writeback`). `require_role(...)` reads `request.state.identity`, which does
+not exist for a CLI invocation — it cannot gate this surface, and pretending otherwise (e.g., a
+fake/default identity) would be a false sense of security, not a real control.
+
+This task makes the CLI's trust model an explicit, tested decision instead of an implicit gap:
+classify the CLI mutation surface as **admin-only/single-operator-trust** (executing the CLI already
+requires filesystem-level access to the workspace, a strictly higher privilege than any HTTP role),
+document that classification in `api/auth/rbac.py`'s module docstring alongside `ROLE_PERMISSIONS`,
+and add a static contract test (`tests/unit/test_cli_mutation_surface.py`) that (a) enumerates the
+CLI mutation commands and their underlying service functions, and (b) asserts none of those service
+functions is *also* reachable via an HTTP route lacking a `require_role(...)` dependency — i.e., the
+only HTTP-routed path into these write functions is through the already-gated `catalog.py`/
+`reports.py` routers.
+
+**Acceptance Criteria**:
+- [ ] `api/auth/rbac.py`'s module docstring documents the CLI/service-direct mutation surface as
+      admin-only/single-operator-trust, naming the concrete entry points (`rf ingest`,
+      `rf source-card create`, `rf catalog rebuild`, `rf writeback`).
+- [ ] `tests/unit/test_cli_mutation_surface.py` enumerates every CLI mutation command's underlying
+      service function and asserts each is *not* also reachable via an HTTP route in `catalog.py`/
+      `reports.py` that lacks a `require_role(...)` dependency (i.e., proves there is no second,
+      ungated HTTP entry point into the same write path) — a static/introspection test, not a
+      manually-maintained checklist.
+- [ ] The forward-looking `rf workspace migrate\|enforce\|rollback` CLI surface (P5.3, not yet
+      implemented) is noted in the test/docstring as a future addition to this same classification,
+      not silently omitted.
+- [ ] This task's AC (RBAC-P2.2) is cross-referenced from the PRD's FR-6a.
+
+**Implementation Notes**:
+- Do not attempt to thread a synthetic/default `AuthIdentity` through CLI invocations to make
+  `require_role(...)` "work" for the CLI — that would misrepresent the CLI's actual trust boundary
+  (filesystem access, not a role claim) and is explicitly out of scope for this task.
+- This is a verification task, not a feature: the classification decision is the deliverable, and the
+  static test is what keeps the decision honest as the codebase evolves (e.g., if a future PR
+  accidentally exposes `writeback()` through a new, ungated HTTP route, this test should fail).
+
+**Files Involved**:
+- `src/research_foundry/api/auth/rbac.py` - CLI/service mutation-surface classification note in the
+  module docstring.
+- `src/research_foundry/cli_commands.py` - enumerated, not modified (unless the classification note
+  is also mirrored in CLI `--help` text).
+- `src/research_foundry/services/source_cards.py` - enumerated, not modified.
+- `src/research_foundry/services/catalog_service.py` - enumerated, not modified.
+- `src/research_foundry/services/writeback.py` - enumerated, not modified.
+- `tests/unit/test_cli_mutation_surface.py` - new; static contract test.
+
+---
+
 ## Human Gate #2
 
 **This phase cannot be considered exited, and the RBAC surface it implements cannot be exposed on
@@ -506,6 +634,9 @@ mutation eligibility.**
 - **Preconditions for requesting sign-off**:
   - RBAC-901 (route-sweep) is green with 0 ungated mutation routes across the 3 existing
     `target_surfaces`.
+  - RBAC-006 (CLI/service mutation-surface classification) is green — the CLI mutation surface is
+    documented admin-only/single-operator-trust and its static contract test confirms no HTTP-routed
+    bypass exists.
   - `task-completion-validator` has reviewed this phase's diff and Completion Report.
   - The capability matrix (RBAC-001) and its enforcement (RBAC-002 through RBAC-005) are the
     reviewer's basis for sign-off — not a description of intended behavior, but a route-sweep
@@ -523,10 +654,12 @@ mutation eligibility.**
 
 This phase is complete when:
 
-- [ ] **Functional**: Every mutation route in `catalog.py`, `reports.py`, and `runs.py` carries a
-      `require_role(...)` dependency; `agent_jobs.py` carries the documented N/A-until-P4 note.
-- [ ] **Testing**: Route-sweep (RBAC-901) green; per-route unit tests for RBAC-003/004/005; the
-      RBAC-900 backend serialization contract test green.
+- [ ] **Functional**: Every HTTP mutation route in `catalog.py`, `reports.py`, and `runs.py` carries a
+      `require_role(...)` dependency; `agent_jobs.py` carries the documented N/A-until-P4 note; the
+      CLI/service-direct mutation surface is classified admin-only/single-operator-trust (RBAC-006).
+- [ ] **Testing**: Route-sweep (RBAC-901) green; CLI/service mutation-surface contract test (RBAC-006)
+      green; per-route unit tests for RBAC-003/004/005; the RBAC-900 backend serialization contract
+      test green.
 - [ ] **Performance**: Role-check overhead is negligible (in-process list membership check against
       an already-resolved `AuthIdentity` — no new I/O or network round-trip introduced).
 - [ ] **Security**: Enforcement is server-side only over `request.state.identity` — no route relies
@@ -590,6 +723,8 @@ This phase is complete when:
 | `src/research_foundry/api/routers/runs.py` | Audit for mutation routes; gate any found | python-backend-engineer |
 | `src/research_foundry/api/routers/agent_jobs.py` (N/A, not yet created) | Forward-compat contract note only | python-backend-engineer |
 | `tests/unit/test_rbac_route_sweep.py` (new) | RBAC-901 route-sweep assertion | python-backend-engineer |
+| `src/research_foundry/cli_commands.py`, `services/source_cards.py`, `services/catalog_service.py`, `services/writeback.py` | Enumerated (not modified) for RBAC-006's classification/contract test | python-backend-engineer |
+| `tests/unit/test_cli_mutation_surface.py` (new) | RBAC-006 CLI/service mutation-surface classification contract test | python-backend-engineer |
 
 ---
 
@@ -610,6 +745,9 @@ This phase is complete when:
 - Route-sweep integration test (RBAC-901): walks the live FastAPI `app.routes`, filters
   POST/PUT/PATCH/DELETE handlers in the 3 existing `target_surfaces`, asserts a `require_role(...)`
   dependency is present on each. Reports `agent_jobs.py` as an explicit N/A line item.
+- CLI/service mutation-surface contract test (RBAC-006): enumerates `rf ingest`/`rf source-card
+  create`/`rf catalog rebuild`/`rf writeback` and their underlying service functions; asserts none is
+  reachable via an HTTP route lacking `require_role(...)`.
 
 ### E2E Tests (if applicable)
 
@@ -623,6 +761,7 @@ This phase is complete when:
 | Risk | Impact | Mitigation |
 |------|--------|-----------|
 | Server-side RBAC gaps / UI-only enforcement leak (decisions block §3, Risk 2) | High | R-P1 enumerated `target_surfaces` (this phase file); per-route role-assertion tests; mandatory RBAC-901 route-sweep; Human Gate #2 before any exposure; Codex adversarial pass scheduled in Phase 9. |
+| CLI/service-direct mutation surface (`rf ingest`/`rf catalog rebuild`/`rf writeback`) is silently left ungated because it falls outside the HTTP route sweep's reach | High | RBAC-006 makes the CLI's trust boundary an explicit, tested classification (admin-only/single-operator-trust) rather than an implicit gap; static contract test asserts no HTTP-routed bypass exists into the same write functions. |
 | `agent_jobs.py` N/A note gets silently forgotten and P4 ships an ungated router | Medium | Forward-compat contract explicitly documented in code (RBAC-005) and in this phase file; RBAC-901's sweep report includes `agent_jobs.py` as a tracked N/A line, not an omission, making its future absence-of-gating visible when P4 lands. |
 | RBAC-900's backend/frontend split (contract here, implementation Phase 8) causes the two phases to drift on the exact ID or contract wording | Low | Task ID `RBAC-900` is fixed verbatim across both phase files by explicit instruction; this phase file's RBAC-900 description states the split explicitly. |
 | `require_role(...)` implemented as per-route decorators instead of the locked shared-dependency design (re-opening closed OQ-A) | Medium | Locked decision restated at the top of this phase file and in RBAC-002's task description; `task-completion-validator` should reject a decorator-based diff. |
@@ -631,12 +770,13 @@ This phase is complete when:
 
 ## Success Metrics
 
-- **Completion**: All 7 tasks (RBAC-001 through RBAC-005, RBAC-900, RBAC-901) checked off.
+- **Completion**: All 8 tasks (RBAC-001 through RBAC-006, RBAC-900, RBAC-901) checked off.
 - **Quality**: All Quality Gates passed, including Human Gate #2.
 - **Coverage**: 0 mutation routes in `catalog.py`/`reports.py`/`runs.py` found ungated by RBAC-901's
-  sweep; `agent_jobs.py` carries an explicit, discoverable N/A note.
-- **Testing**: 100% of mutation routes in the 3 existing `target_surfaces` covered by a per-route
-  RBAC unit test; RBAC-900's backend contract test green.
+  sweep; `agent_jobs.py` carries an explicit, discoverable N/A note; the CLI/service-direct mutation
+  surface is classified admin-only/single-operator-trust with 0 undocumented HTTP bypasses (RBAC-006).
+- **Testing**: 100% of mutation routes in the 3 existing HTTP `target_surfaces` covered by a per-route
+  RBAC unit test; RBAC-900's backend contract test green; RBAC-006's CLI/service contract test green.
 
 ---
 
@@ -659,6 +799,9 @@ uniform across all 3 existing `target_surfaces`, which is exactly what RBAC-901'
 - **`builder_service.py` has no direct route surface** — do not add a second enforcement mechanism
   inside the service layer; the router-layer dependency on `reports.py` is sufficient and is the
   locked design.
+- **The CLI is a separate trust boundary, not an ungated instance of the HTTP one** — do not try to
+  make `require_role(...)` "reach" `cli_commands.py` via a synthetic identity; RBAC-006 classifies
+  and tests the CLI surface on its own terms (admin-only/single-operator-trust).
 
 ### Learnings
 

@@ -15,6 +15,7 @@ entry_criteria:
   - "P5.1 durable store (.rf_state/rbac.db) schema exists"
 exit_criteria:
   - "Audit-coverage assertion test green: every mutating path in the 6 governed types emits an audit row (or N/A-with-rationale for agent-job launch pending P4)"
+  - "Audit-store health probe (AUDIT-004) exists; degraded state is visible via admin warning and API/CLI, not silent"
   - "task-completion-validator sign-off on the ICA-produced wave"
 related_documents:
   - .claude/worknotes/public-multiuser-p5-auth-rbac/decisions-block.md
@@ -62,7 +63,7 @@ files_affected:
 
 **Parent Plan**: [Public Multi-User P5 — Auth/RBAC/Isolation/Audit Hardening](../public-multiuser-p5-auth-rbac-v1.md)
 **Duration**: ~2-3 days
-**Effort**: 4 story points
+**Effort**: 4.75 story points
 **Dependencies**: P5.1 (Auth-Provider Port + durable RBAC store) complete — the `.rf_state/rbac.db`
 schema and connection helper must exist before `audit_event` can extend it. **Not** dependent on
 P5.2/P5.3 (RBAC enforcement / workspace migration) at the schema level; this phase runs in parallel
@@ -97,6 +98,12 @@ survive a catalog rebuild the same way identity/RBAC state must.
 - Precisely separate two failure domains that are easy to conflate: a failed **audit write** must
   fail open (never block or corrupt the mutation it's recording); a failed **authorization check**
   (RBAC, owned by P5.2) must fail closed. This phase owns only the former.
+- Make a persistently-failing audit store **visible, not silent**: add a startup/on-demand health
+  probe, a durable degraded-health state, an admin-facing warning, and a public-exposure gate that
+  requires the audit store to be writable before shared/public exposure is allowed — without ever
+  making an individual mutation's own fail-open guarantee conditional on audit health (AUDIT-004).
+  A silently-broken audit store that never surfaces to an operator defeats the entire "100% of
+  governed mutation types produce an audit_event row" guarantee this phase exists to provide.
 
 ### Architecture Focus
 
@@ -132,6 +139,10 @@ decisions block (§2, §6) calls for. Be explicit about the split:
 - The fail-open-audit / fail-closed-mutation distinction in the write path (see Risk Mitigation
   below) — this is a security-adjacent correctness property, not mechanical wiring, and stays on
   Claude even though the call-site wiring itself is offloadable.
+- The audit-store health probe, degraded-health state, admin warning, and public-exposure gate
+  (AUDIT-004) — this is the same class of security-adjacent correctness property as the fail-open/
+  fail-closed distinction above (a silently-degraded audit store is a governance gap, not a
+  mechanical feature), and stays on Claude in full — not offloaded to ICA at all.
 
 **Validator gate (mandatory)**: The ICA-produced wave (AUDIT-002 wiring + AUDIT-003 CLI/API) **must**
 pass `task-completion-validator` review before being considered complete. Do not merge or accept ICA
@@ -149,12 +160,14 @@ called out explicitly in the parent plan's Model & Offload Routing section.
 | AUDIT-001 | `audit_event` schema + `audit_service.py` interface | Design the append-only `audit_event` table (in `rbac.db`) and the `audit_service.py` module: `AuditEvent` dataclass, `record_event`, `list_events`, `get_event`. Claude-owned (not offloaded). | See Task AUDIT-001 below | 1.5 pts | python-backend-engineer | sonnet | adaptive | P5.1 durable store exists |
 | AUDIT-002 | Wire audit-write calls into the 5 available mutation types + N/A note for agent-job launch | Add `audit_service.record_event(...)` calls at the 5 real call-sites; document the 6th (agent-job launch) as N/A-pending-P4 with a reserved taxonomy slot. **ICA offload wave.** | See Task AUDIT-002 below | 1.5 pts | python-backend-engineer (design), **ICA Sonnet 4.6** (wiring) | sonnet | adaptive | AUDIT-001 |
 | AUDIT-003 | `rf audit list`/`show` CLI + `GET /api/audit` read API | Add a `audit` Typer sub-app (`rf audit list`, `rf audit show <id>`) and a thin `api/routers/audit.py` with `GET /api/audit` (cursor-paginated) + `GET /api/audit/{audit_event_id}`. **ICA offload wave.** | See Task AUDIT-003 below | 0.75 pts | **ICA Sonnet 4.6** | sonnet | adaptive | AUDIT-001 |
+| AUDIT-004 | Audit-store degraded-health state + startup/write probe + admin warning + public-exposure gate | Health probe (write-then-read against `rbac.db`'s `audit_event` table) run at `create_app` startup and on-demand; durable `audit_degraded` state; admin-visible warning (`rf audit health`, `GET /api/audit/health`); flags the requirement — enforced at the actual exposure point in P5.6 — that shared/public exposure is blocked while degraded. Claude-owned, not offloaded. | See Task AUDIT-004 below | 0.75 pts | python-backend-engineer | sonnet | adaptive | AUDIT-001 |
 | AUDIT-900 | AC: FE handles missing audit-row fields (conditional) | R-P2 forward-compat AC — applies only if Phase 6/8 ships an admin-settings audit-log UI view. | See Task AUDIT-900 below | 0.25 pts | ui-engineer-enhanced (Phase 8, if applicable) | sonnet | adaptive | AUDIT-001 (schema), Phase 8 (conditional trigger) |
-| **Total** | — | — | — | **4 pts** | — | — | — | — |
+| **Total** | — | — | — | **4.75 pts** | — | — | — | — |
 
 **Model Selection Guidance**: `python-backend-engineer` owns interface/schema design and reviews the
 ICA output; ICA Sonnet 4.6 executes the two offloadable waves (AUDIT-002 wiring, AUDIT-003 CLI/API)
-behind the mandatory `task-completion-validator` gate. AUDIT-900 is not executed in this phase — it
+behind the mandatory `task-completion-validator` gate. AUDIT-004 (health/degraded-state/exposure-gate)
+stays on Claude in full, same as AUDIT-001. AUDIT-900 is not executed in this phase — it
 is a forward-referenced conditional AC consumed by Phase 8's phase file.
 
 ---
@@ -378,6 +391,92 @@ project conventions exactly (no new patterns):
 
 ---
 
+### Task AUDIT-004: Audit-store degraded-health state + startup/write probe + admin warning + public-exposure gate
+
+**Estimate**: 0.75 points
+**Assigned Subagent(s)**: python-backend-engineer
+**Model**: sonnet
+**Effort**: adaptive
+**Dependencies**: AUDIT-001
+**started**: null
+**completed**: null
+**verified_by**: []
+**evidence**: []
+
+**Description**:
+
+AUDIT-001/002 establish that a failed *individual* audit write fails open (never blocks the
+mutation it's recording) and logs loudly. That guarantee has a blind spot this task closes: if the
+audit store itself is persistently unwritable (disk full, permissions error, corrupted `rbac.db`),
+every mutation still succeeds and every audit write still fails — silently, from an operator's
+perspective, because the per-event error log is easy to miss and there is no aggregate signal that
+"the audit trail has stopped working." A workspace could run for weeks with zero audit coverage and
+nothing would surface that fact to an operator deciding whether to share it.
+
+This task adds the missing signal, without changing AUDIT-001/002's fail-open write contract:
+
+1. **Health probe**: `audit_service.health_check(paths) -> AuditHealth` performs an actual
+   write-then-read round trip against a dedicated probe row in the `audit_event` table (not a mere
+   "can I open the file" check) and returns `AuditHealth(healthy: bool, last_probe_at: str,
+   last_success_at: str | None, error_detail: str | None)`. Run this probe (a) once at `create_app`
+   startup (`api/app.py`), and (b) on-demand whenever `GET /api/audit/health` or `rf audit health` is
+   invoked.
+2. **Durable degraded-health state**: persist the most recent probe result in `rbac.db` (a small
+   `audit_health` table or a single-row state record — reuse Phase 1's connection helper, same as
+   AUDIT-001) so the degraded state survives a process restart and is visible across CLI/API/admin
+   surfaces consistently, not just held in an in-process variable that resets on restart.
+3. **Admin warning**: `rf audit health` (CLI) and `GET /api/audit/health` (API) surface the current
+   state prominently — a degraded state is a **loud, top-level warning** (Rich `[red]DEGRADED[/red]`
+   panel in the CLI; a non-2xx-adjacent but clearly-flagged `status: "degraded"` field in the API
+   response), not a buried log line.
+4. **Public-exposure gate (mechanism built here, enforced at the exposure point in P5.6)**: expose a
+   single, simple check — `audit_service.is_healthy_for_exposure(paths) -> bool` — that P5.6's
+   sharing/publish-preview flow calls before allowing any shared/public-facing exposure action. This
+   task builds and unit-tests the check itself; wiring it into the actual exposure decision point is
+   P5.6's responsibility (coordination note below, same pattern as AUDIT-003's P5.2 role-gate note).
+
+**Acceptance Criteria**:
+- [ ] `audit_service.health_check(paths)` performs a real write-then-read probe against
+      `audit_event` (not a file-existence check) and returns a structured `AuditHealth` result.
+- [ ] The most recent health result is durable (survives a process restart) — a unit test kills and
+      re-creates the connection between a forced-degraded probe and a subsequent read, and asserts
+      the degraded state is still reported.
+- [ ] `rf audit health [--json]` and `GET /api/audit/health` both surface the current state, and a
+      degraded result is visually/structurally distinct from a healthy one (not the same shape with
+      a different string buried in a field).
+- [ ] `audit_service.is_healthy_for_exposure(paths)` exists, is unit-tested against both a healthy
+      and a forced-degraded fixture, and returns `False` (fail-closed for *exposure*, not for
+      individual writes) when the store is degraded.
+- [ ] This task does **not** make any individual mutation's audit write fail-closed — AUDIT-001/002's
+      fail-open write contract is unchanged; only the *exposure* decision (owned by P5.6) becomes
+      conditional on audit health.
+- [ ] A coordination note is recorded (see Implementation Notes) flagging that P5.6 must call
+      `is_healthy_for_exposure()` before enabling shared/public exposure — this task does not itself
+      modify P5.6's sharing/publish-preview flow.
+
+**Implementation Notes**:
+- **Coordination note (not blocking this phase, flag for P5.6/P5.9)**: this task ships the health
+  probe and the `is_healthy_for_exposure()` check; it does **not** wire that check into P5.6's
+  sharing/publish-preview flow or Human Gate #2's public/LAN-exposure decision — that wiring is
+  P5.6's responsibility (mirrors AUDIT-003's existing P5.2 role-gate coordination note pattern).
+  Record this as a note for P5.9's regression pass to confirm P5.6 actually calls it.
+- Do not conflate this with AUDIT-001/002's fail-open write guarantee — a degraded audit store still
+  never blocks a mutation. This task only makes the degradation *visible* and gates *exposure*, two
+  different, narrower things than gating every write.
+- Reuse Phase 1's `rbac.db` connection helper for the health-state persistence, same as AUDIT-001 —
+  do not open a second connection path.
+
+**Files Involved**:
+- `src/research_foundry/services/audit_service.py` — `health_check()`, `is_healthy_for_exposure()`,
+  `AuditHealth` dataclass, health-state persistence.
+- `src/research_foundry/api/routers/audit.py` — `GET /api/audit/health`.
+- `src/research_foundry/api/app.py` — startup health probe invocation.
+- `src/research_foundry/cli_commands.py` — `rf audit health` command.
+- `tests/unit/test_audit_service.py` (or equivalent) — health-probe, durability, and
+  `is_healthy_for_exposure()` unit tests.
+
+---
+
 ### Task AUDIT-900: AC: FE handles missing audit-row fields (conditional)
 
 **Estimate**: 0.25 points
@@ -441,12 +540,15 @@ This phase is complete when:
       the taxonomy slot reserved.
 - [ ] **Testing**: Audit-coverage assertion test green (parametrized over the 6 governed types, one
       of which asserts N/A-with-rationale); fault-injection test proves a forced `record_event`
-      failure never breaks the underlying mutation.
+      failure never breaks the underlying mutation; AUDIT-004's health-probe durability and
+      `is_healthy_for_exposure()` tests green.
 - [ ] **Performance**: N/A for this phase (no explicit perf budget beyond "does not block the
       mutation path," covered by the fault-injection test above).
 - [ ] **Security**: Audit rows never contain raw secrets/credentials (reuse
       `governance.py::scan_secrets`/`_redact` on any free-text `error_detail` field before
-      persisting).
+      persisting). Audit-store degradation is visible (not silent) via a durable health state, an
+      admin warning (`rf audit health`/`GET /api/audit/health`), and a coordination note requiring
+      P5.6 to gate shared/public exposure on `is_healthy_for_exposure()` (AUDIT-004).
 - [ ] **Documentation**: `rf audit list`/`show` documented in CLI help text (Typer `--help` is
       sufficient; no separate doc file required for this phase — full docs land in P5.9).
 - [ ] **Code Quality**: `flake8`/`mypy` clean on all touched files.
@@ -481,9 +583,15 @@ No `karen` gate and no human gate apply to this phase (per parent plan Phase Sum
   the actual call-site is P4's (or a later P5 follow-up's) job once `api/routers/agent_jobs.py`
   exists.
 - **Phase 6/8 (admin settings / auth-context UI)**: AUDIT-900 is the forward-referenced, conditional
-  AC these phases must resolve (implement or N/A-with-rationale) — do not renumber it.
-- **Phase 9 (regression/E2E/docs)**: the audit-coverage assertion test and the `GET /api/audit`
-  role-gate follow-up (see AUDIT-003) are both candidates for P5.9's regression sweep to confirm.
+  AC these phases must resolve (implement or N/A-with-rationale) — do not renumber it. Phase 6
+  (P5.6) additionally consumes AUDIT-004's `is_healthy_for_exposure()` check and must call it before
+  enabling any shared/public exposure action (sharing links, publish-preview) — this phase builds
+  the check, P5.6 wires the enforcement; P5.6's already-scheduled karen public-exposure milestone is
+  the natural review point for confirming that wiring landed.
+- **Phase 9 (regression/E2E/docs)**: the audit-coverage assertion test, the `GET /api/audit`
+  role-gate follow-up (see AUDIT-003), and confirmation that P5.6 actually calls
+  `is_healthy_for_exposure()` before exposure (AUDIT-004) are all candidates for P5.9's regression
+  sweep to confirm.
 
 ---
 
@@ -498,10 +606,11 @@ No `karen` gate and no human gate apply to this phase (per parent plan Phase Sum
 | `src/research_foundry/services/source_cards.py` | Audit hook in `ingest_source()`/`create_source_card()` | ICA Sonnet 4.6 |
 | `src/research_foundry/api/routers/reports.py` | Audit hook in `publish_preview()` | ICA Sonnet 4.6 |
 | `src/research_foundry/services/writeback.py` | Audit hook in `writeback()` | ICA Sonnet 4.6 |
-| `src/research_foundry/api/routers/audit.py` | New: `GET /api/audit`, `GET /api/audit/{id}` | ICA Sonnet 4.6 |
-| `src/research_foundry/api/app.py` | Register `audit_router` | ICA Sonnet 4.6 |
-| `src/research_foundry/cli_commands.py` | New `audit_app` Typer sub-app | ICA Sonnet 4.6 |
+| `src/research_foundry/api/routers/audit.py` | New: `GET /api/audit`, `GET /api/audit/{id}`, `GET /api/audit/health` (AUDIT-004) | ICA Sonnet 4.6 (list/get), python-backend-engineer (health) |
+| `src/research_foundry/api/app.py` | Register `audit_router`; startup audit-health probe invocation (AUDIT-004) | ICA Sonnet 4.6 (registration), python-backend-engineer (startup probe) |
+| `src/research_foundry/cli_commands.py` | New `audit_app` Typer sub-app; `rf audit health` (AUDIT-004) | ICA Sonnet 4.6 (`audit_app` base), python-backend-engineer (`health` subcommand) |
 | `src/research_foundry/cli.py` | Register `audit_app` | ICA Sonnet 4.6 |
+| `tests/unit/test_audit_service.py` | Health-probe, durability, `is_healthy_for_exposure()` tests (AUDIT-004) | python-backend-engineer |
 
 ---
 
@@ -515,6 +624,12 @@ No `karen` gate and no human gate apply to this phase (per parent plan Phase Sum
   unaffected.
 - Taxonomy completeness: assert all 6 `mutation_type` values are valid enum members even though only
   5 have a wired call-site.
+- Audit-health probe (AUDIT-004): `health_check()` against a healthy fixture returns
+  `healthy=True`; against a forced-degraded fixture (e.g., a read-only `rbac.db` mount) returns
+  `healthy=False` with a populated `error_detail`; the degraded state persists across a simulated
+  process restart (re-open the connection, re-read the health state).
+- `is_healthy_for_exposure()` (AUDIT-004): returns `True`/`False` matching the underlying health
+  state; unit-tested independently of the CLI/API surfaces that call it.
 
 ### Integration Tests
 
@@ -527,6 +642,8 @@ No `karen` gate and no human gate apply to this phase (per parent plan Phase Sum
   denied/failure outcomes (not only the happy path).
 - `rf audit list`/`show` CLI round-trip against a seeded fixture; `GET /api/audit`/`GET
   /api/audit/{id}` API round-trip.
+- `rf audit health`/`GET /api/audit/health` round-trip against both a healthy and a forced-degraded
+  fixture, asserting the degraded state is visually/structurally distinct (not a buried field).
 
 ### E2E Tests (if applicable)
 
@@ -543,13 +660,15 @@ No `karen` gate and no human gate apply to this phase (per parent plan Phase Sum
 | `audit_service.py` opens a second, independent SQLite connection to `rbac.db`, risking lock contention or schema drift against Phase 1's connection | Medium | AUDIT-001 explicitly requires reusing Phase 1's connection helper; reconcile the exact helper name/signature with P5.1's shipped implementation at execution time (this phase's entry criterion is the P5.1 store existing, not a hardcoded function name). |
 | ICA-produced wiring (AUDIT-002/003) subtly changes a mutation's return shape or error handling while adding the audit call | Medium | Mandatory `task-completion-validator` gate before merge; fault-injection test isolates whether a failure originates in the audit call vs. the underlying mutation. |
 | Free-text `error_detail` on a `writeback`/`publish_preview` failure accidentally captures a raw secret in the audit row | Low | Pass `error_detail` through `governance.py::scan_secrets`/`_redact` before persisting, mirroring the existing redaction discipline in `middleware/auth.py`. |
+| A persistently-failing audit store goes unnoticed because AUDIT-001/002's fail-open write contract is, by design, silent to the mutation caller — a workspace could run for weeks with 0 audit coverage and no operator would know | High | AUDIT-004: durable health state + startup/on-demand probe + loud admin warning (`rf audit health`/`GET /api/audit/health`) + a public-exposure gate (`is_healthy_for_exposure()`) that P5.6 must call before allowing shared/public exposure. This does not change the fail-open write contract — it makes the degradation visible and gates only the *exposure* decision. |
+| P5.6 forgets to wire `is_healthy_for_exposure()` into its sharing/publish-preview flow, leaving the exposure gate built but unused | Medium | Explicit coordination note in AUDIT-004 and this phase's Integration Points; P5.6's already-scheduled karen public-exposure milestone is the natural review point; flagged again for P5.9's regression sweep to confirm the wiring landed. |
 
 ---
 
 ## Success Metrics
 
-- **Completion**: All 4 tasks (AUDIT-001, AUDIT-002, AUDIT-003, AUDIT-900) resolved — AUDIT-900 may
-  resolve as N/A-with-rationale in Phase 8 rather than implemented here.
+- **Completion**: All 5 tasks (AUDIT-001, AUDIT-002, AUDIT-003, AUDIT-004, AUDIT-900) resolved —
+  AUDIT-900 may resolve as N/A-with-rationale in Phase 8 rather than implemented here.
 - **Quality**: All Quality Gates passed, including the mandatory `task-completion-validator` sign-off
   on the ICA wave.
 - **Coverage**: 5 of 5 available governed mutation types produce an audit row (100% of what's
@@ -557,6 +676,10 @@ No `karen` gate and no human gate apply to this phase (per parent plan Phase Sum
   already reserved (0 follow-up schema changes needed when P4 ships).
 - **Fail-open guarantee**: 0 cases where a forced audit-write failure changes the underlying
   mutation's outcome or HTTP status (fault-injection test suite).
+- **Degraded-health visibility**: a forced-degraded audit store is detected by the health probe,
+  persists across a simulated restart, and surfaces via both `rf audit health` and
+  `GET /api/audit/health`; `is_healthy_for_exposure()` correctly returns `False` in that state
+  (AUDIT-004 test suite).
 
 ---
 
@@ -581,6 +704,13 @@ the fail-open/fail-closed distinction — are exactly the parts that stay on Cla
 - Do not gate `GET /api/audit*` on `require_role` in this phase — that dependency doesn't exist yet
   (P5.2 not required by this phase's wave-plan entry). Flag it as a coordination note for P5.9 instead
   of blocking this phase on P5.2's completion.
+- **Do not let AUDIT-004's exposure gate leak into the write path** — `is_healthy_for_exposure()`
+  is consulted only at the point P5.6 decides whether to allow shared/public exposure; it must never
+  be called from `record_event()` or any mutation call-site, or the fail-open write guarantee
+  (AUDIT-001/002) is silently broken.
+- **This phase builds the exposure-gate check; it does not enforce it** — `is_healthy_for_exposure()`
+  wired into P5.6's actual sharing/publish-preview decision point is P5.6's task, not this phase's.
+  Do not mark AUDIT-004 "done" expecting P5.6's enforcement to already exist.
 
 ### Learnings
 

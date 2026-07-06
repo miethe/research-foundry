@@ -13,7 +13,7 @@ risk_level: high
 changelog_required: true
 deferred_items_spec_refs: []
 findings_doc_ref: null
-effort_estimate: "46 points"
+effort_estimate: "47.25 points"
 it_schema: 1
 tier: 3
 feature_version: "v1"
@@ -90,7 +90,7 @@ decisions:
   - {decision: "P5 sequences AFTER P4; AC-3 validates against P4 real ADR-002 firewall, contract-test fallback if P4 slips", rationale: "User directive P4-then-P5; P5 composes with ADR-002, does not re-implement it", status: locked}
   - {decision: "Public-sharing v1 = read-only sensitivity-scoped share links; defer general public URLs", rationale: "Ships governed-sharing primitive without productizing external URLs; bounded blast radius", status: locked}
   - {decision: "Rate limiting = per-identity + per-route sliding window, config-driven in foundry.yaml", rationale: "Global budget too coarse for multi-user; per-identity is the enforceable unit", status: locked}
-  - {decision: "D12 nullable workspace_id/created_by become ENFORCED via a real data migration (dry-run + rollback)", rationale: "Columns exist from P2/P3 forward-compat; P5's job is migration+enforcement, not schema design", status: locked}
+  - {decision: "D12 nullable workspace_id/created_by become ENFORCED via a real data migration (dry-run + rollback); schema state is mixed — catalog_items lacks the column and gets it added first", rationale: "Fields exist from P2/P3 forward-compat only on builder_service.py draft records + catalog_service.py's derived catalog_report_drafts index; catalog_items never got them. P5's job is a schema add (catalog_items) plus migration+enforcement everywhere else — not schema design from scratch", status: locked}
   - {decision: "OQ-A: RBAC enforcement wraps routers via a single shared FastAPI dependency require_role(...), not per-route decorators", rationale: "Uniformity for R-P1 target_surfaces enumeration + testability (route-sweep test)", status: locked}
   - {decision: "OQ-B: migration backfill uses one synthetic default workspace for all legacy unscoped records", rationale: "Simplest reversible backfill; revisit only if multi-tenant import is needed later", status: locked}
 decision_gates:
@@ -99,7 +99,7 @@ decision_gates:
   - {gate: "Human gate #3 — P5.4 Clerk secrets handling sign-off before real secrets/production JWKS", status: pending}
 success_metrics:
   - "2 auth providers shipped (local_static, clerk) + 1 documented BYO seam (oidc), zero call-site branching on provider identity"
-  - "100% of catalog/report(/agent-job) mutation routes enforce server-side RBAC (0 UI-only gates)"
+  - "100% of HTTP-routed catalog/report(/agent-job) mutation routes enforce server-side RBAC (0 UI-only gates); CLI/service-direct mutation surface classified admin-only/single-operator-trust and covered by a static contract test (P5.2 RBAC-006)"
   - "4 of 4 run-detail-family endpoints share the no-existence-leak gate (up from 1 of 4)"
   - "100% of 6 governed mutation types produce an audit_event row"
   - "0 cross-workspace leaks in the isolation regression suite"
@@ -113,7 +113,7 @@ acceptance_criteria:
 execution_mode: hybrid
 agent_title: "P5 — Auth/RBAC/Isolation/Audit hardening implementation plan"
 agent_summary: >
-  9-phase, 46-point Tier-3 plan: auth-provider port -> RBAC enforcement -> workspace migration
+  9-phase, 47.25-point Tier-3 plan: auth-provider port -> RBAC enforcement -> workspace migration
   (highest-risk, human-gated) -> {Clerk, audit, deferred-sensitivity} in parallel -> rate
   limits/admin/sharing gates -> frontend auth-context UI -> regression/E2E/docs.
 contributors_note: null
@@ -188,7 +188,7 @@ wave_plan:
 - **Decisions Block**: `.claude/worknotes/public-multiuser-p5-auth-rbac/decisions-block.md`
 
 **Complexity**: XL (Tier 3)
-**Total Estimated Effort**: 46 points
+**Total Estimated Effort**: 47.25 points
 **Sequencing**: after Phase 4 (`public-multiuser-p4-agents-v1`) lands; P5.2's `agent_jobs.py` target surface and P5's AC-3 (credential firewall) compose with P4's ADR-002 once it ships (contract-test fallback if P4 slips).
 
 ---
@@ -197,9 +197,10 @@ wave_plan:
 
 Phase 5 converts Research Foundry from a single-trusted-operator tool into a governed multi-user
 system: a swappable `AuthProvider` port (local_static default, Clerk opt-in, OIDC/BYO seam),
-server-side 5-role RBAC enforced across every mutation route, a real data migration that turns
-P2/P3's unenforced `workspace_id`/`created_by` columns into an isolation boundary, a full audit
-log, rate limits, admin settings, fail-closed public sharing, and a frontend auth-context
+server-side 5-role RBAC enforced across every mutation route, a real data migration that adds the
+`workspace_id` column where it's still missing (`catalog_service.py`'s `catalog_items` table) and
+turns P2/P3's unenforced `workspace_id`/`created_by` fields into an isolation boundary everywhere
+else, a full audit log, rate limits, admin settings, fail-closed public sharing, and a frontend auth-context
 abstraction — while closing the 3 deferred sensitivity gaps carried from P2/P3 (SPIKE FU-4). The
 plan is a serial auth-foundation spine (P5.1→P5.2→P5.3) gating a parallel capability slice
 (P5.4/P5.5/P5.7), converging on public-exposure gates (P5.6), frontend UI (P5.8), and a final
@@ -234,7 +235,7 @@ seam verification depends on P5.2/P5.3/P5.6 ACs (cross-referenced by task ID in 
 ### Critical Path
 
 **P5.1 → P5.2 → P5.3 → P5.6 → P5.9** (auth foundation → RBAC → isolation → public-exposure gates →
-validation). This serial spine carries 27 of 46 points (6+6+6+5+4). P5.3 is the single highest-risk
+validation). This serial spine carries 27.5 of 47.25 points (6+6.5+6+5+4). P5.3 is the single highest-risk
 node: an irreversible data migration, human-gated, with its own `karen` milestone review.
 
 ### Phase Summary
@@ -242,15 +243,15 @@ node: an irreversible data migration, human-gated, with its own `karen` mileston
 | Phase | Name | Points | Primary Agent(s) | Secondary Agent(s) | Model/Effort | Offload | Gate |
 |-------|------|--------|-------------------|---------------------|--------------|---------|------|
 | P5.1 | Auth-provider port + local_static + durable RBAC store | 6 | backend-architect, data-layer-expert | — | sonnet / extended | **MUST-stay — no offload (Mode D)** | task-completion-validator |
-| P5.2 | RBAC enforcement (5 roles, server-side) | 6 | python-backend-engineer | backend-architect | sonnet / extended | **MUST-stay — no offload (Mode D)** | task-completion-validator + **Human gate #2** |
+| P5.2 | RBAC enforcement (5 roles, server-side) | 6.5 | python-backend-engineer | backend-architect | sonnet / extended | **MUST-stay — no offload (Mode D)** | task-completion-validator + **Human gate #2** |
 | P5.3 | Workspace isolation + migration | 6 | data-layer-expert, backend-architect | — | sonnet / extended | **MUST-stay — no offload (Mode D)** | **Human gate #1** + task-completion-validator + **karen** (isolation milestone) |
 | P5.4 | Clerk adapter + OIDC/BYO seam | 5 | backend-architect | ui-engineer-enhanced | sonnet / extended | **MUST-stay — no offload (Mode D)** | **Human gate #3** + task-completion-validator |
-| P5.5 | Audit log | 4 | python-backend-engineer | ICA Sonnet 4.6 (offload wave) | sonnet / adaptive | ICA offload, gated behind validator | task-completion-validator |
+| P5.5 | Audit log (incl. degraded-health probe + exposure gate, AUDIT-004) | 4.75 | python-backend-engineer | ICA Sonnet 4.6 (offload wave) | sonnet / adaptive | ICA offload, gated behind validator (AUDIT-004 Claude-only) | task-completion-validator |
 | P5.6 | Rate limits + admin settings + sharing/publish-preview gates | 5 | python-backend-engineer | ui-engineer | sonnet / adaptive | none | task-completion-validator + **karen** (public-exposure milestone) |
 | P5.7 | Deferred sensitivity closes (FU-4) | 5 | python-backend-engineer, data-layer-expert | ICA Sonnet 4.6 (offload wave) | sonnet / adaptive | ICA offload, gated behind validator | task-completion-validator |
 | P5.8 | Frontend auth-context + admin UI + role-gated affordances | 5 | ui-engineer-enhanced | ICA Sonnet 4.6 (subcomponents only) | sonnet / adaptive | ICA subcomponents only, gated behind validator | task-completion-validator |
 | P5.9 | Regression + E2E + docs + migration runbook | 4 | python-backend-engineer (tests), documentation-writer (docs) | Codex gpt-5.5 (adversarial review, read-only) | sonnet+haiku / adaptive | Codex read-only review only, never implementation | task-completion-validator + **karen** (end-of-feature) + Codex adversarial pass |
-| **Total** | — | **46** | — | — | — | — | — |
+| **Total** | — | **47.25** | — | — | — | — | — |
 
 > Estimation rationale and anchors live in the decisions block (§4) and will be carried into the
 > Human Brief. This table is the canonical orchestration index — keep synced with phase files.
@@ -291,8 +292,9 @@ node: an irreversible data migration, human-gated, with its own `karen` mileston
 | Risk | Severity | Mitigation |
 |------|----------|------------|
 | Workspace migration breaks working single-operator deployments | High | Dry-run + rollback runbook; single-`default`-workspace backfill (OQ-B, locked); Human gate #1; karen isolation milestone; reversible migration |
-| Server-side RBAC gaps (UI-only enforcement leak) | High | R-P1 enumerated router `target_surfaces`; per-route `require_role` sweep test; Human gate #2; Codex adversarial pass |
+| Server-side RBAC gaps (UI-only enforcement leak, incl. the CLI/service-direct mutation surface `require_role` structurally cannot reach) | High | R-P1 enumerated router `target_surfaces`; per-route `require_role` sweep test; RBAC-006's CLI/service mutation-surface classification + static contract test; Human gate #2; Codex adversarial pass |
 | Sensitivity fail-open regressions during the refactor | High | P2/P3 sensitivity regression suite gates every phase; new existence-gate + global-source-index tests (P5.7) |
+| Audit store degrades silently, undermining the audit guarantee with no visible signal | Medium-High | AUDIT-004: durable degraded-health state + startup/on-demand probe + admin warning + public-exposure gate (`is_healthy_for_exposure()`) required before shared/public exposure; individual writes stay fail-open |
 
 ---
 
