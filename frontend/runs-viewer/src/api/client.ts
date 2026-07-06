@@ -40,6 +40,27 @@ const LOOPBACK_ENABLED =
 const LOOPBACK_BASE =
   import.meta.env?.VITE_RUNS_LOOPBACK_API_BASE ?? "http://127.0.0.1:7432/api";
 
+/**
+ * Shared mode/base-URL accessors for other API modules (e.g. api/reportsClient.ts,
+ * the Report Builder's read/WRITE client — this file itself stays GET-only/read-only
+ * per the module docstring). Exported rather than duplicated so both clients agree
+ * on which mode is active and which base URL/auth token to use.
+ */
+export function isLoopbackEnabled(): boolean {
+  return LOOPBACK_ENABLED;
+}
+
+export function getLoopbackBase(): string {
+  return LOOPBACK_BASE;
+}
+
+export function getLoopbackAuthHeaders(): Record<string, string> {
+  const token: string = import.meta.env?.VITE_RUNS_LOOPBACK_API_TOKEN ?? "";
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
 // ── Base URL (for static asset fetches) ──────────────────────────────────────
 
 const BASE_URL =

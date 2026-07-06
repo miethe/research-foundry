@@ -7,7 +7,7 @@
  */
 import type { ReactElement } from "react";
 
-export type RouteName = "runList" | "runDetail" | "settings" | "help" | "alerts" | "swarm" | "policies" | "catalog";
+export type RouteName = "runList" | "runDetail" | "settings" | "help" | "alerts" | "swarm" | "policies" | "catalog" | "builder";
 
 export interface RouteMeta {
   path: string;
@@ -25,6 +25,7 @@ export const ROUTES: Record<RouteName, RouteMeta> = {
   swarm:     { path: "/runs/:runId/swarm",   label: "Swarm (→ ?view=swarm)" },
   policies:  { path: "/policies",            label: "Policies"   },
   catalog:   { path: "/catalog",             label: "Catalog"    },
+  builder:   { path: "/builder",             label: "Builder"    },
 };
 
 export interface ScreenRoute {

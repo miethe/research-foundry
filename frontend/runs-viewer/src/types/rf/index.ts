@@ -55,6 +55,34 @@ export type {
   CatalogStats,
 } from "./catalog.js";
 
+// Report Builder draft types (public-multiuser-p2p3, Phase 3 / Wave F)
+export type {
+  ReportDraftOrigin,
+  ReportAudience,
+  ReportDraftStatus,
+  ReportBlockType,
+  ReportBlockMateriality,
+  ReportCoverageStatus,
+  ReportClaimRelation,
+  ReportLinkStatus,
+  ReportBlock,
+  ReportClaimLink,
+  ReportSourceLink,
+  ReportRevisionPointer,
+  ReportReviewState,
+  ReportDraft,
+  ReportDraftSummary,
+  ReportVerifyCheck,
+  ReportVerifyResult,
+  ReportPublishPreviewResult,
+  CreateDraftRequest,
+  AddBlockRequest,
+  UpdateBlockRequest,
+  AddClaimLinkRequest,
+  AddSourceLinkRequest,
+  CreateRevisionRequest,
+} from "./report_draft.js";
+
 // Auto-generated schema types (run `pnpm codegen` to regenerate)
 export type { SourceCard }                from "./source_card.generated.js";
 export type { ClaimLedger }               from "./claim_ledger.generated.js";
