@@ -5,16 +5,16 @@ status: stable
 schema_version: "1.4"
 doc_type: architecture
 created: 2026-06-19
-updated: 2026-07-05
-feature_slug: runs-context-panels-v1
+updated: 2026-07-06
+feature_slug: aos-correlation-ids-v1
 phase: "8"
 owners: ["python-backend-engineer", "backend-architect", "documentation-writer"]
 resolves: ["OQ-1", "OQ-2", "OQ-3"]
 source_of_truth: src/research_foundry/services/export_service.py
 reviewed_by: backend-architect
 review_verdict: approved
-review_date: 2026-06-21
-changelog_ref: "CHANGELOG.md → [Unreleased] Added → Run Metadata Enrichment"
+review_date: 2026-07-06
+changelog_ref: "CHANGELOG.md -> [Unreleased] Added -> AOS Correlation IDs"
 ---
 
 # RF Run Export Schema (`run.json`)
@@ -53,6 +53,14 @@ Load-bearing invariants:
   "schema_version": "1.4",            // export contract version (this doc)
   "run_id": "rf_run_20260613_...",    // canonical id
   "intent_id": "intent_research_...", // nullable
+  "aos_run_uuid": "11111111-1111-4111-8111-111111111111",      // nullable
+  "aos_session_uuid": "22222222-2222-4222-8222-222222222222",  // nullable
+  "aos_feature_uuid": "33333333-3333-4333-8333-333333333333",  // nullable
+  "aos_artifact_uuid": "44444444-4444-4444-8444-444444444444", // nullable
+  "aos_trace_uuid": "55555555-5555-4555-8555-555555555555",    // nullable
+  "native_aliases": {
+    "rf_run_id": "rf_run_20260613_..."
+  },
   "created_at": "2026-06-13T22:46:23-04:00", // from run.yaml, nullable
   "status_derived": "published",      // see §3 — computed, authoritative
   "status_raw": "planned",            // run.yaml.status verbatim (may be stale)
@@ -107,6 +115,24 @@ Only `schema_version`, `run_id`, `status_derived`, `claims` are guaranteed
 non-null. All others (including `report_draft`) may be `null`/empty when the
 underlying artifact is absent (per-artifact graceful degradation; consumers use
 optional access).
+
+### 2.1 AOS Correlation Fields (v1.4)
+
+Schema 1.4 adds optional AOS correlation IDs for Operator-launched RF runs:
+
+| Field | Type | Source | Null behavior |
+|---|---|---|---|
+| `aos_run_uuid` | string \| null | `run.yaml.aos_run_uuid` or `run.yaml.correlation.aos_run_uuid` | `null` when absent |
+| `aos_session_uuid` | string \| null | `run.yaml.aos_session_uuid` or `run.yaml.correlation.aos_session_uuid` | `null` when absent |
+| `aos_feature_uuid` | string \| null | `run.yaml.aos_feature_uuid` or `run.yaml.correlation.aos_feature_uuid` | `null` when absent |
+| `aos_artifact_uuid` | string \| null | `run.yaml.aos_artifact_uuid` or `run.yaml.correlation.aos_artifact_uuid` | `null` when absent |
+| `aos_trace_uuid` | string \| null | `run.yaml.aos_trace_uuid` or `run.yaml.correlation.aos_trace_uuid` | `null` when absent |
+| `native_aliases.rf_run_id` | string | top-level export `run_id` | present in current exports; old cached exports may omit `native_aliases` |
+
+`run_id` remains the canonical Research Foundry identifier. AOS UUIDs are resolver
+handles layered on top of native RF identity, not replacements. `native_aliases`
+contains ID aliases only; it must not include prompt bodies, response bodies,
+transcript text, secrets, or absolute private paths.
 
 ## 3. Derived Status Enum (OQ-2 resolution)
 
@@ -631,27 +657,29 @@ if "Tags: researcher" filter is active.
 
 ## 14. Backwards Compatibility Notes
 
-Schema 1.4 is **fully backwards compatible** with all prior schema versions (1.0-1.3):
+Schema 1.4 is **fully backwards compatible** with all prior schema versions (1.0, 1.1, 1.2, 1.3):
 
 - All fields introduced in 1.2, 1.3, and 1.4 are **optional/nullable**.
 - Pre-migration runs (v1.0/1.1) carry `null` values or omit these fields entirely.
 - Frontend components use **optional access** (`run?.linked_projects`, `run?.context`,
-  `run?.report_anchors`, etc.) and gracefully degrade when fields are absent.
+  `run?.report_anchors`, `run?.aos_run_uuid`, etc.) and gracefully degrade when fields are absent.
 - Static data rebuild (`rf run export --all`) automatically includes 1.4 fields for all runs;
-  context and report_anchors are populated when the source artifacts are present on disk.
+  context and report_anchors are populated when the source artifacts are present on disk, and AOS
+  fields are populated when the run metadata carries them.
 
 **Version detection:** Always check `schema_version` to determine which fields are available:
 - Schema `1.0`: no metadata, no enrichment, no context, no writebacks.
 - Schema `1.1`: adds `report_draft`.
 - Schema `1.2`: adds run metadata (5 fields), enrichment extras (3 fields), `context` stub (routing_decision + swarm_plan only), and writebacks.
 - Schema `1.3`: `context` fully populated — adds `research_brief_md` and `upstream_entities`; redaction extended to `context.*`.
-- Schema `1.4`: adds `report_anchors` (§16) — AST-derived report block/paragraph anchors + claim spans. Absent (key omitted) on schema < 1.4; the frontend falls back to legacy client-side regex chip parsing in that case.
+- Schema `1.4`: adds `report_anchors` (§16) — AST-derived report block/paragraph anchors + claim spans. Absent (key omitted) on schema < 1.4; the frontend falls back to legacy client-side regex chip parsing in that case. Also adds AOS correlation fields (`aos_*_uuid`) and `native_aliases.rf_run_id`.
 
-**Migration note (for developers):** When upgrading from v1.0/v1.1 exports to 1.3:
+**Migration note (for developers):** When upgrading from v1.0/v1.1 exports to 1.4:
 1. Runs with metadata/enrichment fields will appear after backfill (P2) + re-export.
 2. Pre-migration runs remain queryable with `schema_version < "1.2"`.
 3. Frontend can show "[Metadata pending backfill]" or "[Pre-enrichment run]" labels for old runs.
 4. Context panels in the viewer display empty-states for runs where `context` is null (pre-1.3 exports or runs with no source artifacts).
+5. AOS resolver affordances display unresolved/empty states when `aos_*_uuid` fields are null or absent.
 
 ## 15. CLI Surface Changes (v1.2-v1.4)
 
@@ -743,3 +771,4 @@ design decisions D7/D8). Backend owns anchor derivation — the frontend **consu
 | 1.2 | 2026-06-21 | **Run Metadata Enrichment** — added 5 metadata fields (`linked_projects`, `category`, `tags`, `backlog_idea_ref`, `backlog_idea_id`), 3 enrichment extras (`cost_usd`, `model_profiles`, `source_count_by_type`), and 2 v2 context fields (`context`, `writebacks`). All are optional/nullable for backwards compatibility. Includes backfill migration (P2) for pre-migration runs and idempotent re-export threading (P4). Frontend filtering, display, and enrichment widgets are enabled in P5–P7. |
 | 1.4 | 2026-07-05 | **Report Anchors (P2 Wave A, D7/D8)** — added `report_anchors: RFReportAnchorBlock[] \| null`, AST-derived (`markdown-it-py`) block/paragraph anchors with `[claim:]` span extraction. Additive/nullable; absent entirely on pre-1.4 exports (frontend legacy-regex fallback). No sensitivity-redaction impact (carries no prose). |
 | 1.3 | 2026-06-24 | **Context block fully populated** — `research_brief_md` (verbatim `research_brief.md`, including YAML frontmatter) and `upstream_entities` (`intent_id` from `run.yaml`, `ibom_id` from `run.yaml`, `intenttree_node_id` from `routing_decision.yaml → active_node_id` with `evidence_bundle.yaml` fallback) are now populated. `context` is non-null whenever at least one file-based source artifact is present; `context` itself is null only when all three YAML/Markdown source files are absent. R9 sensitivity redaction extended to `context.routing_decision`, `context.swarm_plan`, and `context.research_brief_md`. Four context panels (Routing Decision, Research Brief, Swarm Plan, Upstream Entities) ship in the runs-viewer run detail view. Additive and backwards-compatible: schema 1.2 consumers using optional access are unaffected. |
+| 1.4 | 2026-07-06 | **AOS correlation IDs** — added optional top-level `aos_run_uuid`, `aos_session_uuid`, `aos_feature_uuid`, `aos_artifact_uuid`, `aos_trace_uuid`, and `native_aliases.rf_run_id`. Native RF `run_id` remains canonical. Correlation fields are sourced from top-level `run.yaml` metadata with `run.yaml.correlation` fallback, emit `null` when absent, and never copy prompt/response bodies or private path payloads. |

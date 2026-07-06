@@ -93,6 +93,10 @@ def _assert_matches_frozen_schema(data: dict) -> None:
     assert isinstance(data["claims"], list) and data["claims"]
     assert isinstance(data["verification"], dict)
     assert "checks" in data["verification"]
+    for field in svc.AOS_CORRELATION_FIELDS:
+        assert field in data
+        assert data[field] is None
+    assert data["native_aliases"] == {"rf_run_id": data["run_id"]}
 
     for claim in data["claims"]:
         assert "claim_id" in claim

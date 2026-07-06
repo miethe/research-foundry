@@ -2,14 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "rf-run-export-schema.json",
   "title": "RFRunExport",
-  "description": "Formal JSON Schema for the denormalized run.json contract emitted by `rf run export --json`. Schema version 1.2 adds five run-metadata enrichment fields (linked_projects, category, tags, backlog_idea_ref, backlog_idea_id). Schema version 1.4 adds report_anchors (AST-derived report block/paragraph anchors + claim spans, P2 Wave A). All new fields are optional/nullable for backwards compatibility with pre-migration run.json documents (schema 1.0-1.3).",
+  "description": "Formal JSON Schema for the denormalized run.json contract emitted by `rf run export --json`. Schema version 1.2 adds five run-metadata enrichment fields (linked_projects, category, tags, backlog_idea_ref, backlog_idea_id). Schema version 1.4 adds report_anchors (AST-derived report block/paragraph anchors + claim spans, P2 Wave A) plus optional AOS correlation IDs and RF native alias metadata. All new/additive fields are optional/nullable for backwards compatibility with pre-migration run.json documents (schema 1.0-1.3).",
   "type": "object",
   "required": ["schema_version", "run_id", "status_derived", "claims"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
       "type": "string",
-      "description": "Export contract version. '1.4' adds report_anchors; '1.3' fully populates context; '1.2' adds metadata enrichment fields; '1.1' added report_draft; '1.0' is the initial frozen contract.",
+      "description": "Export contract version. '1.4' adds report_anchors and AOS correlation IDs; '1.3' fully populates context; '1.2' adds metadata enrichment fields; '1.1' added report_draft; '1.0' is the initial frozen contract.",
       "examples": ["1.4", "1.3", "1.2", "1.1", "1.0"]
     },
     "run_id": {
@@ -20,6 +20,53 @@
     "intent_id": {
       "type": ["string", "null"],
       "description": "Intent document ID. Null when intent artifact is absent.",
+      "nullable": true
+    },
+    "aos_run_uuid": {
+      "type": ["string", "null"],
+      "description": "Optional AOS run UUID stamped by the Operator or AOS launcher. Null/absent for native RF runs without AOS metadata.",
+      "format": "uuid",
+      "nullable": true
+    },
+    "aos_session_uuid": {
+      "type": ["string", "null"],
+      "description": "Optional AOS harness/session UUID. Null/absent when the RF run was not launched from an AOS-controlled session.",
+      "format": "uuid",
+      "nullable": true
+    },
+    "aos_feature_uuid": {
+      "type": ["string", "null"],
+      "description": "Optional AOS feature/initiative UUID. Null/absent when no parent feature correlation is known.",
+      "format": "uuid",
+      "nullable": true
+    },
+    "aos_artifact_uuid": {
+      "type": ["string", "null"],
+      "description": "Optional AOS artifact UUID for the RF run/export artifact. Null/absent when no artifact correlation is known.",
+      "format": "uuid",
+      "nullable": true
+    },
+    "aos_trace_uuid": {
+      "type": ["string", "null"],
+      "description": "Optional AOS trace UUID for a multi-hop workflow root. Null/absent for standalone runs.",
+      "format": "uuid",
+      "nullable": true
+    },
+    "native_aliases": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "null"] },
+          "properties": {
+            "rf_run_id": {
+              "type": "string",
+              "description": "Native Research Foundry run ID alias. The top-level run_id remains canonical."
+            }
+          }
+        },
+        { "type": "null" }
+      ],
+      "description": "Native RF alias metadata for resolver lookups. Contains IDs only, never prompt/response bodies or private paths.",
       "nullable": true
     },
     "created_at": {

@@ -46,9 +46,11 @@ import type { RFRunExport, RFRunSummary } from "@/types/rf";
 // Fixtures (static — no network)
 import fixtureRunRaw   from "@/test/fixtures/run.json";
 import scaffoldRunRaw  from "@/test/fixtures/scaffold-run.json";
+import aosRunRaw       from "@/test/fixtures/aos-run.json";
 
 const fixtureRun  = fixtureRunRaw  as unknown as RFRunExport;
 const scaffoldRun = scaffoldRunRaw as unknown as RFRunExport;
+const aosRun      = aosRunRaw      as unknown as RFRunExport;
 
 // ── Enriched run — extends fixture with P5/P7 metadata + enrichment fields ────
 
@@ -426,6 +428,36 @@ describe("SMOKE-001 / RunDetailWorkspace (Overview)", () => {
     expect(cost?.textContent).toContain("$0.0312");
   });
 
+  it("(aos metadata) overview tab: renders schema 1.4 AOS UUIDs and RF native aliases", () => {
+    const { container } = render(
+      <RunDetailWorkspace
+        run={{ ...aosRun, aos_artifact_uuid: "unknown" }}
+        activeTab="overview"
+        mode="modal"
+        onTabChange={() => {}}
+      />,
+      { wrapper: makeWrapper() },
+    );
+
+    expect(container.querySelector("[data-testid='run-overview-metadata']")).not.toBeNull();
+    expect(container.querySelector("[data-testid='metadata-aos-run-uuid']")?.textContent)
+      .toContain("11111111-1111-4111-8111-111111111111");
+    expect(container.querySelector("[data-testid='metadata-aos-session-uuid']")?.textContent)
+      .toContain("22222222-2222-4222-8222-222222222222");
+    expect(container.querySelector("[data-testid='metadata-aos-feature-uuid']")?.textContent)
+      .toContain("33333333-3333-4333-8333-333333333333");
+    expect(container.querySelector("[data-testid='metadata-aos-trace-uuid']")?.textContent)
+      .toContain("55555555-5555-4555-8555-555555555555");
+    expect(container.querySelector("[data-testid='metadata-aos-artifact-uuid']")?.textContent)
+      .toContain("Not available");
+
+    const aliases = container.querySelector("[data-testid='metadata-aos-native-aliases']");
+    expect(aliases?.textContent).toContain("rf_run_id");
+    expect(aliases?.textContent).toContain(aosRun.run_id);
+    expect(aliases?.textContent).not.toContain("op_run_id");
+    expect(container.querySelector("[data-testid='metadata-aos-status']")).toBeNull();
+  });
+
   it("(null-metadata) renders without crash", () => {
     const { container } = render(
       <RunDetailWorkspace
@@ -453,6 +485,8 @@ describe("SMOKE-001 / RunDetailWorkspace (Overview)", () => {
     expect(container.querySelector("[data-testid='metadata-linked-projects']")).toBeNull();
     expect(container.querySelector("[data-testid='metadata-category']")).toBeNull();
     expect(container.querySelector("[data-testid='metadata-tags']")).toBeNull();
+    expect(container.querySelector("[data-testid='metadata-aos-run-uuid']")).toBeNull();
+    expect(container.querySelector("[data-testid='metadata-aos-native-aliases']")).toBeNull();
   });
 
   it("(null-metadata) overview tab: enrichment section absent when all fields null", () => {

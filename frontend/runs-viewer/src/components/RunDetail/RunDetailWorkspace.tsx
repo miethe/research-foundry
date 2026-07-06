@@ -177,13 +177,19 @@ export function RunDetailWorkspace({
 function RunOverview({ run, onOpenAudit }: { run: RFRunExport; onOpenAudit: (claimId: string) => void }) {
   const attention = summarizeRunAttention(run);
   const topClaims = run.claims.slice(0, 4);
+  const aosIdentityRows = getAosIdentityRows(run);
+  const aosAliasEntries = getAosAliasEntries(run);
+  const hasAosMetadata =
+    aosIdentityRows.some((row) => row.value != null) ||
+    aosAliasEntries.length > 0;
 
   // P5 DISP-004: determine which metadata fields are present
   const hasMetadata =
     (run.linked_projects?.length ?? 0) > 0 ||
     run.category != null ||
     (run.tags?.length ?? 0) > 0 ||
-    run.backlog_idea_ref != null;
+    run.backlog_idea_ref != null ||
+    hasAosMetadata;
 
   // P7 ENR-005: determine which enrichment widgets to show
   const hasCost = run.cost_usd != null;
@@ -274,6 +280,39 @@ function RunOverview({ run, onOpenAudit }: { run: RFRunExport; onOpenAudit: (cla
                   ) : null}
                 </dd>
               </div>
+            ) : null}
+            {hasAosMetadata ? (
+              <>
+                {aosIdentityRows.map((row) => (
+                  <div className="rv-metadata-dl__row" data-testid={row.testId} key={row.field}>
+                    <dt>{row.label}</dt>
+                    <dd>
+                      {row.value ? (
+                        <code>{row.value}</code>
+                      ) : (
+                        <span className="rv-muted">Not available</span>
+                      )}
+                    </dd>
+                  </div>
+                ))}
+                <div className="rv-metadata-dl__row" data-testid="metadata-aos-native-aliases">
+                  <dt>Native Aliases</dt>
+                  <dd>
+                    {aosAliasEntries.length > 0 ? (
+                      <div className="rv-metadata-dl__chips">
+                        {aosAliasEntries.map((entry) => (
+                          <span key={`${entry.key}:${entry.value}`} className="it-chip teal">
+                            <code>{entry.key}</code>
+                            <span>{entry.value}</span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="rv-muted">Not available</span>
+                    )}
+                  </dd>
+                </div>
+              </>
             ) : null}
           </dl>
         ) : (
@@ -429,6 +468,66 @@ function RunOverview({ run, onOpenAudit }: { run: RFRunExport; onOpenAudit: (cla
 }
 
 // ── Enrichment sub-components ─────────────────────────────────────────────────
+
+const AOS_IDENTITY_FIELDS = [
+  { field: "aos_run_uuid",      label: "AOS Run UUID",      testId: "metadata-aos-run-uuid" },
+  { field: "aos_session_uuid",  label: "AOS Session UUID",  testId: "metadata-aos-session-uuid" },
+  { field: "aos_feature_uuid",  label: "AOS Feature UUID",  testId: "metadata-aos-feature-uuid" },
+  { field: "aos_artifact_uuid", label: "AOS Artifact UUID", testId: "metadata-aos-artifact-uuid" },
+  { field: "aos_trace_uuid",    label: "AOS Trace UUID",    testId: "metadata-aos-trace-uuid" },
+] as const;
+
+type AOSIdentityField = (typeof AOS_IDENTITY_FIELDS)[number]["field"];
+
+function getAosIdentityRows(run: RFRunExport): Array<{
+  field: AOSIdentityField;
+  label: string;
+  testId: string;
+  value: string | null;
+}> {
+  return AOS_IDENTITY_FIELDS.map(({ field, label, testId }) => ({
+    field,
+    label,
+    testId,
+    value: normalizeAosIdentity(run[field]),
+  }));
+}
+
+function getAosAliasEntries(run: RFRunExport): Array<{ key: string; value: string }> {
+  const entries: Array<{ key: string; value: string }> = [];
+  const seen = new Set<string>();
+
+  if (!run.native_aliases || typeof run.native_aliases !== "object") {
+    return entries;
+  }
+
+  for (const [key, rawValue] of Object.entries(run.native_aliases)) {
+    const value = normalizeAliasValue(rawValue);
+    if (!value) continue;
+    const stableKey = `${key}:${value}`;
+    if (seen.has(stableKey)) continue;
+    seen.add(stableKey);
+    entries.push({ key, value });
+  }
+
+  return entries;
+}
+
+function normalizeAosIdentity(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.toLowerCase();
+  if (normalized === "unknown" || normalized === "unresolved" || normalized === "n/a") return null;
+  return trimmed;
+}
+
+function normalizeAliasValue(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === "string") return value.trim() || null;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return null;
+}
 
 /**
  * Renders confidence and materiality progress bars from claim_counts.

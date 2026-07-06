@@ -655,6 +655,161 @@ def test_existing_fields_unaffected_by_metadata_addition(tmp_foundry: FoundryPat
 
 
 # --------------------------------------------------------------------------
+# AOS correlation fields (schema 1.4)
+# --------------------------------------------------------------------------
+
+_AOS_VALUES = {
+    "aos_run_uuid": "11111111-1111-4111-8111-111111111111",
+    "aos_session_uuid": "22222222-2222-4222-8222-222222222222",
+    "aos_feature_uuid": "33333333-3333-4333-8333-333333333333",
+    "aos_artifact_uuid": "44444444-4444-4444-8444-444444444444",
+    "aos_trace_uuid": "55555555-5555-4555-8555-555555555555",
+}
+
+
+def _build_run_with_aos_metadata(
+    paths: FoundryPaths,
+    run_id: str = "rf_run_aos001",
+    *,
+    in_correlation_block: bool = False,
+    include_body_decoys: bool = False,
+) -> RunPaths:
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+
+    run_yaml: dict[str, Any] = {
+        "schema_version": "0.1",
+        "type": "run",
+        "run_id": run_id,
+        "status": "planned",
+    }
+    if in_correlation_block:
+        run_yaml["correlation"] = dict(_AOS_VALUES)
+    else:
+        run_yaml.update(_AOS_VALUES)
+    if include_body_decoys:
+        run_yaml["prompt_body"] = "DO_NOT_EXPORT_PROMPT_BODY"
+        run_yaml["response_body"] = "DO_NOT_EXPORT_RESPONSE_BODY"
+        run_yaml.setdefault("correlation", {})
+        run_yaml["correlation"]["native"] = {
+            "prompt_body": "DO_NOT_EXPORT_NATIVE_PROMPT",
+            "response_body": "DO_NOT_EXPORT_NATIVE_RESPONSE",
+        }
+    dump_yaml(run_yaml, rp.run_yaml)
+    return rp
+
+
+def test_aos_fields_and_native_aliases_emitted_when_present(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    _build_run_with_aos_metadata(tmp_foundry, include_body_decoys=True)
+    data = svc.export_run(tmp_foundry, "rf_run_aos001")
+
+    for field, value in _AOS_VALUES.items():
+        assert data[field] == value
+    assert data["run_id"] == "rf_run_aos001"
+    assert data["native_aliases"] == {"rf_run_id": "rf_run_aos001"}
+
+    import json
+
+    blob = json.dumps(data)
+    assert "DO_NOT_EXPORT_PROMPT_BODY" not in blob
+    assert "DO_NOT_EXPORT_RESPONSE_BODY" not in blob
+    assert "DO_NOT_EXPORT_NATIVE_PROMPT" not in blob
+    assert "DO_NOT_EXPORT_NATIVE_RESPONSE" not in blob
+
+
+def test_aos_fields_can_be_sourced_from_correlation_block(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    _build_run_with_aos_metadata(
+        tmp_foundry,
+        run_id="rf_run_aos_block",
+        in_correlation_block=True,
+    )
+    data = svc.export_run(tmp_foundry, "rf_run_aos_block")
+
+    for field, value in _AOS_VALUES.items():
+        assert data[field] == value
+    assert data["native_aliases"] == {"rf_run_id": "rf_run_aos_block"}
+
+
+def test_aos_fields_null_when_absent(tmp_foundry: FoundryPaths) -> None:
+    build_run(tmp_foundry, "rf_run_no_aos")
+    data = svc.export_run(tmp_foundry, "rf_run_no_aos")
+
+    for field in svc.AOS_CORRELATION_FIELDS:
+        assert field in data
+        assert data[field] is None
+    assert data["native_aliases"] == {"rf_run_id": "rf_run_no_aos"}
+
+    row = next(r for r in svc.list_runs(tmp_foundry) if r["run_id"] == "rf_run_no_aos")
+    for field in svc.AOS_CORRELATION_FIELDS:
+        assert row[field] is None
+    assert row["native_aliases"] == {"rf_run_id": "rf_run_no_aos"}
+
+
+def test_aos_malformed_uuid_values_are_not_exported(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    rp = tmp_foundry.run_paths("rf_run_aos_malformed")
+    rp.ensure_scaffold()
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "type": "run",
+            "run_id": "rf_run_aos_malformed",
+            "status": "planned",
+            "aos_run_uuid": {"prompt_body": "DO_NOT_EXPORT_NESTED_PROMPT"},
+            "aos_session_uuid": "unknown",
+            "aos_feature_uuid": "not-a-uuid",
+            "correlation": {
+                "aos_artifact_uuid": ["DO_NOT_EXPORT_NESTED_RESPONSE"],
+                "aos_trace_uuid": "55555555-5555-4555-8555-555555555555",
+            },
+        },
+        rp.run_yaml,
+    )
+
+    data = svc.export_run(tmp_foundry, "rf_run_aos_malformed")
+
+    assert data["aos_run_uuid"] is None
+    assert data["aos_session_uuid"] is None
+    assert data["aos_feature_uuid"] is None
+    assert data["aos_artifact_uuid"] is None
+    assert data["aos_trace_uuid"] == "55555555-5555-4555-8555-555555555555"
+
+    import json
+
+    blob = json.dumps(data)
+    assert "DO_NOT_EXPORT_NESTED_PROMPT" not in blob
+    assert "DO_NOT_EXPORT_NESTED_RESPONSE" not in blob
+
+
+def test_aos_uuid_values_are_canonicalized_for_schema_format(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    rp = tmp_foundry.run_paths("rf_run_aos_noncanonical")
+    rp.ensure_scaffold()
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "type": "run",
+            "run_id": "rf_run_aos_noncanonical",
+            "status": "planned",
+            "aos_run_uuid": "11111111111141118111111111111111",
+            "aos_session_uuid": "{22222222-2222-4222-8222-222222222222}",
+        },
+        rp.run_yaml,
+    )
+
+    data = svc.export_run(tmp_foundry, "rf_run_aos_noncanonical")
+
+    assert data["aos_run_uuid"] == "11111111-1111-4111-8111-111111111111"
+    assert data["aos_session_uuid"] == "22222222-2222-4222-8222-222222222222"
+
+
+# --------------------------------------------------------------------------
 # ENR-001: cost_usd + model_profiles from run.yaml.profile
 # --------------------------------------------------------------------------
 
@@ -1326,7 +1481,7 @@ def test_schema_13_context_shape_complete_when_v2_artifacts_present(
 
     # All 4 keys must be present (even if null)
     for key in ("routing_decision", "swarm_plan", "research_brief_md", "upstream_entities"):
-        assert key in ctx, f"context missing required key '{key}' in schema 1.3"
+        assert key in ctx, f"context missing required key '{key}' in schema 1.4"
 
     # P2 now populates these when artifacts exist; _build_run_with_routing
     # writes neither a research_brief.md nor upstream IDs, so they stay null.

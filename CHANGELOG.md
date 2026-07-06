@@ -11,6 +11,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **AOS Correlation IDs — Run Export Schema 1.4**
+
+- **AOS correlation metadata** — `rf run export --json` now emits nullable
+  `aos_run_uuid`, `aos_session_uuid`, `aos_feature_uuid`, `aos_artifact_uuid`, and
+  `aos_trace_uuid` fields, plus `native_aliases.rf_run_id` so Operator-launched RF
+  runs can resolve back to parent AOS run/session context while preserving native RF IDs.
+- **Runs-viewer display** — the run detail metadata panel renders AOS UUIDs and RF native
+  aliases when present, and degrades to unresolved/not-available states for missing or
+  unknown UUIDs.
+
 #### **Runs Viewer — Run Context Panels (FR-14)**
 
 - **Run context panels** — four collapsed, read-only panels in the run detail view: Routing

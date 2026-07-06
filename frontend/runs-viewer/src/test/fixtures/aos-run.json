@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.4",
+  "run_id": "rf_run_20260706_aos_correlation_fixture",
+  "intent_id": "intent_research_20260706_aos_correlation_fixture",
+  "created_at": "2026-07-06T09:15:00-04:00",
+  "status_derived": "published",
+  "status_raw": "published",
+  "sensitivity": "personal",
+  "sensitivity_threshold": "personal",
+  "claim_counts": {
+    "total": 0,
+    "supported": 0,
+    "inference": 0,
+    "speculation": 0
+  },
+  "verification": {
+    "present": true,
+    "passed": true,
+    "exit_code": 0,
+    "checks": []
+  },
+  "governance": {
+    "sensitivity": "personal",
+    "approved_for_writeback": false,
+    "approved_by": null,
+    "approval_timestamp": null
+  },
+  "timeline": [],
+  "claims": [],
+  "aos_run_uuid": "11111111-1111-4111-8111-111111111111",
+  "aos_session_uuid": "22222222-2222-4222-8222-222222222222",
+  "aos_feature_uuid": "33333333-3333-4333-8333-333333333333",
+  "aos_artifact_uuid": null,
+  "aos_trace_uuid": "55555555-5555-4555-8555-555555555555",
+  "native_aliases": {
+    "rf_run_id": "rf_run_20260706_aos_correlation_fixture"
+  }
+}

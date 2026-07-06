@@ -2,7 +2,7 @@
  * RF Run Export Types — hand-written to match the frozen run.json contract.
  *
  * Source of truth: docs/dev/architecture/rf-run-export-schema.json (JSON Schema draft-07)
- * Bound to schema_version "1.3".
+ * Bound to schema_version "1.4".
  *
  * Codegen evaluated (P1/SCH-003): json-schema-to-typescript was tested against
  * rf-run-export-schema.json. Rejected because: (1) codegen inlines all
@@ -289,6 +289,10 @@ export interface RFRunWritebacksSummary {
   previews?: unknown[] | null;
 }
 
+// ── AOS Correlation Metadata ─────────────────────────────────────────────────
+
+export type RFAOSNativeAliasMap = Record<string, string | number | boolean | null | undefined>;
+
 // ── Run Export (top-level) ───────────────────────────────────────────────────
 
 /**
@@ -334,6 +338,18 @@ export interface RFRunExport {
    * trigger (D9). Use optional access: `run.report_anchors`.
    */
   report_anchors?:           RFReportAnchorBlock[] | null;
+
+  // ── AOS Correlation IDs (optional additive rollout) ───────────────────────
+  // Each scope has its own UUID. Missing/unknown values are valid and should
+  // render as unresolved/not available instead of failing the viewer.
+
+  aos_run_uuid?:              string | null;
+  aos_session_uuid?:          string | null;
+  aos_feature_uuid?:          string | null;
+  aos_artifact_uuid?:         string | null;
+  aos_trace_uuid?:            string | null;
+  /** RF-native IDs preserved as AOS aliases, e.g. { rf_run_id: run_id }. */
+  native_aliases?:            RFAOSNativeAliasMap | null;
 
   // ── Run Metadata Enrichment fields (schema 1.2) ────────────────────────────
   // All fields below are optional/nullable — absent on pre-migration runs (schema < 1.2).

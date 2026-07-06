@@ -28,6 +28,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from markdown_it import MarkdownIt
 
@@ -38,6 +39,14 @@ from ..paths import FoundryPaths, RunPaths
 from ..yamlio import loads_yaml
 
 EXPORT_SCHEMA_VERSION = "1.4"
+
+AOS_CORRELATION_FIELDS = (
+    "aos_run_uuid",
+    "aos_session_uuid",
+    "aos_feature_uuid",
+    "aos_artifact_uuid",
+    "aos_trace_uuid",
+)
 
 # --- sensitivity model -------------------------------------------------------
 # Ordering: lower index = less sensitive. The viewer threshold names the MOST
@@ -397,6 +406,47 @@ def _sensitivity_rank(value: Any) -> int:
     if value is None:
         return SENSITIVITY_ORDER[DEFAULT_THRESHOLD]
     return SENSITIVITY_ORDER.get(str(value), _UNKNOWN_SENSITIVITY)
+
+
+def _nullable_uuid_string(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if text.lower() in {"unknown", "unresolved", "n/a"}:
+        return None
+    try:
+        parsed = UUID(text)
+    except ValueError:
+        return None
+    return str(parsed)
+
+
+def _aos_correlation_fields(run_meta: dict[str, Any]) -> dict[str, str | None]:
+    """Extract additive AOS UUID fields from run metadata.
+
+    RF run.yaml may carry these either as top-level envelope fields or under a
+    future ``correlation`` block. Only the five explicit UUID fields are copied;
+    prompt/response bodies or arbitrary correlation sidecar content are never
+    threaded into the export.
+    """
+
+    correlation = run_meta.get("correlation")
+    correlation_meta = correlation if isinstance(correlation, dict) else {}
+    values: dict[str, str | None] = {}
+    for field in AOS_CORRELATION_FIELDS:
+        value = run_meta.get(field)
+        if value is None:
+            value = correlation_meta.get(field)
+        values[field] = _nullable_uuid_string(value)
+    return values
+
+
+def _native_aliases(run_id: str) -> dict[str, str]:
+    """Return RF-native resolver aliases without leaking path or body content."""
+
+    return {"rf_run_id": run_id}
 
 
 # --- threshold resolution (OQ-3) --------------------------------------------
@@ -1009,6 +1059,7 @@ def export_run(
     tags = run_meta.get("tags") or None
     backlog_idea_ref = run_meta.get("backlog_idea_ref") or None
     backlog_idea_id = run_meta.get("backlog_idea_id") or None
+    aos_correlation = _aos_correlation_fields(run_meta)
 
     # --- enrichment-extra fields (ENR-001, ENR-002, ENR-003 — schema 1.2 P7) ----
     cost_usd, model_profiles = _cost_and_model_profiles(run_meta)
@@ -1035,12 +1086,13 @@ def export_run(
         approved = governance.get("approved_for_writeback")
         writebacks["approved_for_writeback"] = bool(approved) if approved is not None else None
 
-
     return {
         "schema_version": EXPORT_SCHEMA_VERSION,
         "run_id": run_id,
         "title": _derive_run_title(run_id, report_draft),
         "intent_id": run_meta.get("intent_id"),
+        **aos_correlation,
+        "native_aliases": _native_aliases(run_id),
         "created_at": run_meta.get("created_at"),
         "status_derived": derive_status(rp, run_id=run_id),
         "status_raw": run_meta.get("status"),
@@ -1144,10 +1196,13 @@ def list_runs(paths: FoundryPaths) -> list[dict[str, Any]]:
         bundle = _load_yaml_dict(rp.evidence_bundle, run_id=run_id)
         verification = _load_yaml_dict(rp.verification, run_id=run_id)
         governance = bundle.get("governance") or {}
+        aos_correlation = _aos_correlation_fields(run_meta)
         summaries.append(
             {
                 "run_id": run_id,
                 "intent_id": run_meta.get("intent_id"),
+                **aos_correlation,
+                "native_aliases": _native_aliases(run_id),
                 "created_at": run_meta.get("created_at"),
                 "status_derived": derive_status(rp, run_id=run_id),
                 "status_raw": run_meta.get("status"),
