@@ -1492,6 +1492,416 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             )
         console.print(table)
 
+    # ----- report draft (P3 Wave E: builder draft CRUD + verify + publish-preview) -----
+    draft_app = typer.Typer(help="Report Builder draft management (P3 Wave E).")
+
+    @draft_app.command("create")
+    def draft_create(
+        title: str = typer.Argument("Untitled Draft", help="Draft title"),
+        origin: str = typer.Option("blank", "--origin", help="blank|template|run|collection"),
+        source_run_id: str = typer.Option(None, "--from-run", help="Seed from run id (origin=run)"),
+        catalog_item_ids: list[str] = typer.Option(None, "--catalog-item", help="Catalog item id(s) (origin=collection; repeatable)"),
+        audience: str = typer.Option("self", "--audience", help="self|technical|executive|public|client"),
+        sensitivity: str = typer.Option("public", "--sensitivity", help="public|personal|work_sensitive|client_sensitive"),
+        sensitivity_threshold: str = typer.Option(None, "--sensitivity-threshold", help="Override threshold for from-run/from-collection seeding"),
+        created_by: str = typer.Option(None, "--created-by", help="Creator identity (optional, unenforced)"),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output"),
+    ) -> None:
+        """Create a new report draft (blank, from a run, or from catalog items)."""
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services import builder_service as bsvc
+
+        paths = FoundryPaths.discover()
+        try:
+            if origin == "run":
+                if not source_run_id:
+                    _fail(RFError("--from-run is required when origin=run"))
+                draft = bsvc.create_draft_from_run(
+                    paths,
+                    run_id=source_run_id,
+                    title=title if title != "Untitled Draft" else None,
+                    audience=audience,
+                    sensitivity=sensitivity if sensitivity != "public" else None,
+                    created_by=created_by,
+                    sensitivity_threshold=sensitivity_threshold or "client_sensitive",
+                )
+            elif origin == "collection":
+                ids_ = list(catalog_item_ids) if catalog_item_ids else []
+                if not ids_:
+                    _fail(RFError("--catalog-item is required when origin=collection"))
+                draft = bsvc.create_draft_from_collection(
+                    paths,
+                    catalog_item_ids=ids_,
+                    title=title,
+                    audience=audience,
+                    sensitivity=sensitivity,
+                    created_by=created_by,
+                    sensitivity_threshold=sensitivity_threshold or "client_sensitive",
+                )
+            else:
+                draft = bsvc.create_draft(
+                    paths,
+                    title=title,
+                    origin=origin,
+                    audience=audience,
+                    sensitivity=sensitivity,
+                    created_by=created_by,
+                )
+        except bsvc.BuilderError as exc:
+            _fail(exc)
+
+        if json_out:
+            typer.echo(_json.dumps(draft, ensure_ascii=False, indent=2))
+            return
+        console.print(f"[green]created[/green] {draft['report_draft_id']}  ({draft['title']})")
+
+    @draft_app.command("list")
+    def draft_list(
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output"),
+    ) -> None:
+        """List all on-disk report drafts."""
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services import builder_service as bsvc
+
+        paths = FoundryPaths.discover()
+        drafts = bsvc.list_drafts(paths)
+        if json_out:
+            typer.echo(_json.dumps(drafts, ensure_ascii=False, indent=2))
+            return
+        if not drafts:
+            console.print("[yellow]no drafts found[/yellow]")
+            return
+        table = Table(title="report drafts", show_header=True, header_style="bold")
+        table.add_column("id")
+        table.add_column("title")
+        table.add_column("status")
+        table.add_column("sensitivity")
+        table.add_column("blocks")
+        table.add_column("updated_at")
+        for d in drafts:
+            table.add_row(
+                d.get("report_draft_id", ""),
+                d.get("title", ""),
+                d.get("status", ""),
+                d.get("sensitivity", ""),
+                str(d.get("block_count", 0)),
+                str(d.get("updated_at", "")),
+            )
+        console.print(table)
+
+    @draft_app.command("show")
+    def draft_show(
+        report_id: str = typer.Argument(..., help="Draft id (rpt_...)"),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output"),
+    ) -> None:
+        """Show full draft state."""
+
+        import json as _json
+
+        from .errors import NotFoundError
+        from .paths import FoundryPaths
+        from .services import builder_service as bsvc
+
+        paths = FoundryPaths.discover()
+        try:
+            draft = bsvc.load_draft(paths, report_id)
+        except NotFoundError as exc:
+            _fail(exc)
+
+        if json_out:
+            typer.echo(_json.dumps(draft, ensure_ascii=False, indent=2))
+            return
+        console.print(f"[bold]{draft['report_draft_id']}[/bold]  {draft['title']}")
+        console.print(f"  status={draft.get('status')}  sensitivity={draft.get('sensitivity')}  blocks={len(draft.get('blocks', []))}")
+
+    @draft_app.command("add-block")
+    def draft_add_block(
+        report_id: str = typer.Argument(..., help="Draft id"),
+        markdown: str = typer.Option("", "--markdown", "-m", help="Block markdown text"),
+        block_type: str = typer.Option("paragraph", "--type", help="heading|paragraph|table|quote|callout|evidence_summary"),
+        materiality: str = typer.Option("material", "--materiality", help="material|narrative|background"),
+        json_out: bool = typer.Option(False, "--json/--no-json"),
+    ) -> None:
+        """Append a block to a draft."""
+
+        import json as _json
+
+        from .errors import NotFoundError
+        from .paths import FoundryPaths
+        from .services import builder_service as bsvc
+
+        paths = FoundryPaths.discover()
+        try:
+            draft = bsvc.add_block(paths, report_id, block_type=block_type, markdown=markdown, materiality=materiality)
+        except (NotFoundError, bsvc.BuilderError) as exc:
+            _fail(exc)
+
+        if json_out:
+            typer.echo(_json.dumps(draft, ensure_ascii=False, indent=2))
+            return
+        blk = draft["blocks"][-1]
+        console.print(f"[green]added block[/green] {blk['block_id']}  (type={blk['block_type']})")
+
+    @draft_app.command("update-block")
+    def draft_update_block(
+        report_id: str = typer.Argument(..., help="Draft id"),
+        block_id: str = typer.Argument(..., help="Block id"),
+        markdown: str = typer.Option(None, "--markdown", "-m"),
+        block_type: str = typer.Option(None, "--type"),
+        materiality: str = typer.Option(None, "--materiality"),
+        json_out: bool = typer.Option(False, "--json/--no-json"),
+    ) -> None:
+        """Update markdown/type/materiality on a block."""
+
+        import json as _json
+
+        from .errors import NotFoundError
+        from .paths import FoundryPaths
+        from .services import builder_service as bsvc
+
+        paths = FoundryPaths.discover()
+        try:
+            draft = bsvc.update_block(paths, report_id, block_id, markdown=markdown, block_type=block_type, materiality=materiality)
+        except (NotFoundError, bsvc.BuilderError) as exc:
+            _fail(exc)
+
+        if json_out:
+            typer.echo(_json.dumps(draft, ensure_ascii=False, indent=2))
+        else:
+            console.print(f"[green]updated block[/green] {block_id}")
+
+    @draft_app.command("delete-block")
+    def draft_delete_block(
+        report_id: str = typer.Argument(..., help="Draft id"),
+        block_id: str = typer.Argument(..., help="Block id"),
+    ) -> None:
+        """Delete a block and its associated links from a draft."""
+
+        from .errors import NotFoundError
+        from .paths import FoundryPaths
+        from .services import builder_service as bsvc
+
+        paths = FoundryPaths.discover()
+        try:
+            bsvc.delete_block(paths, report_id, block_id)
+        except NotFoundError as exc:
+            _fail(exc)
+        console.print(f"[green]deleted block[/green] {block_id}")
+
+    @draft_app.command("reorder")
+    def draft_reorder(
+        report_id: str = typer.Argument(..., help="Draft id"),
+        block_ids: list[str] = typer.Argument(..., help="Block ids in desired order"),
+    ) -> None:
+        """Reorder blocks by specifying all block ids in the desired order."""
+
+        from .errors import NotFoundError
+        from .paths import FoundryPaths
+        from .services import builder_service as bsvc
+
+        paths = FoundryPaths.discover()
+        try:
+            bsvc.reorder_blocks(paths, report_id, list(block_ids))
+        except (NotFoundError, bsvc.BuilderError) as exc:
+            _fail(exc)
+        console.print(f"[green]reordered[/green] {len(block_ids)} blocks")
+
+    # claim-link sub-sub-app
+    claim_link_app = typer.Typer(help="Manage claim links on a draft.")
+
+    @claim_link_app.command("add")
+    def draft_claim_link_add(
+        report_id: str = typer.Argument(..., help="Draft id"),
+        block_id: str = typer.Option(..., "--block", "-b", help="Block id to link to"),
+        claim_id: str = typer.Option(..., "--claim", "-c", help="Claim id (clm_...)"),
+        relation: str = typer.Option(None, "--relation", help="supports|contradicts|context|inferred_from|cited_nearby"),
+        source_run_id: str = typer.Option(None, "--run", help="Source run id for claim resolution"),
+        catalog_item_id: str = typer.Option(None, "--catalog-item", help="Catalog item id"),
+        no_tag: bool = typer.Option(False, "--no-tag", help="Do not insert [claim:] tag into block markdown"),
+        json_out: bool = typer.Option(False, "--json/--no-json"),
+    ) -> None:
+        """Add a claim link to a draft block."""
+
+        import json as _json
+
+        from .errors import NotFoundError
+        from .paths import FoundryPaths
+        from .services import builder_service as bsvc
+
+        paths = FoundryPaths.discover()
+        try:
+            draft = bsvc.add_claim_link(
+                paths,
+                report_id,
+                block_id=block_id,
+                claim_id=claim_id,
+                relation=relation,
+                source_run_id=source_run_id,
+                catalog_item_id=catalog_item_id,
+                insert_tag=not no_tag,
+            )
+        except (NotFoundError, bsvc.BuilderError) as exc:
+            _fail(exc)
+        if json_out:
+            typer.echo(_json.dumps(draft, ensure_ascii=False, indent=2))
+        else:
+            console.print(f"[green]linked[/green] claim {claim_id} to block {block_id}")
+
+    @claim_link_app.command("remove")
+    def draft_claim_link_remove(
+        report_id: str = typer.Argument(..., help="Draft id"),
+        claim_link_id: str = typer.Argument(..., help="Claim link id (rl_...)"),
+    ) -> None:
+        """Remove a claim link from a draft."""
+
+        from .errors import NotFoundError
+        from .paths import FoundryPaths
+        from .services import builder_service as bsvc
+
+        paths = FoundryPaths.discover()
+        try:
+            bsvc.remove_claim_link(paths, report_id, claim_link_id)
+        except NotFoundError as exc:
+            _fail(exc)
+        console.print(f"[green]removed claim link[/green] {claim_link_id}")
+
+    draft_app.add_typer(claim_link_app, name="claim-link")
+
+    @draft_app.command("verify")
+    def draft_verify(
+        report_id: str = typer.Argument(..., help="Draft id"),
+        sensitivity_threshold: str = typer.Option(
+            None,
+            "--sensitivity-threshold",
+            help="Override sensitivity threshold for body-sensitivity check",
+        ),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output"),
+    ) -> None:
+        """Run D13 verification checks against a draft.
+
+        Exit 0 = pass, non-zero = fail. Use --json for machine-readable output.
+        """
+
+        import json as _json
+
+        from .errors import NotFoundError
+        from .paths import FoundryPaths
+        from .services.verification import verify_draft as _verify_draft
+
+        paths = FoundryPaths.discover()
+        try:
+            result = _verify_draft(paths, report_id, sensitivity_threshold=sensitivity_threshold)
+        except NotFoundError as exc:
+            _fail(exc)
+
+        if json_out:
+            typer.echo(_json.dumps({
+                "report_draft_id": report_id,
+                "passed": result.passed,
+                "exit_code": result.exit_code,
+                "checks": [
+                    {"id": c.id, "severity": c.severity, "status": c.status,
+                     "detail": c.detail, "locations": c.locations}
+                    for c in result.checks
+                ],
+            }, ensure_ascii=False, indent=2))
+            raise typer.Exit(0 if result.passed else result.exit_code)
+
+        color = "green" if result.passed else "red"
+        console.print(f"[{color}]{'PASSED' if result.passed else 'FAILED'}[/{color}] ({report_id})")
+        for check in result.checks:
+            status_color = "green" if check.status == "pass" else ("yellow" if check.status in ("warn", "skip") else "red")
+            console.print(f"  [{status_color}]{check.status}[/{status_color}] {check.id}: {check.detail}")
+        raise typer.Exit(0 if result.passed else result.exit_code)
+
+    @draft_app.command("publish-preview")
+    def draft_publish_preview(
+        report_id: str = typer.Argument(..., help="Draft id"),
+        sensitivity_threshold: str = typer.Option(
+            None,
+            "--sensitivity-threshold",
+            help="Override sensitivity threshold (default: draft's own sensitivity)",
+        ),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output"),
+    ) -> None:
+        """Run D13 checks FAIL-CLOSED; print Markdown preview on pass.
+
+        Exit 0 = ready to publish (preview printed). Non-zero = blocked.
+        Raw sensitive quotes in the body ALWAYS block (spec §11).
+        """
+
+        import json as _json
+
+        from .errors import NotFoundError
+        from .paths import FoundryPaths
+        from .services import builder_service as bsvc
+        from .services.verification import verify_draft as _verify_draft
+
+        paths = FoundryPaths.discover()
+        try:
+            result = _verify_draft(paths, report_id, sensitivity_threshold=sensitivity_threshold)
+        except NotFoundError as exc:
+            _fail(exc)
+
+        check_dicts = [
+            {"id": c.id, "severity": c.severity, "status": c.status,
+             "detail": c.detail, "locations": c.locations}
+            for c in result.checks
+        ]
+        blocking = [c for c in check_dicts if c["severity"] == "error" and c["status"] == "fail"]
+
+        if blocking:
+            if json_out:
+                typer.echo(_json.dumps({"ok": False, "blocking": blocking, "checks": check_dicts}, ensure_ascii=False, indent=2))
+            else:
+                err_console.print(f"[red]BLOCKED[/red] publish-preview failed for {report_id}")
+                for c in blocking:
+                    err_console.print(f"  [red]{c['id']}[/red]: {c['detail']}")
+            raise typer.Exit(result.exit_code)
+
+        try:
+            preview_md = bsvc.export_markdown(paths, report_id)
+        except NotFoundError as exc:  # pragma: no cover
+            _fail(exc)
+
+        if json_out:
+            typer.echo(_json.dumps({"ok": True, "preview_markdown": preview_md, "checks": check_dicts}, ensure_ascii=False, indent=2))
+        else:
+            console.print(f"[green]PASS[/green] publish-preview ({report_id})")
+            console.print(preview_md)
+
+    @draft_app.command("export")
+    def draft_export(
+        report_id: str = typer.Argument(..., help="Draft id"),
+        output: str = typer.Option(None, "--output", "-o", help="Write to file instead of stdout"),
+    ) -> None:
+        """Export a draft as Markdown with YAML frontmatter."""
+
+        from .errors import NotFoundError
+        from .paths import FoundryPaths
+        from .services import builder_service as bsvc
+
+        paths = FoundryPaths.discover()
+        try:
+            md = bsvc.export_markdown(paths, report_id)
+        except NotFoundError as exc:
+            _fail(exc)
+
+        if output:
+            from pathlib import Path
+            Path(output).write_text(md, encoding="utf-8")
+            console.print(f"[green]exported[/green] {report_id} -> {output}")
+        else:
+            typer.echo(md)
+
+    report_app.add_typer(draft_app, name="draft")
+
     app.add_typer(report_app, name="report")
 
     # ----- serve (loopback API) -----

@@ -15,6 +15,9 @@ Endpoints registered by this factory:
   GET /api/runs/{run_id}/claims           — claim ledger  (→ fetchClaimLedger)
   GET /api/runs/{run_id}/sources/{sc_id}  — resolved source (→ fetchSourceCard)
   GET /api/reports/{run_id}/anchors       — report anchors (P2 Wave B; sensitivity-gated, no-leak 404)
+  POST/GET /api/reports                  — Builder draft create/list (P3 Wave E)
+  GET/DELETE /api/reports/{report_id}    — Builder draft detail/delete (rpt_ ids only)
+  + full Block/ClaimLink/SourceLink/Revision/Verify/PublishPreview/Export sub-routes
   GET /data/governance.json    — governance config snapshot (→ fetchGovernanceConfig)
   GET  /api/catalog/stats                — catalog counts (→ fetchCatalogStats)
   GET  /api/catalog/search                — catalog search (→ fetchCatalogSearch)
@@ -41,6 +44,7 @@ from ..config import FoundryConfig
 from .middleware.allowlist import IPAllowlistMiddleware
 from .middleware.auth import TokenAuthMiddleware
 from .routers.catalog import router as catalog_router
+from .routers.reports import router as reports_router
 from .routers.runs import router as runs_router
 
 # Default origins covered by a plain wildcard pattern are not supported by
@@ -154,6 +158,10 @@ def create_app(config: FoundryConfig) -> FastAPI:
     app.include_router(runs_router, prefix="/api", tags=["runs"])
     # Shared evidence catalog (public-multiuser-release Phase 1).
     app.include_router(catalog_router, prefix="/api", tags=["catalog"])
+    # Report Builder draft API (public-multiuser-release Phase 3 Wave E).
+    # NOTE: GET /api/reports/{run_id}/anchors (runs_router) remains unambiguous
+    # because it has a fixed '/anchors' suffix — different path-segment count.
+    app.include_router(reports_router, prefix="/api", tags=["reports"])
 
     return app
 
