@@ -1,0 +1,210 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/report_draft.schema.yaml"
+title: Report Builder Draft
+description: >
+  File-canonical Report Builder draft (public-multiuser-release Phase 3, plan
+  D10). Durable state for a report under active composition —
+  <workspace>/reports/drafts/<report_draft_id>/draft.yaml. NEVER derived from
+  or written back by catalog.db, which holds only a rebuildable index
+  (services/catalog_service.py catalog_report_drafts table).
+type: object
+properties:
+  schema_version:
+    type: integer
+  type:
+    const: report_draft
+  report_draft_id:
+    type: string
+  title:
+    type: string
+  origin:
+    enum:
+      - blank
+      - template
+      - run
+      - collection
+  source_run_id:
+    type: [string, "null"]
+  source_template_id:
+    type: [string, "null"]
+  source_collection_id:
+    type: [string, "null"]
+  audience:
+    enum:
+      - self
+      - technical
+      - executive
+      - public
+      - client
+  sensitivity:
+    enum:
+      - public
+      - personal
+      - work_sensitive
+      - client_sensitive
+  status:
+    enum:
+      - draft
+      - verified
+      - published
+      - archived
+  workspace_id:
+    type: [string, "null"]
+  project_id:
+    type: [string, "null"]
+  created_by:
+    type: [string, "null"]
+  updated_by:
+    type: [string, "null"]
+  created_at:
+    type: string
+  updated_at:
+    type: string
+  current_version_id:
+    type: [string, "null"]
+  seq:
+    type: object
+    additionalProperties: true
+  blocks:
+    type: array
+    items:
+      type: object
+      properties:
+        block_id:
+          type: string
+        block_type:
+          enum:
+            - heading
+            - paragraph
+            - table
+            - quote
+            - callout
+            - evidence_summary
+        order:
+          type: integer
+        markdown:
+          type: string
+        materiality:
+          enum:
+            - material
+            - narrative
+            - background
+        linked_claim_ids:
+          type: array
+          items:
+            type: string
+        linked_source_ids:
+          type: array
+          items:
+            type: string
+        coverage_status:
+          enum:
+            - supported
+            - unsupported
+            - contradicted
+            - narrative
+            - needs_review
+        risk_flags:
+          type: array
+          items:
+            type: string
+      required:
+        - block_id
+        - block_type
+        - order
+        - markdown
+      additionalProperties: true
+  claim_links:
+    type: array
+    items:
+      type: object
+      properties:
+        claim_link_id:
+          type: string
+        block_id:
+          type: string
+        claim_id:
+          type: string
+        source_run_id:
+          type: [string, "null"]
+        catalog_item_id:
+          type: [string, "null"]
+        relation:
+          enum:
+            - supports
+            - contradicts
+            - context
+            - inferred_from
+            - cited_nearby
+        span_start:
+          type: [integer, "null"]
+        span_end:
+          type: [integer, "null"]
+        quote_text_hash:
+          type: [string, "null"]
+        link_status:
+          enum:
+            - linked
+            - stale
+            - missing_claim
+            - missing_source
+            - needs_review
+      required:
+        - claim_link_id
+        - block_id
+        - claim_id
+        - link_status
+      additionalProperties: true
+  source_links:
+    type: array
+    items:
+      type: object
+      properties:
+        source_link_id:
+          type: string
+        block_id:
+          type: [string, "null"]
+        source_card_id:
+          type: string
+        run_id:
+          type: [string, "null"]
+        catalog_item_id:
+          type: [string, "null"]
+        relation:
+          type: [string, "null"]
+      required:
+        - source_link_id
+        - source_card_id
+      additionalProperties: true
+  comments:
+    type: array
+    items:
+      type: object
+      additionalProperties: true
+  review_state:
+    type: object
+    additionalProperties: true
+  revisions:
+    type: array
+    items:
+      type: object
+      properties:
+        report_version_id:
+          type: string
+        created_at:
+          type: string
+        created_by:
+          type: [string, "null"]
+        note:
+          type: [string, "null"]
+      required:
+        - report_version_id
+        - created_at
+      additionalProperties: true
+required:
+  - report_draft_id
+  - type
+  - title
+  - sensitivity
+  - status
+additionalProperties: true

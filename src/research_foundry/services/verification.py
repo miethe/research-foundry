@@ -31,6 +31,7 @@ from ..frontmatter import load_md
 from ..ids import now_iso
 from ..paths import FoundryPaths
 from ..yamlio import append_jsonl, dump_yaml, load_yaml
+from .export_service import DEFAULT_THRESHOLD, SENSITIVITY_ORDER
 
 # --- Built-in defaults (used when config/claim_policy.yaml is absent) -------
 
@@ -735,4 +736,295 @@ def _intent_requires_review(ledger: dict[str, Any], paths: FoundryPaths) -> bool
     return bool(isinstance(gov, dict) and gov.get("requires_human_review"))
 
 
-__all__ = ["CheckResult", "VerificationResult", "verify_report"]
+# ---------------------------------------------------------------------------
+# Report Builder draft checks (public-multiuser-release P3 Wave D — plan D13)
+# ---------------------------------------------------------------------------
+# Deterministic, standalone checks over a builder draft's in-memory state
+# (blocks[]/claim_links[]/source_links[]) — the equivalent gate to
+# verify_report() above, but for Report Builder drafts (services.builder_
+# service) rather than a run's flat report_draft.md. verify_draft() is what
+# Wave E wires to `rf report verify` + the publish-preview endpoint (spec §7
+# Verification Additions, §11 sensitivity gates).
+
+_DRAFT_CLAIM_TAG_RE = re.compile(r"\[claim:(clm_\w+)\]")
+
+# Block types whose markdown is expected to carry material, claim-linkable
+# prose (spec §7: "every material paragraph"). Headings/tables/quotes are not
+# gated by this check — a quote block's provenance belongs in source_links,
+# not claim_links.
+_SUPPORT_GATED_BLOCK_TYPES = frozenset({"paragraph", "evidence_summary"})
+
+
+def check_paragraph_has_support(blocks: list[dict[str, Any]]) -> CheckResult:
+    """D13 #1 — every material paragraph/evidence_summary block has >=1 claim
+    link, or is explicitly marked non-material (``materiality``
+    ``narrative``/``background``)."""
+
+    offenders = sorted(
+        b["block_id"]
+        for b in blocks
+        if b.get("block_type") in _SUPPORT_GATED_BLOCK_TYPES
+        and b.get("materiality", "material") == "material"
+        and not b.get("linked_claim_ids")
+    )
+    if offenders:
+        return CheckResult(
+            id="paragraph_has_support",
+            severity="error",
+            status="fail",
+            detail=(
+                f"{len(offenders)} material block(s) have no claim link and are not "
+                "marked narrative/background"
+            ),
+            locations=offenders,
+        )
+    return CheckResult(
+        id="paragraph_has_support",
+        severity="error",
+        status="pass",
+        detail="every material paragraph/evidence_summary block has a claim link or is exempt",
+        locations=[],
+    )
+
+
+def check_claim_tags_resolve(
+    blocks: list[dict[str, Any]], known_claim_ids: set[str]
+) -> CheckResult:
+    """D13 #2 — every ``[claim:clm_xxx]`` tag in block markdown resolves.
+
+    ``known_claim_ids`` is caller-supplied (the draft's own resolved
+    claim_links, or a richer cross-run/catalog resolution from Wave E) so
+    this check stays a pure function with no file or network I/O of its own.
+    """
+
+    unresolved: set[str] = set()
+    for block in blocks:
+        for m in _DRAFT_CLAIM_TAG_RE.finditer(block.get("markdown") or ""):
+            cid = m.group(1)
+            if cid not in known_claim_ids:
+                unresolved.add(cid)
+    if unresolved:
+        return CheckResult(
+            id="claim_tags_resolve",
+            severity="error",
+            status="fail",
+            detail="unresolved [claim:] tags: " + ", ".join(sorted(unresolved)),
+            locations=sorted(unresolved),
+        )
+    return CheckResult(
+        id="claim_tags_resolve",
+        severity="error",
+        status="pass",
+        detail="every [claim:] tag resolves to a known claim",
+        locations=[],
+    )
+
+
+def check_anchor_hash_match(
+    blocks: list[dict[str, Any]], claim_links: list[dict[str, Any]]
+) -> CheckResult:
+    """D13 #3 — every claim_link's ``quote_text_hash`` still matches the
+    current text at its stored span (drift detection). Reuses the
+    ``export_service`` D8 hash recipe so builder anchors and P2's
+    ``report_anchors`` share one hash contract — see
+    ``builder_service.add_claim_link`` for where the hash is first computed.
+    """
+
+    # Local import: internal reuse of P2's private hash/normalize helpers
+    # (not re-exported — see builder_service module docstring for the same
+    # convention). Deferred here purely to keep this module's top-level
+    # imports limited to the two public export_service names it always needs.
+    from .export_service import _anchor_text_hash as _hash
+    from .export_service import _normalize_anchor_text as _normalize
+
+    blocks_by_id = {b["block_id"]: b for b in blocks}
+    stale: list[str] = []
+    for link in claim_links:
+        block = blocks_by_id.get(link.get("block_id"))
+        stored_hash = link.get("quote_text_hash")
+        if block is None or stored_hash is None:
+            continue
+        normalized = _normalize(block.get("markdown") or "")
+        start, end = link.get("span_start"), link.get("span_end")
+        substring = (
+            normalized[start:end]
+            if isinstance(start, int) and isinstance(end, int)
+            else normalized
+        )
+        if _hash(substring) != stored_hash:
+            stale.append(link.get("claim_link_id") or link.get("claim_id") or "<unknown>")
+    if stale:
+        return CheckResult(
+            id="anchor_hash_match",
+            severity="warning",
+            status="fail",
+            detail=f"{len(stale)} claim link(s) point at drifted text: " + ", ".join(sorted(stale)),
+            locations=sorted(stale),
+        )
+    return CheckResult(
+        id="anchor_hash_match",
+        severity="warning",
+        status="pass",
+        detail="every claim link's anchored text is unchanged since it was linked",
+        locations=[],
+    )
+
+
+def check_report_body_sensitivity(
+    paths: FoundryPaths,
+    blocks: list[dict[str, Any]],
+    source_links: list[dict[str, Any]],
+    *,
+    sensitivity_threshold: str | None = None,
+) -> CheckResult:
+    """D13 #4 — a public/shared draft body must not embed a raw quote from a
+    source whose sensitivity exceeds the resolved threshold (spec §11:
+    "Public/shared reports must fail verification if raw sensitive quotes
+    appear outside governed source evidence fields"). Fail-closed: an
+    unrecognized sensitivity label ranks stricter than every known level, so
+    it can never silently pass.
+    """
+
+    threshold = sensitivity_threshold or DEFAULT_THRESHOLD
+    threshold_rank = SENSITIVITY_ORDER.get(threshold, len(SENSITIVITY_ORDER))
+    body_text = "\n".join(b.get("markdown") or "" for b in blocks)
+
+    leaks: list[str] = []
+    for link in source_links:
+        run_id = link.get("run_id")
+        source_card_id = link.get("source_card_id")
+        if not run_id or not source_card_id:
+            continue
+        rp = paths.run_paths(run_id)
+        card_path = rp.sources / f"{source_card_id}.md"
+        if not card_path.exists():
+            continue
+        try:
+            meta, _ = load_md(card_path)
+        except Exception:  # noqa: BLE001 - an unreadable card is not a leak signal
+            continue
+
+        card_rank = SENSITIVITY_ORDER.get(str(meta.get("sensitivity")), len(SENSITIVITY_ORDER))
+        points = [p for p in (meta.get("extracted_points") or []) if isinstance(p, dict)]
+        point_rank = card_rank
+        for p in points:
+            if p.get("sensitivity"):
+                point_rank = max(point_rank, SENSITIVITY_ORDER.get(str(p["sensitivity"]), len(SENSITIVITY_ORDER)))
+        effective_rank = max(card_rank, point_rank)
+        if effective_rank <= threshold_rank:
+            continue
+
+        # Sensitive source — only a *raw quote leak* is a failure; a governed
+        # reference (via claim_links/[claim:] tags, redacted at export time)
+        # is not.
+        quotes = [str(p.get("quote")) for p in points if p.get("quote")]
+        if any(q and q in body_text for q in quotes):
+            leaks.append(f"{source_card_id} (run {run_id})")
+
+    if leaks:
+        return CheckResult(
+            id="report_body_sensitivity",
+            severity="error",
+            status="fail",
+            detail=(
+                f"draft body embeds raw sensitive-source text above threshold {threshold!r}: "
+                + ", ".join(sorted(leaks))
+            ),
+            locations=sorted(leaks),
+        )
+    return CheckResult(
+        id="report_body_sensitivity",
+        severity="error",
+        status="pass",
+        detail=f"no raw sensitive-source text embedded above threshold {threshold!r}",
+        locations=[],
+    )
+
+
+def verify_draft(
+    paths: FoundryPaths,
+    report_draft_id: str,
+    *,
+    known_claim_ids: set[str] | None = None,
+    sensitivity_threshold: str | None = None,
+) -> VerificationResult:
+    """Run every D13 check against a Report Builder draft (spec §7/§8/§11).
+
+    Loads the draft via ``builder_service`` (deferred import — breaks the
+    module-load cycle, since ``builder_service`` never imports this
+    function). ``known_claim_ids`` lets a caller that already resolved the
+    draft's linked runs/catalog items pass that resolution in directly; when
+    omitted, every claim_link the draft itself believes resolved
+    (``link_status == "linked"``) is used, so a stray untracked ``[claim:]``
+    tag is still caught by :func:`check_claim_tags_resolve`.
+
+    Reuses :class:`VerificationResult`'s ``run_id`` field to carry
+    *report_draft_id* — a deliberate reuse (not a run) so run-report and
+    builder-draft verification share one result vocabulary; writes
+    ``<draft_dir>/verification.yaml`` (a derived, recomputable artifact, not
+    draft truth — see ``builder_service`` module docstring).
+    """
+
+    from .builder_service import load_draft  # deferred: breaks the import cycle
+
+    draft = load_draft(paths, report_draft_id)
+    blocks = draft.get("blocks") or []
+    claim_links = draft.get("claim_links") or []
+    source_links = draft.get("source_links") or []
+
+    if known_claim_ids is None:
+        known_claim_ids = {cl["claim_id"] for cl in claim_links if cl.get("link_status") == "linked"}
+
+    resolved_threshold = sensitivity_threshold or draft.get("sensitivity")
+    checks = [
+        check_paragraph_has_support(blocks),
+        check_claim_tags_resolve(blocks, known_claim_ids),
+        check_anchor_hash_match(blocks, claim_links),
+        check_report_body_sensitivity(
+            paths, blocks, source_links, sensitivity_threshold=resolved_threshold
+        ),
+    ]
+
+    error_fail = any(c.severity == "error" and c.status == "fail" for c in checks)
+    passed = not error_fail
+    exit_code = int(ExitCode.OK) if passed else int(ExitCode.UNSUPPORTED)
+
+    record = {
+        "report_draft_id": report_draft_id,
+        "passed": passed,
+        "exit_code": exit_code,
+        "generated_at": now_iso(),
+        "checks": [
+            {
+                "id": c.id,
+                "severity": c.severity,
+                "status": c.status,
+                "detail": c.detail,
+                "locations": c.locations,
+            }
+            for c in checks
+        ],
+    }
+    verification_path = paths.report_draft_dir(report_draft_id) / "verification.yaml"
+    dump_yaml(record, verification_path)
+
+    return VerificationResult(
+        run_id=report_draft_id,
+        passed=passed,
+        exit_code=exit_code,
+        checks=checks,
+        verification_path=verification_path,
+        unsupported=[c.detail for c in checks if c.status == "fail"],
+    )
+
+
+__all__ = [
+    "CheckResult",
+    "VerificationResult",
+    "verify_report",
+    "check_paragraph_has_support",
+    "check_claim_tags_resolve",
+    "check_anchor_hash_match",
+    "check_report_body_sensitivity",
+    "verify_draft",
+]

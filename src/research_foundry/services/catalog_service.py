@@ -72,7 +72,14 @@ from .export_service import (
 )
 
 # --- schema versioning (D1) --------------------------------------------------
-SCHEMA_VERSION = 1
+# v2 (public-multiuser-release P3 Wave D, plan D10/D11/landmine #3): adds the
+# catalog_report_drafts derived index table. A version bump means ANY
+# mismatch drops and recreates the whole schema (see _ensure_schema) — this is
+# always safe because catalog.db is 100% derived: run items are rebuilt from
+# export_run() via import_all(), and draft index rows are rebuilt from
+# on-disk draft.yaml files via builder_service.reindex_all_drafts(). Neither
+# rebuild path reads anything from the DB itself.
+SCHEMA_VERSION = 2
 
 # --- sensitivity ranks (mirrors export_service's private helper; only the
 # public SENSITIVITY_ORDER constant is reused, per the contract) ------------
@@ -157,6 +164,41 @@ _DDL: tuple[str, ...] = (
         item_count   INTEGER NOT NULL
     )
     """,
+    # --- Report Builder draft index (v2, plan D10/D11) ----------------------
+    # Derived, rebuildable read model of file-canonical drafts living under
+    # <workspace>/reports/drafts/<report_draft_id>/draft.yaml. NEVER the
+    # source of truth (see builder_service module docstring) — a drop+rebuild
+    # here (schema version bump, or `rf catalog rebuild`) must never touch the
+    # draft files, and must reconstruct this table byte-for-byte from them via
+    # builder_service.reindex_all_drafts().
+    """
+    CREATE TABLE IF NOT EXISTS catalog_report_drafts (
+        report_draft_id     TEXT PRIMARY KEY,
+        title               TEXT NOT NULL,
+        status              TEXT,
+        sensitivity         TEXT NOT NULL,
+        sensitivity_rank    INTEGER NOT NULL,
+        audience            TEXT,
+        origin              TEXT,
+        project_id          TEXT,
+        workspace_id        TEXT,
+        created_by          TEXT,
+        current_version_id  TEXT,
+        block_count         INTEGER NOT NULL DEFAULT 0,
+        claim_link_count    INTEGER NOT NULL DEFAULT 0,
+        source_link_count   INTEGER NOT NULL DEFAULT 0,
+        created_at          TEXT,
+        updated_at          TEXT,
+        draft_path          TEXT NOT NULL,
+        search_text         TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_catalog_report_drafts_status "
+    "ON catalog_report_drafts(status)",
+    "CREATE INDEX IF NOT EXISTS idx_catalog_report_drafts_sensitivity_rank "
+    "ON catalog_report_drafts(sensitivity_rank)",
+    "CREATE INDEX IF NOT EXISTS idx_catalog_report_drafts_project "
+    "ON catalog_report_drafts(project_id)",
 )
 
 _FTS_DDL = (
@@ -169,6 +211,7 @@ _DROP_STATEMENTS: tuple[str, ...] = (
     "DROP TABLE IF EXISTS catalog_links",
     "DROP TABLE IF EXISTS catalog_items",
     "DROP TABLE IF EXISTS catalog_import_log",
+    "DROP TABLE IF EXISTS catalog_report_drafts",
 )
 
 
@@ -253,6 +296,19 @@ def _make_item_id(item_type: str, run_id: str, local_ref: str) -> str:
         f"{item_type}:{run_id}:{local_ref}".encode()
     ).hexdigest()
     return f"ci_{digest[:12]}"
+
+
+def report_item_id(run_id: str) -> str:
+    """The ``catalog_item_id`` of a run's synthetic ``report`` item (P1).
+
+    Public, deterministic helper so other services (P3 Wave D's
+    ``builder_service``, plan D11) can link a Report Builder draft to its
+    originating run's report item via ``catalog_links`` (``derived_from``)
+    without re-deriving the ``(item_type, run_id, local_ref)`` hashing rule
+    themselves — see :func:`_build_report_row`'s ``local_ref="report"``.
+    """
+
+    return _make_item_id("report", run_id, "report")
 
 
 def _rank(label: str | None) -> int:
@@ -1396,6 +1452,185 @@ def stats(paths: FoundryPaths, *, sensitivity_threshold: str | None = None) -> d
     }
 
 
+# ---------------------------------------------------------------------------
+# Report Builder draft index (P3 Wave D — plan D10/D11, landmine #3)
+# ---------------------------------------------------------------------------
+# This module knows nothing about the draft.yaml file format — callers
+# (builder_service) hand it a plain summary dict + a link list, and this
+# section only ever upserts/deletes derived rows. The draft.yaml + revision
+# files under <workspace>/reports/drafts/ remain the sole source of truth;
+# see builder_service's module docstring. A drop+rebuild of this table must
+# never touch those files — rebuild-safety is proved by
+# builder_service.reindex_all_drafts() re-deriving every row from disk.
+
+_DRAFT_LINK_RUN_PREFIX = "draft:"
+
+
+def _draft_link_scope(report_draft_id: str) -> str:
+    """The ``catalog_links.run_id`` sentinel scoping one draft's link rows.
+
+    ``catalog_links.run_id`` is NOT NULL and doubles as a real run id
+    elsewhere; prefixing with ``"draft:"`` (never a valid run id) keeps a
+    draft's link rows in their own delete scope without colliding with an
+    actual run's rows.
+    """
+
+    return f"{_DRAFT_LINK_RUN_PREFIX}{report_draft_id}"
+
+
+_DRAFT_INDEX_COLUMNS: tuple[str, ...] = (
+    "report_draft_id",
+    "title",
+    "status",
+    "sensitivity",
+    "sensitivity_rank",
+    "audience",
+    "origin",
+    "project_id",
+    "workspace_id",
+    "created_by",
+    "current_version_id",
+    "block_count",
+    "claim_link_count",
+    "source_link_count",
+    "created_at",
+    "updated_at",
+    "draft_path",
+)
+
+
+def index_draft(
+    paths: FoundryPaths,
+    entry: dict[str, Any],
+    *,
+    links: list[dict[str, str]] | None = None,
+) -> None:
+    """Upsert one report draft's derived index row + ``catalog_links`` (D11).
+
+    ``entry`` must supply ``report_draft_id``, ``title``, ``sensitivity``, and
+    ``draft_path``; every other :data:`_DRAFT_INDEX_COLUMNS` key is optional.
+    ``links`` are the draft's outgoing edges — ``[{"to_item_id":
+    <catalog_item_id>, "relation": "cites"|"derived_from"}, ...]``;
+    ``from_item_id`` is always the draft's own ``report_draft_id`` (D11:
+    "link drafts to source runs/claims via catalog_links relations").
+
+    Delete-then-insert in one transaction (idempotent) — mirrors
+    :func:`import_run`'s contract, so re-indexing after every draft mutation
+    is always safe and cheap.
+    """
+
+    report_draft_id = str(entry["report_draft_id"])
+    sensitivity_rank = _rank(entry.get("sensitivity"))
+    row: dict[str, Any] = {col: entry.get(col) for col in _DRAFT_INDEX_COLUMNS}
+    row["report_draft_id"] = report_draft_id
+    row["title"] = _scalar_text(entry.get("title")) or ""
+    row["status"] = _scalar_text(entry.get("status"))
+    row["sensitivity"] = _label_for_rank(sensitivity_rank)
+    row["sensitivity_rank"] = sensitivity_rank
+    row["block_count"] = int(entry.get("block_count") or 0)
+    row["claim_link_count"] = int(entry.get("claim_link_count") or 0)
+    row["source_link_count"] = int(entry.get("source_link_count") or 0)
+    row["draft_path"] = str(entry["draft_path"])
+    row["search_text"] = " ".join(
+        filter(None, [row["title"], str(entry.get("status") or "")])
+    ).lower()
+
+    link_rows = links or []
+    scope = _draft_link_scope(report_draft_id)
+    columns = [*_DRAFT_INDEX_COLUMNS, "search_text"]
+
+    with _db(paths) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute(
+                "DELETE FROM catalog_report_drafts WHERE report_draft_id = ?",
+                (report_draft_id,),
+            )
+            conn.execute("DELETE FROM catalog_links WHERE run_id = ?", (scope,))
+            placeholders = ", ".join(f":{c}" for c in columns)
+            conn.execute(
+                f"INSERT INTO catalog_report_drafts ({', '.join(columns)}) "
+                f"VALUES ({placeholders})",
+                row,
+            )
+            for link in link_rows:
+                to_id = link.get("to_item_id")
+                relation = link.get("relation")
+                if not to_id or not relation:
+                    continue
+                conn.execute(
+                    "INSERT OR IGNORE INTO catalog_links "
+                    "(run_id, from_item_id, to_item_id, relation) VALUES (?, ?, ?, ?)",
+                    (scope, report_draft_id, to_id, relation),
+                )
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+
+
+def remove_draft_index(paths: FoundryPaths, report_draft_id: str) -> None:
+    """Remove one draft's index row + ``catalog_links`` edges (idempotent)."""
+
+    scope = _draft_link_scope(report_draft_id)
+    with _db(paths) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute(
+                "DELETE FROM catalog_report_drafts WHERE report_draft_id = ?",
+                (report_draft_id,),
+            )
+            conn.execute("DELETE FROM catalog_links WHERE run_id = ?", (scope,))
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+
+
+def get_draft_index(paths: FoundryPaths, report_draft_id: str) -> dict[str, Any] | None:
+    """Return the indexed summary row for *report_draft_id*, or ``None``."""
+
+    with _db(paths) as conn:
+        row = conn.execute(
+            "SELECT * FROM catalog_report_drafts WHERE report_draft_id = ?",
+            (report_draft_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        result = {col: row[col] for col in _DRAFT_INDEX_COLUMNS}
+        link_rows = conn.execute(
+            "SELECT to_item_id, relation FROM catalog_links WHERE from_item_id = ?",
+            (report_draft_id,),
+        ).fetchall()
+    result["links"] = [
+        {"catalog_item_id": r["to_item_id"], "relation": r["relation"]} for r in link_rows
+    ]
+    return result
+
+
+def list_draft_index(
+    paths: FoundryPaths,
+    *,
+    status: str | None = None,
+    sensitivity_threshold: str | None = None,
+) -> list[dict[str, Any]]:
+    """List indexed draft summaries (fail-closed on the resolved threshold)."""
+
+    threshold_rank = _rank(resolve_threshold(paths, sensitivity_threshold))
+    where = ["sensitivity_rank <= ?"]
+    params: list[Any] = [threshold_rank]
+    if status:
+        where.append("status = ?")
+        params.append(status)
+    with _db(paths) as conn:
+        rows = conn.execute(
+            f"SELECT * FROM catalog_report_drafts WHERE {' AND '.join(where)} "
+            "ORDER BY updated_at DESC, report_draft_id ASC",
+            params,
+        ).fetchall()
+    return [{col: r[col] for col in _DRAFT_INDEX_COLUMNS} for r in rows]
+
+
 __all__ = [
     "SCHEMA_VERSION",
     "ITEM_TYPES",
@@ -1407,4 +1642,9 @@ __all__ = [
     "search",
     "get_item",
     "stats",
+    "index_draft",
+    "remove_draft_index",
+    "get_draft_index",
+    "list_draft_index",
+    "report_item_id",
 ]

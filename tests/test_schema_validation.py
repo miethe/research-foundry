@@ -43,6 +43,7 @@ EXPECTED_SCHEMA_NAMES: list[str] = [
     "meatywiki_writeback",
     "notebooklm_update",
     "raw_idea",
+    "report_draft",
     "report_frontmatter",
     "research_brief",
     "research_idea_backlog",
@@ -135,6 +136,14 @@ def _valid(name: str) -> dict:
             "id": "raw_demo",
             "title": "Demo Idea",
             "body": "A captured idea body.",
+        },
+        # required: report_draft_id, type (const report_draft), title, sensitivity, status
+        "report_draft": {
+            "report_draft_id": "rpt_demo",
+            "type": "report_draft",
+            "title": "Demo Draft",
+            "sensitivity": "public",
+            "status": "draft",
         },
         # required: report_id, type (const research_report), title
         "report_frontmatter": {
@@ -249,6 +258,7 @@ def _invalid(name: str) -> dict:
         "meatywiki_writeback": "id",
         "notebooklm_update": "run_id",
         "raw_idea": "id",
+        "report_draft": "report_draft_id",
         "research_brief": "id",
         "research_idea_backlog": "type",
         "research_intent": "id",

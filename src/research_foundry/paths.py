@@ -118,6 +118,23 @@ class FoundryPaths:
     def foundry_yaml(self) -> Path:
         return self.root / "foundry.yaml"
 
+    # --- report builder (public-multiuser-release Phase 3, plan D10) ---
+    @property
+    def reports(self) -> Path:
+        return self.root / "reports"
+
+    @property
+    def report_drafts(self) -> Path:
+        """Durable, file-canonical Report Builder draft store (plan D10).
+
+        Draft truth (``draft.yaml`` + revision snapshots) lives here, never in
+        the rebuildable ``catalog.db`` cache — see ``builder_service``.
+        """
+        return self.reports / "drafts"
+
+    def report_draft_dir(self, report_draft_id: str) -> Path:
+        return self.report_drafts / report_draft_id
+
     # --- derived/local caches (gitignored; never canonical) ---
     @property
     def rf_cache(self) -> Path:
