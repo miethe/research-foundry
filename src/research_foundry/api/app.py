@@ -14,6 +14,7 @@ Endpoints registered by this factory:
   GET /api/runs/{run_id}       — run detail   (→ fetchRunDetail)
   GET /api/runs/{run_id}/claims           — claim ledger  (→ fetchClaimLedger)
   GET /api/runs/{run_id}/sources/{sc_id}  — resolved source (→ fetchSourceCard)
+  GET /api/reports/{run_id}/anchors       — report anchors (P2 Wave B; sensitivity-gated, no-leak 404)
   GET /data/governance.json    — governance config snapshot (→ fetchGovernanceConfig)
   GET  /api/catalog/stats                — catalog counts (→ fetchCatalogStats)
   GET  /api/catalog/search                — catalog search (→ fetchCatalogSearch)

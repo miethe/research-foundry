@@ -1399,6 +1399,101 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(catalog_app, name="catalog")
 
+    # ----- report (P2 Wave B: read-only report surface) -----
+    report_app = typer.Typer(help="Report surface — read anchors, verify, (P3: draft).")
+
+    @report_app.command("anchors")
+    def report_anchors(
+        run_id: str = typer.Argument(..., help="run id"),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output (default: rich table)"),
+        sensitivity_threshold: str = typer.Option(
+            None,
+            "--sensitivity-threshold",
+            help="Override foundry.yaml viewer.sensitivity_threshold (default: public)",
+        ),
+    ) -> None:
+        """Print the report anchors (block/paragraph locations + claim links) for a run.
+
+        404-equivalent error when the run is unknown or excluded by the resolved
+        sensitivity threshold (same behavior as the API endpoint — no existence
+        leak).  Pass ``--sensitivity-threshold`` to override the workspace default.
+        """
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services.export_service import (
+            SENSITIVITY_ORDER,
+            ExportError,
+            export_run,
+            resolve_threshold,
+        )
+
+        paths = FoundryPaths.discover()
+
+        try:
+            threshold = resolve_threshold(paths, sensitivity_threshold)
+        except ExportError as exc:
+            _fail(exc)
+
+        threshold_rank = SENSITIVITY_ORDER[threshold]
+
+        # Pass the already-resolved threshold through so export-time claim
+        # filtering (and thus the derived anchors) honors the same override
+        # used for the existence gate below, instead of export_run falling
+        # back to its own default re-resolve.
+        try:
+            data = export_run(paths, run_id, sensitivity_threshold=threshold)
+        except ExportError as exc:
+            _fail(RFError(f"run not found: {run_id}"))
+
+        # No-existence-leak gate (landmine #4/#5).
+        run_sensitivity = data.get("sensitivity") or "public"
+        run_rank = SENSITIVITY_ORDER.get(str(run_sensitivity), len(SENSITIVITY_ORDER))
+        if run_rank > threshold_rank:
+            _fail(RFError(f"run not found: {run_id}"))
+
+        anchors = data.get("report_anchors")
+
+        if json_out:
+            typer.echo(_json.dumps({"run_id": run_id, "report_anchors": anchors}, ensure_ascii=False, indent=2))
+            return
+
+        if anchors is None:
+            console.print(f"[yellow]no report anchors for run {run_id} (no report draft)[/yellow]")
+            return
+
+        if not anchors:
+            console.print(f"[yellow]report has no anchored paragraphs[/yellow]")
+            return
+
+        table = Table(title=f"report anchors: {run_id}", show_header=True, header_style="bold")
+        table.add_column("block_id")
+        table.add_column("section_id")
+        table.add_column("ordinal")
+        table.add_column("text_hash")
+        table.add_column("claim_links")
+        for block in anchors:
+            claim_parts = []
+            for cl in block.get("claim_links") or []:
+                status = cl.get("link_status", "?")
+                cid = cl.get("claim_id", "?")
+                color = {"linked": "green", "stale": "yellow", "missing_claim": "red"}.get(status, "")
+                if color:
+                    claim_parts.append(f"[{color}]{cid}[/{color}]")
+                else:
+                    claim_parts.append(cid)
+            table.add_row(
+                str(block.get("block_id") or ""),
+                str(block.get("section_id") or "(root)"),
+                str(block.get("paragraph_ordinal", "")),
+                str(block.get("text_hash") or ""),
+                ", ".join(claim_parts) if claim_parts else "-",
+            )
+        console.print(table)
+
+    app.add_typer(report_app, name="report")
+
     # ----- serve (loopback API) -----
     @app.command()
     def serve(

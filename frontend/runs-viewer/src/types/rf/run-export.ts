@@ -135,6 +135,48 @@ export interface RFReportLocation {
   paragraph_id?: string;
 }
 
+// ── Report Anchors (§16, schema 1.4 — P2 Wave A/D7-D8) ───────────────────────
+//
+// Backend-derived (markdown-it-py AST, never regex) block/paragraph anchors +
+// claim spans for report_draft. Additive/nullable field on RFRunExport;
+// entirely ABSENT (key omitted, not merely null) on pre-1.4 exports — that is
+// the frontend's "legacy mode" trigger (D9), never a link_status value.
+//
+// Source of truth: docs/dev/architecture/rf-run-export-schema.md §16 and
+// src/research_foundry/services/export_service.py::derive_report_anchors().
+
+/** A bare [claim:...] tag carries no relation of its own — inferred from the
+ * linked claim's status at export time. `null` only when link_status is
+ * "missing_claim" (the tag did not resolve to a claim in claims[]). */
+export type RFReportAnchorRelation = "supports" | "contradicts" | "inferred_from" | "context";
+
+export interface RFReportAnchorClaimLink {
+  claim_id:      string;
+  /** Offset into the *normalized* block text (" ".join(raw.split())). */
+  span_start:    number;
+  span_end:      number;
+  relation:      RFReportAnchorRelation | null;
+  /**
+   * "stale" is a capability of derive_report_anchors() (hash-drift detection
+   * against a previously-derived anchor set) that export_run() does not wire
+   * up yet — every resolved link is "linked" in current exports. Frontend
+   * must still branch on it defensively (D13 will start emitting it).
+   */
+  link_status:   "linked" | "stale" | "missing_claim";
+}
+
+export interface RFReportAnchorBlock {
+  /** sha1(section_id + normalized_text + ordinal)[:12] — stable DOM anchor id. */
+  block_id:          string;
+  /** Nearest preceding h2/h3 slug (mirrors reportOutlineUtils.slugify exactly); null before the first heading. */
+  section_id:        string | null;
+  /** 0-based index of this paragraph within its section. */
+  paragraph_ordinal: number;
+  /** sha1(normalized_text)[:12] — drift-detection hash; never the prose itself (no new redaction surface). */
+  text_hash:         string;
+  claim_links:       RFReportAnchorClaimLink[];
+}
+
 export interface RFClaim {
   claim_id:          string;
   text:              string;
@@ -284,6 +326,14 @@ export interface RFRunExport {
   context?:                  RFRunContextSummary | null;
   /** Optional v2 writeback summary. Absent in schema 1.1 exports. */
   writebacks?:               RFRunWritebacksSummary | null;
+
+  /**
+   * AST-derived report block/paragraph anchors + claim spans (schema 1.4, §16).
+   * Null when report_draft is null. KEY ABSENT ENTIRELY on pre-1.4 exports —
+   * that absence (not a null value) is the frontend's legacy-regex-fallback
+   * trigger (D9). Use optional access: `run.report_anchors`.
+   */
+  report_anchors?:           RFReportAnchorBlock[] | null;
 
   // ── Run Metadata Enrichment fields (schema 1.2) ────────────────────────────
   // All fields below are optional/nullable — absent on pre-migration runs (schema < 1.2).

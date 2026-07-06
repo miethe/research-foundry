@@ -127,6 +127,15 @@ export function ReportOverlay({ run, reportDraft, onOpenProvenance }: ReportOver
 
         {/* Main report column */}
         <div className="rv-report-overlay__main" data-testid="report-overlay-main">
+          {/*
+            P2 Wave C: reportAnchors is threaded through so paragraphs carry a
+            stable block_id (DOM id/data attribute) for future deep-linking
+            consistency with the Audit tab. No selectedBlockId/activeBlockIds/
+            onParagraphSelect here — the Report tab's existing
+            CompositionSidebar UX (D9) is intentionally left unchanged; the
+            full anchor-driven audit (coverage strip, filters, paragraph
+            inspector) lives in ClaimAuditWorkbench (the Audit tab).
+          */}
           <ReportRenderer
             markdown={reportDraft ?? ""}
             claims={run.claims}
@@ -134,6 +143,7 @@ export function ReportOverlay({ run, reportDraft, onOpenProvenance }: ReportOver
             activeClaimIds={activeClaimIds}
             highlightMode={compositionFilter ? "composition" : "none"}
             highlightText={highlightText}
+            reportAnchors={run.report_anchors ?? null}
           />
         </div>
 

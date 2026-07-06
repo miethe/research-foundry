@@ -26,7 +26,7 @@ import {
   sortCatalogItems,
 } from "./catalog";
 import type { CatalogItemDetail } from "@/types/rf/catalog";
-import type { RFClaim, RFResolvedSource, RFRunExport, RFSensitivity } from "@/types/rf/run-export";
+import type { RFClaim, RFReportAnchorBlock, RFResolvedSource, RFRunExport, RFSensitivity } from "@/types/rf/run-export";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -91,8 +91,46 @@ const c4: RFClaim = {
   sources: [srcUnknown, srcClient],
 };
 
+// Minimal report_anchors for runA — c1 is linked (status=supported → relation=supports),
+// c2Inference is linked (status=inference → relation=inferred_from).
+// c3/c4 have no anchor entries (omitted — they have no report_locations in the fixture).
+// clm_missing is a dangling tag exercising the missing_claim path.
+const runAAnchors: RFReportAnchorBlock[] = [
+  {
+    block_id: "aabbcc001122",
+    section_id: null,
+    paragraph_ordinal: 0,
+    text_hash: "ddeeff334455",
+    claim_links: [
+      {
+        claim_id: "c1",
+        span_start: 0,
+        span_end: 16,
+        relation: "supports",
+        link_status: "linked",
+      },
+    ],
+  },
+  {
+    block_id: "bbccdd112233",
+    section_id: "findings",
+    paragraph_ordinal: 0,
+    text_hash: "eeff00445566",
+    claim_links: [
+      // A "missing_claim" entry — must be skipped by the link derivation.
+      {
+        claim_id: "clm_missing",
+        span_start: 0,
+        span_end: 20,
+        relation: null,
+        link_status: "missing_claim",
+      },
+    ],
+  },
+];
+
 const runA: RFRunExport = {
-  schema_version: "1.3",
+  schema_version: "1.4",
   run_id: "run_a",
   status_derived: "verified",
   sensitivity: "public",
@@ -104,6 +142,7 @@ const runA: RFRunExport = {
   governance: null,
   timeline: null,
   report_draft: "# Hybrid Search Benchmark\n\nCross-encoder reranking improves NDCG@10 on CPU.\n\nMore detail follows.",
+  report_anchors: runAAnchors,
 };
 
 const runB: RFRunExport = {
@@ -495,6 +534,82 @@ describe("buildCatalogIndex — F-parity sensitivity derivation", () => {
     const idx = buildCatalogIndex([runWb]);
     const wbItem = getCatalogItem(idx, catalogItemId("writeback", "run_wb", "wb_unknown"));
     expect(wbItem?.local_ref).toBe("wb_unknown");
+  });
+});
+
+// ── D4 Parity: report→claim links from report_anchors ─────────────────────────
+
+describe("buildCatalogIndex — report→claim links from report_anchors (D4 parity)", () => {
+  it("derives report→claim 'contains' links from report_anchors.claim_links (not report_locations)", () => {
+    // runA has report_anchors with c1 linked; the report→claim link MUST come from anchors.
+    const index = buildCatalogIndex([runA]);
+    const reportItem = getCatalogItem(index, catalogItemId("report", "run_a", "report"));
+    expect(reportItem?.links.outgoing).toContainEqual({
+      relation: "contains",
+      catalog_item_id: catalogItemId("claim", "run_a", "c1"),
+    });
+  });
+
+  it("skips missing_claim entries (link_status=missing_claim is never emitted as a catalog link)", () => {
+    const index = buildCatalogIndex([runA]);
+    const reportItem = getCatalogItem(index, catalogItemId("report", "run_a", "report"));
+    // clm_missing is in the anchors with missing_claim — must not appear in outgoing links.
+    const outgoingIds = (reportItem?.links.outgoing ?? []).map((l) => l.catalog_item_id);
+    expect(outgoingIds).not.toContain(catalogItemId("claim", "run_a", "clm_missing"));
+    expect(outgoingIds).not.toContain(catalogItemId("inference", "run_a", "clm_missing"));
+  });
+
+  it("deduplicates links when the same claim_id appears in multiple anchor blocks", () => {
+    const dupeAnchors: RFReportAnchorBlock[] = [
+      {
+        block_id: "dup0000000001",
+        section_id: null,
+        paragraph_ordinal: 0,
+        text_hash: "aa1122334455",
+        claim_links: [{ claim_id: "c1", span_start: 0, span_end: 16, relation: "supports", link_status: "linked" }],
+      },
+      {
+        block_id: "dup0000000002",
+        section_id: "sec",
+        paragraph_ordinal: 0,
+        text_hash: "bb2233445566",
+        claim_links: [{ claim_id: "c1", span_start: 5, span_end: 21, relation: "supports", link_status: "linked" }],
+      },
+    ];
+    const runDupe: RFRunExport = {
+      ...runA,
+      run_id: "run_dupe",
+      report_anchors: dupeAnchors,
+    };
+    const index = buildCatalogIndex([runDupe]);
+    const reportItem = getCatalogItem(index, catalogItemId("report", "run_dupe", "report"));
+    const containsLinks = (reportItem?.links.outgoing ?? []).filter((l) => l.relation === "contains");
+    // c1 appears twice but must be deduped to a single "contains" link.
+    const c1LinkCount = containsLinks.filter(
+      (l) => l.catalog_item_id === catalogItemId("claim", "run_dupe", "c1"),
+    ).length;
+    expect(c1LinkCount).toBe(1);
+  });
+
+  it("emits no report→claim links when report_anchors is null (pre-1.4 export)", () => {
+    const runNoAnchors: RFRunExport = {
+      ...runA,
+      run_id: "run_no_anchors",
+      report_anchors: null,
+    };
+    const index = buildCatalogIndex([runNoAnchors]);
+    const reportItem = getCatalogItem(index, catalogItemId("report", "run_no_anchors", "report"));
+    const containsLinks = (reportItem?.links.outgoing ?? []).filter((l) => l.relation === "contains");
+    expect(containsLinks).toHaveLength(0);
+  });
+
+  it("emits no report→claim links when report_anchors is absent (key missing, old export)", () => {
+    const { report_anchors: _dropped, ...runBase } = runA as RFRunExport & { report_anchors?: unknown };
+    const runAbsent: RFRunExport = { ...runBase, run_id: "run_absent_anchors" };
+    const index = buildCatalogIndex([runAbsent]);
+    const reportItem = getCatalogItem(index, catalogItemId("report", "run_absent_anchors", "report"));
+    const containsLinks = (reportItem?.links.outgoing ?? []).filter((l) => l.relation === "contains");
+    expect(containsLinks).toHaveLength(0);
   });
 });
 

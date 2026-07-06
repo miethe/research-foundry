@@ -15,6 +15,19 @@
 
 import type { RFClaimConfidence, RFSensitivity } from "./run-export.js";
 
+// ── Report Anchors (P2 Wave C) ────────────────────────────────────────────────
+//
+// Canonical definition lives in run-export.ts (report_anchors is a field of
+// RFRunExport / run.json §16) — re-exported here because the D4 report→claim
+// link parity logic that consumes them lives in ./catalog.ts (lib/catalog.ts),
+// not run-export.ts. Re-exporting (rather than duplicating) keeps a single
+// source of truth and avoids a run-export.ts -> catalog.ts import cycle.
+export type {
+  RFReportAnchorBlock,
+  RFReportAnchorClaimLink,
+  RFReportAnchorRelation,
+} from "./run-export.js";
+
 // ── Item type ────────────────────────────────────────────────────────────────
 
 /**

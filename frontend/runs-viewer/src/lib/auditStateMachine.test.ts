@@ -9,8 +9,9 @@ import {
   deriveMatchedClaimIds,
   isFacetEmpty,
 } from "./auditStateMachine";
+import type { AuditAnchorState } from "./auditStateMachine";
 import type { LedgerFacetState } from "@/components/ClaimLedger/LedgerFacets";
-import type { RFClaim } from "@/types/rf";
+import type { RFClaim, RFReportAnchorBlock } from "@/types/rf";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -186,5 +187,117 @@ describe("F3-TEST-7: deriveMatchedClaimIds (facet union without double-filtering
     expect(ids).toContain("clm_A");
     expect(ids.has("clm_B")).toBe(false); // wrong confidence
     expect(ids.has("clm_C")).toBe(false); // wrong status
+  });
+});
+
+// ── P2 Wave C: report_anchors extension (selected-paragraph / anchor-filter) ──
+
+function makeBlock(overrides: Partial<RFReportAnchorBlock> & { block_id: string }): RFReportAnchorBlock {
+  return {
+    section_id: null,
+    paragraph_ordinal: 0,
+    text_hash: "hash",
+    claim_links: [],
+    ...overrides,
+  };
+}
+
+const ANCHORS: RFReportAnchorBlock[] = [
+  makeBlock({
+    block_id: "b0",
+    claim_links: [
+      { claim_id: "clm_001", span_start: 0, span_end: 5, relation: "supports", link_status: "linked" },
+    ],
+  }),
+  makeBlock({
+    block_id: "b1",
+    paragraph_ordinal: 1,
+    claim_links: [
+      { claim_id: "clm_missing", span_start: 0, span_end: 5, relation: null, link_status: "missing_claim" },
+    ],
+  }),
+  makeBlock({ block_id: "b2", paragraph_ordinal: 2, claim_links: [] }),
+];
+
+describe("P2 Wave C — backward compatibility (3-arg calls unaffected)", () => {
+  it("omitting anchorState behaves identically to the pre-P2 signature", () => {
+    const result = deriveAuditHighlight(emptyFacets(), null, CLAIMS);
+    expect(result.highlightMode).toBe("none");
+    expect(result.selectedBlockId).toBeUndefined();
+    expect(result.activeBlockIds).toBeUndefined();
+  });
+
+  it("anchorState with anchors=null/undefined never triggers the new states", () => {
+    const anchorState: AuditAnchorState = { selectedBlockId: "b0", anchorFilters: new Set(), anchors: null };
+    const result = deriveAuditHighlight(emptyFacets(), null, CLAIMS, anchorState);
+    expect(result.highlightMode).toBe("none");
+  });
+});
+
+describe("P2 Wave C — selected-paragraph state", () => {
+  it("selectedBlockId (with anchors present) -> highlightMode='selected-paragraph', activeClaimIds from that block's resolved links", () => {
+    const anchorState: AuditAnchorState = { selectedBlockId: "b0", anchorFilters: new Set(), anchors: ANCHORS };
+    const result = deriveAuditHighlight(emptyFacets(), null, CLAIMS, anchorState);
+    expect(result.highlightMode).toBe("selected-paragraph");
+    expect(result.selectedBlockId).toBe("b0");
+    expect(result.activeBlockIds).toEqual(new Set(["b0"]));
+    expect(result.activeClaimIds).toEqual(new Set(["clm_001"]));
+    expect(result.highlightText).toBe(true);
+  });
+
+  it("excludes missing_claim links from activeClaimIds", () => {
+    const anchorState: AuditAnchorState = { selectedBlockId: "b1", anchorFilters: new Set(), anchors: ANCHORS };
+    const result = deriveAuditHighlight(emptyFacets(), null, CLAIMS, anchorState);
+    expect(result.activeClaimIds.size).toBe(0);
+  });
+
+  it("a paragraph with zero claim_links still resolves activeBlockIds=Set([blockId]) (highlights an empty/unsupported paragraph)", () => {
+    const anchorState: AuditAnchorState = { selectedBlockId: "b2", anchorFilters: new Set(), anchors: ANCHORS };
+    const result = deriveAuditHighlight(emptyFacets(), null, CLAIMS, anchorState);
+    expect(result.highlightMode).toBe("selected-paragraph");
+    expect(result.activeBlockIds).toEqual(new Set(["b2"]));
+    expect(result.activeClaimIds.size).toBe(0);
+  });
+
+  it("selected-claim (claim row) still takes precedence over a stale selectedBlockId", () => {
+    const anchorState: AuditAnchorState = { selectedBlockId: "b0", anchorFilters: new Set(), anchors: ANCHORS };
+    const result = deriveAuditHighlight(emptyFacets(), "clm_002", CLAIMS, anchorState);
+    expect(result.highlightMode).toBe("selected-claim");
+    expect(result.selectedBlockId).toBeUndefined();
+  });
+});
+
+describe("P2 Wave C — anchor-filter state", () => {
+  it("active anchor filters (no selection, no facets) -> highlightMode='anchor-filter'", () => {
+    const anchorState: AuditAnchorState = {
+      selectedBlockId: null,
+      anchorFilters: new Set(["inference"]),
+      anchors: ANCHORS,
+    };
+    // clm_001 is "supported" in CLAIMS — reuse a fresh fixture where b0's link resolves to "inference".
+    const inferenceClaims: RFClaim[] = [
+      { claim_id: "clm_001", claim_text: "x", status: "inference", materiality: "core", claim_type: "inference", confidence: "high", sources: [] } as unknown as RFClaim,
+    ];
+    const result = deriveAuditHighlight(emptyFacets(), null, inferenceClaims, anchorState);
+    expect(result.highlightMode).toBe("anchor-filter");
+    expect(result.activeBlockIds).toEqual(new Set(["b0"]));
+    expect(result.activeClaimIds).toEqual(new Set(["clm_001"]));
+    expect(result.highlightText).toBe(true);
+  });
+
+  it("composition (facets) takes precedence over anchor filters", () => {
+    const anchorState: AuditAnchorState = {
+      selectedBlockId: null,
+      anchorFilters: new Set(["inference"]),
+      anchors: ANCHORS,
+    };
+    const result = deriveAuditHighlight(facetsWithStatus("supported"), null, CLAIMS, anchorState);
+    expect(result.highlightMode).toBe("composition");
+  });
+
+  it("no anchor filters active -> falls through to 'none' even with anchors present", () => {
+    const anchorState: AuditAnchorState = { selectedBlockId: null, anchorFilters: new Set(), anchors: ANCHORS };
+    const result = deriveAuditHighlight(emptyFacets(), null, CLAIMS, anchorState);
+    expect(result.highlightMode).toBe("none");
   });
 });
