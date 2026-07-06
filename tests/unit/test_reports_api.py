@@ -433,7 +433,10 @@ def test_delete_block(tmp_path: Path) -> None:
     blk_id = after_add["blocks"][-1]["block_id"]
 
     del_resp = client.delete(f"/api/reports/{rid}/blocks/{blk_id}")
-    assert del_resp.status_code == 204
+    assert del_resp.status_code == 200
+    del_draft = del_resp.json()
+    assert del_draft["report_draft_id"] == rid
+    assert blk_id not in [b["block_id"] for b in del_draft["blocks"]]
 
     detail = client.get(f"/api/reports/{rid}").json()
     block_ids = [b["block_id"] for b in detail["blocks"]]
@@ -493,7 +496,9 @@ def test_add_and_remove_claim_link(tmp_path: Path) -> None:
 
     cl_id = next(cl["claim_link_id"] for cl in draft["claim_links"] if cl["claim_id"] == "clm_001")
     del_resp = client.delete(f"/api/reports/{rid}/claim-links/{cl_id}")
-    assert del_resp.status_code == 204
+    assert del_resp.status_code == 200
+    del_draft = del_resp.json()
+    assert not any(cl["claim_id"] == "clm_001" for cl in del_draft["claim_links"])
 
     after_del = client.get(f"/api/reports/{rid}").json()
     assert not any(cl["claim_id"] == "clm_001" for cl in after_del["claim_links"])
@@ -520,7 +525,9 @@ def test_add_and_remove_source_link(tmp_path: Path) -> None:
 
     sl_id = next(sl["source_link_id"] for sl in draft["source_links"])
     del_resp = client.delete(f"/api/reports/{rid}/source-links/{sl_id}")
-    assert del_resp.status_code == 204
+    assert del_resp.status_code == 200
+    del_draft = del_resp.json()
+    assert not any(sl["source_link_id"] == sl_id for sl in del_draft["source_links"])
 
 
 # ---------------------------------------------------------------------------
@@ -678,3 +685,50 @@ def test_draft_endpoints_reject_non_rpt_ids(tmp_path: Path) -> None:
     ]:
         resp = getattr(client, method)(path)
         assert resp.status_code == 404, f"{method.upper()} {path} expected 404, got {resp.status_code}"
+
+
+# ---------------------------------------------------------------------------
+# R2 fix: sensitivity gating on draft read endpoints (fail-closed)
+# ---------------------------------------------------------------------------
+
+
+def test_get_draft_sensitivity_gate_hides_over_threshold_draft(tmp_path: Path) -> None:
+    """A draft's own sensitivity must gate GET /reports/{id} exactly like
+    catalog_service.get_item gates a catalog item — an over-threshold draft
+    is an indistinguishable 404, not merely present-but-redacted."""
+    client, _ = _make_client(tmp_path)
+    created = client.post(
+        "/api/reports",
+        json={"origin": "blank", "title": "Sensitive Draft", "sensitivity": "client_sensitive"},
+    ).json()
+    rid = created["report_draft_id"]
+
+    # Default threshold is "public" (foundry.yaml) -> over-threshold draft is hidden.
+    resp = client.get(f"/api/reports/{rid}")
+    assert resp.status_code == 404
+
+    # An explicit override matching the draft's own sensitivity reveals it.
+    resp2 = client.get(f"/api/reports/{rid}", params={"sensitivity_threshold": "client_sensitive"})
+    assert resp2.status_code == 200
+    assert resp2.json()["report_draft_id"] == rid
+
+
+def test_list_drafts_sensitivity_gate_filters_over_threshold(tmp_path: Path) -> None:
+    """GET /reports must omit over-threshold drafts entirely (fail-closed),
+    at the default 'public' threshold."""
+    client, _ = _make_client(tmp_path)
+    client.post("/api/reports", json={"origin": "blank", "title": "Public One"})
+    client.post(
+        "/api/reports",
+        json={"origin": "blank", "title": "Sensitive One", "sensitivity": "client_sensitive"},
+    )
+
+    resp = client.get("/api/reports")
+    assert resp.status_code == 200
+    titles = {d["title"] for d in resp.json()}
+    assert titles == {"Public One"}
+
+    resp2 = client.get("/api/reports", params={"sensitivity_threshold": "client_sensitive"})
+    assert resp2.status_code == 200
+    titles2 = {d["title"] for d in resp2.json()}
+    assert titles2 == {"Public One", "Sensitive One"}

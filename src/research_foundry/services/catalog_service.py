@@ -1129,10 +1129,27 @@ def import_all(paths: FoundryPaths) -> dict[str, Any]:
 
 
 def rebuild(paths: FoundryPaths) -> dict[str, Any]:
-    """Drop + recreate the schema, then re-import every discovered run."""
+    """Drop + recreate the schema, re-import every run, and reindex every
+    on-disk Report Builder draft.
+
+    R2 fix: ``catalog_report_drafts`` is derived exactly like ``catalog_items``
+    (module docstring, v2/landmine #3) — a schema-version bump or explicit
+    ``rf catalog rebuild`` must repopulate BOTH tables, not just the run-item
+    one. :func:`~research_foundry.services.builder_service.reindex_all_drafts`
+    existed since Wave D but was never called from here, so the draft index
+    stayed empty until a draft was individually mutated. Imported locally
+    (not at module scope) because ``builder_service`` imports this module —
+    a top-level import here would be circular.
+    """
+
+    from .builder_service import reindex_all_drafts
 
     rebuild_schema(paths)
-    return import_all(paths)
+    result = import_all(paths)
+    draft_result = reindex_all_drafts(paths)
+    result["drafts"] = draft_result["drafts"]
+    result["draft_errors"] = draft_result["errors"]
+    return result
 
 
 # ---------------------------------------------------------------------------

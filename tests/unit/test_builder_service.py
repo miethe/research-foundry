@@ -138,12 +138,74 @@ def test_load_draft_missing_raises_not_found(tmp_foundry: FoundryPaths) -> None:
         bsvc.load_draft(tmp_foundry, "rpt_does_not_exist")
 
 
+# ---------------------------------------------------------------------------
+# R2 CRITICAL fix: path traversal via unvalidated draft/version ids
+# ---------------------------------------------------------------------------
+
+
+def test_load_draft_rejects_path_traversal_id(tmp_foundry: FoundryPaths) -> None:
+    """A ``report_id.startswith('rpt_')`` PREFIX check lets a payload like
+    ``rpt_../../../etc`` straight through unchanged. The service layer must
+    reject any id that doesn't match the strict full-string shape, regardless
+    of caller (API, CLI, or direct import)."""
+    for bad_id in ("rpt_../../../etc", "../../etc/passwd", "rpt_..", "rpt_/etc/passwd", ""):
+        with pytest.raises(NotFoundError):
+            bsvc.load_draft(tmp_foundry, bad_id)
+
+
+def test_delete_draft_rejects_path_traversal_id_without_touching_disk(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """delete_draft must refuse a malformed/traversal id and must NEVER reach
+    ``shutil.rmtree`` on anything outside ``reports/drafts/``."""
+    sentinel_dir = tmp_foundry.root / "sentinel"
+    sentinel_dir.mkdir()
+    (sentinel_dir / "keep.txt").write_text("keep me", encoding="utf-8")
+
+    with pytest.raises(NotFoundError):
+        bsvc.delete_draft(tmp_foundry, "rpt_../../sentinel")
+
+    assert (sentinel_dir / "keep.txt").exists()
+
+
+def test_get_revision_rejects_path_traversal_version_id(tmp_foundry: FoundryPaths) -> None:
+    """``report_version_id`` gets the same strict-shape treatment as
+    ``report_draft_id`` — a real draft dir must not leak a read outside its
+    own ``revisions/`` subdirectory via a crafted version id."""
+    draft = bsvc.create_draft(tmp_foundry, title="Traversal Version Test")
+    report_draft_id = draft["report_draft_id"]
+    for bad_version_id in ("rptv_../../../etc", "../../etc/passwd", "rptv_.."):
+        with pytest.raises(NotFoundError):
+            bsvc.get_revision(tmp_foundry, report_draft_id, bad_version_id)
+
+
 def test_list_drafts_scans_disk(tmp_foundry: FoundryPaths) -> None:
     d1 = bsvc.create_draft(tmp_foundry, title="Alpha Draft")
     d2 = bsvc.create_draft(tmp_foundry, title="Beta Draft")
     summaries = bsvc.list_drafts(tmp_foundry)
     ids = {s["report_draft_id"] for s in summaries}
     assert {d1["report_draft_id"], d2["report_draft_id"]} <= ids
+
+
+def test_create_draft_avoids_clobber_on_id_collision(tmp_foundry: FoundryPaths) -> None:
+    """R2 HIGH fix: a pre-existing draft directory at the deterministic base
+    id (title + day, no time component) must not be clobbered by a
+    same-titled ``create_draft`` — this simulates the losing side of the
+    check-then-act race the old ``disambiguate_id``-based minting had.
+    Exclusive ``os.mkdir`` makes the id claim atomic, so create_draft must
+    pick a disambiguated id instead of silently overwriting."""
+
+    from research_foundry.ids import report_draft_id as mint_base
+
+    base_id = mint_base("Collision Test")
+    colliding_dir = tmp_foundry.report_draft_dir(base_id)
+    colliding_dir.mkdir(parents=True)
+    (colliding_dir / "draft.yaml").write_text("sentinel: do-not-clobber\n", encoding="utf-8")
+
+    draft = bsvc.create_draft(tmp_foundry, title="Collision Test")
+
+    assert draft["report_draft_id"] != base_id
+    assert (colliding_dir / "draft.yaml").read_text(encoding="utf-8") == "sentinel: do-not-clobber\n"
 
 
 def test_delete_draft_removes_files_and_index(tmp_foundry: FoundryPaths) -> None:

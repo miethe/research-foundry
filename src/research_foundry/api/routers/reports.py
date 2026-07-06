@@ -9,8 +9,8 @@ is a thin HTTP wrapper.
 Route table (registered under /api prefix in app.py):
 
   POST   /reports                               create draft (blank / from-run / from-collection)
-  GET    /reports                               list drafts
-  GET    /reports/{report_id}                   load draft (rpt_ id only)
+  GET    /reports                               list drafts (sensitivity-gated, fail-closed)
+  GET    /reports/{report_id}                   load draft (rpt_ id only; sensitivity-gated)
   DELETE /reports/{report_id}                   delete draft
   GET    /reports/{report_id}/versions          list revisions
   POST   /reports/{report_id}/versions          create revision snapshot
@@ -19,11 +19,11 @@ Route table (registered under /api prefix in app.py):
   POST   /reports/{report_id}/blocks            add block
   PATCH  /reports/{report_id}/blocks/reorder    reorder blocks (fixed before param)
   PATCH  /reports/{report_id}/blocks/{block_id} update block
-  DELETE /reports/{report_id}/blocks/{block_id} delete block
+  DELETE /reports/{report_id}/blocks/{block_id} delete block (200 + updated draft)
   POST   /reports/{report_id}/claim-links       add claim link
-  DELETE /reports/{report_id}/claim-links/{claim_link_id}   remove claim link
+  DELETE /reports/{report_id}/claim-links/{claim_link_id}   remove claim link (200 + updated draft)
   POST   /reports/{report_id}/source-links      add source link
-  DELETE /reports/{report_id}/source-links/{source_link_id} remove source link
+  DELETE /reports/{report_id}/source-links/{source_link_id} remove source link (200 + updated draft)
   POST   /reports/{report_id}/verify            run D13 checks (structured result)
   POST   /reports/{report_id}/publish-preview   D13 fail-closed gate + Markdown preview
   GET    /reports/{report_id}/export            export draft as Markdown
@@ -34,6 +34,17 @@ Critical routing note:
   '/reports/{report_id}' (3-segment path).  FastAPI resolves them
   unambiguously by path-segment count + fixed component.  No changes to the
   anchors route are needed.
+
+Id validation note (R2 CRITICAL fix):
+  ``report_draft_id``/``report_version_id`` shape validation and filesystem
+  containment now live in ``builder_service`` (``_validate_draft_id`` /
+  ``_validate_version_id`` / ``_draft_dir`` / ``_revision_path``), not here —
+  a router-level ``report_id.startswith("rpt_")`` check is a PREFIX check
+  that a traversal payload satisfies unchanged. Every handler below relies on
+  the service layer raising :class:`NotFoundError` for a malformed id, which
+  is caught and mapped to the same indistinguishable 404 as "doesn't exist"
+  (landmine #4), so a CLI caller or any other direct ``builder_service``
+  consumer gets the identical protection.
 """
 
 from __future__ import annotations
@@ -46,6 +57,7 @@ from pydantic import BaseModel
 from ...errors import NotFoundError
 from ...paths import FoundryPaths
 from ...services import builder_service as bsvc
+from ...services.export_service import SENSITIVITY_ORDER, ExportError, resolve_threshold
 from ...services.verification import verify_draft
 from .runs import get_paths
 
@@ -147,6 +159,28 @@ def _builder_error(exc: bsvc.BuilderError) -> HTTPException:
     return HTTPException(status_code=422, detail=str(exc))
 
 
+def _resolve_threshold_rank(paths: FoundryPaths, sensitivity_threshold: str | None) -> int:
+    """Resolve the active sensitivity threshold to its rank (400 on a bogus label).
+
+    Mirrors ``get_run_anchors``' existence-gate pattern in ``runs.py`` and
+    ``catalog_service.get_item``'s fail-closed rank lookup, applied here to
+    Report Builder draft reads (R2 fix: these previously had zero sensitivity
+    gating at all).
+    """
+    try:
+        threshold = resolve_threshold(paths, sensitivity_threshold)
+    except ExportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return SENSITIVITY_ORDER[threshold]
+
+
+def _sensitivity_rank(label: str | None) -> int:
+    """Fail-closed rank lookup — an unknown/missing label ranks stricter than
+    every known level (mirrors ``catalog_service._rank``), so it can never
+    silently pass a threshold gate."""
+    return SENSITIVITY_ORDER.get(str(label), len(SENSITIVITY_ORDER))
+
+
 # ---------------------------------------------------------------------------
 # Draft CRUD
 # ---------------------------------------------------------------------------
@@ -216,27 +250,47 @@ def create_draft(
 
 
 @router.get("/reports", summary="List report drafts")
-def list_drafts(paths: FoundryPaths = _PATHS_DEP) -> list[dict[str, Any]]:
-    """Return summary rows for all on-disk drafts.  Empty corpus → ``[]``."""
-    return bsvc.list_drafts(paths)
+def list_drafts(
+    sensitivity_threshold: str | None = Query(
+        None,
+        description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+    ),
+    paths: FoundryPaths = _PATHS_DEP,
+) -> list[dict[str, Any]]:
+    """Return summary rows for on-disk drafts visible at the resolved
+    sensitivity threshold.  Fail-closed (R2 fix): a draft whose sensitivity
+    rank exceeds the threshold — including one with an unrecognized label —
+    is silently omitted, mirroring ``catalog_service.search``'s gating.
+    Empty/fully-gated corpus → ``[]``.
+    """
+    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
+    return [d for d in bsvc.list_drafts(paths) if _sensitivity_rank(d.get("sensitivity")) <= threshold_rank]
 
 
 @router.get("/reports/{report_id}", summary="Get report draft detail")
 def get_draft(
     report_id: str,
+    sensitivity_threshold: str | None = Query(
+        None,
+        description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+    ),
     paths: FoundryPaths = _PATHS_DEP,
 ) -> dict[str, Any]:
     """Return the full draft state for *report_id* (a ``rpt_`` id).
 
-    404 for both unknown ids and ids that resolve to a run (no-existence-leak).
+    404 for unknown ids, ids that resolve to a run, AND a draft whose
+    sensitivity exceeds the resolved threshold — all indistinguishable
+    (no-existence-leak, landmine #4; R2 fix: this endpoint previously applied
+    zero sensitivity gating, unlike ``catalog_service.get_item``).
     """
-    # Guard: only serve rpt_ ids from this endpoint; run ids go to /runs/{id}
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
+    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
     try:
-        return bsvc.load_draft(paths, report_id)
+        draft = bsvc.load_draft(paths, report_id)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
+    if _sensitivity_rank(draft.get("sensitivity")) > threshold_rank:
+        raise _not_found(report_id)
+    return draft
 
 
 @router.delete("/reports/{report_id}", summary="Delete a report draft", status_code=204)
@@ -246,11 +300,15 @@ def delete_draft(
 ) -> None:
     """Delete draft directory (draft.yaml + revisions) and its catalog index row.
 
-    Idempotent: deleting a non-existent draft returns 204.
+    Idempotent: deleting a non-existent (but well-formed) draft id returns
+    204. A malformed id (bad shape / traversal attempt) 404s instead — the
+    service layer's :func:`~research_foundry.services.builder_service._draft_dir`
+    raises :class:`NotFoundError` before anything is touched on disk.
     """
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
-    bsvc.delete_draft(paths, report_id)
+    try:
+        bsvc.delete_draft(paths, report_id)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -264,8 +322,6 @@ def list_versions(
     paths: FoundryPaths = _PATHS_DEP,
 ) -> list[dict[str, Any]]:
     """Return revision pointer list (report_version_id, created_at, note) for *report_id*."""
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
     try:
         return bsvc.list_revisions(paths, report_id)
     except NotFoundError as exc:
@@ -279,8 +335,6 @@ def create_version(
     paths: FoundryPaths = _PATHS_DEP,
 ) -> dict[str, Any]:
     """Snapshot the current draft state into an immutable revision file."""
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
     try:
         return bsvc.create_revision(
             paths, report_id, created_by=body.created_by, note=body.note
@@ -296,8 +350,6 @@ def get_version(
     paths: FoundryPaths = _PATHS_DEP,
 ) -> dict[str, Any]:
     """Return the full snapshot for *version_id* under *report_id*."""
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
     try:
         return bsvc.get_revision(paths, report_id, version_id)
     except NotFoundError as exc:
@@ -317,8 +369,6 @@ def restore_version(
 
     Callers wanting a pre-restore checkpoint should POST /versions first.
     """
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
     try:
         return bsvc.restore_revision(paths, report_id, version_id)
     except NotFoundError as exc:
@@ -337,8 +387,6 @@ def add_block(
     paths: FoundryPaths = _PATHS_DEP,
 ) -> dict[str, Any]:
     """Append a new block to *report_id*.  Returns the full updated draft."""
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
     try:
         return bsvc.add_block(
             paths,
@@ -366,8 +414,6 @@ def reorder_blocks(
     Must be a permutation of all block ids in the draft (builder_service
     enforces this).
     """
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
     try:
         return bsvc.reorder_blocks(
             paths, report_id, body.block_ids, updated_by=body.updated_by
@@ -386,8 +432,6 @@ def update_block(
     paths: FoundryPaths = _PATHS_DEP,
 ) -> dict[str, Any]:
     """Patch one or more fields of *block_id*.  Returns the full updated draft."""
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
     try:
         return bsvc.update_block(
             paths,
@@ -412,18 +456,23 @@ def update_block(
 @router.delete(
     "/reports/{report_id}/blocks/{block_id}",
     summary="Delete a block",
-    status_code=204,
 )
 def delete_block(
     report_id: str,
     block_id: str,
     paths: FoundryPaths = _PATHS_DEP,
-) -> None:
-    """Remove *block_id* and its associated claim/source links from *report_id*."""
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
+) -> dict[str, Any]:
+    """Remove *block_id* and its associated claim/source links from *report_id*.
+
+    Returns the full updated draft (200) — R2 fix: this previously answered
+    204 No Content while ``builder_service.delete_block`` already computed
+    and returned the updated draft, so the frontend's ``Promise<ReportDraft>``
+    client (which writes the response straight into the React Query cache)
+    silently stomped the cache with ``undefined``. Matches the sibling
+    ``add_block``/``update_block``/``reorder_blocks`` contract.
+    """
     try:
-        bsvc.delete_block(paths, report_id, block_id)
+        return bsvc.delete_block(paths, report_id, block_id)
     except NotFoundError as exc:
         raise HTTPException(
             status_code=404,
@@ -444,8 +493,6 @@ def add_claim_link(
 ) -> dict[str, Any]:
     """Link *claim_id* to *block_id*.  Inserts a ``[claim:<id>]`` tag unless
     ``insert_tag=false``.  Returns the full updated draft."""
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
     try:
         return bsvc.add_claim_link(
             paths,
@@ -469,18 +516,18 @@ def add_claim_link(
 @router.delete(
     "/reports/{report_id}/claim-links/{claim_link_id}",
     summary="Remove a claim link",
-    status_code=204,
 )
 def remove_claim_link(
     report_id: str,
     claim_link_id: str,
     paths: FoundryPaths = _PATHS_DEP,
-) -> None:
-    """Remove *claim_link_id* from the draft and recompute block coverage."""
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
+) -> dict[str, Any]:
+    """Remove *claim_link_id* from the draft and recompute block coverage.
+
+    Returns the full updated draft (200) — see ``delete_block`` above for why.
+    """
     try:
-        bsvc.remove_claim_link(paths, report_id, claim_link_id)
+        return bsvc.remove_claim_link(paths, report_id, claim_link_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -497,8 +544,6 @@ def add_source_link(
     paths: FoundryPaths = _PATHS_DEP,
 ) -> dict[str, Any]:
     """Link a source card to the draft (optionally anchored to a block)."""
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
     try:
         return bsvc.add_source_link(
             paths,
@@ -519,18 +564,18 @@ def add_source_link(
 @router.delete(
     "/reports/{report_id}/source-links/{source_link_id}",
     summary="Remove a source link",
-    status_code=204,
 )
 def remove_source_link(
     report_id: str,
     source_link_id: str,
     paths: FoundryPaths = _PATHS_DEP,
-) -> None:
-    """Remove *source_link_id* from the draft."""
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
+) -> dict[str, Any]:
+    """Remove *source_link_id* from the draft.
+
+    Returns the full updated draft (200) — see ``delete_block`` above for why.
+    """
     try:
-        bsvc.remove_source_link(paths, report_id, source_link_id)
+        return bsvc.remove_source_link(paths, report_id, source_link_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -554,8 +599,6 @@ def verify_draft_endpoint(
     Always returns 200 with a structured result (``passed``, per-check details).
     Use /publish-preview for the fail-closed gate.
     """
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
     try:
         result = verify_draft(
             paths, report_id, sensitivity_threshold=sensitivity_threshold
@@ -605,8 +648,6 @@ def publish_preview(
     The preview Markdown is generated from the current draft blocks.  Nothing
     is persisted — callers decide whether to actually publish.
     """
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
 
     try:
         result = verify_draft(
@@ -666,8 +707,6 @@ def export_draft(
     The response carries ``{"report_draft_id": ..., "markdown": "..."}`` so
     callers can display or save the output without additional parsing.
     """
-    if not report_id.startswith("rpt_"):
-        raise _not_found(report_id)
     try:
         md = bsvc.export_markdown(paths, report_id)
     except NotFoundError as exc:

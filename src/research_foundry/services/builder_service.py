@@ -46,7 +46,7 @@ from markdown_it import MarkdownIt
 
 from ..errors import NotFoundError, RFError
 from ..frontmatter import join_frontmatter
-from ..ids import disambiguate_id, now_iso, short_hash
+from ..ids import now_iso, short_hash
 from ..ids import report_draft_id as _mint_report_draft_base
 from ..paths import FoundryPaths
 from ..yamlio import dumps_yaml, load_yaml
@@ -122,10 +122,38 @@ class BuilderError(RFError):
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
+#
+# R2 CRITICAL fix: report_draft_id / report_version_id are caller-controlled
+# strings that get joined onto a filesystem Path. The API router used to gate
+# on ``report_id.startswith("rpt_")`` — a PREFIX check that a payload like
+# ``rpt_../../../etc`` satisfies unchanged, giving arbitrary file read (GET
+# .../versions/{vid}) and arbitrary ``shutil.rmtree`` (DELETE .../{report_id})
+# outside ``reports/drafts/``. Every mutator/reader in this module funnels
+# through :func:`_draft_dir` / :func:`_revision_path`, so validating the id
+# SHAPE here (not just in the router) protects the API, the CLI, and any
+# future direct caller alike. A resolve()+containment assertion is kept as
+# defense-in-depth in case the shape regex is ever loosened.
+
+_DRAFT_ID_RE = re.compile(r"^rpt_[A-Za-z0-9_-]+$")
+_VERSION_ID_RE = re.compile(r"^rptv_[A-Za-z0-9_-]+$")
+
+
+def _validate_draft_id(report_draft_id: str) -> None:
+    if not report_draft_id or not _DRAFT_ID_RE.fullmatch(report_draft_id):
+        raise NotFoundError(f"report draft not found: {report_draft_id}")
+
+
+def _validate_version_id(report_draft_id: str, report_version_id: str) -> None:
+    if not report_version_id or not _VERSION_ID_RE.fullmatch(report_version_id):
+        raise NotFoundError(f"revision not found: {report_draft_id}/{report_version_id}")
 
 
 def _draft_dir(paths: FoundryPaths, report_draft_id: str) -> Path:
-    return paths.report_draft_dir(report_draft_id)
+    _validate_draft_id(report_draft_id)
+    candidate = paths.report_draft_dir(report_draft_id)
+    if not candidate.resolve().is_relative_to(paths.report_drafts.resolve()):
+        raise NotFoundError(f"report draft not found: {report_draft_id}")
+    return candidate
 
 
 def _draft_yaml_path(paths: FoundryPaths, report_draft_id: str) -> Path:
@@ -137,7 +165,11 @@ def _revisions_dir(paths: FoundryPaths, report_draft_id: str) -> Path:
 
 
 def _revision_path(paths: FoundryPaths, report_draft_id: str, report_version_id: str) -> Path:
-    return _revisions_dir(paths, report_draft_id) / f"{report_version_id}.yaml"
+    _validate_version_id(report_draft_id, report_version_id)
+    path = _revisions_dir(paths, report_draft_id) / f"{report_version_id}.yaml"
+    if not path.resolve().is_relative_to(paths.report_drafts.resolve()):
+        raise NotFoundError(f"revision not found: {report_draft_id}/{report_version_id}")
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -173,10 +205,38 @@ def _atomic_write_yaml(obj: dict[str, Any], path: Path) -> Path:
 
 
 def _mint_draft_id(paths: FoundryPaths, title: str) -> str:
+    """Atomically claim a fresh, unused draft directory.
+
+    R2 HIGH fix: the previous implementation used ``disambiguate_id``'s
+    check-then-act ``exists()`` probe, which has a race window between the
+    check and :func:`_save_draft`'s eventual write — two concurrent
+    ``create_draft`` calls for the same title (``report_draft_id(title)`` has
+    no time component, only the day) can both observe "doesn't exist" and
+    mint the identical id, and the second ``os.replace`` silently clobbers
+    the first draft. Exclusive ``os.mkdir`` (no ``exist_ok``) makes the claim
+    itself the atomic operation — only one caller's ``mkdir`` for a given
+    path can ever succeed, so a collision is a guaranteed
+    ``FileExistsError``, never a race, and the loop below always retries with
+    a fresh candidate rather than reusing an occupied one.
+    """
+
     base = _mint_report_draft_base(title)
-    return disambiguate_id(
-        base, seed=f"{title}:{now_iso()}", exists=lambda cid: _draft_dir(paths, cid).exists()
-    )
+    paths.report_drafts.mkdir(parents=True, exist_ok=True)
+    seed = f"{title}:{now_iso()}"
+    candidate = base
+    attempt = 0
+    while True:
+        try:
+            os.mkdir(_draft_dir(paths, candidate))
+            return candidate
+        except FileExistsError:
+            attempt += 1
+            suffix = short_hash(seed, length=4) if attempt == 1 else short_hash(seed, str(attempt), length=4)
+            candidate = f"{base}_{suffix}" if attempt == 1 else f"{base}_{suffix}_{attempt}"
+            if attempt > 1000:  # pragma: no cover - pathological collision guard
+                raise BuilderError(
+                    f"could not allocate a unique report_draft_id for title {title!r}"
+                ) from None
 
 
 def _next_seq(draft: dict[str, Any], kind: str) -> int:

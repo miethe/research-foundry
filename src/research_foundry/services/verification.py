@@ -875,6 +875,8 @@ def check_report_body_sensitivity(
     blocks: list[dict[str, Any]],
     source_links: list[dict[str, Any]],
     *,
+    claim_links: list[dict[str, Any]] | None = None,
+    source_run_id: str | None = None,
     sensitivity_threshold: str | None = None,
 ) -> CheckResult:
     """D13 #4 — a public/shared draft body must not embed a raw quote from a
@@ -883,43 +885,66 @@ def check_report_body_sensitivity(
     appear outside governed source evidence fields"). Fail-closed: an
     unrecognized sensitivity label ranks stricter than every known level, so
     it can never silently pass.
+
+    R2 CRITICAL fix: this check used to only scan source cards that already
+    had a matching ``source_links[]`` entry — i.e. it only caught a *linked*
+    sensitive quote. Spec §11's actual danger case is the opposite: raw
+    sensitive text pasted into a block with NO governance trail at all (no
+    claim_link, no source_link) sailed straight through. To close that hole,
+    the candidate quote corpus is drawn from every source card in every run
+    this draft is *reachable* from — its own ``source_run_id`` (set when the
+    draft was created ``from_run``), every ``claim_links[].source_run_id``,
+    and every ``source_links[].run_id`` — not merely the source cards an
+    author happened to attach a ``source_link`` to. An explicit link is still
+    the common case and remains fully covered (its ``run_id`` is one of the
+    reachable runs), but it is no longer a precondition for detection.
     """
 
     threshold = sensitivity_threshold or DEFAULT_THRESHOLD
     threshold_rank = SENSITIVITY_ORDER.get(threshold, len(SENSITIVITY_ORDER))
     body_text = "\n".join(b.get("markdown") or "" for b in blocks)
 
-    leaks: list[str] = []
+    run_ids: set[str] = set()
+    if source_run_id:
+        run_ids.add(source_run_id)
     for link in source_links:
-        run_id = link.get("run_id")
-        source_card_id = link.get("source_card_id")
-        if not run_id or not source_card_id:
-            continue
+        rid = link.get("run_id")
+        if rid:
+            run_ids.add(rid)
+    for cl in claim_links or []:
+        rid = cl.get("source_run_id")
+        if rid:
+            run_ids.add(rid)
+
+    leaks: list[str] = []
+    for run_id in sorted(run_ids):
         rp = paths.run_paths(run_id)
-        card_path = rp.sources / f"{source_card_id}.md"
-        if not card_path.exists():
+        sources_dir = rp.sources
+        if not sources_dir.exists():
             continue
-        try:
-            meta, _ = load_md(card_path)
-        except Exception:  # noqa: BLE001 - an unreadable card is not a leak signal
-            continue
+        for card_path in sorted(sources_dir.glob("*.md")):
+            try:
+                meta, _ = load_md(card_path)
+            except Exception:  # noqa: BLE001 - an unreadable card is not a leak signal
+                continue
+            source_card_id = str(meta.get("source_card_id") or card_path.stem)
 
-        card_rank = SENSITIVITY_ORDER.get(str(meta.get("sensitivity")), len(SENSITIVITY_ORDER))
-        points = [p for p in (meta.get("extracted_points") or []) if isinstance(p, dict)]
-        point_rank = card_rank
-        for p in points:
-            if p.get("sensitivity"):
-                point_rank = max(point_rank, SENSITIVITY_ORDER.get(str(p["sensitivity"]), len(SENSITIVITY_ORDER)))
-        effective_rank = max(card_rank, point_rank)
-        if effective_rank <= threshold_rank:
-            continue
+            card_rank = SENSITIVITY_ORDER.get(str(meta.get("sensitivity")), len(SENSITIVITY_ORDER))
+            points = [p for p in (meta.get("extracted_points") or []) if isinstance(p, dict)]
+            point_rank = card_rank
+            for p in points:
+                if p.get("sensitivity"):
+                    point_rank = max(point_rank, SENSITIVITY_ORDER.get(str(p["sensitivity"]), len(SENSITIVITY_ORDER)))
+            effective_rank = max(card_rank, point_rank)
+            if effective_rank <= threshold_rank:
+                continue
 
-        # Sensitive source — only a *raw quote leak* is a failure; a governed
-        # reference (via claim_links/[claim:] tags, redacted at export time)
-        # is not.
-        quotes = [str(p.get("quote")) for p in points if p.get("quote")]
-        if any(q and q in body_text for q in quotes):
-            leaks.append(f"{source_card_id} (run {run_id})")
+            # Sensitive source — only a *raw quote leak* is a failure; a
+            # governed reference (via claim_links/[claim:] tags, redacted at
+            # export time) is not.
+            quotes = [str(p.get("quote")) for p in points if p.get("quote")]
+            if any(q and q in body_text for q in quotes):
+                leaks.append(f"{source_card_id} (run {run_id})")
 
     if leaks:
         return CheckResult(
@@ -981,7 +1006,12 @@ def verify_draft(
         check_claim_tags_resolve(blocks, known_claim_ids),
         check_anchor_hash_match(blocks, claim_links),
         check_report_body_sensitivity(
-            paths, blocks, source_links, sensitivity_threshold=resolved_threshold
+            paths,
+            blocks,
+            source_links,
+            claim_links=claim_links,
+            source_run_id=draft.get("source_run_id"),
+            sensitivity_threshold=resolved_threshold,
         ),
     ]
 
