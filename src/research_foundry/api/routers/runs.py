@@ -149,12 +149,16 @@ def get_run_anchors(
     ``run.json`` (schema 1.4 / D8).  ``null`` when the run has no report
     draft.
 
-    **Sensitivity gating (no-existence-leak)**: an over-threshold run returns
-    404 — the same response as an unknown run.  The two cases are
-    indistinguishable to callers by design (fail-closed: existence of hidden
-    sensitive runs is not leaked).  Accepts a
-    ``sensitivity_threshold`` query parameter consistent with other read
-    endpoints (landmine #5).
+    **Sensitivity gating**: this endpoint ADDS a run-level existence gate on
+    top of export-time field redaction — an over-threshold run returns 404,
+    indistinguishable from an unknown run (fail-closed: existence of hidden
+    sensitive runs is not leaked). Sibling run-detail endpoints
+    (``get_run_detail`` / ``get_run_claims`` / ``get_source_card``) do NOT
+    apply this existence gate; they rely solely on ``export_run``'s
+    field-level redaction. Accepts a ``sensitivity_threshold`` query
+    parameter, honored consistently for both the existence gate and
+    export-time content filtering (which claims are visible, and therefore
+    which claim links appear in the derived anchors).
     """
     # Resolve threshold first (raises ExportError on an invalid label).
     try:
@@ -165,8 +169,12 @@ def get_run_anchors(
     threshold_rank = SENSITIVITY_ORDER[threshold]
 
     # Route through the export service (R1 invariant — never read run files directly).
+    # Pass the already-resolved threshold through so export-time claim
+    # filtering (and thus the anchors derived from those claims) honors the
+    # same override used for the existence gate below, instead of falling
+    # back to export_run's own default re-resolve.
     try:
-        data = export_run(paths, run_id)
+        data = export_run(paths, run_id, sensitivity_threshold=threshold)
     except ExportError as exc:
         raise HTTPException(status_code=404, detail="not found") from exc
 

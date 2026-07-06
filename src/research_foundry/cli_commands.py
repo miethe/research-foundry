@@ -1438,8 +1438,12 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
         threshold_rank = SENSITIVITY_ORDER[threshold]
 
+        # Pass the already-resolved threshold through so export-time claim
+        # filtering (and thus the derived anchors) honors the same override
+        # used for the existence gate below, instead of export_run falling
+        # back to its own default re-resolve.
         try:
-            data = export_run(paths, run_id)
+            data = export_run(paths, run_id, sensitivity_threshold=threshold)
         except ExportError as exc:
             _fail(RFError(f"run not found: {run_id}"))
 
