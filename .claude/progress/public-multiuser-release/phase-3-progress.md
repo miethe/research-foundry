@@ -37,16 +37,20 @@ tasks:
 - id: WAVE-E
   title: Builder API + CLI (POST /api/reports, versions, block PATCH, claim-links,
     verify, publish-preview fail-closed; rf report draft *)
-  status: pending
+  status: completed
   assigned_to:
   - ica-sonnet-4-6
   executor: ICA behind review gate
   dependencies:
   - WAVE-D
+  started: 2026-07-06T02:00Z
+  completed: 2026-07-06T03:00Z
+  evidence:
+  - commit: cb500a1
 - id: WAVE-F
   title: Builder UI (/builder route; mockup layout; catalog search + block editor
     + audit inspector + Claim Basket; publish gate). Fable visual-fidelity review.
-  status: pending
+  status: completed
   assigned_to:
   - ui-engineer-enhanced
   - claude-fable-5
@@ -54,6 +58,11 @@ tasks:
   dependencies:
   - WAVE-D
   - WAVE-E
+  started: 2026-07-06T03:00Z
+  completed: 2026-07-06T05:00Z
+  evidence:
+  - commit: cc5d5c4
+  - review: fable-visual-fidelity
 - id: WAVE-R2
   title: Codex/in-session adversarial review + Opus adjudication + fix-loop + full
     validation + squash-merge to main; flip plan status; op story capture
@@ -74,10 +83,10 @@ parallelization:
   batch_3:
   - WAVE-R2
 total_tasks: 4
-completed_tasks: 1
+completed_tasks: 3
 in_progress_tasks: 0
 blocked_tasks: 0
-progress: 25
+progress: 75
 ---
 
 # Phase 3 — Report Builder (PR 2) Progress
