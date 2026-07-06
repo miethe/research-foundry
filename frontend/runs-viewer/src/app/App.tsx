@@ -21,6 +21,7 @@ import { HelpScreen } from "@/screens/HelpScreen";
 import { AlertsFeed } from "@/screens/AlertsFeed";
 import { PoliciesScreen } from "@/screens/PoliciesScreen";
 import { CatalogScreen } from "@/screens/CatalogScreen";
+import { BuilderScreen } from "@/screens/BuilderScreen";
 
 /** D6: Thin redirect component — /runs/:runId/swarm → /runs/:runId?view=swarm */
 function SwarmRedirect() {
@@ -43,6 +44,7 @@ const router = createBrowserRouter([
       { path: "alerts",                  element: <AlertsFeed /> },
       { path: "policies",                element: <PoliciesScreen /> },
       { path: "catalog",                  element: <CatalogScreen /> },
+      { path: "builder",                  element: <BuilderScreen /> },
       { path: "library",                  element: <Navigate to="/catalog" replace /> },
     ],
   },

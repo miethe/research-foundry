@@ -964,6 +964,29 @@ def test_rebuild_reimports_everything(tmp_foundry: FoundryPaths) -> None:
         assert count == 2
 
 
+def test_rebuild_reindexes_report_drafts_from_disk(tmp_foundry: FoundryPaths) -> None:
+    """R2 fix: ``rebuild()`` (the exact op ``rf catalog rebuild`` and a
+    SCHEMA_VERSION bump both trigger) must also repopulate
+    ``catalog_report_drafts`` from on-disk draft.yaml files —
+    ``builder_service.reindex_all_drafts`` existed but was dead code, never
+    called from here, leaving the draft index empty after any schema drop
+    until a draft was individually mutated."""
+
+    from research_foundry.services import builder_service as bsvc
+
+    draft = bsvc.create_draft(tmp_foundry, title="Rebuild Reindex Test")
+    report_draft_id = draft["report_draft_id"]
+    assert svc.get_draft_index(tmp_foundry, report_draft_id) is not None
+
+    result = svc.rebuild(tmp_foundry)
+    assert result["drafts"] == 1
+    assert result["draft_errors"] == []
+
+    reindexed = svc.get_draft_index(tmp_foundry, report_draft_id)
+    assert reindexed is not None
+    assert reindexed["title"] == "Rebuild Reindex Test"
+
+
 # ---------------------------------------------------------------------------
 # --sensitivity-threshold override (CLI-local; service layer)
 # ---------------------------------------------------------------------------

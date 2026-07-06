@@ -167,6 +167,17 @@ def report_id(title: str) -> str:
     return f"report_{today_compact()}_{slugify(title)}"
 
 
+def report_draft_id(title: str) -> str:
+    """Report Builder draft id (spec §8, plan D11 — distinct ``rpt_`` namespace).
+
+    Deliberately a different prefix/family from :func:`report_id` (used for
+    run-final report registry entries) — builder drafts are file-canonical,
+    multi-revision, cross-run objects, not a run-scoped artifact.
+    """
+
+    return f"rpt_{today_compact()}_{slugify(title)}"
+
+
 def ccdash_event_id(title: str) -> str:
     return f"exec_{today_compact()}_{slugify(title)}"
 
@@ -200,6 +211,7 @@ __all__ = [
     "source_card_id",
     "bundle_id",
     "report_id",
+    "report_draft_id",
     "ccdash_event_id",
     "meatywiki_writeback_id",
     "skillbom_candidate_id",

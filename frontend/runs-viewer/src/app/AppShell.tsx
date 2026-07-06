@@ -25,7 +25,7 @@ interface NavCapability {
 const NAV_ITEMS: NavCapability[] = [
   { label: "Portfolio", short: "PF", state: "enabled", resolveTarget: () => "/runs" },
   { label: "Catalog", short: "CT", state: "enabled", resolveTarget: () => "/catalog" },
-  { label: "Builder", short: "BD", state: "disabled", disabledReason: "Planned — report composition workspace (Phase 3)" },
+  { label: "Builder", short: "BD", state: "enabled", resolveTarget: () => "/builder" },
   { label: "Agents", short: "AG", state: "disabled", disabledReason: "Planned — governed agent research (Phase 4)" },
   { label: "Policies", short: "PL", state: "enabled", resolveTarget: () => "/policies" },
   { label: "Alerts", short: "AL", state: "enabled", resolveTarget: () => "/alerts" },
@@ -108,6 +108,7 @@ function extractRunId(pathname: string): string | null {
 function isActiveNav(label: string, ctx: ShellNavContext): boolean {
   if (label === "Portfolio") return ctx.pathname === "/runs" || Boolean(ctx.routeRunId);
   if (label === "Catalog") return ctx.pathname === "/catalog" || ctx.pathname === "/library";
+  if (label === "Builder") return ctx.pathname === "/builder";
   if (label === "Policies") return ctx.pathname === "/policies";
   if (label === "Alerts") return ctx.pathname === "/alerts";
   if (label === "Settings") return ctx.pathname === "/settings";
