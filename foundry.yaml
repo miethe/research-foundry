@@ -70,6 +70,15 @@ foundry:
   #         user_id: bob
   #         workspace_id: default
   #         roles: [researcher]
+  #
+  # Example: Clerk opt-in (requires outbound internet + public domain)
+  # Clerk is DARK BY DEFAULT — both fields below must be explicitly set.
+  # auth:
+  #   provider: none  # default — no auth
+  #   # provider: local_static  # dev-mode static token
+  #   # provider: clerk  # opt-in: requires outbound internet + public domain (see docs)
+  #   #   clerk_frontend_api: "https://your-app.clerk.accounts.dev"  # required when provider=clerk
+  #   #   clerk_outbound_internet_enabled: true  # must be explicitly declared
 
   adapters:
     claude_agent_sdk: enabled

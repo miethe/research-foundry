@@ -23,6 +23,7 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@clerk/clerk-react": "^5.0.0",
     "@playwright/test": "^1.48.2",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.5.0",

@@ -21,12 +21,12 @@ from .yamlio import load_yaml
 _VALID_AUTH_MODES = frozenset({"none", "token"})
 
 # Valid values for auth.provider (P5.1 canonical auth selector).
-# "clerk" and "oidc" are recognised vocabulary but adapters are not yet
-# implemented — they are validated at config-read time so deployments that set
-# them fail fast with an actionable message rather than silently falling through
-# to the "none" path.  See FU-2 (Clerk) and FU-3 (OIDC) in the P5 plan.
+# "clerk" is implemented in CLK-4.x with a dark-by-default precondition gate.
+# "oidc" is recognised vocabulary but not yet implemented — validated at
+# config-read time so deployments that set it fail fast with an actionable
+# message rather than silently falling through to the "none" path.  See FU-3.
 _VALID_AUTH_PROVIDERS = frozenset({"none", "local_static", "clerk", "oidc"})
-_IMPLEMENTED_AUTH_PROVIDERS = frozenset({"none", "local_static"})
+_IMPLEMENTED_AUTH_PROVIDERS = frozenset({"none", "local_static", "clerk"})
 
 # Config filenames under config/ (spec §5).
 GOVERNANCE = "governance.yaml"
@@ -287,14 +287,21 @@ class FoundryConfig:
             ``auth.local_static.tokens`` in ``foundry.yaml``.  Suitable for
             air-gapped, self-hosted, and single-operator LAN deployments.
 
-        ``clerk`` / ``oidc``
-            Recognised vocabulary but not yet implemented — raises a clear
-            ``ValueError`` at config-read time to fail fast rather than
-            silently falling through to the ``none`` path.  See FU-2 (Clerk)
-            and FU-3 (OIDC) in the P5 implementation plan.
+        ``clerk``
+            Clerk.dev JWKS/JWT-based auth (CLK-4.x).  **Dark by default** —
+            enabling this provider requires both ``auth.clerk_frontend_api``
+            (non-empty) and ``auth.clerk_outbound_internet_enabled: true`` to
+            be explicitly set in ``foundry.yaml``.  A missing or incomplete
+            configuration raises ``ValueError`` at startup rather than
+            silently falling through to the ``none`` path.
+
+        ``oidc``
+            Generic OIDC/JWT auth (future: see FU-3).  Recognised vocabulary
+            but not yet implemented — raises ``ValueError`` at config-read time.
 
         Raises:
-            ValueError: If the provider is unrecognised or not yet implemented.
+            ValueError: If the provider is unrecognised, not yet implemented,
+                or if ``clerk`` is selected without satisfying its preconditions.
         """
         raw = str(self.auth.get("provider", "none"))
         if raw not in _VALID_AUTH_PROVIDERS:
@@ -305,8 +312,20 @@ class FoundryConfig:
         if raw not in _IMPLEMENTED_AUTH_PROVIDERS:
             raise ValueError(
                 f"auth.provider={raw!r} is not yet implemented. "
-                f"Supported: none, local_static. (clerk/oidc: see FU-2/FU-3)"
+                f"Supported: none, local_static, clerk. (oidc: see FU-3)"
             )
+        # CLK-4.3: Clerk dark-by-default startup gate.
+        # Both preconditions must be explicitly set by the operator; we never
+        # auto-detect outbound internet or assume a default Clerk URL.
+        if raw == "clerk":
+            frontend_api = self.auth_clerk_frontend_api()
+            outbound = self.auth_clerk_outbound_internet_enabled()
+            if not frontend_api or not outbound:
+                raise ValueError(
+                    "Clerk provider requires auth.clerk_frontend_api and "
+                    "auth.clerk_outbound_internet_enabled=true — set these "
+                    "explicitly in foundry.yaml before enabling Clerk"
+                )
         return raw
 
     def auth_local_static_tokens(self) -> list[dict]:
@@ -335,6 +354,33 @@ class FoundryConfig:
             return []
         tokens = local_static.get("tokens", [])
         return list(tokens) if isinstance(tokens, list) else []
+
+    def auth_clerk_frontend_api(self) -> str:
+        """Return ``auth.clerk_frontend_api`` with default ``""`` (empty string).
+
+        The Clerk Frontend API URL (e.g. ``https://your-app.clerk.accounts.dev``)
+        is required when ``auth.provider = "clerk"``.  An empty or absent value
+        means the Clerk precondition gate is unmet; ``auth_provider()`` will
+        raise and ``ClerkAuthProvider.available()`` will return ``False``.
+
+        The value MUST be a public HTTPS URL reachable by clients — never a
+        raw secret.  Clerk API keys live in environment variables, not here.
+        """
+        raw = self.auth.get("clerk_frontend_api", "")
+        return str(raw) if raw else ""
+
+    def auth_clerk_outbound_internet_enabled(self) -> bool:
+        """Return ``auth.clerk_outbound_internet_enabled`` with default ``False``.
+
+        This flag is an explicit operator declaration that the deployment has
+        outbound internet access to Clerk's JWKS endpoint.  It is **never**
+        auto-detected — the operator must set it to ``true`` in ``foundry.yaml``
+        to satisfy the Clerk dark-by-default precondition gate (CLK-4.3).
+
+        Default ``False`` means Clerk is disabled unless the operator has
+        consciously declared the outbound-internet requirement.
+        """
+        return bool(self.auth.get("clerk_outbound_internet_enabled", False))
 
     def is_auth_enabled(self) -> bool:
         """Return ``True`` when any auth mechanism is enabled.

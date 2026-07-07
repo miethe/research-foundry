@@ -4446,8 +4446,10 @@ name = "research-foundry"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "jsonschema" },
     { name = "markdown-it-py" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "pyyaml" },
     { name = "rich" },
     { name = "typer" },
@@ -4488,6 +4490,7 @@ serve = [
 [package.metadata]
 requires-dist = [
     { name = "claude-agent-sdk", marker = "extra == 'llm'", specifier = ">=0.1" },
+    { name = "cryptography", specifier = ">=43.0" },
     { name = "fastapi", marker = "extra == 'serve'", specifier = ">=0.111" },
     { name = "gpt-researcher", marker = "extra == 'research'", specifier = ">=0.8" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
@@ -4499,6 +4502,7 @@ requires-dist = [
     { name = "mkdocs-material", marker = "extra == 'docs'" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
     { name = "paper-qa", marker = "extra == 'research'", specifier = ">=5.0" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.8" },
     { name = "pymdown-extensions", marker = "extra == 'docs'" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },

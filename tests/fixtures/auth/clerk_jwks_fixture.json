@@ -1,0 +1,22 @@
+{
+  "kid": "test-key-2026-rsa2048",
+  "issuer": "https://test.clerk.accounts.dev",
+  "azp": "test-frontend-api",
+  "test_user_sub": "user_test123abc",
+  "test_org_id": "org_testworkspace",
+  "test_org_role": "org:owner",
+  "jwks": {
+    "keys": [
+      {
+        "kty": "RSA",
+        "alg": "RS256",
+        "use": "sig",
+        "kid": "test-key-2026-rsa2048",
+        "n": "u1ttOoIfQ1lkLgw3nnhXPTjCcbUoyqrxfbmg_k3N9k98qqRcrMDcKqPdweLz9cbYnU4RXF7CZ9bdnFN4gYuDc7ubf4U_DDzwyQ2dNWGeG6ZQu0TL24bEKe4m0xf-GYuXexTls7e4XRiF7DXXKPyTbEe1GGv1yStjnZhEjf-Dw7i07Ohwsd_w6hoVnSaomsgr_omNKgrVNzgXE7tAR_AxZwCC0sPJ0eyQ3Ap_9QpozhS_uLxzdQB1J_W6DFKFUFBT9ejzvWk1mpZVVkRs-1whdlKSKdKNpm6q94DE8QI24jj6fPcMDPWNC9G_9P9DEt69b9k06xs9-iK-ZaVy9rLTGQ",
+        "e": "AQAB"
+      }
+    ]
+  },
+  "private_key_pem": "-----BEGIN RSA PRIVATE KEY-----\nMIIEogIBAAKCAQEAu1ttOoIfQ1lkLgw3nnhXPTjCcbUoyqrxfbmg/k3N9k98qqRc\nrMDcKqPdweLz9cbYnU4RXF7CZ9bdnFN4gYuDc7ubf4U/DDzwyQ2dNWGeG6ZQu0TL\n24bEKe4m0xf+GYuXexTls7e4XRiF7DXXKPyTbEe1GGv1yStjnZhEjf+Dw7i07Ohw\nsd/w6hoVnSaomsgr/omNKgrVNzgXE7tAR/AxZwCC0sPJ0eyQ3Ap/9QpozhS/uLxz\ndQB1J/W6DFKFUFBT9ejzvWk1mpZVVkRs+1whdlKSKdKNpm6q94DE8QI24jj6fPcM\nDPWNC9G/9P9DEt69b9k06xs9+iK+ZaVy9rLTGQIDAQABAoIBAAcyErbdin/Wrg9K\nrtQqQQd755PgZkmqWQ4AFBvQNynPkbUoDNshqRMGKh0pLz9wPJ+GAQqwJP1B9k7r\nscQf7JOEUAuMvYglywWdvTzwm9bqA0297apnuZ72o40V7c9jWhUDD3NgifchWvtg\ncfwD/1F4S489jjoErZW+5Fsjxha9L2v1kRk5xQNPabTt3h2q373IqI0cWCwEEt+5\n2PeXQ5fRU2ay9o1Wi/5ELjbIXymWf3+uElQVlFb1hCIx/4pdFSlzN6cnIJz6B+eF\nld6iiCw5JXfEscAMiwKVZk+SS6gtGc8mN9gYZ/Hab00B5uUVJ7VaAUi8uKSyccZR\nHndD3jUCgYEA7i7PwTXl6UVh2vf7crasRTK/eqEcgoMsqjJKskXjvpDMcUo70N0M\n1JUF6qyRinwDsjHoPSre+4FkkMxamS3VIfTziHTMf1dfHM+sWwU49YxqNiGArmKw\nHBUOFR5vxu+HP5ZXH2tHgkw4CydccDyJkTYatMuSan/+ztOaXLVzo3MCgYEAyV9O\nLZ+wkneemMrYHDTDx89O+J9rSz3vq42pCLm14ERClyz04GoILoPSZF13WTA7dNgj\nPRaS8Eog96VBsBcGyZjFTO/X1A1yu3hOFp4eaSrD4Ks9ektXuZbWRSIl5CcZRUzw\nyH5CiDrvICmPTjYJA7Gv/kSOR5Xl2IHH4TnJxEMCgYAUa9kONMPQm01Hi+l4LWdZ\ny38VUYjzO7HxqbwzysA7D4kn0XiNcNZvx5MpSsBzwixC8/p4fBuALtjjfVHrPj2+\n2pSix3jdFi2md7vMVgdLLk3Q9FBnIzj8P2Xks6ZbxR+weQBhRj5sUoKfmjFXwij9\nVUk25RlZnj3Hl+btOfV/NwKBgHYMU9U1HxrN2wBxMT1fxUHWCtJ/CjQCrASit+vw\nimldOrhK14bTQdaa2nSRwkxblQ9LQWUnXZ5VpnvmudpTtVvrHgabN6gM9ixmO0jR\nCrzWIBwN5q1Ri6y1ewjuGs5kCVFx6Flwguo/ujzdgC/2R1SODsD9SXc3rZU9h4JG\nETznAoGAeRNDMWVCmz5QFr14RnArJstRt12tihQl61wkbsKJh0UgKOhnzSoPkRlR\njPThX5gvB/oBcurPpfALYpebaamntwfOGG5BYiUR1bcGKKeWF8O1X1XWfDK9IP/5\neh2yQfYjnlLXM+++xJ9HRbp9BTBu5mLaUcD/H92EMrL12rbeUco=\n-----END RSA PRIVATE KEY-----\n",
+  "bad_sig_private_key_pem": "-----BEGIN RSA PRIVATE KEY-----\nMIIEogIBAAKCAQEA7IogXgQ61ufdBYVRA49axpJLX/TELaNSpTLWNasxE9ZwFHBC\nholrX1lL+FPLp6GdKndTLC0nbS8xNe//sVTgT+j9myx4MHlQ+xf54zU9pNrRCoMR\nwBWUlMBRhOTlDYOfu+WjYLljR5KcDuPedzqmdQ030tkAnFhCs8iqJsgwgdx9us2W\n9ULUPmmrs77lOs9NsEeuZFlFXfrso3gpoIOGXBrvatzrHFPw6zXA67N9PHQBI7zj\nHa6jj9Jw1y5pDie6TxGAHzXqEcq1TycDhfvSzGD9enb8JU/eLaQLczQbIkQjvDb7\nSqQ57d9FeHRq0xFEhRBz9Is1YDv9ccdwQnb7/wIDAQABAoIBAEP13Z3Vjkg/nu+e\noauprPWfg7uCmjjYk362T/hkgrnF4zbkGCEKa4ieIecrwDgeBYd1eDaZlJnYtMVf\n+rFrBvW+pdrHGJMoz/0MovXGTrtGSUhBZ0Cukp14chOCJlNPLX4xWNMKAL3IIEFg\n9AKCnd/El/Ti9zt0WlnIPibdXp54e02pIftFojDfLEmnWlZQTTarL+rCMpfjhJl6\nLTDD1L3kYHIQolQYFN9rRRGVuxSedmcspUktIbrKOHCmPQ2hlJfvrAsu0xzl8R/c\nWST6D4Fp5C3bqxphWyeWqX62jbzGVNzIMRj3qln+YwXNkiFdxD0kPUwDgG5eH9lG\n52QWeikCgYEA/JIQq7+pB9OADN0To0WDLoIIjbqrBVHUJcbxcex+CYBHeJrArHwL\nMSETXXXKqNAJNCO0waeekTuxPwjmGBuSma1nm2J7K/5FWVVFWS7MnXDXpzoVmBHR\nYNxI1bktlziQkkzty89mzilnZ9nNiMB8PqzrdhcX68T9s8bQjlccbOcCgYEA78BW\naYO9jILSi+G4aV6s9qi7QwiQO6CwjIJBAOBBNOoBNYHAIOVirvOJvjvybtFz9Qmd\ntgRSh1ISErGezyh7FrMachfzlr2rk5JRFPzN5cTNb7uzwsvwx/xu7eVCUsmGvAWL\ncFuc3zhJYb8xH/z6351POH/y4IN2tPkfX/4FvSkCgYBRNWXG00k2CvsRJ8Q4qxES\n0xyM9YgnnbforZ7UUoXz6BsS3C83RmsS0N+5HTacMMfEy/ZCjfKeH+NNsT7KYZMx\ndl/pxjB0ZL1Hi/NQSYvg03eDfVmUG6aGzk1c6r2N8dIKOFH9RiJ4BzgIXC+J2Noa\nDN9oiORYGm64byR/n+Kz4QKBgBTnPiGA/PvNRDIyAfQd7xKqb3lOu9SXFA2MJcK/\nyq+kX2qc33V+ynXagf32GBMVa/jHV9rQ0ak+vJiop+ID84dtIjckY3aXHuiE71DX\nIdSQriC5ytiHE308Qye2v2ucaoTmLtwjALBtpehB1TSmx/DLNGcGsNRmYekxd0zV\nRwbRAoGADZu6gujJ5IGNTka/s6JXMwRXTCzSsu6G5bv4V0X628eDhKNQCncbpmHu\nIztBJcUQpNgRtgt2GBWZHmRLLbAEkeVBEgiTJ5SkBu8OfjHpgOswnBo+AOvr7lz6\nZD3jyU+SizjIxDSxuH/24bx+8NVorInpbVpa01eNezRlVhVjxlc=\n-----END RSA PRIVATE KEY-----\n"
+}
