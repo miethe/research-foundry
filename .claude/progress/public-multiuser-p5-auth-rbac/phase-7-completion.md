@@ -89,6 +89,24 @@ N/A — no Mode D triggers encountered.
 
 ---
 
+### Remediation — Codex P1/P2 (effective point-sensitivity + nested-run discovery)
+
+A Codex cross-review identified 2 real leak gaps in `build_global_source_index` after initial PASS:
+
+**P1 — Point-level sensitivity ignored**: The initial index stored only `meta.sensitivity` (card-level). A source card with card-level `"public"` but a point-level `extracted_points[].sensitivity = "work_sensitive"` would pass the D13 check. Fix: effective sensitivity is now computed as `max(card_level, max(point_levels))` using `_SENSITIVITY_BY_RANK` reverse lookup, matching the export service's effective-rank computation.
+
+**P2 — Nested runs omitted**: The initial index used `iterdir()` on `paths.runs`, covering only immediate children. The export path uses `discover_run_yamls(runs_dir, max_depth=3)` to support nested run layouts (e.g. `runs/runs/<id>/`). Fix: `build_global_source_index` now uses `discover_run_yamls(..., max_depth=3)` for run discovery, matching the export path.
+
+**Remediation commit**: `412910c` — `fix(verification): P5.7.2 remediation — effective point-sensitivity + nested-run discovery in global source index`
+
+**2 new regression tests added** (both failed against pre-fix code, pass post-fix):
+- Test A: public card with `work_sensitive` extracted_point — blank-origin draft quoting that point → FAIL
+- Test B: source card in nested run dir (`runs/nested_runs/<id>/`) — blank-origin draft quoting its sensitive text → FAIL
+
+**Post-remediation test count**: 127 passed (11 in test_sensitivity_redaction.py, 116 in test_export_service.py).
+
+---
+
 ### Follow-Up Recommendations
 
 1. **P5.7.2 workspace-scoping follow-up** (documented per design decision): after P5.3's workspace-isolation migration lands, `build_global_source_index` MAY be narrowed to per-workspace visibility as a precision/performance optimization. This is a forward-looking note, not a blocker — over-checking (full workspace) is strictly safer than under-checking (workspace-scoped).
