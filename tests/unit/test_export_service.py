@@ -1259,6 +1259,196 @@ def test_context_summary_allowlist_blocks_unknown_keys(tmp_foundry: FoundryPaths
 
 
 # --------------------------------------------------------------------------
+# P5.7.1: existence-gate parity across all 4 run-detail-family endpoints
+# --------------------------------------------------------------------------
+
+def _make_gate_client(
+    tmp_path: Path,
+    *,
+    sensitivity_threshold: str = "public",
+) -> tuple[Any, FoundryPaths]:
+    """Build an isolated TestClient with get_paths overridden.
+
+    Sets auth_mode=none and the supplied sensitivity_threshold in foundry.yaml
+    so resolve_threshold() picks up the right values from disk.  Returns the
+    TestClient and the FoundryPaths so callers can plant run fixtures.
+    """
+    import shutil
+
+    from fastapi.testclient import TestClient
+
+    from research_foundry.api.app import create_app
+    from research_foundry.api.routers.runs import get_paths
+    from research_foundry.config import FoundryConfig
+    from research_foundry.paths import distribution_root
+    from research_foundry.yamlio import dump_yaml as _dump
+    from research_foundry.yamlio import load_yaml as _load
+
+    root = tmp_path / "fdry"
+    root.mkdir(parents=True, exist_ok=True)
+    dist = distribution_root()
+    for sub in ("schemas", "config", "templates"):
+        src = dist / sub
+        if src.exists():
+            shutil.copytree(src, root / sub)
+    foundry_src = dist / "foundry.yaml"
+    if foundry_src.exists():
+        shutil.copyfile(foundry_src, root / "foundry.yaml")
+    else:
+        (root / "foundry.yaml").write_text("foundry:\n  owner: Test\n", encoding="utf-8")
+    for d in ("runs", "inbox/raw_ideas", "intents/active"):
+        (root / d).mkdir(parents=True, exist_ok=True)
+
+    foundry_yaml_path = root / "foundry.yaml"
+    existing: dict[str, Any] = _load(foundry_yaml_path) or {}
+    if "foundry" not in existing or not isinstance(existing.get("foundry"), dict):
+        existing["foundry"] = {}
+    viewer: dict[str, Any] = dict(existing["foundry"].get("viewer") or {})
+    viewer["auth_mode"] = "none"
+    viewer["sensitivity_threshold"] = sensitivity_threshold
+    existing["foundry"]["viewer"] = viewer
+    _dump(existing, foundry_yaml_path)
+
+    paths = FoundryPaths(root=root)
+    cfg = FoundryConfig(paths=paths)
+    app = create_app(cfg)
+    app.dependency_overrides[get_paths] = lambda: paths
+    client = TestClient(app, raise_server_exceptions=True)
+    return client, paths
+
+
+def _plant_over_threshold_run(
+    paths: FoundryPaths,
+    run_id: str = "rf_run_hidden001",
+    *,
+    sensitivity: str = "client_sensitive",
+) -> None:
+    """Plant a minimal run with the given sensitivity label."""
+    from research_foundry.yamlio import dump_yaml as _dump
+
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+    _dump(
+        {
+            "schema_version": "0.1",
+            "type": "run",
+            "run_id": run_id,
+            "status": "planned",
+            "sensitivity": sensitivity,
+            "created_at": "2026-06-13T09:41:00+00:00",
+        },
+        rp.run_yaml,
+    )
+    # Minimal claim ledger so export_run succeeds (empty is fine).
+    _dump({"claims": []}, rp.claim_ledger)
+
+
+_GATE_ENDPOINTS = [
+    "/api/runs/{run_id}",
+    "/api/runs/{run_id}/claims",
+    "/api/runs/{run_id}/sources/src_does_not_exist",
+    "/api/reports/{run_id}/anchors",
+]
+
+
+@pytest.mark.parametrize("endpoint_tmpl", _GATE_ENDPOINTS)
+def test_existence_gate_over_threshold_run_returns_404(
+    tmp_path: Path, endpoint_tmpl: str
+) -> None:
+    """An over-threshold run returns 404 on ALL 4 run-detail-family endpoints.
+
+    Threshold = public; run sensitivity = client_sensitive → 404 on every
+    endpoint, indistinguishable from a genuinely unknown run (landmine #4 /
+    no-existence-leak invariant).
+    """
+    client, paths = _make_gate_client(tmp_path, sensitivity_threshold="public")
+    _plant_over_threshold_run(paths, "rf_run_gatetest", sensitivity="client_sensitive")
+
+    url = endpoint_tmpl.replace("{run_id}", "rf_run_gatetest")
+    resp = client.get(url)
+    assert resp.status_code == 404, (
+        f"{url}: expected 404 for over-threshold run, got {resp.status_code}"
+    )
+
+
+@pytest.mark.parametrize("endpoint_tmpl", _GATE_ENDPOINTS)
+def test_existence_gate_threshold_raised_returns_200(
+    tmp_path: Path, endpoint_tmpl: str
+) -> None:
+    """Raising ?sensitivity_threshold to match the run's sensitivity reveals the run.
+
+    Same run (client_sensitive) at the same default-public workspace — but with
+    ?sensitivity_threshold=client_sensitive the gate opens and returns 200
+    (or 404 only for the source-card sub-resource that genuinely doesn't exist).
+    """
+    client, paths = _make_gate_client(tmp_path, sensitivity_threshold="public")
+    _plant_over_threshold_run(paths, "rf_run_revealed", sensitivity="client_sensitive")
+
+    base_url = endpoint_tmpl.replace("{run_id}", "rf_run_revealed")
+    url = f"{base_url}?sensitivity_threshold=client_sensitive"
+    resp = client.get(url)
+    # The source-card endpoint will always 404 when no source card exists;
+    # all other endpoints should return 200 once the gate opens.
+    if "/sources/" in base_url:
+        assert resp.status_code == 404
+    else:
+        assert resp.status_code == 200, (
+            f"{url}: expected 200 after raising threshold, got {resp.status_code}; "
+            f"body={resp.text[:200]}"
+        )
+
+
+@pytest.mark.parametrize("endpoint_tmpl", _GATE_ENDPOINTS)
+def test_existence_gate_invalid_threshold_returns_400(
+    tmp_path: Path, endpoint_tmpl: str
+) -> None:
+    """An unrecognised sensitivity_threshold returns 400 on ALL 4 endpoints."""
+    client, paths = _make_gate_client(tmp_path, sensitivity_threshold="public")
+    _plant_over_threshold_run(paths, "rf_run_badth", sensitivity="public")
+
+    base_url = endpoint_tmpl.replace("{run_id}", "rf_run_badth")
+    url = f"{base_url}?sensitivity_threshold=bogus_label"
+    resp = client.get(url)
+    assert resp.status_code == 400, (
+        f"{url}: expected 400 for invalid threshold, got {resp.status_code}"
+    )
+
+
+def test_existence_gate_hidden_and_unknown_indistinguishable(tmp_path: Path) -> None:
+    """Hidden (over-threshold) run and unknown run produce identical 404 detail strings.
+
+    This directly verifies the no-existence-leak invariant: callers cannot
+    distinguish "this run does not exist" from "this run exists but is hidden".
+    Checked across all 4 run-detail-family endpoints.
+    """
+    client, paths = _make_gate_client(tmp_path, sensitivity_threshold="public")
+    _plant_over_threshold_run(paths, "rf_run_ishidden", sensitivity="client_sensitive")
+
+    endpoints = [
+        ("/api/runs/rf_run_ishidden", "/api/runs/rf_run_totally_unknown"),
+        ("/api/runs/rf_run_ishidden/claims", "/api/runs/rf_run_totally_unknown/claims"),
+        (
+            "/api/runs/rf_run_ishidden/sources/src_x",
+            "/api/runs/rf_run_totally_unknown/sources/src_x",
+        ),
+        (
+            "/api/reports/rf_run_ishidden/anchors",
+            "/api/reports/rf_run_totally_unknown/anchors",
+        ),
+    ]
+    for hidden_url, unknown_url in endpoints:
+        hidden_resp = client.get(hidden_url)
+        unknown_resp = client.get(unknown_url)
+        assert hidden_resp.status_code == 404, f"{hidden_url}: expected 404"
+        assert unknown_resp.status_code == 404, f"{unknown_url}: expected 404"
+        assert hidden_resp.json()["detail"] == unknown_resp.json()["detail"], (
+            f"Existence leak on {hidden_url}: "
+            f"hidden={hidden_resp.json()['detail']!r} vs "
+            f"unknown={unknown_resp.json()['detail']!r}"
+        )
+
+
+# --------------------------------------------------------------------------
 # helpers
 # --------------------------------------------------------------------------
 def _json_blob(data: dict[str, Any]) -> str:
