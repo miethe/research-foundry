@@ -50,7 +50,8 @@ from ..ids import now_iso, short_hash
 from ..ids import report_draft_id as _mint_report_draft_base
 from ..paths import FoundryPaths
 from ..yamlio import dumps_yaml, load_yaml
-from . import catalog_service
+from . import audit_service, catalog_service
+from .audit_service import AuditEvent
 from .export_service import SENSITIVITY_ORDER, export_run
 
 # Reused verbatim from export_service (D8's text_hash recipe) so a claim
@@ -288,6 +289,18 @@ def _save_draft(paths: FoundryPaths, draft: dict[str, Any]) -> dict[str, Any]:
     path = _draft_yaml_path(paths, draft["report_draft_id"])
     _atomic_write_yaml(draft, path)
     _sync_catalog_index(paths, draft)
+
+    # Audit: single choke-point for all 11+ report-edit call-sites (fail-open).
+    audit_service.record_event(
+        paths,
+        AuditEvent(
+            mutation_type="report_edit",
+            action="save_draft",
+            target_ref=draft["report_draft_id"],
+            result="success",
+        ),
+    )
+
     return draft
 
 
@@ -322,6 +335,17 @@ def delete_draft(paths: FoundryPaths, report_draft_id: str) -> None:
     if d.exists():
         shutil.rmtree(d)
     catalog_service.remove_draft_index(paths, report_draft_id)
+
+    # Audit: separate call because delete_draft does not go through _save_draft (fail-open).
+    audit_service.record_event(
+        paths,
+        AuditEvent(
+            mutation_type="report_edit",
+            action="delete_draft",
+            target_ref=report_draft_id,
+            result="success",
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

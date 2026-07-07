@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..errors import RFError
 from ..frontmatter import dump_md, load_md
 from ..ids import (
     bundle_id,
@@ -27,7 +28,8 @@ from ..paths import FoundryPaths
 from ..registry import REPORT_INDEX, SKILLBOM_INDEX, Registry
 from ..schemas import default_registry, validate
 from ..yamlio import append_jsonl, dump_yaml, load_yaml
-from . import telemetry
+from . import audit_service, telemetry
+from .audit_service import AuditEvent
 
 _REGISTRY = default_registry()
 
@@ -981,118 +983,146 @@ def writeback(
         from ..errors import NotFoundError
 
         raise NotFoundError(f"run not found: {run_id} ({rp.run})")
-    rp.ensure_scaffold()
 
-    bundle = _load_bundle(rp)
-    if not bundle:
-        bundle = {"id": build_bundle(run_id, verify=True, paths=paths).bundle_id}
-    bundle_ident = str(bundle.get("id") or bundle_id(run_id))
+    try:
+        rp.ensure_scaffold()
 
-    ledger = _ledger(rp)
-    sensitivity = _sensitivity(rp)
-    requires_review = bool(require_review) or sensitivity in _WORK_SENSITIVITIES
+        bundle = _load_bundle(rp)
+        if not bundle:
+            bundle = {"id": build_bundle(run_id, verify=True, paths=paths).bundle_id}
+        bundle_ident = str(bundle.get("id") or bundle_id(run_id))
 
-    meatywiki_path: Path | None = None
-    decision_record_path: Path | None = None
-    skillbom_path: Path | None = None
-    ccdash_path: Path | None = None
-    intenttree_update_path: Path | None = None
-    arc_review_path: Path | None = None
-    notebooklm_update_path: Path | None = None
-    ccdash_event_id_value = ""
+        ledger = _ledger(rp)
+        sensitivity = _sensitivity(rp)
+        requires_review = bool(require_review) or sensitivity in _WORK_SENSITIVITIES
 
-    if "ccdash" in targets:
-        ccdash_path = telemetry.emit_ccdash_event(run_id, paths=paths)
-        event = _safe_load(ccdash_path) or {}
-        ccdash_event_id_value = str(event.get("event_id") or "")
+        meatywiki_path: Path | None = None
+        decision_record_path: Path | None = None
+        skillbom_path: Path | None = None
+        ccdash_path: Path | None = None
+        intenttree_update_path: Path | None = None
+        arc_review_path: Path | None = None
+        notebooklm_update_path: Path | None = None
+        ccdash_event_id_value = ""
 
-    if "meatywiki" in targets:
-        meatywiki_path = _render_meatywiki(
-            rp,
-            paths,
-            bundle_ident=bundle_ident,
-            sensitivity=sensitivity,
-            ledger=ledger,
+        if "ccdash" in targets:
+            ccdash_path = telemetry.emit_ccdash_event(run_id, paths=paths)
+            event = _safe_load(ccdash_path) or {}
+            ccdash_event_id_value = str(event.get("event_id") or "")
+
+        if "meatywiki" in targets:
+            meatywiki_path = _render_meatywiki(
+                rp,
+                paths,
+                bundle_ident=bundle_ident,
+                sensitivity=sensitivity,
+                ledger=ledger,
+                requires_review=requires_review,
+            )
+            # decision_record is additive: emits only when inference claims exist.
+            decision_record_path = _render_decision_record(
+                rp,
+                paths,
+                bundle_ident=bundle_ident,
+                sensitivity=sensitivity,
+                ledger=ledger,
+                requires_review=requires_review,
+            )
+
+        if "skillmeat" in targets:
+            skillbom_path = _render_skillbom(
+                rp,
+                paths,
+                bundle_ident=bundle_ident,
+                ccdash_event_id_value=ccdash_event_id_value,
+                requires_review=requires_review,
+                ledger=ledger,
+            )
+
+        if "intenttree" in targets:
+            _, _, node_id, _ = _intent_ibom_node(rp, paths)
+            intenttree_update_path = _render_intenttree_update(
+                rp,
+                paths,
+                bundle_ident=bundle_ident,
+                node_id=node_id,
+                ledger=ledger,
+                requires_review=requires_review,
+            )
+
+        if "arc" in targets:
+            arc_review_path = _render_arc_council(
+                rp,
+                paths,
+                bundle_ident=bundle_ident,
+                ledger=ledger,
+                sensitivity=sensitivity,
+                requires_review=requires_review,
+            )
+
+        if "notebooklm" in targets:
+            notebooklm_update_path = _render_notebooklm_update(
+                rp,
+                paths,
+                bundle_ident=bundle_ident,
+                ledger=ledger,
+                requires_review=requires_review,
+            )
+
+        report_meta, report_path = _report_meta(rp)
+        report_id = report_meta.get("report_id")
+        if report_id:
+            Registry.open(REPORT_INDEX, paths=paths).upsert(
+                {
+                    "id": str(report_id),
+                    "run_id": run_id,
+                    "intent_id": str(report_meta.get("intent_id") or ""),
+                    "evidence_bundle_id": bundle_ident,
+                    "sensitivity": sensitivity,
+                    "status": str(report_meta.get("status") or "draft"),
+                    "requires_review": requires_review,
+                    "path": str(report_path) if report_path else "",
+                }
+            )
+
+        _trace(rp, "writeback", run_id=run_id, requires_review=requires_review)
+        result = WritebackResult(
+            run_id=run_id,
+            meatywiki_path=meatywiki_path,
+            decision_record_path=decision_record_path,
+            skillbom_path=skillbom_path,
+            ccdash_path=ccdash_path,
+            intenttree_update_path=intenttree_update_path,
+            arc_review_path=arc_review_path,
+            notebooklm_update_path=notebooklm_update_path,
             requires_review=requires_review,
         )
-        # decision_record is additive: emits only when inference claims exist.
-        decision_record_path = _render_decision_record(
-            rp,
+
+    except RFError as exc:
+        # Audit: record writeback failure — fail-open; never re-raises audit call itself.
+        audit_service.record_event(
             paths,
-            bundle_ident=bundle_ident,
-            sensitivity=sensitivity,
-            ledger=ledger,
-            requires_review=requires_review,
+            AuditEvent(
+                mutation_type="writeback",
+                action="writeback",
+                target_ref=run_id,
+                result="failure",
+                error_detail=str(exc),
+            ),
         )
+        raise
 
-    if "skillmeat" in targets:
-        skillbom_path = _render_skillbom(
-            rp,
-            paths,
-            bundle_ident=bundle_ident,
-            ccdash_event_id_value=ccdash_event_id_value,
-            requires_review=requires_review,
-            ledger=ledger,
-        )
-
-    if "intenttree" in targets:
-        _, _, node_id, _ = _intent_ibom_node(rp, paths)
-        intenttree_update_path = _render_intenttree_update(
-            rp,
-            paths,
-            bundle_ident=bundle_ident,
-            node_id=node_id,
-            ledger=ledger,
-            requires_review=requires_review,
-        )
-
-    if "arc" in targets:
-        arc_review_path = _render_arc_council(
-            rp,
-            paths,
-            bundle_ident=bundle_ident,
-            ledger=ledger,
-            sensitivity=sensitivity,
-            requires_review=requires_review,
-        )
-
-    if "notebooklm" in targets:
-        notebooklm_update_path = _render_notebooklm_update(
-            rp,
-            paths,
-            bundle_ident=bundle_ident,
-            ledger=ledger,
-            requires_review=requires_review,
-        )
-
-    report_meta, report_path = _report_meta(rp)
-    report_id = report_meta.get("report_id")
-    if report_id:
-        Registry.open(REPORT_INDEX, paths=paths).upsert(
-            {
-                "id": str(report_id),
-                "run_id": run_id,
-                "intent_id": str(report_meta.get("intent_id") or ""),
-                "evidence_bundle_id": bundle_ident,
-                "sensitivity": sensitivity,
-                "status": str(report_meta.get("status") or "draft"),
-                "requires_review": requires_review,
-                "path": str(report_path) if report_path else "",
-            }
-        )
-
-    _trace(rp, "writeback", run_id=run_id, requires_review=requires_review)
-    return WritebackResult(
-        run_id=run_id,
-        meatywiki_path=meatywiki_path,
-        decision_record_path=decision_record_path,
-        skillbom_path=skillbom_path,
-        ccdash_path=ccdash_path,
-        intenttree_update_path=intenttree_update_path,
-        arc_review_path=arc_review_path,
-        notebooklm_update_path=notebooklm_update_path,
-        requires_review=requires_review,
+    # Audit: record successful writeback after all targets have been rendered.
+    audit_service.record_event(
+        paths,
+        AuditEvent(
+            mutation_type="writeback",
+            action="writeback",
+            target_ref=run_id,
+            result="success",
+        ),
     )
+    return result
 
 
 # --------------------------------------------------------------------------- #

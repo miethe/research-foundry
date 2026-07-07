@@ -345,6 +345,97 @@ class TestTaxonomyCompleteness:
 
 
 # ---------------------------------------------------------------------------
+# Fault-injection: forced audit failure must never break the mutation
+# ---------------------------------------------------------------------------
+
+
+class TestAuditWiringFaultInjection:
+    """AUDIT-002 correctness invariant: a forced audit write failure must never
+    prevent the underlying mutation from completing or propagating to its caller.
+
+    Strategy: patch ``audit_service._record_event_inner`` to raise a
+    RuntimeError (the same technique used in TestFaultInjection above).
+    ``record_event``'s outer try/except swallows it, returning None.
+    This validates two things simultaneously:
+      1. The audit call IS wired into the mutation (otherwise _record_event_inner
+         would never be called and the monkeypatch test would be meaningless).
+      2. The mutation's return value is correct regardless of audit outcome.
+    """
+
+    def test_ingest_source_completes_despite_audit_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Forced _record_event_inner failure must not propagate to ingest_source callers."""
+        from research_foundry.paths import FoundryPaths
+        from research_foundry.services import audit_service as _audit_svc
+        from research_foundry.services.source_cards import IngestResult, ingest_source
+
+        # Build a minimal run scaffold.
+        fp = FoundryPaths(root=tmp_path)
+        run_id = "run_audit_fault_test"
+        (tmp_path / "runs" / run_id / "sources").mkdir(parents=True)
+
+        # Force the inner write to raise — record_event's outer try/except absorbs it.
+        def _always_raise(p: object, e: object) -> object:
+            raise RuntimeError("simulated audit store crash")
+
+        monkeypatch.setattr(_audit_svc, "_record_event_inner", _always_raise)
+
+        result = ingest_source(
+            "https://example.com/test-source",
+            run_id=run_id,
+            source_type="other",
+            sensitivity="public",
+            paths=fp,
+        )
+
+        # Mutation must still succeed — returns a valid IngestResult.
+        assert isinstance(result, IngestResult)
+        assert result.source_card_id.startswith("src_")
+        assert result.path.exists()
+
+    def test_ingest_source_audit_record_event_is_called(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """record_event IS called for ingest_source — the wiring exists."""
+        from research_foundry.paths import FoundryPaths
+        from research_foundry.services import audit_service as _audit_svc
+        from research_foundry.services.source_cards import ingest_source
+        from research_foundry.services.rbac_store import bootstrap
+
+        fp = FoundryPaths(root=tmp_path)
+        conn = bootstrap(fp)
+        conn.close()
+
+        run_id = "run_audit_wiring_verify"
+        (tmp_path / "runs" / run_id / "sources").mkdir(parents=True)
+
+        calls: list[tuple[object, object]] = []
+        original = _audit_svc.record_event
+
+        def _spy(p: object, e: object) -> object:
+            calls.append((p, e))
+            return original(p, e)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(_audit_svc, "record_event", _spy)
+
+        ingest_source(
+            "https://example.com/spy-source",
+            run_id=run_id,
+            source_type="other",
+            sensitivity="public",
+            paths=fp,
+        )
+
+        # The wiring must have invoked record_event exactly once.
+        assert len(calls) == 1, f"Expected 1 audit call, got {len(calls)}"
+        _paths_arg, event_arg = calls[0]
+        assert event_arg.mutation_type == "artifact_accepted"
+        assert event_arg.action == "ingest_source"
+        assert event_arg.result == "success"
+
+
+# ---------------------------------------------------------------------------
 # Idempotent schema / bootstrap
 # ---------------------------------------------------------------------------
 

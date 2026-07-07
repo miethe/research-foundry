@@ -21,6 +21,8 @@ from ..paths import FoundryPaths
 from ..registry import SOURCE_INDEX, Registry
 from ..schemas import SchemaRegistry
 from ..yamlio import append_jsonl
+from . import audit_service
+from .audit_service import AuditEvent
 
 _MAX_POINTS = 8
 _SHORT_QUOTE = 280
@@ -292,6 +294,17 @@ def ingest_source(
     )
 
     _trace(run_paths, stage="ingest", source_card_id=src_id, degraded=degraded)
+
+    # Audit: record artifact acceptance after file write + registry upsert (fail-open).
+    audit_service.record_event(
+        paths,
+        AuditEvent(
+            mutation_type="artifact_accepted",
+            action="ingest_source",
+            target_ref=src_id,
+            result="success",
+        ),
+    )
 
     return IngestResult(
         source_card_id=src_id,

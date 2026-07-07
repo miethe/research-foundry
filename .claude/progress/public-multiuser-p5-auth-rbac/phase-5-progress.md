@@ -37,7 +37,7 @@ tasks:
   - test: tests/unit/test_audit_service.py
 - id: AUDIT-002
   title: Wire audit-write calls into the 5 (6) mutation types
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
@@ -48,10 +48,12 @@ tasks:
   - src/research_foundry/services/source_cards.py
   - src/research_foundry/api/routers/reports.py
   - src/research_foundry/services/writeback.py
-  started: null
-  completed: null
-  verified_by: []
-  evidence: []
+  started: '2026-07-07T00:00:00Z'
+  completed: '2026-07-07T00:00:00Z'
+  verified_by:
+  - pytest:37 passed
+  evidence:
+  - test: tests/unit/test_audit_service.py
 - id: AUDIT-003
   title: rf audit list/show CLI + GET /api/audit read API
   status: completed
@@ -113,10 +115,10 @@ parallelization:
   batch_4:
   - validator-gate
 total_tasks: 5
-completed_tasks: 2
+completed_tasks: 3
 in_progress_tasks: 0
 blocked_tasks: 0
-progress: 40
+progress: 60
 ---
 
 # Phase 5: Audit Log — Progress

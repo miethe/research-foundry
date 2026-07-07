@@ -63,6 +63,8 @@ from typing import Any
 
 from ..ids import now_iso
 from ..paths import FoundryPaths
+from . import audit_service
+from .audit_service import AuditEvent
 from .export_service import (
     REDACTION_MARKER,
     SENSITIVITY_ORDER,
@@ -1101,6 +1103,17 @@ def import_run(paths: FoundryPaths, run_id: str) -> dict[str, Any]:
         except BaseException:
             conn.rollback()
             raise
+
+    # Audit: record catalog mutation after the transaction commits (fail-open).
+    audit_service.record_event(
+        paths,
+        AuditEvent(
+            mutation_type="catalog_mutation",
+            action="import_run",
+            target_ref=run_id,
+            result="success",
+        ),
+    )
 
     return {"run_id": run_id, "items": len(rows)}
 

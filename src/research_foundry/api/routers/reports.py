@@ -57,7 +57,8 @@ from pydantic import BaseModel
 from ..auth.rbac import require_role
 from ...errors import NotFoundError
 from ...paths import FoundryPaths
-from ...services import builder_service as bsvc
+from ...services import audit_service, builder_service as bsvc
+from ...services.audit_service import AuditEvent
 from ...services.export_service import SENSITIVITY_ORDER, ExportError, resolve_threshold
 from ...services.verification import verify_draft
 from .runs import get_paths
@@ -695,6 +696,17 @@ def publish_preview(
     # Fail-closed: ANY error-severity failure blocks the preview.
     blocking = [c for c in check_dicts if c["severity"] == "error" and c["status"] == "fail"]
     if blocking:
+        # Audit: record denied publish-preview before raising (fail-open).
+        audit_service.record_event(
+            paths,
+            AuditEvent(
+                mutation_type="publish_preview",
+                action="publish_preview",
+                target_ref=report_id,
+                result="denied",
+                error_detail=str([c["id"] for c in blocking]),
+            ),
+        )
         raise HTTPException(
             status_code=422,
             detail={
@@ -709,6 +721,17 @@ def publish_preview(
         preview_md = bsvc.export_markdown(paths, report_id)
     except NotFoundError as exc:  # pragma: no cover  — already verified load above
         raise _not_found(report_id) from exc
+
+    # Audit: record successful publish-preview (fail-open).
+    audit_service.record_event(
+        paths,
+        AuditEvent(
+            mutation_type="publish_preview",
+            action="publish_preview",
+            target_ref=report_id,
+            result="success",
+        ),
+    )
 
     return {
         "ok": True,

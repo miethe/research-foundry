@@ -45,8 +45,10 @@ from pydantic import BaseModel
 from ..auth.rbac import require_role
 from ...errors import NotFoundError
 from ...paths import FoundryPaths
+from ...services import audit_service
 from ...services.agent_job_schemas import AgentJobStatus
 from ...services.agent_job_service import AgentJobService, InProcessProviderError
+from ...services.audit_service import AuditEvent
 from ...services.governance import GuardContext, guard_check, redact_payload
 from .runs import get_paths
 
@@ -224,6 +226,18 @@ def launch_job(
     except Exception as exc:  # noqa: BLE001
         logger.error("Spawn failed for job %s: %s", job.agent_job_id, exc)
         raise HTTPException(status_code=500, detail="Failed to spawn agent job subprocess") from exc
+
+    # Audit: record successful agent job launch after job is persisted and spawned (fail-open).
+    audit_service.record_event(
+        paths,
+        AuditEvent(
+            mutation_type="agent_job_launched",
+            action="launch_job",
+            target_ref=job.agent_job_id,
+            actor_workspace_id=str(body.workspace_id) if body.workspace_id else None,
+            result="success",
+        ),
+    )
 
     # Redact before returning — defense-in-depth: the disk write via
     # _safe_write_json is already redacted, but the API response must also
