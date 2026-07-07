@@ -54,7 +54,7 @@ tasks:
   evidence: []
 - id: AUDIT-003
   title: rf audit list/show CLI + GET /api/audit read API
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
@@ -64,10 +64,11 @@ tasks:
   - src/research_foundry/api/app.py
   - src/research_foundry/cli_commands.py
   - src/research_foundry/cli.py
-  started: null
-  completed: null
+  started: 2026-07-07T00:00Z
+  completed: 2026-07-07T00:30Z
   verified_by: []
-  evidence: []
+  evidence:
+  - files: src/research_foundry/api/routers/audit.py,src/research_foundry/api/app.py,src/research_foundry/cli_commands.py
 - id: AUDIT-004
   title: Audit-store degraded-health state + startup probe + admin warning + exposure
     gate
@@ -112,10 +113,10 @@ parallelization:
   batch_4:
   - validator-gate
 total_tasks: 5
-completed_tasks: 1
+completed_tasks: 2
 in_progress_tasks: 0
 blocked_tasks: 0
-progress: 20
+progress: 40
 ---
 
 # Phase 5: Audit Log — Progress

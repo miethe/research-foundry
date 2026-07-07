@@ -1985,6 +1985,95 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(agent_job_app, name="agent-job")
 
+    # ----- audit (public-multiuser-release Phase 5 — AUDIT-003) -----
+    # TODO(AUDIT-004): add ``audit health`` command in the next batch.
+    audit_app = typer.Typer(help="Audit log commands.")
+
+    @audit_app.command("list")
+    def audit_list(
+        mutation_type: str | None = typer.Option(None, "--mutation-type", help="Filter by mutation type"),
+        actor: str | None = typer.Option(None, "--actor", help="Filter by actor user id"),
+        workspace: str | None = typer.Option(None, "--workspace", help="Filter by workspace id"),
+        since: str | None = typer.Option(None, "--since", help="ISO-8601 lower bound (inclusive)"),
+        until: str | None = typer.Option(None, "--until", help="ISO-8601 upper bound (inclusive)"),
+        limit: int = typer.Option(50, "--limit", help="Page size (1–200)"),
+        cursor: str | None = typer.Option(None, "--cursor", help="Pagination cursor from prior page"),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output (default: rich table)"),
+    ) -> None:
+        """List audit events (most-recent-first, cursor-paginated)."""
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services import audit_service as svc
+
+        paths = FoundryPaths.discover()
+        result = svc.list_events(
+            paths,
+            mutation_type=mutation_type,
+            actor_user_id=actor,
+            workspace_id=workspace,
+            since=since,
+            until=until,
+            limit=limit,
+            cursor=cursor,
+        )
+        if json_out:
+            typer.echo(_json.dumps(result, ensure_ascii=False, indent=2))
+            return
+        table = Table(title="rf audit list")
+        table.add_column("audit_event_id", no_wrap=True)
+        table.add_column("created_at", no_wrap=True)
+        table.add_column("mutation_type")
+        table.add_column("action")
+        table.add_column("actor")
+        table.add_column("result")
+        for item in result["items"]:
+            table.add_row(
+                item.get("audit_event_id") or "",
+                item.get("created_at") or "",
+                item.get("mutation_type") or "",
+                item.get("action") or "",
+                item.get("actor_user_id") or "",
+                item.get("result") or "",
+            )
+        console.print(table)
+        if result.get("next_cursor"):
+            console.print(f"[dim]next_cursor: {result['next_cursor']}[/dim]")
+
+    @audit_app.command("show")
+    def audit_show(
+        audit_event_id: str = typer.Argument(..., help="audit_event_id (UUID)"),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output (default: rich key-value)"),
+    ) -> None:
+        """Show full detail for a single audit event."""
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services import audit_service as svc
+
+        paths = FoundryPaths.discover()
+        event = svc.get_event(paths, audit_event_id)
+        if event is None:
+            err_console.print(f"[red]audit event not found: {audit_event_id}[/red]")
+            raise typer.Exit(int(ExitCode.USAGE))
+        if json_out:
+            typer.echo(_json.dumps(event, ensure_ascii=False, indent=2))
+            return
+        # Rich key-value table — show all non-null fields.
+        table = Table(title=f"rf audit show {audit_event_id}", show_header=False)
+        table.add_column("Field", style="bold")
+        table.add_column("Value")
+        for key, val in event.items():
+            if val is None:
+                continue
+            display_val = _json.dumps(val, ensure_ascii=False) if isinstance(val, dict) else str(val)
+            table.add_row(key, display_val)
+        console.print(table)
+
+    app.add_typer(audit_app, name="audit")
+
     # ----- serve (loopback API) -----
     @app.command()
     def serve(

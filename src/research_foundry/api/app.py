@@ -60,6 +60,7 @@ from .auth.provider import get_provider, register_provider
 from .middleware.allowlist import IPAllowlistMiddleware
 from .middleware.auth import AuthProviderMiddleware
 from .routers.agent_jobs import router as agent_jobs_router
+from .routers.audit import router as audit_router
 from .routers.catalog import router as catalog_router
 from .routers.reports import router as reports_router
 from .routers.runs import router as runs_router
@@ -231,6 +232,10 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # shared-LAN deployments until P5 RBAC + workspace-isolation gates clear.
     if config.agents_enabled():
         app.include_router(agent_jobs_router, prefix="/api", tags=["agent-jobs"])
+    # Audit log read API (public-multiuser-release Phase 5 — AUDIT-003).
+    # Unconditional — audit endpoints are always registered.
+    # TODO(P5.9): restrict to admin role once P5.2 RBAC middleware ships.
+    app.include_router(audit_router, prefix="/api", tags=["audit"])
 
     return app
 
