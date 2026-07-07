@@ -6,15 +6,19 @@ prd: public-multiuser-p5-auth-rbac
 feature_slug: public-multiuser-p5-auth-rbac
 phase: 5
 phase_title: Audit Log
-status: pending
-created: 2026-07-07
+status: completed
+created: '2026-07-07'
 updated: '2026-07-07'
 prd_ref: docs/project_plans/PRDs/features/public-multiuser-p5-auth-rbac-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/public-multiuser-p5-auth-rbac-v1.md
 phase_plan_ref: docs/project_plans/implementation_plans/features/public-multiuser-p5-auth-rbac-v1/phase-5-audit-log.md
-commit_refs: []
+commit_refs:
+- 742859e
+- 7f5b566
+- fa86609
+- 298a72a
 pr_refs: []
-completion_ref: null
+completion_ref: .claude/progress/public-multiuser-p5-auth-rbac/phase-5-completion.md
 owners:
 - python-backend-engineer
 contributors:
@@ -74,7 +78,7 @@ tasks:
 - id: AUDIT-004
   title: Audit-store degraded-health state + startup probe + admin warning + exposure
     gate
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
@@ -86,19 +90,20 @@ tasks:
   - src/research_foundry/api/app.py
   - src/research_foundry/cli_commands.py
   - tests/unit/test_audit_service.py
-  started: null
-  completed: null
+  started: 2026-07-07T00:00Z
+  completed: 2026-07-07T00:00Z
   verified_by: []
-  evidence: []
+  evidence:
+  - commit: 298a72a
 - id: AUDIT-900
-  title: 'AC: FE handles missing audit-row fields (conditional — N/A this phase)'
+  title: "AC: FE handles missing audit-row fields (conditional \u2014 N/A this phase)"
   status: skipped
   assigned_to:
   - ui-engineer-enhanced
   dependencies:
   - AUDIT-001
-  notes: N/A in this phase — resolved by Phase 6 (P5.6) or Phase 8 (P5.8). Task ID
-    reserved per plan (do not renumber).
+  notes: "N/A in this phase \u2014 resolved by Phase 6 (P5.6) or Phase 8 (P5.8). Task\
+    \ ID reserved per plan (do not renumber)."
   files_affected: []
   started: null
   completed: null
@@ -115,10 +120,10 @@ parallelization:
   batch_4:
   - validator-gate
 total_tasks: 5
-completed_tasks: 3
+completed_tasks: 4
 in_progress_tasks: 0
 blocked_tasks: 0
-progress: 60
+progress: 80
 ---
 
 # Phase 5: Audit Log — Progress
