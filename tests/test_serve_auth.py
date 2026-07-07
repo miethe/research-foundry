@@ -489,6 +489,162 @@ class TestRbacStoreRebuildSurvival:
 
 
 # ---------------------------------------------------------------------------
+# P5.4 FU-1  Clerk provider wiring — fail-closed gate
+# ---------------------------------------------------------------------------
+
+
+class TestClerkProviderWiring:
+    """P5.4 follow-up FU-1: create_app wires AuthProviderMiddleware for auth.provider=clerk.
+
+    The bug (P1): when auth.provider=clerk, create_app never imported the clerk
+    adapter, so get_provider("clerk") returned None, no middleware was installed,
+    and the server ran UNAUTHENTICATED (fail-open).
+
+    These tests lock that fix: a valid clerk config MUST install middleware,
+    and an incomplete clerk config MUST raise at startup (fail-closed, never
+    fall through to no-middleware).
+
+    Gate #3 invariant: all tests run without any real Clerk API calls.
+    The clerk adapter's JWKS fetch path may fail (network unreachable) — that
+    only triggers 401s, which is the correct fail-closed behaviour.
+    """
+
+    def test_clerk_valid_config_installs_auth_middleware(self, tmp_path):
+        """auth.provider=clerk with valid config → AuthProviderMiddleware IS in the stack.
+
+        Uses a syntactically valid but network-unreachable clerk_frontend_api so
+        that JWKS fetch fails at request time (not startup), producing 401 responses.
+        The 401s prove middleware IS installed — an unprotected server would return
+        200 (fail-open).
+        """
+        from research_foundry.api.middleware.auth import AuthProviderMiddleware
+
+        cfg = _minimal_config(
+            tmp_path,
+            auth_block={
+                "provider": "clerk",
+                # test.local.invalid is non-routable — JWKS fetch fails → 401
+                "clerk_frontend_api": "https://test.local.invalid",
+                "clerk_outbound_internet_enabled": True,
+            },
+        )
+        app = create_app(cfg)
+
+        # AuthProviderMiddleware must be in user_middleware
+        auth_middlewares = [
+            m for m in app.user_middleware if m.cls is AuthProviderMiddleware
+        ]
+        assert len(auth_middlewares) == 1, (
+            f"Expected exactly 1 AuthProviderMiddleware in the stack for "
+            f"auth.provider=clerk but found {len(auth_middlewares)}.  "
+            "The P5.4 FU-1 fix must install middleware — not fail open."
+        )
+
+    def test_clerk_valid_config_unauthenticated_request_returns_401(self, tmp_path):
+        """auth.provider=clerk → unauthenticated requests are rejected (not fail-open 200).
+
+        This is the observable-surface proof: a server without a valid Clerk JWT
+        must return 401, never 200 (which would mean the server is unprotected).
+        The JWKS fetch will fail (non-routable URL) → authenticate() returns None
+        → middleware returns 401.  Either way, the request is not passed through.
+        """
+        cfg = _minimal_config(
+            tmp_path,
+            auth_block={
+                "provider": "clerk",
+                "clerk_frontend_api": "https://test.local.invalid",
+                "clerk_outbound_internet_enabled": True,
+            },
+        )
+        app = create_app(cfg)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        # GET /health is always exempt — this stays 200 regardless of auth.
+        health_resp = client.get("/health")
+        assert health_resp.status_code == 200, (
+            f"GET /health must always return 200 but got {health_resp.status_code}."
+        )
+
+        # Unauthenticated request to a protected endpoint must be rejected.
+        resp = client.get("/api/runs")
+        assert resp.status_code == 401, (
+            f"Expected 401 for an unauthenticated request with auth.provider=clerk "
+            f"but got {resp.status_code}.  "
+            "If this is 200, the server is running unprotected (fail-open bug)."
+        )
+
+    def test_clerk_missing_frontend_api_raises_at_startup(self, tmp_path):
+        """auth.provider=clerk with missing clerk_frontend_api → startup raises ValueError.
+
+        FoundryConfig.auth_provider() validates the clerk preconditions before
+        create_app constructs any middleware.  Missing clerk_frontend_api is a
+        clear misconfiguration that must fail at startup, not silently at request
+        time.
+        """
+        cfg = _minimal_config(
+            tmp_path,
+            auth_block={
+                "provider": "clerk",
+                # clerk_frontend_api intentionally absent — should trigger the gate
+                "clerk_outbound_internet_enabled": True,
+            },
+        )
+        with pytest.raises(ValueError, match="Clerk provider requires"):
+            create_app(cfg)
+
+    def test_clerk_missing_outbound_flag_raises_at_startup(self, tmp_path):
+        """auth.provider=clerk with clerk_outbound_internet_enabled=False → startup raises.
+
+        The outbound-internet flag is an explicit opt-in — never auto-detected.
+        Omitting it (defaults False) must fail loudly at startup.
+        """
+        cfg = _minimal_config(
+            tmp_path,
+            auth_block={
+                "provider": "clerk",
+                "clerk_frontend_api": "https://test.clerk.accounts.dev",
+                # clerk_outbound_internet_enabled absent → defaults False
+            },
+        )
+        with pytest.raises(ValueError, match="Clerk provider requires"):
+            create_app(cfg)
+
+    def test_clerk_startup_error_is_not_silent(self, tmp_path):
+        """Incomplete clerk config must never produce a silently unprotected app.
+
+        Verify that create_app raises rather than returning an app with no
+        auth middleware.
+        """
+        from research_foundry.api.middleware.auth import AuthProviderMiddleware
+
+        cfg = _minimal_config(
+            tmp_path,
+            auth_block={"provider": "clerk"},  # neither precondition set
+        )
+        raised = False
+        app_instance = None
+        try:
+            app_instance = create_app(cfg)
+        except (ValueError, RuntimeError):
+            raised = True
+
+        assert raised, (
+            "Expected create_app to raise for an incomplete clerk config "
+            "(fail-closed invariant) but it returned successfully.  "
+            "An app without the required clerk config must never start silently."
+        )
+        if app_instance is not None:
+            # If somehow we got an app, it must not be running unprotected.
+            auth_mw = [
+                m for m in app_instance.user_middleware if m.cls is AuthProviderMiddleware
+            ]
+            assert len(auth_mw) == 1, (
+                "If create_app does not raise, it MUST still install AuthProviderMiddleware. "
+                "Running with no middleware and no exception is the forbidden state."
+            )
+
+
+# ---------------------------------------------------------------------------
 # AUTH-110  Legacy viewer.auth_mode=token backward-compatibility (fail-closed)
 # ---------------------------------------------------------------------------
 

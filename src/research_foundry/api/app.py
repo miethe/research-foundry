@@ -61,6 +61,7 @@ from .middleware.allowlist import IPAllowlistMiddleware
 from .middleware.auth import AuthProviderMiddleware
 from .routers.agent_jobs import router as agent_jobs_router
 from .routers.audit import router as audit_router
+from .routers.auth_identity import router as auth_identity_router
 from .routers.catalog import router as catalog_router
 from .routers.reports import router as reports_router
 from .routers.runs import router as runs_router
@@ -127,7 +128,47 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # resolved at app construction time.
     _provider_name = config.auth_provider()
     _auth_provider = get_provider(_provider_name)  # None when provider == "none"
-    if _auth_provider is not None:
+
+    if _provider_name == "clerk":
+        # P5.4 FU-1: Clerk lazy-import path — MUST FAIL CLOSED on any error.
+        #
+        # The clerk adapter is NOT imported at module level so that PyJWT is
+        # only loaded when explicitly requested (keeps the base install lean).
+        # This branch runs regardless of whether a sentinel is already in the
+        # registry (handles both "first import" and "sentinel already present"
+        # cases cleanly by always constructing a fresh, config-driven instance).
+        #
+        # auth_provider() already validated that clerk_frontend_api is non-empty
+        # and clerk_outbound_internet_enabled=True before we reach here.  JWKS
+        # fetch stays lazy (on-first-verify); only URL presence is checked here —
+        # no network calls at startup.
+        try:
+            from .auth.adapters.clerk import (  # noqa: PLC0415
+                ClerkAuthProvider as _ClerkAuthProvider,
+            )
+        except ImportError as _imp_exc:
+            raise RuntimeError(
+                "auth.provider=clerk requires optional dependencies 'PyJWT' and "
+                "'cryptography'. Install them with: "
+                "pip install 'research-foundry[clerk]'"
+            ) from _imp_exc
+
+        _azp_expected: str | None = config.auth.get("clerk_azp_expected") or None
+        try:
+            _auth_provider = _ClerkAuthProvider(
+                frontend_api_url=config.auth_clerk_frontend_api(),
+                azp_expected=_azp_expected,
+            )
+        except Exception as _init_exc:
+            raise RuntimeError(
+                f"Failed to construct ClerkAuthProvider: {_init_exc}. "
+                "Verify auth.clerk_frontend_api is a valid HTTPS URL in foundry.yaml."
+            ) from _init_exc
+
+        register_provider(_auth_provider)
+        app.add_middleware(AuthProviderMiddleware, provider=_auth_provider)
+
+    elif _auth_provider is not None:
         # Re-initialise with runtime token configs and RBAC store.  The
         # module-level self-registration (bottom of local_static.py) inserts
         # an empty placeholder so the registry key exists; create_app replaces
@@ -140,6 +181,7 @@ def create_app(config: FoundryConfig) -> FastAPI:
             )
             register_provider(_auth_provider)
         app.add_middleware(AuthProviderMiddleware, provider=_auth_provider)
+
     elif _provider_name == "none" and config.viewer_auth_mode() == "token":
         # Invariant 1 — Fail-closed legacy fallback.
         #
@@ -258,6 +300,11 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # Unconditional — audit endpoints are always registered.
     # TODO(P5.9): restrict to admin role once P5.2 RBAC middleware ships.
     app.include_router(audit_router, prefix="/api", tags=["audit"])
+    # Auth identity endpoint (P5.4 FU-2): GET /api/auth/identity.
+    # Always registered — returns null/anonymous in provider=none mode and the
+    # caller's own AuthIdentity in authenticated mode.  No admin RBAC gate needed
+    # because the endpoint only exposes the caller's own resolved identity.
+    app.include_router(auth_identity_router, prefix="/api", tags=["auth"])
 
     return app
 
