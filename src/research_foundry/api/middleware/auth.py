@@ -45,12 +45,15 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
+from ..auth.provider import AuthProvider
+
 logger = logging.getLogger(__name__)
 
 # Path exempted from all auth checks — liveness probe must always be reachable.
 _HEALTH_PATH = "/health"
 
 
+# DEPRECATED: superseded by AuthProviderMiddleware in P5.1; remove in P5.2.
 class TokenAuthMiddleware(BaseHTTPMiddleware):
     """Starlette middleware that validates ``Authorization: Bearer <token>``.
 
@@ -120,4 +123,52 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-__all__ = ["TokenAuthMiddleware"]
+class AuthProviderMiddleware(BaseHTTPMiddleware):
+    """Registry-based auth middleware for the RF loopback API (P5.1).
+
+    Delegates authentication to a registered
+    :class:`~research_foundry.api.auth.provider.AuthProvider`.  Only
+    instantiate when ``auth.provider != "none"`` — ``create_app`` is
+    responsible for that guard (security invariant: a ``None`` provider means
+    zero middleware is added, not a middleware that passes all requests through
+    unconditionally).
+
+    Middleware ordering (outermost → innermost): CORS → allowlist → auth.
+    Auth is innermost so it only runs after IP filtering has already passed.
+
+    Security invariants
+    -------------------
+    1. ``GET /health`` is always unauthenticated — consistent with the legacy
+       :class:`TokenAuthMiddleware` contract and required for liveness probes.
+    2. ``request.state.identity`` is set only on authenticated requests.
+       Routes and dependencies that require authentication must check
+       ``getattr(request.state, "identity", None)`` — ``None`` means either
+       "no provider configured" or "provider rejected this request" depending
+       on whether middleware was added at all.
+    3. A generic ``{"detail": "Unauthorized"}`` 401 is returned on failure.
+       No provider name, token detail, or diagnostic information is included
+       to avoid leaking adapter topology to unauthenticated callers.
+    """
+
+    def __init__(self, app: ASGIApp, *, provider: AuthProvider) -> None:
+        super().__init__(app)
+        self._provider = provider
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # GET /health is always unauthenticated (security invariant 1).
+        if request.url.path == _HEALTH_PATH:
+            return await call_next(request)
+
+        identity = self._provider.authenticate(request)
+        if identity is None:
+            # Return a generic 401 — do not leak provider name or token detail
+            # (security invariant 3).
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+
+        # Attach the resolved identity to request state for downstream
+        # consumers (e.g. require_role dependency introduced in P5.2).
+        request.state.identity = identity
+        return await call_next(request)
+
+
+__all__ = ["TokenAuthMiddleware", "AuthProviderMiddleware"]

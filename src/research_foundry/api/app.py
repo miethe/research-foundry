@@ -35,20 +35,30 @@ Middleware stack (outermost → innermost):
   CORS → allowlist (optional) → auth (optional)
 
 The allowlist middleware is only added when ``viewer.allowlist`` is non-empty.
-The auth middleware is only added when ``viewer.auth_mode == "token"``.
-When ``auth_mode == "none"`` no auth middleware is registered (true no-op).
+The auth middleware is only added when ``auth.provider != "none"`` in
+``foundry.yaml``; when ``auth.provider == "none"`` (the default) no auth
+middleware is registered (true no-op — ``request.state`` never gains an
+``identity`` attribute), UNLESS the legacy ``viewer.auth_mode: token`` field
+is set (fail-closed backward-compatibility fallback — see Invariant 1 in the
+``create_app`` source).
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+_logger = logging.getLogger(__name__)
+
 from ..config import FoundryConfig
+from .auth.adapters import local_static as _local_static_module  # noqa: F401 — triggers self-registration
+from .auth.adapters.local_static import LocalStaticAuthProvider
+from .auth.provider import get_provider, register_provider
 from .middleware.allowlist import IPAllowlistMiddleware
-from .middleware.auth import TokenAuthMiddleware
+from .middleware.auth import AuthProviderMiddleware
 from .routers.agent_jobs import router as agent_jobs_router
 from .routers.catalog import router as catalog_router
 from .routers.reports import router as reports_router
@@ -109,11 +119,57 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # final execution order matches the documented stack.
     #
     # 1. Auth (innermost — added first, runs last)
-    auth_mode = config.viewer_auth_mode()
-    if auth_mode == "token":
-        # Security invariant 6: only add auth middleware when auth_mode==token.
-        token_env_var = config.viewer_auth_token_env()
-        app.add_middleware(TokenAuthMiddleware, token_env_var=token_env_var)
+    #
+    # P5.1: registry-based provider replaces the legacy TokenAuthMiddleware
+    # single-token wiring.  Provider selection happens exactly once here;
+    # no router or service may branch on provider name — all branching is
+    # resolved at app construction time.
+    _provider_name = config.auth_provider()
+    _auth_provider = get_provider(_provider_name)  # None when provider == "none"
+    if _auth_provider is not None:
+        # Re-initialise with runtime token configs and RBAC store.  The
+        # module-level self-registration (bottom of local_static.py) inserts
+        # an empty placeholder so the registry key exists; create_app replaces
+        # it with a fully-configured instance tied to the actual foundry.yaml
+        # token list.
+        if _provider_name == "local_static":
+            _auth_provider = LocalStaticAuthProvider(
+                config.auth_local_static_tokens(),
+                rbac_paths=config.paths,
+            )
+            register_provider(_auth_provider)
+        app.add_middleware(AuthProviderMiddleware, provider=_auth_provider)
+    elif _provider_name == "none" and config.viewer_auth_mode() == "token":
+        # Invariant 1 — Fail-closed legacy fallback.
+        #
+        # Deployments that use the legacy ``viewer.auth_mode: token`` /
+        # ``viewer.auth_token_env`` config without the new ``foundry.auth``
+        # block are silently left unprotected by the primary path above.
+        # Detect this condition here and install auth middleware derived from
+        # the legacy single-token config so those deployments remain protected.
+        #
+        # This is fail-CLOSED: we install auth rather than skipping it.
+        # A WARNING is emitted to nudge operators toward the new config.
+        _logger.warning(
+            "Deprecation: viewer.auth_mode='token' is deprecated. "
+            "Migrate to foundry.auth.provider: local_static. "
+            "See foundry.yaml for the new config format."
+        )
+        _legacy_token_env = config.viewer_auth_token_env()
+        _legacy_tokens: list[dict] = [
+            {
+                "token_env": _legacy_token_env,
+                "user_id": "legacy_token_user",
+                "workspace_id": "default",
+                "roles": ["owner"],
+            }
+        ]
+        _auth_provider = LocalStaticAuthProvider(
+            _legacy_tokens,
+            rbac_paths=config.paths,
+        )
+        register_provider(_auth_provider)
+        app.add_middleware(AuthProviderMiddleware, provider=_auth_provider)
 
     # 2. IP allowlist (middle — added second, runs before auth)
     allowlist = config.viewer_allowlist()

@@ -159,6 +159,31 @@ class FoundryPaths:
         """
         return self.rf_cache / "catalog.db"
 
+    # --- durable auth/RBAC state (public-multiuser-release Phase 5, plan AUTH-103) ---
+    @property
+    def rf_state(self) -> Path:
+        """Durable authentication and RBAC state store.
+
+        Sibling to ``.rf_cache/`` at workspace root but intentionally NOT
+        placed under ``.rf_cache/`` — this directory contains long-lived data
+        (``rbac.db``) that must survive catalog.db rebuilds.  Unlike
+        ``.rf_cache/``, it is NOT gitignored by default because some
+        deployments may want to commit auth state (single-user, embedded).
+
+        See ``services/rbac_store.py`` and P5 auth provider plan.
+        """
+        return self.root / ".rf_state"
+
+    @property
+    def rbac_db(self) -> Path:
+        """Path to the durable RBAC sqlite3 database.
+
+        Public-multiuser-release Phase 5 (rbac_store). Lives under
+        ``.rf_state/`` — NOT under ``.rf_cache/`` — because RBAC membership
+        data must survive catalog.db rebuilds (AOS durability constraint).
+        """
+        return self.rf_state / "rbac.db"
+
     # --- run sub-tree (spec §5 runs/rf_run_*/...) ---
     def run_dir(self, run_id: str) -> Path:
         return self.runs / run_id

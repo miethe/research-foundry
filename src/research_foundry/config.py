@@ -20,6 +20,14 @@ from .yamlio import load_yaml
 # Valid values for viewer.auth_mode (OQ-4 resolution).
 _VALID_AUTH_MODES = frozenset({"none", "token"})
 
+# Valid values for auth.provider (P5.1 canonical auth selector).
+# "clerk" and "oidc" are recognised vocabulary but adapters are not yet
+# implemented — they are validated at config-read time so deployments that set
+# them fail fast with an actionable message rather than silently falling through
+# to the "none" path.  See FU-2 (Clerk) and FU-3 (OIDC) in the P5 plan.
+_VALID_AUTH_PROVIDERS = frozenset({"none", "local_static", "clerk", "oidc"})
+_IMPLEMENTED_AUTH_PROVIDERS = frozenset({"none", "local_static"})
+
 # Config filenames under config/ (spec §5).
 GOVERNANCE = "governance.yaml"
 MODEL_PROFILES = "model_profiles.yaml"
@@ -228,6 +236,136 @@ class FoundryConfig:
         or static-export deployments before P5 RBAC ships.
         """
         return bool(self.agents.get("enabled", False))
+
+    # --- auth block (P5.1 canonical auth provider) ---------------------------
+
+    @property
+    def auth(self) -> dict[str, Any]:
+        """The ``auth`` block from ``foundry.yaml`` (P5.1 canonical auth config).
+
+        **New canonical auth selector** — supersedes the legacy
+        ``viewer.auth_mode`` / ``viewer.auth_token_env`` single-token
+        approach.  The legacy fields are preserved for backward compatibility
+        until an explicit deprecation pass removes them; new deployments should
+        use ``auth.provider`` and ``auth.local_static.tokens`` exclusively.
+
+        Migration guide for ``viewer.auth_mode = "token"`` users
+        ---------------------------------------------------------
+        Replace::
+
+            foundry:
+              viewer:
+                auth_mode: token
+                auth_token_env: RF_SERVE_TOKEN
+
+        with::
+
+            foundry:
+              auth:
+                provider: local_static
+                local_static:
+                  tokens:
+                    - token_env: RF_SERVE_TOKEN
+                      user_id: <your_user_id>
+                      workspace_id: default
+                      roles: [owner]
+        """
+        auth = self.foundry.get("auth", {})
+        return auth if isinstance(auth, dict) else {}
+
+    def auth_provider(self) -> str:
+        """Return ``auth.provider`` with default ``"none"``; validate on read.
+
+        Valid values: ``none``, ``local_static``, ``clerk``, ``oidc``.
+
+        ``none``
+            No auth middleware is added; ``request.state`` never gains an
+            ``identity`` attribute.  Safe default for loopback-only mode.
+
+        ``local_static``
+            Multi-token Bearer → identity mapping configured via
+            ``auth.local_static.tokens`` in ``foundry.yaml``.  Suitable for
+            air-gapped, self-hosted, and single-operator LAN deployments.
+
+        ``clerk`` / ``oidc``
+            Recognised vocabulary but not yet implemented — raises a clear
+            ``ValueError`` at config-read time to fail fast rather than
+            silently falling through to the ``none`` path.  See FU-2 (Clerk)
+            and FU-3 (OIDC) in the P5 implementation plan.
+
+        Raises:
+            ValueError: If the provider is unrecognised or not yet implemented.
+        """
+        raw = str(self.auth.get("provider", "none"))
+        if raw not in _VALID_AUTH_PROVIDERS:
+            raise ValueError(
+                f"auth.provider={raw!r} is not a recognised provider. "
+                f"Must be one of: {', '.join(sorted(_VALID_AUTH_PROVIDERS))}"
+            )
+        if raw not in _IMPLEMENTED_AUTH_PROVIDERS:
+            raise ValueError(
+                f"auth.provider={raw!r} is not yet implemented. "
+                f"Supported: none, local_static. (clerk/oidc: see FU-2/FU-3)"
+            )
+        return raw
+
+    def auth_local_static_tokens(self) -> list[dict]:
+        """Return ``auth.local_static.tokens`` with default ``[]``.
+
+        Each entry is a dict with keys:
+
+        ``token_env``
+            Name of the environment variable holding the secret token value.
+            The token value MUST live in the env var — never inline in
+            ``foundry.yaml``.
+        ``user_id``
+            User identifier returned on a match (e.g. ``"alice"``).
+        ``workspace_id``
+            Workspace the token grants access to (e.g. ``"default"``).
+        ``roles``
+            List of role strings for this user in the workspace
+            (e.g. ``["owner"]``, ``["researcher"]``).
+
+        Returns an empty list when ``auth.local_static`` or
+        ``auth.local_static.tokens`` is absent — the ``LocalStaticAuthProvider``
+        will then reject all requests (fail-closed).
+        """
+        local_static = self.auth.get("local_static", {})
+        if not isinstance(local_static, dict):
+            return []
+        tokens = local_static.get("tokens", [])
+        return list(tokens) if isinstance(tokens, list) else []
+
+    def is_auth_enabled(self) -> bool:
+        """Return ``True`` when any auth mechanism is enabled.
+
+        Checks both the canonical ``auth.provider`` block (P5 path) and the
+        legacy ``viewer.auth_mode`` field so that non-loopback safety gates
+        accept either auth configuration style.
+
+        Returns ``True`` when:
+          - ``auth.provider`` is non-``"none"`` (new canonical path), OR
+          - ``viewer.auth_mode`` is ``"token"`` (legacy path).
+
+        Returns ``False`` when both are absent or explicitly set to ``"none"``.
+
+        This method never raises — unrecognised or unimplemented provider
+        values are treated as ``"none"`` to avoid masking the gate failure.
+        Used by the ``rf serve`` pre-bind gate.
+        """
+        # New canonical path: auth.provider != "none"
+        try:
+            provider = self.auth_provider()
+        except (ValueError, Exception):  # noqa: BLE001 — unrecognised/unimplemented → treat as none
+            provider = "none"
+        if provider != "none":
+            return True
+        # Legacy path: viewer.auth_mode == "token"
+        try:
+            auth_mode = self.viewer_auth_mode()
+        except Exception:  # noqa: BLE001
+            auth_mode = "none"
+        return auth_mode == "token"
 
 
 __all__ = [

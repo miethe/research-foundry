@@ -39,6 +39,38 @@ foundry:
   viewer:
     sensitivity_threshold: public
 
+  # Authentication provider for ``rf serve`` (P5.1 canonical auth selector).
+  #
+  # provider values:
+  #   none         — no auth middleware; all requests pass through
+  #                  (default; safe for loopback-only mode)
+  #   local_static — multi-token Bearer → identity mapping; suitable for
+  #                  air-gapped, self-hosted, and single-operator LAN
+  #                  deployments; token values live in env vars, never here
+  #   clerk        — Clerk.dev JWT / session-token auth (future: see FU-2)
+  #   oidc         — Generic OIDC/JWT auth (future: see FU-3)
+  #
+  # NOTE: clerk and oidc are accepted vocabulary but raise a clear error at
+  # startup until their adapters ship.  Set provider: local_static to enable
+  # the air-gapped multi-user flow described below.
+  #
+  # auth:
+  #   provider: none        # change to local_static to require auth
+  #
+  # Example: two-user local_static setup (uncomment and populate env vars)
+  # auth:
+  #   provider: local_static
+  #   local_static:
+  #     tokens:
+  #       - token_env: RF_TOKEN_ALICE        # export RF_TOKEN_ALICE=<secret>
+  #         user_id: alice
+  #         workspace_id: default
+  #         roles: [owner]
+  #       - token_env: RF_TOKEN_BOB          # export RF_TOKEN_BOB=<secret>
+  #         user_id: bob
+  #         workspace_id: default
+  #         roles: [researcher]
+
   adapters:
     claude_agent_sdk: enabled
     claude_code: enabled

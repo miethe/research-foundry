@@ -10,7 +10,7 @@ still being built.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
 import typer
 from rich.console import Console
@@ -111,6 +111,82 @@ def _local_council_fallback(run_id: str, console: Console, svc: object) -> None:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(1) from e
     console.print(f"[green]council review (local)[/green] {path}")
+
+
+def _validate_nonloopback_bind(
+    config: Any,
+    effective_bind_host: str,
+    effective_auth_mode: str,
+    env: Any,
+) -> None:
+    """Validate that a non-loopback bind is safe before any port is opened.
+
+    Raises ``ValueError`` with an actionable message when the bind is unsafe.
+    The ``rf serve`` command calls this and converts ``ValueError`` → exit 1.
+
+    Checks (in order):
+
+    1. Auth must be enabled — either ``config.is_auth_enabled()`` (covers
+       both the new ``auth.provider`` path and the legacy
+       ``viewer.auth_mode`` path) or the CLI-override
+       ``effective_auth_mode`` resolves to ``"token"``.
+    2. At least one resolvable token must exist:
+       - ``auth.provider=local_static``: at least one configured
+         ``token_env`` env var must be non-empty.
+       - Legacy path: the ``viewer.auth_token_env`` env var must be
+         non-empty.
+
+    Args:
+        config: :class:`~research_foundry.config.FoundryConfig` instance.
+        effective_bind_host: The resolved bind address (e.g. ``"0.0.0.0"``).
+        effective_auth_mode: Resolved auth mode string (``"none"`` or
+            ``"token"``); may come from a CLI flag override.
+        env: Mapping to look up env var values (pass ``os.environ``).
+    """
+    # Gate 1: auth must be enabled (from config OR CLI override to "token").
+    if not config.is_auth_enabled() and effective_auth_mode != "token":
+        raise ValueError(
+            f"Cannot bind to non-loopback address {effective_bind_host!r}: "
+            "no auth is configured. Set auth.provider=local_static in "
+            "foundry.yaml or pass --auth-mode token."
+        )
+
+    # Gate 2: verify at least one resolvable token exists.
+    _auth_provider = "none"
+    try:
+        _auth_provider = config.auth_provider()
+    except ValueError:
+        pass  # Unimplemented/unrecognised provider — fall through to legacy check.
+
+    if _auth_provider == "local_static":
+        # New canonical path: at least one local_static token env var must be set.
+        token_configs = config.auth_local_static_tokens()
+        has_any_token = any(
+            bool(env.get(cfg.get("token_env", ""), ""))
+            for cfg in token_configs
+            if cfg.get("token_env")
+        )
+        if not has_any_token:
+            token_envs = [
+                cfg.get("token_env", "")
+                for cfg in token_configs
+                if cfg.get("token_env")
+            ]
+            env_desc = ", ".join(token_envs) if token_envs else "RF_SERVE_TOKEN_*, etc."
+            raise ValueError(
+                f"Cannot bind to non-loopback address: "
+                f"auth.provider=local_static is configured but no token env vars "
+                f"({env_desc}) are set. Set at least one token env var before "
+                f"binding to {effective_bind_host}."
+            )
+    else:
+        # Legacy path: viewer.auth_mode=token requires the token env var to be set.
+        token_env_var = config.viewer_auth_token_env()
+        token_value = env.get(token_env_var, "")
+        if not token_value:
+            raise ValueError(
+                f"{token_env_var} not set; refusing to bind on {effective_bind_host}"
+            )
 
 
 def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
@@ -1977,41 +2053,43 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         # Resolve effective bind_host: CLI flag takes precedence over config.
         effective_bind_host = bind_host  # CLI always provides a default
 
-        # --- Fail-closed pre-bind validation (security invariants 1 & 2) -----
-        # Both checks happen BEFORE any call to create_app or uvicorn.run so
-        # that no port is opened when the configuration is unsafe.
+        # --- Step 1: Apply ALL CLI overrides to config BEFORE the gate runs -----
+        # Architectural invariant: the gate and create_app must read the SAME
+        # already-overridden config object. Applying overrides AFTER the gate
+        # created a P1 bypass: the gate saw viewer.auth_mode=token (from YAML),
+        # passed, then create_app saw auth_mode=none (from the CLI override
+        # applied afterwards) and installed no middleware — server bound to LAN
+        # with no auth protection.
+        #
+        # Scope of --auth-mode CLI flag: mutates viewer["auth_mode"] (the legacy
+        # viewer.auth_mode path ONLY). The new auth.provider block (foundry.yaml
+        # `auth:` section) is intentionally NOT overrideable via --auth-mode.
+        # Use foundry.yaml to change auth.provider. This is the safer choice:
+        # a stray --auth-mode none on a deployment using auth.provider=local_static
+        # must NOT silently disable provider-level auth.
+        if auth_mode is not None:
+            config.viewer["auth_mode"] = effective_auth_mode
+        if sensitivity_threshold is not None:
+            config.viewer["sensitivity_threshold"] = sensitivity_threshold
+
+        # --- Step 2: Fail-closed pre-bind validation (security invariants 1 & 2)
+        # Both checks happen AFTER all CLI overrides are applied and BEFORE any
+        # call to create_app or uvicorn.run so that no port is opened when the
+        # configuration is unsafe. Single source of truth: gate and create_app
+        # both read the same already-mutated config instance. Accepts EITHER the
+        # new auth.provider=local_static path (P5) OR the legacy
+        # viewer.auth_mode=token path — see _validate_nonloopback_bind.
         _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
         is_loopback = effective_bind_host in _LOOPBACK_HOSTS
 
         if not is_loopback:
-            # Security invariant 1: 0.0.0.0 (or any non-loopback) without
-            # auth_mode=token is a hard exit before any port is opened.
-            if effective_auth_mode != "token":
-                err_console.print(
-                    f"[red]error:[/red] binding to {effective_bind_host!r} requires "
-                    "--auth-mode token; refusing to bind without authentication."
+            try:
+                _validate_nonloopback_bind(
+                    config, effective_bind_host, effective_auth_mode, _os.environ
                 )
-                raise typer.Exit(1)
-
-            # Security invariant 2: auth_mode=token but token env var unset.
-            token_env_var = config.viewer_auth_token_env()
-            token_value = _os.environ.get(token_env_var, "")
-            if not token_value:
-                err_console.print(
-                    f"[red]error:[/red] {token_env_var} not set; "
-                    f"refusing to bind on {effective_bind_host}"
-                )
-                raise typer.Exit(1)
-
-        # Apply CLI sensitivity_threshold override into the viewer block so the
-        # export service picks it up without a dedicated constructor argument.
-        if sensitivity_threshold is not None:
-            config.viewer["sensitivity_threshold"] = sensitivity_threshold
-
-        # Patch effective auth_mode back into config so create_app sees the
-        # CLI-overridden value when it calls config.viewer_auth_mode().
-        if auth_mode is not None:
-            config.viewer["auth_mode"] = effective_auth_mode
+            except ValueError as _gate_err:
+                err_console.print(f"[red]error:[/red] {_gate_err}")
+                raise typer.Exit(1) from _gate_err
 
         fastapi_app = create_app(config)
 
