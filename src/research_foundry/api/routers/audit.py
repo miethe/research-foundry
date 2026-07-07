@@ -5,33 +5,40 @@ Exposes read-only access to the append-only audit event log.
 Endpoints:
   GET /api/audit                    — paginated list of audit events
   GET /api/audit/{audit_event_id}   — single audit event detail
+  GET /api/audit/health             — audit store health state
 
 All data flows through :mod:`~research_foundry.services.audit_service`
 (R1 invariant): handlers never touch the sqlite3 DB directly.
 
-NOTE(P5.9): ``require_role("admin")`` guards are intentionally absent from
-this phase — they depend on P5.2 (RBAC middleware) which ships in a later
-batch.  Add them once P5.2 merges.
+Access control: all three routes require ``owner`` or ``admin`` role (RBAC-006).
+In single-operator mode (auth.provider=none / no identity on request.state),
+the gate passes unconditionally per the require_role semantics in
+:mod:`~research_foundry.api.auth.rbac`.
 """
 
 from __future__ import annotations
 
-# TODO(P5.9): add require_role("admin") once P5.2 merges
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ..auth.rbac import require_role
 from ...paths import FoundryPaths
 from ...services import audit_service
 from .runs import get_paths
 
 router = APIRouter()
 
-# Module-level singleton (ruff B008: avoid calling Depends() in an argument
+# Module-level singletons (ruff B008: avoid calling Depends() in an argument
 # default expression).  Wraps the same get_paths callable that
 # app.dependency_overrides[get_paths] targets in tests, so overriding still
 # works regardless of where the Depends() instance was constructed.
 _PATHS_DEP = Depends(get_paths)
+
+# RBAC-006: audit data contains actor IDs, workspace IDs, policy snapshots, and
+# failure details — admin-class data.  Gate all three audit routes on owner/admin.
+# Single-operator mode (no identity on request.state) passes unconditionally.
+_RBAC_AUDIT = Depends(require_role("owner", "admin"))
 
 
 @router.get("/audit", summary="List audit events (paginated)")
@@ -44,6 +51,7 @@ def list_audit_events(
     limit: int = Query(50, ge=1, le=200, description="Page size"),
     cursor: str | None = Query(None, description="Pagination cursor (last audit_event_id from prior page)"),
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_AUDIT,
 ) -> dict[str, Any]:
     """Return a cursor-paginated list of audit events, most-recent-first.
 
@@ -66,6 +74,7 @@ def list_audit_events(
 @router.get("/audit/health", summary="Audit store health state")
 def get_audit_health(
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_AUDIT,
 ) -> dict[str, Any]:
     """Return the persisted health state of the audit store.
 
@@ -89,6 +98,7 @@ def get_audit_health(
 def get_audit_event(
     audit_event_id: str,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_AUDIT,
 ) -> dict[str, Any]:
     """Return the full detail for *audit_event_id*.
 
