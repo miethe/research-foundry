@@ -1,0 +1,298 @@
+/* RF Runs Viewer — Agents screen styles (P4.5)
+   Uses --it-* design tokens. Classes follow rv- prefix convention. */
+
+/* ── Static-mode info ────────────────────────────────────────────────────────── */
+
+.rv-agents-static-info {
+  padding: var(--it-space-12) var(--it-space-8);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.rv-agents-static-info h1 {
+  font-size: var(--it-text-xl);
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-primary);
+  margin: 0 0 var(--it-space-4);
+}
+
+.rv-agents-static-info p {
+  font-size: var(--it-text-base);
+  color: var(--it-text-secondary);
+  line-height: var(--it-leading-normal);
+  margin: 0;
+}
+
+/* ── Agents screen layout ────────────────────────────────────────────────────── */
+
+.rv-agents {
+  padding: var(--it-space-8) var(--it-space-8);
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-6);
+}
+
+.rv-agents__title {
+  font-size: var(--it-text-xl);
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-primary);
+  margin: 0;
+  letter-spacing: var(--it-tracking-tight);
+}
+
+.rv-agents__policy,
+.rv-agents__launch {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Policy Gate Summary ──────────────────────────────────────────────────────── */
+
+.rv-policy-gate {
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-md);
+  padding: var(--it-space-4) var(--it-space-5);
+}
+
+.rv-policy-gate--empty {
+  padding: var(--it-space-5);
+}
+
+.rv-policy-gate__header {
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  margin: 0 0 var(--it-space-3);
+}
+
+.rv-policy-gate__placeholder {
+  color: var(--it-text-tertiary);
+  font-size: var(--it-text-sm);
+  margin: 0;
+  font-style: italic;
+}
+
+.rv-policy-gate__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--it-text-sm);
+}
+
+.rv-policy-gate__table th {
+  text-align: left;
+  font-weight: var(--it-weight-medium);
+  color: var(--it-text-secondary);
+  padding: var(--it-space-1_5) var(--it-space-3) var(--it-space-1_5) 0;
+  width: 110px;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.rv-policy-gate__table td {
+  color: var(--it-text-primary);
+  padding: var(--it-space-1_5) 0;
+  line-height: var(--it-leading-normal);
+}
+
+.rv-policy-gate__table td code {
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+  background: var(--it-neutral-100);
+  padding: 2px 6px;
+  border-radius: var(--it-radius-xs);
+  color: var(--it-text-secondary);
+}
+
+/* ── Launch Form wrapper ─────────────────────────────────────────────────────── */
+
+.rv-launch-form__wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-3);
+}
+
+/* ── Governance rejection / generic error banners ────────────────────────────── */
+
+.rv-launch-form__rejection {
+  padding: var(--it-space-3) var(--it-space-4);
+  background: var(--it-red-50);
+  border: 1px solid rgba(176, 52, 52, 0.20);
+  border-radius: var(--it-radius-sm);
+  color: var(--it-red-600);
+}
+
+.rv-launch-form__rejection strong {
+  display: block;
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-semibold);
+  margin-bottom: var(--it-space-2);
+}
+
+.rv-launch-form__rejection ul {
+  margin: 0;
+  padding-left: var(--it-space-5);
+  font-size: var(--it-text-sm);
+}
+
+.rv-launch-form__rejection li {
+  margin-bottom: var(--it-space-1);
+  line-height: var(--it-leading-normal);
+}
+
+.rv-launch-form__error {
+  padding: var(--it-space-2_5) var(--it-space-3_5, 14px);
+  background: var(--it-red-50);
+  border: 1px solid rgba(176, 52, 52, 0.20);
+  border-radius: var(--it-radius-sm);
+  color: var(--it-red-600);
+  font-size: var(--it-text-sm);
+}
+
+/* ── Launch Form ─────────────────────────────────────────────────────────────── */
+
+.rv-launch-form {
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-md);
+  padding: var(--it-space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-5);
+}
+
+.rv-launch-form__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+}
+
+.rv-launch-form__section-title {
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  margin: 0 0 var(--it-space-2);
+}
+
+.rv-launch-form__fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--it-space-4);
+}
+
+.rv-launch-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1);
+}
+
+.rv-launch-form__field--full {
+  grid-column: 1 / -1;
+}
+
+.rv-launch-form__label {
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-medium);
+  color: var(--it-text-secondary);
+}
+
+.rv-launch-form__label span[aria-hidden] {
+  color: var(--it-red-500);
+  margin-left: 2px;
+}
+
+.rv-launch-form__input,
+.rv-launch-form__select {
+  height: 36px;
+  padding: 0 var(--it-space-2_5);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-sm);
+  background: var(--it-neutral-50);
+  color: var(--it-text-primary);
+  font-size: var(--it-text-sm);
+  font-family: var(--it-font-text);
+  transition: border-color 100ms ease-out, box-shadow 100ms ease-out;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.rv-launch-form__select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238a92a4' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+
+.rv-launch-form__input:focus,
+.rv-launch-form__select:focus {
+  outline: none;
+  border-color: var(--it-blue-400);
+  box-shadow: 0 0 0 3px rgba(59, 111, 189, 0.15);
+}
+
+.rv-launch-form__input::placeholder {
+  color: var(--it-text-muted);
+}
+
+/* Context read-only display */
+.rv-launch-form__context-readonly {
+  background: var(--it-neutral-50);
+  border: 1px solid var(--it-border-subtle);
+  border-radius: var(--it-radius-sm);
+  padding: var(--it-space-2) var(--it-space-3);
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+}
+
+.rv-launch-form__context-label {
+  font-size: var(--it-text-xs);
+  color: var(--it-text-tertiary);
+  font-weight: var(--it-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  margin: 0 0 2px;
+}
+
+/* Governance acknowledgment */
+.rv-launch-form__acknowledge {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--it-space-2_5);
+  padding: var(--it-space-3_5, 14px) var(--it-space-4);
+  background: var(--it-purple-50);
+  border: 1px solid rgba(111, 86, 194, 0.18);
+  border-radius: var(--it-radius-sm);
+  cursor: pointer;
+}
+
+.rv-launch-form__acknowledge input[type="checkbox"] {
+  margin-top: 1px;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--it-purple-500);
+}
+
+.rv-launch-form__acknowledge-label {
+  font-size: var(--it-text-sm);
+  color: var(--it-purple-700);
+  cursor: pointer;
+  line-height: var(--it-leading-normal);
+}
+
+/* Form footer */
+.rv-launch-form__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--it-space-1);
+}

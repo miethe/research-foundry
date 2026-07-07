@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { RFClaim, RFReportAnchorBlock, RFResolvedSource, RFRunExport } from "@/types/rf";
 import { deriveClaimTitle, deriveReportLocationTitle, deriveSourceTitle, shouldRedactSource, titleFromSlug } from "@/lib/runs";
+import { isAgentsLoopbackEnabled } from "@/hooks/useAgentJobs";
 import { deriveAuditHighlight, isFacetEmpty } from "@/lib/auditStateMachine";
 import type { AuditAnchorState } from "@/lib/auditStateMachine";
 import {
@@ -116,6 +118,13 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
     setSelectedBlockId(null);
   }, []);
 
+  // P4.5 UI-5.4 — "Research this" entry point
+  const navigate = useNavigate();
+  const loopbackEnabled = isAgentsLoopbackEnabled();
+  const handleResearchThis = useCallback(() => {
+    navigate("/agents", { state: { input_claim_ids: filteredClaims.map((c) => c.claim_id) } });
+  }, [navigate, filteredClaims]);
+
   const reportTitle = run.title ?? titleFromSlug(run.run_id) ?? run.run_id;
 
   const openClaimModal = useCallback((claimId: string) => {
@@ -147,6 +156,20 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
           <span>Run: <code>{run.run_id}</code></span>
           <span>Schema: {run.schema_version}</span>
           <span>Threshold: {run.sensitivity_threshold ?? "public"}</span>
+          <button
+            type="button"
+            className="it-btn ghost xs rv-research-this-btn"
+            data-testid="research-this-btn"
+            disabled={!loopbackEnabled}
+            title={
+              loopbackEnabled
+                ? "Research filtered claims with an agent job"
+                : "Agents require loopback mode (rf serve + VITE_RUNS_FRONTEND_LOOPBACK_API=true)"
+            }
+            onClick={handleResearchThis}
+          >
+            Research this
+          </button>
         </div>
       </div>
 

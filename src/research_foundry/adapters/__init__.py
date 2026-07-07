@@ -19,6 +19,7 @@ _CONCRETE = (
     "claude_agent_sdk",
     "gpt_researcher",
     "notebooklm",
+    "openai_agents",
     "paperqa2",
     "opencode",
     "litellm_router",

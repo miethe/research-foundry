@@ -19,6 +19,7 @@
  */
 
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import type { RFRunExport } from "@/types/rf";
 import { ReportRenderer }    from "./ReportRenderer";
 import { CompositionSidebar } from "./CompositionSidebar";
@@ -26,6 +27,7 @@ import { ReportOutline } from "./ReportOutline";
 import { extractHeadings } from "./reportOutlineUtils";
 import { ProvenanceModal }    from "@/components/ProvenanceModal/ProvenanceModal";
 import type { ProvenanceModalHandle } from "@/components/ProvenanceModal/ProvenanceModal";
+import { isAgentsLoopbackEnabled } from "@/hooks/useAgentJobs";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -47,6 +49,13 @@ export function ReportOverlay({ run, reportDraft, onOpenProvenance }: ReportOver
 
   // D5: Extract headings from the report draft for the outline
   const headings = useMemo(() => extractHeadings(reportDraft ?? ""), [reportDraft]);
+
+  // P4.5 UI-5.4 — "Research this" entry point
+  const navigate = useNavigate();
+  const loopbackEnabled = isAgentsLoopbackEnabled();
+  const handleResearchReport = useCallback(() => {
+    navigate("/agents", { state: { input_report_id: run.run_id } });
+  }, [navigate, run.run_id]);
 
   const handleClaimSelect = useCallback((claimId: string) => {
     if (onOpenProvenance) onOpenProvenance(claimId);
@@ -149,6 +158,21 @@ export function ReportOverlay({ run, reportDraft, onOpenProvenance }: ReportOver
 
         {/* Right sidebar: ReportOutline (D5) stacked above CompositionSidebar */}
         <aside className="rv-report-overlay__sidebar" data-testid="report-overlay-sidebar">
+          {/* P4.5 UI-5.4 — Research this entry point */}
+          <button
+            type="button"
+            className="it-btn ghost xs rv-research-this-btn"
+            data-testid="report-research-this-btn"
+            disabled={!loopbackEnabled}
+            title={
+              loopbackEnabled
+                ? "Research this report with an agent job"
+                : "Agents require loopback mode (rf serve + VITE_RUNS_FRONTEND_LOOPBACK_API=true)"
+            }
+            onClick={handleResearchReport}
+          >
+            Research this
+          </button>
           {headings.length > 0 && (
             <ReportOutline
               headings={headings}

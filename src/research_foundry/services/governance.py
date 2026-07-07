@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from ..config import FoundryConfig
 from ..errors import ExitCode
@@ -182,6 +183,60 @@ def _redact(secret: str) -> str:
     if len(s) <= 8:
         return s[:2] + "***"
     return f"{s[:4]}…{s[-2:]}"
+
+
+# --- Recursive payload redaction -------------------------------------------
+
+
+def _walk_redact(obj: Any, patterns: list[re.Pattern[str]]) -> Any:
+    """Recursive inner helper for :func:`redact_payload`."""
+
+    if obj is None or isinstance(obj, (bool, int, float)):
+        return obj
+    if isinstance(obj, str):
+        for rx in patterns:
+            if rx.search(obj):
+                return "[REDACTED]"
+        return obj
+    if isinstance(obj, dict):
+        # Walk ALL key types — non-str hashable keys (tuples, ints, …) are
+        # recursed just like values so a secret embedded in a tuple dict-key
+        # cannot bypass the firewall.  Non-str scalar keys (int, float, bool)
+        # are returned unchanged by the scalar guard at the top of this function.
+        return {
+            _walk_redact(k, patterns): _walk_redact(v, patterns)
+            for k, v in obj.items()
+        }
+    if isinstance(obj, tuple):
+        return tuple(_walk_redact(item, patterns) for item in obj)
+    if isinstance(obj, list):
+        return [_walk_redact(item, patterns) for item in obj]
+    return obj
+
+
+def redact_payload(obj: Any, *, config: FoundryConfig | None = None) -> Any:
+    """All agent-job write paths MUST pass data through redact_payload before persistence. Use AgentJobService._safe_write_json() which enforces this automatically.
+
+    Recursively walk *obj* and replace any string matching a secret pattern
+    with ``'[REDACTED]'``.
+
+    Returns a sanitized *copy*; does NOT mutate the original.
+    Handles nested :class:`dict` and :class:`list` values recursively.
+    Scalar types (``None``, ``int``, ``float``, ``bool``) are returned unchanged.
+
+    Parameters
+    ----------
+    obj:
+        The value to sanitize.  Any depth of nesting is supported.
+    config:
+        Optional :class:`FoundryConfig` used to load additional secret patterns.
+        When *None*, the built-in ``_BUILTIN_SECRET_PATTERNS`` are used.
+    """
+
+    pats = _compile(
+        _secret_patterns(config) if config is not None else list(_BUILTIN_SECRET_PATTERNS)
+    )
+    return _walk_redact(obj, pats)
 
 
 # --- Rule evaluation -------------------------------------------------------
@@ -540,4 +595,5 @@ __all__ = [
     "load_run_context",
     "scan_secrets",
     "scan_paths",
+    "redact_payload",
 ]

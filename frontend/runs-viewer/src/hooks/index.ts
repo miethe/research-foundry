@@ -36,3 +36,14 @@ export {
   builderDraftQueryKey,
   builderVersionsQueryKey,
 } from "./useBuilder.js";
+export {
+  isAgentsLoopbackEnabled,
+  useAgentJob,
+  useAgentJobArtifacts,
+  useLaunchAgentJob,
+  useCancelAgentJob,
+  useAcceptAgentJobArtifacts,
+  useAgentJobEvents,
+  agentJobQueryKey,
+  agentJobArtifactsQueryKey,
+} from "./useAgentJobs.js";

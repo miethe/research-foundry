@@ -11,6 +11,45 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Agent Jobs API — Embedded Research with Credential Isolation (P4)**
+
+- **`/api/agent-jobs` HTTP endpoints** — Launch, list, stream events, accept, cancel, and query status for governed agent research jobs. Jobs run under subprocess-per-job credential isolation (ADR-002: Credential Process Isolation), preventing provider credentials from leaking into job artifacts, browser network traffic, or telemetry payloads.
+  - `POST /api/agent-jobs/launch` — Start a new agent research job with a provider profile reference and optional parameters. Credentials are staged in a job-scoped temp file (0600 permissions, unlinked after provider reads).
+  - `GET /api/agent-jobs` — List all jobs with filtering by status, provider, workspace.
+  - `GET /api/agent-jobs/{id}/events` — Server-Sent Events (SSE) stream of job lifecycle events (queued, running, completed, failed, cancelled).
+  - `POST /api/agent-jobs/{id}/accept` — Human acceptance endpoint; moves staged outputs to the catalog. Only accepted outputs appear in report drafts or writebacks.
+  - `POST /api/agent-jobs/{id}/cancel` — Cancel a running job (soft: allows graceful shutdown; hard: force-terminate subprocess).
+  - `GET /api/agent-jobs/{id}/status` — Get current job status and telemetry summary (event count, cost estimate, key fingerprint).
+
+- **ResearchAgentProvider abstraction & adapters** — `claude_agent_sdk` (Claude Agent SDK) and `openai_agents` (OpenAI Agents) provider adapters, both running in isolated subprocesses. Loopback/single-operator deployment only pre-P5 (hard exposure gate per ADR-002). Non-loopback deployment requires Mode-D Gate #4 sign-off (pepper storage finalization).
+
+- **Security properties — SEC-2.1 through SEC-2.3 compliance**:
+  - SEC-2.1: Subprocess isolation per `services/agent_job_service.py::spawn_agent_subprocess()` — each job runs in its own process with a scoped temp-file credential.
+  - SEC-2.2: Credential temp-file delivery (0600, unlinked after read) via `services/governance.py::stage_temp_credential_file()` — credentials never passed as environment variables (which would leak to grandchild processes).
+  - SEC-2.3: Write-time redaction firewall at `services/agent_job_service.py::accept_job_outputs()` — all staged artifacts are scanned and sensitive fields redacted before catalog/report migration per the active sensitivity threshold.
+  - FR-14 Key Fingerprinting: Salted HMAC of provider credential (interim pepper via `foundry.yaml` key-profile). Fingerprints logged in `telemetry.job_event` rows; raw credentials never stored or logged.
+
+- **`agents.enabled` feature flag** — Routes return 404 with feature-flag-off (default for production safety); flag-on enables the full governed job flow. Configurable in `config/governance.yaml`.
+
+- **`rf agent-job` CLI commands** — New command family under `cli/agent_jobs.py`:
+  - `rf agent-job launch --provider <name> [--params <json>]` — Launch a job and return the job ID.
+  - `rf agent-job list [--filter <status>]` — List jobs in the current workspace (JSON or table output).
+  - `rf agent-job stream <id>` — Stream events (SSE) to stdout for a running job in real-time.
+  - `rf agent-job accept <id>` — Accept staged outputs and merge them into the catalog.
+  - `rf agent-job status <id>` — Show current status, event count, cost, key fingerprint, and provider metadata.
+
+- **Job durable state** — New `FoundryPaths.agent_jobs/<id>/` directory structure (mirrors `runs/<id>/` pattern):
+  - `job.yaml` — Immutable job metadata (provider, parameters, created_by, workspace_id, key_fingerprint).
+  - `events/` — Sequential event log (NDJSON: `timestamp`, `type`, `payload`, `redacted` flag).
+  - `staged_outputs/` — Artifacts pending human acceptance (sources, extracted points, inference claims).
+  - `accepted_outputs/` — Outputs moved to the catalog after acceptance.
+
+- **Governance & audit** — Job lifecycle and credential handling governed by existing key profiles and policy rules (`config/governance.yaml`); new `job_event` telemetry rows include `key_fingerprint`, provider name, job status, cost, and accept/reject decision for full audit trail.
+
+- **Mode-D Gate #3 (deferred post-merge)** — Real-trace write-time redaction verification; will validate the redaction firewall against a live agent job run (not a synthetic fixture). Deferred to P4.7 post-merge validation.
+
+- **Mode-D Gate #4 (sign-off pending)** — Server pepper storage location (interim: `foundry.yaml` key-profile, final design pending operator sign-off). Blocks non-loopback deployment until resolved per ADR-002.
+
 #### **AOS Correlation IDs — Run Export Schema 1.4**
 
 - **AOS correlation metadata** — `rf run export --json` now emits nullable

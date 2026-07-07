@@ -1,41 +1,51 @@
 ---
-title: "Implementation Plan: Public Multi-User P4 — Embedded Agent Research"
+title: "Implementation Plan: Public Multi-User P4 \u2014 Embedded Agent Research"
 schema_version: 2
 doc_type: implementation_plan
 it_schema: 1
-status: draft
-created: 2026-07-06
-updated: 2026-07-06
+status: completed
+created: '2026-07-06'
+updated: '2026-07-07'
 feature_slug: public-multiuser-p4-agents
-feature_version: "v1"
+feature_version: v1
 tier: 3
 prd_ref: docs/project_plans/PRDs/features/public-multiuser-p4-agents-v1.md
 plan_ref: null
-scope: "Native, governed embedded-agent research jobs (ResearchAgentProvider abstraction, job model, event streaming, human-acceptance workflow) integrated with the existing Search Router and catalog, under subprocess credential isolation per SPIKE ADR-002; auth/RBAC enforcement stays P5."
-effort_estimate: "24 pts (Tier 3)"
-architecture_summary: "api/routers/agent_jobs.py (thin HTTP) -> services/agent_job_service.py (lifecycle, subprocess orchestration, staging) -> services/agent_providers/{base,claude_agent_sdk,openai_agents}.py (provider Protocol + registry) -> provider SDK in a per-job subprocess. Job durable state is file-canonical (new FoundryPaths agent_jobs/<id>/ accessor); any sqlite index is rebuildable-cache-only. Frontend /agents route reuses the P3 loopback-gating pattern (isBuilderLoopbackEnabled -> isAgentsLoopbackEnabled)."
+scope: Native, governed embedded-agent research jobs (ResearchAgentProvider abstraction,
+  job model, event streaming, human-acceptance workflow) integrated with the existing
+  Search Router and catalog, under subprocess credential isolation per SPIKE ADR-002;
+  auth/RBAC enforcement stays P5.
+effort_estimate: 24 pts (Tier 3)
+architecture_summary: api/routers/agent_jobs.py (thin HTTP) -> services/agent_job_service.py
+  (lifecycle, subprocess orchestration, staging) -> services/agent_providers/{base,claude_agent_sdk,openai_agents}.py
+  (provider Protocol + registry) -> provider SDK in a per-job subprocess. Job durable
+  state is file-canonical (new FoundryPaths agent_jobs/<id>/ accessor); any sqlite
+  index is rebuildable-cache-only. Frontend /agents route reuses the P3 loopback-gating
+  pattern (isBuilderLoopbackEnabled -> isAgentsLoopbackEnabled).
 related_documents:
-  - docs/project_plans/design-specs/public-multiuser-release-handoff-v1.md
-  - docs/project_plans/exploration/credential-process-isolation/credential-process-isolation-charter.md
-  - docs/project_plans/implementation_plans/public-multiuser-p2p3-opus-handoff.md
-  - docs/project_plans/human-briefs/public-multiuser-p4-agents.md
-  - .claude/worknotes/public-multiuser-p4-agents/decisions-block.md
-  - docs/project_plans/implementation_plans/features/public-multiuser-p5-auth-rbac-v1.md
+- docs/project_plans/design-specs/public-multiuser-release-handoff-v1.md
+- docs/project_plans/exploration/credential-process-isolation/credential-process-isolation-charter.md
+- docs/project_plans/implementation_plans/public-multiuser-p2p3-opus-handoff.md
+- docs/project_plans/human-briefs/public-multiuser-p4-agents.md
+- .claude/worknotes/public-multiuser-p4-agents/decisions-block.md
+- docs/project_plans/implementation_plans/features/public-multiuser-p5-auth-rbac-v1.md
 references:
   user_docs: []
   context:
-    - .claude/rules/delegation-modes.md
+  - .claude/rules/delegation-modes.md
   specs:
-    - docs/project_plans/design-specs/public-multiuser-release-handoff-v1.md
+  - docs/project_plans/design-specs/public-multiuser-release-handoff-v1.md
   related_prds:
-    - docs/project_plans/implementation_plans/public-multiuser-p2p3-opus-handoff.md
+  - docs/project_plans/implementation_plans/public-multiuser-p2p3-opus-handoff.md
 spike_ref: docs/project_plans/SPIKEs/public-multiuser-p4p5-foundations-spike.md
 adr_refs:
-  - "ADR-002 (in spike_ref) — P4 agent-job credential isolation (subprocess, scoped narrowly): accepted"
-deferred_items_spec_refs: []
+- "ADR-002 (in spike_ref) \u2014 P4 agent-job credential isolation (subprocess, scoped\
+  \ narrowly): accepted"
+deferred_items_spec_refs:
+- docs/project_plans/design-specs/agent-job-spawn-latency-fu1.md
 findings_doc_ref: null
 charter_ref: docs/project_plans/exploration/credential-process-isolation/credential-process-isolation-charter.md
-changelog_ref: null
+changelog_ref: CHANGELOG.md
 changelog_required: true
 test_plan_ref: null
 plan_structure: unified
@@ -44,156 +54,251 @@ owner: nick
 contributors: []
 priority: high
 risk_level: high
-category: "product-planning"
-tags: [implementation, planning, phases, tasks, agents, credential-isolation, public-multiuser-release]
-milestone: "public-multiuser-release Phase 4"
-commit_refs: []
+category: product-planning
+tags:
+- implementation
+- planning
+- phases
+- tasks
+- agents
+- credential-isolation
+- public-multiuser-release
+milestone: public-multiuser-release Phase 4
+commit_refs:
+- 5a35f62
+- b6f7e6b
+- 8cdc0f3
+- 04c10ff
+- c9ffdef
+- 7c21790
+- 023ce39
 pr_refs: []
 files_affected: []
 planning_maturity: in_progress
 open_questions:
-  - {q: "OQ-A: Does the SSE event stream reuse the existing runs-viewer streaming transport, or a new endpoint?", owner: nick, status: open}
-  - {q: "OQ-B: Job-scoped staging store location — under <workspace>/.rf_cache/ (rebuildable) or <workspace>/agent_jobs/<id>/ (durable, mirrors report_draft_dir)? Recommend durable.", owner: nick, status: open}
-  - {q: "PRD OQ-4: Does job cancellation need partial-credit acceptance of already-produced artifacts, or is cancel-then-nothing-stageable-is-lost acceptable for v1?", owner: nick, status: open}
-  - {q: "PRD OQ-1 (provider order): resolved — see decisions below.", owner: nick, status: resolved}
-  - {q: "PRD OQ-2 (pepper storage): resolved for the P4 interim design — final location is Mode-D Gate #4, see decisions below.", owner: nick, status: resolved}
-  - {q: "PRD OQ-3 (FU-1 blocking?): resolved — see decisions below.", owner: nick, status: resolved}
+- q: 'OQ-A: Does the SSE event stream reuse the existing runs-viewer streaming transport,
+    or a new endpoint?'
+  owner: nick
+  status: open
+- q: "OQ-B: Job-scoped staging store location \u2014 under <workspace>/.rf_cache/\
+    \ (rebuildable) or <workspace>/agent_jobs/<id>/ (durable, mirrors report_draft_dir)?\
+    \ Recommend durable."
+  owner: nick
+  status: open
+- q: 'PRD OQ-4: Does job cancellation need partial-credit acceptance of already-produced
+    artifacts, or is cancel-then-nothing-stageable-is-lost acceptable for v1?'
+  owner: nick
+  status: open
+- q: "PRD OQ-1 (provider order): resolved \u2014 see decisions below."
+  owner: nick
+  status: resolved
+- q: "PRD OQ-2 (pepper storage): resolved for the P4 interim design \u2014 final location\
+    \ is Mode-D Gate #4, see decisions below."
+  owner: nick
+  status: resolved
+- q: "PRD OQ-3 (FU-1 blocking?): resolved \u2014 see decisions below."
+  owner: nick
+  status: resolved
 decisions:
-  - {decision: "claude_agent_sdk ships first; openai_agents second (resolves PRD OQ-1)", rationale: "Scaffold exists (adapters/claude_agent_sdk.py degraded stub); it is the more-constrained adapter, so the credential-isolation boundary + job model stabilize on the simpler surface before the higher-risk openai_agents tool-loop is added", status: locked}
-  - {decision: "Server pepper (HMAC key-fingerprint) delivered via env var referenced from a foundry.yaml key-profile (resolves PRD OQ-2); final storage is Mode-D Gate #4", rationale: "Consistent with RF's existing key-profile credential handling; avoids a new secrets subsystem; OS keyring left as an opt-in follow-up", status: locked}
-  - {decision: "FU-1 spawn-latency benchmark runs EARLY in P4.2, non-blocking; implementation proceeds against the subprocess design in parallel; in-process scoping is the documented fallback only if prohibitive (resolves PRD OQ-3)", rationale: "SPIKE ADR-002 names in-process scoping as the fallback; blocking the whole phase on a benchmark wastes the critical path", status: locked}
-  - {decision: "Subprocess-per-agent-job isolation for the SDK adapters only; static adapters stay in-process (ADR-002)", rationale: "Locked by SPIKE; live tool-use loop is a new risk class", status: locked}
-  - {decision: "Credentials via job-scoped temp file (0600, unlinked after read), never env var (ADR-002)", rationale: "Env inheritance re-leaks into tool grandchildren", status: locked}
-  - {decision: "Agent outputs stage for human acceptance only; no direct catalog/report/writeback path (exit-7 HITL)", rationale: "Spec §4 agents-propose-humans-accept; ADR-002 agent_job_output_requires_review", status: locked}
-  - {decision: "P4 carries nullable workspace_id/created_by unenforced (D12); auth/RBAC enforcement is P5", rationale: "Keeps P4 out of P5 Mode-D auth territory; migration-free handoff to P5", status: locked}
+- decision: claude_agent_sdk ships first; openai_agents second (resolves PRD OQ-1)
+  rationale: Scaffold exists (adapters/claude_agent_sdk.py degraded stub); it is the
+    more-constrained adapter, so the credential-isolation boundary + job model stabilize
+    on the simpler surface before the higher-risk openai_agents tool-loop is added
+  status: locked
+- decision: 'Server pepper (HMAC key-fingerprint) delivered via env var referenced
+    from a foundry.yaml key-profile (resolves PRD OQ-2); final storage is Mode-D Gate
+    #4'
+  rationale: Consistent with RF's existing key-profile credential handling; avoids
+    a new secrets subsystem; OS keyring left as an opt-in follow-up
+  status: locked
+- decision: FU-1 spawn-latency benchmark runs EARLY in P4.2, non-blocking; implementation
+    proceeds against the subprocess design in parallel; in-process scoping is the
+    documented fallback only if prohibitive (resolves PRD OQ-3)
+  rationale: SPIKE ADR-002 names in-process scoping as the fallback; blocking the
+    whole phase on a benchmark wastes the critical path
+  status: locked
+- decision: Subprocess-per-agent-job isolation for the SDK adapters only; static adapters
+    stay in-process (ADR-002)
+  rationale: Locked by SPIKE; live tool-use loop is a new risk class
+  status: locked
+- decision: Credentials via job-scoped temp file (0600, unlinked after read), never
+    env var (ADR-002)
+  rationale: Env inheritance re-leaks into tool grandchildren
+  status: locked
+- decision: Agent outputs stage for human acceptance only; no direct catalog/report/writeback
+    path (exit-7 HITL)
+  rationale: "Spec \xA74 agents-propose-humans-accept; ADR-002 agent_job_output_requires_review"
+  status: locked
+- decision: P4 carries nullable workspace_id/created_by unenforced (D12); auth/RBAC
+    enforcement is P5
+  rationale: Keeps P4 out of P5 Mode-D auth territory; migration-free handoff to P5
+  status: locked
 decision_gates:
-  - {gate: "Mode-D Gate #1: human approval BEFORE any subprocess-spawn or credential-file code is written (P4.2 entry)", status: pending}
-  - {gate: "Mode-D Gate #2: human approval BEFORE the first live job runs with real (non-test) provider keys (P4.3)", status: pending}
-  - {gate: "Mode-D Gate #3: human approval verifying the write-time redaction guard against a REAL run trace, not a synthetic fixture (P4.7)", status: pending}
-  - {gate: "Mode-D Gate #4: human sign-off on the server pepper storage location before the key-fingerprint feature ships (P4.7)", status: pending}
+- gate: 'Mode-D Gate #1: human approval BEFORE any subprocess-spawn or credential-file
+    code is written (P4.2 entry)'
+  status: approved
+  approved_by: nick
+  approved_at: '2026-07-07'
+  reviewed: 'ADR-002 credential-isolation design: subprocess-per-job spawn, 0600 temp-file
+    creds unlinked after read, write-time redaction firewall, salted-HMAC key fingerprint
+    (interim pepper via foundry.yaml key-profile)'
+- gate: 'Mode-D Gate #2: human approval BEFORE the first live job runs with real (non-test)
+    provider keys (P4.3)'
+  status: pending
+- gate: 'Mode-D Gate #3: human approval verifying the write-time redaction guard against
+    a REAL run trace, not a synthetic fixture (P4.7)'
+  status: pending
+- gate: 'Mode-D Gate #4: human sign-off on the server pepper storage location before
+    the key-fingerprint feature ships (P4.7)'
+  status: approved
+  approved_by: nick
+  approved_at: '2026-07-07'
+  decision: 'Option A (pepper via env var referenced from a foundry.yaml key-profile)
+    approved for pre-P5 loopback-only deployment; Option B (OS keyring) required before
+    any non-loopback/public exposure. Missing RF_KEY_PROFILE_PEPPER must log a loud
+    startup warning; fail-closed enforcement deferred to P5. (Closes Codex firewall
+    review MED #6.)'
 success_metrics:
-  - "0 raw provider credentials observed in job artifacts, event payloads, or browser network traffic across the P4 test suite (secret-scan assertion)."
-  - "100% of accepted-to-catalog agent outputs carry a resolvable created_by_agent_job_id and passed through the acceptance endpoint (no direct-write code path exists)."
-  - "100% of agent_job_event telemetry rows carry a key_fingerprint when a provider credential was resolved for that job."
-  - "0 unapproved catalog/report/file mutations from an agent job in the E2E suite (mutation attempts without acceptance are rejected/staged only)."
+- 0 raw provider credentials observed in job artifacts, event payloads, or browser
+  network traffic across the P4 test suite (secret-scan assertion).
+- 100% of accepted-to-catalog agent outputs carry a resolvable created_by_agent_job_id
+  and passed through the acceptance endpoint (no direct-write code path exists).
+- 100% of agent_job_event telemetry rows carry a key_fingerprint when a provider credential
+  was resolved for that job.
+- 0 unapproved catalog/report/file mutations from an agent job in the E2E suite (mutation
+  attempts without acceptance are rejected/staged only).
 contributors_note: null
 scores: {}
 acceptance_criteria: []
 execution_mode: hybrid
-agent_title: "P4 — Embedded Agent Research (ResearchAgentProvider, job model, credential isolation)"
-agent_summary: "Add one ResearchAgentProvider (claude_agent_sdk first), a governed agent-job model + APIs (launch/stream/artifacts/accept) with subprocess-per-job credential isolation per ADR-002, and a frontend /agents route. Proposed outputs stage for human acceptance only; auth/RBAC stays P5."
+agent_title: "P4 \u2014 Embedded Agent Research (ResearchAgentProvider, job model,\
+  \ credential isolation)"
+agent_summary: Add one ResearchAgentProvider (claude_agent_sdk first), a governed
+  agent-job model + APIs (launch/stream/artifacts/accept) with subprocess-per-job
+  credential isolation per ADR-002, and a frontend /agents route. Proposed outputs
+  stage for human acceptance only; auth/RBAC stays P5.
 agent_context: null
 wave_plan:
   serialization_barriers:
-    - src/research_foundry/api/openapi.json
-    - CHANGELOG.md
-    - frontend/runs-viewer/src/app/AppShell.tsx
+  - src/research_foundry/api/openapi.json
+  - CHANGELOG.md
+  - frontend/runs-viewer/src/app/AppShell.tsx
   phases:
-    - id: P4.1
-      depends_on: []
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/services/agent_providers/base.py
-        - src/research_foundry/services/agent_job_schemas.py
-        - src/research_foundry/paths.py
-        - tests/unit/test_agent_job_schemas.py
-      model: sonnet
-      effort: extended
-      provider: claude
-    - id: P4.2
-      depends_on: [P4.1]
-      isolation: worktree
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/services/agent_job_service.py
-        - src/research_foundry/services/governance.py
-        - src/research_foundry/services/telemetry.py
-        - config/governance.yaml
-        - tests/unit/test_credential_isolation.py
-        - tests/security/test_secret_scan_agent_jobs.py
-      model: sonnet
-      effort: extended
-      provider: claude
-    - id: P4.3
-      depends_on: [P4.2]
-      isolation: shared
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/adapters/claude_agent_sdk.py
-        - src/research_foundry/services/agent_providers/claude_agent_sdk_provider.py
-        - src/research_foundry/services/agent_job_service.py
-        - src/research_foundry/services/search_router/router.py
-        - src/research_foundry/services/source_cards.py
-        - tests/integration/test_agent_job_e2e_claude.py
-      model: sonnet
-      effort: adaptive
-      provider: claude
-    - id: P4.4
-      depends_on: [P4.3]
-      isolation: shared
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/api/routers/agent_jobs.py
-        - src/research_foundry/api/openapi.json
-        - src/research_foundry/services/agent_job_service.py
-        - tests/integration/test_agent_jobs_api.py
-      model: sonnet
-      effort: adaptive
-      provider: claude
-    - id: P4.5
-      depends_on: [P4.3]
-      isolation: shared
-      owner_skills: [frontend-design]
-      files_affected:
-        - frontend/runs-viewer/src/app/AppShell.tsx
-        - frontend/runs-viewer/src/screens/AgentsScreen.tsx
-        - frontend/runs-viewer/src/components/Agents/AgentJobLaunchForm.tsx
-        - frontend/runs-viewer/src/components/Agents/PolicyGateSummary.tsx
-        - frontend/runs-viewer/src/components/Agents/AgentJobEventPanel.tsx
-        - frontend/runs-viewer/src/components/Agents/EvidenceIntakePanel.tsx
-        - frontend/runs-viewer/src/hooks/useAgentJobs.ts
-        - frontend/runs-viewer/src/api/agentJobsClient.ts
-        - frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.tsx
-        - frontend/runs-viewer/src/components/ReportOverlay/ReportOverlay.tsx
-      model: sonnet
-      effort: adaptive
-      provider: claude
-    - id: P4.6
-      depends_on: [P4.4]
-      isolation: shared
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/adapters/openai_agents.py
-        - src/research_foundry/services/agent_providers/openai_agents_provider.py
-        - src/research_foundry/services/agent_job_service.py
-        - tests/integration/test_agent_job_e2e_openai.py
-      model: sonnet
-      effort: adaptive
-      provider: claude
-    - id: P4.7
-      depends_on: [P4.5, P4.6]
-      isolation: shared
-      owner_skills: []
-      files_affected:
-        - tests/security/test_credential_isolation_regression.py
-        - tests/e2e/test_agents_static_loopback_parity.py
-        - docs/project_plans/design-specs/agent-job-spawn-latency-fu1.md
-        - docs/project_plans/design-specs/agent-job-pepper-storage-decision.md
-        - CHANGELOG.md
-        - src/research_foundry/cli/commands/agent_job.py
-      model: sonnet
-      effort: adaptive
-      provider: claude
+  - id: P4.1
+    depends_on: []
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/services/agent_providers/base.py
+    - src/research_foundry/services/agent_job_schemas.py
+    - src/research_foundry/paths.py
+    - tests/unit/test_agent_job_schemas.py
+    model: sonnet
+    effort: extended
+    provider: claude
+  - id: P4.2
+    depends_on:
+    - P4.1
+    isolation: worktree
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/services/agent_job_service.py
+    - src/research_foundry/services/governance.py
+    - src/research_foundry/services/telemetry.py
+    - config/governance.yaml
+    - tests/unit/test_credential_isolation.py
+    - tests/security/test_secret_scan_agent_jobs.py
+    model: sonnet
+    effort: extended
+    provider: claude
+  - id: P4.3
+    depends_on:
+    - P4.2
+    isolation: shared
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/adapters/claude_agent_sdk.py
+    - src/research_foundry/services/agent_providers/claude_agent_sdk_provider.py
+    - src/research_foundry/services/agent_job_service.py
+    - src/research_foundry/services/search_router/router.py
+    - src/research_foundry/services/source_cards.py
+    - tests/integration/test_agent_job_e2e_claude.py
+    model: sonnet
+    effort: adaptive
+    provider: claude
+  - id: P4.4
+    depends_on:
+    - P4.3
+    isolation: shared
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/api/routers/agent_jobs.py
+    - src/research_foundry/api/openapi.json
+    - src/research_foundry/services/agent_job_service.py
+    - tests/integration/test_agent_jobs_api.py
+    model: sonnet
+    effort: adaptive
+    provider: claude
+  - id: P4.5
+    depends_on:
+    - P4.3
+    isolation: shared
+    owner_skills:
+    - frontend-design
+    files_affected:
+    - frontend/runs-viewer/src/app/AppShell.tsx
+    - frontend/runs-viewer/src/screens/AgentsScreen.tsx
+    - frontend/runs-viewer/src/components/Agents/AgentJobLaunchForm.tsx
+    - frontend/runs-viewer/src/components/Agents/PolicyGateSummary.tsx
+    - frontend/runs-viewer/src/components/Agents/AgentJobEventPanel.tsx
+    - frontend/runs-viewer/src/components/Agents/EvidenceIntakePanel.tsx
+    - frontend/runs-viewer/src/hooks/useAgentJobs.ts
+    - frontend/runs-viewer/src/api/agentJobsClient.ts
+    - frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.tsx
+    - frontend/runs-viewer/src/components/ReportOverlay/ReportOverlay.tsx
+    model: sonnet
+    effort: adaptive
+    provider: claude
+  - id: P4.6
+    depends_on:
+    - P4.4
+    isolation: shared
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/adapters/openai_agents.py
+    - src/research_foundry/services/agent_providers/openai_agents_provider.py
+    - src/research_foundry/services/agent_job_service.py
+    - tests/integration/test_agent_job_e2e_openai.py
+    model: sonnet
+    effort: adaptive
+    provider: claude
+  - id: P4.7
+    depends_on:
+    - P4.5
+    - P4.6
+    isolation: shared
+    owner_skills: []
+    files_affected:
+    - tests/security/test_credential_isolation_regression.py
+    - tests/e2e/test_agents_static_loopback_parity.py
+    - docs/project_plans/design-specs/agent-job-spawn-latency-fu1.md
+    - docs/project_plans/design-specs/agent-job-pepper-storage-decision.md
+    - CHANGELOG.md
+    - src/research_foundry/cli/commands/agent_job.py
+    model: sonnet
+    effort: adaptive
+    provider: claude
   waves:
-    - [P4.1]
-    - [P4.2]
-    - [P4.3]
-    - [P4.4, P4.5]
-    - [P4.6]
-    - [P4.7]
+  - - P4.1
+  - - P4.2
+  - - P4.3
+  - - P4.4
+    - P4.5
+  - - P4.6
+  - - P4.7
+merge_branch: main
 ---
 
 # Implementation Plan: Public Multi-User P4 — Embedded Agent Research

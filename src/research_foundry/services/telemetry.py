@@ -8,9 +8,15 @@ derived from on-disk artifacts.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 from ..ids import ccdash_event_id, disambiguate_id, now_iso, today_compact
 from ..paths import FoundryPaths
@@ -123,11 +129,19 @@ def _tools_and_postures(run_paths) -> tuple[list[str], list[str]]:
     return (tools or list(_DEFAULT_TOOLS), postures or list(_DEFAULT_POSTURES))
 
 
-def emit_ccdash_event(run_id: str, *, paths: FoundryPaths | None = None) -> Path:
+def emit_ccdash_event(
+    run_id: str,
+    *,
+    paths: FoundryPaths | None = None,
+    raw_key: str = "",
+) -> Path:
     """Build + write the run's CCDash ``execution_event`` (spec §6.15).
 
     Writes ``runs/<run>/writebacks/ccdash_event.yaml`` and mirrors it into
     ``ccdash/events/<event_id>.yaml``. Validates against ``ccdash_event``.
+
+    *raw_key* is optional: when supplied the ``governance.key_fingerprint``
+    field is populated via :func:`make_key_fingerprint`.
     """
 
     paths = paths or FoundryPaths.discover()
@@ -204,6 +218,7 @@ def emit_ccdash_event(run_id: str, *, paths: FoundryPaths | None = None) -> Path
         "governance": {
             "sensitivity": sensitivity,
             "key_profile_used": key_profile_used,
+            "key_fingerprint": make_key_fingerprint(raw_key) if raw_key else "",
             "policy_passed": verification_passed,
             "violations": [],
         },
@@ -343,6 +358,49 @@ def summarize(period: str = "daily", *, paths: FoundryPaths | None = None) -> Pa
     return summary_path
 
 
+# NOT FOR PRODUCTION — override via RF_KEY_PROFILE_PEPPER env var in production deployments.
+_INTERIM_PEPPER = "rf-interim-pepper-v1"
+
+
+def make_key_fingerprint(raw_key: str, *, pepper: str = "") -> str:
+    """Return a 12-hex-char salted HMAC-SHA256 fingerprint of *raw_key*.
+
+    The pepper is resolved in order: explicit *pepper* kwarg → ``RF_KEY_PROFILE_PEPPER``
+    environment variable → hard-coded interim value (NOT FOR PRODUCTION).
+    """
+    effective_pepper = pepper or os.environ.get("RF_KEY_PROFILE_PEPPER") or ""
+    if not effective_pepper:
+        _logger.warning(
+            "SECURITY: RF_KEY_PROFILE_PEPPER not set; using NON-PRODUCTION interim pepper. "
+            "Set RF_KEY_PROFILE_PEPPER before any non-loopback deployment (P5)."
+        )
+        effective_pepper = _INTERIM_PEPPER
+    digest = hmac.new(
+        effective_pepper.encode(),
+        msg=raw_key.encode(),
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+    return digest[:12]
+
+
+def make_agent_job_telemetry_record(
+    job_id: str,
+    key_profile: str,
+    raw_key: str,
+) -> dict[str, Any]:
+    """Build a minimal agent-job run-start telemetry record.
+
+    Returns a dict with ``job_id``, ``key_profile_used``, ``key_fingerprint``,
+    and ``timestamp``.  Callers may extend with additional fields.
+    """
+    return {
+        "job_id": job_id,
+        "key_profile_used": key_profile,
+        "key_fingerprint": make_key_fingerprint(raw_key),
+        "timestamp": now_iso(),
+    }
+
+
 _MILESTONE_STAGES = frozenset({
     "discovery_started",
     "sources_ingested",
@@ -405,4 +463,11 @@ def push_status(
         return False
 
 
-__all__ = ["emit_ccdash_event", "emit_latest_or_noop", "summarize", "push_status"]
+__all__ = [
+    "emit_ccdash_event",
+    "emit_latest_or_noop",
+    "make_agent_job_telemetry_record",
+    "make_key_fingerprint",
+    "push_status",
+    "summarize",
+]

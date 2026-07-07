@@ -18,6 +18,12 @@ Endpoints registered by this factory:
   POST/GET /api/reports                  — Builder draft create/list (P3 Wave E)
   GET/DELETE /api/reports/{report_id}    — Builder draft detail/delete (rpt_ ids only)
   + full Block/ClaimLink/SourceLink/Revision/Verify/PublishPreview/Export sub-routes
+  POST /api/agent-jobs                           — launch agent job (guard-gated, P4.4)
+  GET  /api/agent-jobs/{id}                      — job detail
+  GET  /api/agent-jobs/{id}/artifacts            — staged (unaccepted) artifacts
+  GET  /api/agent-jobs/{id}/events               — SSE event stream (redacted)
+  POST /api/agent-jobs/{id}/cancel               — cancel + credential cleanup
+  POST /api/agent-jobs/{id}/accept               — SOLE WRITE PATH to catalog/report
   GET /data/governance.json    — governance config snapshot (→ fetchGovernanceConfig)
   GET  /api/catalog/stats                — catalog counts (→ fetchCatalogStats)
   GET  /api/catalog/search                — catalog search (→ fetchCatalogSearch)
@@ -43,6 +49,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ..config import FoundryConfig
 from .middleware.allowlist import IPAllowlistMiddleware
 from .middleware.auth import TokenAuthMiddleware
+from .routers.agent_jobs import router as agent_jobs_router
 from .routers.catalog import router as catalog_router
 from .routers.reports import router as reports_router
 from .routers.runs import router as runs_router
@@ -162,6 +169,12 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # NOTE: GET /api/reports/{run_id}/anchors (runs_router) remains unambiguous
     # because it has a fixed '/anchors' suffix — different path-segment count.
     app.include_router(reports_router, prefix="/api", tags=["reports"])
+    # Agent Jobs API (public-multiuser-release Phase 4 — P4.4).
+    # Only registered when ``agents.enabled=true`` in foundry.yaml; defaults
+    # to disabled (``False``) so the routes are absent in static-export and
+    # shared-LAN deployments until P5 RBAC + workspace-isolation gates clear.
+    if config.agents_enabled():
+        app.include_router(agent_jobs_router, prefix="/api", tags=["agent-jobs"])
 
     return app
 

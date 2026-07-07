@@ -1904,6 +1904,11 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(report_app, name="report")
 
+    # ----- agent-job (FR-20) -----
+    from .cli.commands.agent_job import agent_job_app
+
+    app.add_typer(agent_job_app, name="agent-job")
+
     # ----- serve (loopback API) -----
     @app.command()
     def serve(

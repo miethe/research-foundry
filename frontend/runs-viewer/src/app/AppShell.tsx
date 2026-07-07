@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { applyTheme, getViewerSettings } from "@/lib/viewerSettings";
+import { isAgentsLoopbackEnabled } from "@/hooks";
 import type { ShellSelectionContext } from "./shellContext";
 
 type NavState = "enabled" | "contextual" | "disabled";
@@ -26,7 +27,16 @@ const NAV_ITEMS: NavCapability[] = [
   { label: "Portfolio", short: "PF", state: "enabled", resolveTarget: () => "/runs" },
   { label: "Catalog", short: "CT", state: "enabled", resolveTarget: () => "/catalog" },
   { label: "Builder", short: "BD", state: "enabled", resolveTarget: () => "/builder" },
-  { label: "Agents", short: "AG", state: "disabled", disabledReason: "Planned — governed agent research (Phase 4)" },
+  {
+    label: "Agents",
+    short: "AG",
+    state: "contextual",
+    // HARD RELEASE CONSTRAINT (P4.5): /agents is loopback/single-operator only.
+    // resolveTarget returns null in static export mode → nav item renders disabled.
+    resolveTarget: () => (isAgentsLoopbackEnabled() ? "/agents" : null),
+    disabledReason:
+      "Requires RF API server — start rf serve and set VITE_RUNS_FRONTEND_LOOPBACK_API=true",
+  },
   { label: "Policies", short: "PL", state: "enabled", resolveTarget: () => "/policies" },
   { label: "Alerts", short: "AL", state: "enabled", resolveTarget: () => "/alerts" },
   { label: "Settings", short: "ST", state: "enabled", resolveTarget: () => "/settings" },
@@ -109,6 +119,7 @@ function isActiveNav(label: string, ctx: ShellNavContext): boolean {
   if (label === "Portfolio") return ctx.pathname === "/runs" || Boolean(ctx.routeRunId);
   if (label === "Catalog") return ctx.pathname === "/catalog" || ctx.pathname === "/library";
   if (label === "Builder") return ctx.pathname === "/builder";
+  if (label === "Agents") return ctx.pathname.startsWith("/agents");
   if (label === "Policies") return ctx.pathname === "/policies";
   if (label === "Alerts") return ctx.pathname === "/alerts";
   if (label === "Settings") return ctx.pathname === "/settings";

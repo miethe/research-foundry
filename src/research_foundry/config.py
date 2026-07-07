@@ -194,6 +194,41 @@ class FoundryConfig:
         rules = gov.get("policy_rules", []) if isinstance(gov, dict) else []
         return rules if isinstance(rules, list) else []
 
+    # --- agents block --------------------------------------------------------
+
+    @property
+    def agents(self) -> dict[str, Any]:
+        """The ``agents`` block from ``foundry.yaml``.
+
+        Supported keys and defaults
+        ---------------------------
+        enabled : bool
+            Feature flag that gates the entire Phase 4 agent-job surface
+            (API routes).  Default ``False`` (opt-in; must be explicitly
+            enabled and is only permitted in loopback/single-operator mode
+            pre-P5 — P5.2 RBAC + P5.3 workspace isolation are required
+            before shared-LAN or public exposure).
+        """
+        agents = self.foundry.get("agents", {})
+        return agents if isinstance(agents, dict) else {}
+
+    def agents_enabled(self) -> bool:
+        """Return ``True`` if the agents feature flag is enabled.
+
+        Reads ``foundry.agents.enabled``; defaults to ``False`` when the key
+        is absent (opt-in).  To enable the agent-job surface, set::
+
+            foundry:
+              agents:
+                enabled: false
+
+        in ``foundry.yaml``.  The gate is opt-in: agents are disabled by
+        default.  Set ``enabled: true`` in foundry.yaml to enable the
+        agent-job surface.  This prevents accidental exposure in shared-LAN
+        or static-export deployments before P5 RBAC ships.
+        """
+        return bool(self.agents.get("enabled", False))
+
 
 __all__ = [
     "FoundryConfig",

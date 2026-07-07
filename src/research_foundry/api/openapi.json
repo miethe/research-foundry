@@ -1,0 +1,2538 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Research Foundry API",
+    "description": "Loopback read API for the Research Foundry runs viewer.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Health",
+        "description": "Liveness probe \u2014 always returns 200 ``{\"status\": \"ok\"}``.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/governance.json": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Governance Config",
+        "description": "Return the governance config snapshot.\n\nExtracts ``key_profiles`` and ``policy_rules`` from\n:attr:`~research_foundry.config.FoundryConfig.governance` \u2014 the same\ntwo keys that ``prebuild-static-data.mjs`` writes into the static\n``governance.json``.  Missing keys are emitted as ``null`` so the FE\nalways receives a well-formed :class:`GovernanceConfig` object.",
+        "operationId": "governance_config_data_governance_json_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Governance Config Data Governance Json Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runs": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "List all runs",
+        "description": "Return a summary of every discovered run.\n\nEmpty corpus returns ``[]`` \u2014 never 404.  All data is routed through\n:func:`~research_foundry.services.export_service.list_runs` (R1).",
+        "operationId": "get_run_list_api_runs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Get Run List Api Runs Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get run detail",
+        "description": "Return the full denormalized export for *run_id*.\n\nAll sensitivity redaction is applied by\n:func:`~research_foundry.services.export_service.export_run` (R1).\n\nRaises 404 when the run does not exist.",
+        "operationId": "get_run_detail_api_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Run Detail Api Runs  Run Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runs/{run_id}/claims": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get claim ledger for a run",
+        "description": "Return the claims array from the run's denormalized export.\n\nEmpty ledger returns ``[]`` \u2014 never null.  Propagates 404 when the run\ndoes not exist.  All data routed through export_service (R1).",
+        "operationId": "get_run_claims_api_runs__run_id__claims_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Get Run Claims Api Runs  Run Id  Claims Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runs/{run_id}/sources/{source_card_id}": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get a resolved source from a run's claim graph",
+        "description": "Return the first :class:`RFResolvedSource` whose ``source_card_id``\nmatches *source_card_id*.\n\nScans ``export_run(...)[\"claims\"][*][\"sources\"]`` \u2014 data always routed\nthrough the export service (R1).\n\nRaises 404 when the run is absent or when no claim cites the requested\nsource card.",
+        "operationId": "get_source_card_api_runs__run_id__sources__source_card_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "source_card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Card Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Source Card Api Runs  Run Id  Sources  Source Card Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{run_id}/anchors": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get report anchors for a run",
+        "description": "Return the ``report_anchors`` block for *run_id*.\n\nThe response shape is ``{\"run_id\": str, \"report_anchors\": list | null}``,\nwhere ``report_anchors`` mirrors the same-named field in the run's\n``run.json`` (schema 1.4 / D8).  ``null`` when the run has no report\ndraft.\n\n**Sensitivity gating**: this endpoint ADDS a run-level existence gate on\ntop of export-time field redaction \u2014 an over-threshold run returns 404,\nindistinguishable from an unknown run (fail-closed: existence of hidden\nsensitive runs is not leaked). Sibling run-detail endpoints\n(``get_run_detail`` / ``get_run_claims`` / ``get_source_card``) do NOT\napply this existence gate; they rely solely on ``export_run``'s\nfield-level redaction. Accepts a ``sensitivity_threshold`` query\nparameter, honored consistently for both the existence gate and\nexport-time content filtering (which claims are visible, and therefore\nwhich claim links appear in the derived anchors).",
+        "operationId": "get_run_anchors_api_reports__run_id__anchors_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Run Anchors Api Reports  Run Id  Anchors Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/catalog/stats": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Catalog aggregate counts",
+        "description": "Return per-item-type counts (visible only), runs indexed, last import.\n\nNever raises \u2014 an empty/never-imported catalog returns zeroed counts.",
+        "operationId": "get_catalog_stats_api_catalog_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Catalog Stats Api Catalog Stats Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/catalog/search": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Search the catalog",
+        "description": "Search catalog items. Over-threshold items are excluded (fail-closed).\n\nEmpty corpus / no matches \u2192 ``{\"items\": [], \"total\": 0, ...}`` \u2014 never 404.",
+        "operationId": "get_catalog_search_api_catalog_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "item_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item Type"
+            }
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "sensitivity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sensitivity"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "updated",
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 25,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Catalog Search Api Catalog Search Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/catalog/items/{catalog_item_id}": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Get a catalog item's full detail",
+        "description": "Return the summary fields + payload + links for *catalog_item_id*.\n\n404 for both an unknown id and an id excluded by the resolved sensitivity\nthreshold \u2014 the two cases are indistinguishable to the caller by design\n(fail-closed: existence of hidden sensitive items is not leaked).",
+        "operationId": "get_catalog_item_api_catalog_items__catalog_item_id__get",
+        "parameters": [
+          {
+            "name": "catalog_item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Catalog Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Catalog Item Api Catalog Items  Catalog Item Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/catalog/import/run/{run_id}": {
+      "post": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "(Re)import a single run",
+        "description": "(Re)import one run. Delete-then-insert \u2014 idempotent. 404 on unknown run.",
+        "operationId": "post_catalog_import_run_api_catalog_import_run__run_id__post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Post Catalog Import Run Api Catalog Import Run  Run Id  Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/catalog/import": {
+      "post": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "(Re)import every discovered run",
+        "description": "(Re)import every discovered run. Best-effort \u2014 a malformed run is skipped.\n\n``errors`` carries ``import_all()``'s per-run failure list through to the\ncaller (``[]`` when every run imported cleanly) instead of silently\ndropping it.",
+        "operationId": "post_catalog_import_all_api_catalog_import_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Post Catalog Import All Api Catalog Import Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Create a report draft",
+        "description": "Create a new draft.  Origin-driven dispatch:\n- ``blank`` / ``template`` \u2192 empty draft with optional title/audience/sensitivity\n- ``run``        \u2192 seed blocks from run's report_draft + report_anchors\n- ``collection`` \u2192 one evidence_summary block per catalog item",
+        "operationId": "create_draft_api_reports_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDraftBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Draft Api Reports Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "List report drafts",
+        "description": "Return summary rows for on-disk drafts visible at the resolved\nsensitivity threshold.  Fail-closed (R2 fix): a draft whose sensitivity\nrank exceeds the threshold \u2014 including one with an unrecognized label \u2014\nis silently omitted, mirroring ``catalog_service.search``'s gating.\nEmpty/fully-gated corpus \u2192 ``[]``.",
+        "operationId": "list_drafts_api_reports_get",
+        "parameters": [
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Drafts Api Reports Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Get report draft detail",
+        "description": "Return the full draft state for *report_id* (a ``rpt_`` id).\n\n404 for unknown ids, ids that resolve to a run, AND a draft whose\nsensitivity exceeds the resolved threshold \u2014 all indistinguishable\n(no-existence-leak, landmine #4; R2 fix: this endpoint previously applied\nzero sensitivity gating, unlike ``catalog_service.get_item``).",
+        "operationId": "get_draft_api_reports__report_id__get",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Draft Api Reports  Report Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Delete a report draft",
+        "description": "Delete draft directory (draft.yaml + revisions) and its catalog index row.\n\nIdempotent: deleting a non-existent (but well-formed) draft id returns\n204. A malformed id (bad shape / traversal attempt) 404s instead \u2014 the\nservice layer's :func:`~research_foundry.services.builder_service._draft_dir`\nraises :class:`NotFoundError` before anything is touched on disk.",
+        "operationId": "delete_draft_api_reports__report_id__delete",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}/versions": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "List draft revisions",
+        "description": "Return revision pointer list (report_version_id, created_at, note) for *report_id*.",
+        "operationId": "list_versions_api_reports__report_id__versions_get",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Versions Api Reports  Report Id  Versions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Create a revision snapshot",
+        "description": "Snapshot the current draft state into an immutable revision file.",
+        "operationId": "create_version_api_reports__report_id__versions_post",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRevisionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Version Api Reports  Report Id  Versions Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}/versions/{version_id}": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Get a revision snapshot",
+        "description": "Return the full snapshot for *version_id* under *report_id*.",
+        "operationId": "get_version_api_reports__report_id__versions__version_id__get",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Version Api Reports  Report Id  Versions  Version Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}/versions/{version_id}/restore": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Restore a prior revision",
+        "description": "Overwrite current draft content with the *version_id* snapshot.\n\nCallers wanting a pre-restore checkpoint should POST /versions first.",
+        "operationId": "restore_version_api_reports__report_id__versions__version_id__restore_post",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Restore Version Api Reports  Report Id  Versions  Version Id  Restore Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}/blocks": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Add a block to a draft",
+        "description": "Append a new block to *report_id*.  Returns the full updated draft.",
+        "operationId": "add_block_api_reports__report_id__blocks_post",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddBlockBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Add Block Api Reports  Report Id  Blocks Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}/blocks/reorder": {
+      "patch": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Reorder blocks",
+        "description": "Set block order by supplying the complete ordered list of block_ids.\n\nMust be a permutation of all block ids in the draft (builder_service\nenforces this).",
+        "operationId": "reorder_blocks_api_reports__report_id__blocks_reorder_patch",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderBlocksBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Reorder Blocks Api Reports  Report Id  Blocks Reorder Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}/blocks/{block_id}": {
+      "patch": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Update a block",
+        "description": "Patch one or more fields of *block_id*.  Returns the full updated draft.",
+        "operationId": "update_block_api_reports__report_id__blocks__block_id__patch",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "block_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Block Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBlockBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Block Api Reports  Report Id  Blocks  Block Id  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Delete a block",
+        "description": "Remove *block_id* and its associated claim/source links from *report_id*.\n\nReturns the full updated draft (200) \u2014 R2 fix: this previously answered\n204 No Content while ``builder_service.delete_block`` already computed\nand returned the updated draft, so the frontend's ``Promise<ReportDraft>``\nclient (which writes the response straight into the React Query cache)\nsilently stomped the cache with ``undefined``. Matches the sibling\n``add_block``/``update_block``/``reorder_blocks`` contract.",
+        "operationId": "delete_block_api_reports__report_id__blocks__block_id__delete",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "block_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Block Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Block Api Reports  Report Id  Blocks  Block Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}/claim-links": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Add a claim link",
+        "description": "Link *claim_id* to *block_id*.  Inserts a ``[claim:<id>]`` tag unless\n``insert_tag=false``.  Returns the full updated draft.",
+        "operationId": "add_claim_link_api_reports__report_id__claim_links_post",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddClaimLinkBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Add Claim Link Api Reports  Report Id  Claim Links Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}/claim-links/{claim_link_id}": {
+      "delete": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Remove a claim link",
+        "description": "Remove *claim_link_id* from the draft and recompute block coverage.\n\nReturns the full updated draft (200) \u2014 see ``delete_block`` above for why.",
+        "operationId": "remove_claim_link_api_reports__report_id__claim_links__claim_link_id__delete",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "claim_link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Claim Link Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Remove Claim Link Api Reports  Report Id  Claim Links  Claim Link Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}/source-links": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Add a source link",
+        "description": "Link a source card to the draft (optionally anchored to a block).",
+        "operationId": "add_source_link_api_reports__report_id__source_links_post",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSourceLinkBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Add Source Link Api Reports  Report Id  Source Links Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}/source-links/{source_link_id}": {
+      "delete": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Remove a source link",
+        "description": "Remove *source_link_id* from the draft.\n\nReturns the full updated draft (200) \u2014 see ``delete_block`` above for why.",
+        "operationId": "remove_source_link_api_reports__report_id__source_links__source_link_id__delete",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "source_link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Link Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Remove Source Link Api Reports  Report Id  Source Links  Source Link Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}/verify": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Verify a draft (D13 checks)",
+        "description": "Run all D13 checks against *report_id*.\n\nAlways returns 200 with a structured result (``passed``, per-check details).\nUse /publish-preview for the fail-closed gate.",
+        "operationId": "verify_draft_endpoint_api_reports__report_id__verify_post",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override sensitivity threshold for the body-sensitivity check.",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override sensitivity threshold for the body-sensitivity check."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Verify Draft Endpoint Api Reports  Report Id  Verify Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}/publish-preview": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Publish-preview gate (D13 fail-closed)",
+        "description": "Run D13 checks FAIL-CLOSED and return a Markdown preview on pass.\n\n**Failure behavior (spec \u00a711)**:\n- ``paragraph_has_support`` fails \u2192 ``{ok: false, blocking: [...]}`` + HTTP 422\n- ``report_body_sensitivity`` fails (raw sensitive quote in body) \u2192 same\n- Any other error-severity D13 failure \u2192 same\n\n**Success**: ``{ok: true, preview_markdown: \"...\", checks: [...]}`` + HTTP 200\n\nThe preview Markdown is generated from the current draft blocks.  Nothing\nis persisted \u2014 callers decide whether to actually publish.",
+        "operationId": "publish_preview_api_reports__report_id__publish_preview_post",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override sensitivity threshold for body-sensitivity check (default: draft's own sensitivity label).",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override sensitivity threshold for body-sensitivity check (default: draft's own sensitivity label)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Publish Preview Api Reports  Report Id  Publish Preview Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{report_id}/export": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Export draft as Markdown",
+        "description": "Return the draft rendered as Markdown with YAML frontmatter.\n\nThe response carries ``{\"report_draft_id\": ..., \"markdown\": \"...\"}`` so\ncallers can display or save the output without additional parsing.",
+        "operationId": "export_draft_api_reports__report_id__export_get",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Export Draft Api Reports  Report Id  Export Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-jobs": {
+      "post": {
+        "tags": [
+          "agent-jobs"
+        ],
+        "summary": "Launch a new agent job",
+        "description": "Launch a new agent job, gated by ``governance.guard_check()``.\n\n**Guard gate (API-4.1 invariant):** ``guard_check()`` is called *before*\nany subprocess is spawned.  A rejected guard (exit_code 3 or 7) returns\n422/400 immediately and guarantees no subprocess is spawned.\n\nReturns the created :class:`~research_foundry.services.agent_job_schemas.AgentJob`\nrecord on success (HTTP 201).",
+        "operationId": "launch_job_api_agent_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaunchJobBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Launch Job Api Agent Jobs Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "agent-jobs"
+        ],
+        "summary": "Get agent job detail",
+        "description": "Return status and metadata for *job_id*.\n\nReturns the same indistinguishable 404 for malformed IDs and missing jobs\n(no information leakage about whether the ID format is wrong vs. not found).",
+        "operationId": "get_job_api_agent_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Job Api Agent Jobs  Job Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-jobs/{job_id}/artifacts": {
+      "get": {
+        "tags": [
+          "agent-jobs"
+        ],
+        "summary": "List staged artifacts for a job",
+        "description": "Return staged (not-yet-accepted) artifacts for *job_id*.\n\nDistinct from accepted items: only artifacts with ``accepted == False`` are\nreturned.  Returns the same indistinguishable 404 for malformed IDs and\nmissing jobs (no information leakage).",
+        "operationId": "list_artifacts_api_agent_jobs__job_id__artifacts_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Artifacts Api Agent Jobs  Job Id  Artifacts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-jobs/{job_id}/events": {
+      "get": {
+        "tags": [
+          "agent-jobs"
+        ],
+        "summary": "Stream agent job events (SSE)",
+        "description": "Deliver stage-transition events for *job_id* as a Server-Sent Events stream.\n\n**Security invariant (API-4.3):** every event payload is passed through\n:func:`~research_foundry.services.governance.redact_payload` server-side\nbefore being sent to the client.  Credentials and secrets are never echoed.\n\nUses FastAPI's :class:`~fastapi.responses.StreamingResponse` with\n``media_type=\"text/event-stream\"``.  Events follow the SSE wire format::\n\n    data: {json}\\n\\n\n\nThe stream closes when the job reaches a terminal state or the poll\nlimit (300 s) is reached.",
+        "operationId": "stream_events_api_agent_jobs__job_id__events_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-jobs/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "agent-jobs"
+        ],
+        "summary": "Cancel an agent job",
+        "description": "Cancel *job_id*, guaranteeing credential temp-file cleanup.\n\nCalls :meth:`~research_foundry.services.agent_job_service.AgentJobService.terminate_job`\nthen :meth:`~research_foundry.services.agent_job_service.AgentJobService.cleanup_job`,\nwhich reuses the SEC-2.2 crash-safe cleanup path (credential temp files are\nalways unlinked regardless of child exit status).\n\nAfter cancel, zero staged artifacts are promoted (cancel before accept means\nnothing was accepted \u2014 the existing behaviour is preserved).\n\nReturns 200 on success, 404 if job not found.",
+        "operationId": "cancel_job_api_agent_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Cancel Job Api Agent Jobs  Job Id  Cancel Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-jobs/{job_id}/accept": {
+      "post": {
+        "tags": [
+          "agent-jobs"
+        ],
+        "summary": "Accept agent job output",
+        "description": "Promote staged artifacts from *job_id* into the catalog or report store.\n\n**This is the SOLE WRITE PATH from agent-job staging into catalog/report.**\nNo other route in this router writes directly from agent-job context.\n\nGate: only jobs in ``waiting_for_approval`` or ``completed`` state may be\naccepted.  Jobs in other terminal states (``failed``, ``canceled``) return 422.\n\nAccepted items carry a resolvable ``created_by_agent_job_id`` field pointing\nback to this job.\n\nReturns 200 with a summary of what was accepted.",
+        "operationId": "accept_job_api_agent_jobs__job_id__accept_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptJobBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Accept Job Api Agent Jobs  Job Id  Accept Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AcceptJobBody": {
+        "properties": {
+          "accepted_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted By"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "title": "AcceptJobBody",
+        "description": "Body for POST /api/agent-jobs/{job_id}/accept."
+      },
+      "AddBlockBody": {
+        "properties": {
+          "block_type": {
+            "type": "string",
+            "title": "Block Type",
+            "default": "paragraph"
+          },
+          "markdown": {
+            "type": "string",
+            "title": "Markdown",
+            "default": ""
+          },
+          "order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          },
+          "materiality": {
+            "type": "string",
+            "title": "Materiality",
+            "default": "material"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "title": "AddBlockBody"
+      },
+      "AddClaimLinkBody": {
+        "properties": {
+          "block_id": {
+            "type": "string",
+            "title": "Block Id"
+          },
+          "claim_id": {
+            "type": "string",
+            "title": "Claim Id"
+          },
+          "relation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relation"
+          },
+          "source_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Run Id"
+          },
+          "catalog_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Item Id"
+          },
+          "span_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span Start"
+          },
+          "span_end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span End"
+          },
+          "insert_tag": {
+            "type": "boolean",
+            "title": "Insert Tag",
+            "default": true
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "block_id",
+          "claim_id"
+        ],
+        "title": "AddClaimLinkBody"
+      },
+      "AddSourceLinkBody": {
+        "properties": {
+          "source_card_id": {
+            "type": "string",
+            "title": "Source Card Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "catalog_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Item Id"
+          },
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id"
+          },
+          "relation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relation"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_card_id"
+        ],
+        "title": "AddSourceLinkBody"
+      },
+      "CreateDraftBody": {
+        "properties": {
+          "origin": {
+            "type": "string",
+            "title": "Origin",
+            "default": "blank"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "default": "Untitled Draft"
+          },
+          "source_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Run Id"
+          },
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "catalog_item_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Item Ids"
+          },
+          "audience": {
+            "type": "string",
+            "title": "Audience",
+            "default": "self"
+          },
+          "sensitivity": {
+            "type": "string",
+            "title": "Sensitivity",
+            "default": "public"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "sensitivity_threshold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sensitivity Threshold"
+          }
+        },
+        "type": "object",
+        "title": "CreateDraftBody",
+        "description": "Body for POST /api/reports.\n\n*origin* drives dispatch:\n  \"blank\"      \u2192 create_draft (empty)\n  \"template\"   \u2192 create_draft (title/audience/sensitivity only; no source)\n  \"run\"        \u2192 create_draft_from_run (requires source_run_id)\n  \"collection\" \u2192 create_draft_from_collection (requires catalog_item_ids)"
+      },
+      "CreateRevisionBody": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          }
+        },
+        "type": "object",
+        "title": "CreateRevisionBody"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LaunchJobBody": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "model_profile": {
+            "type": "string",
+            "title": "Model Profile"
+          },
+          "request_kind": {
+            "type": "string",
+            "title": "Request Kind"
+          },
+          "policy_snapshot": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Policy Snapshot"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "default": "default"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "input_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Input Claim Ids",
+            "default": []
+          },
+          "input_source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Input Source Ids",
+            "default": []
+          },
+          "input_report_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Report Id"
+          },
+          "budget_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Usd"
+          },
+          "max_runtime_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Runtime Minutes"
+          },
+          "credential_b64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential B64"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "model_profile",
+          "request_kind",
+          "policy_snapshot"
+        ],
+        "title": "LaunchJobBody",
+        "description": "Body for POST /api/agent-jobs.\n\n``policy_snapshot`` is required and must contain at least\n``allowed_tools`` and ``data_scopes`` (validated by\n:func:`~research_foundry.services.agent_job_schemas.validate_agent_job`).\n``workspace_id`` and ``created_by`` are nullable (D12 \u2014 auth in P5).\n``credential_b64`` is the base64-encoded raw credential bytes forwarded to\nthe spawned subprocess; omit (or pass ``null``) to use empty bytes."
+      },
+      "ReorderBlocksBody": {
+        "properties": {
+          "block_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Block Ids"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "block_ids"
+        ],
+        "title": "ReorderBlocksBody"
+      },
+      "UpdateBlockBody": {
+        "properties": {
+          "markdown": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Markdown"
+          },
+          "block_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Type"
+          },
+          "materiality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Materiality"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          },
+          "risk_flags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Flags"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "title": "UpdateBlockBody"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

@@ -135,6 +135,15 @@ class FoundryPaths:
     def report_draft_dir(self, report_draft_id: str) -> Path:
         return self.report_drafts / report_draft_id
 
+    # --- agent jobs (public-multiuser-release Phase 4, plan OQ-B) ---
+    @property
+    def agent_jobs(self) -> Path:
+        """Durable agent-job store (plan OQ-B). Lives under workspace root, not .rf_cache/."""
+        return self.root / "agent_jobs"
+
+    def agent_job_dir(self, agent_job_id: str) -> Path:
+        return self.agent_jobs / agent_job_id
+
     # --- derived/local caches (gitignored; never canonical) ---
     @property
     def rf_cache(self) -> Path:
