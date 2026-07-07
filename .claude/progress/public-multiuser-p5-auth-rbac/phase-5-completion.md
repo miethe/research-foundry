@@ -18,6 +18,8 @@
 - `src/research_foundry/api/app.py` — import + include_router(audit_router); @app.on_event("startup") audit health probe
 - `src/research_foundry/cli_commands.py` — audit_app Typer sub-app: rf audit list, rf audit show, rf audit health (Rich Panel on degraded, exit 1)
 - `tests/unit/test_audit_service.py` (new) — 47 tests: record/list/get round-trips, cursor pagination, fault-injection, taxonomy completeness, idempotent schema, health-probe healthy/degraded/durability/exposure-gate
+- `src/research_foundry/api/routers/audit.py` (P1 fix) — all 3 GET /api/audit* routes gated with `require_role("owner", "admin")`; unauth→401, non-admin→403, admin→200, auth-disabled→200
+- `tests/unit/test_audit_rbac.py` (new) — 18 RBAC enforcement tests: viewer/reviewer/researcher→403, admin→200, owner→200, unauth→401 for each of the 3 routes
 
 ### Batch Summary
 
@@ -51,6 +53,7 @@
 - `7f5b566` — feat(audit): AUDIT-003 — rf audit list/show CLI + GET /api/audit read API
 - `fa86609` — feat(audit): AUDIT-002 — wire audit_service.record_event into all 6 governed mutation types
 - `298a72a` — feat(audit): AUDIT-004 — health-check probe, persisted state, startup warning, exposure gate
+- `b469fbf` — fix(audit): P1 security fix — gate all audit read routes with require_role(owner, admin); 18 RBAC tests
 
 ### Escalation Reason
 
@@ -58,7 +61,9 @@ N/A
 
 ### Follow-Up Recommendations
 
-1. **P5.9 regression pass**: confirm `GET /api/audit*` gains `require_role("admin")` gate (flagged as TODO in audit.py, deferred pending P5.2 dependency). Also confirm P5.6 calls `audit_service.is_healthy_for_exposure()` before allowing shared/public exposure actions.
-2. **P5.6 integration**: `audit_service.is_healthy_for_exposure(paths)` is built and tested here; P5.6 must wire it into its sharing/publish-preview decision point.
-3. **agent_jobs.py accept endpoint**: The `POST /agent-jobs/{job_id}/accept` endpoint (artifact acceptance from staging into catalog/report) is a potential 7th governed mutation type that could warrant its own `artifact_accepted` audit row from the agent_jobs path. Not required by this phase but flag for P5.9/future review.
-4. **AUDIT-900**: Phase 6 (P5.6) or Phase 8 (P5.8) must resolve this task (implement or N/A-with-rationale) when admin audit-log UI scope is decided. Task ID must not be renumbered.
+1. **P5.6 integration**: `audit_service.is_healthy_for_exposure(paths)` is built and tested here; P5.6 must wire it into its sharing/publish-preview decision point. P5.9 regression sweep should confirm this wiring landed.
+2. **agent_jobs.py accept endpoint**: The `POST /agent-jobs/{job_id}/accept` endpoint (artifact acceptance from staging into catalog/report) is a potential 7th governed mutation type that could warrant its own `artifact_accepted` audit row from the agent_jobs path. Not required by this phase but flag for P5.9/future review.
+3. **AUDIT-900**: Phase 6 (P5.6) or Phase 8 (P5.8) must resolve this task (implement or N/A-with-rationale) when admin audit-log UI scope is decided. Task ID must not be renumbered.
+
+**Resolved (not deferred)**:
+- `require_role("owner", "admin")` gate on all `GET /api/audit*` routes — wired and tested in P1 fix commit `b469fbf`.

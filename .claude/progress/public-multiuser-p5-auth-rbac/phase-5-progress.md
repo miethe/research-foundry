@@ -17,6 +17,7 @@ commit_refs:
 - 7f5b566
 - fa86609
 - 298a72a
+- b469fbf
 pr_refs: []
 completion_ref: .claude/progress/public-multiuser-p5-auth-rbac/phase-5-completion.md
 owners:
