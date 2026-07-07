@@ -14,6 +14,7 @@ from typing import Any, NoReturn
 
 import typer
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 
 from .errors import ExitCode, RFError
@@ -1985,8 +1986,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(agent_job_app, name="agent-job")
 
-    # ----- audit (public-multiuser-release Phase 5 — AUDIT-003) -----
-    # TODO(AUDIT-004): add ``audit health`` command in the next batch.
+    # ----- audit (public-multiuser-release Phase 5 — AUDIT-003/AUDIT-004) -----
     audit_app = typer.Typer(help="Audit log commands.")
 
     @audit_app.command("list")
@@ -2071,6 +2071,51 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             display_val = _json.dumps(val, ensure_ascii=False) if isinstance(val, dict) else str(val)
             table.add_row(key, display_val)
         console.print(table)
+
+    @audit_app.command("health")
+    def audit_health_cmd(
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output (default: rich display)"),
+        probe: bool = typer.Option(False, "--probe", help="Run a live write-then-read probe (default: read cached state)"),
+    ) -> None:
+        """Show the health state of the audit store.
+
+        By default reads the last persisted probe result.  Pass ``--probe``
+        to run a live write-then-read round-trip and update the persisted state.
+
+        Exit 0 when healthy, exit 1 when degraded.
+        """
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services import audit_service as svc
+
+        paths = FoundryPaths.discover()
+        if probe:
+            state = svc.health_check(paths)
+        else:
+            state = svc.get_health_state(paths)
+
+        if json_out:
+            typer.echo(_json.dumps({
+                "healthy": state.healthy,
+                "last_probe_at": state.last_probe_at,
+                "last_success_at": state.last_success_at,
+                "error_detail": state.error_detail,
+            }, indent=2))
+            if not state.healthy:
+                raise typer.Exit(1)
+            return
+
+        if state.healthy:
+            console.print("[green]HEALTHY[/green]", state.last_probe_at or "never probed")
+        else:
+            console.print(Panel(
+                f"[red]DEGRADED[/red]\n{state.error_detail or 'unknown error'}\nLast success: {state.last_success_at or 'never'}",
+                title="[red]Audit Store Degraded[/red]",
+                border_style="red",
+            ))
+            raise typer.Exit(1)
 
     app.add_typer(audit_app, name="audit")
 

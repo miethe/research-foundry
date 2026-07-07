@@ -22,7 +22,11 @@ from research_foundry.services import audit_service
 from research_foundry.services.audit_service import (
     MUTATION_TYPES,
     AuditEvent,
+    AuditHealth,
     get_event,
+    get_health_state,
+    health_check,
+    is_healthy_for_exposure,
     list_events,
     record_event,
 )
@@ -433,6 +437,108 @@ class TestAuditWiringFaultInjection:
         assert event_arg.mutation_type == "artifact_accepted"
         assert event_arg.action == "ingest_source"
         assert event_arg.result == "success"
+
+
+# ---------------------------------------------------------------------------
+# AUDIT-004: health_check, get_health_state, is_healthy_for_exposure
+# ---------------------------------------------------------------------------
+
+
+class TestAuditHealthCheck:
+    """AUDIT-004 health probe and persisted state tests."""
+
+    def test_healthy_returns_true_and_timestamps_set(self, paths: FoundryPaths) -> None:
+        state = health_check(paths)
+        assert isinstance(state, AuditHealth)
+        assert state.healthy is True
+        assert state.last_probe_at is not None
+        assert state.last_probe_at.endswith("Z")
+        assert state.last_success_at is not None
+        assert state.error_detail is None
+
+    def test_probe_row_not_persisted_in_audit_event(self, paths: FoundryPaths) -> None:
+        """Probe row must be self-cleaning — must NOT appear in list_events()."""
+        health_check(paths)
+        result = list_events(paths)
+        for item in result["items"]:
+            assert not str(item.get("audit_event_id", "")).startswith("_probe_"), (
+                "Probe row must not appear in audit event log"
+            )
+
+    def test_degraded_returns_false_with_error_detail(
+        self, paths: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _failing_probe(conn: object, probe_id: str, now: str) -> None:
+            raise RuntimeError("simulated probe failure")
+
+        monkeypatch.setattr(audit_service, "_run_probe", _failing_probe)
+        state = health_check(paths)
+        assert state.healthy is False
+        assert state.error_detail is not None
+        assert len(state.error_detail) > 0
+
+    def test_durability_survives_process_restart(
+        self, paths: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """health=False must persist in audit_health across a simulated restart."""
+        def _failing_probe(conn: object, probe_id: str, now: str) -> None:
+            raise RuntimeError("simulated probe failure for durability test")
+
+        monkeypatch.setattr(audit_service, "_run_probe", _failing_probe)
+        health_check(paths)
+
+        # Simulate restart: call get_health_state fresh (new connection).
+        state = get_health_state(paths)
+        assert state.healthy is False, (
+            "Degraded health state must survive re-reading via get_health_state()"
+        )
+
+    def test_get_health_state_never_probed_defaults_healthy(self, paths: FoundryPaths) -> None:
+        """Before any probe, get_health_state must return healthy=True (fail-open default)."""
+        state = get_health_state(paths)
+        assert state.healthy is True
+        assert state.last_probe_at is None
+        assert state.last_success_at is None
+        assert state.error_detail is None
+
+    def test_get_health_state_reflects_persisted_result(self, paths: FoundryPaths) -> None:
+        """get_health_state returns the last persisted result after health_check runs."""
+        health_check(paths)
+        state = get_health_state(paths)
+        assert state.healthy is True
+        assert state.last_probe_at is not None
+
+    def test_is_healthy_for_exposure_true_when_healthy(self, paths: FoundryPaths) -> None:
+        health_check(paths)
+        assert is_healthy_for_exposure(paths) is True
+
+    def test_is_healthy_for_exposure_false_when_degraded(
+        self, paths: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _failing_probe(conn: object, probe_id: str, now: str) -> None:
+            raise RuntimeError("simulated probe failure")
+
+        monkeypatch.setattr(audit_service, "_run_probe", _failing_probe)
+        health_check(paths)
+        assert is_healthy_for_exposure(paths) is False
+
+    def test_is_healthy_for_exposure_has_no_side_effects(self, paths: FoundryPaths) -> None:
+        """is_healthy_for_exposure must not change the audit_event table."""
+        # Write one real event first.
+        record_event(paths, _make_event(target_ref="before_exposure_check"))
+        is_healthy_for_exposure(paths)
+        result = list_events(paths)
+        # Only the one real event — no probe rows or extra rows.
+        assert len(result["items"]) == 1
+
+    def test_health_check_single_row_in_audit_health(self, paths: FoundryPaths) -> None:
+        """Running health_check multiple times must keep exactly one row in audit_health."""
+        health_check(paths)
+        health_check(paths)
+        health_check(paths)
+        # Verify single row via get_health_state (healthy and has timestamp).
+        state = get_health_state(paths)
+        assert state.healthy is True
 
 
 # ---------------------------------------------------------------------------

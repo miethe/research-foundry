@@ -189,6 +189,28 @@ def create_app(config: FoundryConfig) -> FastAPI:
         allow_headers=["*"],
     )
 
+    # --- Startup probe (AUDIT-004) --------------------------------------------
+    # Runs once at startup; logs WARNING when audit store is degraded, INFO
+    # when healthy.  Never blocks startup — exceptions are caught and logged.
+    @app.on_event("startup")
+    def _audit_health_startup() -> None:
+        try:
+            from ..services import audit_service as _audit_svc
+            result = _audit_svc.health_check(config.paths)
+            if result.healthy:
+                _logger.info(
+                    "audit store healthy at startup: last_probe_at=%s",
+                    result.last_probe_at,
+                )
+            else:
+                _logger.warning(
+                    "AUDIT STORE DEGRADED at startup: %s (last_success=%s)",
+                    result.error_detail,
+                    result.last_success_at,
+                )
+        except Exception as _exc:  # pragma: no cover — belt-and-suspenders
+            _logger.warning("audit startup probe raised unexpectedly: %s", _exc)
+
     # --- Health ---------------------------------------------------------------
     @app.get("/health", tags=["meta"])
     def health() -> dict[str, str]:

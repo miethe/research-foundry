@@ -63,6 +63,28 @@ def list_audit_events(
     )
 
 
+@router.get("/audit/health", summary="Audit store health state")
+def get_audit_health(
+    paths: FoundryPaths = _PATHS_DEP,
+) -> dict[str, Any]:
+    """Return the persisted health state of the audit store.
+
+    This is a read-only endpoint — it returns the last persisted probe
+    result from ``audit_health`` without triggering a new probe.
+
+    ``status`` is ``"healthy"`` when the store is operational or has never
+    been probed; ``"degraded"`` when the last probe detected a failure.
+    """
+    state = audit_service.get_health_state(paths)
+    return {
+        "status": "healthy" if state.healthy else "degraded",
+        "healthy": state.healthy,
+        "last_probe_at": state.last_probe_at,
+        "last_success_at": state.last_success_at,
+        "error_detail": state.error_detail if not state.healthy else None,
+    }
+
+
 @router.get("/audit/{audit_event_id}", summary="Get a single audit event")
 def get_audit_event(
     audit_event_id: str,

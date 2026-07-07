@@ -42,6 +42,25 @@ from research_foundry.services.rbac_store import _connect, _ensure_schema
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Health state dataclass (AUDIT-004)
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass(frozen=True)
+class AuditHealth:
+    """Immutable snapshot of the audit-store health state.
+
+    ``last_probe_at`` is ``None`` only when ``get_health_state`` is called
+    before the first ``health_check`` probe has ever run (i.e., no row in
+    the ``audit_health`` table yet).
+    """
+
+    healthy: bool
+    last_probe_at: Optional[str]    # ISO-8601 UTC; None = never probed
+    last_success_at: Optional[str]  # None if never succeeded
+    error_detail: Optional[str]     # populated when healthy=False
+
+# ---------------------------------------------------------------------------
 # Mutation-type taxonomy (all 6 reserved; 5 wired in P5.5)
 # ---------------------------------------------------------------------------
 
@@ -357,3 +376,180 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         except (json.JSONDecodeError, TypeError):
             pass  # Return the raw string rather than crashing
     return d
+
+
+# ---------------------------------------------------------------------------
+# Audit-store health check (AUDIT-004)
+# ---------------------------------------------------------------------------
+
+
+def _run_probe(conn: sqlite3.Connection, probe_id: str, now: str) -> None:
+    """Write-then-read round-trip probe against ``audit_event``.
+
+    Inserts a row with the given ``probe_id``, reads it back, then deletes
+    it.  Raises on any failure.  The probe row is ephemeral and is never
+    surfaced through ``list_events`` or ``get_event``.
+
+    INVARIANT: this function may be monkeypatched in tests to simulate
+    a probe failure without affecting the rest of ``health_check``.
+    """
+    conn.execute(
+        (
+            "INSERT INTO audit_event ("
+            "    audit_event_id, created_at, mutation_type, action, target_ref, result"
+            ") VALUES (?, ?, ?, ?, ?, ?)"
+        ),
+        (probe_id, now, "catalog_mutation", "_health_probe", "_health_probe", "success"),
+    )
+    row = conn.execute(
+        "SELECT audit_event_id FROM audit_event WHERE audit_event_id = ?",
+        (probe_id,),
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("health probe row not found after write — store may be read-only")
+    conn.execute(
+        "DELETE FROM audit_event WHERE audit_event_id = ?",
+        (probe_id,),
+    )
+
+
+def health_check(paths: FoundryPaths) -> AuditHealth:
+    """Run a write-then-read probe and persist the result in ``audit_health``.
+
+    Returns an :class:`AuditHealth` with ``healthy=True`` on success or
+    ``healthy=False`` (with ``error_detail`` populated) on any failure.
+
+    CRITICAL INVARIANTS
+    -------------------
+    - NEVER calls ``record_event()`` — the probe row is ephemeral and must
+      NOT appear in the audit log returned by ``list_events()``.
+    - ``is_healthy_for_exposure()`` MUST NOT be called from this function
+      or any mutation call-site — it is reserved for the P5.6 exposure gate.
+    """
+    now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+    probe_id = f"_probe_{uuid.uuid4()}"
+
+    try:
+        conn = _connect(paths)
+        try:
+            _ensure_schema(conn)
+
+            # Capture prior last_success_at before the probe so failure
+            # reporting can preserve the last-known-good timestamp.
+            prior_row = conn.execute(
+                "SELECT last_success_at FROM audit_health WHERE id = 1"
+            ).fetchone()
+            prior_success_at: Optional[str] = prior_row["last_success_at"] if prior_row else None
+
+            try:
+                _run_probe(conn, probe_id, now)
+                # Persist healthy state.
+                conn.execute(
+                    (
+                        "INSERT OR REPLACE INTO audit_health "
+                        "(id, healthy, last_probe_at, last_success_at, error_detail) "
+                        "VALUES (1, 1, ?, ?, NULL)"
+                    ),
+                    (now, now),
+                )
+            except Exception as probe_exc:
+                # Probe failed — persist failure state while we still hold conn.
+                error_str = str(probe_exc)
+                conn.execute(
+                    (
+                        "INSERT OR REPLACE INTO audit_health "
+                        "(id, healthy, last_probe_at, last_success_at, error_detail) "
+                        "VALUES (1, 0, ?, ?, ?)"
+                    ),
+                    (now, prior_success_at, error_str),
+                )
+                return AuditHealth(
+                    healthy=False,
+                    last_probe_at=now,
+                    last_success_at=prior_success_at,
+                    error_detail=error_str,
+                )
+        finally:
+            conn.close()
+
+        return AuditHealth(
+            healthy=True,
+            last_probe_at=now,
+            last_success_at=now,
+            error_detail=None,
+        )
+
+    except Exception as exc:
+        # Connection-level or schema failure — best-effort persistence only.
+        error_str = str(exc)
+        try:
+            _conn2 = _connect(paths)
+            try:
+                _ensure_schema(_conn2)
+                _prior = _conn2.execute(
+                    "SELECT last_success_at FROM audit_health WHERE id = 1"
+                ).fetchone()
+                _prior_success = _prior["last_success_at"] if _prior else None
+                _conn2.execute(
+                    (
+                        "INSERT OR REPLACE INTO audit_health "
+                        "(id, healthy, last_probe_at, last_success_at, error_detail) "
+                        "VALUES (1, 0, ?, ?, ?)"
+                    ),
+                    (now, _prior_success, error_str),
+                )
+            finally:
+                _conn2.close()
+        except Exception:
+            pass  # Best-effort — if DB is unreachable we cannot persist
+
+        return AuditHealth(
+            healthy=False,
+            last_probe_at=now,
+            last_success_at=None,
+            error_detail=error_str,
+        )
+
+
+def get_health_state(paths: FoundryPaths) -> AuditHealth:
+    """Return the persisted health state without running a new probe.
+
+    Returns ``AuditHealth(healthy=True, last_probe_at=None, ...)`` when no
+    probe has ever run (i.e., the ``audit_health`` row does not yet exist).
+    This is the "assume healthy until proven otherwise" default.
+    """
+    conn = _connect(paths)
+    try:
+        _ensure_schema(conn)
+        row = conn.execute(
+            "SELECT healthy, last_probe_at, last_success_at, error_detail "
+            "FROM audit_health WHERE id = 1"
+        ).fetchone()
+        if row is None:
+            return AuditHealth(
+                healthy=True,
+                last_probe_at=None,
+                last_success_at=None,
+                error_detail=None,
+            )
+        return AuditHealth(
+            healthy=bool(row["healthy"]),
+            last_probe_at=row["last_probe_at"],
+            last_success_at=row["last_success_at"],
+            error_detail=row["error_detail"],
+        )
+    finally:
+        conn.close()
+
+
+def is_healthy_for_exposure(paths: FoundryPaths) -> bool:
+    """Return ``True`` if the audit store is in a healthy state.
+
+    Reads the persisted health state; does NOT run a new probe.  Has no
+    side effects.
+
+    CRITICAL: do NOT call this from ``record_event()`` or any mutation
+    call-site — that would silently break the fail-open write guarantee.
+    This function is reserved for the P5.6 public-exposure decision point.
+    """
+    return get_health_state(paths).healthy
