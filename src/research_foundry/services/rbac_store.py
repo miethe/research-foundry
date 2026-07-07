@@ -30,7 +30,7 @@ from research_foundry.paths import FoundryPaths
 # new table).  The _ensure_schema logic checks this and runs the pending
 # migration block before bumping.  NEVER use a version mismatch to trigger a
 # drop-and-recreate.
-RBAC_SCHEMA_VERSION: int = 1
+RBAC_SCHEMA_VERSION: int = 2
 
 # ---------------------------------------------------------------------------
 # Canonical role definitions
@@ -86,6 +86,39 @@ _DDL: list[str] = [
         PRIMARY KEY (user_id, workspace_id)
     )
     """,
+    # audit_event: append-only audit log (P5.5, schema version 2).
+    # No UPDATE/DELETE paths exist on this table — rows are immutable by design.
+    # mutation_type values (all 6 reserved now, 5 wired in P5.5):
+    #   catalog_mutation | report_edit | agent_job_launched (N/A pending P4) |
+    #   artifact_accepted | publish_preview | writeback
+    """
+    CREATE TABLE IF NOT EXISTS audit_event (
+        audit_event_id     TEXT PRIMARY KEY,
+        created_at         TEXT NOT NULL,
+        mutation_type      TEXT NOT NULL,
+        action             TEXT NOT NULL,
+        target_ref         TEXT NOT NULL,
+        actor_user_id      TEXT,
+        actor_workspace_id TEXT,
+        source_ref         TEXT,
+        policy_snapshot    TEXT,
+        result             TEXT NOT NULL,
+        error_detail       TEXT,
+        trace_id           TEXT,
+        span_id            TEXT
+    )
+    """,
+    # audit_health: single-row durable health state for AUDIT-004.
+    # The CHECK (id = 1) constraint enforces the single-row invariant.
+    """
+    CREATE TABLE IF NOT EXISTS audit_health (
+        id              INTEGER PRIMARY KEY CHECK (id = 1),
+        healthy         INTEGER NOT NULL DEFAULT 1,
+        last_probe_at   TEXT,
+        last_success_at TEXT,
+        error_detail    TEXT
+    )
+    """,
 ]
 
 
@@ -135,11 +168,20 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     (version,) = conn.execute("PRAGMA user_version").fetchone()
 
     if version < RBAC_SCHEMA_VERSION:
-        # Initial schema creation (version 0 → 1).
-        # All statements use IF NOT EXISTS so re-running on an already-current
-        # database is a no-op.
-        for stmt in _DDL:
+        # Initial schema creation (version 0 → 1) AND any subsequent migrations
+        # are applied here in order.  All DDL uses IF NOT EXISTS so re-running
+        # against an already-current database is a no-op.
+
+        # version 0 → 1: base tables (workspaces, users, roles, memberships).
+        for stmt in _DDL[:4]:
             conn.execute(stmt)
+
+        if version < 2:
+            # version 1 → 2: add audit_event and audit_health tables (P5.5).
+            # Both use IF NOT EXISTS — idempotent against a fresh or v1 store.
+            conn.execute(_DDL[4])  # audit_event
+            conn.execute(_DDL[5])  # audit_health
+
         conn.execute(f"PRAGMA user_version = {RBAC_SCHEMA_VERSION}")
     else:
         # Database is already at or beyond current version — still run IF NOT
