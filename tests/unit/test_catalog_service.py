@@ -1044,3 +1044,217 @@ def test_sensitivity_threshold_override_unknown_label_raises(
 
     with pytest.raises(svc.ExportError):
         svc.search(tmp_foundry, sensitivity_threshold="bogus_label")
+
+
+# ---------------------------------------------------------------------------
+# Draft -> run/claim reverse catalog links (P5.7.3)
+# ---------------------------------------------------------------------------
+
+
+def test_get_item_citing_drafts_via_claim_link(tmp_foundry: FoundryPaths) -> None:
+    """citing_drafts surfaces a draft that cites a claim via a 'cites' link."""
+
+    build_catalog_run(tmp_foundry, include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+
+    claim_id = svc._make_item_id("claim", "rf_run_catalog001", "clm_001")
+
+    svc.index_draft(
+        tmp_foundry,
+        {
+            "report_draft_id": "draft_cites_claim",
+            "title": "Citing Draft",
+            "sensitivity": "public",
+            "draft_path": "/tmp/draft_cites_claim.yaml",
+        },
+        links=[{"to_item_id": claim_id, "relation": "cites"}],
+    )
+
+    item = svc.get_item(tmp_foundry, claim_id)
+    assert item is not None
+    citing = item["links"]["citing_drafts"]
+    assert len(citing) == 1
+    assert citing[0]["report_draft_id"] == "draft_cites_claim"
+    assert citing[0]["draft_name"] == "Citing Draft"
+    assert citing[0]["relation"] == "cites"
+    assert citing[0]["project_id"] is None
+
+
+def test_get_item_citing_drafts_via_derived_from_link(tmp_foundry: FoundryPaths) -> None:
+    """citing_drafts surfaces a draft whose source_run_id generates a
+    'derived_from' link to the run's synthetic report catalog item."""
+
+    build_catalog_run(tmp_foundry, include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+
+    report_id = svc.report_item_id("rf_run_catalog001")
+
+    svc.index_draft(
+        tmp_foundry,
+        {
+            "report_draft_id": "draft_derived",
+            "title": "Run-derived Draft",
+            "sensitivity": "public",
+            "draft_path": "/tmp/draft_derived.yaml",
+            "project_id": "proj-x",
+        },
+        links=[{"to_item_id": report_id, "relation": "derived_from"}],
+    )
+
+    item = svc.get_item(tmp_foundry, report_id)
+    assert item is not None
+    citing = item["links"]["citing_drafts"]
+    match = next((d for d in citing if d["report_draft_id"] == "draft_derived"), None)
+    assert match is not None, "draft_derived not found in citing_drafts"
+    assert match["relation"] == "derived_from"
+    assert match["project_id"] == "proj-x"
+
+
+def test_get_item_citing_drafts_via_source_link(tmp_foundry: FoundryPaths) -> None:
+    """citing_drafts surfaces a draft citing a source item."""
+
+    build_catalog_run(tmp_foundry, include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+
+    source_id = svc._make_item_id("source", "rf_run_catalog001", "src_alpha")
+
+    svc.index_draft(
+        tmp_foundry,
+        {
+            "report_draft_id": "draft_cites_source",
+            "title": "Source-citing Draft",
+            "sensitivity": "public",
+            "draft_path": "/tmp/draft_src.yaml",
+        },
+        links=[{"to_item_id": source_id, "relation": "cites"}],
+    )
+
+    item = svc.get_item(tmp_foundry, source_id)
+    assert item is not None
+    citing = item["links"]["citing_drafts"]
+    assert len(citing) == 1
+    assert citing[0]["report_draft_id"] == "draft_cites_source"
+    assert citing[0]["relation"] == "cites"
+
+
+def test_get_item_citing_drafts_zero_returns_empty_list(tmp_foundry: FoundryPaths) -> None:
+    """Zero-citation case: no drafts citing the item; citing_drafts is [] with
+    no regression to the existing incoming/outgoing lists."""
+
+    build_catalog_run(tmp_foundry, include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+
+    claim_id = svc._make_item_id("claim", "rf_run_catalog001", "clm_001")
+    item = svc.get_item(tmp_foundry, claim_id)
+    assert item is not None
+
+    # New field is present and empty
+    assert item["links"]["citing_drafts"] == []
+
+    # Existing fields retain their types and are unaffected
+    assert isinstance(item["links"]["incoming"], list)
+    assert isinstance(item["links"]["outgoing"], list)
+
+
+def test_get_item_citing_drafts_sensitivity_threshold_gates_drafts(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """A draft whose sensitivity_rank exceeds the resolved threshold must NOT
+    appear in citing_drafts — leaking it would reveal a hidden draft's existence."""
+
+    build_catalog_run(tmp_foundry, include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+
+    claim_id = svc._make_item_id("claim", "rf_run_catalog001", "clm_001")
+
+    # public draft (rank 0) — visible at every threshold
+    svc.index_draft(
+        tmp_foundry,
+        {
+            "report_draft_id": "draft_public",
+            "title": "Public Draft",
+            "sensitivity": "public",
+            "draft_path": "/tmp/draft_pub.yaml",
+        },
+        links=[{"to_item_id": claim_id, "relation": "cites"}],
+    )
+
+    # client_sensitive draft (rank 3) — only visible at threshold=client_sensitive
+    svc.index_draft(
+        tmp_foundry,
+        {
+            "report_draft_id": "draft_sensitive",
+            "title": "Sensitive Draft",
+            "sensitivity": "client_sensitive",
+            "draft_path": "/tmp/draft_sens.yaml",
+        },
+        links=[{"to_item_id": claim_id, "relation": "cites"}],
+    )
+
+    # At personal threshold (rank 1): only the public draft is visible
+    _write_threshold(tmp_foundry, "personal")
+    item = svc.get_item(tmp_foundry, claim_id)
+    assert item is not None
+    ids = {d["report_draft_id"] for d in item["links"]["citing_drafts"]}
+    assert "draft_public" in ids
+    assert "draft_sensitive" not in ids
+
+    # At client_sensitive threshold (rank 3): both drafts are visible
+    _write_threshold(tmp_foundry, "client_sensitive")
+    item2 = svc.get_item(tmp_foundry, claim_id)
+    assert item2 is not None
+    ids2 = {d["report_draft_id"] for d in item2["links"]["citing_drafts"]}
+    assert "draft_public" in ids2
+    assert "draft_sensitive" in ids2
+
+
+def test_get_item_citing_drafts_rebuild_matches_incremental(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """catalog rebuild (reindex_all_drafts path) followed by get_item() produces
+    the same citing_drafts as the incremental write path (_save_draft ->
+    _sync_catalog_index)."""
+
+    from research_foundry.services import builder_service as bsvc
+
+    build_catalog_run(tmp_foundry, include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+
+    source_id = svc._make_item_id("source", "rf_run_catalog001", "src_alpha")
+
+    # Incremental path: create a real on-disk draft via builder_service and
+    # add a source link carrying a catalog_item_id.  block_id is optional, so
+    # this does not require a block to exist in the draft.
+    draft = bsvc.create_draft(tmp_foundry, title="Rebuild-check Draft", sensitivity="public")
+    draft_id = draft["report_draft_id"]
+    bsvc.add_source_link(
+        tmp_foundry,
+        draft_id,
+        source_card_id="src_alpha",
+        run_id="rf_run_catalog001",
+        catalog_item_id=source_id,
+    )
+
+    item_before = svc.get_item(tmp_foundry, source_id)
+    assert item_before is not None
+    cd_before = item_before["links"]["citing_drafts"]
+    assert any(d["report_draft_id"] == draft_id for d in cd_before)
+
+    # Rebuild drops + repopulates catalog_items and catalog_report_drafts from disk.
+    result = svc.rebuild(tmp_foundry)
+    assert result["drafts"] == 1
+    assert result["draft_errors"] == []
+
+    item_after = svc.get_item(tmp_foundry, source_id)
+    assert item_after is not None
+    cd_after = item_after["links"]["citing_drafts"]
+
+    # The same draft must appear after rebuild via the reindex_all_drafts path.
+    before_ids = {d["report_draft_id"] for d in cd_before}
+    after_ids = {d["report_draft_id"] for d in cd_after}
+    assert before_ids == after_ids

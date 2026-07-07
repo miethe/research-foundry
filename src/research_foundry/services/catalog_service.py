@@ -1434,11 +1434,38 @@ def get_item(
             (catalog_item_id, threshold_rank),
         ).fetchall()
 
+        # D11 reverse-catalog: drafts that cite this item via catalog_links.
+        # Draft from_item_ids are report_draft_id values — never catalog_item_ids —
+        # so the existing `incoming` query (which joins catalog_items) silently
+        # drops every draft edge. Resolve at read time against catalog_report_drafts
+        # only (no schema change — catalog.db is disposable and reindex_all_drafts
+        # repopulates the forward rows this query reads).
+        # Drafts are gated by their own sensitivity_rank so a draft above the
+        # resolved threshold cannot leak its existence through this field.
+        citing_drafts_rows = conn.execute(
+            """
+            SELECT d.report_draft_id, d.title, l.relation, d.project_id
+            FROM catalog_links l
+            JOIN catalog_report_drafts d ON d.report_draft_id = l.from_item_id
+            WHERE l.to_item_id = ? AND d.sensitivity_rank <= ?
+            """,
+            (catalog_item_id, threshold_rank),
+        ).fetchall()
+
     summary = _row_to_summary(row)
     summary["payload"] = payload
     summary["links"] = {
         "outgoing": [{"catalog_item_id": r["to_item_id"], "relation": r["relation"]} for r in outgoing],
         "incoming": [{"catalog_item_id": r["from_item_id"], "relation": r["relation"]} for r in incoming],
+        "citing_drafts": [
+            {
+                "report_draft_id": r["report_draft_id"],
+                "draft_name": r["title"],
+                "relation": r["relation"],
+                "project_id": r["project_id"],
+            }
+            for r in citing_drafts_rows
+        ],
     }
     return summary
 
