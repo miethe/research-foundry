@@ -270,6 +270,57 @@ def _index_source_cards(rp) -> dict[str, dict[str, Any]]:
     return index
 
 
+# Sentinel key prefix used by build_global_source_index when a run's
+# sources/ dir cannot be listed.  The check function treats any entry whose
+# key starts with this prefix as a hard blocker (fail-closed).
+_IO_ERROR_SENTINEL_PREFIX = "_io_error_"
+
+
+def build_global_source_index(paths: FoundryPaths) -> dict[str, tuple[str, str]]:
+    """Build a workspace-wide mapping: source_card_id -> (run_id, sensitivity).
+
+    Mirrors the shape of _index_source_cards but iterates every run in the
+    workspace rather than a single run.
+
+    Fail-closed: if a run's sources/ dir cannot be read (I/O error, corrupt
+    dir), that run is included as a sentinel ("unknown", "restricted") rather
+    than silently omitted — preserving the fail-closed contract from
+    export_service.DEFAULT_THRESHOLD.
+    """
+    index: dict[str, tuple[str, str]] = {}
+    runs_dir = paths.runs
+    if not runs_dir.exists():
+        return index
+    try:
+        run_entries = sorted(runs_dir.iterdir())
+    except OSError:
+        return index
+
+    for run_dir in run_entries:
+        if not run_dir.is_dir():
+            continue
+        run_id = run_dir.name
+        sources_dir = run_dir / "sources"
+        if not sources_dir.exists():
+            continue
+        try:
+            card_paths = sorted(sources_dir.glob("*.md"))
+        except OSError:
+            index[f"{_IO_ERROR_SENTINEL_PREFIX}{run_id}"] = ("unknown", "restricted")
+            continue
+        for card_path in card_paths:
+            try:
+                meta, _ = load_md(card_path)
+            except Exception:  # noqa: BLE001 - a broken card is treated as missing
+                continue
+            sid = meta.get("source_card_id")
+            if not sid:
+                continue
+            index[str(sid)] = (run_id, str(meta.get("sensitivity") or ""))
+
+    return index
+
+
 # --- Helpers ----------------------------------------------------------------
 
 
@@ -966,6 +1017,106 @@ def check_report_body_sensitivity(
     )
 
 
+def check_report_body_sensitivity_global(
+    paths: FoundryPaths,
+    blocks: list[dict[str, Any]],
+    global_source_index: dict[str, tuple[str, str]],
+    *,
+    sensitivity_threshold: str | None = None,
+) -> CheckResult:
+    """D13 global sensitivity check — scans the draft body against a
+    workspace-wide source index, closing the blank-origin-draft residual gap.
+
+    Complements (does not replace) :func:`check_report_body_sensitivity`.
+    The per-run check covers drafts with declared source runs; this check
+    closes the residual case where ``run_ids`` is empty (no ``source_run_id``,
+    no ``source_links``, no ``claim_links``) so the per-run check exits early
+    without scanning anything, and also the cross-run-quote case where a quote
+    originates from a run not listed in the draft's declared sources.
+
+    Fail-closed: any sentinel entry in ``global_source_index`` (added by
+    :func:`build_global_source_index` when a run's ``sources/`` dir was
+    unreadable) immediately fails the check — an unverifiable run cannot be
+    confirmed safe.
+    """
+    threshold = sensitivity_threshold or DEFAULT_THRESHOLD
+    threshold_rank = SENSITIVITY_ORDER.get(threshold, len(SENSITIVITY_ORDER))
+    body_text = "\n".join(b.get("markdown") or "" for b in blocks)
+
+    # Fail-closed: unverifiable runs block immediately.
+    sentinel_keys = [k for k in global_source_index if k.startswith(_IO_ERROR_SENTINEL_PREFIX)]
+    if sentinel_keys:
+        unverifiable_runs = sorted({global_source_index[k][0] for k in sentinel_keys})
+        return CheckResult(
+            id="report_body_sensitivity_global",
+            severity="error",
+            status="fail",
+            detail=(
+                "cannot verify body sensitivity — unreadable sources/ dir in run(s): "
+                + ", ".join(unverifiable_runs)
+            ),
+            locations=unverifiable_runs,
+        )
+
+    # Group above-threshold source_card_ids by run_id so each run's sources/
+    # directory is read at most once.
+    runs_to_check: dict[str, set[str]] = {}
+    for sid, (run_id, sensitivity) in global_source_index.items():
+        card_rank = SENSITIVITY_ORDER.get(sensitivity, len(SENSITIVITY_ORDER))
+        if card_rank > threshold_rank:
+            runs_to_check.setdefault(run_id, set()).add(sid)
+
+    leaks: list[str] = []
+    for run_id, card_ids in sorted(runs_to_check.items()):
+        sources_dir = paths.runs / run_id / "sources"
+        if not sources_dir.exists():
+            continue
+        for card_path in sorted(sources_dir.glob("*.md")):
+            try:
+                meta, _ = load_md(card_path)
+            except Exception:  # noqa: BLE001 - a broken card is not a leak signal
+                continue
+            sid = str(meta.get("source_card_id") or card_path.stem)
+            if sid not in card_ids:
+                continue
+            # Compute effective rank (card level + per-point sensitivity) to
+            # match the same logic used by check_report_body_sensitivity.
+            card_rank = SENSITIVITY_ORDER.get(str(meta.get("sensitivity")), len(SENSITIVITY_ORDER))
+            points = [p for p in (meta.get("extracted_points") or []) if isinstance(p, dict)]
+            point_rank = card_rank
+            for p in points:
+                if p.get("sensitivity"):
+                    point_rank = max(
+                        point_rank,
+                        SENSITIVITY_ORDER.get(str(p["sensitivity"]), len(SENSITIVITY_ORDER)),
+                    )
+            effective_rank = max(card_rank, point_rank)
+            if effective_rank <= threshold_rank:
+                continue
+            quotes = [str(p.get("quote")) for p in points if p.get("quote")]
+            if any(q and q in body_text for q in quotes):
+                leaks.append(f"{sid} (run {run_id})")
+
+    if leaks:
+        return CheckResult(
+            id="report_body_sensitivity_global",
+            severity="error",
+            status="fail",
+            detail=(
+                f"draft body embeds raw sensitive-source text above threshold {threshold!r} "
+                "(global scan): " + ", ".join(sorted(leaks))
+            ),
+            locations=sorted(leaks),
+        )
+    return CheckResult(
+        id="report_body_sensitivity_global",
+        severity="error",
+        status="pass",
+        detail=f"no raw sensitive-source text embedded above threshold {threshold!r} (global scan)",
+        locations=[],
+    )
+
+
 def verify_draft(
     paths: FoundryPaths,
     report_draft_id: str,
@@ -1001,6 +1152,7 @@ def verify_draft(
         known_claim_ids = {cl["claim_id"] for cl in claim_links if cl.get("link_status") == "linked"}
 
     resolved_threshold = sensitivity_threshold or draft.get("sensitivity")
+    global_source_index = build_global_source_index(paths)
     checks = [
         check_paragraph_has_support(blocks),
         check_claim_tags_resolve(blocks, known_claim_ids),
@@ -1011,6 +1163,12 @@ def verify_draft(
             source_links,
             claim_links=claim_links,
             source_run_id=draft.get("source_run_id"),
+            sensitivity_threshold=resolved_threshold,
+        ),
+        check_report_body_sensitivity_global(
+            paths,
+            blocks,
+            global_source_index,
             sensitivity_threshold=resolved_threshold,
         ),
     ]
@@ -1056,5 +1214,7 @@ __all__ = [
     "check_claim_tags_resolve",
     "check_anchor_hash_match",
     "check_report_body_sensitivity",
+    "build_global_source_index",
+    "check_report_body_sensitivity_global",
     "verify_draft",
 ]

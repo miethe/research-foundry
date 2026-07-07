@@ -4,6 +4,10 @@ A synthetic ``src_SYNTH001`` source card carries a ``work_sensitive`` evidence
 point. The export service MUST drop its quote/body before the JSON is produced,
 so no frontend component can ever surface governed content. Public content from
 the same run must still appear. Repeatable in CI (no network, no real data).
+
+Also covers P5.7.2 — the global source index that closes the blank-origin-draft
+residual: a draft with no declared sources that embeds sensitive text must fail
+``verify_draft``, and a cross-run quote must also fail.
 """
 
 from __future__ import annotations
@@ -14,7 +18,9 @@ import pytest
 
 from research_foundry.frontmatter import dump_md
 from research_foundry.paths import FoundryPaths
+from research_foundry.services import builder_service as bsvc
 from research_foundry.services import export_service as svc
+from research_foundry.services import verification as vsvc
 from research_foundry.yamlio import dump_yaml
 
 WORK_SENSITIVE_QUOTE = "INTERNAL_WORK_ONLY_REVENUE_FIGURE_42M"
@@ -206,3 +212,212 @@ def test_valid_threshold_labels_all_resolve_without_error(
     for label in svc.SENSITIVITY_ORDER:
         result = svc.resolve_threshold(tmp_foundry, override=label)
         assert result == label
+
+
+# --------------------------------------------------------------------------
+# P5.7.2 — build_global_source_index + blank-origin-draft gap
+# --------------------------------------------------------------------------
+
+_GLOBAL_SENSITIVE_QUOTE = "GLOBAL_WORK_SENSITIVE_SECRET_TOKEN_XYZ"
+
+
+def _build_two_runs_for_global_index(paths: FoundryPaths) -> tuple[str, str]:
+    """Plant two runs with source cards in the workspace.
+
+    run_A has a work_sensitive card (src_A_secret).
+    run_B has a public card (src_B_public).
+    Returns (run_A_id, run_B_id).
+    """
+    run_a = "rf_run_global_idx_a"
+    run_b = "rf_run_global_idx_b"
+
+    for run_id in (run_a, run_b):
+        rp = paths.run_paths(run_id)
+        rp.ensure_scaffold()
+        dump_yaml(
+            {"run_id": run_id, "status": "verified", "sensitivity": "public"},
+            rp.run_yaml,
+        )
+
+    # sensitive card in run_A
+    dump_md(
+        {
+            "schema_version": "0.1",
+            "type": "source_card",
+            "source_card_id": "src_A_secret",
+            "sensitivity": "work_sensitive",
+            "source": {
+                "title": "Internal Run A Doc",
+                "source_type": "doc",
+                "locator": {"url": "file:///internal/a"},
+            },
+            "extracted_points": [
+                {
+                    "evidence_id": "ev_a",
+                    "locator": "p1",
+                    "summary": "top-secret figure",
+                    "quote": _GLOBAL_SENSITIVE_QUOTE,
+                }
+            ],
+        },
+        "",
+        paths.run_paths(run_a).sources / "src_A_secret.md",
+    )
+
+    # public card in run_B
+    dump_md(
+        {
+            "schema_version": "0.1",
+            "type": "source_card",
+            "source_card_id": "src_B_public",
+            "sensitivity": "public",
+            "source": {
+                "title": "Public Run B Doc",
+                "source_type": "web",
+                "locator": {"url": "https://example.com/b"},
+            },
+            "extracted_points": [
+                {
+                    "evidence_id": "ev_b",
+                    "locator": "p1",
+                    "summary": "public fact",
+                    "quote": "TOTALLY_PUBLIC_FACT_B",
+                }
+            ],
+        },
+        "",
+        paths.run_paths(run_b).sources / "src_B_public.md",
+    )
+
+    return run_a, run_b
+
+
+def test_build_global_source_index_maps_all_runs(tmp_foundry: FoundryPaths) -> None:
+    """build_global_source_index returns a correct workspace-wide mapping."""
+    run_a, run_b = _build_two_runs_for_global_index(tmp_foundry)
+
+    index = vsvc.build_global_source_index(tmp_foundry)
+
+    # Both source cards must appear.
+    assert "src_A_secret" in index
+    assert "src_B_public" in index
+
+    # Verify correct (run_id, sensitivity) tuples.
+    assert index["src_A_secret"] == (run_a, "work_sensitive")
+    assert index["src_B_public"] == (run_b, "public")
+
+
+def test_build_global_source_index_fail_closed_on_unreadable_sources_dir(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """Fail-closed: a run whose sources/ dir raises OSError on listing must be
+    included as a sentinel rather than silently omitted.
+
+    Python 3.12+ glob() silently ignores PermissionError on macOS, so we
+    simulate the I/O failure via a mock that raises at the glob() call site —
+    the only reliable cross-platform way to exercise this code path in CI.
+    """
+    from pathlib import Path
+    from unittest.mock import patch
+
+    run_id = "rf_run_global_idx_locked"
+    rp = tmp_foundry.run_paths(run_id)
+    rp.ensure_scaffold()
+    dump_yaml({"run_id": run_id, "status": "verified"}, rp.run_yaml)
+    rp.sources.mkdir(parents=True, exist_ok=True)
+
+    _target = rp.sources.resolve()
+    _original_glob = Path.glob
+
+    def _failing_glob(self: Path, pattern: str, **kw):  # type: ignore[override]
+        if self.resolve() == _target:
+            raise PermissionError("simulated: unreadable sources/ dir")
+        return _original_glob(self, pattern, **kw)
+
+    with patch.object(type(rp.sources), "glob", _failing_glob):
+        index = vsvc.build_global_source_index(tmp_foundry)
+
+    # The locked run must appear as a sentinel — not silently dropped.
+    sentinel_keys = [k for k in index if k.startswith(vsvc._IO_ERROR_SENTINEL_PREFIX)]
+    assert any(run_id in k for k in sentinel_keys), (
+        f"expected a sentinel for {run_id!r} but got keys: {list(index.keys())}"
+    )
+    # The real card from the locked run must NOT appear (we couldn't read it).
+    assert "src_locked" not in index
+
+
+def test_verify_draft_fails_blank_origin_draft_with_sensitive_body(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """P5.7.2 integration — a blank-origin draft (no source_run_id, no
+    source_links, no claim_links) that pastes a sensitive raw quote into its
+    body must fail verify_draft via the global check even though the per-run
+    check finds no run_ids to scan."""
+    run_a, _ = _build_two_runs_for_global_index(tmp_foundry)
+
+    # Create a draft with NO link to any run.
+    draft = bsvc.create_draft(
+        tmp_foundry,
+        title="Blank Origin Leaky Draft",
+        sensitivity="public",
+        # Deliberately no source_run_id
+    )
+    report_draft_id = draft["report_draft_id"]
+    bsvc.add_block(
+        tmp_foundry,
+        report_draft_id,
+        markdown=f"Some narrative text pasted in: {_GLOBAL_SENSITIVE_QUOTE}",
+        materiality="narrative",
+    )
+    # No claim_link, no source_link added.
+
+    result = vsvc.verify_draft(tmp_foundry, report_draft_id)
+
+    assert result.passed is False
+    global_check = next(
+        c for c in result.checks if c.id == "report_body_sensitivity_global"
+    )
+    assert global_check.status == "fail", (
+        "global check must fail when blank-origin draft embeds sensitive text"
+    )
+    # The existing per-run check must still pass (no run_ids → nothing to scan).
+    per_run_check = next(c for c in result.checks if c.id == "report_body_sensitivity")
+    assert per_run_check.status == "pass", (
+        "per-run check should pass (no declared runs) but global check catches the leak"
+    )
+
+
+def test_verify_draft_fails_cross_run_quote_not_in_declared_sources(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """P5.7.2 integration — a draft whose body quotes a source card from a run
+    that is NOT listed in its declared source_links/claim_links must fail via
+    the global check."""
+    run_a, run_b = _build_two_runs_for_global_index(tmp_foundry)
+
+    # Create a draft linked only to run_B (the public run), then paste a
+    # quote from run_A's sensitive card — run_A is NOT a declared source.
+    draft = bsvc.create_draft(
+        tmp_foundry,
+        title="Cross-Run Leak Draft",
+        sensitivity="public",
+        source_run_id=run_b,  # only run_B is declared
+    )
+    report_draft_id = draft["report_draft_id"]
+    bsvc.add_block(
+        tmp_foundry,
+        report_draft_id,
+        markdown=f"Cross-run paste: {_GLOBAL_SENSITIVE_QUOTE}",
+        materiality="narrative",
+    )
+    # No source_link or claim_link to run_A — it's not in declared sources.
+
+    result = vsvc.verify_draft(tmp_foundry, report_draft_id)
+
+    assert result.passed is False
+    global_check = next(
+        c for c in result.checks if c.id == "report_body_sensitivity_global"
+    )
+    assert global_check.status == "fail", (
+        "global check must flag a quote from a run not in the draft's declared sources"
+    )

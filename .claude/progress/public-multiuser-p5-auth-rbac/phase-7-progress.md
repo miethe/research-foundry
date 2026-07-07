@@ -6,12 +6,13 @@ prd: public-multiuser-p5-auth-rbac
 feature_slug: public-multiuser-p5-auth-rbac
 phase: 7
 status: pending
-created: 2026-07-07
+created: '2026-07-07'
 updated: '2026-07-07'
 prd_ref: docs/project_plans/PRDs/features/public-multiuser-p5-auth-rbac-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/public-multiuser-p5-auth-rbac-v1.md
 phase_plan_ref: docs/project_plans/implementation_plans/features/public-multiuser-p5-auth-rbac-v1/phase-7-deferred-sensitivity.md
-commit_refs: []
+commit_refs:
+- 504bc38
 pr_refs: []
 completion_ref: null
 owners:
@@ -37,17 +38,18 @@ tasks:
   - tests: 116 passed (108+8 new)
 - id: P5.7.2
   title: 'Global source index (FU-4 #2)'
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   files_affected:
   - src/research_foundry/services/verification.py
   - tests/unit/test_sensitivity_redaction.py
   dependencies: []
-  started: null
-  completed: null
+  started: 2026-07-07T00:00Z
+  completed: 2026-07-07T00:00Z
   verified_by: []
-  evidence: []
+  evidence:
+  - commit: pending
 - id: P5.7.3
   title: 'Reverse catalog links (FU-4 #3)'
   status: pending
@@ -67,10 +69,10 @@ parallelization:
   - P5.7.2
   - P5.7.3
 total_tasks: 3
-completed_tasks: 1
+completed_tasks: 2
 in_progress_tasks: 0
 blocked_tasks: 0
-progress: 33
+progress: 66
 ---
 
 # Phase 7 Progress: Deferred Sensitivity Closes (FU-4)
