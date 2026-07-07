@@ -219,6 +219,8 @@ def test_valid_threshold_labels_all_resolve_without_error(
 # --------------------------------------------------------------------------
 
 _GLOBAL_SENSITIVE_QUOTE = "GLOBAL_WORK_SENSITIVE_SECRET_TOKEN_XYZ"
+_POINT_SENSITIVE_QUOTE = "POINT_LEVEL_SENSITIVE_REVENUE_TOKEN_ABC"
+_NESTED_RUN_SENSITIVE_QUOTE = "NESTED_RUN_SENSITIVE_TOKEN_DEF_456"
 
 
 def _build_two_runs_for_global_index(paths: FoundryPaths) -> tuple[str, str]:
@@ -420,4 +422,154 @@ def test_verify_draft_fails_cross_run_quote_not_in_declared_sources(
     )
     assert global_check.status == "fail", (
         "global check must flag a quote from a run not in the draft's declared sources"
+    )
+
+
+# --------------------------------------------------------------------------
+# P5.7.2 remediation — Gap 1 (point-level sensitivity) and Gap 2 (nested runs)
+# --------------------------------------------------------------------------
+
+
+def test_verify_draft_fails_point_level_sensitivity_in_global_index(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """P5.7.2 gap 1 — build_global_source_index must store effective sensitivity.
+
+    A source card whose ``meta.sensitivity`` is ``"public"`` but whose
+    ``extracted_points[]`` entry has ``sensitivity = "work_sensitive"`` has an
+    effective sensitivity of ``"work_sensitive"``.  A blank-origin draft that
+    embeds that point's quote text must fail ``verify_draft`` via the global
+    check, even though the card-level label alone would pass the threshold gate.
+    """
+    run_id = "rf_run_point_sens_gap"
+    rp = tmp_foundry.run_paths(run_id)
+    rp.ensure_scaffold()
+    dump_yaml(
+        {"run_id": run_id, "status": "verified", "sensitivity": "public"},
+        rp.run_yaml,
+    )
+    # Card-level sensitivity is "public" — the old broken index would store "public"
+    # and let the draft through.  The point-level "work_sensitive" must win.
+    dump_md(
+        {
+            "schema_version": "0.1",
+            "type": "source_card",
+            "source_card_id": "src_point_sens",
+            "sensitivity": "public",
+            "source": {
+                "title": "Point Sens Card",
+                "source_type": "doc",
+                "locator": {"url": "file:///internal/point"},
+            },
+            "extracted_points": [
+                {
+                    "evidence_id": "ev_ps",
+                    "locator": "p1",
+                    "summary": "a point-level sensitive fact",
+                    "quote": _POINT_SENSITIVE_QUOTE,
+                    "sensitivity": "work_sensitive",
+                }
+            ],
+        },
+        "",
+        rp.sources / "src_point_sens.md",
+    )
+
+    # Blank-origin draft: no source_run_id, no source_links, no claim_links.
+    draft = bsvc.create_draft(
+        tmp_foundry,
+        title="Point Sens Leak Draft",
+        sensitivity="public",
+    )
+    report_draft_id = draft["report_draft_id"]
+    bsvc.add_block(
+        tmp_foundry,
+        report_draft_id,
+        markdown=f"Pasted point quote: {_POINT_SENSITIVE_QUOTE}",
+        materiality="narrative",
+    )
+
+    result = vsvc.verify_draft(tmp_foundry, report_draft_id)
+
+    assert result.passed is False, (
+        "draft embedding a point-level sensitive quote must fail verify_draft"
+    )
+    global_check = next(
+        c for c in result.checks if c.id == "report_body_sensitivity_global"
+    )
+    assert global_check.status == "fail", (
+        "global check must catch point-level sensitive quote even when card-level "
+        "sensitivity is 'public'"
+    )
+
+
+def test_verify_draft_fails_nested_run_source_card_indexed(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """P5.7.2 gap 2 — build_global_source_index must discover nested runs.
+
+    A source card under ``runs/nested_runs/<run_id>/sources/`` (depth 2) must
+    appear in the global index.  A blank-origin draft that embeds its sensitive
+    quote must fail ``verify_draft`` via the global check.
+    """
+    # Create a run nested TWO levels under paths.runs (runs/nested_runs/<id>/).
+    nested_parent = tmp_foundry.runs / "nested_runs"
+    nested_parent.mkdir(parents=True, exist_ok=True)
+    nested_run_id = "rf_run_nested_sens"
+    run_dir = nested_parent / nested_run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    sources_dir = run_dir / "sources"
+    sources_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "run.yaml").write_text(
+        f"run_id: {nested_run_id}\nstatus: verified\nsensitivity: work_sensitive\n",
+        encoding="utf-8",
+    )
+    dump_md(
+        {
+            "schema_version": "0.1",
+            "type": "source_card",
+            "source_card_id": "src_nested_secret",
+            "sensitivity": "work_sensitive",
+            "source": {
+                "title": "Nested Run Doc",
+                "source_type": "doc",
+                "locator": {"url": "file:///internal/nested"},
+            },
+            "extracted_points": [
+                {
+                    "evidence_id": "ev_ns",
+                    "locator": "p1",
+                    "summary": "nested run sensitive fact",
+                    "quote": _NESTED_RUN_SENSITIVE_QUOTE,
+                }
+            ],
+        },
+        "",
+        sources_dir / "src_nested_secret.md",
+    )
+
+    # Blank-origin draft: no source_run_id, no source_links, no claim_links.
+    draft = bsvc.create_draft(
+        tmp_foundry,
+        title="Nested Run Leak Draft",
+        sensitivity="public",
+    )
+    report_draft_id = draft["report_draft_id"]
+    bsvc.add_block(
+        tmp_foundry,
+        report_draft_id,
+        markdown=f"Copied from nested run: {_NESTED_RUN_SENSITIVE_QUOTE}",
+        materiality="narrative",
+    )
+
+    result = vsvc.verify_draft(tmp_foundry, report_draft_id)
+
+    assert result.passed is False, (
+        "draft quoting a nested-run sensitive source must fail verify_draft"
+    )
+    global_check = next(
+        c for c in result.checks if c.id == "report_body_sensitivity_global"
+    )
+    assert global_check.status == "fail", (
+        "global check must index source cards from nested-run directories and catch the leak"
     )

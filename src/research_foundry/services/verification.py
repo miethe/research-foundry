@@ -31,7 +31,11 @@ from ..frontmatter import load_md
 from ..ids import now_iso
 from ..paths import FoundryPaths
 from ..yamlio import append_jsonl, dump_yaml, load_yaml
-from .export_service import DEFAULT_THRESHOLD, SENSITIVITY_ORDER
+from .export_service import DEFAULT_THRESHOLD, SENSITIVITY_ORDER, discover_run_yamls
+
+# Reverse map: rank → label, used by build_global_source_index to store the
+# effective-sensitivity label rather than just the raw card-level field.
+_SENSITIVITY_BY_RANK: dict[int, str] = {v: k for k, v in SENSITIVITY_ORDER.items()}
 
 # --- Built-in defaults (used when config/claim_policy.yaml is absent) -------
 
@@ -280,7 +284,22 @@ def build_global_source_index(paths: FoundryPaths) -> dict[str, tuple[str, str]]
     """Build a workspace-wide mapping: source_card_id -> (run_id, sensitivity).
 
     Mirrors the shape of _index_source_cards but iterates every run in the
-    workspace rather than a single run.
+    workspace rather than a single run.  Uses :func:`discover_run_yamls` so
+    nested run layouts (e.g. ``runs/sub/<id>/``) are included at any depth up
+    to 3, matching the export service's run discovery logic.
+
+    *run_id* stored in the tuple is the run directory's path **relative to**
+    ``paths.runs`` (e.g. ``"rf_run_abc"`` or ``"sub/rf_run_abc"``).  Consumers
+    like :func:`check_report_body_sensitivity_global` reconstruct the
+    ``sources/`` directory with ``paths.runs / run_id / "sources"``, which
+    resolves correctly for both flat and nested layouts via pathlib's slash
+    operator when the stored run_id contains a separator.
+
+    *sensitivity* is the **effective** value — the maximum of the card-level
+    ``meta.sensitivity`` and any per-point ``extracted_points[].sensitivity``
+    — matching the logic in :func:`check_report_body_sensitivity` so that a
+    card with a public card-level label but a work_sensitive extracted point
+    is indexed at the higher rank.
 
     Fail-closed: if a run's sources/ dir cannot be read (I/O error, corrupt
     dir), that run is included as a sentinel ("unknown", "restricted") rather
@@ -292,14 +311,15 @@ def build_global_source_index(paths: FoundryPaths) -> dict[str, tuple[str, str]]
     if not runs_dir.exists():
         return index
     try:
-        run_entries = sorted(runs_dir.iterdir())
+        run_yamls = discover_run_yamls(runs_dir, max_depth=3)
     except OSError:
         return index
 
-    for run_dir in run_entries:
-        if not run_dir.is_dir():
-            continue
-        run_id = run_dir.name
+    for run_yaml in run_yamls:
+        run_dir = run_yaml.parent
+        # Store the path relative to runs_dir so nested layouts resolve via
+        # paths.runs / run_id / "sources" in consumers.
+        run_id = str(run_dir.relative_to(runs_dir))
         sources_dir = run_dir / "sources"
         if not sources_dir.exists():
             continue
@@ -316,7 +336,23 @@ def build_global_source_index(paths: FoundryPaths) -> dict[str, tuple[str, str]]
             sid = meta.get("source_card_id")
             if not sid:
                 continue
-            index[str(sid)] = (run_id, str(meta.get("sensitivity") or ""))
+            # Compute effective sensitivity: max(card-level rank, max point rank).
+            card_rank = SENSITIVITY_ORDER.get(str(meta.get("sensitivity") or ""), len(SENSITIVITY_ORDER))
+            points = [p for p in (meta.get("extracted_points") or []) if isinstance(p, dict)]
+            effective_rank = card_rank
+            for p in points:
+                if p.get("sensitivity"):
+                    effective_rank = max(
+                        effective_rank,
+                        SENSITIVITY_ORDER.get(str(p["sensitivity"]), len(SENSITIVITY_ORDER)),
+                    )
+            # Reverse-look up the canonical label; fall back to the raw card value
+            # for unknown ranks so the consumer's fail-closed SENSITIVITY_ORDER
+            # lookup still fires correctly.
+            effective_label = _SENSITIVITY_BY_RANK.get(
+                effective_rank, str(meta.get("sensitivity") or "")
+            )
+            index[str(sid)] = (run_id, effective_label)
 
     return index
 
