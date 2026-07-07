@@ -5,7 +5,7 @@ doc_type: progress
 prd: public-multiuser-p5-auth-rbac
 feature_slug: public-multiuser-p5-auth-rbac
 phase: 7
-status: pending
+status: completed
 created: '2026-07-07'
 updated: '2026-07-07'
 prd_ref: docs/project_plans/PRDs/features/public-multiuser-p5-auth-rbac-v1.md
@@ -14,7 +14,7 @@ phase_plan_ref: docs/project_plans/implementation_plans/features/public-multiuse
 commit_refs:
 - 504bc38
 pr_refs: []
-completion_ref: null
+completion_ref: .claude/progress/public-multiuser-p5-auth-rbac/phase-7-completion.md
 owners:
 - python-backend-engineer
 - data-layer-expert
@@ -52,7 +52,7 @@ tasks:
   - commit: pending
 - id: P5.7.3
   title: 'Reverse catalog links (FU-4 #3)'
-  status: pending
+  status: completed
   assigned_to:
   - data-layer-expert
   files_affected:
@@ -69,10 +69,10 @@ parallelization:
   - P5.7.2
   - P5.7.3
 total_tasks: 3
-completed_tasks: 2
+completed_tasks: 3
 in_progress_tasks: 0
 blocked_tasks: 0
-progress: 66
+progress: 100
 ---
 
 # Phase 7 Progress: Deferred Sensitivity Closes (FU-4)
