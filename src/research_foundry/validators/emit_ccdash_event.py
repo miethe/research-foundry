@@ -48,7 +48,14 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:  # noqa: BLE001 — telemetry failures never break Stop
         emitted = None
 
-    print(json.dumps({"decision": "allow", "ccdash_event": emitted}))
+    # This hook is a telemetry side effect, not a stop gate: it must not emit a
+    # ``decision``. The Stop schema only accepts decision ``approve``/``block`` and
+    # has no ``ccdash_event`` field, so any such payload fails hook-output validation.
+    # Emit schema-valid stdout (suppressed from the transcript) and surface the
+    # emitted event path on stderr for debugging.
+    if emitted is not None:
+        print(f"ccdash_event: {emitted}", file=sys.stderr)
+    print(json.dumps({"suppressOutput": True}))
     return 0
 
 
