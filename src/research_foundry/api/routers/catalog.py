@@ -19,6 +19,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ..auth.rbac import require_role
 from ...paths import FoundryPaths
 from ...services import catalog_service as svc
 from .runs import get_paths
@@ -30,6 +31,10 @@ router = APIRouter()
 # app.dependency_overrides[get_paths] targets in tests, so overriding still
 # works regardless of where the Depends() instance was constructed.
 _PATHS_DEP = Depends(get_paths)
+
+# RBAC-003: catalog write gate — owner, admin, researcher may create/update.
+# Module-level so tests can reference the inner callable for dependency_overrides.
+_RBAC_CATALOG_WRITE = Depends(require_role("owner", "admin", "researcher"))
 
 
 @router.get("/catalog/stats", summary="Catalog aggregate counts")
@@ -93,6 +98,7 @@ def get_catalog_item(
 def post_catalog_import_run(
     run_id: str,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_CATALOG_WRITE,
 ) -> dict[str, Any]:
     """(Re)import one run. Delete-then-insert — idempotent. 404 on unknown run."""
     try:
@@ -103,7 +109,10 @@ def post_catalog_import_run(
 
 
 @router.post("/catalog/import", summary="(Re)import every discovered run")
-def post_catalog_import_all(paths: FoundryPaths = _PATHS_DEP) -> dict[str, Any]:
+def post_catalog_import_all(
+    paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_CATALOG_WRITE,
+) -> dict[str, Any]:
     """(Re)import every discovered run. Best-effort — a malformed run is skipped.
 
     ``errors`` carries ``import_all()``'s per-run failure list through to the

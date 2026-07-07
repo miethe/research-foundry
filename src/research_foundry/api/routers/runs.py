@@ -188,4 +188,19 @@ def get_run_anchors(
     return {"run_id": run_id, "report_anchors": data.get("report_anchors")}
 
 
+# RBAC-005 audit: runs.py has no mutation routes as of P5.2 — all endpoints
+# are GET (read-only).  The five routes above are:
+#   GET /runs
+#   GET /runs/{run_id}
+#   GET /runs/{run_id}/claims
+#   GET /runs/{run_id}/sources/{source_card_id}
+#   GET /reports/{run_id}/anchors
+#
+# Role-gating (run:read permission) will be needed if mutation routes are
+# added in future phases, or when read-gate enforcement is implemented
+# for P5.3/P5.7.  Until then no require_role dependency is warranted here.
+#
+# agent_jobs.py forward-compat: see RBAC-FORWARD-COMPAT note in
+# src/research_foundry/api/auth/rbac.py module docstring (RBAC-005, RBAC-901).
+
 __all__ = ["router"]

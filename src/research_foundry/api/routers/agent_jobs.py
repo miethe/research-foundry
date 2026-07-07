@@ -42,6 +42,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from ..auth.rbac import require_role
 from ...errors import NotFoundError
 from ...paths import FoundryPaths
 from ...services.agent_job_schemas import AgentJobStatus
@@ -54,6 +55,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _PATHS_DEP = Depends(get_paths)
+
+# RBAC-FORWARD-COMPAT (RBAC-005, RBAC-901): agent_job:launch is an admin-class
+# action. All mutation routes in this router require owner or admin.
+# (P5.2 implementation — agent_jobs.py existed before P5.2 with RBAC deferred.)
+_RBAC_AGENT_JOB = Depends(require_role("owner", "admin"))
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +137,7 @@ class AcceptJobBody(BaseModel):
 def launch_job(
     body: LaunchJobBody,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_AGENT_JOB,
 ) -> dict[str, Any]:
     """Launch a new agent job, gated by ``governance.guard_check()``.
 
@@ -378,6 +385,7 @@ async def stream_events(
 def cancel_job(
     job_id: str,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_AGENT_JOB,
 ) -> dict[str, Any]:
     """Cancel *job_id*, guaranteeing credential temp-file cleanup.
 
@@ -417,6 +425,7 @@ def accept_job(
     job_id: str,
     body: AcceptJobBody,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_AGENT_JOB,
 ) -> dict[str, Any]:
     """Promote staged artifacts from *job_id* into the catalog or report store.
 

@@ -54,6 +54,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from ..auth.rbac import require_role
 from ...errors import NotFoundError
 from ...paths import FoundryPaths
 from ...services import builder_service as bsvc
@@ -64,6 +65,16 @@ from .runs import get_paths
 router = APIRouter()
 
 _PATHS_DEP = Depends(get_paths)
+
+# RBAC-004: report mutation gates — module-level to avoid ruff B008 and to allow
+# test dependency_overrides on the inner callable.
+#
+# builder_service.py bypass confirmation (RBAC-004 invariant): builder_service.py
+# has no HTTP entry point — its write methods (create_draft, add_block, etc.) are
+# pure Python functions called only from this router. There is no HTTP path into
+# builder_service mutation functions that bypasses the router-layer gating below.
+_RBAC_REPORT_WRITE = Depends(require_role("owner", "admin", "researcher"))
+_RBAC_REPORT_ADMIN = Depends(require_role("owner", "admin"))
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +201,7 @@ def _sensitivity_rank(label: str | None) -> int:
 def create_draft(
     body: CreateDraftBody,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Create a new draft.  Origin-driven dispatch:
     - ``blank`` / ``template`` → empty draft with optional title/audience/sensitivity
@@ -297,6 +309,7 @@ def get_draft(
 def delete_draft(
     report_id: str,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_ADMIN,
 ) -> None:
     """Delete draft directory (draft.yaml + revisions) and its catalog index row.
 
@@ -333,6 +346,7 @@ def create_version(
     report_id: str,
     body: CreateRevisionBody,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Snapshot the current draft state into an immutable revision file."""
     try:
@@ -364,6 +378,7 @@ def restore_version(
     report_id: str,
     version_id: str,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Overwrite current draft content with the *version_id* snapshot.
 
@@ -385,6 +400,7 @@ def add_block(
     report_id: str,
     body: AddBlockBody,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Append a new block to *report_id*.  Returns the full updated draft."""
     try:
@@ -408,6 +424,7 @@ def reorder_blocks(
     report_id: str,
     body: ReorderBlocksBody,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Set block order by supplying the complete ordered list of block_ids.
 
@@ -430,6 +447,7 @@ def update_block(
     block_id: str,
     body: UpdateBlockBody,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Patch one or more fields of *block_id*.  Returns the full updated draft."""
     try:
@@ -461,6 +479,7 @@ def delete_block(
     report_id: str,
     block_id: str,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Remove *block_id* and its associated claim/source links from *report_id*.
 
@@ -490,6 +509,7 @@ def add_claim_link(
     report_id: str,
     body: AddClaimLinkBody,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Link *claim_id* to *block_id*.  Inserts a ``[claim:<id>]`` tag unless
     ``insert_tag=false``.  Returns the full updated draft."""
@@ -521,6 +541,7 @@ def remove_claim_link(
     report_id: str,
     claim_link_id: str,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Remove *claim_link_id* from the draft and recompute block coverage.
 
@@ -542,6 +563,7 @@ def add_source_link(
     report_id: str,
     body: AddSourceLinkBody,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Link a source card to the draft (optionally anchored to a block)."""
     try:
@@ -569,6 +591,7 @@ def remove_source_link(
     report_id: str,
     source_link_id: str,
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Remove *source_link_id* from the draft.
 
@@ -593,6 +616,7 @@ def verify_draft_endpoint(
         description="Override sensitivity threshold for the body-sensitivity check.",
     ),
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Run all D13 checks against *report_id*.
 
@@ -635,6 +659,7 @@ def publish_preview(
         ),
     ),
     paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_ADMIN,
 ) -> dict[str, Any]:
     """Run D13 checks FAIL-CLOSED and return a Markdown preview on pass.
 

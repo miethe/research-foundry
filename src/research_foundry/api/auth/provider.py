@@ -47,6 +47,14 @@ class AuthIdentity:
         Immutable tuple of role strings granted to this identity within the
         workspace.  Never a mutable list — callers that need set semantics
         should do ``set(identity.roles)``.
+
+        **JSON serialization note** (RBAC-900): when this dataclass is
+        serialized via :func:`dataclasses.asdict` or a Pydantic model,
+        ``roles`` is emitted as a JSON array ``[]``.  Deserializers MUST
+        convert that array back to a ``tuple[str, ...]`` before constructing
+        an :class:`AuthIdentity`; the in-memory contract is always a tuple,
+        never a list.  An identity with no roles assigned should use
+        ``roles=()`` (the default empty tuple), not ``None``.
     """
 
     user_id: str
