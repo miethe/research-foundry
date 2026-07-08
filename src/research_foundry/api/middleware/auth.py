@@ -52,6 +52,12 @@ logger = logging.getLogger(__name__)
 # Path exempted from all auth checks — liveness probe must always be reachable.
 _HEALTH_PATH = "/health"
 
+# Prefix for the share-token resolution endpoint.
+# GET /api/reports/shares/{share_token} is publicly accessible — the token IS
+# the credential; sensitivity is re-checked inside the resolver (PRD AC-2).
+# All other /api/reports/* routes remain fully auth-gated.
+_SHARE_TOKEN_PATH_PREFIX = "/api/reports/shares/"
+
 
 # DEPRECATED: superseded by AuthProviderMiddleware in P5.1; remove in P5.2.
 class TokenAuthMiddleware(BaseHTTPMiddleware):
@@ -157,6 +163,18 @@ class AuthProviderMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # GET /health is always unauthenticated (security invariant 1).
         if request.url.path == _HEALTH_PATH:
+            return await call_next(request)
+
+        # Share token is the credential; sensitivity re-check happens inside
+        # the resolver (PRD AC-2).  This exemption is PRECISELY scoped:
+        #   - only GET (not POST/PATCH/DELETE)
+        #   - only the /api/reports/shares/{token} path (token must be non-empty)
+        #   - all other /api/reports/* routes still require session auth
+        if (
+            request.method == "GET"
+            and request.url.path.startswith(_SHARE_TOKEN_PATH_PREFIX)
+            and len(request.url.path) > len(_SHARE_TOKEN_PATH_PREFIX)
+        ):
             return await call_next(request)
 
         identity = self._provider.authenticate(request)

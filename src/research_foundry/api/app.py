@@ -32,7 +32,7 @@ Endpoints registered by this factory:
   POST /api/catalog/import                — (re)import every discovered run
 
 Middleware stack (outermost → innermost):
-  CORS → allowlist (optional) → auth (optional)
+  CORS → allowlist (optional) → auth (optional) → rate-limit (optional)
 
 The allowlist middleware is only added when ``viewer.allowlist`` is non-empty.
 The auth middleware is only added when ``auth.provider != "none"`` in
@@ -41,6 +41,10 @@ middleware is registered (true no-op — ``request.state`` never gains an
 ``identity`` attribute), UNLESS the legacy ``viewer.auth_mode: token`` field
 is set (fail-closed backward-compatibility fallback — see Invariant 1 in the
 ``create_app`` source).
+The rate-limit middleware is only added when ``auth.rate_limit.enabled`` is
+``True`` (default).  It keys on ``(AuthIdentity.user_id, route)`` so one
+user's burst cannot throttle another.  Requests with no ``request.state.identity``
+(``auth_mode=none`` deployments) pass through unconditionally.
 """
 
 from __future__ import annotations
@@ -59,6 +63,8 @@ from .auth.adapters.local_static import LocalStaticAuthProvider
 from .auth.provider import get_provider, register_provider
 from .middleware.allowlist import IPAllowlistMiddleware
 from .middleware.auth import AuthProviderMiddleware
+from .middleware.rate_limit import RateLimitMiddleware
+from .routers.admin import router as admin_router
 from .routers.agent_jobs import router as agent_jobs_router
 from .routers.audit import router as audit_router
 from .routers.auth_identity import router as auth_identity_router
@@ -114,18 +120,66 @@ def create_app(config: FoundryConfig) -> FastAPI:
         version="0.1.0",
     )
 
-    # --- Middleware (outermost → innermost: CORS → allowlist → auth) ----------
+    # --- P5.6 T5: Resolve and store RBAC enforcement state -------------------
+    #
+    # resolve_rbac_enforced() applies the fail-closed rule:
+    #   rbac_enforcement=disabled + non-loopback bind_host → raises ValueError.
+    # Calling it here means create_app() itself raises before any middleware or
+    # route is registered, preventing a mis-configured server from starting.
+    #
+    # The resolved bool is stored on app.state so require_role() can read it
+    # per-request without re-computing from config on every call.
+    #
+    # NOTE: auth_provider() is called again below for middleware registration;
+    # we use a try/except here so a bad provider value still surfaces correctly
+    # at startup rather than silently masking to "none".
+    try:
+        _rbac_provider_name = config.auth_provider()
+    except (ValueError, Exception):  # noqa: BLE001
+        _rbac_provider_name = "none"
+    app.state.rbac_enforced = config.resolve_rbac_enforced(
+        _rbac_provider_name,
+        config.viewer_bind_host(),
+    )
+
+    # --- P5.6 T2: In-memory rate-limit overrides store -----------------------
+    # PATCH /api/admin/rate-limit-config writes here; GET reads it merged with
+    # config defaults.  Cleared on restart (intentional — use foundry.yaml for
+    # persistent overrides).
+    app.state.rate_limit_overrides: dict = {}
+
+    # --- Middleware (outermost → innermost: CORS → allowlist → auth → rate-limit) ---
     #
     # Starlette/FastAPI middleware is processed in *reverse* insertion order at
     # runtime (last added = outermost).  We add them innermost-first so the
     # final execution order matches the documented stack.
     #
-    # 1. Auth (innermost — added first, runs last)
+    # 0. Rate limit (innermost — added first, runs AFTER auth sets identity)
+    #
+    # P5.6: per-identity + per-route sliding-window rate limiter.  Keyed on
+    # (user_id, route) so one user's burst cannot throttle another.  Auth must
+    # run before rate-limit (auth is *outer* relative to rate-limit) so that
+    # request.state.identity is populated when the rate limiter inspects it.
+    # When auth_mode=none no identity exists and the middleware passes through.
+    if config.auth_rate_limit_enabled():
+        app.add_middleware(
+            RateLimitMiddleware,
+            requests_per_window=config.auth_rate_limit_requests_per_window(),
+            window_seconds=config.auth_rate_limit_window_seconds(),
+        )
+
+    # 1. Auth (added second — runs before rate-limit on each request)
     #
     # P5.1: registry-based provider replaces the legacy TokenAuthMiddleware
     # single-token wiring.  Provider selection happens exactly once here;
     # no router or service may branch on provider name — all branching is
     # resolved at app construction time.
+    #
+    # NOTE: auth.provider=none + non-loopback bind is blocked in the rf serve
+    # pre-bind gate (cli_commands._validate_nonloopback_bind).  create_app does
+    # not duplicate this gate — the server can only reach create_app() after the
+    # CLI gate has passed.  The canonical check is config.is_auth_enabled().
+    # Tests: tests/unit/test_rbac_enforcement_toggle.py::TestAuthNoneNonLoopbackCLIGate
     _provider_name = config.auth_provider()
     _auth_provider = get_provider(_provider_name)  # None when provider == "none"
 
@@ -305,6 +359,10 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # caller's own AuthIdentity in authenticated mode.  No admin RBAC gate needed
     # because the endpoint only exposes the caller's own resolved identity.
     app.include_router(auth_identity_router, prefix="/api", tags=["auth"])
+    # Admin settings API (P5.6 T2): workspace members, rate-limit config,
+    # auth-provider status, and RBAC enforcement toggle status.
+    # Always registered — individual endpoints gate on require_role("owner", "admin").
+    app.include_router(admin_router, prefix="/api", tags=["admin"])
 
     return app
 

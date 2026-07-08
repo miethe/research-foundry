@@ -51,7 +51,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from ..auth.rbac import require_role
@@ -152,6 +152,25 @@ class AddSourceLinkBody(BaseModel):
     block_id: str | None = None
     relation: str | None = None
     updated_by: str | None = None
+
+
+class CreateShareLinkBody(BaseModel):
+    """Body for POST /api/reports/{report_id}/share-links.
+
+    *sensitivity_threshold* defaults to the draft's own sensitivity label when
+    omitted.  The resolved threshold must be ``<=`` the draft's sensitivity rank
+    (creating a share link at a *higher* threshold than the draft's label is
+    permitted — the gate will still block access when the draft's label exceeds
+    the threshold at resolution time).
+
+    *expires_at* is an optional ISO-8601 UTC timestamp after which the link is
+    considered expired.  ``None`` means the link never expires (revocation is
+    the only mechanism to invalidate it).
+    """
+
+    sensitivity_threshold: str | None = None
+    expires_at: str | None = None
+    created_by: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -333,9 +352,24 @@ def delete_draft(
 @router.get("/reports/{report_id}/versions", summary="List draft revisions")
 def list_versions(
     report_id: str,
+    sensitivity_threshold: str | None = Query(
+        None,
+        description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+    ),
     paths: FoundryPaths = _PATHS_DEP,
 ) -> list[dict[str, Any]]:
-    """Return revision pointer list (report_version_id, created_at, note) for *report_id*."""
+    """Return revision pointer list (report_version_id, created_at, note) for *report_id*.
+
+    404 for unknown ids AND drafts whose sensitivity exceeds the resolved threshold
+    (no-existence-leak, mirrors ``get_draft`` gating).
+    """
+    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
+    try:
+        draft = bsvc.load_draft(paths, report_id)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+    if _sensitivity_rank(draft.get("sensitivity")) > threshold_rank:
+        raise _not_found(report_id)
     try:
         return bsvc.list_revisions(paths, report_id)
     except NotFoundError as exc:
@@ -362,9 +396,24 @@ def create_version(
 def get_version(
     report_id: str,
     version_id: str,
+    sensitivity_threshold: str | None = Query(
+        None,
+        description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+    ),
     paths: FoundryPaths = _PATHS_DEP,
 ) -> dict[str, Any]:
-    """Return the full snapshot for *version_id* under *report_id*."""
+    """Return the full snapshot for *version_id* under *report_id*.
+
+    404 for unknown ids AND drafts whose sensitivity exceeds the resolved threshold
+    (no-existence-leak, mirrors ``get_draft`` gating).
+    """
+    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
+    try:
+        draft = bsvc.load_draft(paths, report_id)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+    if _sensitivity_rank(draft.get("sensitivity")) > threshold_rank:
+        raise _not_found(report_id)
     try:
         return bsvc.get_revision(paths, report_id, version_id)
     except NotFoundError as exc:
@@ -652,6 +701,7 @@ def verify_draft_endpoint(
 @router.post("/reports/{report_id}/publish-preview", summary="Publish-preview gate (D13 fail-closed)")
 def publish_preview(
     report_id: str,
+    request: Request,
     sensitivity_threshold: str | None = Query(
         None,
         description=(
@@ -660,7 +710,6 @@ def publish_preview(
         ),
     ),
     paths: FoundryPaths = _PATHS_DEP,
-    _rbac: None = _RBAC_REPORT_ADMIN,
 ) -> dict[str, Any]:
     """Run D13 checks FAIL-CLOSED and return a Markdown preview on pass.
 
@@ -671,15 +720,49 @@ def publish_preview(
 
     **Success**: ``{ok: true, preview_markdown: "...", checks: [...]}`` + HTTP 200
 
+    **PRD AC-2 — Role-independent fail-closed gate**:
+    The D13 sensitivity checks fire BEFORE the RBAC role gate.  Any
+    error-severity sensitivity failure returns 422 for ALL callers regardless of
+    their role — including ``owner`` and ``admin``.  No role can bypass the
+    sensitivity gate.  RBAC (``report:publish`` → owner/admin only) is enforced
+    in step 3, after the sensitivity gate passes.
+
     The preview Markdown is generated from the current draft blocks.  Nothing
     is persisted — callers decide whether to actually publish.
-    """
 
+    **RBAC-901 note**: this route enforces ``report:publish`` (owner/admin)
+    manually rather than via ``Depends(require_role(...))`` so that the
+    sensitivity gate (step 2, 422) fires before the role gate (step 3, 403).
+    The test_rbac_route_sweep.py MANUALLY_GATED_ROUTES exemption documents this.
+    """
+    # Resolve caller identity once — used in both the RBAC pre-check below
+    # and the post-sensitivity RBAC gate (step 3).
+    # RBAC-disabled: when app.state.rbac_enforced is False the global
+    # require_role() is a no-op; this manual gate must honor the same toggle so
+    # that loopback/disabled mode is consistent end-to-end (DEFECT P2 fix).
+    _app_state = getattr(getattr(request, "app", None), "state", None)
+    rbac_enforced: bool | None = (
+        getattr(_app_state, "rbac_enforced", None) if _app_state is not None else None
+    )
+    identity = getattr(request.state, "identity", None)
+    _has_publish_perm: bool = (rbac_enforced is False) or identity is None or bool(
+        set(identity.roles) & {"owner", "admin"}
+    )
+
+    # Step 1: Sensitivity-first D13 verification (PRD AC-2 invariant).
+    # verify_draft loads the draft and runs all D13 checks BEFORE the RBAC
+    # check below, so a sensitivity violation (422) cannot be bypassed by
+    # choosing a higher-privileged role.
     try:
         result = verify_draft(
             paths, report_id, sensitivity_threshold=sensitivity_threshold
         )
     except NotFoundError as exc:
+        # Draft not found.  Under-privileged callers get 403 (existence pre-check)
+        # so probing for non-existent report IDs is indistinguishable from
+        # "you lack the report:publish permission."
+        if not _has_publish_perm:
+            raise HTTPException(status_code=403, detail="Insufficient role") from exc
         raise _not_found(report_id) from exc
 
     check_dicts = [
@@ -693,7 +776,10 @@ def publish_preview(
         for c in result.checks
     ]
 
-    # Fail-closed: ANY error-severity failure blocks the preview.
+    # Step 2: Role-independent sensitivity gate (PRD AC-2).
+    # 422 fires for ALL callers regardless of role when any error-severity
+    # D13 check fails.  This is the "publish_preview must be role-independent
+    # fail-closed" requirement — no privileged role can bypass this.
     blocking = [c for c in check_dicts if c["severity"] == "error" and c["status"] == "fail"]
     if blocking:
         # Audit: record denied publish-preview before raising (fail-open).
@@ -716,7 +802,12 @@ def publish_preview(
             },
         )
 
-    # Gate passed — render Markdown preview (no side-effects on draft state).
+    # Step 3: RBAC gate — reached only when all D13 sensitivity checks pass.
+    # Only owner/admin hold report:publish permission.
+    if not _has_publish_perm:
+        raise HTTPException(status_code=403, detail="Insufficient role")
+
+    # Step 4: Generate Markdown preview (no side-effects on draft state).
     try:
         preview_md = bsvc.export_markdown(paths, report_id)
     except NotFoundError as exc:  # pragma: no cover  — already verified load above
@@ -748,18 +839,189 @@ def publish_preview(
 @router.get("/reports/{report_id}/export", summary="Export draft as Markdown")
 def export_draft(
     report_id: str,
+    sensitivity_threshold: str | None = Query(
+        None,
+        description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+    ),
     paths: FoundryPaths = _PATHS_DEP,
 ) -> dict[str, Any]:
     """Return the draft rendered as Markdown with YAML frontmatter.
 
+    404 for unknown ids AND drafts whose sensitivity exceeds the resolved threshold
+    (no-existence-leak, mirrors ``get_draft`` gating).  The sensitivity check runs
+    before any content is returned.
+
     The response carries ``{"report_draft_id": ..., "markdown": "..."}`` so
     callers can display or save the output without additional parsing.
     """
+    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
+    try:
+        draft = bsvc.load_draft(paths, report_id)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+    if _sensitivity_rank(draft.get("sensitivity")) > threshold_rank:
+        raise _not_found(report_id)
     try:
         md = bsvc.export_markdown(paths, report_id)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     return {"report_draft_id": report_id, "markdown": md}
+
+
+# ---------------------------------------------------------------------------
+# Share links (Phase 5.6 — D5: READ-ONLY, sensitivity-scoped share primitive)
+#
+# Design decision (D5 / LOCKED):
+#   v1 shares are READ-ONLY tokens scoped to a single draft at a fixed
+#   sensitivity threshold.  General public URLs (no token) are deferred.
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/reports/{report_id}/share-links",
+    summary="Create a sensitivity-scoped share link (read-only)",
+    status_code=201,
+)
+def create_share_link(
+    report_id: str,
+    body: CreateShareLinkBody,
+    paths: FoundryPaths = _PATHS_DEP,
+    _rbac: None = _RBAC_REPORT_ADMIN,
+) -> dict[str, Any]:
+    """Create a read-only, sensitivity-scoped share link for *report_id*.
+
+    The returned ``share_token`` is a bearer credential that grants read
+    access to the draft at ``sensitivity_threshold``.  Sensitivity is
+    re-checked at resolution time (``GET /reports/shares/{token}``) — the
+    token alone cannot bypass the gate (PRD AC-2).
+
+    Share link records are stored in ``.rf_state/rbac.db`` (NEVER
+    ``catalog.db`` — the catalog store drops and rebuilds on schema
+    version mismatch, which would silently invalidate live tokens).
+    """
+    from ...services.share_store import create_share_link as _create_link
+
+    # Load the draft to validate it exists and resolve the default threshold.
+    try:
+        draft = bsvc.load_draft(paths, report_id)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+
+    # Resolve the effective share threshold.
+    threshold = body.sensitivity_threshold or draft.get("sensitivity") or "public"
+    if threshold not in SENSITIVITY_ORDER:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown sensitivity_threshold {threshold!r}; "
+            f"valid values: {', '.join(sorted(SENSITIVITY_ORDER, key=SENSITIVITY_ORDER.__getitem__))}",
+        )
+
+    # Gate: draft sensitivity must not exceed the share threshold.
+    # A draft with sensitivity "client_sensitive" cannot be shared at
+    # threshold "public" — that would expose the draft to readers who should
+    # not see it.
+    draft_rank = SENSITIVITY_ORDER.get(
+        str(draft.get("sensitivity") or "public"), len(SENSITIVITY_ORDER)
+    )
+    threshold_rank = SENSITIVITY_ORDER[threshold]
+    if draft_rank > threshold_rank:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"draft sensitivity {draft.get('sensitivity')!r} exceeds the requested "
+                f"share link threshold {threshold!r} — cannot create a share link that "
+                "would expose the draft beyond its sensitivity label"
+            ),
+        )
+
+    return _create_link(
+        paths,
+        report_draft_id=report_id,
+        sensitivity_threshold=threshold,
+        created_by=body.created_by,
+        expires_at=body.expires_at,
+    )
+
+
+@router.get(
+    "/reports/shares/{share_token}",
+    summary="Resolve a share link (read-only, token-authenticated)",
+)
+def resolve_share_link(
+    share_token: str,
+    paths: FoundryPaths = _PATHS_DEP,
+) -> dict[str, Any]:
+    """Resolve a share link token to a read-only Markdown preview.
+
+    This endpoint is publicly accessible via the share token (no session auth
+    required — the token IS the bearer credential).
+
+    **PRD AC-2 — Sensitivity re-applied at resolution time**:
+    The draft's current sensitivity label is re-checked against the share
+    link's stored threshold at every request.  The creation-time check is NOT
+    trusted.  If the draft's sensitivity has increased since the link was
+    created (e.g. relabelled from ``public`` to ``client_sensitive``), this
+    endpoint returns 422 (fail-closed).
+
+    Returns:
+    - ``404`` — token not found, revoked, or expired.
+    - ``422`` — draft's current sensitivity exceeds the share link threshold.
+    - ``200`` — ``{ok: true, report_draft_id, sensitivity_threshold, preview_markdown}``.
+    """
+    from ...services.share_store import resolve_share_link as _resolve
+    from ...services.export_service import SENSITIVITY_ORDER as _SO
+
+    link = _resolve(paths, share_token)
+    if link is None:
+        raise HTTPException(
+            status_code=404, detail="share link not found, revoked, or expired"
+        )
+
+    report_id = link["report_draft_id"]
+    threshold = link["sensitivity_threshold"]
+    threshold_rank = _SO.get(threshold, len(_SO))
+
+    # Load the current draft state.
+    try:
+        draft = bsvc.load_draft(paths, report_id)
+    except NotFoundError:
+        # Draft was deleted after the share link was created — treat as expired.
+        raise HTTPException(
+            status_code=404, detail="share link not found, revoked, or expired"
+        )
+
+    # Re-apply sensitivity check at resolution time (PRD AC-2).
+    # The draft's sensitivity may have increased since the link was created.
+    draft_sensitivity = str(draft.get("sensitivity") or "public")
+    draft_rank = _SO.get(draft_sensitivity, len(_SO))
+    if draft_rank > threshold_rank:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "ok": False,
+                "reason": (
+                    "draft sensitivity exceeds share link threshold — "
+                    "fail-closed at resolution time (PRD AC-2)"
+                ),
+                "draft_sensitivity": draft_sensitivity,
+                "share_threshold": threshold,
+            },
+        )
+
+    # Generate read-only Markdown preview.
+    try:
+        preview_md = bsvc.export_markdown(paths, report_id)
+    except NotFoundError:  # pragma: no cover — draft existence verified above
+        raise HTTPException(
+            status_code=404, detail="share link not found, revoked, or expired"
+        )
+
+    return {
+        "ok": True,
+        "report_draft_id": report_id,
+        "sensitivity_threshold": threshold,
+        "preview_markdown": preview_md,
+    }
 
 
 __all__ = ["router"]

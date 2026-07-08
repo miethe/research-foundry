@@ -19,6 +19,7 @@ import { WorkspaceMembersPanel } from "@/components/AdminSettings/WorkspaceMembe
 import { RoleAssignmentPanel } from "@/components/AdminSettings/RoleAssignmentPanel";
 import { RateLimitConfigPanel } from "@/components/AdminSettings/RateLimitConfigPanel";
 import { AuthProviderStatusPanel } from "@/components/AdminSettings/AuthProviderStatusPanel";
+import { RbacStatusPanel } from "@/components/AdminSettings/RbacStatusPanel";
 import "@/styles/settings.css";
 
 const DETAIL_TABS = [
@@ -291,6 +292,16 @@ export function SettingsScreen() {
               </p>
             </div>
             <AuthProviderStatusPanel />
+          </div>
+
+          <div className="rv-settings__control rv-settings__control--panel">
+            <div className="rv-settings__label-block">
+              <span className="rv-settings__label">RBAC enforcement</span>
+              <p className="rv-settings__note">
+                Current role-based access control enforcement state and active auth provider.
+              </p>
+            </div>
+            <RbacStatusPanel />
           </div>
         </section>
       )}

@@ -112,19 +112,47 @@ function buildAuthHeaders(): Record<string, string> {
  * Parsed from X-RateLimit-Remaining / X-RateLimit-Limit / X-RateLimit-Reset
  * response headers by loopbackGet(). Null when any header is absent.
  *
+ * retryAfter is set from the Retry-After header on 429 responses.
+ * AppShell badge renders only when retryAfter is defined (GATE-900).
+ *
  * Exposed for AppShell to consume and display rate-limit status.
  */
 export interface RateLimitState {
   remaining: number;
   limit: number;
   reset: number;
+  /** Seconds until the rate limit resets. Set from Retry-After on 429. */
+  retryAfter?: number;
 }
 
 let _rateLimitState: RateLimitState | null = null;
 
+/** Reactive subscribers — notified whenever _rateLimitState changes. */
+const _rateLimitListeners = new Set<(state: RateLimitState | null) => void>();
+
 /** Returns the last parsed rate-limit state, or null when headers were absent. */
 export function getRateLimitState(): RateLimitState | null {
   return _rateLimitState;
+}
+
+/**
+ * Subscribe to rate-limit state changes. Returns an unsubscribe function.
+ * AppShell uses this to update its local state reactively when loopbackGet()
+ * parses new rate-limit headers (GATE-900 reactive wiring).
+ */
+export function subscribeRateLimitState(
+  fn: (state: RateLimitState | null) => void,
+): () => void {
+  _rateLimitListeners.add(fn);
+  return () => {
+    _rateLimitListeners.delete(fn);
+  };
+}
+
+/** Internal setter — updates _rateLimitState and notifies all subscribers. */
+function _setRateLimitState(state: RateLimitState | null): void {
+  _rateLimitState = state;
+  for (const fn of _rateLimitListeners) fn(state);
 }
 
 // ── Base URL (for static asset fetches) ──────────────────────────────────────
@@ -194,15 +222,18 @@ async function loopbackGet<T>(path: string): Promise<T> {
 
   // Parse X-RateLimit-* headers opportunistically (GATE-900 contract).
   // All three headers must be present; partial sets are ignored.
+  // Retry-After header is additionally parsed on 429 responses.
   const rlRemaining = res.headers.get("X-RateLimit-Remaining");
   const rlLimit = res.headers.get("X-RateLimit-Limit");
   const rlReset = res.headers.get("X-RateLimit-Reset");
   if (rlRemaining !== null && rlLimit !== null && rlReset !== null) {
-    _rateLimitState = {
+    const retryAfterStr = res.headers.get("Retry-After");
+    _setRateLimitState({
       remaining: Number(rlRemaining),
       limit: Number(rlLimit),
       reset: Number(rlReset),
-    };
+      ...(retryAfterStr !== null ? { retryAfter: Number(retryAfterStr) } : {}),
+    });
   }
 
   if (!res.ok) {
@@ -439,4 +470,34 @@ export async function fetchCatalogItem(catalogItemId: string): Promise<CatalogIt
   const index = await getCatalogIndex();
   const item = getCatalogItem(index, catalogItemId);
   return item ? normalizeCatalogItemDetail(item) : null;
+}
+
+// ── Admin API (P5.6 T5 — RBAC status) ────────────────────────────────────────
+
+/**
+ * RBAC enforcement status shape from GET /api/admin/rbac-status.
+ * Readable by any authenticated user (T5 contract).
+ */
+export interface RbacStatus {
+  /** The configured enforcement value (e.g. "full", "none", "permissive"). */
+  rbac_enforcement: string;
+  /** Whether RBAC is currently enforced (effective bool). */
+  rbac_enforced: boolean;
+  /** The active auth provider identifier. */
+  auth_provider: string;
+}
+
+/**
+ * GET /api/admin/rbac-status → current RBAC enforcement state.
+ *
+ * Readable by any authenticated user (no admin role required, per T5 contract).
+ * Returns null on any fetch error or non-2xx response — GATE-901 graceful
+ * degradation contract: callers must handle null without crashing.
+ */
+export async function getRbacStatus(): Promise<RbacStatus | null> {
+  try {
+    return await loopbackGet<RbacStatus>("/admin/rbac-status");
+  } catch {
+    return null;
+  }
 }
