@@ -83,17 +83,40 @@ def _collect_mutation_routes(router) -> list[tuple[str, str]]:
     return found
 
 
-def _collect_ungated(router) -> list[tuple[str, str]]:
-    """Return mutation routes in *router* that are missing require_role."""
+def _collect_ungated(router, exempt: frozenset[tuple[str, str]] | None = None) -> list[tuple[str, str]]:
+    """Return mutation routes in *router* that are missing require_role.
+
+    *exempt* is a frozenset of (method, path) pairs that are allowed to omit
+    the ``Depends(require_role(...))`` pattern because they enforce RBAC
+    manually inside the function body (e.g. for security-ordering reasons
+    documented in the route itself).
+    """
+    exempt = exempt or frozenset()
     ungated = []
     for route in router.routes:
         if not isinstance(route, APIRoute):
             continue
         for method in sorted(route.methods or []):
             if method in MUTATION_METHODS:
+                if (method, route.path) in exempt:
+                    continue
                 if not _has_require_role(route.dependant):
                     ungated.append((method, route.path))
     return ungated
+
+
+# Routes where RBAC is enforced manually inside the function body rather than
+# via ``Depends(require_role(...))``, for documented security-ordering reasons.
+# Entries here are exempt from the ``_collect_ungated`` completeness check.
+#
+# publish-preview (PRD AC-2 / Phase 5.6-T4): The D13 sensitivity gate must fire
+# BEFORE the role gate so a sensitivity violation (422) cannot be bypassed by
+# choosing a higher-privileged role.  Moving the RBAC Depends before the function
+# body would break that ordering guarantee.  The function enforces
+# ``report:publish`` (owner/admin) manually in step 3, after sensitivity passes.
+_MANUALLY_GATED_ROUTES: frozenset[tuple[str, str]] = frozenset({
+    ("POST", "/reports/{report_id}/publish-preview"),
+})
 
 
 # ---------------------------------------------------------------------------
@@ -131,16 +154,24 @@ class TestCatalogRouterSweep:
 
 class TestReportsRouterSweep:
     def test_all_reports_mutations_are_gated(self):
-        ungated = _collect_ungated(reports_router)
+        """All mutation routes must have require_role gating or be in MANUALLY_GATED_ROUTES.
+
+        publish-preview is in MANUALLY_GATED_ROUTES because it enforces RBAC
+        manually after the sensitivity gate (PRD AC-2 ordering invariant).
+        """
+        ungated = _collect_ungated(reports_router, exempt=_MANUALLY_GATED_ROUTES)
         assert ungated == [], (
             f"reports_router has ungated mutation routes: {ungated}"
         )
 
     def test_reports_has_expected_mutation_count(self):
-        """Regression guard: 14 mutation routes in reports_router."""
+        """Regression guard: 15 mutation routes in reports_router.
+
+        14 original routes + POST /reports/{report_id}/share-links (Phase 5.6-T4).
+        """
         mutations = _collect_mutation_routes(reports_router)
-        assert len(mutations) == 14, (
-            f"Expected 14 mutation routes in reports_router, found {len(mutations)}: {mutations}"
+        assert len(mutations) == 15, (
+            f"Expected 15 mutation routes in reports_router, found {len(mutations)}: {mutations}"
         )
 
     def test_expected_mutation_routes_present(self):
@@ -160,11 +191,22 @@ class TestReportsRouterSweep:
             ("DELETE", "/reports/{report_id}/source-links/{source_link_id}"),
             ("POST",   "/reports/{report_id}/verify"),
             ("POST",   "/reports/{report_id}/publish-preview"),
+            # Phase 5.6-T4: share link creation
+            ("POST",   "/reports/{report_id}/share-links"),
         }
         missing = expected - routes
         extra = routes - expected
         assert not missing, f"Missing expected mutation routes: {missing}"
         assert not extra, f"Unexpected mutation routes (update this test): {extra}"
+
+    def test_manually_gated_routes_are_documented(self):
+        """Every entry in MANUALLY_GATED_ROUTES must appear in the reports_router."""
+        routes = {(m, p) for m, p in _collect_mutation_routes(reports_router)}
+        for entry in _MANUALLY_GATED_ROUTES:
+            assert entry in routes, (
+                f"MANUALLY_GATED_ROUTES entry {entry} is not in reports_router — "
+                "remove it from the exemption set"
+            )
 
 
 # ---------------------------------------------------------------------------

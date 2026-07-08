@@ -297,6 +297,92 @@ def upsert_membership(
 
 
 # ---------------------------------------------------------------------------
+# Read helpers (consumed by admin API, P5.6 T2)
+# ---------------------------------------------------------------------------
+
+
+def list_workspace_members(
+    conn: sqlite3.Connection,
+    workspace_id: str,
+) -> list[dict]:
+    """Return all members of *workspace_id* with their role assignments.
+
+    Each entry in the returned list is a dict with keys:
+
+    ``user_id``
+        Provider-scoped user identifier.
+    ``email``
+        The user's display name (populated by the auth adapter on first
+        login; may be ``None`` when a token-configured user has never
+        authenticated via the API).
+    ``role``
+        The canonical role string (owner / admin / researcher / reviewer /
+        viewer).
+
+    Returns an empty list when no memberships exist for the workspace.
+    """
+    rows = conn.execute(
+        "SELECT m.user_id, u.display_name AS email, m.role "
+        "FROM memberships m "
+        "LEFT JOIN users u ON m.user_id = u.id "
+        "WHERE m.workspace_id = ?",
+        (workspace_id,),
+    ).fetchall()
+    return [
+        {
+            "user_id": row["user_id"],
+            "email": row["email"],
+            "role": row["role"],
+        }
+        for row in rows
+    ]
+
+
+def get_workspace(
+    conn: sqlite3.Connection,
+    workspace_id: str,
+) -> Optional[dict]:
+    """Return the workspace record for *workspace_id*, or ``None`` if absent."""
+    row = conn.execute(
+        "SELECT id, name, created_at FROM workspaces WHERE id = ?",
+        (workspace_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {"id": row["id"], "name": row["name"], "created_at": row["created_at"]}
+
+
+def update_member_role(
+    conn: sqlite3.Connection,
+    user_id: str,
+    workspace_id: str,
+    role: str,
+) -> None:
+    """Update the role of *user_id* in *workspace_id*.
+
+    ``role`` must be one of the 5 canonical names (owner, admin, researcher,
+    reviewer, viewer).  The FK constraint on ``roles(name)`` will reject
+    unknown values when foreign_keys = ON.
+
+    Raises
+    ------
+    KeyError
+        When no membership row exists for ``(user_id, workspace_id)``.  The
+        caller must create the membership first via :func:`upsert_membership`
+        if it may not yet exist.
+    """
+    result = conn.execute(
+        "UPDATE memberships SET role = ? WHERE user_id = ? AND workspace_id = ?",
+        (role, user_id, workspace_id),
+    )
+    if result.rowcount == 0:
+        raise KeyError(
+            f"Member {user_id!r} not found in workspace {workspace_id!r}. "
+            "Use upsert_membership() to create the membership first."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Private utilities
 # ---------------------------------------------------------------------------
 

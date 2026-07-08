@@ -43,12 +43,22 @@ def _has_require_role(dependant) -> bool:
     return False
 
 
+# Routes where RBAC is enforced manually inside the function body for security-ordering
+# reasons (e.g. sensitivity check must fire before role check — PRD AC-2 / P5.6-T4).
+# Mirrored from test_rbac_route_sweep._MANUALLY_GATED_ROUTES.
+_MANUALLY_GATED_ROUTES: frozenset[tuple[str, str]] = frozenset({
+    ("POST", "/reports/{report_id}/publish-preview"),
+})
+
+
 def _ungated_mutations(router) -> list[str]:
     ungated = []
     for route in router.routes:
         if not isinstance(route, APIRoute):
             continue
         for method in sorted(route.methods or []):
+            if (method, route.path) in _MANUALLY_GATED_ROUTES:
+                continue
             if method in MUTATION_METHODS and not _has_require_role(route.dependant):
                 ungated.append(f"{method} {route.path}")
     return ungated

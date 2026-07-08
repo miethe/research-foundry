@@ -5,6 +5,8 @@ import { applyTheme, getViewerSettings } from "@/lib/viewerSettings";
 import { isAgentsLoopbackEnabled } from "@/hooks";
 import type { ShellSelectionContext } from "./shellContext";
 import { useAuth } from "../auth/AuthContext";
+import { getRateLimitState, subscribeRateLimitState } from "@/api/client";
+import type { RateLimitState } from "@/api/client";
 
 type NavState = "enabled" | "contextual" | "disabled";
 
@@ -58,21 +60,18 @@ const NAV_ITEMS: NavCapability[] = [
   { label: "Help", short: "HP", state: "enabled", resolveTarget: () => "/help" },
 ];
 
-// ── Rate-limit state stub (FEAUTH-003) ────────────────────────────────────────
-//
-// GATE-900: absent field → no banner rendered. This variable is null by default.
-// FEAUTH-003 (P5.8 client.ts) will replace this stub with a reactive Zustand store
-// slice after parsing X-RateLimit-* response headers. Until then, no rate-limit
-// affordance is ever rendered (correct behavior for pre-FEAUTH-003 deploys).
-//
-// eslint-disable-next-line prefer-const
-export let rateLimitState: string | null = null;
-
 export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const [, setSelectedRunId] = useState<string | null>(null);
   const { identity, authMode } = useAuth();
+
+  // GATE-900: reactive rate-limit state.
+  // Initialised from module-level getRateLimitState() so any state set before
+  // first render is not lost. subscribeRateLimitState() wires updates from
+  // loopbackGet() whenever rate-limit headers are parsed or a 429 fires.
+  const [rlState, setRlState] = useState<RateLimitState | null>(getRateLimitState);
+  useEffect(() => subscribeRateLimitState(setRlState), []);
 
   // Apply persisted theme on mount so the stored theme takes effect on app boot
   useEffect(() => {
@@ -95,10 +94,6 @@ export function AppShell() {
     const userRoles: string[] = identity?.roles ?? [];
     return !item.allowedRoles.some((role) => userRoles.includes(role));
   };
-
-  // Read rate-limit state (FEAUTH-003 stub — always null until client.ts wires up).
-  // GATE-900: when null/undefined, no rate-limit affordance is rendered.
-  const rlState = rateLimitState;
 
   return (
     <div className="rv-shell">
@@ -149,16 +144,19 @@ export function AppShell() {
           })}
         </nav>
 
-        {/* GATE-900: rate-limit badge only rendered when rateLimitState is non-null.
-            Wired up by FEAUTH-003 (P5.8 client.ts) after header parsing lands. */}
-        {rlState !== null && rlState !== undefined && (
+        {/* GATE-900: rate-limit badge only rendered when a 429 has fired and
+            Retry-After is present (retryAfter !== undefined). Under-budget
+            responses update rlState but leave retryAfter undefined → no badge.
+            Absent headers → rlState null → no badge. */}
+        {rlState?.retryAfter !== undefined && (
           <div
             className="rv-rate-limit-badge"
             role="status"
-            aria-label={`Rate limit status: ${rlState}`}
+            aria-label={`Rate limited. Retry after ${rlState.retryAfter} seconds.`}
+            data-testid="rv-rate-limit-badge"
           >
             <span aria-hidden="true">RL</span>
-            <span>{rlState}</span>
+            <span data-testid="rv-rate-limit-retry-after">{rlState.retryAfter}s</span>
           </div>
         )}
       </aside>

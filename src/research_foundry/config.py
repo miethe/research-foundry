@@ -8,6 +8,7 @@ CLI runs before all content files exist.
 
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -19,6 +20,54 @@ from .yamlio import load_yaml
 
 # Valid values for viewer.auth_mode (OQ-4 resolution).
 _VALID_AUTH_MODES = frozenset({"none", "token"})
+
+# Valid values for auth.rbac_enforcement (P5.6 T5).
+# "auto"     — enforced when auth.provider != "none"; NOT enforced when provider==none.
+# "disabled" — force OFF, BUT ONLY on loopback bind hosts (fail-closed).
+# "enabled"  — force ON regardless of provider.
+
+
+class AuthRbacEnforcement(str, enum.Enum):
+    """RBAC enforcement gate configuration (P5.6 T5).
+
+    Controls whether ``require_role`` dependency enforces role checks or
+    passes through unconditionally.
+
+    Values
+    ------
+    auto
+        Default.  RBAC is enforced when ``auth.provider != "none"`` and
+        NOT enforced when ``auth.provider == "none"`` (the loopback-safe
+        default that preserves the existing single-operator behaviour).
+    disabled
+        Force RBAC **off** regardless of provider.  **FAIL-CLOSED**: only
+        honoured when ``viewer.bind_host`` is a loopback address
+        (``127.0.0.1``, ``::1``, ``localhost``).  Setting this on a
+        non-loopback bind host causes ``create_app`` to refuse startup with
+        a ``ValueError``.  You CANNOT disable RBAC on a public bind.
+    enabled
+        Force RBAC **on** regardless of provider, even when provider is
+        ``"none"``.  Useful for hardening loopback deployments where the
+        operator still wants role-based access control.
+    """
+
+    AUTO = "auto"
+    DISABLED = "disabled"
+    ENABLED = "enabled"
+
+
+def _is_loopback(bind_host: str) -> bool:
+    """Return ``True`` if *bind_host* is a loopback address.
+
+    Recognised loopback values: ``"127.0.0.1"``, any ``"127."`` prefix,
+    ``"::1"``, and ``"localhost"``.  Everything else (``"0.0.0.0"``,
+    LAN IPs, hostnames) is considered non-loopback / public.
+    """
+    return (
+        bind_host in {"127.0.0.1", "::1", "localhost"}
+        or bind_host.startswith("127.")
+    )
+
 
 # Valid values for auth.provider (P5.1 canonical auth selector).
 # "clerk" is implemented in CLK-4.x with a dark-by-default precondition gate.
@@ -382,6 +431,135 @@ class FoundryConfig:
         """
         return bool(self.auth.get("clerk_outbound_internet_enabled", False))
 
+    # --- rate_limit block (P5.6 per-identity+per-route sliding window) ----------
+
+    def auth_rate_limit(self) -> dict[str, Any]:
+        """Return the ``auth.rate_limit`` block from ``foundry.yaml``.
+
+        Supported keys and defaults
+        ---------------------------
+        enabled : bool
+            Whether the rate-limit middleware is active.  Default ``True``.
+            Set ``false`` to disable rate limiting entirely (not recommended
+            for multi-user LAN or public deployments).
+        requests_per_window : int
+            Maximum requests per ``(user_id, route)`` pair per window.
+            Default ``60`` (1 req/sec sustained at the default 60 s window).
+        window_seconds : int
+            Sliding-window width in seconds.  Default ``60``.
+
+        Deployments with ``auth.provider = none`` (loopback mode) are
+        automatically exempt from rate limiting even when ``enabled = true``
+        because no identity is available to key on (see
+        :class:`~research_foundry.api.middleware.rate_limit.RateLimitMiddleware`).
+        """
+        rl = self.auth.get("rate_limit", {})
+        return rl if isinstance(rl, dict) else {}
+
+    def auth_rate_limit_enabled(self) -> bool:
+        """Return ``auth.rate_limit.enabled`` with default ``True``."""
+        return bool(self.auth_rate_limit().get("enabled", True))
+
+    def auth_rate_limit_requests_per_window(self) -> int:
+        """Return ``auth.rate_limit.requests_per_window`` with default ``60``."""
+        return int(self.auth_rate_limit().get("requests_per_window", 60))
+
+    def auth_rate_limit_window_seconds(self) -> int:
+        """Return ``auth.rate_limit.window_seconds`` with default ``60``."""
+        return int(self.auth_rate_limit().get("window_seconds", 60))
+
+    # --- rbac_enforcement block (P5.6 T5 RBAC toggle) -----------------------
+
+    def auth_rbac_enforcement(self) -> AuthRbacEnforcement:
+        """Return ``auth.rbac_enforcement`` with default ``auto``.
+
+        Valid values: ``auto``, ``disabled``, ``enabled``.
+
+        ``auto``
+            RBAC is enforced when ``auth.provider != "none"`` and skipped
+            when provider is ``"none"`` (preserves the single-operator-trust
+            default behaviour).
+
+        ``disabled``
+            Force RBAC off.  **Fail-closed**: startup refuses if
+            ``viewer.bind_host`` is non-loopback.  Never disable RBAC on a
+            public bind.
+
+        ``enabled``
+            Force RBAC on regardless of provider.
+
+        Raises:
+            ValueError: If the raw config value is not a recognised enum member.
+        """
+        raw = str(self.auth.get("rbac_enforcement", "auto")).lower()
+        try:
+            return AuthRbacEnforcement(raw)
+        except ValueError:
+            valid = ", ".join(e.value for e in AuthRbacEnforcement)
+            raise ValueError(
+                f"auth.rbac_enforcement={raw!r} is not valid; "
+                f"must be one of: {valid}"
+            ) from None
+
+    def resolve_rbac_enforced(self, provider: str, bind_host: str) -> bool:
+        """Resolve whether RBAC role checks are actively enforced.
+
+        This is called **once** at app-create time and the result is stored
+        on ``app.state.rbac_enforced``.  Every subsequent call to
+        ``require_role`` reads that flag instead of re-computing.
+
+        Parameters
+        ----------
+        provider:
+            The resolved ``auth.provider`` value (e.g. ``"none"``,
+            ``"local_static"``).  Pass ``config.auth_provider()`` unless
+            you are writing tests that simulate specific provider states.
+        bind_host:
+            The ``viewer.bind_host`` value (e.g. ``"127.0.0.1"``,
+            ``"0.0.0.0"``).  Used only for the fail-closed
+            ``disabled``-on-non-loopback gate.
+
+        Returns
+        -------
+        bool
+            ``True``  — ``require_role`` enforces role checks on every request.
+            ``False`` — ``require_role`` passes through unconditionally.
+
+        Raises
+        ------
+        ValueError
+            When ``auth.rbac_enforcement=disabled`` and ``bind_host`` is not a
+            loopback address.  The server **must not start** in this state.
+        """
+        enforcement = self.auth_rbac_enforcement()
+
+        if enforcement == AuthRbacEnforcement.DISABLED:
+            if not _is_loopback(bind_host):
+                raise ValueError(
+                    f"auth.rbac_enforcement=disabled is forbidden when "
+                    f"viewer.bind_host={bind_host!r} is a non-loopback address. "
+                    "RBAC cannot be disabled on a public bind. "
+                    "Either set bind_host to a loopback address (127.0.0.1) or "
+                    "use auth.rbac_enforcement=auto (the default)."
+                )
+            return False
+
+        # AuthRbacEnforcement.AUTO and AuthRbacEnforcement.ENABLED both return True.
+        #
+        # For AUTO + provider="none": the identity-None passthrough in
+        # require_role() already provides the single-operator-trust semantics
+        # (no auth middleware → no identity → allow).  We do NOT return False here
+        # because that would bypass RBAC even when an identity IS present on the
+        # request (e.g. from a custom middleware or test fixture), which would
+        # silently break role enforcement for any caller that does inject identity
+        # in a provider=none deployment.
+        #
+        # The rbac_enforced=False sentinel is reserved exclusively for the
+        # explicit opt-out case (disabled + loopback) where the operator has
+        # consciously decided that ALL requests — including authenticated ones —
+        # must pass through unconditionally.
+        return True
+
     def is_auth_enabled(self) -> bool:
         """Return ``True`` when any auth mechanism is enabled.
 
@@ -415,6 +593,7 @@ class FoundryConfig:
 
 
 __all__ = [
+    "AuthRbacEnforcement",
     "FoundryConfig",
     "GOVERNANCE",
     "MODEL_PROFILES",
@@ -422,4 +601,5 @@ __all__ = [
     "TOOLS",
     "CLAIM_POLICY",
     "_validate_auth_mode",
+    "_is_loopback",
 ]

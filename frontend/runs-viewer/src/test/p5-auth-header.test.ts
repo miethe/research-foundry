@@ -385,6 +385,109 @@ describe("useClerkAuth — Clerk JWT forwarding through resolver (P1-b fix)", ()
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
+// GATE-900 — Rate-limit header contract
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("GATE-900 — rate-limit header contract", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("absent X-RateLimit headers → getRateLimitState() returns null → AppShell no badge", async () => {
+    setEnv({
+      VITE_RUNS_FRONTEND_LOOPBACK_API: "true",
+      VITE_RUNS_LOOPBACK_API_BASE: "http://127.0.0.1:7432/api",
+      VITE_RUNS_LOOPBACK_API_TOKEN: undefined,
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        // No X-RateLimit-* headers present
+      }),
+    );
+
+    const { fetchRunList, getRateLimitState } = await import("@/api/client");
+    await fetchRunList();
+
+    // Null state → AppShell badge condition (rlState?.retryAfter !== undefined) is false → no badge.
+    expect(getRateLimitState()).toBeNull();
+
+    vi.restoreAllMocks();
+  });
+
+  it("present-and-under-budget (remaining > 0, no Retry-After) → no badge (retryAfter absent)", async () => {
+    setEnv({
+      VITE_RUNS_FRONTEND_LOOPBACK_API: "true",
+      VITE_RUNS_LOOPBACK_API_BASE: "http://127.0.0.1:7432/api",
+      VITE_RUNS_LOOPBACK_API_TOKEN: undefined,
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "X-RateLimit-Remaining": "45",
+          "X-RateLimit-Limit": "100",
+          "X-RateLimit-Reset": "1234567890",
+          // No Retry-After — not exceeded
+        },
+      }),
+    );
+
+    const { fetchRunList, getRateLimitState } = await import("@/api/client");
+    await fetchRunList();
+
+    const state = getRateLimitState();
+    expect(state).not.toBeNull();
+    expect(state?.remaining).toBe(45);
+    expect(state?.limit).toBe(100);
+    // No Retry-After → retryAfter absent → AppShell badge condition is false → no banner.
+    expect(state?.retryAfter).toBeUndefined();
+
+    vi.restoreAllMocks();
+  });
+
+  it("present-and-exceeded (429 + Retry-After) → getRateLimitState().retryAfter set → AppShell badge shows value", async () => {
+    setEnv({
+      VITE_RUNS_FRONTEND_LOOPBACK_API: "true",
+      VITE_RUNS_LOOPBACK_API_BASE: "http://127.0.0.1:7432/api",
+      VITE_RUNS_LOOPBACK_API_TOKEN: "any-token",
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Rate limit exceeded" }), {
+        status: 429,
+        statusText: "Too Many Requests",
+        headers: {
+          "Content-Type": "application/json",
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Limit": "100",
+          "X-RateLimit-Reset": "1234567890",
+          "Retry-After": "42",
+        },
+      }),
+    );
+
+    const { fetchRunList, getRateLimitState, ClientError } = await import("@/api/client");
+    // A 429 still throws ClientError — callers must handle it.
+    await expect(fetchRunList()).rejects.toBeInstanceOf(ClientError);
+    await expect(fetchRunList()).rejects.toMatchObject({ status: 429 });
+
+    // Rate-limit state is updated before the error is thrown.
+    const state = getRateLimitState();
+    expect(state).not.toBeNull();
+    expect(state?.remaining).toBe(0);
+    // retryAfter is set from Retry-After header → AppShell badge renders this value.
+    expect(state?.retryAfter).toBe(42);
+
+    vi.restoreAllMocks();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
 // AC-5a regression: auth_mode=none sends no Authorization header
 // ═════════════════════════════════════════════════════════════════════════════
 

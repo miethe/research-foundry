@@ -80,6 +80,47 @@ foundry:
   #   #   clerk_frontend_api: "https://your-app.clerk.accounts.dev"  # required when provider=clerk
   #   #   clerk_outbound_internet_enabled: true  # must be explicitly declared
 
+  # RBAC enforcement toggle (P5.6 T5).
+  #
+  # Controls whether require_role() dependency enforces role checks globally.
+  # This is an explicit security knob — default "auto" preserves the existing
+  # behaviour (enforced when auth.provider != none).
+  #
+  # Values:
+  #   auto     — default; RBAC enforced when auth.provider != none.
+  #              NOT enforced when provider=none (single-operator-trust mode).
+  #   disabled — force RBAC OFF regardless of provider.
+  #              FAIL-CLOSED: only honoured on loopback bind hosts (127.0.0.1).
+  #              Setting this with a non-loopback bind_host causes startup to
+  #              refuse with an error — you CANNOT disable RBAC on a public bind.
+  #   enabled  — force RBAC ON even when auth.provider=none.
+  #
+  # auth:
+  #   rbac_enforcement: auto   # default; change to disabled (loopback only) or enabled
+
+  # Per-identity + per-route sliding-window rate limiter (P5.6, FR-9).
+  #
+  # Keys on (user_id, route) — one user's burst NEVER throttles another.
+  # Counter is in-process/local; no network round-trip (NFR §6.2).
+  # On exceed: HTTP 429 + Retry-After header (seconds until window resets).
+  #
+  # Deployments with auth.provider = none are automatically exempt because no
+  # identity is available to key on; this keeps single-operator loopback
+  # setups unthrottled regardless of this setting.
+  #
+  # Header contract for frontend resilience (GATE-900):
+  #   X-RateLimit-Remaining: <int>  — requests left in current window
+  #   X-RateLimit-Reset: <int>      — UNIX timestamp when window resets
+  #   Retry-After: <int>            — seconds until reset (429 only)
+  #
+  # auth:
+  #   rate_limit:
+  #     enabled: true            # default true; set false to disable entirely
+  #                              # STARTUP-ONLY: wired into RateLimitMiddleware at process
+  #                              # start.  Cannot be toggled via PATCH /admin/rate-limit-config.
+  #     requests_per_window: 60  # default 60 (1 req/sec at 60 s window)
+  #     window_seconds: 60       # default 60; sliding window width in seconds
+
   adapters:
     claude_agent_sdk: enabled
     claude_code: enabled

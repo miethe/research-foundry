@@ -159,6 +159,18 @@ def require_role(*allowed_roles: str) -> Callable:
     """
 
     def _check_role(request: Request) -> None:  # FastAPI injects Request automatically
+        # P5.6 T5: Check the global RBAC enforcement flag stored on app.state
+        # at create_app time.  When False, bypass all role checks immediately.
+        # This handles both rbac_enforcement=disabled (explicit opt-out on
+        # loopback) and rbac_enforcement=auto + provider=none (the default
+        # single-operator-trust shortcut).
+        _app_state = getattr(getattr(request, "app", None), "state", None)
+        if _app_state is not None:
+            rbac_enforced: bool | None = getattr(_app_state, "rbac_enforced", None)
+            if rbac_enforced is False:
+                # RBAC globally disabled — passthrough unconditionally.
+                return
+
         identity: AuthIdentity | None = getattr(request.state, "identity", None)
         if identity is None:
             # Auth disabled / provider=none — single-operator-trust mode, allow.

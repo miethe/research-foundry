@@ -23,6 +23,7 @@ import { WorkspaceMembersPanel } from "@/components/AdminSettings/WorkspaceMembe
 import { RateLimitConfigPanel } from "@/components/AdminSettings/RateLimitConfigPanel";
 import { AuthProviderStatusPanel } from "@/components/AdminSettings/AuthProviderStatusPanel";
 import { RoleAssignmentPanel } from "@/components/AdminSettings/RoleAssignmentPanel";
+import { RbacStatusPanel } from "@/components/AdminSettings/RbacStatusPanel";
 import type { AuthContextValue } from "@/auth/AuthContext";
 import { useAuth } from "@/auth/AuthContext";
 
@@ -549,6 +550,135 @@ describe("AuthProviderStatusPanel — disabled state (GATE-901)", () => {
     )!;
     expect(badge.getAttribute("role")).toBe("status");
     expect(badge.getAttribute("aria-label")).toContain("local_static");
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// (6b) RbacStatusPanel — renders RBAC status + GATE-901 disabled state
+// ═════════════════════════════════════════════════════════════════════════════
+
+const RBAC_STATUS_DATA = {
+  rbac_enforcement: "full",
+  rbac_enforced: true,
+  auth_provider: "local_static",
+};
+
+describe("RbacStatusPanel — renders RBAC status (positive case)", () => {
+  it("renders all fields when getRbacStatus returns valid data", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(RBAC_STATUS_DATA),
+    );
+    const { container } = render(<RbacStatusPanel />);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector("[data-testid='admin-rbac-panel']"),
+      ).not.toBeNull();
+    });
+
+    expect(
+      container.querySelector("[data-testid='admin-rbac-enforcement']")?.textContent,
+    ).toBe("full");
+    expect(
+      container.querySelector("[data-testid='admin-rbac-auth-provider']")?.textContent,
+    ).toBe("local_static");
+  });
+
+  it("enforced badge renders 'Enforced' and has role='status' when rbac_enforced=true", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(RBAC_STATUS_DATA),
+    );
+    const { container } = render(<RbacStatusPanel />);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector("[data-testid='admin-rbac-enforced-badge']"),
+      ).not.toBeNull();
+    });
+
+    const badge = container.querySelector(
+      "[data-testid='admin-rbac-enforced-badge']",
+    )!;
+    expect(badge.textContent).toBe("Enforced");
+    expect(badge.getAttribute("role")).toBe("status");
+  });
+
+  it("shows loading state initially before fetch resolves", () => {
+    vi.spyOn(globalThis, "fetch").mockReturnValue(new Promise(() => {}));
+    const { container } = render(<RbacStatusPanel />);
+    expect(
+      container.querySelector("[data-testid='admin-rbac-panel-loading']"),
+    ).not.toBeNull();
+  });
+});
+
+describe("RbacStatusPanel — disabled state (GATE-901)", () => {
+  it("getRbacStatus() returns null → shows disabled panel without crashing", async () => {
+    // getRbacStatus() catches errors and returns null; simulated here by a network failure.
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network error"));
+    const { container } = render(<RbacStatusPanel />);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector("[data-testid='admin-rbac-panel-disabled']"),
+      ).not.toBeNull();
+    });
+
+    expect(
+      container.querySelector("[data-testid='admin-rbac-panel-disabled']")
+        ?.textContent,
+    ).toContain("RBAC status unavailable");
+  });
+
+  it("shows disabled panel when fetch returns a non-2xx error", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(errorResponse(503));
+    const { container } = render(<RbacStatusPanel />);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector("[data-testid='admin-rbac-panel-disabled']"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("shows disabled panel when fetch returns 404 (endpoint not available)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(errorResponse(404));
+    const { container } = render(<RbacStatusPanel />);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector("[data-testid='admin-rbac-panel-disabled']"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("RbacStatusPanel disabled state does not cascade to WorkspaceMembersPanel (GATE-901 independence)", async () => {
+    // RbacStatusPanel fetch fails quickly; WorkspaceMembersPanel fetch succeeds.
+    vi.spyOn(globalThis, "fetch").mockImplementation((url) => {
+      const urlStr = String(url);
+      if (urlStr.includes("rbac-status")) {
+        return Promise.reject(new Error("RBAC endpoint not available"));
+      }
+      // WorkspaceMembersPanel fetch → return valid workspace data
+      return Promise.resolve(jsonResponse(WORKSPACE_DATA));
+    });
+
+    const { container: rbacContainer } = render(<RbacStatusPanel />);
+    const { container: memberContainer } = render(<WorkspaceMembersPanel />);
+
+    // RbacStatusPanel shows disabled state
+    await waitFor(() => {
+      expect(
+        rbacContainer.querySelector("[data-testid='admin-rbac-panel-disabled']"),
+      ).not.toBeNull();
+    });
+
+    // WorkspaceMembersPanel independently succeeds and renders its data
+    await waitFor(() => {
+      expect(
+        memberContainer.querySelector("[data-testid='admin-members-panel']"),
+      ).not.toBeNull();
+    });
   });
 });
 
