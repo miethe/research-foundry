@@ -439,3 +439,152 @@ class TestRbacStatusEndpoint:
         # AUTO always True: the identity-None path in require_role gives the passthrough
         # for provider=none deployments; rbac_enforced=True means "gate is active".
         assert data["rbac_enforced"] is True
+
+
+# ---------------------------------------------------------------------------
+# Helpers for rate-limit-enabled test environment
+# ---------------------------------------------------------------------------
+
+
+def _make_client_rate_limit(
+    tmp_path: Path,
+    identity: AuthIdentity | None = None,
+    *,
+    requests_per_window: int = 10,
+    window_seconds: int = 60,
+    rbac_enforcement: str = "enabled",
+) -> tuple[TestClient, FoundryConfig]:
+    """Like _make_client but with rate limiting explicitly enabled in foundry.yaml.
+
+    Used for tests that need the rate limiter middleware to be active so they
+    can verify the 429 threshold changes when admin PATCH overrides apply.
+    """
+    config = _make_config(tmp_path)
+
+    foundry_yaml_path = config.paths.foundry_yaml
+    existing = load_yaml(foundry_yaml_path) or {}
+    if "foundry" not in existing:
+        existing["foundry"] = {}
+    auth: dict[str, Any] = dict(existing["foundry"].get("auth") or {})
+    auth["rbac_enforcement"] = rbac_enforcement
+    auth["rate_limit"] = {
+        "enabled": True,
+        "requests_per_window": requests_per_window,
+        "window_seconds": window_seconds,
+    }
+    existing["foundry"]["auth"] = auth
+    dump_yaml(existing, foundry_yaml_path)
+    config = FoundryConfig(paths=FoundryPaths(root=config.paths.root))
+
+    app = create_app(config)
+    app.dependency_overrides[get_paths] = lambda: config.paths
+    app.dependency_overrides[_get_config] = lambda: config
+
+    if identity is not None:
+        app.add_middleware(_InjectIdentityMiddleware, identity=identity)
+
+    return TestClient(app, raise_server_exceptions=True), config
+
+
+# ---------------------------------------------------------------------------
+# Validation: PATCH /api/admin/rate-limit-config must reject non-positive values
+# ---------------------------------------------------------------------------
+
+
+class TestRateLimitConfigValidation:
+    """REGRESSION tests — must FAIL before fix, PASS after.
+
+    The rate-limit PATCH handler must reject max_requests <= 0 and
+    window_seconds <= 0 with HTTP 422, matching the >= 1 invariant that
+    SlidingWindowRateLimiter enforces at construction time.
+
+    Test IDs match the defect specification:
+      (a) max_requests=0  → 422, limiter budget unchanged
+      (b) window_seconds=0 → 422, no side effects on stored config
+      (c) max_requests=-5 → 422 (any non-positive integer)
+      (d) max_requests=3  → 200, reflected in GET + enforced as 429 threshold
+    """
+
+    def test_a_max_requests_zero_rejected_with_422(self, tmp_path):
+        """(a) PATCH max_requests=0 → 422; limiter budget must be unchanged."""
+        client, _ = _make_client(tmp_path, identity=_OWNER)
+        before = client.get("/api/admin/rate-limit-config").json()["max_requests"]
+
+        response = client.patch("/api/admin/rate-limit-config", json={"max_requests": 0})
+        assert response.status_code == 422, (
+            f"Expected 422 for max_requests=0 but got {response.status_code}: "
+            f"{response.text}"
+        )
+
+        # Budget must be unchanged after a rejected request.
+        after = client.get("/api/admin/rate-limit-config").json()["max_requests"]
+        assert after == before, (
+            f"max_requests changed from {before} to {after} after a rejected PATCH — "
+            "the invalid value was stored despite the 422"
+        )
+
+    def test_b_window_seconds_zero_rejected_with_422(self, tmp_path):
+        """(b) PATCH window_seconds=0 → 422; no side effects on stored config."""
+        client, _ = _make_client(tmp_path, identity=_OWNER)
+        before = client.get("/api/admin/rate-limit-config").json()["window_seconds"]
+
+        response = client.patch("/api/admin/rate-limit-config", json={"window_seconds": 0})
+        assert response.status_code == 422, (
+            f"Expected 422 for window_seconds=0 but got {response.status_code}: "
+            f"{response.text}"
+        )
+
+        after = client.get("/api/admin/rate-limit-config").json()["window_seconds"]
+        assert after == before, (
+            f"window_seconds changed from {before} to {after} after a rejected PATCH"
+        )
+
+    def test_c_max_requests_negative_rejected_with_422(self, tmp_path):
+        """(c) PATCH max_requests=-5 (any non-positive integer) → 422."""
+        client, _ = _make_client(tmp_path, identity=_OWNER)
+        response = client.patch("/api/admin/rate-limit-config", json={"max_requests": -5})
+        assert response.status_code == 422, (
+            f"Expected 422 for max_requests=-5 but got {response.status_code}: "
+            f"{response.text}"
+        )
+
+    def test_d_valid_positive_applied_and_enforced_as_429_threshold(self, tmp_path):
+        """(d) PATCH max_requests=3 → 200, reflected by GET, enforced as 429 threshold.
+
+        Uses a rate-limit-enabled config (startup budget=10) so the middleware
+        is active.  After PATCH to 3, exactly 3 requests on a fresh route are
+        allowed; the 4th must be 429.
+        """
+        # Use rate-limit-enabled config so the middleware is actually installed.
+        client, _ = _make_client_rate_limit(
+            tmp_path, identity=_OWNER, requests_per_window=10
+        )
+
+        # Apply valid override — must return 200.
+        patch_resp = client.patch("/api/admin/rate-limit-config", json={"max_requests": 3})
+        assert patch_resp.status_code == 200, (
+            f"Expected 200 for valid max_requests=3 but got {patch_resp.status_code}"
+        )
+        assert patch_resp.json()["max_requests"] == 3
+
+        # GET must reflect the override immediately.
+        get_data = client.get("/api/admin/rate-limit-config").json()
+        assert get_data["max_requests"] == 3, (
+            f"GET did not reflect override: max_requests={get_data['max_requests']!r}"
+        )
+
+        # 429 threshold: 3 requests on a fresh route must be allowed, the 4th denied.
+        # Use /api/admin/rbac-status — no prior requests on this route, separate
+        # (user_id, route) key from /api/admin/rate-limit-config.
+        for i in range(3):
+            r = client.get("/api/admin/rbac-status")
+            assert r.status_code == 200, (
+                f"Request {i + 1}/3 to /api/admin/rbac-status returned "
+                f"{r.status_code}, expected 200"
+            )
+
+        limited = client.get("/api/admin/rbac-status")
+        assert limited.status_code == 429, (
+            f"4th request to /api/admin/rbac-status returned {limited.status_code}, "
+            "expected 429 — the max_requests=3 override is not being enforced"
+        )

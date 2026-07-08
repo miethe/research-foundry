@@ -361,15 +361,27 @@ def update_rate_limit_config(
 
     if "max_requests" in body:
         try:
-            overrides["max_requests"] = int(body["max_requests"])
+            val = int(body["max_requests"])
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail="'max_requests' must be an integer") from exc
+        if val <= 0:
+            raise HTTPException(
+                status_code=422,
+                detail="'max_requests' must be >= 1 (same boundary as startup config)",
+            )
+        overrides["max_requests"] = val
 
     if "window_seconds" in body:
         try:
-            overrides["window_seconds"] = int(body["window_seconds"])
+            val = int(body["window_seconds"])
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail="'window_seconds' must be an integer") from exc
+        if val <= 0:
+            raise HTTPException(
+                status_code=422,
+                detail="'window_seconds' must be >= 1 (same boundary as startup config)",
+            )
+        overrides["window_seconds"] = val
 
     return _read_rate_limit(request, config)
 

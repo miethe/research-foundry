@@ -274,6 +274,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         limit_override: int | None = _overrides.get("max_requests")
         window_override: int | None = _overrides.get("window_seconds")
 
+        # Belt-and-suspenders: ignore any non-positive override that the admin
+        # PATCH handler should already have blocked.  A zero or negative
+        # max_requests would deny every request (availability break); a zero
+        # or negative window_seconds corrupts the sliding-window semantics.
+        if limit_override is not None and limit_override <= 0:
+            logger.warning(
+                "Ignoring invalid max_requests override %r from app.state "
+                "(must be >= 1); using startup-configured limit",
+                limit_override,
+            )
+            limit_override = None
+        if window_override is not None and window_override <= 0:
+            logger.warning(
+                "Ignoring invalid window_seconds override %r from app.state "
+                "(must be >= 1); using startup-configured window",
+                window_override,
+            )
+            window_override = None
+
         # Effective limit for X-RateLimit-Limit header: override if present,
         # otherwise fall back to the startup-configured value.
         effective_limit: int = (
