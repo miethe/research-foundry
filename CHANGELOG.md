@@ -161,6 +161,33 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **`title` field in export**: `export_service.py:export_run()` now derives and includes a `title` field in `run.json`; `prebuild-static-data.mjs` copies it into `index.json`; `RFRunSummary` type updated with `title?: string`.
 - **Lineage graph edges render**: `LineageFlow.tsx` now registers `SmoothStepEdge` from `@xyflow/react` as `edgeTypes` at module scope and passes `edgeTypes={edgeTypes}` to `<ReactFlow>`. Edges (connector lines between nodes) now appear in the Lineage tab graph view. Edges carry `className='rv-lineage-edge'` for CSS targeting.
 
+#### **Authentication & RBAC — Public Multi-User Platform (P5)**
+
+- **AuthProvider abstraction with multi-strategy support** — Authentication plugpoint accepts multiple strategies: `local_static` (default for development), `Clerk` (cloud identity), and `OIDC` (seam + stub for future BYO adapters). Provider selected via `foundry.yaml` configuration; frontend shells adapt dynamically to authentication context without code changes.
+  - **Frontend auth context** (`AuthContext.tsx`, `LocalLoginForm`, `ClerkShell`) — React hooks and provider shells enable role-aware UI throughout the app. Nav items, affordances, and capabilities adapt based on authenticated user and workspace role.
+
+- **5-role server-side RBAC** — Owner, Admin, Contributor, Analyst, and Viewer roles with capability-driven access control. Each role carries a capability matrix (e.g., Viewer can list/read; Analyst adds extract/synthesize; Contributor adds publish/writeback; Admin manages team members; Owner manages workspaces and policies). Gating enforced on all mutations: catalog entries, reports, research builder jobs, and agent-research jobs.
+  - **Workspace isolation migration** — Existing single-workspace Research Foundry instances automatically backfilled with a synthetic default workspace; multi-user instances with N workspaces run dry-run/enforce/rollback schema migrations (DDL on `workspaces` and `team_members` tables; all existing runs migrated to the default workspace; audit log captures migration completion).
+  - **Role-gated affordances** — Nav, buttons, and form fields reflect user capabilities; publishing, job launch, settings admin, and team member management are capability-gated at the component level.
+
+- **Audit log with degraded-health detection** — New `audit_log` table records all material team actions: role changes, workspace toggles, writeback approvals/rejections, publish gate decisions, and job launches. Audit events carry actor identity, action, resource, and degraded-health status. Degraded-health events (e.g., sensitivity threshold exceeded, audit gate tripped) are flagged for operator escalation.
+
+- **Rate limits and admin settings UI** — Per-user rate limits on job launches (50/day by default, configurable). Admin-only settings panel exposes team configuration: role mappings, rate limits, sensitivity thresholds, default capabilities, and audit export controls.
+
+- **Fail-closed sensitivity-scoped sharing and publish gates** — Sensitivity threshold evaluated at share/publish time; runs exceeding the threshold are rejected with a clear explanation. Publish-preview mode shows metadata and claim summary redacted; shares and external publish are blocked until sensitivity is below threshold. Gate composition integrates with P4 credential-firewall (AC-3 stub mode).
+
+- **Existence-gate parity** — All catalog endpoints (`/api/runs`, `/api/reports`, `/api/builder`, `/api/agent-jobs`) enforce role-based visibility: Analyst can see only runs in their workspace and assigned jobs; Contributor sees their own and team outputs; Admin/Owner see all workspace content. Existence gates prevent unauthorized 404→403 inference.
+
+### Security
+
+- **RBAC route gating** — All catalog and reports mutations (`create`, `update`, `publish`, `writeback-approve`), research builder operations, and agent-job launches gated by role-based capability checks. Server validates user role per workspace before allowing operation; frontend enforces capability-gated affordances for UX consistency.
+
+- **Credential firewall composition** — P5 RBAC composes with P4 credential-firewall (AC-3 stub mode). Provider credentials remain isolated in job subprocesses; team-level access controls layer atop individual credential scoping. Both layers remain fail-closed.
+
+- **Sensitivity threshold enforcement** — All public share and external publish endpoints subject to per-workspace sensitivity thresholds; runs exceeding threshold are rejected pre-publication with clear user-facing explanation. Redaction applied on all export/share/publish paths per the active threshold (R9 invariant maintained).
+
+- **Audit-health exposure gate** — An audit-health check now gates share-link resolution and publish-preview success; both return 503 (audit log unavailable) when the audit log is degraded, closing the gap flagged in review as a P5.6 wiring risk. The gate is additive and unconditional (not affected by RBAC-enforcement mode); existing fail-open audit-event recording is unchanged.
+
 ### Fixed
 
 #### runs-viewer v2.2

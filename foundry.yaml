@@ -40,19 +40,61 @@ foundry:
     sensitivity_threshold: public
 
   # Authentication provider for ``rf serve`` (P5.1 canonical auth selector).
+  # The provider abstracts the auth boundary — swappable adapters connect to
+  # different identity systems without call-site branching. This is the **central
+  # security knob**: choose wisely based on your deployment topology and threat
+  # model. Default ('none') assumes single trusted operator on a private network;
+  # opt into air-gapped multi-user via 'local_static' or cloud-hosted via 'clerk'.
   #
-  # provider values:
-  #   none         — no auth middleware; all requests pass through
-  #                  (default; safe for loopback-only mode)
-  #   local_static — multi-token Bearer → identity mapping; suitable for
-  #                  air-gapped, self-hosted, and single-operator LAN
-  #                  deployments; token values live in env vars, never here
-  #   clerk        — Clerk.dev JWT / session-token auth (future: see FU-2)
-  #   oidc         — Generic OIDC/JWT auth (future: see FU-3)
+  # Provider values (all enforced via foundry.yaml config only):
   #
-  # NOTE: clerk and oidc are accepted vocabulary but raise a clear error at
-  # startup until their adapters ship.  Set provider: local_static to enable
-  # the air-gapped multi-user flow described below.
+  #   none — No authentication; all requests pass through unauthenticated.
+  #          Default, fail-closed for loopback-only deployments. Use when RF
+  #          runs on 127.0.0.1 only and is trusted to be behind a network
+  #          perimeter. If you later expose RF on a non-loopback bind (e.g.
+  #          0.0.0.0), you MUST set provider: local_static or provider: clerk —
+  #          RF will refuse 'none' on public binds at startup.
+  #          Requirements: none (zero-dependency).
+  #          Security model: trust boundary = network perimeter.
+  #
+  #   local_static — Multi-token static Bearer mapping, zero-dependency, air-gapped.
+  #          Tokens and role-identity mappings live in foundry.yaml; token values
+  #          themselves are pulled from env vars at startup, never stored plain-text
+  #          on disk. Supports N concurrent users with different roles (owner,
+  #          admin, contributor, analyst, viewer) within a single workspace.
+  #          Suitable for self-hosted, air-gapped, and small-team LAN deployments.
+  #          No outbound internet required. Recommended starting point for multi-
+  #          user RF on private infrastructure.
+  #          Requirements: env vars configured (e.g. RF_TOKEN_ALICE=<secret>).
+  #          Security model: trust boundary = RBAC roles + static token validation.
+  #
+  #   clerk — Clerk.dev JWT/session-based auth with custom RBAC roles.
+  #          Requires: (1) Outbound internet access from RF to Clerk's API
+  #          (https://api.clerk.dev), (2) public domain registered + DNS-resolvable
+  #          (e.g. rf.example.com), (3) paid Clerk plan for custom RBAC roles
+  #          (Free plan does not support role-claim customization — RF will error
+  #          at startup if custom roles are unavailable). Once enabled, Clerk
+  #          handles user sign-in, multi-factor auth, and role provisioning; RF
+  #          validates JWTs and enforces roles. Fail-closed: if Clerk is down or
+  #          unreachable, all auth checks fail (no implicit fallback to 'none').
+  #          Requirements: Clerk account + app created, frontend_api endpoint,
+  #          outbound_internet_enabled: true in foundry.yaml (must be explicit).
+  #          Security model: trust boundary = Clerk's OIDC identity + RF's RBAC.
+  #
+  #   oidc — Generic OIDC/JWT auth (BYO identity provider). Seam-only in P5.1;
+  #          concrete adapter (FU-2, deferred) will support any OIDC provider
+  #          (Azure AD, Okta, on-prem, etc.). Currently raises "not yet
+  #          implemented" error at startup. Do not use until FU-2 ships.
+  #          Requirements: OIDC provider with JWT endpoint (future).
+  #          Security model: trust boundary = OIDC provider's identity + RF's RBAC.
+  #
+  # Fail-closed default: 'none' is the canonical fail-closed, single-user default
+  # because foundry.yaml is versioned and copied verbatim by 'rf init' and every
+  # test fixture. If an operator never explicitly sets provider, they get loopback-
+  # only mode (safe default). Multi-user deployments require explicit opt-in via
+  # provider: local_static or provider: clerk, ensuring decisions are intentional,
+  # not accidental. Public/LAN-exposed instances will refuse to start with provider:
+  # none — the startup gate is the enforcement mechanism for this fail-closed policy.
   #
   # auth:
   #   provider: none        # change to local_static to require auth

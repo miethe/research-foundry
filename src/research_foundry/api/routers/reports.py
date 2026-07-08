@@ -824,6 +824,15 @@ def publish_preview(
         ),
     )
 
+    # Step 5: Audit-health gate (REVIEW-001 must-fix, AUDIT-004).
+    # Unconditional regardless of RBAC-enforcement mode — a degraded audit
+    # store must not silently allow exposure of preview content just because
+    # this caller cleared the sensitivity gate (step 1/2) and the RBAC gate
+    # (step 3).  record_event() above stays fail-open and unchanged; this
+    # check is purely additive.
+    if not audit_service.is_healthy_for_exposure(paths):
+        raise HTTPException(status_code=503, detail="Audit log unavailable")
+
     return {
         "ok": True,
         "preview_markdown": preview_md,
@@ -934,6 +943,12 @@ def create_share_link(
             ),
         )
 
+    # Audit-health gate (REVIEW-001 must-fix, AUDIT-004). Unconditional —
+    # a degraded audit store must not silently allow minting a new
+    # sensitivity-scoped share credential.
+    if not audit_service.is_healthy_for_exposure(paths):
+        raise HTTPException(status_code=503, detail="Audit log unavailable")
+
     return _create_link(
         paths,
         report_draft_id=report_id,
@@ -1015,6 +1030,12 @@ def resolve_share_link(
         raise HTTPException(
             status_code=404, detail="share link not found, revoked, or expired"
         )
+
+    # Audit-health gate (REVIEW-001 must-fix, AUDIT-004). This is the actual
+    # public-exposure moment for a share token — a degraded audit store must
+    # not silently allow returning preview content to an anonymous bearer.
+    if not audit_service.is_healthy_for_exposure(paths):
+        raise HTTPException(status_code=503, detail="Audit log unavailable")
 
     return {
         "ok": True,
