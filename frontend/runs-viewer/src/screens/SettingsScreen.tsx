@@ -14,6 +14,11 @@
 
 import { useState } from "react";
 import { useViewerSettings } from "@/lib/viewerSettings";
+import { useAuth } from "@/auth/AuthContext";
+import { WorkspaceMembersPanel } from "@/components/AdminSettings/WorkspaceMembersPanel";
+import { RoleAssignmentPanel } from "@/components/AdminSettings/RoleAssignmentPanel";
+import { RateLimitConfigPanel } from "@/components/AdminSettings/RateLimitConfigPanel";
+import { AuthProviderStatusPanel } from "@/components/AdminSettings/AuthProviderStatusPanel";
 import "@/styles/settings.css";
 
 const DETAIL_TABS = [
@@ -27,10 +32,20 @@ const DETAIL_TABS = [
 
 export function SettingsScreen() {
   const [settings, updateSetting] = useViewerSettings();
+  const { identity, authMode } = useAuth();
 
   // Local draft for data path — persisted only on Save
   const [dataPathDraft, setDataPathDraft] = useState(settings.dataPath);
   const [reloadNotice, setReloadNotice] = useState(false);
+
+  // DEFENSE-IN-DEPTH ONLY: admin section visibility here is a UX affordance, NOT an
+  // authorization boundary. Server-side require_role() enforcement (P5.2) and
+  // workspace-scoped repository queries (P5.3) are the actual gates (FR-6).
+  // When authMode is 'none', isAdmin is always false (AC-5a regression guard).
+  // AC-5c: identity.roles defaults to [] when absent → least-privilege viewer.
+  const isAdmin =
+    authMode !== "none" &&
+    (identity?.roles ?? []).some((r) => ["admin", "owner"].includes(r));
 
   function handleSaveDataPath() {
     const normalized = dataPathDraft.trim() || "/data";
@@ -226,6 +241,59 @@ export function SettingsScreen() {
           </div>
         </div>
       </section>
+
+      {/* ── Administration (admin/owner only) ── */}
+      {isAdmin && (
+        <section
+          className="rv-settings__section rv-settings__section--admin"
+          aria-labelledby="settings-admin-title"
+          data-testid="admin-section"
+        >
+          <h2 id="settings-admin-title" className="rv-settings__section-title">
+            Administration
+          </h2>
+
+          <div className="rv-settings__control rv-settings__control--panel">
+            <div className="rv-settings__label-block">
+              <span className="rv-settings__label">Workspace members</span>
+              <p className="rv-settings__note">
+                View and manage workspace member roles.
+              </p>
+            </div>
+            <WorkspaceMembersPanel />
+          </div>
+
+          <div className="rv-settings__control rv-settings__control--panel">
+            <div className="rv-settings__label-block">
+              <span className="rv-settings__label">Role capabilities</span>
+              <p className="rv-settings__note">
+                Reference matrix showing which roles can perform which actions.
+              </p>
+            </div>
+            <RoleAssignmentPanel />
+          </div>
+
+          <div className="rv-settings__control rv-settings__control--panel">
+            <div className="rv-settings__label-block">
+              <span className="rv-settings__label">Rate limiting</span>
+              <p className="rv-settings__note">
+                Configure API rate limit policy for this workspace.
+              </p>
+            </div>
+            <RateLimitConfigPanel />
+          </div>
+
+          <div className="rv-settings__control rv-settings__control--panel">
+            <div className="rv-settings__label-block">
+              <span className="rv-settings__label">Auth provider</span>
+              <p className="rv-settings__note">
+                Current authentication provider and availability status.
+              </p>
+            </div>
+            <AuthProviderStatusPanel />
+          </div>
+        </section>
+      )}
     </div>
   );
 }

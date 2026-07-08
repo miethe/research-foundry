@@ -42,6 +42,18 @@ export interface UseClerkAuthResult {
   identity: AuthIdentity | null;
   loading: boolean;
   error: ClientError | null;
+  /**
+   * The last successfully resolved Clerk session JWT.
+   * Non-null when identity is set; null before resolution or on error.
+   *
+   * P5.8 FEAUTH-003: ClerkShell reads this to install the auth-token resolver
+   * via setAuthTokenResolver(() => token ?? null). Without this field, the
+   * resolver always returns null and Authorization headers are never sent.
+   *
+   * TO BE REPLACED: P5.4 completion gate — replaced by real Clerk getToken()
+   * once ClerkShell is validated against a live Clerk deployment.
+   */
+  token: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -137,6 +149,10 @@ export function useClerkAuth(): UseClerkAuthResult {
   const [identity, setIdentity] = useState<AuthIdentity | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<ClientError | null>(null);
+  // P5.8 FEAUTH-003: capture the resolved JWT so ClerkShell can forward it to
+  // setAuthTokenResolver. Without this, the resolver returns null and all
+  // loopback/admin fetches in Clerk mode omit the Authorization header.
+  const [clerkToken, setClerkToken] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,6 +161,7 @@ export function useClerkAuth(): UseClerkAuthResult {
       setLoading(true);
       setError(null);
       setIdentity(null);
+      setClerkToken(null);
 
       try {
         const token = await getToken();
@@ -163,12 +180,16 @@ export function useClerkAuth(): UseClerkAuthResult {
         const resolved = await fetchIdentityWithToken(token);
 
         if (!cancelled) {
+          // React 18 automatic batching: setClerkToken + setIdentity are batched
+          // into a single render, so ClerkShell sees both updated simultaneously.
+          setClerkToken(token);
           setIdentity(resolved);
           setError(null);
           setLoading(false);
         }
       } catch (err) {
         if (!cancelled) {
+          setClerkToken(null);
           setError(
             err instanceof ClientError
               ? err
@@ -190,5 +211,5 @@ export function useClerkAuth(): UseClerkAuthResult {
     // running the effect once on mount in normal operation.
   }, [getToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { identity, loading, error };
+  return { identity, loading, error, token: clerkToken };
 }

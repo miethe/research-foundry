@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { applyTheme, getViewerSettings } from "@/lib/viewerSettings";
 import { isAgentsLoopbackEnabled } from "@/hooks";
 import type { ShellSelectionContext } from "./shellContext";
+import { useAuth } from "../auth/AuthContext";
 
 type NavState = "enabled" | "contextual" | "disabled";
 
@@ -18,6 +19,12 @@ interface NavCapability {
   state: NavState;
   resolveTarget?: (ctx: ShellNavContext) => string | null;
   disabledReason?: string;
+  /**
+   * Role allowlist for this nav item. When set, only identities whose roles
+   * array intersects this list may access the item. Absent = accessible to all.
+   * AC-5c: missing identity.roles → treated as [] → all role-gated items disabled.
+   */
+  allowedRoles?: string[];
 }
 
 // D2: Run-scoped items (Runs, Reports, Ledger, Swarm) removed from top-level nav.
@@ -39,14 +46,33 @@ const NAV_ITEMS: NavCapability[] = [
   },
   { label: "Policies", short: "PL", state: "enabled", resolveTarget: () => "/policies" },
   { label: "Alerts", short: "AL", state: "enabled", resolveTarget: () => "/alerts" },
-  { label: "Settings", short: "ST", state: "enabled", resolveTarget: () => "/settings" },
+  {
+    label: "Settings",
+    short: "ST",
+    state: "enabled",
+    resolveTarget: () => "/settings",
+    // Settings is an admin-only section — restricted to admin/owner roles.
+    // Defense-in-depth: server-side require_role() (P5.2) is the actual gate (FR-6).
+    allowedRoles: ["admin", "owner"],
+  },
   { label: "Help", short: "HP", state: "enabled", resolveTarget: () => "/help" },
 ];
+
+// ── Rate-limit state stub (FEAUTH-003) ────────────────────────────────────────
+//
+// GATE-900: absent field → no banner rendered. This variable is null by default.
+// FEAUTH-003 (P5.8 client.ts) will replace this stub with a reactive Zustand store
+// slice after parsing X-RateLimit-* response headers. Until then, no rate-limit
+// affordance is ever rendered (correct behavior for pre-FEAUTH-003 deploys).
+//
+// eslint-disable-next-line prefer-const
+export let rateLimitState: string | null = null;
 
 export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const [, setSelectedRunId] = useState<string | null>(null);
+  const { identity, authMode } = useAuth();
 
   // Apply persisted theme on mount so the stored theme takes effect on app boot
   useEffect(() => {
@@ -58,6 +84,21 @@ export function AppShell() {
     () => ({ setSelectedRunId }),
     [],
   );
+
+  // DEFENSE-IN-DEPTH ONLY: Role-gating nav items here prevents UI confusion but is NOT
+  // the authorization boundary. Server-side require_role() enforcement (P5.2) and
+  // workspace-scoped repository queries (P5.3) are the actual gates.
+  // Hiding a nav item here must NEVER be treated as sufficient on its own — PRD FR-6.
+  const isRoleGated = (item: NavCapability): boolean => {
+    if (!item.allowedRoles || item.allowedRoles.length === 0) return false;
+    // AC-5c: missing roles array on identity → treat as [] → least-privilege viewer
+    const userRoles: string[] = identity?.roles ?? [];
+    return !item.allowedRoles.some((role) => userRoles.includes(role));
+  };
+
+  // Read rate-limit state (FEAUTH-003 stub — always null until client.ts wires up).
+  // GATE-900: when null/undefined, no rate-limit affordance is rendered.
+  const rlState = rateLimitState;
 
   return (
     <div className="rv-shell">
@@ -75,9 +116,17 @@ export function AppShell() {
         <nav className="rv-shell-nav" aria-label="Primary">
           {NAV_ITEMS.map((item) => {
             const target = item.resolveTarget?.(ctx) ?? null;
-            const disabled = item.state === "disabled" || !target;
+            // auth_mode=none: no role-based gating applied (AC-5a regression guard).
+            // In all other modes, isRoleGated checks identity.roles (AC-5c: defaults to []).
+            const roleGated = authMode !== "none" && isRoleGated(item);
+            const disabled = item.state === "disabled" || !target || roleGated;
             const active = isActiveNav(item.label, ctx);
-            const title = disabled ? item.disabledReason ?? "Not available." : item.label;
+            // Role-gated items surface a descriptive reason; fall back to item's own reason.
+            // Reuses the existing title/aria-label disabled rendering path — no new renderer.
+            const effectiveDisabledReason = roleGated
+              ? `Requires ${(item.allowedRoles ?? []).join(" or ")} role`
+              : item.disabledReason;
+            const title = disabled ? effectiveDisabledReason ?? "Not available." : item.label;
             return (
               <button
                 key={item.label}
@@ -99,6 +148,19 @@ export function AppShell() {
             );
           })}
         </nav>
+
+        {/* GATE-900: rate-limit badge only rendered when rateLimitState is non-null.
+            Wired up by FEAUTH-003 (P5.8 client.ts) after header parsing lands. */}
+        {rlState !== null && rlState !== undefined && (
+          <div
+            className="rv-rate-limit-badge"
+            role="status"
+            aria-label={`Rate limit status: ${rlState}`}
+          >
+            <span aria-hidden="true">RL</span>
+            <span>{rlState}</span>
+          </div>
+        )}
       </aside>
       <main className="rv-content">
         <Outlet context={outletContext} />

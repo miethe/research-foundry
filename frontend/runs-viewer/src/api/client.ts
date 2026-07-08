@@ -55,10 +55,76 @@ export function getLoopbackBase(): string {
 }
 
 export function getLoopbackAuthHeaders(): Record<string, string> {
-  const token: string = import.meta.env?.VITE_RUNS_LOOPBACK_API_TOKEN ?? "";
+  // Delegates to buildAuthHeaders() so admin panel direct-fetch calls consult the
+  // same _getAuthToken runtime resolver as loopbackGet() (Fix 2 — P5.8 remediation).
+  // buildAuthHeaders() is defined below the auth-token-resolver block.
+  return buildAuthHeaders();
+}
+
+// ── Auth token resolver (P5 identity threading) ───────────────────────────────
+
+/**
+ * Module-level token resolver — injected by AuthContext on mount (P5.8 FEAUTH-003).
+ *
+ * Resolution order in loopbackGet():
+ *   1. _getAuthToken?.() — injected runtime resolver (clerk / local_static session)
+ *   2. VITE_RUNS_LOOPBACK_API_TOKEN — build-time env var (legacy / CI token mode)
+ *   3. No Authorization header — when neither source provides a token
+ *
+ * Security (AC-5b): token values are NEVER logged or included in error messages.
+ */
+let _getAuthToken: (() => string | null) | null = null;
+
+/**
+ * Inject a token resolver from AuthContext. Called on mount after successful
+ * local_static login or Clerk session resolution. Pass null to clear on logout.
+ */
+export function setAuthTokenResolver(fn: (() => string | null) | null): void {
+  _getAuthToken = fn;
+}
+
+/**
+ * Shared auth header builder — single source of truth for the AUTH-HEADER CONTRACT.
+ *
+ * Resolution order (mirrors the contract in the P4 seam comment below):
+ *   1. _getAuthToken?.() — runtime resolver injected by AuthContext
+ *   2. VITE_RUNS_LOOPBACK_API_TOKEN — build-time env var (legacy / CI token mode)
+ *   3. No Authorization header — when neither source provides a token
+ *
+ * Used by both loopbackGet() (GET calls) and getLoopbackAuthHeaders() (admin panel
+ * direct-fetch calls), ensuring both code paths use the runtime session token.
+ * Security (AC-5b): token values are NEVER logged or included in error messages.
+ */
+function buildAuthHeaders(): Record<string, string> {
+  const runtimeToken: string | null = _getAuthToken?.() ?? null;
+  const envToken: string = import.meta.env?.VITE_RUNS_LOOPBACK_API_TOKEN ?? "";
+  const token: string | null = runtimeToken ?? (envToken || null);
   const headers: Record<string, string> = { Accept: "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
   return headers;
+}
+
+// ── Rate-limit state (GATE-900 contract) ──────────────────────────────────────
+
+/**
+ * Parsed from X-RateLimit-Remaining / X-RateLimit-Limit / X-RateLimit-Reset
+ * response headers by loopbackGet(). Null when any header is absent.
+ *
+ * Exposed for AppShell to consume and display rate-limit status.
+ */
+export interface RateLimitState {
+  remaining: number;
+  limit: number;
+  reset: number;
+}
+
+let _rateLimitState: RateLimitState | null = null;
+
+/** Returns the last parsed rate-limit state, or null when headers were absent. */
+export function getRateLimitState(): RateLimitState | null {
+  return _rateLimitState;
 }
 
 // ── Base URL (for static asset fetches) ──────────────────────────────────────
@@ -110,7 +176,7 @@ function getStaticDataBase(): string {
  *   - The Authorization header MUST be omitted entirely
  *   - MUST NOT send `Authorization: Bearer ` (empty string after "Bearer ")
  *
- * On HTTP 401 from the server:
+ * On HTTP 401 or 403 from the server:
  *   - Surface via ClientError — do NOT silently swallow it
  *
  * Full server-side contract lives in:
@@ -119,15 +185,26 @@ function getStaticDataBase(): string {
 async function loopbackGet<T>(path: string): Promise<T> {
   const url = `${LOOPBACK_BASE}${path.startsWith("/") ? path : `/${path}`}`;
 
-  // Build headers per the auth-header contract: inject Authorization only when
-  // the token env var is set AND non-empty (Vite bakes it in at build time).
-  const token: string = import.meta.env?.VITE_RUNS_LOOPBACK_API_TOKEN ?? "";
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
+  // Build headers via shared buildAuthHeaders() — same resolution order as
+  // getLoopbackAuthHeaders() so all loopback calls (GET + admin panel fetches)
+  // use the runtime session token.
+  const headers = buildAuthHeaders();
 
   const res = await fetch(url, { method: "GET", headers });
+
+  // Parse X-RateLimit-* headers opportunistically (GATE-900 contract).
+  // All three headers must be present; partial sets are ignored.
+  const rlRemaining = res.headers.get("X-RateLimit-Remaining");
+  const rlLimit = res.headers.get("X-RateLimit-Limit");
+  const rlReset = res.headers.get("X-RateLimit-Reset");
+  if (rlRemaining !== null && rlLimit !== null && rlReset !== null) {
+    _rateLimitState = {
+      remaining: Number(rlRemaining),
+      limit: Number(rlLimit),
+      reset: Number(rlReset),
+    };
+  }
+
   if (!res.ok) {
     throw new ClientError(res.status, `Loopback GET ${url} failed: ${res.statusText}`);
   }

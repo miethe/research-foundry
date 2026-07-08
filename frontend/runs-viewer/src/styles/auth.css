@@ -1,0 +1,216 @@
+/* =========================================================================
+   RF Runs Viewer — auth surfaces
+   Styles for LocalLoginForm (provider=local_static) and auth overlays.
+   Uses --it-* design tokens from tokens.css. No Tailwind.
+   ========================================================================= */
+
+/* ── Auth overlay ────────────────────────────────────────────────────────── */
+
+.rv-auth-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--it-bg-app);
+  z-index: var(--it-z-overlay);
+}
+
+/* ── Login card ──────────────────────────────────────────────────────────── */
+
+.rv-auth-card {
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-xl);
+  box-shadow: var(--it-shadow-lg);
+  padding: var(--it-space-10);
+  width: min(420px, calc(100vw - var(--it-space-8)));
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-6);
+}
+
+.rv-auth-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+}
+
+.rv-auth-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-3);
+  margin-bottom: var(--it-space-1);
+}
+
+.rv-auth-brand__mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #16a3b8;
+  color: #fff;
+  font-family: var(--it-font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.rv-auth-title {
+  font-family: var(--it-font-sans);
+  font-size: var(--it-text-xl);
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-primary);
+  letter-spacing: var(--it-tracking-tight);
+  line-height: var(--it-leading-tight);
+  margin: 0;
+}
+
+.rv-auth-subtitle {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+  margin: 0;
+  line-height: var(--it-leading-normal);
+}
+
+/* ── Form ──────────────────────────────────────────────────────────────────  */
+
+.rv-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-4);
+}
+
+.rv-auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1_5);
+}
+
+.rv-auth-label {
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-medium);
+  color: var(--it-text-secondary);
+}
+
+.rv-auth-input {
+  height: 40px;
+  padding: 0 var(--it-space-3);
+  border: 1px solid var(--it-border-strong);
+  border-radius: var(--it-radius-md);
+  background: var(--it-surface-base);
+  font-family: var(--it-font-text);
+  font-size: var(--it-text-base);
+  color: var(--it-text-primary);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color var(--it-dur-fast) var(--it-ease-out),
+              box-shadow var(--it-dur-fast) var(--it-ease-out);
+}
+
+.rv-auth-input:focus-visible {
+  border-color: var(--it-blue-400);
+  box-shadow: 0 0 0 3px rgba(59, 111, 189, 0.20);
+}
+
+.rv-auth-input:disabled {
+  background: var(--it-surface-sunken);
+  color: var(--it-text-muted);
+  cursor: not-allowed;
+}
+
+/* ── Error message ─────────────────────────────────────────────────────────  */
+
+.rv-auth-error {
+  padding: var(--it-space-3);
+  background: var(--it-status-blocked-bg);
+  border: 1px solid rgba(176, 52, 52, 0.24);
+  border-radius: var(--it-radius-md);
+  font-size: var(--it-text-sm);
+  color: var(--it-status-blocked-fg);
+  line-height: var(--it-leading-normal);
+}
+
+/* ── Submit button ─────────────────────────────────────────────────────────  */
+
+.rv-auth-submit {
+  height: 42px;
+  width: 100%;
+  padding: 0 var(--it-space-4);
+  background: var(--it-cta-success-bg);
+  color: #fff;
+  border: none;
+  border-radius: var(--it-radius-md);
+  font-family: var(--it-font-sans);
+  font-size: var(--it-text-base);
+  font-weight: var(--it-weight-semibold);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--it-space-2);
+  transition: background var(--it-dur-fast) var(--it-ease-out),
+              box-shadow var(--it-dur-fast) var(--it-ease-out);
+}
+
+.rv-auth-submit:hover:not(:disabled) {
+  background: var(--it-cta-success-bg-hover);
+  box-shadow: var(--it-shadow-glow-green);
+}
+
+.rv-auth-submit:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--it-cta-success-ring);
+}
+
+.rv-auth-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── Loading spinner ─────────────────────────────────────────────────────── */
+
+.rv-auth-submit__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: rv-auth-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes rv-auth-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rv-auth-submit__spinner {
+    animation-duration: 0.001ms;
+  }
+}
+
+/* ── Dark theme overrides ──────────────────────────────────────────────────  */
+
+[data-theme="dark"] .rv-auth-card {
+  background: var(--it-surface-base);
+  border-color: var(--it-border-soft);
+}
+
+[data-theme="dark"] .rv-auth-input {
+  background: var(--it-surface-sunken);
+  border-color: var(--it-border-strong);
+  color: var(--it-text-primary);
+}
+
+[data-theme="dark"] .rv-auth-input:focus-visible {
+  border-color: var(--it-border-focus);
+  box-shadow: 0 0 0 3px rgba(138, 174, 226, 0.20);
+}
+
+[data-theme="dark"] .rv-auth-error {
+  border-color: rgba(223, 111, 111, 0.30);
+}
