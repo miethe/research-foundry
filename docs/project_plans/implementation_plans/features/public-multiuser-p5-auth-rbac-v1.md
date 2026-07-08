@@ -1,10 +1,11 @@
 ---
 schema_version: 2
 doc_type: implementation_plan
-title: "Public Multi-User P5 — Auth/RBAC/Isolation/Audit Hardening — Implementation Plan"
-status: draft
+title: "Public Multi-User P5 \u2014 Auth/RBAC/Isolation/Audit Hardening \u2014 Implementation\
+  \ Plan"
+status: completed
 created: 2026-07-06
-updated: 2026-07-06
+updated: '2026-07-08'
 feature_slug: public-multiuser-p5-auth-rbac
 prd_ref: docs/project_plans/PRDs/features/public-multiuser-p5-auth-rbac-v1.md
 spike_ref: docs/project_plans/SPIKEs/public-multiuser-p4p5-foundations-spike.md
@@ -13,167 +14,248 @@ risk_level: high
 changelog_required: true
 deferred_items_spec_refs: []
 findings_doc_ref: null
-effort_estimate: "47.25 points"
+effort_estimate: 47.25 points
 it_schema: 1
 tier: 3
-feature_version: "v1"
-scope: >
-  Turn Research Foundry from single-trusted-operator into a governed multi-user system: swappable
-  AuthProvider port (local_static default, Clerk opt-in, OIDC/BYO seam), server-side 5-role RBAC,
-  enforced workspace isolation via real data migration, full audit log, rate limits, admin settings,
-  fail-closed public sharing, frontend auth-context UI, and closure of 3 deferred sensitivity gaps.
-architecture_summary: >
-  Sequential auth-foundation spine (auth port -> RBAC -> workspace migration) gates a parallel slice
-  (Clerk adapter, audit log, deferred-sensitivity closes), converging on public-exposure gates
-  (rate limits/admin/sharing), frontend auth-context UI, and a final regression/E2E/docs phase.
+feature_version: v1
+scope: 'Turn Research Foundry from single-trusted-operator into a governed multi-user
+  system: swappable AuthProvider port (local_static default, Clerk opt-in, OIDC/BYO
+  seam), server-side 5-role RBAC, enforced workspace isolation via real data migration,
+  full audit log, rate limits, admin settings, fail-closed public sharing, frontend
+  auth-context UI, and closure of 3 deferred sensitivity gaps.
+
+  '
+architecture_summary: 'Sequential auth-foundation spine (auth port -> RBAC -> workspace
+  migration) gates a parallel slice (Clerk adapter, audit log, deferred-sensitivity
+  closes), converging on public-exposure gates (rate limits/admin/sharing), frontend
+  auth-context UI, and a final regression/E2E/docs phase.
+
+  '
 related_documents:
-  - docs/project_plans/design-specs/public-multiuser-release-handoff-v1.md
-  - docs/project_plans/implementation_plans/public-multiuser-p2p3-opus-handoff.md
-  - .claude/worknotes/public-multiuser-p5-auth-rbac/decisions-block.md
+- docs/project_plans/design-specs/public-multiuser-release-handoff-v1.md
+- docs/project_plans/implementation_plans/public-multiuser-p2p3-opus-handoff.md
+- .claude/worknotes/public-multiuser-p5-auth-rbac/decisions-block.md
 references:
   user_docs: []
   context: []
   specs:
-    - .claude/skills/planning/references/ac-schema.md
+  - .claude/skills/planning/references/ac-schema.md
   related_prds:
-    - docs/project_plans/PRDs/features/public-multiuser-p4-agents-v1.md
+  - docs/project_plans/PRDs/features/public-multiuser-p4-agents-v1.md
 adr_refs:
-  - "ADR-001 (auth-provider port, SPIKE public-multiuser-p4p5-foundations)"
-  - "ADR-002 (P4 agent-job credential isolation, composed not re-implemented)"
+- ADR-001 (auth-provider port, SPIKE public-multiuser-p4p5-foundations)
+- ADR-002 (P4 agent-job credential isolation, composed not re-implemented)
 charter_ref: null
 changelog_ref: null
 test_plan_ref: null
 plan_structure: independent
 progress_init: auto
 owner: nick
-contributors: [opus-4-8, implementation-planner]
+contributors:
+- opus-4-8
+- implementation-planner
 priority: high
-category: "product-planning"
-tags: [implementation, planning, phases, auth, rbac, security, public-multiuser, phase-5]
-milestone: "public-multiuser-p5"
+category: product-planning
+tags:
+- implementation
+- planning
+- phases
+- auth
+- rbac
+- security
+- public-multiuser
+- phase-5
+milestone: public-multiuser-p5
 commit_refs: []
 pr_refs: []
 files_affected:
-  - src/research_foundry/api/auth/provider.py
-  - src/research_foundry/api/auth/adapters/local_static.py
-  - src/research_foundry/api/auth/adapters/clerk.py
-  - src/research_foundry/api/auth/adapters/oidc.py
-  - src/research_foundry/services/rbac_store.py
-  - src/research_foundry/services/audit_service.py
-  - src/research_foundry/api/middleware/auth.py
-  - src/research_foundry/api/app.py
-  - src/research_foundry/api/routers/runs.py
-  - src/research_foundry/api/routers/catalog.py
-  - src/research_foundry/api/routers/reports.py
-  - src/research_foundry/api/routers/agent_jobs.py
-  - src/research_foundry/services/catalog_service.py
-  - src/research_foundry/services/builder_service.py
-  - src/research_foundry/services/export_service.py
-  - src/research_foundry/services/verification.py
-  - src/research_foundry/services/governance.py
-  - src/research_foundry/config.py
-  - foundry.yaml
-  - frontend/runs-viewer/src/auth/AuthContext.tsx
-  - frontend/runs-viewer/src/app/AppShell.tsx
-  - frontend/runs-viewer/src/api/client.ts
-  - frontend/runs-viewer/src/test/p5-auth-header.test.ts
-  - frontend/runs-viewer/e2e/p5-auth-rbac.spec.ts
-  - src/research_foundry/cli.py
-  - src/research_foundry/cli_commands.py
-  - CHANGELOG.md
+- src/research_foundry/api/auth/provider.py
+- src/research_foundry/api/auth/adapters/local_static.py
+- src/research_foundry/api/auth/adapters/clerk.py
+- src/research_foundry/api/auth/adapters/oidc.py
+- src/research_foundry/services/rbac_store.py
+- src/research_foundry/services/audit_service.py
+- src/research_foundry/api/middleware/auth.py
+- src/research_foundry/api/app.py
+- src/research_foundry/api/routers/runs.py
+- src/research_foundry/api/routers/catalog.py
+- src/research_foundry/api/routers/reports.py
+- src/research_foundry/api/routers/agent_jobs.py
+- src/research_foundry/services/catalog_service.py
+- src/research_foundry/services/builder_service.py
+- src/research_foundry/services/export_service.py
+- src/research_foundry/services/verification.py
+- src/research_foundry/services/governance.py
+- src/research_foundry/config.py
+- foundry.yaml
+- frontend/runs-viewer/src/auth/AuthContext.tsx
+- frontend/runs-viewer/src/app/AppShell.tsx
+- frontend/runs-viewer/src/api/client.ts
+- frontend/runs-viewer/src/test/p5-auth-header.test.ts
+- frontend/runs-viewer/e2e/p5-auth-rbac.spec.ts
+- src/research_foundry/cli.py
+- src/research_foundry/cli_commands.py
+- CHANGELOG.md
 planning_maturity: scoped
 open_questions: []
 decisions:
-  - {decision: "AuthProvider port: local_static DEFAULT + Clerk OPT-IN + OIDC/BYO seam (ADR-001)", rationale: "Clerk has no self-hosted mode (SPIKE F5); abstraction is the deliverable, Clerk an adapter", status: locked}
-  - {decision: "RBAC/user/workspace/membership/audit tables live in a NEW durable store <workspace>/.rf_state/rbac.db, never catalog.db", rationale: "catalog.db drops+rebuilds on user_version mismatch; identity/audit must survive a cache rebuild", status: locked}
-  - {decision: "local_static gets a multi-token -> role mapping table, not a single shared bearer", rationale: "Required to generalize TokenAuthMiddleware and support >1 concurrent human identity air-gapped", status: locked}
-  - {decision: "P5 sequences AFTER P4; AC-3 validates against P4 real ADR-002 firewall, contract-test fallback if P4 slips", rationale: "User directive P4-then-P5; P5 composes with ADR-002, does not re-implement it", status: locked}
-  - {decision: "Public-sharing v1 = read-only sensitivity-scoped share links; defer general public URLs", rationale: "Ships governed-sharing primitive without productizing external URLs; bounded blast radius", status: locked}
-  - {decision: "Rate limiting = per-identity + per-route sliding window, config-driven in foundry.yaml", rationale: "Global budget too coarse for multi-user; per-identity is the enforceable unit", status: locked}
-  - {decision: "D12 nullable workspace_id/created_by become ENFORCED via a real data migration (dry-run + rollback); schema state is mixed — catalog_items lacks the column and gets it added first", rationale: "Fields exist from P2/P3 forward-compat only on builder_service.py draft records + catalog_service.py's derived catalog_report_drafts index; catalog_items never got them. P5's job is a schema add (catalog_items) plus migration+enforcement everywhere else — not schema design from scratch", status: locked}
-  - {decision: "OQ-A: RBAC enforcement wraps routers via a single shared FastAPI dependency require_role(...), not per-route decorators", rationale: "Uniformity for R-P1 target_surfaces enumeration + testability (route-sweep test)", status: locked}
-  - {decision: "OQ-B: migration backfill uses one synthetic default workspace for all legacy unscoped records", rationale: "Simplest reversible backfill; revisit only if multi-tenant import is needed later", status: locked}
+- decision: 'AuthProvider port: local_static DEFAULT + Clerk OPT-IN + OIDC/BYO seam
+    (ADR-001)'
+  rationale: Clerk has no self-hosted mode (SPIKE F5); abstraction is the deliverable,
+    Clerk an adapter
+  status: locked
+- decision: RBAC/user/workspace/membership/audit tables live in a NEW durable store
+    <workspace>/.rf_state/rbac.db, never catalog.db
+  rationale: catalog.db drops+rebuilds on user_version mismatch; identity/audit must
+    survive a cache rebuild
+  status: locked
+- decision: local_static gets a multi-token -> role mapping table, not a single shared
+    bearer
+  rationale: Required to generalize TokenAuthMiddleware and support >1 concurrent
+    human identity air-gapped
+  status: locked
+- decision: P5 sequences AFTER P4; AC-3 validates against P4 real ADR-002 firewall,
+    contract-test fallback if P4 slips
+  rationale: User directive P4-then-P5; P5 composes with ADR-002, does not re-implement
+    it
+  status: locked
+- decision: Public-sharing v1 = read-only sensitivity-scoped share links; defer general
+    public URLs
+  rationale: Ships governed-sharing primitive without productizing external URLs;
+    bounded blast radius
+  status: locked
+- decision: Rate limiting = per-identity + per-route sliding window, config-driven
+    in foundry.yaml
+  rationale: Global budget too coarse for multi-user; per-identity is the enforceable
+    unit
+  status: locked
+- decision: "D12 nullable workspace_id/created_by become ENFORCED via a real data\
+    \ migration (dry-run + rollback); schema state is mixed \u2014 catalog_items lacks\
+    \ the column and gets it added first"
+  rationale: "Fields exist from P2/P3 forward-compat only on builder_service.py draft\
+    \ records + catalog_service.py's derived catalog_report_drafts index; catalog_items\
+    \ never got them. P5's job is a schema add (catalog_items) plus migration+enforcement\
+    \ everywhere else \u2014 not schema design from scratch"
+  status: locked
+- decision: 'OQ-A: RBAC enforcement wraps routers via a single shared FastAPI dependency
+    require_role(...), not per-route decorators'
+  rationale: Uniformity for R-P1 target_surfaces enumeration + testability (route-sweep
+    test)
+  status: locked
+- decision: 'OQ-B: migration backfill uses one synthetic default workspace for all
+    legacy unscoped records'
+  rationale: Simplest reversible backfill; revisit only if multi-tenant import is
+    needed later
+  status: locked
 decision_gates:
-  - {gate: "Human gate #1 — P5.3 workspace-migration dry-run reviewed + approved before enforcement", status: pending}
-  - {gate: "Human gate #2 — P5.2 RBAC-before-exposure sign-off before any public-facing exposure", status: pending}
-  - {gate: "Human gate #3 — P5.4 Clerk secrets handling sign-off before real secrets/production JWKS", status: pending}
+- gate: "Human gate #1 \u2014 P5.3 workspace-migration dry-run reviewed + approved\
+    \ before enforcement"
+  status: pending
+- gate: "Human gate #2 \u2014 P5.2 RBAC-before-exposure sign-off before any public-facing\
+    \ exposure"
+  status: pending
+- gate: "Human gate #3 \u2014 P5.4 Clerk secrets handling sign-off before real secrets/production\
+    \ JWKS"
+  status: pending
 success_metrics:
-  - "2 auth providers shipped (local_static, clerk) + 1 documented BYO seam (oidc), zero call-site branching on provider identity"
-  - "100% of HTTP-routed catalog/report(/agent-job) mutation routes enforce server-side RBAC (0 UI-only gates); CLI/service-direct mutation surface classified admin-only/single-operator-trust and covered by a static contract test (P5.2 RBAC-006)"
-  - "4 of 4 run-detail-family endpoints share the no-existence-leak gate (up from 1 of 4)"
-  - "100% of 6 governed mutation types produce an audit_event row"
-  - "0 cross-workspace leaks in the isolation regression suite"
-  - "0 sensitivity regressions in the fail-closed suite across static + live modes"
+- 2 auth providers shipped (local_static, clerk) + 1 documented BYO seam (oidc), zero
+  call-site branching on provider identity
+- 100% of HTTP-routed catalog/report(/agent-job) mutation routes enforce server-side
+  RBAC (0 UI-only gates); CLI/service-direct mutation surface classified admin-only/single-operator-trust
+  and covered by a static contract test (P5.2 RBAC-006)
+- 4 of 4 run-detail-family endpoints share the no-existence-leak gate (up from 1 of
+  4)
+- 100% of 6 governed mutation types produce an audit_event row
+- 0 cross-workspace leaks in the isolation regression suite
+- 0 sensitivity regressions in the fail-closed suite across static + live modes
 acceptance_criteria:
-  - "AC-1: non-admin cannot view/mutate another workspace's private records (verified_by: cross-workspace-isolation-regression-suite, rbac-route-sweep-test)"
-  - "AC-2: public report export fails closed on sensitivity violations (verified_by: publish-preview-fail-closed-regression, blank-origin-draft-sensitivity-regression)"
-  - "AC-3: agent credentials never reach browser payloads (verified_by: credential-firewall-composition-test; stub or full depending on P4 ship status)"
-  - "AC-4: catalog/builder/agent workflows have E2E coverage (verified_by: e2e-static-mode-run, e2e-live-mode-run)"
-  - "AC-5: frontend auth-context abstraction degrades correctly per provider/mode (verified_by: p5-auth-header-test-extended, frontend-auth-context-runtime-smoke)"
+- 'AC-1: non-admin cannot view/mutate another workspace''s private records (verified_by:
+  cross-workspace-isolation-regression-suite, rbac-route-sweep-test)'
+- 'AC-2: public report export fails closed on sensitivity violations (verified_by:
+  publish-preview-fail-closed-regression, blank-origin-draft-sensitivity-regression)'
+- 'AC-3: agent credentials never reach browser payloads (verified_by: credential-firewall-composition-test;
+  stub or full depending on P4 ship status)'
+- 'AC-4: catalog/builder/agent workflows have E2E coverage (verified_by: e2e-static-mode-run,
+  e2e-live-mode-run)'
+- 'AC-5: frontend auth-context abstraction degrades correctly per provider/mode (verified_by:
+  p5-auth-header-test-extended, frontend-auth-context-runtime-smoke)'
 execution_mode: hybrid
-agent_title: "P5 — Auth/RBAC/Isolation/Audit hardening implementation plan"
-agent_summary: >
-  9-phase, 47.25-point Tier-3 plan: auth-provider port -> RBAC enforcement -> workspace migration
-  (highest-risk, human-gated) -> {Clerk, audit, deferred-sensitivity} in parallel -> rate
-  limits/admin/sharing gates -> frontend auth-context UI -> regression/E2E/docs.
+agent_title: "P5 \u2014 Auth/RBAC/Isolation/Audit hardening implementation plan"
+agent_summary: '9-phase, 47.25-point Tier-3 plan: auth-provider port -> RBAC enforcement
+  -> workspace migration (highest-risk, human-gated) -> {Clerk, audit, deferred-sensitivity}
+  in parallel -> rate limits/admin/sharing gates -> frontend auth-context UI -> regression/E2E/docs.
+
+  '
 contributors_note: null
 scores: {}
 wave_plan:
   phases:
-    - id: P5.1
-      depends_on: []
-      isolation: worktree
-      parallelizable: false
-      model: sonnet
-      effort: extended
-    - id: P5.2
-      depends_on: [P5.1]
-      isolation: worktree
-      parallelizable: false
-      model: sonnet
-      effort: extended
-    - id: P5.3
-      depends_on: [P5.2]
-      isolation: worktree
-      parallelizable: false
-      model: sonnet
-      effort: extended
-    - id: P5.4
-      depends_on: [P5.1]
-      isolation: worktree
-      parallelizable: true
-      model: sonnet
-      effort: extended
-    - id: P5.5
-      depends_on: [P5.1]
-      isolation: shared
-      parallelizable: true
-      model: sonnet
-      effort: adaptive
-    - id: P5.6
-      depends_on: [P5.3]
-      isolation: shared
-      parallelizable: false
-      model: sonnet
-      effort: adaptive
-    - id: P5.7
-      depends_on: [P5.1]
-      isolation: shared
-      parallelizable: true
-      model: sonnet
-      effort: adaptive
-    - id: P5.8
-      depends_on: [P5.1, P5.4]
-      isolation: shared
-      parallelizable: true
-      model: sonnet
-      effort: adaptive
-    - id: P5.9
-      depends_on: [P5.5, P5.6, P5.7, P5.8]
-      isolation: shared
-      parallelizable: false
-      model: sonnet
-      effort: adaptive
+  - id: P5.1
+    depends_on: []
+    isolation: worktree
+    parallelizable: false
+    model: sonnet
+    effort: extended
+  - id: P5.2
+    depends_on:
+    - P5.1
+    isolation: worktree
+    parallelizable: false
+    model: sonnet
+    effort: extended
+  - id: P5.3
+    depends_on:
+    - P5.2
+    isolation: worktree
+    parallelizable: false
+    model: sonnet
+    effort: extended
+  - id: P5.4
+    depends_on:
+    - P5.1
+    isolation: worktree
+    parallelizable: true
+    model: sonnet
+    effort: extended
+  - id: P5.5
+    depends_on:
+    - P5.1
+    isolation: shared
+    parallelizable: true
+    model: sonnet
+    effort: adaptive
+  - id: P5.6
+    depends_on:
+    - P5.3
+    isolation: shared
+    parallelizable: false
+    model: sonnet
+    effort: adaptive
+  - id: P5.7
+    depends_on:
+    - P5.1
+    isolation: shared
+    parallelizable: true
+    model: sonnet
+    effort: adaptive
+  - id: P5.8
+    depends_on:
+    - P5.1
+    - P5.4
+    isolation: shared
+    parallelizable: true
+    model: sonnet
+    effort: adaptive
+  - id: P5.9
+    depends_on:
+    - P5.5
+    - P5.6
+    - P5.7
+    - P5.8
+    isolation: shared
+    parallelizable: false
+    model: sonnet
+    effort: adaptive
 ---
 
 # Implementation Plan: Public Multi-User P5 — Auth/RBAC/Isolation/Audit Hardening
