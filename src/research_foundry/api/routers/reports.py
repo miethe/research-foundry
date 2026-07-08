@@ -737,8 +737,15 @@ def publish_preview(
     """
     # Resolve caller identity once — used in both the RBAC pre-check below
     # and the post-sensitivity RBAC gate (step 3).
+    # RBAC-disabled: when app.state.rbac_enforced is False the global
+    # require_role() is a no-op; this manual gate must honor the same toggle so
+    # that loopback/disabled mode is consistent end-to-end (DEFECT P2 fix).
+    _app_state = getattr(getattr(request, "app", None), "state", None)
+    rbac_enforced: bool | None = (
+        getattr(_app_state, "rbac_enforced", None) if _app_state is not None else None
+    )
     identity = getattr(request.state, "identity", None)
-    _has_publish_perm: bool = identity is None or bool(
+    _has_publish_perm: bool = (rbac_enforced is False) or identity is None or bool(
         set(identity.roles) & {"owner", "admin"}
     )
 

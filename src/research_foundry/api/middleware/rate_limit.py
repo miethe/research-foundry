@@ -144,15 +144,26 @@ class SlidingWindowRateLimiter:
         user_id: str,
         route: str,
         _now: float | None = None,
+        *,
+        limit_override: int | None = None,
+        window_override: int | None = None,
     ) -> tuple[bool, int, float]:
         """Check and (if allowed) record a request for ``(user_id, route)``.
 
         Args:
-            user_id: The authenticated user identifier.
-            route:   The request path (``request.url.path``).
-            _now:    Override for the current timestamp.  Pass a float for
-                     deterministic unit tests; ``None`` (the default) uses
-                     :func:`time.time`.
+            user_id:         The authenticated user identifier.
+            route:           The request path (``request.url.path``).
+            _now:            Override for the current timestamp.  Pass a float
+                             for deterministic unit tests; ``None`` (default)
+                             uses :func:`time.time`.
+            limit_override:  Override the configured ``requests_per_window``
+                             for this check only.  ``None`` keeps
+                             ``self._limit``.  Used by
+                             :class:`RateLimitMiddleware` to apply in-memory
+                             admin overrides without rebuilding the limiter.
+            window_override: Override the configured ``window_seconds`` for
+                             this check only.  ``None`` keeps
+                             ``self._window``.
 
         Returns:
             A ``(allowed, remaining, reset_at)`` triple:
@@ -172,24 +183,27 @@ class SlidingWindowRateLimiter:
                 returns ``now + window_seconds``.
         """
         now = _now if _now is not None else time.time()
+        effective_limit: int = limit_override if limit_override is not None else self._limit
+        effective_window: int = window_override if window_override is not None else self._window
+
         key = (user_id, route)
         bucket: _Bucket = self._buckets.setdefault(key, collections.deque())
 
         # Evict timestamps outside the sliding window's left boundary.
-        window_start = now - self._window
+        window_start = now - effective_window
         while bucket and bucket[0] <= window_start:
             bucket.popleft()
 
         # reset_at: when the oldest in-window entry expires.
-        reset_at: float = bucket[0] + self._window if bucket else now + self._window
+        reset_at: float = bucket[0] + effective_window if bucket else now + effective_window
 
-        if len(bucket) >= self._limit:
+        if len(bucket) >= effective_limit:
             # Over budget — do NOT record this request.
             return False, 0, reset_at
 
         # Under budget — record and return updated remaining count.
         bucket.append(now)
-        remaining = self._limit - len(bucket)
+        remaining = effective_limit - len(bucket)
         return True, remaining, reset_at
 
 
@@ -252,7 +266,26 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         user_id: str = identity.user_id
         route: str = request.url.path
 
-        allowed, remaining, reset_at = self._limiter.check(user_id, route)
+        # Read runtime overrides set by PATCH /api/admin/rate-limit-config.
+        # These are applied per-request so changes take effect immediately
+        # without rebuilding the limiter or restarting the process.
+        _app_state = getattr(getattr(request, "app", None), "state", None)
+        _overrides: dict = getattr(_app_state, "rate_limit_overrides", None) or {}
+        limit_override: int | None = _overrides.get("max_requests")
+        window_override: int | None = _overrides.get("window_seconds")
+
+        # Effective limit for X-RateLimit-Limit header: override if present,
+        # otherwise fall back to the startup-configured value.
+        effective_limit: int = (
+            limit_override if limit_override is not None else self._limiter._limit
+        )
+
+        allowed, remaining, reset_at = self._limiter.check(
+            user_id,
+            route,
+            limit_override=limit_override,
+            window_override=window_override,
+        )
         reset_at_int = int(reset_at)
 
         if not allowed:
@@ -268,14 +301,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 status_code=429,
                 headers={
                     "Retry-After": str(retry_after),
-                    "X-RateLimit-Limit": str(self._limiter._limit),
+                    "X-RateLimit-Limit": str(effective_limit),
                     "X-RateLimit-Remaining": "0",
                     "X-RateLimit-Reset": str(reset_at_int),
                 },
             )
 
         response = await call_next(request)
-        response.headers["X-RateLimit-Limit"] = str(self._limiter._limit)
+        response.headers["X-RateLimit-Limit"] = str(effective_limit)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(reset_at_int)
         return response

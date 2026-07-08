@@ -351,3 +351,149 @@ class TestRateLimitMiddleware:
         other_resp = client.get("/api/other", headers=_as("alice"))
         assert test_resp.status_code == 429
         assert other_resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Runtime override helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_app_with_overrides(
+    requests_per_window: int = 10,
+    window_seconds: int = 60,
+) -> FastAPI:
+    """Build a minimal FastAPI app wired with RateLimitMiddleware + a simple
+    runtime-override PATCH endpoint.
+
+    The PATCH endpoint at ``/test/set-override`` writes directly into
+    ``app.state.rate_limit_overrides``, mirroring what
+    ``PATCH /api/admin/rate-limit-config`` does — but without the admin RBAC
+    gate so the regression tests stay self-contained.
+
+    ``app.state.rate_limit_overrides`` is initialised empty (the same as
+    ``create_app()`` does) so the middleware starts from the startup budget.
+    """
+    app = FastAPI()
+    app.state.rate_limit_overrides: dict = {}
+
+    class _DynamicIdentityMiddleware(BaseHTTPMiddleware):
+        def __init__(self, inner: ASGIApp) -> None:
+            super().__init__(inner)
+
+        async def dispatch(self, request: Request, call_next):
+            user_id = request.headers.get("X-Test-User-ID")
+            if user_id:
+                request.state.identity = AuthIdentity(
+                    user_id=user_id,
+                    workspace_id="default",
+                    roles=("researcher",),
+                )
+            return await call_next(request)
+
+    app.add_middleware(
+        RateLimitMiddleware,
+        requests_per_window=requests_per_window,
+        window_seconds=window_seconds,
+    )
+    app.add_middleware(_DynamicIdentityMiddleware)
+
+    @app.get("/api/test")
+    def test_route() -> dict:
+        return {"ok": True}
+
+    @app.patch("/test/set-override")
+    def set_override(body: dict) -> dict:
+        """Write runtime overrides into app.state — mirrors admin PATCH endpoint."""
+        if "max_requests" in body:
+            app.state.rate_limit_overrides["max_requests"] = int(body["max_requests"])
+        if "window_seconds" in body:
+            app.state.rate_limit_overrides["window_seconds"] = int(body["window_seconds"])
+        return {"ok": True, "overrides": dict(app.state.rate_limit_overrides)}
+
+    return app
+
+
+# ---------------------------------------------------------------------------
+# RateLimitMiddleware — runtime override regression tests
+# ---------------------------------------------------------------------------
+
+
+class TestRateLimitRuntimeOverrides:
+    """OV-01 through OV-03: verify PATCH /admin/rate-limit-config actually
+    changes the 429 threshold and X-RateLimit-Limit header at request time.
+
+    These tests FAIL before the fix (middleware ignores app.state overrides)
+    and PASS after (middleware reads overrides per-request).
+    """
+
+    def test_ov01_lower_budget_override_enforced_at_new_threshold(self) -> None:
+        """OV-01: After PATCH to max_requests=2, 429 fires at 3rd request.
+
+        Startup budget is 10.  Without the fix the 3rd request would be
+        allowed (budget still 10); with the fix it must return 429.
+        """
+        client = _client(_make_app_with_overrides(requests_per_window=10))
+
+        # Apply override: reduce budget to 2
+        patch_resp = client.patch("/test/set-override", json={"max_requests": 2})
+        assert patch_resp.status_code == 200
+
+        # First two requests must be allowed
+        for i in range(2):
+            resp = client.get("/api/test", headers=_as("alice"))
+            assert resp.status_code == 200, f"Request {i + 1} unexpectedly denied"
+
+        # Third request must be denied at the overridden threshold (2), not startup (10)
+        resp = client.get("/api/test", headers=_as("alice"))
+        assert resp.status_code == 429, (
+            "Expected 429 at the overridden threshold (max_requests=2) but got "
+            f"{resp.status_code}; middleware is likely still using the startup budget"
+        )
+
+    def test_ov02_x_ratelimit_limit_header_reflects_override(self) -> None:
+        """OV-02: X-RateLimit-Limit header after PATCH reflects the new max_requests.
+
+        Startup budget is 10.  Without the fix the header always shows 10;
+        with the fix it must show the overridden value (5).
+        """
+        client = _client(_make_app_with_overrides(requests_per_window=10))
+
+        # Apply override: set budget to 5
+        client.patch("/test/set-override", json={"max_requests": 5})
+
+        resp = client.get("/api/test", headers=_as("alice"))
+        assert resp.status_code == 200
+        limit_header = resp.headers.get("X-RateLimit-Limit")
+        assert limit_header is not None, "X-RateLimit-Limit header missing"
+        assert limit_header == "5", (
+            f"X-RateLimit-Limit should be '5' (override) but got {limit_header!r}; "
+            "middleware is likely still returning the startup default"
+        )
+
+    def test_ov03_restoring_higher_budget_unblocks_requests(self) -> None:
+        """OV-03: Patching back to the original budget unblocks further requests.
+
+        Sequence:
+          1. PATCH max_requests=2  → budget is 2
+          2. Make 2 allowed requests, then 1 denied (429) request
+          3. PATCH max_requests=10 → budget restored
+          4. New request must be allowed (bucket has 2 entries, limit is 10)
+        """
+        client = _client(_make_app_with_overrides(requests_per_window=10))
+
+        # Step 1+2: reduce to 2 and exhaust
+        client.patch("/test/set-override", json={"max_requests": 2})
+        client.get("/api/test", headers=_as("alice"))
+        client.get("/api/test", headers=_as("alice"))
+        blocked = client.get("/api/test", headers=_as("alice"))
+        assert blocked.status_code == 429, "Expected 429 before restoring budget"
+
+        # Step 3: restore the higher budget
+        client.patch("/test/set-override", json={"max_requests": 10})
+
+        # Step 4: next request must be allowed (bucket has 2 entries < limit 10)
+        resp = client.get("/api/test", headers=_as("alice"))
+        assert resp.status_code == 200, (
+            "Expected 200 after restoring budget to 10 but got "
+            f"{resp.status_code}; middleware override is not being read at request time"
+        )

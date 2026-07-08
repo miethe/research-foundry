@@ -331,3 +331,121 @@ def test_publish_preview_non_existent_report_owner_gets_404(tmp_path: Path) -> N
     assert resp.status_code == 404, (
         f"Owner expected 404 on a non-existent report, got {resp.status_code}"
     )
+
+
+# ---------------------------------------------------------------------------
+# RBAC toggle regression tests (DEFECT P2 fix)
+# ---------------------------------------------------------------------------
+
+
+def _make_client_rbac_disabled(
+    cfg: FoundryConfig, identity: AuthIdentity | None = None
+) -> TestClient:
+    """Build a TestClient with RBAC globally disabled (simulates rbac_enforcement=disabled).
+
+    Sets ``app.state.rbac_enforced = False`` after ``create_app`` so the manual
+    role gate in ``publish_preview`` sees the same flag as ``require_role()``.
+    """
+    app = create_app(cfg)
+    app.dependency_overrides[get_paths] = lambda: cfg.paths
+    app.state.rbac_enforced = False  # Override: simulate loopback/disabled mode
+    app.add_middleware(_InjectIdentityMiddleware, identity=identity)
+    return TestClient(app, raise_server_exceptions=True)
+
+
+def test_publish_preview_rbac_disabled_non_admin_gets_200_on_clean_draft(
+    tmp_path: Path,
+) -> None:
+    """RBAC disabled: researcher CAN invoke publish-preview and gets 200 on a clean draft.
+
+    Regression for DEFECT P2: the manual role check in publish_preview was not
+    reading app.state.rbac_enforced, so it rejected non-admins even when RBAC
+    was globally disabled (loopback mode).  This test FAILS before the fix.
+    """
+    cfg = _make_config(tmp_path)
+
+    # Create a clean draft via a no-auth client (shares the same filesystem paths)
+    noauth_client = _make_client(cfg, identity=None)
+    created = noauth_client.post(
+        "/api/reports",
+        json={"origin": "blank", "title": "RBAC Disabled Clean"},
+    ).json()
+    rid = created["report_draft_id"]
+    noauth_client.post(
+        f"/api/reports/{rid}/blocks",
+        json={"markdown": "Background context.", "materiality": "narrative"},
+    )
+
+    # Researcher calling with RBAC disabled — must get 200, not 403
+    client = _make_client_rbac_disabled(
+        cfg, identity=AuthIdentity("r", "ws1", ("researcher",))
+    )
+    resp = client.post(f"/api/reports/{rid}/publish-preview")
+    assert resp.status_code == 200, (
+        f"Expected 200 when rbac_enforced=False (RBAC disabled), "
+        f"researcher got {resp.status_code}. "
+        "DEFECT: manual role check in publish_preview must honor the rbac_enforced toggle."
+    )
+    assert resp.json()["ok"] is True
+
+
+def test_publish_preview_rbac_disabled_sensitivity_violation_still_422(
+    tmp_path: Path,
+) -> None:
+    """RBAC disabled: sensitivity gate is absolute — non-admin still gets 422 on violation.
+
+    The RBAC toggle ONLY affects the role/authz check (step 3, 403).
+    The sensitivity gate (PRD AC-2, step 2, 422) is role-independent and must
+    fire regardless of RBAC mode.  Disabling RBAC must NEVER bypass sensitivity.
+    """
+    cfg = _make_config(tmp_path)
+    rid = _create_draft_with_sensitivity_violation(cfg)
+
+    # Researcher with RBAC disabled — sensitivity gate must still fire 422
+    client = _make_client_rbac_disabled(
+        cfg, identity=AuthIdentity("r", "ws1", ("researcher",))
+    )
+    resp = client.post(f"/api/reports/{rid}/publish-preview")
+    assert resp.status_code == 422, (
+        f"Expected 422 on sensitivity violation even with RBAC disabled, "
+        f"got {resp.status_code}. "
+        "CRITICAL INVARIANT: the sensitivity gate must remain absolute and cannot "
+        "be bypassed by the RBAC enforcement toggle."
+    )
+    detail = resp.json()["detail"]
+    assert detail["ok"] is False
+    blocking_ids = [c["id"] for c in detail.get("blocking", [])]
+    assert (
+        "report_body_sensitivity" in blocking_ids
+        or "report_body_sensitivity_global" in blocking_ids
+    ), f"Expected sensitivity check in blocking list, got: {blocking_ids!r}"
+
+
+def test_publish_preview_rbac_enabled_non_admin_still_403(tmp_path: Path) -> None:
+    """RBAC enabled (default): researcher still gets 403 on a clean draft.
+
+    Confirms the fix is backward-compatible — when rbac_enforced is True (or not
+    explicitly False), the role gate is unchanged and researcher is still denied.
+    """
+    cfg = _make_config(tmp_path)
+
+    # Create a clean draft
+    noauth_client = _make_client(cfg, identity=None)
+    created = noauth_client.post(
+        "/api/reports",
+        json={"origin": "blank", "title": "RBAC Enabled Clean"},
+    ).json()
+    rid = created["report_draft_id"]
+    noauth_client.post(
+        f"/api/reports/{rid}/blocks",
+        json={"markdown": "Background text.", "materiality": "narrative"},
+    )
+
+    # Researcher with RBAC enabled (default via _make_client) — must still get 403
+    client = _make_client(cfg, identity=AuthIdentity("r", "ws1", ("researcher",)))
+    resp = client.post(f"/api/reports/{rid}/publish-preview")
+    assert resp.status_code == 403, (
+        f"Expected 403 when rbac_enforced=True (RBAC enabled), "
+        f"researcher got {resp.status_code}. "
+        "The fix must not weaken RBAC enforcement when it is enabled."
+    )
