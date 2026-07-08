@@ -44,6 +44,7 @@ from typing import Any
 
 from markdown_it import MarkdownIt
 
+from ..api.auth.scope import require_workspace_scope
 from ..errors import NotFoundError, RFError
 from ..frontmatter import join_frontmatter
 from ..ids import now_iso, short_hash
@@ -277,6 +278,11 @@ def load_draft(paths: FoundryPaths, report_draft_id: str) -> dict[str, Any]:
     data = load_yaml(path)
     if not isinstance(data, dict):
         raise BuilderError(f"malformed draft.yaml: {path}")
+    # WKSP-301 advisory-mode workspace scope check (non-blocking; identity=None
+    # until WKSP-304 wires the caller identity through the service layer).
+    require_workspace_scope(
+        None, data, record_type="draft", record_id=report_draft_id
+    )
     return data
 
 

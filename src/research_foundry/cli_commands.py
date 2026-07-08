@@ -1476,6 +1476,279 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(catalog_app, name="catalog")
 
+    # ----- workspace (public-multiuser-release Phase 5, WKSP-301) -----
+    workspace_app = typer.Typer(help="Workspace isolation management.")
+
+    @workspace_app.command("migrate-dry-run")
+    def workspace_migrate_dry_run(
+        json_out: bool = typer.Option(False, "--json/--no-json", help="Machine-parseable JSON output"),
+    ) -> None:
+        """Dry-run workspace isolation migration: report what would change (no writes).
+
+        Counts on-disk ``draft.yaml`` files missing ``workspace_id``/``created_by``
+        fields and the total ``catalog_items`` row count (all workspace-less pre-
+        migration).  Performs **zero writes** to any file or database.
+
+        Use ``--json`` for the machine-parseable ``DryRunReport`` payload.
+        """
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services.workspace_migration_service import dry_run as _dry_run
+
+        paths = FoundryPaths.discover()
+        report = _dry_run(paths)
+
+        if json_out:
+            typer.echo(
+                _json.dumps(
+                    {
+                        "total_drafts": report.total_drafts,
+                        "drafts_missing_workspace_id": report.drafts_missing_workspace_id,
+                        "drafts_missing_created_by": report.drafts_missing_created_by,
+                        "total_catalog_items": report.total_catalog_items,
+                        "target_workspace_id": report.target_workspace_id,
+                        "caller_impact_summary": report.caller_impact_summary,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+
+        table = Table(title="rf workspace migrate-dry-run", show_header=True, header_style="bold")
+        table.add_column("Field")
+        table.add_column("Value")
+        table.add_row("total_drafts", str(report.total_drafts))
+        table.add_row(
+            "drafts_missing_workspace_id",
+            str(report.drafts_missing_workspace_id),
+        )
+        table.add_row(
+            "drafts_missing_created_by",
+            str(report.drafts_missing_created_by),
+        )
+        table.add_row("total_catalog_items", str(report.total_catalog_items))
+        table.add_row("target_workspace_id", report.target_workspace_id)
+        console.print(table)
+        console.print(f"[dim]{report.caller_impact_summary}[/dim]")
+
+    @workspace_app.command("migrate")
+    def workspace_migrate(
+        apply: bool = typer.Option(
+            False, "--apply/--dry-run-only",
+            help="Apply the forward backfill (stamp workspace_id on legacy records). "
+                 "Without --apply, prints what would change without writing anything.",
+        ),
+        workspace_id_arg: str = typer.Option(
+            "default",
+            "--workspace-id",
+            help="workspace_id to stamp on all pre-migration records (default: 'default').",
+        ),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="Machine-parseable JSON output"),
+    ) -> None:
+        """Apply (or preview) the workspace isolation forward migration.
+
+        Without ``--apply``: equivalent to ``migrate-dry-run`` — shows what
+        would change without writing anything (zero writes).
+
+        With ``--apply``: stamps ``workspace_id`` on every legacy record that
+        lacks one, rebuilds the catalog with the new ``workspace_id`` column,
+        and writes a rollback manifest to
+        ``<workspace>/.rf_state/migrations/<run_id>-workspace-backfill.json``.
+
+        Idempotent: if all records already have ``workspace_id`` set, reports
+        "already migrated" and exits 0 without writing a new manifest.
+
+        Use ``rf workspace rollback <migration_run_id>`` to reverse the operation
+        if needed (see runbook at
+        docs/dev/architecture/runbooks/workspace-migration-rollback.md).
+        """
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services.workspace_migration_service import (
+            _catalog_has_workspace_id_column,
+            backfill as _backfill,
+            dry_run as _dry_run,
+        )
+
+        paths = FoundryPaths.discover()
+
+        # Always run a dry-run first to assess the current state.
+        preview = _dry_run(paths)
+
+        if not apply:
+            # Dry-run-only mode: display the preview without writing anything.
+            if json_out:
+                typer.echo(
+                    _json.dumps(
+                        {
+                            "mode": "dry_run_only",
+                            "total_drafts": preview.total_drafts,
+                            "drafts_missing_workspace_id": preview.drafts_missing_workspace_id,
+                            "drafts_missing_created_by": preview.drafts_missing_created_by,
+                            "total_catalog_items": preview.total_catalog_items,
+                            "target_workspace_id": preview.target_workspace_id,
+                            "caller_impact_summary": preview.caller_impact_summary,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+                return
+            table = Table(title="rf workspace migrate (dry-run)", show_header=True, header_style="bold")
+            table.add_column("Field")
+            table.add_column("Value")
+            table.add_row("total_drafts", str(preview.total_drafts))
+            table.add_row("drafts_missing_workspace_id", str(preview.drafts_missing_workspace_id))
+            table.add_row("drafts_missing_created_by", str(preview.drafts_missing_created_by))
+            table.add_row("total_catalog_items", str(preview.total_catalog_items))
+            table.add_row("target_workspace_id", preview.target_workspace_id)
+            console.print(table)
+            console.print("[dim]Pass --apply to execute the migration.[/dim]")
+            return
+
+        # Idempotency gate: skip the backfill only when BOTH conditions hold:
+        #   1. no draft records need workspace_id stamping, AND
+        #   2. the catalog schema already has the workspace_id column (v3+).
+        # If drafts are done but catalog is still pre-v3, fall through to
+        # backfill() which will trigger the catalog schema rebuild.
+        if preview.drafts_missing_workspace_id == 0 and _catalog_has_workspace_id_column(paths):
+            already_msg = "workspace migration already applied -- all draft records have workspace_id set"
+            if json_out:
+                typer.echo(
+                    _json.dumps(
+                        {"status": "already_migrated", "message": already_msg},
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+            else:
+                console.print(f"[green]{already_msg}[/green]")
+            return
+
+        # Apply the backfill.
+        report = _backfill(paths, workspace_id_arg)
+
+        if json_out:
+            typer.echo(
+                _json.dumps(
+                    {
+                        "status": "applied",
+                        "migration_run_id": report.migration_run_id,
+                        "target_workspace_id": report.target_workspace_id,
+                        "total_attempted": report.total_attempted,
+                        "total_succeeded": report.total_succeeded,
+                        "total_failed": report.total_failed,
+                        "catalog_rebuild_ok": report.catalog_rebuild_ok,
+                        "catalog_rebuild_error": report.catalog_rebuild_error,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            if report.total_failed or not report.catalog_rebuild_ok:
+                raise typer.Exit(1)
+            return
+
+        color = "green" if not report.total_failed and report.catalog_rebuild_ok else "yellow"
+        console.print(
+            f"[{color}]workspace migrate (applied)[/{color}]  "
+            f"run={report.migration_run_id}"
+        )
+        console.print(f"  attempted:  {report.total_attempted}")
+        console.print(f"  succeeded:  {report.total_succeeded}")
+        if report.total_failed:
+            err_console.print(f"  [red]failed:     {report.total_failed}[/red]")
+        if not report.catalog_rebuild_ok:
+            err_console.print(
+                Panel(
+                    f"catalog rebuild failed: {report.catalog_rebuild_error}",
+                    title="[red]Catalog Rebuild Error[/red]",
+                    border_style="red",
+                )
+            )
+        console.print(
+            f"  [dim]rollback: rf workspace rollback {report.migration_run_id}[/dim]"
+        )
+        if report.total_failed or not report.catalog_rebuild_ok:
+            raise typer.Exit(1)
+
+    @workspace_app.command("rollback")
+    def workspace_rollback(
+        migration_run_id: str = typer.Argument(
+            ..., help="migration_run_id from the BackfillReport (printed by migrate-dry-run --json or backfill)"
+        ),
+        dry_run_flag: bool = typer.Option(
+            False, "--dry-run/--execute",
+            help="Print what would be reverted without writing anything."
+        ),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="Machine-parseable JSON output"),
+    ) -> None:
+        """Reverse a prior workspace backfill run (rollback runbook).
+
+        Reads the manifest written by ``rf workspace migrate-dry-run`` /
+        ``backfill`` for ``MIGRATION_RUN_ID`` and restores each draft's
+        ``workspace_id`` / ``created_by`` fields to their pre-migration values.
+
+        For ``catalog_items``: there is no coded per-row reverter.  The rollback
+        report's ``catalog_item_note`` explains the manual steps required
+        (revert schema_version + ``rf catalog rebuild``).
+
+        INVARIANT: never keys on ``workspace_id == "default"``; uses only the
+        explicit record-id list from the stored manifest.
+
+        See docs/dev/architecture/runbooks/workspace-migration-rollback.md for
+        the full step-by-step runbook.
+        """
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services.workspace_migration_service import rollback as _rollback
+
+        paths = FoundryPaths.discover()
+        try:
+            report = _rollback(paths, migration_run_id, dry_run=dry_run_flag)
+        except FileNotFoundError as exc:
+            err_console.print(f"[red]error:[/red] {exc}")
+            raise typer.Exit(1) from exc
+
+        if json_out:
+            typer.echo(
+                _json.dumps(
+                    {
+                        "migration_run_id": report.migration_run_id,
+                        "total_attempted": report.total_attempted,
+                        "total_reverted_drafts": report.total_reverted_drafts,
+                        "total_failed": report.total_failed,
+                        "catalog_item_note": report.catalog_item_note,
+                        "is_dry_run": report.is_dry_run,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            if report.total_failed:
+                raise typer.Exit(1)
+            return
+
+        mode_label = "dry-run" if report.is_dry_run else "applied"
+        color = "green" if not report.total_failed else "yellow"
+        console.print(
+            f"[{color}]workspace rollback ({mode_label})[/{color}] "
+            f"run={migration_run_id}"
+        )
+        console.print(f"  attempted:       {report.total_attempted}")
+        console.print(f"  reverted drafts: {report.total_reverted_drafts}")
+        if report.total_failed:
+            err_console.print(f"  [red]failed:          {report.total_failed}[/red]")
+        console.print(f"  [dim]{report.catalog_item_note}[/dim]")
+        if report.total_failed:
+            raise typer.Exit(1)
+
+    app.add_typer(workspace_app, name="workspace")
+
     # ----- report (P2 Wave B: read-only report surface) -----
     report_app = typer.Typer(help="Report surface — read anchors, verify, (P3: draft).")
 

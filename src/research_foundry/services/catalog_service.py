@@ -61,6 +61,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from ..api.auth.scope import require_workspace_scope
 from ..ids import now_iso
 from ..paths import FoundryPaths
 from . import audit_service
@@ -81,7 +82,7 @@ from .export_service import (
 # export_run() via import_all(), and draft index rows are rebuilt from
 # on-disk draft.yaml files via builder_service.reindex_all_drafts(). Neither
 # rebuild path reads anything from the DB itself.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # --- sensitivity ranks (mirrors export_service's private helper; only the
 # public SENSITIVITY_ORDER constant is reused, per the contract) ------------
@@ -125,6 +126,7 @@ _DDL: tuple[str, ...] = (
         catalog_item_id   TEXT PRIMARY KEY,
         item_type         TEXT NOT NULL,
         run_id            TEXT NOT NULL,
+        workspace_id      TEXT NOT NULL DEFAULT 'default',
         local_ref         TEXT NOT NULL,
         project           TEXT,
         title             TEXT NOT NULL,
@@ -147,6 +149,8 @@ _DDL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_catalog_items_project ON catalog_items(project)",
     "CREATE INDEX IF NOT EXISTS idx_catalog_items_sensitivity_rank "
     "ON catalog_items(sensitivity_rank)",
+    "CREATE INDEX IF NOT EXISTS idx_catalog_items_workspace "
+    "ON catalog_items(workspace_id)",
     """
     CREATE TABLE IF NOT EXISTS catalog_links (
         run_id        TEXT NOT NULL,
@@ -504,6 +508,7 @@ def _base_row(
         "catalog_item_id": catalog_item_id,
         "item_type": item_type,
         "run_id": run_id,
+        "workspace_id": "default",  # WKSP-303: all CLI/CLI-run imports land in "default"
         "local_ref": local_ref,
         "project": project,
         "title": title,
@@ -1046,12 +1051,12 @@ def _insert_rows(
         conn.execute(
             """
             INSERT INTO catalog_items (
-                catalog_item_id, item_type, run_id, local_ref, project, title,
+                catalog_item_id, item_type, run_id, workspace_id, local_ref, project, title,
                 summary, status, sensitivity, sensitivity_rank, trust_label,
                 confidence, confidence_rank, source_count, created_at,
                 updated_at, payload_json, search_text
             ) VALUES (
-                :catalog_item_id, :item_type, :run_id, :local_ref, :project, :title,
+                :catalog_item_id, :item_type, :run_id, :workspace_id, :local_ref, :project, :title,
                 :summary, :status, :sensitivity, :sensitivity_rank, :trust_label,
                 :confidence, :confidence_rank, :source_count, :created_at,
                 :updated_at, :payload_json, :search_text
@@ -1467,6 +1472,11 @@ def get_item(
             for r in citing_drafts_rows
         ],
     }
+    # WKSP-301 advisory-mode workspace scope check (non-blocking; identity=None
+    # until WKSP-304 wires the caller identity through the service layer).
+    require_workspace_scope(
+        None, summary, record_type="catalog_item", record_id=catalog_item_id
+    )
     return summary
 
 
