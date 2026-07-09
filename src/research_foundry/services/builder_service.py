@@ -466,12 +466,23 @@ def create_draft(
     source_template_id: str | None = None,
     source_collection_id: str | None = None,
     blocks: list[dict[str, Any]] | None = None,
+    identity: AuthIdentity | None = None,
 ) -> dict[str, Any]:
     """Create a new draft (spec §8: from a template, a run, a collection, or
     blank). *blocks* pre-seeds content (used by the ``create_draft_from_*``
     helpers below); each is a plain seed dict consumed by :func:`_append_block`.
 
     ``workspace_id``/``created_by`` are forward-compat, unenforced (plan D12).
+
+    ``identity`` is WKSP-304 Phase 5 create-path scoping (see :func:`load_draft`
+    for the analogous query-layer contract): when ``identity`` is not ``None``,
+    the persisted ``workspace_id`` is stamped from ``identity.workspace_id``
+    instead of the ``workspace_id`` parameter, so a draft always records the
+    workspace of the identity that actually created it — the record a caller's
+    own later :func:`load_draft` will be checked against under enforcement.
+    ``identity=None`` (the default) is byte-identical to the pre-WKSP-304
+    behavior: the ``workspace_id`` parameter is stamped exactly as before, which
+    is what the AC-6 single-operator baseline exercises.
 
     Returns the full persisted draft state (same shape as :func:`load_draft`).
     """
@@ -497,7 +508,7 @@ def create_draft(
         "audience": audience,
         "sensitivity": sensitivity,
         "status": "draft",
-        "workspace_id": workspace_id,
+        "workspace_id": workspace_id if identity is None else identity.workspace_id,
         "project_id": project_id,
         "created_by": created_by,
         "updated_by": created_by,

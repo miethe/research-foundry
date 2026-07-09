@@ -5,8 +5,8 @@ doc_type: progress
 prd: wksp-304-workspace-isolation-enforcement
 feature_slug: wksp-304-workspace-isolation-enforcement
 phase: 5
-title: "Regression + enforcement test matrix \u2014 runtime-verification phase"
-status: blocked
+title: Regression + enforcement test matrix — runtime-verification phase
+status: completed
 created: '2026-07-08'
 updated: '2026-07-09'
 prd_ref: docs/project_plans/PRDs/harden-polish/wksp-304-workspace-isolation-enforcement-v1.md
@@ -26,6 +26,14 @@ tasks:
   - python-backend-engineer
   dependencies:
   - TASK-4.3
+  started: 2026-07-09T00:00Z
+  completed: 2026-07-09T01:00Z
+  evidence:
+  - commit: caec975
+  - test: tests/test_workspace_isolation_enforcement.py (2-workspace x read/list/mutate
+      x allowed/denied matrix, 24 tests)
+  verified_by:
+  - phase5-validator-batch1
 - id: TASK-5.2
   description: Router-level identity-propagation regression tests (6 routers)
   status: completed
@@ -33,6 +41,14 @@ tasks:
   - python-backend-engineer
   dependencies:
   - TASK-4.3
+  started: 2026-07-09T00:00Z
+  completed: 2026-07-09T01:00Z
+  evidence:
+  - commit: caec975
+  - test: tests/test_workspace_isolation_enforcement.py (6-router identity-propagation
+      regression, 7 tests)
+  verified_by:
+  - phase5-validator-batch1
 - id: TASK-5.3
   description: Join / tombstone leak edge cases, mutation-tested (~15 tests)
   status: completed
@@ -54,23 +70,39 @@ tasks:
   - python-backend-engineer
   dependencies:
   - TASK-4.3
+  started: 2026-07-09T00:00Z
+  completed: 2026-07-09T01:00Z
+  evidence:
+  - commit: caec975
+  - test: tests/test_workspace_isolation_enforcement.py (mutation-deny spies, AC-5,
+      4 tests)
+  verified_by:
+  - phase5-validator-batch1
 - id: TASK-5.5
-  description: "Single-operator fallback \u2014 full unmodified suite pass (AC-6)"
-  status: blocked
+  description: Single-operator fallback — full unmodified suite pass (AC-6)
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - TASK-4.3
   started: 2026-07-09T00:00Z
-  completed: 2026-07-09T01:00Z
+  completed: 2026-07-09T04:00Z
   evidence:
   - test: tests/test_workspace_isolation_enforcement.py::TestIdentityNoneSingleOperatorFallback
   - finding: builder_service.create_draft has no identity param; workspace_id=None
       on created drafts; under forced enforcement, self-read of own draft denied by
       null-mismatch rule; 3 test_p5_regression_suite.py TestAuditExposureGate failures
       reproduce this
+  - test: tests/integration/test_p5_regression_suite.py::TestAuditExposureGate (3->0
+      failures under forced enforcement)
+  - test: tests/test_workspace_isolation_enforcement.py+test_config_workspace_enforcement.py+test_p5_regression_suite.py+unit/test_builder_service.py
+      (167 passed unforced, unchanged before/after fix)
   verified_by:
   - TASK-5.5-selfcheck
+  - TASK-5.5-unblock-validator
+  note: 'P5.5b unblock: threaded identity into builder_service.create_draft (workspace_id
+    stamped from identity.workspace_id when present; byte-identical when identity=None).
+    Validator PASS.'
 - id: TASK-5.6
   description: Config validation matrix (~5 tests, AC-7)
   status: completed
@@ -91,6 +123,14 @@ tasks:
   - python-backend-engineer
   dependencies:
   - TASK-4.3
+  started: 2026-07-09T00:00Z
+  completed: 2026-07-09T01:00Z
+  evidence:
+  - commit: caec975
+  - test: tests/test_workspace_isolation_enforcement.py (SQL-injection-safety / parameterized-bind
+      assertions, 6 tests)
+  verified_by:
+  - phase5-validator-batch1
 parallelization:
   batch_1:
   - TASK-5.1
@@ -101,10 +141,10 @@ parallelization:
   - TASK-5.6
   - TASK-5.7
 total_tasks: 7
-completed_tasks: 6
+completed_tasks: 7
 in_progress_tasks: 0
-blocked_tasks: 1
-progress: 85
+blocked_tasks: 0
+progress: 100
 completion_ref: .claude/progress/wksp-304-workspace-isolation-enforcement/phase-5-completion.md
 ---
 

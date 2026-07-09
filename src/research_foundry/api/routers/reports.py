@@ -229,7 +229,10 @@ def create_draft(
     - ``run``        → seed blocks from run's report_draft + report_anchors
     - ``collection`` → one evidence_summary block per catalog item
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (create_draft_from_run/create_draft_from_collection/create_draft have no identity param; not Phase 3 scoping targets)
+    # identity is wired into the blank/template create_draft() call below (WKSP-304 P5);
+    # create_draft_from_run/create_draft_from_collection have no identity param yet
+    # (reserved for a future phase, not Phase 3/5 scoping targets).
+    identity = getattr(request.state, "identity", None)
     try:
         if body.origin == "run":
             if not body.source_run_id:
@@ -271,7 +274,6 @@ def create_draft(
                 sensitivity_threshold=body.sensitivity_threshold or "client_sensitive",
             )
         # blank / template / unknown origin → plain create_draft
-        # TODO(WKSP-304 P4): bsvc.create_draft() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.create_draft(
             paths,
             title=body.title,
@@ -281,6 +283,7 @@ def create_draft(
             project_id=body.project_id,
             workspace_id=body.workspace_id,
             created_by=body.created_by,
+            identity=identity,
         )
     except bsvc.BuilderError as exc:
         raise _builder_error(exc) from exc

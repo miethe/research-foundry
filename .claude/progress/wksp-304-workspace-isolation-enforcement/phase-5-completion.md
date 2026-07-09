@@ -52,3 +52,43 @@ Multi-tenant boundary enforcement gap discovered by TASK-5.5(b)'s hard gate: `bu
 1. Resolve the escalation above before Phase 6 (docs/changelog) begins — Phase 6 should document the final AC-6 state accurately, whichever way it's resolved.
 2. If fixed: re-run TASK-5.5(b)'s exact repro (`FoundryConfig.resolve_workspace_isolation_enforced` mocked to `True`) against the full pre-existing suite and confirm 85/85; re-run `task-completion-validator` for a clean PASS.
 3. If deferred: file a tracked follow-up task referencing this Completion Note and update the PRD/plan's AC-6 status accordingly so it isn't silently forgotten before the shared-store multi-tenant deploy gate.
+
+---
+
+## Unblock: TASK-5.5(b) fix-now decision (2026-07-09)
+
+**Status**: PASS
+**Validator verdict**: PASS — "The fix is correct, narrow, and its test claims hold up under independent reproduction... No blocking findings. The fix stayed within the narrow scope Opus pre-authorized (single kwarg + one call-site wire-up; no query-layer or deny-path logic touched)."
+**Decision taken**: (a) fix now, per explicit Opus authorization — the escalation above is resolved, not deferred.
+
+### Root cause (confirmed)
+
+`builder_service.create_draft()` (`src/research_foundry/services/builder_service.py`) had no `identity` parameter. `reports.py`'s blank/template draft-creation route never threaded the caller's `identity` into it either. Result: any draft created while enforcement was advisory (or even under enforcement, since the write path itself was blind to identity) persisted with `workspace_id=None`. Once enforcement was forced active, `load_draft`'s pre-existing (and correct) null-mismatch deny rule then denied the draft's own creator on every subsequent read/mutation — including the `add_block` call `reports.py:515` makes before appending a block. This is what produced the 3 `TestAuditExposureGate` failures: those tests create a blank draft as `_OWNER`, then immediately POST a block to it, which 404s once enforcement is active.
+
+### Fix (scoped exactly as authorized — no deny-path or query-layer changes)
+
+- `src/research_foundry/services/builder_service.py::create_draft()` — added keyword-only `identity: AuthIdentity | None = None`. Stamping logic: `"workspace_id": workspace_id if identity is None else identity.workspace_id`. `identity=None` path is byte-identical to pre-fix (AC-6 single-operator baseline unmodified). `identity is not None` stamps the persisted draft's workspace from the creating identity, so the owner's own later reads succeed under enforcement.
+- `src/research_foundry/api/routers/reports.py::create_draft()` route — the blank/template branch's `bsvc.create_draft(...)` call now passes `identity=identity`; stale "not a P4 scoping target" TODO/`noqa` comments narrowed to reflect that only `create_draft_from_run`/`create_draft_from_collection` remain unwired (explicitly out of scope for this fix).
+- `create_draft_from_run`, `create_draft_from_collection`, and all deny-path logic in `load_draft`/`list_drafts` were **not touched** — confirmed via diff stat (2 files, 17 insertions / 3 deletions total) and independently confirmed by the validator.
+
+### Verification (independently reproduced by both implementer and validator — Mode-D rigor)
+
+1. **Target failures resolved**: `tests/integration/test_p5_regression_suite.py::TestAuditExposureGate` — 7/7 passing both unforced and with `FoundryConfig.resolve_workspace_isolation_enforced` monkeypatched to `True` (canonical `_force_isolation_active` pattern, `tests/test_workspace_isolation_enforcement.py:82-96`). All 3 previously-failing tests (`test_forced_degraded_audit_makes_share_resolution_fail_closed`, `..._makes_publish_preview_fail_closed`, `..._healthy_audit_leaves_share_resolution_and_publish_preview_unaffected`) now pass.
+2. **Full-suite-under-enforcement (TASK-5.5(b) proper)**: the 4-file surface (`tests/test_workspace_isolation_enforcement.py`, `tests/test_config_workspace_enforcement.py`, `tests/integration/test_p5_regression_suite.py`, `tests/unit/test_builder_service.py`) forced globally active → 15 pre-fix failures (12 pre-existing harness artifacts, see below, + the 3 real bug failures) → 12 failures post-fix (only the pre-existing harness artifacts remain; all 3 real failures resolved).
+3. **AC-6 unmodified**: same 4-file surface at default/unforced config — **167 passed** with the fix, **167 passed** with the fix stashed out (validator independently reproduced via targeted `git stash`/pop). Identical count confirms the `identity=None` branch is byte-identical.
+4. **No new cross-workspace leak**: the 12 residual forced-global failures are a strict subset present identically with and without the fix — all are tests whose purpose is asserting the *disabled/advisory* control case (e.g. `test_get_item_isolation_disabled_control_allows_cross_workspace`, `TestDisabledNonLoopbackRaisesAtAppCreate`, `test_load_draft_identity_present_but_inactive_stays_unscoped`, `test_list_drafts_workspace_scoping`, `test_export_markdown_workspace_scoping`) — a blunt global-force harness is structurally incompatible with tests that assert unscoped/advisory behavior partway through their own body, before reaching their own internal `_force_isolation_active` call. None is a cross-workspace-leak assertion; the validator explicitly inspected the two ambiguous cases and confirmed this. Targeted deny-path classes (`TestReportsRouterMatrix`, `TestCatalogDraftIndexMatrix`, `TestJoinAndTombstoneLeaksClosed`, `TestMutationDenySpies`) ran clean: 27 passed, 0 failed.
+5. `task-completion-validator` gate: **PASS** (independently reproduced points 1-4 above rather than trusting the implementer's self-report).
+
+### Files Changed (this unblock)
+
+- `src/research_foundry/services/builder_service.py` — `create_draft()`: +`identity` param, docstring, workspace_id stamping logic (13 lines).
+- `src/research_foundry/api/routers/reports.py` — `create_draft()` route: wire `identity=identity` into the blank/template `bsvc.create_draft(...)` call; comment cleanup (7 lines).
+- `.claude/progress/wksp-304-workspace-isolation-enforcement/phase-5-progress.md` — TASK-5.5 marked `completed` with evidence; TASK-5.1/5.2/5.4/5.7 backfilled with `evidence`/`verified_by`/timestamps (were already `completed` from commit `caec975` but missing the completion-gate's required fields — backfilled against that commit and this note's pre-existing documented test counts, not new work); phase status → `completed`.
+
+### Relationship to Phase 4 (write-path completion)
+
+This fix closes a write-path identity-threading gap in `builder_service.create_draft` — the same surface class as **TASK-4.3** (which threaded `identity` through the read/list/mutate service methods in Phase 4). Functionally, this unblock is a P4-shaped completion that Phase 5's regression matrix caught late (by design — AC-6 exists precisely to catch gaps like this before deploy). Recorded here rather than reopening Phase 4; Phase 4's `commit_refs` are unaffected — this fix lands as phase-5's commit and is cross-referenced here for anyone tracing the identity-threading work across phases.
+
+### Escalation Reason (superseded)
+
+N/A — the Critical escalation logged above is resolved by this fix, not deferred. The cross-reference to `public-multiuser-release-plan.md` ("WKSP-304 row-level enforcement DEFERRED — must land before shared-store multi-tenant deploy") should be updated to reflect that this specific create-path gap is now closed; any remaining deferred scope in that memory note is unrelated to this finding and still stands on its own merits.
