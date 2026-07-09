@@ -1,4 +1,4 @@
-"""Runs API router — Phase P2 read endpoints.
+"""Runs API router — Phase P2 read endpoints + P5 run-launch mutation.
 
 All data paths route through the export service (R1 invariant):
   - list_runs()   → export_service.list_runs(paths)
@@ -11,22 +11,30 @@ gating is enforced inside the export service before data reaches these
 handlers.
 
 Endpoint → client.ts mapping:
-  GET /api/runs                              → fetchRunList()
-  GET /api/runs/{run_id}                     → fetchRunDetail()
-  GET /api/runs/{run_id}/claims              → fetchClaimLedger()
-  GET /api/runs/{run_id}/sources/{sc_id}     → fetchSourceCard()
+  GET  /api/runs                              → fetchRunList()
+  GET  /api/runs/{run_id}                     → fetchRunDetail()
+  GET  /api/runs/{run_id}/claims              → fetchClaimLedger()
+  GET  /api/runs/{run_id}/sources/{sc_id}     → fetchSourceCard()
+  POST /api/runs                              → scaffold + register a new run
+                                                 (http-run-launch-endpoint contract;
+                                                 does NOT drive the Path B swarm)
 
 The /data/governance.json route is defined in app.py (not under /api).
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 
 from ...config import FoundryConfig
+from ...errors import GovernanceError, NotFoundError, RFError, SchemaError
 from ...paths import FoundryPaths
+from ...services import audit_service, run_launch
+from ...services.audit_service import AuditEvent
 from ...services.export_service import (
     SENSITIVITY_ORDER,
     ExportError,
@@ -34,8 +42,17 @@ from ...services.export_service import (
     list_runs,
     resolve_threshold,
 )
+from ..auth.rbac import require_role
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# RBAC-FORWARD-COMPAT (RBAC-005, RBAC-901): run:launch is an admin-class
+# mutation (scaffolds file-backed artifacts + registers a run) -- same class
+# as agent_jobs.py's POST /agent-jobs. All mutation routes in this router
+# require owner or admin (http-run-launch-endpoint contract, Decision #3).
+_RBAC_RUN_LAUNCH = Depends(require_role("owner", "admin"))
 
 
 # ---------------------------------------------------------------------------
@@ -215,19 +232,159 @@ def get_run_anchors(
     return {"run_id": run_id, "report_anchors": data.get("report_anchors")}
 
 
-# RBAC-005 audit: runs.py has no mutation routes as of P5.2 — all endpoints
-# are GET (read-only).  The five routes above are:
-#   GET /runs
-#   GET /runs/{run_id}
-#   GET /runs/{run_id}/claims
-#   GET /runs/{run_id}/sources/{source_card_id}
-#   GET /reports/{run_id}/anchors
+# ---------------------------------------------------------------------------
+# Mutation: POST /runs (http-run-launch-endpoint contract)
+# ---------------------------------------------------------------------------
+
+
+class LaunchRunRequest(BaseModel):
+    """Body for POST /api/runs.
+
+    Exactly one of ``text`` / ``intent_id`` is required — supplying both or
+    neither is a 400 (raised as ``ValueError`` by
+    :func:`~research_foundry.services.run_launch.launch_run` and mapped here).
+
+    ``title``, ``sensitivity``, ``urgency``, ``tags``, and ``backlog_idea_ref``
+    are ``text``-path fields (forwarded to ``capture_idea``) and are ignored
+    when ``intent_id`` is supplied instead. The remaining fields are common
+    planning passthrough forwarded to ``plan_run`` on both paths.
+    """
+
+    text: str | None = None
+    intent_id: str | None = None
+    title: str | None = None
+    sensitivity: str = "personal"
+    urgency: str = "medium"
+    tags: list[str] | None = None
+    backlog_idea_ref: str | None = None
+    depth: str = "standard"
+    audience: str = "technical"
+    max_cost_usd: float = 5.0
+    freshness_days: int = 180
+    profile: str | None = None
+    project: str | None = None
+
+
+@router.post("/runs", summary="Launch a new run (scaffold + register only)", status_code=201)
+def launch_run_endpoint(
+    body: LaunchRunRequest,
+    request: Request,
+    paths: FoundryPaths = Depends(get_paths),
+    _rbac: None = _RBAC_RUN_LAUNCH,
+) -> dict[str, Any]:
+    """Scaffold and register a new run over HTTP (scaffold + register only).
+
+    Accepts either ``text`` (runs ``capture_idea`` -> ``triage_idea`` ->
+    ``plan_run``, mirroring ``rf capture`` -> ``rf triage`` -> ``rf plan``) or
+    ``intent_id`` (calls ``plan_run`` directly, mirroring
+    ``rf plan <intent_id>`` alone).
+
+    **This endpoint does NOT spawn, drive, or poll the Path B Claude-agent
+    discovery swarm** — see the Feature Contract Decision #1
+    (``docs/project_plans/feature_contracts/features/http-run-launch-endpoint.md``).
+    ``status`` in the response is always ``"planned"`` on success; poll
+    ``GET /api/runs/{run_id}``'s ``status_derived`` field for actual progress
+    once a swarm has run against the returned ``run_id`` out-of-band.
+    """
+    # TODO(WKSP-304 P4): launch_run() does not accept identity (confirmed not
+    # a Phase 3 scoping target); wire once a future phase adds scoping here.
+    identity = getattr(request.state, "identity", None)  # noqa: F841
+
+    try:
+        result = run_launch.launch_run(
+            text=body.text,
+            intent_id=body.intent_id,
+            title=body.title,
+            sensitivity=body.sensitivity,
+            urgency=body.urgency,
+            tags=body.tags,
+            backlog_idea_ref=body.backlog_idea_ref,
+            depth=body.depth,
+            audience=body.audience,
+            max_cost_usd=body.max_cost_usd,
+            freshness_days=body.freshness_days,
+            profile=body.profile,
+            project=body.project,
+            paths=paths,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except GovernanceError as exc:
+        # GovernanceError.violations is list[str] (rule_id strings) — a
+        # simpler, DIFFERENT shape from agent_jobs.py's guard_check
+        # GuardResult.violations (richer Violation objects with
+        # rule_id/severity/message/detail). Adapt rather than force a false
+        # 1:1 match (contract §11 Risk Area).
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "governance_rejected",
+                "violations": [
+                    {
+                        "rule_id": rule_id,
+                        "severity": "block",
+                        "message": rule_id,
+                        "detail": None,
+                    }
+                    for rule_id in exc.violations
+                ],
+            },
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except SchemaError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RFError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to launch run: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to launch run") from exc
+
+    # Audit: record successful run launch after the run is scaffolded and
+    # registered (fail-open — audit_service.record_event never raises).
+    audit_service.record_event(
+        paths,
+        AuditEvent(
+            mutation_type="run_launched",
+            action="launch_run",
+            target_ref=result.run_id,
+            result="success",
+        ),
+    )
+
+    return {
+        "run_id": result.run_id,
+        "status": result.status,
+        "intent_id": result.intent_id,
+        "raw_idea_id": result.raw_idea_id,
+        "brief_path": str(result.brief_path),
+        "swarm_path": str(result.swarm_path),
+        "routing_path": str(result.routing_path),
+        "next_step": (
+            f"Poll GET /api/runs/{result.run_id} for status_derived. This "
+            "endpoint performs scaffold + register only — it does not drive "
+            "the Path B discovery swarm; run the swarm out-of-band "
+            f"(Claude Code agents authoring source cards) against run_id="
+            f"{result.run_id}."
+        ),
+    }
+
+
+# RBAC-005 / RBAC-901 audit: runs.py has one mutation route as of the
+# http-run-launch-endpoint contract — POST /runs (gated by
+# Depends(require_role("owner", "admin")) via _RBAC_RUN_LAUNCH, mirroring
+# agent_jobs.py's mutation-route pattern exactly). The five GET routes below
+# remain read-only:
+#   GET  /runs
+#   GET  /runs/{run_id}
+#   GET  /runs/{run_id}/claims
+#   GET  /runs/{run_id}/sources/{source_card_id}
+#   GET  /reports/{run_id}/anchors
 #
-# Role-gating (run:read permission) will be needed if mutation routes are
-# added in future phases, or when read-gate enforcement is implemented
-# for P5.3/P5.7.  Until then no require_role dependency is warranted here.
+# POST /runs:
+#   POST /runs — scaffold + register a new run (launch_run_endpoint above).
 #
 # agent_jobs.py forward-compat: see RBAC-FORWARD-COMPAT note in
 # src/research_foundry/api/auth/rbac.py module docstring (RBAC-005, RBAC-901).
 
-__all__ = ["router"]
+__all__ = ["router", "LaunchRunRequest"]

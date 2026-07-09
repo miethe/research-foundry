@@ -81,6 +81,48 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Launch a new run (scaffold + register only)",
+        "description": "Scaffold and register a new run over HTTP (scaffold + register only).\n\nAccepts either ``text`` (runs ``capture_idea`` -> ``triage_idea`` ->\n``plan_run``, mirroring ``rf capture`` -> ``rf triage`` -> ``rf plan``) or\n``intent_id`` (calls ``plan_run`` directly, mirroring\n``rf plan <intent_id>`` alone).\n\n**This endpoint does NOT spawn, drive, or poll the Path B Claude-agent\ndiscovery swarm** \u2014 see the Feature Contract Decision #1\n(``docs/project_plans/feature_contracts/features/http-run-launch-endpoint.md``).\n``status`` in the response is always ``\"planned\"`` on success; poll\n``GET /api/runs/{run_id}``'s ``status_derived`` field for actual progress\nonce a swarm has run against the returned ``run_id`` out-of-band.",
+        "operationId": "launch_run_endpoint_api_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaunchRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Launch Run Endpoint Api Runs Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/runs/{run_id}": {
@@ -2532,6 +2574,123 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "LaunchRunRequest": {
+        "properties": {
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "intent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "sensitivity": {
+            "type": "string",
+            "title": "Sensitivity",
+            "default": "personal"
+          },
+          "urgency": {
+            "type": "string",
+            "title": "Urgency",
+            "default": "medium"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "backlog_idea_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backlog Idea Ref"
+          },
+          "depth": {
+            "type": "string",
+            "title": "Depth",
+            "default": "standard"
+          },
+          "audience": {
+            "type": "string",
+            "title": "Audience",
+            "default": "technical"
+          },
+          "max_cost_usd": {
+            "type": "number",
+            "title": "Max Cost Usd",
+            "default": 5.0
+          },
+          "freshness_days": {
+            "type": "integer",
+            "title": "Freshness Days",
+            "default": 180
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          }
+        },
+        "type": "object",
+        "title": "LaunchRunRequest",
+        "description": "Body for POST /api/runs.\n\nExactly one of ``text`` / ``intent_id`` is required \u2014 supplying both or\nneither is a 400 (raised as ``ValueError`` by\n:func:`~research_foundry.services.run_launch.launch_run` and mapped here).\n\n``title``, ``sensitivity``, ``urgency``, ``tags``, and ``backlog_idea_ref``\nare ``text``-path fields (forwarded to ``capture_idea``) and are ignored\nwhen ``intent_id`` is supplied instead. The remaining fields are common\nplanning passthrough forwarded to ``plan_run`` on both paths."
       }
     }
   }

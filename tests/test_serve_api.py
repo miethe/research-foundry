@@ -1,4 +1,4 @@
-"""Tests for the RF loopback API endpoints (TEST-001..006).
+"""Tests for the RF loopback API endpoints (TEST-001..006, TEST-011).
 
 Coverage:
   TEST-001  GET /api/runs  — list shape; empty corpus → []; RFRunSummary fields.
@@ -9,6 +9,10 @@ Coverage:
   TEST-006  Sensitivity-gate parity (MOST CRITICAL): API response == export_service.export_run()
             for a work_sensitive claim with threshold=public; also confirms quote/summary
             are replaced with the REDACTION_MARKER so the gate is never bypassed.
+  TEST-011  POST /api/runs (http-run-launch-endpoint) — text path 201 + GET parity;
+            intent_id path 201 with raw_idea_id null; both/neither-set 400; unknown
+            intent_id 404; governance-block 422; RBAC 403/201 under auth_mode=token;
+            audit event written; pre-existing GET routes unchanged (regression).
 """
 
 from __future__ import annotations
@@ -109,6 +113,48 @@ def _make_client(
     from research_foundry.api.routers.runs import get_paths
     app.dependency_overrides[get_paths] = lambda: cfg.paths
     return TestClient(app, raise_server_exceptions=True), cfg
+
+
+def _make_rbac_client(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    roles: list[str],
+) -> tuple[TestClient, FoundryConfig, str]:
+    """Build a client with ``auth.provider=local_static`` granting *roles*.
+
+    Mirrors ``tests/test_serve_auth.py``'s ``local_static`` fixture pattern
+    (TEST-007/AUTH-106) — the only existing example of a role-bearing bearer
+    token in this codebase's test suite. Returns ``(client, cfg, token)``.
+    """
+    cfg = _make_config(tmp_path)
+    token = "run-launch-rbac-test-token"
+    from research_foundry.yamlio import dump_yaml as _dump_yaml
+    from research_foundry.yamlio import load_yaml as _load_yaml
+
+    foundry_yaml_path = cfg.paths.root / "foundry.yaml"
+    existing: dict[str, Any] = _load_yaml(foundry_yaml_path) or {}
+    existing.setdefault("foundry", {})["auth"] = {
+        "provider": "local_static",
+        "local_static": {
+            "tokens": [
+                {
+                    "token_env": "RF_RUN_LAUNCH_TEST_TOKEN",
+                    "user_id": "test_user",
+                    "workspace_id": "default",
+                    "roles": roles,
+                }
+            ]
+        },
+    }
+    _dump_yaml(existing, foundry_yaml_path)
+    cfg2 = FoundryConfig(paths=cfg.paths)
+
+    monkeypatch.setenv("RF_RUN_LAUNCH_TEST_TOKEN", token)
+    app = create_app(cfg2)
+    from research_foundry.api.routers.runs import get_paths
+    app.dependency_overrides[get_paths] = lambda: cfg2.paths
+    return TestClient(app, raise_server_exceptions=True), cfg2, token
 
 
 def _plant_run(
@@ -484,3 +530,187 @@ def test_sensitivity_gate_personal_at_personal_threshold_not_redacted(tmp_path):
     assert source["redacted"] is False
     assert source["quote"] == "personal quote"
     assert source["summary"] == "personal summary"
+
+
+# ---------------------------------------------------------------------------
+# TEST-011  POST /api/runs (http-run-launch-endpoint contract)
+# ---------------------------------------------------------------------------
+
+
+def _plant_intent(paths: FoundryPaths, *, key_profile_allowed: str = "personal") -> str:
+    """Minimal intent fixture — same shape as test_cli_governance.py::_write_intent."""
+    intent_id = "intent_research_20260613_demo_topic"
+    dump_yaml(
+        {
+            "id": intent_id,
+            "title": "Demo research topic",
+            "owner": "Tester",
+            "status": "active",
+            "type": "research",
+            "objective": "Investigate the demo topic deterministically.",
+            "governance": {
+                "sensitivity": "personal",
+                "key_profile_allowed": key_profile_allowed,
+                "requires_human_review": False,
+                "allowed_writebacks": ["meatywiki_personal"],
+            },
+        },
+        paths.intents_active / f"{intent_id}.yaml",
+    )
+    return intent_id
+
+
+def test_launch_run_text_path_returns_201_and_resolves_via_get(tmp_path):
+    """TEST-011a: text path -> 201; run_id then resolves via GET with status_derived=='planned'.
+
+    Passes ``sensitivity_threshold=personal`` explicitly on the follow-up GET:
+    ``launch_run`` defaults to ``sensitivity="personal"`` (contract default)
+    while ``GET /api/runs/{run_id}``'s own default threshold is
+    ``"public"`` (``export_service.DEFAULT_THRESHOLD``) — a caller reading
+    back a personal-sensitivity run at the default threshold would 404 via
+    the no-existence-leak gate regardless of this endpoint; that is
+    pre-existing `_enforce_existence_gate` behavior, not something this
+    contract changes, so the test overrides the threshold to isolate the
+    run-launch behavior under test.
+    """
+    client, _ = _make_client(tmp_path)
+    resp = client.post("/api/runs", json={"text": "Research evidence bundle traceability."})
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["status"] == "planned"
+    assert body["raw_idea_id"] is not None
+    assert body["intent_id"] is not None
+    assert "next_step" in body
+
+    get_resp = client.get(
+        f"/api/runs/{body['run_id']}", params={"sensitivity_threshold": "personal"}
+    )
+    assert get_resp.status_code == 200
+    assert get_resp.json()["status_derived"] == "planned"
+
+
+def test_launch_run_intent_id_path_skips_capture_triage(tmp_path):
+    """TEST-011b: intent_id path -> 201; skips capture/triage; raw_idea_id is null."""
+    client, cfg = _make_client(tmp_path)
+    intent_id = _plant_intent(cfg.paths)
+
+    resp = client.post("/api/runs", json={"intent_id": intent_id})
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["raw_idea_id"] is None
+    assert body["intent_id"] == intent_id
+    assert body["status"] == "planned"
+
+
+def test_launch_run_both_text_and_intent_id_returns_400(tmp_path):
+    """TEST-011c: both text and intent_id set -> 400."""
+    client, cfg = _make_client(tmp_path)
+    intent_id = _plant_intent(cfg.paths)
+
+    resp = client.post(
+        "/api/runs", json={"text": "some idea", "intent_id": intent_id}
+    )
+    assert resp.status_code == 400
+    assert "detail" in resp.json()
+
+
+def test_launch_run_neither_text_nor_intent_id_returns_400(tmp_path):
+    """TEST-011d: neither text nor intent_id set -> 400."""
+    client, _ = _make_client(tmp_path)
+    resp = client.post("/api/runs", json={})
+    assert resp.status_code == 400
+    assert "detail" in resp.json()
+
+
+def test_launch_run_unknown_intent_id_returns_404(tmp_path):
+    """TEST-011e: unknown intent_id -> 404."""
+    client, _ = _make_client(tmp_path)
+    resp = client.post("/api/runs", json={"intent_id": "intent_does_not_exist"})
+    assert resp.status_code == 404
+    assert "detail" in resp.json()
+
+
+def test_launch_run_governance_block_returns_422(tmp_path):
+    """TEST-011f: governance-blocked plan -> 422 with {"error": "governance_rejected", ...}."""
+    client, cfg = _make_client(tmp_path)
+    intent_id = _plant_intent(cfg.paths, key_profile_allowed="personal")
+
+    resp = client.post(
+        "/api/runs", json={"intent_id": intent_id, "profile": "work_approved"}
+    )
+    assert resp.status_code == 422, resp.text
+    body = resp.json()["detail"]
+    assert body["error"] == "governance_rejected"
+    assert isinstance(body["violations"], list)
+    assert body["violations"], "expected at least one violation entry"
+    assert "rule_id" in body["violations"][0]
+
+
+def test_launch_run_writes_exactly_one_audit_event(tmp_path):
+    """TEST-011g: a successful launch writes exactly one run_launched audit event."""
+    from research_foundry.services.rbac_store import _connect
+
+    client, cfg = _make_client(tmp_path)
+    resp = client.post("/api/runs", json={"text": "Audit event coverage check."})
+    assert resp.status_code == 201, resp.text
+
+    conn = _connect(cfg.paths)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM audit_event WHERE mutation_type = 'run_launched'"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert len(rows) == 1, f"expected exactly 1 run_launched audit row, found {len(rows)}"
+    assert rows[0]["target_ref"] == resp.json()["run_id"]
+
+
+def test_launch_run_rbac_forbidden_without_role(tmp_path, monkeypatch):
+    """TEST-011h: auth_mode=token + no owner/admin role -> 403."""
+    client, _cfg, token = _make_rbac_client(tmp_path, monkeypatch, roles=["viewer"])
+    resp = client.post(
+        "/api/runs",
+        json={"text": "Should be forbidden."},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
+
+
+def test_launch_run_rbac_allowed_with_owner_role(tmp_path, monkeypatch):
+    """TEST-011i: auth_mode=token + owner role + valid bearer token -> 201."""
+    client, _cfg, token = _make_rbac_client(tmp_path, monkeypatch, roles=["owner"])
+    resp = client.post(
+        "/api/runs",
+        json={"text": "Should succeed with owner role."},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+
+
+# ---------------------------------------------------------------------------
+# TEST-011j  Regression: pre-existing GET routes unchanged (additive-only)
+# ---------------------------------------------------------------------------
+
+
+def test_existing_get_routes_unaffected_by_new_mutation_route(tmp_path):
+    """TEST-011j: the five pre-existing GET routes still behave identically.
+
+    Uses ``sensitivity_threshold="personal"`` (matching ``_plant_run``'s
+    default sensitivity) so this regression check is isolated from the
+    pre-existing, unrelated default-threshold/default-sensitivity mismatch
+    in ``_enforce_existence_gate`` (see the note on
+    ``test_launch_run_text_path_returns_201_and_resolves_via_get`` above).
+    """
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="personal")
+    _plant_run(cfg.paths, "rf_run_regression_check")
+    _plant_source_card(cfg.paths, "rf_run_regression_check", "src_reg")
+    _plant_claim_ledger(cfg.paths, "rf_run_regression_check", "src_reg")
+
+    assert client.get("/api/runs").status_code == 200
+    assert client.get("/api/runs/rf_run_regression_check").status_code == 200
+    assert client.get("/api/runs/rf_run_regression_check/claims").status_code == 200
+    assert (
+        client.get("/api/runs/rf_run_regression_check/sources/src_reg").status_code
+        == 200
+    )
+    assert client.get("/api/reports/rf_run_regression_check/anchors").status_code == 200

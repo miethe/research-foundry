@@ -11,6 +11,25 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **HTTP Run-Launch Endpoint — `POST /api/runs` (scaffold + register only)**
+
+- **`POST /api/runs`** — Launch a new run over HTTP: scaffolds and registers a
+  run via the deterministic `capture -> triage -> plan` chain (given `text`)
+  or `plan` alone (given an already-triaged `intent_id`), so orchestrators
+  (e.g. Hermes) can trigger runs without shelling the `rf` CLI. Returns
+  `{run_id, status, intent_id, raw_idea_id, brief_path, swarm_path,
+  routing_path, next_step}` on `201`. Gated by
+  `Depends(require_role("owner", "admin"))`, mirroring the `agent_jobs.py`
+  mutation-route pattern; audited via `audit_service.record_event`
+  (`mutation_type="run_launched"`).
+  - This endpoint performs the deterministic scaffold+register chain
+    **only** — it does not spawn, drive, or poll the Path B Claude-agent
+    discovery swarm. Poll the existing `GET /api/runs/{run_id}` for status;
+    run the swarm out-of-band against the returned `run_id`.
+  - New service module `research_foundry.services.run_launch.launch_run(...)`
+    wraps the existing `capture_idea`/`triage_idea`/`plan_run` functions
+    unmodified; owns only the "exactly one of `text`/`intent_id`" validation.
+
 #### **Agent Jobs API — Embedded Research with Credential Isolation (P4)**
 
 - **`/api/agent-jobs` HTTP endpoints** — Launch, list, stream events, accept, cancel, and query status for governed agent research jobs. Jobs run under subprocess-per-job credential isolation (ADR-002: Credential Process Isolation), preventing provider credentials from leaking into job artifacts, browser network traffic, or telemetry payloads.

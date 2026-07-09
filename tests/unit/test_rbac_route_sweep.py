@@ -8,7 +8,7 @@ A test failure here means a mutation route was added or modified without
 adding ``Depends(require_role(...))``.  This is the completeness guarantee
 for the P5.2 RBAC enforcement phase.
 
-Mutation-route inventory covered (19 routes across 4 routers):
+Mutation-route inventory covered (20 routes across 4 routers):
   catalog_router (2):
     POST /catalog/import/run/{run_id}
     POST /catalog/import
@@ -29,8 +29,8 @@ Mutation-route inventory covered (19 routes across 4 routers):
     POST   /reports/{report_id}/verify
     POST   /reports/{report_id}/publish-preview
 
-  runs_router (0):
-    [no mutation routes — see RBAC-005 audit comment in runs.py]
+  runs_router (1):
+    POST /runs — http-run-launch-endpoint contract (scaffold + register only)
 
   agent_jobs_router (3):
     POST /agent-jobs
@@ -215,13 +215,31 @@ class TestReportsRouterSweep:
 
 
 class TestRunsRouterSweep:
-    def test_runs_has_no_mutation_routes(self):
-        """RBAC-005 audit: runs_router has zero mutation routes."""
-        mutations = _collect_mutation_routes(runs_router)
-        assert mutations == [], (
-            f"Unexpected mutation routes in runs_router: {mutations} — "
-            "add require_role gating before exposing mutations in runs.py"
+    def test_all_runs_mutations_are_gated(self):
+        """RBAC-901: every mutation route in runs_router carries require_role."""
+        ungated = _collect_ungated(runs_router)
+        assert ungated == [], (
+            f"runs_router has ungated mutation routes: {ungated}"
         )
+
+    def test_runs_has_expected_mutation_count(self):
+        """Regression guard: 1 mutation route in runs_router (http-run-launch-endpoint).
+
+        Was 0 prior to the http-run-launch-endpoint contract — see RBAC-005
+        audit comment in runs.py for the up-to-date route inventory.
+        """
+        mutations = _collect_mutation_routes(runs_router)
+        assert len(mutations) == 1, (
+            f"Expected 1 mutation route in runs_router, found {len(mutations)}: {mutations}"
+        )
+
+    def test_expected_runs_mutation_routes_present(self):
+        routes = {(m, p) for m, p in _collect_mutation_routes(runs_router)}
+        expected = {("POST", "/runs")}
+        missing = expected - routes
+        extra = routes - expected
+        assert not missing, f"Missing expected runs mutation routes: {missing}"
+        assert not extra, f"Unexpected runs mutation routes (update this test): {extra}"
 
 
 # ---------------------------------------------------------------------------
