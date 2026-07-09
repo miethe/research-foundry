@@ -5,13 +5,14 @@ doc_type: progress
 prd: wksp-304-workspace-isolation-enforcement
 feature_slug: wksp-304-workspace-isolation-enforcement
 phase: 5
-title: Regression + enforcement test matrix — runtime-verification phase
-status: at_risk
-created: 2026-07-08
+title: "Regression + enforcement test matrix \u2014 runtime-verification phase"
+status: blocked
+created: '2026-07-08'
 updated: '2026-07-09'
 prd_ref: docs/project_plans/PRDs/harden-polish/wksp-304-workspace-isolation-enforcement-v1.md
 plan_ref: docs/project_plans/implementation_plans/harden-polish/wksp-304-workspace-isolation-enforcement-v1.md
-commit_refs: []
+commit_refs:
+- caec975
 pr_refs: []
 owners:
 - python-backend-engineer
@@ -54,7 +55,7 @@ tasks:
   dependencies:
   - TASK-4.3
 - id: TASK-5.5
-  description: Single-operator fallback — full unmodified suite pass (AC-6)
+  description: "Single-operator fallback \u2014 full unmodified suite pass (AC-6)"
   status: blocked
   assigned_to:
   - python-backend-engineer
@@ -104,6 +105,7 @@ completed_tasks: 6
 in_progress_tasks: 0
 blocked_tasks: 1
 progress: 85
+completion_ref: .claude/progress/wksp-304-workspace-isolation-enforcement/phase-5-completion.md
 ---
 
 # wksp-304-workspace-isolation-enforcement - Phase 5
