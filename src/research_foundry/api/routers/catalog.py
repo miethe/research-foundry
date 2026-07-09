@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from ..auth.rbac import require_role
 from ...paths import FoundryPaths
@@ -38,16 +38,19 @@ _RBAC_CATALOG_WRITE = Depends(require_role("owner", "admin", "researcher"))
 
 
 @router.get("/catalog/stats", summary="Catalog aggregate counts")
-def get_catalog_stats(paths: FoundryPaths = _PATHS_DEP) -> dict[str, Any]:
+def get_catalog_stats(request: Request, paths: FoundryPaths = _PATHS_DEP) -> dict[str, Any]:
     """Return per-item-type counts (visible only), runs indexed, last import.
 
     Never raises — an empty/never-imported catalog returns zeroed counts.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    # TODO(WKSP-304 P3): pass identity=identity once catalog_service accepts it
     return svc.stats(paths)
 
 
 @router.get("/catalog/search", summary="Search the catalog")
 def get_catalog_search(
+    request: Request,
     q: str | None = Query(None),
     item_type: str | None = Query(None),
     project: str | None = Query(None),
@@ -63,6 +66,8 @@ def get_catalog_search(
 
     Empty corpus / no matches → ``{"items": [], "total": 0, ...}`` — never 404.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    # TODO(WKSP-304 P3): pass identity=identity once catalog_service accepts it
     return svc.search(
         paths,
         q=q,
@@ -80,6 +85,7 @@ def get_catalog_search(
 @router.get("/catalog/items/{catalog_item_id}", summary="Get a catalog item's full detail")
 def get_catalog_item(
     catalog_item_id: str,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
 ) -> dict[str, Any]:
     """Return the summary fields + payload + links for *catalog_item_id*.
@@ -88,6 +94,8 @@ def get_catalog_item(
     threshold — the two cases are indistinguishable to the caller by design
     (fail-closed: existence of hidden sensitive items is not leaked).
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    # TODO(WKSP-304 P3): pass identity=identity once catalog_service accepts it
     item = svc.get_item(paths, catalog_item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="catalog item not found")
@@ -97,11 +105,14 @@ def get_catalog_item(
 @router.post("/catalog/import/run/{run_id}", summary="(Re)import a single run")
 def post_catalog_import_run(
     run_id: str,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_CATALOG_WRITE,
 ) -> dict[str, Any]:
     """(Re)import one run. Delete-then-insert — idempotent. 404 on unknown run."""
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once catalog_service accepts it
         result = svc.import_run(paths, run_id)
     except svc.CatalogError as exc:
         raise HTTPException(status_code=404, detail="run not found") from exc
@@ -110,6 +121,7 @@ def post_catalog_import_run(
 
 @router.post("/catalog/import", summary="(Re)import every discovered run")
 def post_catalog_import_all(
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_CATALOG_WRITE,
 ) -> dict[str, Any]:
@@ -119,6 +131,8 @@ def post_catalog_import_all(
     caller (``[]`` when every run imported cleanly) instead of silently
     dropping it.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    # TODO(WKSP-304 P3): pass identity=identity once catalog_service accepts it
     result = svc.import_all(paths)
     return {
         "imported": {"runs": result["runs"], "items": result["items"]},

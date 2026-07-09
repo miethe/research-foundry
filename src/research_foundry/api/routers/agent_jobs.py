@@ -38,7 +38,7 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -138,6 +138,7 @@ class AcceptJobBody(BaseModel):
 @router.post("/agent-jobs", summary="Launch a new agent job", status_code=201)
 def launch_job(
     body: LaunchJobBody,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_AGENT_JOB,
 ) -> dict[str, Any]:
@@ -150,6 +151,7 @@ def launch_job(
     Returns the created :class:`~research_foundry.services.agent_job_schemas.AgentJob`
     record on success (HTTP 201).
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     # Build governance context from the policy_snapshot.
     ps = body.policy_snapshot
     ctx = GuardContext(
@@ -187,6 +189,7 @@ def launch_job(
 
     # Create and persist the job record.
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
         job = service.create_job(
             provider=body.provider,
             model_profile=body.model_profile,
@@ -217,6 +220,7 @@ def launch_job(
 
     # Spawn subprocess (only if not an in-process provider).
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
         service.spawn_job(job, credential_bytes)
     except InProcessProviderError as exc:
         raise HTTPException(
@@ -253,6 +257,7 @@ def launch_job(
 @router.get("/agent-jobs/{job_id}", summary="Get agent job detail")
 def get_job(
     job_id: str,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
 ) -> dict[str, Any]:
     """Return status and metadata for *job_id*.
@@ -260,7 +265,9 @@ def get_job(
     Returns the same indistinguishable 404 for malformed IDs and missing jobs
     (no information leakage about whether the ID format is wrong vs. not found).
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     service = _get_service(paths)
+    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
     job = _load_job_or_404(service, job_id)
     return job.to_dict()
 
@@ -268,6 +275,7 @@ def get_job(
 @router.get("/agent-jobs/{job_id}/artifacts", summary="List staged artifacts for a job")
 def list_artifacts(
     job_id: str,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
 ) -> list[dict[str, Any]]:
     """Return staged (not-yet-accepted) artifacts for *job_id*.
@@ -276,10 +284,13 @@ def list_artifacts(
     returned.  Returns the same indistinguishable 404 for malformed IDs and
     missing jobs (no information leakage).
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     service = _get_service(paths)
     # Verify job exists first (404 gate).
+    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
     _load_job_or_404(service, job_id)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
         return service.list_staged_artifacts(job_id)
     except (ValueError, KeyError):
         raise _not_found(job_id)
@@ -360,6 +371,7 @@ async def _sse_event_generator(
 @router.get("/agent-jobs/{job_id}/events", summary="Stream agent job events (SSE)")
 async def stream_events(
     job_id: str,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
 ) -> StreamingResponse:
     """Deliver stage-transition events for *job_id* as a Server-Sent Events stream.
@@ -376,8 +388,10 @@ async def stream_events(
     The stream closes when the job reaches a terminal state or the poll
     limit (300 s) is reached.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     service = _get_service(paths)
     # Verify job exists before opening the stream (404 gate).
+    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
     _load_job_or_404(service, job_id)
 
     return StreamingResponse(
@@ -398,6 +412,7 @@ async def stream_events(
 @router.post("/agent-jobs/{job_id}/cancel", summary="Cancel an agent job")
 def cancel_job(
     job_id: str,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_AGENT_JOB,
 ) -> dict[str, Any]:
@@ -413,15 +428,20 @@ def cancel_job(
 
     Returns 200 on success, 404 if job not found.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     service = _get_service(paths)
     # 404 gate.
+    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
     _load_job_or_404(service, job_id)
 
+    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
     service.terminate_job(job_id)
+    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
     service.cleanup_job(job_id)
 
     # Update on-disk status to canceled.
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
         service.update_job_status(job_id, AgentJobStatus.canceled)
     except (KeyError, ValueError) as exc:
         logger.warning("Could not update status for canceled job %s: %s", job_id, exc)
@@ -438,6 +458,7 @@ def cancel_job(
 def accept_job(
     job_id: str,
     body: AcceptJobBody,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_AGENT_JOB,
 ) -> dict[str, Any]:
@@ -454,10 +475,13 @@ def accept_job(
 
     Returns 200 with a summary of what was accepted.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     service = _get_service(paths)
+    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
     _load_job_or_404(service, job_id)
 
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
         result = service.accept_job(
             job_id,
             accepted_by=body.accepted_by,

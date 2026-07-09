@@ -56,6 +56,46 @@ class AuthRbacEnforcement(str, enum.Enum):
     ENABLED = "enabled"
 
 
+# Valid values for workspace_isolation_enforcement (WKSP-304 TASK-1.1).
+# Orthogonal to auth.rbac_enforcement (independent security gate — see
+# WKSP-304 decision log) but structurally mirrors its enum shape exactly.
+# "auto"     — enforced when auth.provider != "none"; advisory when provider==none.
+# "disabled" — force OFF, BUT ONLY on loopback bind hosts (fail-closed).
+# "enabled"  — force ON regardless of provider.
+
+
+class WorkspaceIsolationEnforcement(str, enum.Enum):
+    """Workspace row-level isolation enforcement gate configuration (WKSP-304).
+
+    Controls whether row-level ``workspace_id`` scoping in the catalog,
+    builder, and agent-job services is enforced at the query layer or
+    remains advisory-only (logs a mismatch but does not deny).  This flag
+    is orthogonal to :class:`AuthRbacEnforcement` — isolation and RBAC are
+    independent security gates and must not be conflated.
+
+    Values
+    ------
+    auto
+        Default.  Isolation is enforced when ``auth.provider != "none"``
+        and advisory-only when ``auth.provider == "none"`` (preserves the
+        existing single-operator-trust default behaviour).
+    disabled
+        Force isolation enforcement **off** regardless of provider.
+        **FAIL-CLOSED**: only honoured when ``viewer.bind_host`` is a
+        loopback address (``127.0.0.1``, ``::1``, ``localhost``).  Setting
+        this on a non-loopback bind host causes startup to refuse with a
+        ``ValueError``.  You CANNOT disable isolation enforcement on a
+        public bind.
+    enabled
+        Force isolation enforcement **on** regardless of provider, even
+        when provider is ``"none"``.
+    """
+
+    AUTO = "auto"
+    DISABLED = "disabled"
+    ENABLED = "enabled"
+
+
 def _is_loopback(bind_host: str) -> bool:
     """Return ``True`` if *bind_host* is a loopback address.
 
@@ -559,6 +599,109 @@ class FoundryConfig:
         # consciously decided that ALL requests — including authenticated ones —
         # must pass through unconditionally.
         return True
+
+    # --- workspace_isolation_enforcement block (WKSP-304 TASK-1.1) ----------
+
+    def workspace_isolation_enforcement(self) -> WorkspaceIsolationEnforcement:
+        """Return ``workspace_isolation_enforcement`` with default ``auto``.
+
+        Valid values: ``auto``, ``disabled``, ``enabled``.  Structurally
+        mirrors :meth:`auth_rbac_enforcement` but is an orthogonal flag —
+        it is read from the top-level ``workspace_isolation_enforcement``
+        key in ``foundry.yaml`` (a sibling of ``auth:``), not nested under
+        the ``auth`` block, because workspace isolation and RBAC are
+        independent security gates (see WKSP-304 decision log).
+
+        This method is INERT as of WKSP-304 TASK-1.1: nothing in the app
+        calls or consumes the parsed value yet.  The resolver
+        (``resolve_workspace_isolation_enforced``) and ``app.state`` wiring
+        land in TASK-1.2.
+
+        Raises:
+            ValueError: If the raw config value is not a recognised enum
+                member.
+        """
+        raw = str(self.foundry.get("workspace_isolation_enforcement", "auto")).lower()
+        try:
+            return WorkspaceIsolationEnforcement(raw)
+        except ValueError:
+            valid = ", ".join(e.value for e in WorkspaceIsolationEnforcement)
+            raise ValueError(
+                f"workspace_isolation_enforcement={raw!r} is not valid; "
+                f"must be one of: {valid}"
+            ) from None
+
+    def resolve_workspace_isolation_enforced(self, provider: str, bind_host: str) -> bool:
+        """Resolve whether workspace row-level isolation is actively enforced.
+
+        This is called **once** at app-create time and the result is stored
+        on ``app.state.workspace_isolation_enforced``. Structurally mirrors
+        :meth:`resolve_rbac_enforced` (same fail-closed gate, same
+        ``_is_loopback`` reuse) but resolves the orthogonal
+        ``workspace_isolation_enforcement`` flag instead of
+        ``auth.rbac_enforcement`` — see the WKSP-304 decision log for why
+        isolation and RBAC are independent security gates.
+
+        Unlike :meth:`resolve_rbac_enforced` (whose ``AUTO`` branch always
+        returns ``True`` because RBAC enforcement is additionally gated by
+        the identity-None passthrough in ``require_role``), this resolver's
+        ``AUTO`` branch returns the literal provider-keyed truth table
+        documented on :class:`WorkspaceIsolationEnforcement`: enforcing when
+        ``provider != "none"``, advisory when ``provider == "none"``. There
+        is no analogous identity-passthrough mechanism at the query-scoping
+        layer (that lands in Phase 4), so ``AUTO`` must resolve to a concrete
+        bool here.
+
+        This method is INERT as of WKSP-304 TASK-1.2: the resolved bool is
+        stored on ``app.state`` but nothing in the app reads or consumes it
+        yet to make an enforcement decision. Query-scoping / deny logic for
+        this flag is Phase 4, not this task.
+
+        Parameters
+        ----------
+        provider:
+            The resolved ``auth.provider`` value (e.g. ``"none"``,
+            ``"local_static"``). Pass ``config.auth_provider()`` unless
+            you are writing tests that simulate specific provider states.
+        bind_host:
+            The ``viewer.bind_host`` value (e.g. ``"127.0.0.1"``,
+            ``"0.0.0.0"``). Used only for the fail-closed
+            ``disabled``-on-non-loopback gate.
+
+        Returns
+        -------
+        bool
+            ``True``  — isolation is enforced (once Phase 4 wires deny logic).
+            ``False`` — isolation stays advisory-only (log-mismatch-but-allow).
+
+        Raises
+        ------
+        ValueError
+            When ``workspace_isolation_enforcement=disabled`` and
+            ``bind_host`` is not a loopback address. The server **must not
+            start** in this state.
+        """
+        enforcement = self.workspace_isolation_enforcement()
+
+        if enforcement == WorkspaceIsolationEnforcement.DISABLED:
+            if not _is_loopback(bind_host):
+                raise ValueError(
+                    f"workspace_isolation_enforcement=disabled is forbidden when "
+                    f"viewer.bind_host={bind_host!r} is a non-loopback address. "
+                    "Workspace isolation cannot be disabled on a public bind. "
+                    "Either set bind_host to a loopback address (127.0.0.1) or "
+                    "use workspace_isolation_enforcement=auto (the default)."
+                )
+            return False
+
+        if enforcement == WorkspaceIsolationEnforcement.ENABLED:
+            return True
+
+        # WorkspaceIsolationEnforcement.AUTO: enforced when provider != "none";
+        # advisory-only when provider == "none" (preserves the existing
+        # single-operator-trust default behaviour). See docstring above for
+        # why this differs from resolve_rbac_enforced's AUTO branch.
+        return provider != "none"
 
     def is_auth_enabled(self) -> bool:
         """Return ``True`` when any auth mechanism is enabled.

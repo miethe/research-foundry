@@ -142,6 +142,24 @@ def create_app(config: FoundryConfig) -> FastAPI:
         config.viewer_bind_host(),
     )
 
+    # --- WKSP-304 TASK-1.2: Resolve and store workspace isolation enforcement --
+    #
+    # resolve_workspace_isolation_enforced() applies the same fail-closed rule as
+    # resolve_rbac_enforced() above: workspace_isolation_enforcement=disabled +
+    # non-loopback bind_host → raises ValueError, refusing startup.
+    #
+    # This is orthogonal to app.state.rbac_enforced (independent security gate —
+    # see WKSP-304 decision log). The resolved bool is stored on app.state so a
+    # future query-scoping layer (Phase 4) can read it per-request without
+    # re-computing from config on every call.
+    #
+    # INERT as of TASK-1.2: nothing reads or consumes app.state.workspace_isolation_enforced
+    # yet to make an enforcement decision. That wiring lands in Phase 4.
+    app.state.workspace_isolation_enforced = config.resolve_workspace_isolation_enforced(
+        _rbac_provider_name,
+        config.viewer_bind_host(),
+    )
+
     # --- P5.6 T2: In-memory rate-limit overrides store -----------------------
     # PATCH /api/admin/rate-limit-config writes here; GET reads it merged with
     # config defaults.  Cleared on restart (intentional — use foundry.yaml for

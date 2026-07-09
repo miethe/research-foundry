@@ -220,6 +220,7 @@ def _sensitivity_rank(label: str | None) -> int:
 @router.post("/reports", summary="Create a report draft", status_code=201)
 def create_draft(
     body: CreateDraftBody,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
@@ -228,6 +229,7 @@ def create_draft(
     - ``run``        → seed blocks from run's report_draft + report_anchors
     - ``collection`` → one evidence_summary block per catalog item
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
         if body.origin == "run":
             if not body.source_run_id:
@@ -235,6 +237,7 @@ def create_draft(
                     status_code=422,
                     detail="origin 'run' requires source_run_id",
                 )
+            # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
             return bsvc.create_draft_from_run(
                 paths,
                 run_id=body.source_run_id,
@@ -255,6 +258,7 @@ def create_draft(
                     status_code=422,
                     detail="origin 'collection' requires catalog_item_ids",
                 )
+            # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
             return bsvc.create_draft_from_collection(
                 paths,
                 catalog_item_ids=ids_,
@@ -267,6 +271,7 @@ def create_draft(
                 sensitivity_threshold=body.sensitivity_threshold or "client_sensitive",
             )
         # blank / template / unknown origin → plain create_draft
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         return bsvc.create_draft(
             paths,
             title=body.title,
@@ -283,6 +288,7 @@ def create_draft(
 
 @router.get("/reports", summary="List report drafts")
 def list_drafts(
+    request: Request,
     sensitivity_threshold: str | None = Query(
         None,
         description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
@@ -295,13 +301,16 @@ def list_drafts(
     is silently omitted, mirroring ``catalog_service.search``'s gating.
     Empty/fully-gated corpus → ``[]``.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
+    # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
     return [d for d in bsvc.list_drafts(paths) if _sensitivity_rank(d.get("sensitivity")) <= threshold_rank]
 
 
 @router.get("/reports/{report_id}", summary="Get report draft detail")
 def get_draft(
     report_id: str,
+    request: Request,
     sensitivity_threshold: str | None = Query(
         None,
         description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
@@ -315,8 +324,10 @@ def get_draft(
     (no-existence-leak, landmine #4; R2 fix: this endpoint previously applied
     zero sensitivity gating, unlike ``catalog_service.get_item``).
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         draft = bsvc.load_draft(paths, report_id)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
@@ -328,6 +339,7 @@ def get_draft(
 @router.delete("/reports/{report_id}", summary="Delete a report draft", status_code=204)
 def delete_draft(
     report_id: str,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_REPORT_ADMIN,
 ) -> None:
@@ -338,7 +350,9 @@ def delete_draft(
     service layer's :func:`~research_foundry.services.builder_service._draft_dir`
     raises :class:`NotFoundError` before anything is touched on disk.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         bsvc.delete_draft(paths, report_id)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
@@ -352,6 +366,7 @@ def delete_draft(
 @router.get("/reports/{report_id}/versions", summary="List draft revisions")
 def list_versions(
     report_id: str,
+    request: Request,
     sensitivity_threshold: str | None = Query(
         None,
         description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
@@ -363,14 +378,17 @@ def list_versions(
     404 for unknown ids AND drafts whose sensitivity exceeds the resolved threshold
     (no-existence-leak, mirrors ``get_draft`` gating).
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         draft = bsvc.load_draft(paths, report_id)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     if _sensitivity_rank(draft.get("sensitivity")) > threshold_rank:
         raise _not_found(report_id)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         return bsvc.list_revisions(paths, report_id)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
@@ -380,11 +398,14 @@ def list_versions(
 def create_version(
     report_id: str,
     body: CreateRevisionBody,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Snapshot the current draft state into an immutable revision file."""
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         return bsvc.create_revision(
             paths, report_id, created_by=body.created_by, note=body.note
         )
@@ -396,6 +417,7 @@ def create_version(
 def get_version(
     report_id: str,
     version_id: str,
+    request: Request,
     sensitivity_threshold: str | None = Query(
         None,
         description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
@@ -407,14 +429,17 @@ def get_version(
     404 for unknown ids AND drafts whose sensitivity exceeds the resolved threshold
     (no-existence-leak, mirrors ``get_draft`` gating).
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         draft = bsvc.load_draft(paths, report_id)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     if _sensitivity_rank(draft.get("sensitivity")) > threshold_rank:
         raise _not_found(report_id)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         return bsvc.get_revision(paths, report_id, version_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail="revision not found") from exc
@@ -427,6 +452,7 @@ def get_version(
 def restore_version(
     report_id: str,
     version_id: str,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
@@ -434,7 +460,9 @@ def restore_version(
 
     Callers wanting a pre-restore checkpoint should POST /versions first.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         return bsvc.restore_revision(paths, report_id, version_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail="revision not found") from exc
@@ -449,11 +477,14 @@ def restore_version(
 def add_block(
     report_id: str,
     body: AddBlockBody,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Append a new block to *report_id*.  Returns the full updated draft."""
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         return bsvc.add_block(
             paths,
             report_id,
@@ -473,6 +504,7 @@ def add_block(
 def reorder_blocks(
     report_id: str,
     body: ReorderBlocksBody,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
@@ -481,7 +513,9 @@ def reorder_blocks(
     Must be a permutation of all block ids in the draft (builder_service
     enforces this).
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         return bsvc.reorder_blocks(
             paths, report_id, body.block_ids, updated_by=body.updated_by
         )
@@ -496,11 +530,14 @@ def update_block(
     report_id: str,
     block_id: str,
     body: UpdateBlockBody,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Patch one or more fields of *block_id*.  Returns the full updated draft."""
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         return bsvc.update_block(
             paths,
             report_id,
@@ -528,6 +565,7 @@ def update_block(
 def delete_block(
     report_id: str,
     block_id: str,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
@@ -540,7 +578,9 @@ def delete_block(
     silently stomped the cache with ``undefined``. Matches the sibling
     ``add_block``/``update_block``/``reorder_blocks`` contract.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         return bsvc.delete_block(paths, report_id, block_id)
     except NotFoundError as exc:
         raise HTTPException(
@@ -558,12 +598,15 @@ def delete_block(
 def add_claim_link(
     report_id: str,
     body: AddClaimLinkBody,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Link *claim_id* to *block_id*.  Inserts a ``[claim:<id>]`` tag unless
     ``insert_tag=false``.  Returns the full updated draft."""
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         return bsvc.add_claim_link(
             paths,
             report_id,
@@ -590,6 +633,7 @@ def add_claim_link(
 def remove_claim_link(
     report_id: str,
     claim_link_id: str,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
@@ -597,7 +641,9 @@ def remove_claim_link(
 
     Returns the full updated draft (200) — see ``delete_block`` above for why.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         return bsvc.remove_claim_link(paths, report_id, claim_link_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -612,11 +658,14 @@ def remove_claim_link(
 def add_source_link(
     report_id: str,
     body: AddSourceLinkBody,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Link a source card to the draft (optionally anchored to a block)."""
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         return bsvc.add_source_link(
             paths,
             report_id,
@@ -640,6 +689,7 @@ def add_source_link(
 def remove_source_link(
     report_id: str,
     source_link_id: str,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
@@ -647,7 +697,9 @@ def remove_source_link(
 
     Returns the full updated draft (200) — see ``delete_block`` above for why.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         return bsvc.remove_source_link(paths, report_id, source_link_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -661,6 +713,7 @@ def remove_source_link(
 @router.post("/reports/{report_id}/verify", summary="Verify a draft (D13 checks)")
 def verify_draft_endpoint(
     report_id: str,
+    request: Request,
     sensitivity_threshold: str | None = Query(
         None,
         description="Override sensitivity threshold for the body-sensitivity check.",
@@ -673,7 +726,9 @@ def verify_draft_endpoint(
     Always returns 200 with a structured result (``passed``, per-check details).
     Use /publish-preview for the fail-closed gate.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         result = verify_draft(
             paths, report_id, sensitivity_threshold=sensitivity_threshold
         )
@@ -809,6 +864,7 @@ def publish_preview(
 
     # Step 4: Generate Markdown preview (no side-effects on draft state).
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         preview_md = bsvc.export_markdown(paths, report_id)
     except NotFoundError as exc:  # pragma: no cover  — already verified load above
         raise _not_found(report_id) from exc
@@ -848,6 +904,7 @@ def publish_preview(
 @router.get("/reports/{report_id}/export", summary="Export draft as Markdown")
 def export_draft(
     report_id: str,
+    request: Request,
     sensitivity_threshold: str | None = Query(
         None,
         description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
@@ -863,14 +920,17 @@ def export_draft(
     The response carries ``{"report_draft_id": ..., "markdown": "..."}`` so
     callers can display or save the output without additional parsing.
     """
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
     threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         draft = bsvc.load_draft(paths, report_id)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     if _sensitivity_rank(draft.get("sensitivity")) > threshold_rank:
         raise _not_found(report_id)
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         md = bsvc.export_markdown(paths, report_id)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
@@ -894,6 +954,7 @@ def export_draft(
 def create_share_link(
     report_id: str,
     body: CreateShareLinkBody,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_REPORT_ADMIN,
 ) -> dict[str, Any]:
@@ -910,8 +971,11 @@ def create_share_link(
     """
     from ...services.share_store import create_share_link as _create_link
 
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+
     # Load the draft to validate it exists and resolve the default threshold.
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         draft = bsvc.load_draft(paths, report_id)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
@@ -964,6 +1028,7 @@ def create_share_link(
 )
 def resolve_share_link(
     share_token: str,
+    request: Request,
     paths: FoundryPaths = _PATHS_DEP,
 ) -> dict[str, Any]:
     """Resolve a share link token to a read-only Markdown preview.
@@ -986,6 +1051,8 @@ def resolve_share_link(
     from ...services.share_store import resolve_share_link as _resolve
     from ...services.export_service import SENSITIVITY_ORDER as _SO
 
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+
     link = _resolve(paths, share_token)
     if link is None:
         raise HTTPException(
@@ -998,6 +1065,7 @@ def resolve_share_link(
 
     # Load the current draft state.
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         draft = bsvc.load_draft(paths, report_id)
     except NotFoundError:
         # Draft was deleted after the share link was created — treat as expired.
@@ -1025,6 +1093,7 @@ def resolve_share_link(
 
     # Generate read-only Markdown preview.
     try:
+        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
         preview_md = bsvc.export_markdown(paths, report_id)
     except NotFoundError:  # pragma: no cover — draft existence verified above
         raise HTTPException(
