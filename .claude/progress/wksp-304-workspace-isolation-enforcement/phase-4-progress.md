@@ -11,7 +11,8 @@ created: '2026-07-08'
 updated: '2026-07-09'
 prd_ref: docs/project_plans/PRDs/harden-polish/wksp-304-workspace-isolation-enforcement-v1.md
 plan_ref: docs/project_plans/implementation_plans/harden-polish/wksp-304-workspace-isolation-enforcement-v1.md
-commit_refs: []
+commit_refs:
+- 3449b1c
 pr_refs: []
 owners:
 - backend-architect
