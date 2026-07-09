@@ -26,8 +26,8 @@
  *   - claimId not found in claims array → renders "Claim not found" (mirrors ProvenanceModal:127-132)
  */
 
-import { useCallback, useEffect, useRef } from "react";
-import type { RFClaim } from "@/types/rf";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { RFClaim, RFResolvedSource } from "@/types/rf";
 import type { LineageNode, LineageNodeKind } from "@/components/LineageGraph/lineageTree";
 import { LINEAGE_KIND_META } from "@/components/LineageGraph/lineageTree";
 import { KindIcon } from "@/components/LineageGraph/kindIcons";
@@ -38,7 +38,22 @@ import type { DetailTab } from "./detailTabs";
 
 export type DetailModalPayload =
   | { kind: "claim"; claimId: string; claims: RFClaim[] }
-  | { kind: "node"; node: LineageNode };
+  | { kind: "node"; node: LineageNode }
+  | { kind: "source"; source: RFResolvedSource }
+  | {
+      kind: "issues";
+      category: { key: string; label: string; severity: string; count: number };
+      issueItems: IssueDetail[];
+    };
+
+export interface IssueDetail {
+  id: string;
+  block_id?: string;
+  claim_id?: string;
+  message: string;
+  severity: "error" | "warning" | "info";
+  hint?: string;
+}
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -49,13 +64,15 @@ export interface DetailModalProps {
   /** Allows parent modals to suppress their own Escape/overlay close while this is open. */
   onOpenChange?: (open: boolean) => void;
   /** Called when the modal requests close. Parent sets payload to null. */
-  onClose: () => void;
+  onClose?: () => void;
   /**
    * D4: Called when the user clicks the primary navigate action in the node modal footer.
    * Navigates to the relevant detail tab (and optionally highlights a specific claim).
    * When omitted the navigate action button is not rendered (graceful degradation).
    */
   onNavigate?: (tab: DetailTab, claimId?: string) => void;
+  /** Called from the issues modal action to pivot into related claims. */
+  onFindClaimsForIssue?: (issue: IssueDetail) => void;
 }
 
 // ── Status chip map (mirrors ProvenanceModal) ─────────────────────────────────
@@ -69,14 +86,27 @@ const STATUS_CHIP: Record<string, string> = {
   unsupported:  "red",
 };
 
+const ISSUE_SEVERITY_CHIP: Record<IssueDetail["severity"], string> = {
+  error:   "red",
+  warning: "orange",
+  info:    "blue",
+};
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function DetailModal({ payload, stacked = false, onOpenChange, onClose, onNavigate }: DetailModalProps) {
+export function DetailModal({
+  payload,
+  stacked = false,
+  onOpenChange,
+  onClose,
+  onNavigate,
+  onFindClaimsForIssue,
+}: DetailModalProps) {
   // Focus management: move focus into the modal when it opens
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const close = useCallback(() => {
-    onClose();
+    onClose?.();
     onOpenChange?.(false);
   }, [onClose, onOpenChange]);
 
@@ -124,40 +154,13 @@ export function DetailModal({ payload, stacked = false, onOpenChange, onClose, o
         role="dialog"
         aria-modal="true"
         tabIndex={-1}
-        aria-label={
-          payload.kind === "claim"
-            ? `Detail for ${payload.claimId}`
-            : `Detail for ${payload.node.title}`
-        }
+        aria-label={getPayloadAriaLabel(payload)}
         data-testid="detail-modal"
       >
         {/* ── Header ── */}
         <div className="rv-modal__header">
           <div className="rv-modal__title-row">
-            {payload.kind === "claim" ? (
-              <>
-                <span className="it-chip rv-modal__kind-label">Claim</span>
-                <code className="rv-modal__claim-id" data-testid="detail-modal-id">
-                  {payload.claimId}
-                </code>
-              </>
-            ) : (
-              <>
-                <span
-                  className="rv-detail-modal__kind-icon"
-                  style={{ color: LINEAGE_KIND_META[payload.node.kind].accent }}
-                  aria-hidden="true"
-                >
-                  <KindIcon kind={payload.node.kind} size={16} />
-                </span>
-                <span className="it-chip rv-modal__kind-label">
-                  {LINEAGE_KIND_META[payload.node.kind].label}
-                </span>
-                <strong className="rv-modal__node-title" data-testid="detail-modal-id">
-                  {payload.node.title}
-                </strong>
-              </>
-            )}
+            <ModalTitle payload={payload} />
           </div>
           <button
             type="button"
@@ -172,15 +175,115 @@ export function DetailModal({ payload, stacked = false, onOpenChange, onClose, o
 
         {/* ── Body ── */}
         <div className="rv-modal__body" data-testid="detail-modal-body">
-          {payload.kind === "claim" ? (
-            <ClaimModalBody claimId={payload.claimId} claims={payload.claims} />
-          ) : (
-            <NodeModalBody node={payload.node} onNavigate={onNavigate} onClose={close} />
-          )}
+          <ModalBody
+            payload={payload}
+            onNavigate={onNavigate}
+            onClose={close}
+            onFindClaimsForIssue={onFindClaimsForIssue}
+          />
         </div>
       </div>
     </div>
   );
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled detail modal payload kind: ${JSON.stringify(value)}`);
+}
+
+function getPayloadAriaLabel(payload: DetailModalPayload): string {
+  switch (payload.kind) {
+    case "claim":
+      return `Detail for ${payload.claimId}`;
+    case "node":
+      return `Detail for ${payload.node.title}`;
+    case "source":
+      return `Detail for ${payload.source.source_card_id}`;
+    case "issues":
+      return `Issue details for ${payload.category.label}`;
+    default:
+      return assertNever(payload);
+  }
+}
+
+function ModalTitle({ payload }: { payload: DetailModalPayload }) {
+  switch (payload.kind) {
+    case "claim":
+      return (
+        <>
+          <span className="it-chip rv-modal__kind-label">Claim</span>
+          <code className="rv-modal__claim-id" data-testid="detail-modal-id">
+            {payload.claimId}
+          </code>
+        </>
+      );
+    case "node":
+      return (
+        <>
+          <span
+            className="rv-detail-modal__kind-icon"
+            style={{ color: LINEAGE_KIND_META[payload.node.kind].accent }}
+            aria-hidden="true"
+          >
+            <KindIcon kind={payload.node.kind} size={16} />
+          </span>
+          <span className="it-chip rv-modal__kind-label">
+            {LINEAGE_KIND_META[payload.node.kind].label}
+          </span>
+          <strong className="rv-modal__node-title" data-testid="detail-modal-id">
+            {payload.node.title}
+          </strong>
+        </>
+      );
+    case "source":
+      return (
+        <>
+          <span className="it-chip rv-modal__kind-label">Source</span>
+          <code className="rv-modal__claim-id" data-testid="detail-modal-id">
+            {payload.source.source_card_id}
+          </code>
+        </>
+      );
+    case "issues":
+      return (
+        <>
+          <span className="it-chip rv-modal__kind-label">Issues</span>
+          <strong className="rv-modal__node-title" data-testid="detail-modal-id">
+            {payload.category.label} ({payload.category.count})
+          </strong>
+        </>
+      );
+    default:
+      return assertNever(payload);
+  }
+}
+
+interface ModalBodyProps {
+  payload: DetailModalPayload;
+  onNavigate?: (tab: DetailTab, claimId?: string) => void;
+  onClose: () => void;
+  onFindClaimsForIssue?: (issue: IssueDetail) => void;
+}
+
+function ModalBody({ payload, onNavigate, onClose, onFindClaimsForIssue }: ModalBodyProps) {
+  switch (payload.kind) {
+    case "claim":
+      return <ClaimModalBody claimId={payload.claimId} claims={payload.claims} />;
+    case "node":
+      return <NodeModalBody node={payload.node} onNavigate={onNavigate} onClose={onClose} />;
+    case "source":
+      return <SourceModalBody source={payload.source} />;
+    case "issues":
+      return (
+        <IssuesModalBody
+          category={payload.category}
+          issueItems={payload.issueItems}
+          onFindClaimsForIssue={onFindClaimsForIssue}
+        />
+      );
+    default:
+      return assertNever(payload);
+  }
 }
 
 // ── Claim body ────────────────────────────────────────────────────────────────
@@ -245,6 +348,155 @@ function ClaimModalBody({ claimId, claims }: { claimId: string; claims: RFClaim[
   );
 }
 
+// ── Source body ───────────────────────────────────────────────────────────────
+
+function optionalSourceRunId(source: RFResolvedSource): string | null {
+  const withRun = source as RFResolvedSource & { run_id?: unknown };
+  return typeof withRun.run_id === "string" && withRun.run_id ? withRun.run_id : null;
+}
+
+function SourceModalBody({ source }: { source: RFResolvedSource }) {
+  const originRunId = optionalSourceRunId(source);
+  return (
+    <div className="rv-modal__sources-section" data-testid="detail-modal-source">
+      <h3 className="rv-modal__section-title">{source.title || source.source_card_id}</h3>
+      {originRunId && (
+        <div className="rv-detail-modal__claim-ref">
+          <span className="rv-muted">Origin run:</span>{" "}
+          <a href={`/runs/${encodeURIComponent(originRunId)}`}>{originRunId}</a>
+        </div>
+      )}
+      <SourceCard source={source} compact={false} />
+    </div>
+  );
+}
+
+// ── Issues body ───────────────────────────────────────────────────────────────
+
+function clampIndex(index: number, length: number): number {
+  if (length <= 0) return 0;
+  return Math.min(Math.max(index, 0), length - 1);
+}
+
+interface IssuesModalBodyProps {
+  category: { key: string; label: string; severity: string; count: number };
+  issueItems: IssueDetail[];
+  onFindClaimsForIssue?: (issue: IssueDetail) => void;
+}
+
+function IssuesModalBody({ category, issueItems, onFindClaimsForIssue }: IssuesModalBodyProps) {
+  const [activeIndex, setActiveIndex] = useState(() => clampIndex(0, issueItems.length));
+
+  useEffect(() => {
+    setActiveIndex(clampIndex(0, issueItems.length));
+  }, [issueItems]);
+
+  if (issueItems.length === 0) {
+    return (
+      <div className="rv-modal__sources-section" data-testid="detail-modal-issues">
+        <h3 className="rv-modal__section-title">{category.label} ({category.count})</h3>
+        <p className="rv-muted">No issues to iterate.</p>
+        <IssueNavigation
+          activeIndex={0}
+          issueCount={0}
+          onPrev={() => undefined}
+          onNext={() => undefined}
+        />
+      </div>
+    );
+  }
+
+  const activeIssue = issueItems[activeIndex] ?? issueItems[0];
+
+  function move(delta: number) {
+    setActiveIndex((current) => (current + delta + issueItems.length) % issueItems.length);
+  }
+
+  return (
+    <div className="rv-modal__sources-section" data-testid="detail-modal-issues">
+      <h3 className="rv-modal__section-title">{category.label} ({category.count})</h3>
+      <IssueNavigation
+        activeIndex={activeIndex}
+        issueCount={issueItems.length}
+        onPrev={() => move(-1)}
+        onNext={() => move(1)}
+      />
+
+      <div className="rv-modal__meta">
+        <span
+          className={`it-chip ${ISSUE_SEVERITY_CHIP[activeIssue.severity]} rv-modal__status`}
+          data-testid="detail-modal-status"
+        >
+          {activeIssue.severity}
+        </span>
+        {activeIssue.block_id && <span className="it-chip rv-modal__meta-chip">{activeIssue.block_id}</span>}
+        {activeIssue.claim_id && <span className="it-chip rv-modal__meta-chip">{activeIssue.claim_id}</span>}
+      </div>
+
+      <div className="rv-modal__claim-text">
+        <p>{activeIssue.message}</p>
+      </div>
+
+      {activeIssue.hint && (
+        <p className="rv-muted" data-testid="detail-modal-issue-hint">
+          {activeIssue.hint}
+        </p>
+      )}
+
+      {onFindClaimsForIssue && (
+        <div className="rv-detail-modal__footer">
+          <span className="rv-muted">Iterate and find claims</span>
+          <button
+            type="button"
+            className="it-btn secondary sm rv-detail-modal__navigate-action"
+            onClick={() => onFindClaimsForIssue(activeIssue)}
+          >
+            Find claims for this issue
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface IssueNavigationProps {
+  activeIndex: number;
+  issueCount: number;
+  onPrev: () => void;
+  onNext: () => void;
+}
+
+function IssueNavigation({ activeIndex, issueCount, onPrev, onNext }: IssueNavigationProps) {
+  const disabled = issueCount <= 1;
+  return (
+    <div className="rv-detail-modal__footer">
+      <button
+        type="button"
+        className="it-btn ghost sm"
+        data-testid="detail-modal-issues-prev"
+        onClick={onPrev}
+        disabled={disabled}
+        aria-label="Previous issue"
+      >
+        ←
+      </button>
+      <span className="rv-muted" data-testid="detail-modal-issues-counter">
+        {issueCount === 0 ? "0 / 0" : `${activeIndex + 1} / ${issueCount}`}
+      </span>
+      <button
+        type="button"
+        className="it-btn ghost sm"
+        data-testid="detail-modal-issues-next"
+        onClick={onNext}
+        disabled={disabled}
+        aria-label="Next issue"
+      >
+        →
+      </button>
+    </div>
+  );
+}
+
 // ── Node body ─────────────────────────────────────────────────────────────────
 
 interface NodeModalBodyProps {
@@ -296,7 +548,7 @@ function deriveNavigateAction(
       // Already on the run detail surface; omit the action
       return null;
     default:
-      return null;
+      return assertNever(kind);
   }
 }
 

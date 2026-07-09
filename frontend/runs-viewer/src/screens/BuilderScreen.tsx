@@ -42,13 +42,18 @@ import { BuilderCatalogPane } from "@/components/Builder/BuilderCatalogPane";
 import { BuilderDraftCard } from "@/components/Builder/BuilderDraftCard";
 import { BuilderAuditInspector } from "@/components/Builder/BuilderAuditInspector";
 import { ClaimBasket } from "@/components/Builder/ClaimBasket";
+import { DetailModal } from "@/components/RunDetail/DetailModal";
+import type { DetailModalPayload, IssueDetail } from "@/components/RunDetail/DetailModal";
 import { buildOutline, computeBlockAuditSummary, computeDraftAuditSummary, computeDraftIssues } from "@/lib/builderCoverage";
-import type { BuilderOutlineSection } from "@/lib/builderCoverage";
-import { MOCK_REPORT_DRAFT } from "@/lib/builderMocks";
+import type { BuilderIssue, BuilderOutlineSection } from "@/lib/builderCoverage";
+import { MOCK_REPORT_DRAFT, resolveBuilderClaimPreview } from "@/lib/builderMocks";
 import { formatRelativeTime } from "@/lib/format";
+import type { RFClaim, RFResolvedSource } from "@/types/rf";
 import type { CatalogItemSummary } from "@/types/rf/catalog";
 import type { ReportBlockType } from "@/types/rf/report_draft";
 import "@/styles/builder.css";
+
+type BuilderIssueCategory = { key: string; label: string; severity: string; count: number };
 
 export function BuilderScreen() {
   const loopback = isBuilderLoopbackEnabled();
@@ -83,6 +88,7 @@ export function BuilderScreen() {
   const [basket, setBasket] = useState<CatalogItemSummary[]>([]);
   const [basketCollapsed, setBasketCollapsed] = useState(false);
   const [showClaimChips, setShowClaimChips] = useState(true);
+  const [detailPayload, setDetailPayload] = useState<DetailModalPayload | null>(null);
 
   const outline: BuilderOutlineSection[] = useMemo(() => (draft ? buildOutline(draft.blocks) : []), [draft]);
 
@@ -110,6 +116,45 @@ export function BuilderScreen() {
   }, [draft, selectedBlock]);
 
   const issues = useMemo(() => (draft ? computeDraftIssues(draft.blocks, draft.claim_links) : []), [draft]);
+
+  const draftClaims = useMemo<RFClaim[]>(() => {
+    if (!draft) return [];
+    const claimIds = Array.from(new Set(draft.claim_links.map((link) => link.claim_id)));
+    return claimIds.flatMap((claimId) => {
+      const preview = resolveBuilderClaimPreview(claimId);
+      if (!preview) return [];
+      // Coerce builder-preview materiality ("narrative"|"material"|"background") to
+      // RFMateriality ("core"|"background"|"style"|"material"): narrative → background.
+      const materiality = preview.materiality === "narrative" ? "background" : preview.materiality;
+      return [{
+        claim_id: preview.claim_id,
+        text: preview.text,
+        materiality,
+        claim_type: preview.status === "inference" || preview.status === "speculation" ? preview.status : "factual",
+        status: preview.status,
+        confidence: preview.confidence,
+        sources: preview.sources,
+      } satisfies RFClaim];
+    });
+  }, [draft]);
+
+  const linkedRefsByItemId = useMemo(() => {
+    const refs = new Map<string, string[]>();
+    function add(refId: string | null | undefined, blockId: string | null | undefined) {
+      if (!refId || !blockId) return;
+      const current = refs.get(refId) ?? [];
+      if (!current.includes(blockId)) refs.set(refId, [...current, blockId]);
+    }
+    for (const link of draft?.claim_links ?? []) {
+      add(link.claim_id, link.block_id);
+      add(link.catalog_item_id, link.block_id);
+    }
+    for (const link of draft?.source_links ?? []) {
+      add(link.source_card_id, link.block_id);
+      add(link.catalog_item_id, link.block_id);
+    }
+    return refs;
+  }, [draft]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -166,6 +211,123 @@ export function BuilderScreen() {
     createDraft.mutate({ origin: "blank", title: "Untitled Report" }, { onSuccess: (d) => setActiveDraftId(d.report_draft_id) });
   }
 
+  function handleOpenClaim(claimId: string) {
+    setDetailPayload({ kind: "claim", claimId, claims: draftClaims });
+  }
+
+  function handleOpenSource(source: RFResolvedSource) {
+    setDetailPayload({ kind: "source", source });
+  }
+
+  function issueSeverity(category: BuilderIssueCategory): IssueDetail["severity"] {
+    return category.severity === "critical" || category.severity === "error" ? "error" : "warning";
+  }
+
+  function deriveIssueItems(category: BuilderIssueCategory): IssueDetail[] {
+    if (!draft) return [];
+    switch (category.key as BuilderIssue["key"]) {
+      case "contradictions":
+        return draft.claim_links
+          .filter((link) => link.relation === "contradicts")
+          .map((link) => ({
+            id: link.claim_link_id,
+            block_id: link.block_id,
+            claim_id: link.claim_id,
+            message: `Claim ${link.claim_id} is linked as contradicting this block.`,
+            severity: "error",
+            hint: "Review whether the block should be revised or the contradictory claim should be removed.",
+          }));
+      case "weak_confidence": {
+        const byLink = draft.claim_links
+          .filter((link) => resolveBuilderClaimPreview(link.claim_id)?.confidence === "low")
+          .map((link) => ({
+            id: link.claim_link_id,
+            block_id: link.block_id,
+            claim_id: link.claim_id,
+            message: `Claim ${link.claim_id} has low confidence.`,
+            severity: "warning" as const,
+            hint: "Look for stronger corroborating evidence before publishing.",
+          }));
+        const byBlock = draft.blocks
+          .filter((block) => block.risk_flags.includes("weak_confidence"))
+          .map((block) => ({
+            id: `${block.block_id}:weak_confidence`,
+            block_id: block.block_id,
+            message: "This block is flagged for weak confidence.",
+            severity: "warning" as const,
+            hint: "Review the linked evidence and claim confidence before publishing.",
+          }));
+        return [...byLink, ...byBlock];
+      }
+      case "citation_needed":
+        return draft.blocks
+          .filter((block) => block.materiality === "material" && !draft.claim_links.some((link) => link.block_id === block.block_id))
+          .map((block) => ({
+            id: `${block.block_id}:citation_needed`,
+            block_id: block.block_id,
+            message: "This material block has no linked claims.",
+            severity: "warning" as const,
+            hint: "Add a supporting claim or mark the block as narrative/background.",
+          }));
+      default:
+        // TODO: replace with real issue-level data when the RF API exposes it.
+        return [];
+    }
+  }
+
+  function handleOpenIssueCategory(category: BuilderIssueCategory) {
+    setDetailPayload({
+      kind: "issues",
+      category,
+      issueItems: deriveIssueItems(category).map((item) => ({ ...item, severity: item.severity ?? issueSeverity(category) })),
+    });
+  }
+
+  function sourceFromCatalogItem(item: CatalogItemSummary): RFResolvedSource {
+    const source = {
+      source_card_id: item.local_ref,
+      evidence_id: item.local_ref,
+      relation: "context",
+      resolved: true,
+      dangling: false,
+      title: item.title,
+      source_type: null,
+      url: null,
+      trust: null,
+      usage: null,
+      sensitivity: item.sensitivity,
+      summary: item.summary,
+      quote: null,
+      run_id: item.run_id,
+    } satisfies RFResolvedSource & { run_id: string };
+    return source;
+  }
+
+  function findSourceByCardId(sourceCardId: string): RFResolvedSource | null {
+    for (const claim of draftClaims) {
+      const source = claim.sources.find((s) => s.source_card_id === sourceCardId);
+      if (source) return source;
+    }
+    return null;
+  }
+
+  function handleOpenCatalogItem(item: CatalogItemSummary) {
+    if (item.item_type === "claim" || item.item_type === "inference") {
+      handleOpenClaim(item.local_ref);
+      return;
+    }
+    if (item.item_type === "source") {
+      handleOpenSource(findSourceByCardId(item.local_ref) ?? sourceFromCatalogItem(item));
+      return;
+    }
+    handleOpenClaim(item.local_ref);
+  }
+
+  function handleFindClaimsForIssue(issue: IssueDetail) {
+    if (issue.block_id) setSelectedBlockId(issue.block_id);
+    if (issue.claim_id) handleOpenClaim(issue.claim_id);
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   if (loopback && !activeDraftId && !draftList.isLoading) {
@@ -220,7 +382,12 @@ export function BuilderScreen() {
       )}
 
       <div className="rv-builder__main">
-        <BuilderCatalogPane basketIds={new Set(basket.map((i) => i.catalog_item_id))} onToggleBasket={handleToggleBasket} />
+        <BuilderCatalogPane
+          basketIds={new Set(basket.map((i) => i.catalog_item_id))}
+          onToggleBasket={handleToggleBasket}
+          onExpand={handleOpenCatalogItem}
+          linkedRefsByItemId={linkedRefsByItemId}
+        />
 
         <BuilderDraftCard
           title={draft.title}
@@ -240,6 +407,7 @@ export function BuilderScreen() {
           onSelectBlock={setSelectedBlockId}
           onCommitBlockMarkdown={handleCommitMarkdown}
           onRemoveClaimLink={handleRemoveClaimLink}
+          onOpenClaim={handleOpenClaim}
           onInsertBlock={handleInsertBlock}
           onToggleShowClaimChips={() => setShowClaimChips((v) => !v)}
         />
@@ -249,6 +417,8 @@ export function BuilderScreen() {
           claimLinks={draft.claim_links}
           summary={paragraphSummary}
           issues={issues}
+          onOpenIssueCategory={handleOpenIssueCategory}
+          onOpenSource={handleOpenSource}
           disabled={disabled}
           onVerify={() => verifyMutation.mutate(draft.report_draft_id)}
           verifyPending={verifyMutation.isPending}
@@ -269,6 +439,14 @@ export function BuilderScreen() {
         onInsert={handleInsertFromBasket}
         canInsert={Boolean(selectedBlockId)}
         disabled={disabled}
+      />
+
+      <DetailModal
+        payload={detailPayload}
+        onOpenChange={(open) => {
+          if (!open) setDetailPayload(null);
+        }}
+        onFindClaimsForIssue={handleFindClaimsForIssue}
       />
     </div>
   );

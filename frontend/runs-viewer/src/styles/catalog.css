@@ -5,8 +5,8 @@
    ============================================================================ */
 
 .rv-catalog {
-  max-width: 1440px;
-  padding: var(--it-space-8) var(--it-space-6);
+  max-width: none;
+  padding: var(--it-space-8) var(--rv-space-6);
   margin: 0 auto;
 }
 
@@ -117,7 +117,7 @@
 
 .rv-catalog-content {
   display: grid;
-  grid-template-columns: 1fr 380px;
+  grid-template-columns: minmax(0, 3fr) minmax(320px, 1fr);
   gap: var(--it-space-6);
   align-items: start;
 }
@@ -230,6 +230,14 @@
   white-space: nowrap;
   font-size: var(--it-text-xs);
   color: var(--it-text-tertiary);
+}
+
+.rv-project-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.85em;
+  font-weight: 500;
 }
 
 /* ── Pagination ── */

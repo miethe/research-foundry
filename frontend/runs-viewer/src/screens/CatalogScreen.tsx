@@ -32,6 +32,7 @@ import { SourceCard } from "@/components/SourceCard/SourceCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { RunDetailModal } from "@/components/RunDetail/RunDetailModal";
 import { formatDateTime } from "@/lib/runs";
+import { projectColorClass } from "./projectColor";
 import "@/styles/catalog.css";
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
@@ -146,10 +147,10 @@ function CatalogResultsTable({ items, selectedId, onSelect, emptyLabel, emptyMes
           <tr>
             <th scope="col">ID</th>
             <th scope="col">Claim / Title</th>
+            <th scope="col">Project</th>
             <th scope="col">Trust</th>
             <th scope="col">Sensitivity</th>
             <th scope="col">Status</th>
-            <th scope="col">Project</th>
             <th scope="col">Updated</th>
           </tr>
         </thead>
@@ -184,6 +185,13 @@ function CatalogResultsTable({ items, selectedId, onSelect, emptyLabel, emptyMes
                   {item.summary && <span className="rv-catalog-summary">{item.summary}</span>}
                 </td>
                 <td className="rv-catalog-td">
+                  {item.project ? (
+                    <span className={`rv-project-chip ${projectColorClass(item.project)}`}>{item.project}</span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td className="rv-catalog-td">
                   <span className={`it-chip ${trust.color}`}>
                     {trust.label}
                     {item.confidence != null && ` ${item.confidence}`}
@@ -199,7 +207,6 @@ function CatalogResultsTable({ items, selectedId, onSelect, emptyLabel, emptyMes
                     {item.status ? capitalize(item.status) : "—"}
                   </span>
                 </td>
-                <td className="rv-catalog-td">{item.project ?? "—"}</td>
                 <td className="rv-catalog-td rv-catalog-td--updated">{formatDateTime(item.updated_at)}</td>
               </tr>
             );

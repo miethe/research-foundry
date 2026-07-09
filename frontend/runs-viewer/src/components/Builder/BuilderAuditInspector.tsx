@@ -39,6 +39,8 @@ export interface BuilderAuditInspectorProps {
   claimLinks: ReportClaimLink[];
   summary: ParagraphAuditSummary;
   issues: BuilderIssue[];
+  onOpenIssueCategory?: (category: { key: string; label: string; severity: string; count: number }) => void;
+  onOpenSource?: (source: RFResolvedSource) => void;
   disabled: boolean;
   onVerify: () => void;
   verifyPending: boolean;
@@ -122,6 +124,8 @@ export function BuilderAuditInspector({
   claimLinks,
   summary,
   issues,
+  onOpenIssueCategory,
+  onOpenSource,
   disabled,
   onVerify,
   verifyPending,
@@ -191,17 +195,36 @@ export function BuilderAuditInspector({
         badge={totalIssues > 0 ? <span className="it-chip orange">{totalIssues}</span> : <span className="it-chip green">0</span>}
       >
         <ul className="rv-builder-inspector__issue-list">
-          {issues.map((issue) => (
-            <li key={issue.key} data-severity={issue.severity} className={issue.count === 0 ? "rv-builder-inspector__issue--empty" : undefined}>
-              <span className={`rv-builder-inspector__issue-icon rv-builder-inspector__issue-icon--${issue.severity}`} aria-hidden="true">
-                {issue.count > 0 ? ISSUE_ICON[issue.severity] : "•"}
-              </span>
-              <span className={issue.count > 0 ? `rv-builder-inspector__issue-flag rv-builder-inspector__issue-flag--${issue.severity}` : "rv-muted"}>
-                {issue.label}
-              </span>
-              <strong>{issue.count}</strong>
-            </li>
-          ))}
+          {issues.map((issue) => {
+            const rowContent = (
+              <>
+                <span className={`rv-builder-inspector__issue-icon rv-builder-inspector__issue-icon--${issue.severity}`} aria-hidden="true">
+                  {issue.count > 0 ? ISSUE_ICON[issue.severity] : "•"}
+                </span>
+                <span className={issue.count > 0 ? `rv-builder-inspector__issue-flag rv-builder-inspector__issue-flag--${issue.severity}` : "rv-muted"}>
+                  {issue.label}
+                </span>
+                <strong>{issue.count}</strong>
+              </>
+            );
+            return (
+              <li key={issue.key} data-severity={issue.severity} className={issue.count === 0 ? "rv-builder-inspector__issue--empty" : undefined}>
+                {issue.count > 0 && onOpenIssueCategory ? (
+                  <button
+                    type="button"
+                    className="rv-builder-inspector__issue-btn"
+                    onClick={() => onOpenIssueCategory(issue)}
+                    aria-label={`Open ${issue.label} issue group`}
+                    data-testid={`builder-inspector-issue-${issue.key}`}
+                  >
+                    {rowContent}
+                  </button>
+                ) : (
+                  <span className="rv-builder-inspector__issue-row">{rowContent}</span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </InspectorSection>
 
@@ -213,7 +236,17 @@ export function BuilderAuditInspector({
         {sourcesByCardId.size > 0 ? (
           <div className="rv-catalog-inspector__source-list">
             {Array.from(sourcesByCardId.values()).map((s) => (
-              <SourceCard key={s.source_card_id} source={s} compact />
+              <button
+                key={s.source_card_id}
+                type="button"
+                className="rv-builder-inspector__source-btn"
+                onClick={() => onOpenSource?.(s)}
+                disabled={!onOpenSource}
+                aria-label={`Open source card ${s.source_card_id}`}
+                data-testid={`builder-inspector-source-card-${s.source_card_id}`}
+              >
+                <SourceCard source={s} compact />
+              </button>
             ))}
           </div>
         ) : (

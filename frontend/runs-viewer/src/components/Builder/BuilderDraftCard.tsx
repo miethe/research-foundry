@@ -40,6 +40,7 @@ export interface BuilderDraftCardProps {
   onSelectBlock: (blockId: string) => void;
   onCommitBlockMarkdown: (blockId: string, markdown: string) => void;
   onRemoveClaimLink: (claimLinkId: string) => void;
+  onOpenClaim?: (claimId: string) => void;
   onInsertBlock: (blockType: ReportBlockType) => void;
   onToggleShowClaimChips: () => void;
 }
@@ -62,6 +63,7 @@ export function BuilderDraftCard({
   onSelectBlock,
   onCommitBlockMarkdown,
   onRemoveClaimLink,
+  onOpenClaim,
   onInsertBlock,
   onToggleShowClaimChips,
 }: BuilderDraftCardProps) {
@@ -109,6 +111,7 @@ export function BuilderDraftCard({
           onSelectBlock={onSelectBlock}
           onCommitBlockMarkdown={onCommitBlockMarkdown}
           onRemoveClaimLink={onRemoveClaimLink}
+          onOpenClaim={onOpenClaim}
           onInsertBlock={onInsertBlock}
           onToggleShowClaimChips={onToggleShowClaimChips}
         />

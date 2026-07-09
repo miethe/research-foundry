@@ -155,6 +155,7 @@ interface BlockFieldProps {
   onSelect: () => void;
   onCommitMarkdown: (markdown: string) => void;
   onRemoveClaimLink: (claimLinkId: string) => void;
+  onOpenClaim?: (claimId: string) => void;
 }
 
 function BlockField({
@@ -167,6 +168,7 @@ function BlockField({
   onSelect,
   onCommitMarkdown,
   onRemoveClaimLink,
+  onOpenClaim,
 }: BlockFieldProps) {
   const [text, setText] = useState(block.markdown);
   const [el, setEl] = useState<HTMLTextAreaElement | null>(null);
@@ -233,6 +235,19 @@ function BlockField({
                 <span className="rv-builder-claim-chip__text">{preview?.text ?? "Claim text unavailable"}</span>
                 <button
                   type="button"
+                  className="rv-builder-claim-chip__expand"
+                  aria-label={`Expand ${link.claim_id}`}
+                  title="Expand claim"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenClaim?.(link.claim_id);
+                  }}
+                >
+                  ⤢
+                </button>
+                <button
+                  type="button"
+                  className="rv-builder-claim-chip__unlink"
                   aria-label={`Unlink ${link.claim_id}`}
                   disabled={disabled}
                   onClick={(e) => {
@@ -264,6 +279,7 @@ export interface BuilderBlockEditorProps {
   onSelectBlock: (blockId: string) => void;
   onCommitBlockMarkdown: (blockId: string, markdown: string) => void;
   onRemoveClaimLink: (claimLinkId: string) => void;
+  onOpenClaim?: (claimId: string) => void;
   onInsertBlock: (blockType: ReportBlockType) => void;
   onToggleShowClaimChips: () => void;
 }
@@ -279,6 +295,7 @@ export function BuilderBlockEditor({
   onSelectBlock,
   onCommitBlockMarkdown,
   onRemoveClaimLink,
+  onOpenClaim,
   onInsertBlock,
   onToggleShowClaimChips,
 }: BuilderBlockEditorProps) {
@@ -357,6 +374,7 @@ export function BuilderBlockEditor({
             onSelect={() => onSelectBlock(block.block_id)}
             onCommitMarkdown={(md) => onCommitBlockMarkdown(block.block_id, md)}
             onRemoveClaimLink={onRemoveClaimLink}
+            onOpenClaim={onOpenClaim}
           />
         ))}
       </div>

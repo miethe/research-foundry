@@ -6,6 +6,22 @@
 
 :root {
   /* -------------------------------------------------------------------------
+     RV SPACING — runs-viewer semantic spacing aliases
+     ------------------------------------------------------------------------- */
+  --rv-space-1: 4px;
+  --rv-space-2: 8px;
+  --rv-space-3: 12px;
+  --rv-space-4: 16px;
+  --rv-space-5: 20px;
+  --rv-space-6: 24px;
+  --rv-space-8: 32px;
+  --rv-pane-padding: var(--rv-space-5);
+  --rv-pane-padding-sm: var(--rv-space-3);
+  --rv-pane-padding-lg: var(--rv-space-6);
+  --rv-card-padding: var(--rv-space-4);
+  --rv-card-gap: var(--rv-space-3);
+
+  /* -------------------------------------------------------------------------
      COLOR — Brand & Semantic
      The palette is muted, premium, calm. Greens carry "execute / on track",
      blues carry "primary / structure", purples carry "agent / intelligence".

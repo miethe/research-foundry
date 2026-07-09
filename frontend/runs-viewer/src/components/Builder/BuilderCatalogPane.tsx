@@ -68,12 +68,19 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
+function isRowActionTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && Boolean(target.closest("button,a,input,select,textarea"));
+}
+
 export interface BuilderCatalogPaneProps {
   basketIds: Set<string>;
   onToggleBasket: (item: CatalogItemSummary) => void;
+  onExpand?: (item: CatalogItemSummary) => void;
+  onShowInstances?: (item: CatalogItemSummary, refs: string[]) => void;
+  linkedRefsByItemId?: Map<string, string[]>;
 }
 
-export function BuilderCatalogPane({ basketIds, onToggleBasket }: BuilderCatalogPaneProps) {
+export function BuilderCatalogPane({ basketIds, onToggleBasket, onExpand, onShowInstances, linkedRefsByItemId }: BuilderCatalogPaneProps) {
   const { data: stats } = useCatalogStats();
   const [tab, setTab] = useState<CatalogTabId>("claim");
   const [searchInput, setSearchInput] = useState("");
@@ -210,6 +217,7 @@ export function BuilderCatalogPane({ basketIds, onToggleBasket }: BuilderCatalog
           const inBasket = basketIds.has(item.catalog_item_id);
           const statusChip = item.status ? STATUS_CHIP[item.status] ?? "" : "";
           const confidenceChip = item.confidence ? CONFIDENCE_CHIP[item.confidence] ?? "" : "";
+          const linkedRefs = linkedRefsByItemId?.get(item.catalog_item_id) ?? linkedRefsByItemId?.get(item.local_ref) ?? [];
           return (
             <div
               key={item.catalog_item_id}
@@ -219,6 +227,7 @@ export function BuilderCatalogPane({ basketIds, onToggleBasket }: BuilderCatalog
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
+                if (isRowActionTarget(e.target)) return;
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
                   onToggleBasket(item);
@@ -236,6 +245,20 @@ export function BuilderCatalogPane({ basketIds, onToggleBasket }: BuilderCatalog
                 <div className="rv-builder-catalog-row__badges">
                   {item.status && <span className={`it-chip ${statusChip}`}>{capitalize(item.status)}</span>}
                   {item.confidence && <span className={`it-chip ${confidenceChip}`}>{capitalize(item.confidence)}</span>}
+                  {linkedRefs.length > 0 && (
+                    <span
+                      className="it-chip blue rv-builder-catalog-card__linked"
+                      title={`Linked in draft: ${linkedRefs.join(", ")}`}
+                      data-testid="builder-catalog-linked-count"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // TODO: highlight or scroll to the concrete draft instances after block-level navigation lands.
+                        onShowInstances?.(item, linkedRefs) ?? onExpand?.(item);
+                      }}
+                    >
+                      {linkedRefs.length} in report
+                    </span>
+                  )}
                 </div>
                 <p className="rv-builder-catalog-row__title" title={item.title}>
                   {item.title}
@@ -245,6 +268,19 @@ export function BuilderCatalogPane({ basketIds, onToggleBasket }: BuilderCatalog
                   <span>Updated: {formatDateTime(item.updated_at)}</span>
                 </div>
               </div>
+              <button
+                type="button"
+                className="rv-builder-catalog-row__expand"
+                aria-label={`Expand ${item.local_ref}`}
+                title="Expand catalog item"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onExpand?.(item);
+                }}
+                data-testid={`builder-catalog-expand-${item.local_ref}`}
+              >
+                ⤢ <span>Expand</span>
+              </button>
             </div>
           );
         })}
