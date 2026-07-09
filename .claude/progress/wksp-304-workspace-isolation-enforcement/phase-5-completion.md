@@ -58,6 +58,7 @@ Multi-tenant boundary enforcement gap discovered by TASK-5.5(b)'s hard gate: `bu
 ## Unblock: TASK-5.5(b) fix-now decision (2026-07-09)
 
 **Status**: PASS
+**Commit**: `5418568` — `fix(wksp-304): thread identity+workspace_id into create_draft — close P5.5b enforcement gap`
 **Validator verdict**: PASS — "The fix is correct, narrow, and its test claims hold up under independent reproduction... No blocking findings. The fix stayed within the narrow scope Opus pre-authorized (single kwarg + one call-site wire-up; no query-layer or deny-path logic touched)."
 **Decision taken**: (a) fix now, per explicit Opus authorization — the escalation above is resolved, not deferred.
 
