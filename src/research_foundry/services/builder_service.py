@@ -34,6 +34,8 @@ before a verify pass runs.
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import re
 import shutil
@@ -45,8 +47,7 @@ from typing import Any
 from markdown_it import MarkdownIt
 
 from ..api.auth.provider import AuthIdentity
-from ..api.auth.scope import require_workspace_scope
-from ..config import FoundryConfig
+from ..api.auth.scope import require_workspace_scope, resolve_workspace_isolation_active
 from ..errors import NotFoundError, RFError
 from ..frontmatter import join_frontmatter
 from ..ids import now_iso, short_hash
@@ -56,6 +57,8 @@ from ..yamlio import dumps_yaml, load_yaml
 from . import audit_service, catalog_service
 from .audit_service import AuditEvent
 from .export_service import SENSITIVITY_ORDER, export_run
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # WKSP-304 Phase 3: query-layer workspace_id scoping (flag-gated, inert by
@@ -70,17 +73,17 @@ from .export_service import SENSITIVITY_ORDER, export_run
 def _isolation_active(paths: FoundryPaths) -> bool:
     """Resolve whether WKSP-304 workspace isolation is actively enforced.
 
-    Never reimplements the enforcement truth table — always defers to
-    :meth:`~research_foundry.config.FoundryConfig.resolve_workspace_isolation_enforced`
-    (Phase 1, TASK-1.2).
+    WKSP-304 Phase 4 (TASK-4.2 consolidation): delegates to the single
+    shared implementation in
+    :func:`research_foundry.api.auth.scope.resolve_workspace_isolation_active`
+    — Phase 3 duplicated this helper identically into this module,
+    ``catalog_service.py``, and ``AgentJobService`` as a deliberate
+    single-owner-phase choice (see phase-3-query-layer-scoping.md "why
+    single-owner"); this module-level name/call sites are kept unchanged so
+    no caller here needs to change. Pure refactor, no behaviour change.
     """
 
-    config = FoundryConfig(paths=paths)
-    try:
-        provider = config.auth_provider()
-    except ValueError:
-        provider = "none"
-    return config.resolve_workspace_isolation_enforced(provider, config.viewer_bind_host())
+    return resolve_workspace_isolation_active(paths)
 
 # Reused verbatim from export_service (D8's text_hash recipe) so a claim
 # link's `quote_text_hash` and P2's `report_anchors[].text_hash` share one
@@ -317,6 +320,13 @@ def load_draft(
     to the pre-WKSP-304 behavior — every existing caller (:func:`list_drafts`,
     :func:`export_markdown`, revision helpers) that does not pass ``identity``
     is unaffected.
+
+    WKSP-304 Phase 4 (TASK-4.2, OQ-1): the file-storage predicate below is
+    this module's query-layer-equivalent deny mechanism — on an enforcing-
+    mode mismatch it raises :class:`NotFoundError` (silent 404, same
+    exception a genuinely-missing draft already raises) *and* emits a
+    structured ``ERROR``-level denial log, distinct from scope.py's
+    advisory-mode ``WARNING`` below it.
     """
 
     path = _draft_yaml_path(paths, report_draft_id)
@@ -328,13 +338,31 @@ def load_draft(
 
     if identity is not None and _isolation_active(paths):
         if data.get("workspace_id") != identity.workspace_id:
+            _logger.error(
+                json.dumps(
+                    {
+                        "event": "workspace_scope_enforced_denial",
+                        "record_type": "draft",
+                        "record_id": report_draft_id,
+                        "record_workspace_id": data.get("workspace_id"),
+                        "identity_workspace_id": identity.workspace_id,
+                    }
+                )
+            )
             raise NotFoundError(f"report draft not found: {report_draft_id}")
 
-    # WKSP-301 advisory-mode workspace scope check (non-blocking today — see
-    # scope.py's own docstring; WKSP-304 P3 wires the real caller identity
-    # through here instead of a hardcoded None).
+    # WKSP-304 Phase 4 (TASK-4.2): only ever reached once the enforcing
+    # branch above has already denied (and audit-logged) a cross-workspace
+    # mismatch, so this call is advisory-only in practice here
+    # (identity=None, isolation inactive, or an already-confirmed
+    # workspace match) — the resolver is still wired through so the
+    # WKSP-301 advisory WARNING path stays correct for those cases.
     require_workspace_scope(
-        identity, data, record_type="draft", record_id=report_draft_id
+        identity,
+        data,
+        record_type="draft",
+        record_id=report_draft_id,
+        resolve_enforcement=lambda: _isolation_active(paths),
     )
     return data
 

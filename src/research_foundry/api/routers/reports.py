@@ -351,10 +351,32 @@ def delete_draft(
     204. A malformed id (bad shape / traversal attempt) 404s instead — the
     service layer's :func:`~research_foundry.services.builder_service._draft_dir`
     raises :class:`NotFoundError` before anything is touched on disk.
+
+    WKSP-304 P4 (TASK-4.3, AC-5): a workspace-scoped pre-flight check gates
+    the actual delete, but the idempotent-204 contract above must survive it.
+    ``bsvc.load_draft`` cannot distinguish "malformed id" / "genuinely
+    missing" from "exists but is cross-workspace-denied" — all three raise
+    the same :class:`NotFoundError` (by design, no-existence-leak). So when
+    the identity-scoped load denies, a second identity=None probe (byte-
+    identical to pre-Phase-4 behavior) tells us which case we are in: if the
+    draft doesn't exist AT ALL either, this is the pre-existing idempotent
+    no-op path — fall through unchanged to ``bsvc.delete_draft`` below. If
+    the identity=None probe SUCCEEDS, the draft genuinely exists in another
+    workspace — fail closed (404) WITHOUT ever calling ``bsvc.delete_draft``,
+    so no cross-workspace file is ever touched.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.delete_draft() has no identity param; not a Phase 3 scoping target)
+    identity = getattr(request.state, "identity", None)
+    if identity is not None:
+        try:
+            bsvc.load_draft(paths, report_id, identity=identity)
+        except NotFoundError:
+            try:
+                bsvc.load_draft(paths, report_id, identity=None)
+            except NotFoundError:
+                pass  # genuinely missing / malformed — idempotent path below.
+            else:
+                raise _not_found(report_id)
     try:
-        # TODO(WKSP-304 P4): bsvc.delete_draft() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         bsvc.delete_draft(paths, report_id)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
@@ -404,9 +426,12 @@ def create_version(
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Snapshot the current draft state into an immutable revision file."""
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.create_revision() has no identity param; not a Phase 3 scoping target)
+    identity = getattr(request.state, "identity", None)
     try:
-        # TODO(WKSP-304 P4): bsvc.create_revision() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
+        bsvc.load_draft(paths, report_id, identity=identity)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+    try:
         return bsvc.create_revision(
             paths, report_id, created_by=body.created_by, note=body.note
         )
@@ -460,9 +485,12 @@ def restore_version(
 
     Callers wanting a pre-restore checkpoint should POST /versions first.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.restore_revision() has no identity param; not a Phase 3 scoping target)
+    identity = getattr(request.state, "identity", None)
     try:
-        # TODO(WKSP-304 P4): bsvc.restore_revision() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
+        bsvc.load_draft(paths, report_id, identity=identity)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+    try:
         return bsvc.restore_revision(paths, report_id, version_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail="revision not found") from exc
@@ -482,9 +510,12 @@ def add_block(
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Append a new block to *report_id*.  Returns the full updated draft."""
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.add_block() has no identity param; not a Phase 3 scoping target)
+    identity = getattr(request.state, "identity", None)
     try:
-        # TODO(WKSP-304 P4): bsvc.add_block() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
+        bsvc.load_draft(paths, report_id, identity=identity)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+    try:
         return bsvc.add_block(
             paths,
             report_id,
@@ -513,9 +544,12 @@ def reorder_blocks(
     Must be a permutation of all block ids in the draft (builder_service
     enforces this).
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.reorder_blocks() has no identity param; not a Phase 3 scoping target)
+    identity = getattr(request.state, "identity", None)
     try:
-        # TODO(WKSP-304 P4): bsvc.reorder_blocks() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
+        bsvc.load_draft(paths, report_id, identity=identity)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+    try:
         return bsvc.reorder_blocks(
             paths, report_id, body.block_ids, updated_by=body.updated_by
         )
@@ -535,9 +569,12 @@ def update_block(
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Patch one or more fields of *block_id*.  Returns the full updated draft."""
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.update_block() has no identity param; not a Phase 3 scoping target)
+    identity = getattr(request.state, "identity", None)
     try:
-        # TODO(WKSP-304 P4): bsvc.update_block() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
+        bsvc.load_draft(paths, report_id, identity=identity)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+    try:
         return bsvc.update_block(
             paths,
             report_id,
@@ -578,9 +615,12 @@ def delete_block(
     silently stomped the cache with ``undefined``. Matches the sibling
     ``add_block``/``update_block``/``reorder_blocks`` contract.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.delete_block() has no identity param; not a Phase 3 scoping target)
+    identity = getattr(request.state, "identity", None)
     try:
-        # TODO(WKSP-304 P4): bsvc.delete_block() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
+        bsvc.load_draft(paths, report_id, identity=identity)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+    try:
         return bsvc.delete_block(paths, report_id, block_id)
     except NotFoundError as exc:
         raise HTTPException(
@@ -604,9 +644,12 @@ def add_claim_link(
 ) -> dict[str, Any]:
     """Link *claim_id* to *block_id*.  Inserts a ``[claim:<id>]`` tag unless
     ``insert_tag=false``.  Returns the full updated draft."""
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.add_claim_link() has no identity param; not a Phase 3 scoping target)
+    identity = getattr(request.state, "identity", None)
     try:
-        # TODO(WKSP-304 P4): bsvc.add_claim_link() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
+        bsvc.load_draft(paths, report_id, identity=identity)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+    try:
         return bsvc.add_claim_link(
             paths,
             report_id,
@@ -641,9 +684,12 @@ def remove_claim_link(
 
     Returns the full updated draft (200) — see ``delete_block`` above for why.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.remove_claim_link() has no identity param; not a Phase 3 scoping target)
+    identity = getattr(request.state, "identity", None)
     try:
-        # TODO(WKSP-304 P4): bsvc.remove_claim_link() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
+        bsvc.load_draft(paths, report_id, identity=identity)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+    try:
         return bsvc.remove_claim_link(paths, report_id, claim_link_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -663,9 +709,12 @@ def add_source_link(
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Link a source card to the draft (optionally anchored to a block)."""
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.add_source_link() has no identity param; not a Phase 3 scoping target)
+    identity = getattr(request.state, "identity", None)
     try:
-        # TODO(WKSP-304 P4): bsvc.add_source_link() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
+        bsvc.load_draft(paths, report_id, identity=identity)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+    try:
         return bsvc.add_source_link(
             paths,
             report_id,
@@ -697,9 +746,12 @@ def remove_source_link(
 
     Returns the full updated draft (200) — see ``delete_block`` above for why.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.remove_source_link() has no identity param; not a Phase 3 scoping target)
+    identity = getattr(request.state, "identity", None)
     try:
-        # TODO(WKSP-304 P4): bsvc.remove_source_link() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
+        bsvc.load_draft(paths, report_id, identity=identity)
+    except NotFoundError as exc:
+        raise _not_found(report_id) from exc
+    try:
         return bsvc.remove_source_link(paths, report_id, source_link_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -1047,7 +1099,13 @@ def resolve_share_link(
     from ...services.share_store import resolve_share_link as _resolve
     from ...services.export_service import SENSITIVITY_ORDER as _SO
 
-    identity = getattr(request.state, "identity", None)
+    # WKSP-304 P4 (D5 share-link semantics, fail-closed): the share token is
+    # the SOLE authorization boundary for this endpoint. The caller's own
+    # session identity/workspace membership must never broaden OR narrow
+    # access to the one resource the token names — so ``identity`` is NOT
+    # threaded from ``request.state`` here (unlike every other draft-reading
+    # handler in this router). Both draft loads below pass ``identity=None``
+    # explicitly.
 
     link = _resolve(paths, share_token)
     if link is None:
@@ -1061,7 +1119,7 @@ def resolve_share_link(
 
     # Load the current draft state.
     try:
-        draft = bsvc.load_draft(paths, report_id, identity=identity)
+        draft = bsvc.load_draft(paths, report_id, identity=None)
     except NotFoundError:
         # Draft was deleted after the share link was created — treat as expired.
         raise HTTPException(
@@ -1088,7 +1146,7 @@ def resolve_share_link(
 
     # Generate read-only Markdown preview.
     try:
-        preview_md = bsvc.export_markdown(paths, report_id, identity=identity)
+        preview_md = bsvc.export_markdown(paths, report_id, identity=None)
     except NotFoundError:  # pragma: no cover — draft existence verified above
         raise HTTPException(
             status_code=404, detail="share link not found, revoked, or expired"

@@ -1393,6 +1393,65 @@ def test_get_item_identity_present_but_inactive_stays_unscoped(
     assert svc.get_item(tmp_foundry, source_id, identity=_WS_OTHER_IDENTITY) is not None
 
 
+def test_get_item_enforcing_denial_emits_audit_log(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """WKSP-304 Phase 4 (TASK-4.2, OQ-1): a cross-workspace enforcing-mode
+    read denial emits a distinct ERROR-level audit log — never the
+    advisory WARNING, and never for a genuinely-missing item."""
+
+    build_catalog_run(tmp_foundry, sensitivity="public", include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+    source_id = svc._make_item_id("source", "rf_run_catalog001", "src_alpha")
+
+    _force_isolation_active(monkeypatch)
+
+    caplog.set_level("INFO", logger="research_foundry.services.catalog_service")
+    caplog.clear()
+    assert svc.get_item(tmp_foundry, source_id, identity=_WS_OTHER_IDENTITY) is None
+
+    denial_records = [
+        r for r in caplog.records
+        if "workspace_scope_enforced_denial" in r.getMessage()
+    ]
+    assert len(denial_records) == 1
+    assert denial_records[0].levelname == "ERROR"
+
+    # A genuinely-missing item must NOT emit the denial log (OQ-1: nothing
+    # was actually denied, there is nothing to audit).
+    caplog.clear()
+    assert svc.get_item(tmp_foundry, "ci_does_not_exist", identity=_WS_OTHER_IDENTITY) is None
+    assert not any(
+        "workspace_scope_enforced_denial" in r.getMessage() for r in caplog.records
+    )
+
+
+def test_get_item_advisory_mode_unchanged_by_phase4(
+    tmp_foundry: FoundryPaths, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Advisory mode (isolation inactive — today's real default) keeps
+    returning the item and logging only scope.py's advisory WARNING; no
+    enforcing-mode denial log fires."""
+
+    build_catalog_run(tmp_foundry, sensitivity="public", include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+    source_id = svc._make_item_id("source", "rf_run_catalog001", "src_alpha")
+
+    caplog.set_level("INFO")
+    caplog.clear()
+    result = svc.get_item(tmp_foundry, source_id, identity=_WS_OTHER_IDENTITY)
+    assert result is not None
+
+    assert not any(
+        "workspace_scope_enforced_denial" in r.getMessage() for r in caplog.records
+    )
+    assert any(
+        "workspace_scope_advisory_mismatch" in r.getMessage() for r in caplog.records
+    )
+
+
 def test_get_draft_index_and_list_draft_index_workspace_scoping(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1486,3 +1545,67 @@ def test_get_draft_index_closes_catalog_links_join_leak(
     scoped = svc.get_draft_index(tmp_foundry, draft_id, identity=_WS_DEFAULT_IDENTITY)
     assert scoped is not None
     assert source_id not in _cited_ids(scoped)
+
+
+def test_get_draft_index_enforcing_denial_emits_audit_log(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """WKSP-304 Phase 4 (TASK-4.2 gap-closure): ``get_draft_index`` must have
+    the same audit-log parity as ``get_item`` — a cross-workspace
+    enforcing-mode denial emits a distinct ERROR-level
+    ``workspace_scope_enforced_denial`` log (never the advisory WARNING, and
+    never for a genuinely-missing draft)."""
+
+    from research_foundry.services import builder_service as bsvc
+
+    draft = bsvc.create_draft(
+        tmp_foundry, title="WS-scoped draft", sensitivity="public", workspace_id="default"
+    )
+    draft_id = draft["report_draft_id"]
+
+    _force_isolation_active(monkeypatch)
+
+    caplog.set_level("INFO", logger="research_foundry.services.catalog_service")
+    caplog.clear()
+    assert svc.get_draft_index(tmp_foundry, draft_id, identity=_WS_OTHER_IDENTITY) is None
+
+    denial_records = [
+        r for r in caplog.records
+        if "workspace_scope_enforced_denial" in r.getMessage()
+    ]
+    assert len(denial_records) == 1
+    assert denial_records[0].levelname == "ERROR"
+
+    # A genuinely-missing draft must NOT emit the denial log (OQ-1: nothing
+    # was actually denied, there is nothing to audit).
+    caplog.clear()
+    assert svc.get_draft_index(tmp_foundry, "rd_does_not_exist", identity=_WS_OTHER_IDENTITY) is None
+    assert not any(
+        "workspace_scope_enforced_denial" in r.getMessage() for r in caplog.records
+    )
+
+
+def test_get_draft_index_advisory_mode_unchanged_by_phase4(
+    tmp_foundry: FoundryPaths, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Advisory mode (isolation inactive — today's real default) keeps
+    returning the draft and never emits the enforcing-mode denial log.
+    (``get_draft_index`` has no ``require_workspace_scope`` call site — that
+    is unchanged by this gap-closure fix, which only adds the enforcing-mode
+    denial audit log on the ``workspace_scoped`` branch.)"""
+
+    from research_foundry.services import builder_service as bsvc
+
+    draft = bsvc.create_draft(
+        tmp_foundry, title="WS-scoped draft", sensitivity="public", workspace_id="default"
+    )
+    draft_id = draft["report_draft_id"]
+
+    caplog.set_level("INFO")
+    caplog.clear()
+    result = svc.get_draft_index(tmp_foundry, draft_id, identity=_WS_OTHER_IDENTITY)
+    assert result is not None
+
+    assert not any(
+        "workspace_scope_enforced_denial" in r.getMessage() for r in caplog.records
+    )

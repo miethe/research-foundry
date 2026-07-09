@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import sqlite3
 from collections.abc import Iterator
@@ -62,8 +63,7 @@ from pathlib import Path
 from typing import Any
 
 from ..api.auth.provider import AuthIdentity
-from ..api.auth.scope import require_workspace_scope
-from ..config import FoundryConfig
+from ..api.auth.scope import require_workspace_scope, resolve_workspace_isolation_active
 from ..ids import now_iso
 from ..paths import FoundryPaths
 from . import audit_service
@@ -75,6 +75,8 @@ from .export_service import (
     export_run,
     resolve_threshold,
 )
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # WKSP-304 Phase 3: query-layer workspace_id scoping (flag-gated, inert by
@@ -97,24 +99,17 @@ from .export_service import (
 def _isolation_active(paths: FoundryPaths) -> bool:
     """Resolve whether WKSP-304 workspace isolation is actively enforced.
 
-    Mirrors the same resolution ``api/app.py`` performs once at app-create
-    time (``app.state.workspace_isolation_enforced``), but services have no
-    handle on ``app.state`` (they are also called from the CLI, with no app
-    at all) — so this recomputes the same cheap, idempotent config read per
-    call rather than reimplementing
-    :meth:`FoundryConfig.resolve_workspace_isolation_enforced`'s truth table.
-    ``auth_provider()`` can raise on a misconfigured/incomplete provider
-    block; that failure mode is not this function's concern (the app itself
-    refuses to start in that case), so it degrades to ``"none"`` here rather
-    than raising out of a read path.
+    WKSP-304 Phase 4 (TASK-4.2 consolidation): delegates to the single
+    shared implementation in
+    :func:`research_foundry.api.auth.scope.resolve_workspace_isolation_active`
+    — Phase 3 duplicated this helper identically into this module,
+    ``builder_service.py``, and ``AgentJobService`` as a deliberate
+    single-owner-phase choice (see phase-3-query-layer-scoping.md "why
+    single-owner"); this module-level name/call sites are kept unchanged so
+    no caller here needs to change. Pure refactor, no behaviour change.
     """
 
-    config = FoundryConfig(paths=paths)
-    try:
-        provider = config.auth_provider()
-    except ValueError:
-        provider = "none"
-    return config.resolve_workspace_isolation_enforced(provider, config.viewer_bind_host())
+    return resolve_workspace_isolation_active(paths)
 
 # --- schema versioning (D1) --------------------------------------------------
 # v2 (public-multiuser-release P3 Wave D, plan D10/D11/landmine #3): adds the
@@ -1465,6 +1460,61 @@ def _facets(
     }
 
 
+def _log_enforced_denial_if_exists_elsewhere(
+    conn: sqlite3.Connection,
+    identity: AuthIdentity | None,
+    *,
+    record_type: str,
+    record_id: str,
+    table: str = "catalog_items",
+    id_column: str = "catalog_item_id",
+) -> None:
+    """WKSP-304 Phase 4 (TASK-4.2, OQ-1): audit-log a cross-workspace deny.
+
+    Called only from the branch where the scoped ``AND workspace_id = ?``
+    query has already returned no row *and* isolation is actively enforced
+    (i.e. ``workspace_id is not None``/``workspace_scoped is True`` at the
+    call site — see :func:`get_item` and :func:`get_draft_index`). This
+    helper's sole job is distinguishing "genuinely missing" (no log —
+    nothing was denied) from "exists in another workspace, access denied"
+    (logs), purely for the server-side audit trail; the caller-visible
+    outcome (``None`` -> 404) is byte-identical either way, so this never
+    changes response shape or timing-observable behaviour (OQ-1: the deny
+    stays silent to the caller). Logged at ``ERROR`` — distinct from
+    scope.py's advisory-mode ``WARNING`` — so a security-monitoring
+    pipeline can tell "advisory: logged but let through" apart from
+    "enforcing: actually denied".
+
+    ``table``/``id_column`` default to the ``catalog_items`` shape
+    (:func:`get_item`'s call site is unchanged); :func:`get_draft_index`
+    passes ``table="catalog_report_drafts", id_column="report_draft_id"``
+    to reuse the exact same "genuinely-missing vs. exists-elsewhere" logic
+    against the draft index table instead. ``table``/``id_column`` are
+    fixed literals at every call site in this module (never derived from
+    request input), so this f-string never carries untrusted data.
+    """
+
+    if identity is None:
+        return
+    raw = conn.execute(
+        f"SELECT workspace_id FROM {table} WHERE {id_column} = ?",
+        (record_id,),
+    ).fetchone()
+    if raw is None:
+        return  # genuinely missing -- no denial occurred, nothing to audit
+    _logger.error(
+        json.dumps(
+            {
+                "event": "workspace_scope_enforced_denial",
+                "record_type": record_type,
+                "record_id": record_id,
+                "record_workspace_id": raw["workspace_id"],
+                "identity_workspace_id": identity.workspace_id,
+            }
+        )
+    )
+
+
 def get_item(
     paths: FoundryPaths,
     catalog_item_id: str,
@@ -1485,6 +1535,14 @@ def get_item(
     joined side, not only the primary ``catalog_items`` row, so a cross-
     workspace link target can't leak through an edge even once isolation is
     active).
+
+    WKSP-304 Phase 4 (TASK-4.2): the primary row's scoped ``WHERE
+    workspace_id = ?`` predicate below is the query-layer deny mechanism for
+    this single-record read (same idiom as the list-oriented ``search()``);
+    a cross-workspace lookup returns no row and is audit-logged (distinct
+    from the advisory ``WARNING``) via
+    :func:`_log_enforced_denial_if_exists_elsewhere`, then 404s exactly like
+    a genuinely-missing item (OQ-1 — silent either way).
     """
 
     threshold_rank = _rank(resolve_threshold(paths, sensitivity_threshold))
@@ -1497,11 +1555,18 @@ def get_item(
                 "SELECT * FROM catalog_items WHERE catalog_item_id = ? AND workspace_id = ?",
                 (catalog_item_id, workspace_id),
             ).fetchone()
+            if row is None:
+                _log_enforced_denial_if_exists_elsewhere(
+                    conn, identity, record_type="catalog_item", record_id=catalog_item_id
+                )
+                return None
         else:
             row = conn.execute(
                 "SELECT * FROM catalog_items WHERE catalog_item_id = ?", (catalog_item_id,)
             ).fetchone()
-        if row is None or row["sensitivity_rank"] > threshold_rank:
+            if row is None:
+                return None
+        if row["sensitivity_rank"] > threshold_rank:
             return None
 
         payload = json.loads(row["payload_json"])
@@ -1580,12 +1645,23 @@ def get_item(
             for r in citing_drafts_rows
         ],
     }
-    # WKSP-301 advisory-mode workspace scope check (non-blocking today — see
-    # scope.py's own docstring; WKSP-304 P3 wires the real caller identity
-    # through here instead of a hardcoded None, so the advisory log reflects
-    # the actual caller once a future phase threads identity from the router).
+    # WKSP-304 Phase 4 (TASK-4.2): only ever reached once the scoped query
+    # above has already denied (and audit-logged) a cross-workspace
+    # mismatch when enforcing, so this call is advisory-only in practice
+    # here (identity=None, isolation inactive, or an already-confirmed
+    # workspace match) — kept for parity with builder_service/
+    # agent_job_service's identical call shape and to preserve the
+    # WKSP-301 advisory WARNING for those cases. Passes ``dict(row)``
+    # (not ``summary``, which omits ``workspace_id`` — see
+    # ``_SUMMARY_COLUMNS``) so the mismatch/match comparison is against
+    # the record's real workspace_id rather than always reading as a
+    # mismatch.
     require_workspace_scope(
-        identity, summary, record_type="catalog_item", record_id=catalog_item_id
+        identity,
+        dict(row),
+        record_type="catalog_item",
+        record_id=catalog_item_id,
+        resolve_enforcement=lambda: _isolation_active(paths),
     )
     return summary
 
@@ -1784,6 +1860,14 @@ def get_draft_index(
     a draft can cite a catalog item that lives in a different workspace, and
     without this the linked item's ``catalog_item_id`` would leak through
     ``get_draft_index``'s ``links`` field even once isolation is active.
+
+    WKSP-304 Phase 4 (TASK-4.2): mirrors :func:`get_item`'s audit-log
+    parity — a cross-workspace lookup (``workspace_scoped`` branch,
+    scoped query returns no row) is audit-logged (distinct from the
+    advisory ``WARNING``) via
+    :func:`_log_enforced_denial_if_exists_elsewhere` before falling through
+    to the same ``None`` -> 404 outcome a genuinely-missing draft produces
+    (OQ-1 — silent either way).
     """
 
     workspace_scoped = identity is not None and _isolation_active(paths)
@@ -1795,13 +1879,23 @@ def get_draft_index(
                 "AND workspace_id = ?",
                 (report_draft_id, identity.workspace_id),  # type: ignore[union-attr]
             ).fetchone()
+            if row is None:
+                _log_enforced_denial_if_exists_elsewhere(
+                    conn,
+                    identity,
+                    record_type="report_draft",
+                    record_id=report_draft_id,
+                    table="catalog_report_drafts",
+                    id_column="report_draft_id",
+                )
+                return None
         else:
             row = conn.execute(
                 "SELECT * FROM catalog_report_drafts WHERE report_draft_id = ?",
                 (report_draft_id,),
             ).fetchone()
-        if row is None:
-            return None
+            if row is None:
+                return None
         result = {col: row[col] for col in _DRAFT_INDEX_COLUMNS}
         if workspace_scoped:
             link_rows = conn.execute(

@@ -618,6 +618,62 @@ def test_load_draft_identity_active_hides_cross_workspace_draft(
         bsvc.load_draft(tmp_foundry, draft_id, identity=_WS_OTHER)
 
 
+def test_load_draft_enforcing_denial_emits_audit_log(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """WKSP-304 Phase 4 (TASK-4.2, OQ-1): a cross-workspace enforcing-mode
+    read denial emits a distinct ERROR-level audit log — never the
+    advisory WARNING, and never for a genuinely-missing draft."""
+
+    draft = bsvc.create_draft(tmp_foundry, title="Scoping draft", workspace_id="ws-mine")
+    draft_id = draft["report_draft_id"]
+
+    _force_isolation_active(monkeypatch)
+
+    caplog.set_level("INFO", logger="research_foundry.services.builder_service")
+    caplog.clear()
+    with pytest.raises(NotFoundError):
+        bsvc.load_draft(tmp_foundry, draft_id, identity=_WS_OTHER)
+
+    denial_records = [
+        r for r in caplog.records
+        if "workspace_scope_enforced_denial" in r.getMessage()
+    ]
+    assert len(denial_records) == 1
+    assert denial_records[0].levelname == "ERROR"
+
+    # A genuinely-missing draft must NOT emit the denial log.
+    caplog.clear()
+    with pytest.raises(NotFoundError):
+        bsvc.load_draft(tmp_foundry, "rpt_does_not_exist", identity=_WS_OTHER)
+    assert not any(
+        "workspace_scope_enforced_denial" in r.getMessage() for r in caplog.records
+    )
+
+
+def test_load_draft_advisory_mode_unchanged_by_phase4(
+    tmp_foundry: FoundryPaths, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Advisory mode (isolation inactive — today's real default) keeps
+    returning the draft and logging only scope.py's advisory WARNING; no
+    enforcing-mode denial log fires."""
+
+    draft = bsvc.create_draft(tmp_foundry, title="Scoping draft", workspace_id="ws-mine")
+    draft_id = draft["report_draft_id"]
+
+    caplog.set_level("INFO")
+    caplog.clear()
+    loaded = bsvc.load_draft(tmp_foundry, draft_id, identity=_WS_OTHER)
+    assert loaded["report_draft_id"] == draft_id
+
+    assert not any(
+        "workspace_scope_enforced_denial" in r.getMessage() for r in caplog.records
+    )
+    assert any(
+        "workspace_scope_advisory_mismatch" in r.getMessage() for r in caplog.records
+    )
+
+
 def test_load_draft_identity_present_but_inactive_stays_unscoped(
     tmp_foundry: FoundryPaths,
 ) -> None:

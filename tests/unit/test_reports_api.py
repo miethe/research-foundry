@@ -24,6 +24,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -31,8 +32,10 @@ from fastapi.testclient import TestClient
 from research_foundry.api.app import create_app
 from research_foundry.api.routers.runs import get_paths
 from research_foundry.config import FoundryConfig
+from research_foundry.errors import NotFoundError
 from research_foundry.frontmatter import dump_md
 from research_foundry.paths import FoundryPaths, RunPaths, distribution_root
+from research_foundry.services import builder_service as bsvc
 from research_foundry.yamlio import dump_yaml, load_yaml
 
 # ---------------------------------------------------------------------------
@@ -732,3 +735,178 @@ def test_list_drafts_sensitivity_gate_filters_over_threshold(tmp_path: Path) -> 
     assert resp2.status_code == 200
     titles2 = {d["title"] for d in resp2.json()}
     assert titles2 == {"Public One", "Sensitive One"}
+
+
+# ---------------------------------------------------------------------------
+# WKSP-304 Phase 4 (TASK-4.3, AC-5): every mutation handler resolves-then-
+# checks via bsvc.load_draft(..., identity=identity) BEFORE calling its
+# mutator. When load_draft denies (NotFoundError — the same exception an
+# enforcing-mode cross-workspace mismatch raises, see builder_service.
+# load_draft), the mutator underneath must never execute. This is the
+# router-level proof that no mutation write ever reaches a cross-workspace
+# target: the mutator itself has no identity/workspace awareness, so the
+# gate MUST live in the pre-flight check, not the mutator call.
+# ---------------------------------------------------------------------------
+
+_MUTATION_DENY_CASES: list[tuple[str, str, dict[str, Any] | None, str]] = [
+    # NOTE: delete_draft is intentionally excluded here — its pre-flight
+    # no-ops when identity is None (this file's client fixture uses
+    # auth_mode='none') to preserve test_delete_draft_idempotent's
+    # 204-on-missing contract. See test_delete_draft_denies_cross_workspace_
+    # without_deleting above for its dedicated cross-workspace-deny case.
+    ("post", "/api/reports/{rid}/versions", {"note": "n"}, "create_revision"),
+    ("post", "/api/reports/{rid}/versions/ver_x/restore", None, "restore_revision"),
+    (
+        "post",
+        "/api/reports/{rid}/blocks",
+        {"block_type": "paragraph", "markdown": "x"},
+        "add_block",
+    ),
+    (
+        "patch",
+        "/api/reports/{rid}/blocks/reorder",
+        {"block_ids": ["blk_x"]},
+        "reorder_blocks",
+    ),
+    ("patch", "/api/reports/{rid}/blocks/blk_x", {"markdown": "x"}, "update_block"),
+    ("delete", "/api/reports/{rid}/blocks/blk_x", None, "delete_block"),
+    (
+        "post",
+        "/api/reports/{rid}/claim-links",
+        {"block_id": "blk_x", "claim_id": "clm_x"},
+        "add_claim_link",
+    ),
+    ("delete", "/api/reports/{rid}/claim-links/cl_x", None, "remove_claim_link"),
+    (
+        "post",
+        "/api/reports/{rid}/source-links",
+        {"source_card_id": "src_x"},
+        "add_source_link",
+    ),
+    ("delete", "/api/reports/{rid}/source-links/sl_x", None, "remove_source_link"),
+]
+
+
+def _make_config_with_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, workspace_id: str
+) -> FoundryConfig:
+    """Build a FoundryConfig with local_static auth granting a REAL
+    ``request.state.identity`` (unlike ``_make_config``'s auth_mode='none',
+    which never sets one). ``delete_draft``'s workspace pre-flight is a
+    no-op when identity is None (single-operator-trust) — exercising its
+    cross-workspace deny path requires an actual authenticated identity.
+    """
+    token_env = f"RF_REPORTS_API_TEST_TOKEN_{workspace_id.upper().replace('-', '_')}"
+    monkeypatch.setenv(token_env, "test-reports-api-token")
+    cfg = _make_config(tmp_path)
+    foundry_yaml_path = cfg.paths.root / "foundry.yaml"
+    existing = load_yaml(foundry_yaml_path) or {}
+    existing["foundry"]["auth"] = {
+        "provider": "local_static",
+        "local_static": {
+            "tokens": [
+                {
+                    "token_env": token_env,
+                    "user_id": "test_user",
+                    "workspace_id": workspace_id,
+                    "roles": ["owner"],
+                }
+            ]
+        },
+    }
+    dump_yaml(existing, foundry_yaml_path)
+    return FoundryConfig(paths=cfg.paths)
+
+
+def test_delete_draft_denies_cross_workspace_without_deleting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """WKSP-304 P4 (TASK-4.3, AC-5) dedicated case for ``delete_draft``.
+
+    The generic ``_MUTATION_DENY_CASES`` harness above uses auth_mode='none'
+    (identity=None), under which ``delete_draft``'s pre-flight intentionally
+    no-ops to preserve ``test_delete_draft_idempotent``'s 204-on-missing
+    contract — see that handler's docstring. Exercising the actual
+    cross-workspace deny path (a draft that genuinely EXISTS, just not in the
+    caller's workspace) requires a real authenticated identity AND active
+    enforcement, so it gets its own dedicated setup here.
+
+    Asserts the draft is fail-closed (404) AND still exists on disk
+    afterward — proving ``bsvc.delete_draft`` (the physical ``rmtree``) never
+    executed against the cross-workspace target.
+    """
+    cfg = _make_config_with_identity(tmp_path, monkeypatch, workspace_id="ws-caller")
+    paths = cfg.paths
+
+    # Draft lives in a different workspace than the caller's identity.
+    from research_foundry.services import builder_service as _bsvc
+
+    draft = _bsvc.create_draft(
+        paths, title="Cross-Workspace Delete Target", workspace_id="ws-draft-owner"
+    )
+    rid = draft["report_draft_id"]
+
+    # Force workspace isolation into enforcing mode (WKSP-304 Phase 4).
+    monkeypatch.setattr(
+        FoundryConfig,
+        "resolve_workspace_isolation_enforced",
+        lambda self, provider, bind_host: True,
+    )
+
+    app = create_app(cfg)
+    app.dependency_overrides[get_paths] = lambda: paths
+    client = TestClient(app, raise_server_exceptions=True)
+
+    resp = client.delete(
+        f"/api/reports/{rid}",
+        headers={"Authorization": "Bearer test-reports-api-token"},
+    )
+
+    assert resp.status_code == 404, (
+        f"Expected 404 (fail-closed, cross-workspace deny) — the draft "
+        f"genuinely exists but not in the caller's workspace, "
+        f"got {resp.status_code}: {resp.text}"
+    )
+    # Zero-write proof: the draft must still be on disk (identity=None probe
+    # bypasses the workspace gate to check raw existence, mirroring how
+    # every other identity=None caller in this codebase is unscoped).
+    still_there = _bsvc.load_draft(paths, rid, identity=None)
+    assert still_there["report_draft_id"] == rid
+
+
+@pytest.mark.parametrize("method,path_template,body,mutator_name", _MUTATION_DENY_CASES)
+def test_mutation_denied_when_load_draft_denies_never_calls_mutator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    path_template: str,
+    body: dict[str, Any] | None,
+    mutator_name: str,
+) -> None:
+    """Zero-write proof: a denied pre-flight check must short-circuit before
+    the mutator is ever invoked. Simulates the enforcing-mode cross-workspace
+    denial by patching ``bsvc.load_draft`` to raise ``NotFoundError`` (the
+    exact exception ``builder_service.load_draft`` raises for a cross-
+    workspace mismatch when isolation is actively enforcing — see its
+    docstring), then spies on the mutator to assert it is never called.
+    """
+    client, _ = _make_client(tmp_path)
+    created = client.post("/api/reports", json={"origin": "blank", "title": "Deny Path"}).json()
+    rid = created["report_draft_id"]
+    path = path_template.format(rid=rid)
+
+    def _deny(*args: Any, **kwargs: Any) -> Any:
+        raise NotFoundError(f"denied: {rid}")
+
+    monkeypatch.setattr(bsvc, "load_draft", _deny)
+    mutator_spy = MagicMock(name=mutator_name)
+    monkeypatch.setattr(bsvc, mutator_name, mutator_spy)
+
+    call = getattr(client, method)
+    resp = call(path, json=body) if body is not None else call(path)
+
+    assert resp.status_code == 404, (
+        f"{method.upper()} {path} expected 404 when load_draft denies, "
+        f"got {resp.status_code}: {resp.text}"
+    )
+    mutator_spy.assert_not_called()

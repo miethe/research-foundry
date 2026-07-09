@@ -282,3 +282,75 @@ def test_share_token_sensitivity_threshold_enforced_at_resolution_time(
     )
     detail = resp.json().get("detail", {})
     assert detail.get("ok") is False, "422 detail must include ok=False"
+
+
+# ---------------------------------------------------------------------------
+# (d) WKSP-304 Phase 4 — share token is the SOLE authorization boundary,
+#     unaffected by the viewer's own workspace membership
+# ---------------------------------------------------------------------------
+
+
+def test_share_token_ignores_viewer_workspace_even_when_isolation_enforcing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """D5 fail-closed decision: a share link grants access to its one shared
+    resource regardless of the *viewer's* own workspace, even with workspace
+    isolation actively enforcing.
+
+    Setup:
+      1. Create a draft in workspace "ws-draft-owner".
+      2. Create a public share link for it via the service layer.
+      3. Force ``FoundryConfig.resolve_workspace_isolation_enforced`` to
+         resolve ``True`` (enforcing mode active).
+      4. GET /api/reports/shares/{token} WITH a valid session Authorization
+         header whose identity's workspace_id is "default" — deliberately
+         different from the draft's "ws-draft-owner".
+
+    FAIL (regression): 404/422 — the resolver started threading the caller's
+    session identity into ``load_draft``/``export_markdown``, letting
+    workspace-isolation enforcement deny a request the share token alone
+    should have authorized.
+    PASS: 200 with the preview content — the share token is the sole
+    authorization boundary; the viewer's own workspace never broadens or
+    narrows it (``resolve_share_link`` passes ``identity=None`` explicitly to
+    both draft loads, WKSP-304 Phase 4).
+    """
+    cfg = _make_config_with_auth(tmp_path, monkeypatch)
+    paths = cfg.paths
+
+    # Draft lives in a workspace distinct from the authenticated caller's
+    # token workspace ("default", per _make_config_with_auth).
+    draft = bsvc.create_draft(
+        paths,
+        title="Cross-Workspace Share Test",
+        sensitivity="public",
+        workspace_id="ws-draft-owner",
+    )
+    rid = draft["report_draft_id"]
+    share = create_share_link(paths, report_draft_id=rid, sensitivity_threshold="public")
+    token = share["share_token"]
+
+    # Force workspace isolation into enforcing mode (WKSP-304 Phase 4).
+    monkeypatch.setattr(
+        FoundryConfig,
+        "resolve_workspace_isolation_enforced",
+        lambda self, provider, bind_host: True,
+    )
+
+    client = _make_client(cfg)
+
+    # Authenticated caller whose session identity's workspace_id ("default")
+    # differs from the draft's workspace_id ("ws-draft-owner").
+    resp = client.get(
+        f"/api/reports/shares/{token}",
+        headers={"Authorization": f"Bearer {_API_TOKEN}"},
+    )
+
+    assert resp.status_code == 200, (
+        f"Expected 200 — the share token alone authorizes access regardless "
+        f"of the viewer's own workspace, got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    assert body.get("ok") is True
+    assert body.get("report_draft_id") == rid
+    assert "preview_markdown" in body

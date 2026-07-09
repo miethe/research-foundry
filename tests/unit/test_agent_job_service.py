@@ -117,3 +117,65 @@ def test_load_job_identity_active_null_workspace_job_is_hidden(
 
     with pytest.raises(KeyError):
         service.load_job(job.agent_job_id, identity=_WS_MINE)
+
+
+def test_load_job_enforcing_denial_emits_audit_log(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """WKSP-304 Phase 4 (TASK-4.2, OQ-1): a cross-workspace enforcing-mode
+    read denial emits a distinct ERROR-level audit log — never the
+    advisory WARNING, and never for a genuinely-missing job. Unlike
+    ``catalog_service``/``builder_service``, this service did not already
+    call ``require_workspace_scope`` before Phase 4 (a Phase-3 gap closed
+    here), so this also proves the wiring itself, not just the new log."""
+
+    service = AgentJobService(tmp_foundry)
+    job = _create_job(service, workspace_id="ws-mine")
+
+    _force_isolation_active(monkeypatch)
+
+    caplog.set_level("INFO", logger="research_foundry.services.agent_job_service")
+    caplog.clear()
+    with pytest.raises(KeyError):
+        service.load_job(job.agent_job_id, identity=_WS_OTHER)
+
+    denial_records = [
+        r for r in caplog.records
+        if "workspace_scope_enforced_denial" in r.getMessage()
+    ]
+    assert len(denial_records) == 1
+    assert denial_records[0].levelname == "ERROR"
+
+    # A genuinely-missing job must NOT emit the denial log.
+    caplog.clear()
+    with pytest.raises(KeyError):
+        service.load_job("job_does_not_exist", identity=_WS_OTHER)
+    assert not any(
+        "workspace_scope_enforced_denial" in r.getMessage() for r in caplog.records
+    )
+
+
+def test_load_job_advisory_mode_now_logs_via_require_workspace_scope(
+    tmp_foundry: FoundryPaths, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Advisory mode (isolation inactive — today's real default) keeps
+    returning the job, and — now that ``load_job`` routes through
+    ``require_workspace_scope`` (TASK-4.2 closes a Phase-3 gap: this
+    service never called it before) — also emits scope.py's advisory
+    WARNING for a cross-workspace mismatch; no enforcing-mode denial log
+    fires."""
+
+    service = AgentJobService(tmp_foundry)
+    job = _create_job(service, workspace_id="ws-mine")
+
+    caplog.set_level("INFO")
+    caplog.clear()
+    loaded = service.load_job(job.agent_job_id, identity=_WS_OTHER)
+    assert loaded.agent_job_id == job.agent_job_id
+
+    assert not any(
+        "workspace_scope_enforced_denial" in r.getMessage() for r in caplog.records
+    )
+    assert any(
+        "workspace_scope_advisory_mismatch" in r.getMessage() for r in caplog.records
+    )

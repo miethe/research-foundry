@@ -52,6 +52,10 @@ from pathlib import Path
 from typing import Any
 
 from research_foundry.api.auth.provider import AuthIdentity
+from research_foundry.api.auth.scope import (
+    require_workspace_scope,
+    resolve_workspace_isolation_active,
+)
 from research_foundry.config import FoundryConfig
 from research_foundry.paths import FoundryPaths
 from research_foundry.services.agent_job_schemas import (
@@ -291,18 +295,19 @@ class AgentJobService:
     def _isolation_active(self) -> bool:
         """Resolve whether WKSP-304 workspace isolation is actively enforced.
 
-        Never reimplements the enforcement truth table — always defers to
-        :meth:`FoundryConfig.resolve_workspace_isolation_enforced` (Phase 1,
-        TASK-1.2).
+        WKSP-304 Phase 4 (TASK-4.2 consolidation): delegates to the single
+        shared implementation in
+        :func:`research_foundry.api.auth.scope.resolve_workspace_isolation_active`
+        — Phase 3 duplicated this helper identically into this class,
+        ``catalog_service.py``, and ``builder_service.py`` as a deliberate
+        single-owner-phase choice (see phase-3-query-layer-scoping.md "why
+        single-owner"). Note this constructs a fresh
+        :class:`FoundryConfig` from ``self._paths`` rather than reusing the
+        cached ``self._config`` — functionally equivalent (both resolve the
+        same on-disk config), pure refactor, no observable behaviour change.
         """
 
-        try:
-            provider = self._config.auth_provider()
-        except ValueError:
-            provider = "none"
-        return self._config.resolve_workspace_isolation_enforced(
-            provider, self._config.viewer_bind_host()
-        )
+        return resolve_workspace_isolation_active(self._paths)
 
     # ------------------------------------------------------------------
     # Spawn
@@ -852,6 +857,17 @@ class AgentJobService:
             ``identity=None`` (the default) is byte-identical to the
             pre-WKSP-304 behavior.
 
+            WKSP-304 Phase 4 (TASK-4.2): the workspace-scope decision now
+            flows through :func:`require_workspace_scope` (TASK-4.1's armed
+            deny path) instead of a bespoke inline compare -- unlike
+            ``catalog_service``/``builder_service``, this method did not
+            already call ``require_workspace_scope`` (a Phase-3 gap this
+            wiring closes), so this also newly picks up the WKSP-301
+            advisory-mode ``WARNING`` log for an identity-present,
+            isolation-inactive mismatch. An enforcing-mode denial is
+            additionally audit-logged at ``ERROR`` (distinct from that
+            advisory ``WARNING``) before the same ``KeyError`` is raised.
+
         Returns
         -------
         AgentJob
@@ -873,9 +889,29 @@ class AgentJobService:
         with job_file.open(encoding="utf-8") as fh:
             data = json.load(fh)
         job = AgentJob.from_dict(data)
-        if identity is not None and self._isolation_active():
-            if job.workspace_id != identity.workspace_id:
-                raise KeyError(f"agent job not found: {job_id}")
+
+        scope_result = require_workspace_scope(
+            identity,
+            job,
+            record_type="agent_job",
+            record_id=job_id,
+            resolve_enforcement=self._isolation_active,
+        )
+        if not scope_result.allowed:
+            logger.error(
+                json.dumps(
+                    {
+                        "event": "workspace_scope_enforced_denial",
+                        "record_type": "agent_job",
+                        "record_id": job_id,
+                        "record_workspace_id": job.workspace_id,
+                        "identity_workspace_id": (
+                            identity.workspace_id if identity is not None else None
+                        ),
+                    }
+                )
+            )
+            raise KeyError(f"agent job not found: {job_id}")
         return job
 
     def update_job_status(self, job_id: str, status: AgentJobStatus) -> AgentJob:

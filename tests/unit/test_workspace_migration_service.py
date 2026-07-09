@@ -17,6 +17,7 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -276,6 +277,125 @@ def test_require_workspace_scope_workspace_match_no_log(caplog) -> None:
         if "workspace_scope_advisory_mismatch" in r.getMessage()
     ]
     assert advisory_records == []
+
+
+# ---------------------------------------------------------------------------
+# WKSP-304 Phase 4 (TASK-4.1) — enforcing mode + D3 ordering proof
+# ---------------------------------------------------------------------------
+
+
+def test_require_workspace_scope_identity_none_never_resolves_enforcement_flag() -> None:
+    """D3 ordering proof (Critical, no partial credit).
+
+    When ``identity`` is ``None`` the ``identity is None`` short-circuit must
+    be the literal first statement executed — evaluated and returned from
+    BEFORE ``resolve_enforcement`` is ever read or called. This test would
+    FAIL if that short-circuit were reordered to run after the flag lookup:
+    the ``side_effect`` raises immediately on any call, and
+    ``assert_not_called()`` is a second, independent proof of the same
+    invariant.
+    """
+    resolver = Mock(
+        side_effect=AssertionError(
+            "resolve_enforcement must NEVER be invoked when identity is None "
+            "(WKSP-304 D3 ordering invariant violated)"
+        )
+    )
+    record = {"workspace_id": "ws_a", "catalog_item_id": "ci_ordering_proof"}
+
+    result = require_workspace_scope(
+        None,
+        record,
+        record_type="catalog_item",
+        resolve_enforcement=resolver,
+    )
+
+    assert result.allowed is True
+    assert result.reason == "single_operator_trust"
+    resolver.assert_not_called()
+
+
+def test_require_workspace_scope_enforcing_mismatch_denies() -> None:
+    """Enforcing mode + cross-workspace mismatch -> allowed=False."""
+    identity = AuthIdentity(
+        user_id="alice", workspace_id="workspace_A", roles=("researcher",)
+    )
+    record = {"workspace_id": "workspace_B", "catalog_item_id": "ci_enforce_mismatch"}
+
+    result = require_workspace_scope(
+        identity,
+        record,
+        record_type="catalog_item",
+        record_id="ci_enforce_mismatch",
+        resolve_enforcement=lambda: True,
+    )
+
+    assert result.allowed is False
+    assert result.reason == "workspace_mismatch_denied"
+
+
+def test_require_workspace_scope_enforcing_match_allows() -> None:
+    """Enforcing mode + exact workspace_id match -> allowed=True."""
+    identity = AuthIdentity(user_id="carol", workspace_id="ws_prod", roles=("admin",))
+    record = {"workspace_id": "ws_prod", "catalog_item_id": "ci_enforce_match"}
+
+    result = require_workspace_scope(
+        identity,
+        record,
+        record_type="catalog_item",
+        record_id="ci_enforce_match",
+        resolve_enforcement=lambda: True,
+    )
+
+    assert result.allowed is True
+    assert result.reason == "workspace_match"
+
+
+def test_require_workspace_scope_enforcing_null_workspace_id_denies() -> None:
+    """Enforcing mode + record.workspace_id is None -> treated as mismatch, denies.
+
+    Never defaults to allowed (AC-3 / D3): a pre-migration record missing a
+    workspace_id field must not slip through enforcement.
+    """
+    identity = AuthIdentity(
+        user_id="dave", workspace_id="ws_tenant_1", roles=("researcher",)
+    )
+    record: dict = {"catalog_item_id": "ci_enforce_null"}  # no workspace_id key
+
+    result = require_workspace_scope(
+        identity,
+        record,
+        record_type="catalog_item",
+        record_id="ci_enforce_null",
+        resolve_enforcement=lambda: True,
+    )
+
+    assert result.allowed is False
+    assert result.reason == "workspace_mismatch_denied"
+
+
+def test_require_workspace_scope_advisory_explicit_false_unchanged(caplog) -> None:
+    """resolve_enforcement resolving falsy -> byte-for-byte pre-Phase-4 advisory behaviour."""
+    identity = AuthIdentity(user_id="erin", workspace_id="ws_1", roles=("viewer",))
+    record = {"workspace_id": "ws_2", "catalog_item_id": "ci_advisory_explicit"}
+
+    with caplog.at_level(logging.WARNING, logger="research_foundry.api.auth.scope"):
+        result = require_workspace_scope(
+            identity,
+            record,
+            record_type="catalog_item",
+            record_id="ci_advisory_explicit",
+            resolve_enforcement=lambda: False,
+        )
+
+    assert result.allowed is True
+    assert result.reason == "advisory_mode"
+    advisory_records = [
+        r
+        for r in caplog.records
+        if "workspace_scope_advisory_mismatch" in r.getMessage()
+    ]
+    assert len(advisory_records) == 1
 
 
 # ---------------------------------------------------------------------------
