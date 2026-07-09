@@ -1258,3 +1258,231 @@ def test_get_item_citing_drafts_rebuild_matches_incremental(
     before_ids = {d["report_draft_id"] for d in cd_before}
     after_ids = {d["report_draft_id"] for d in cd_after}
     assert before_ids == after_ids
+
+
+# ---------------------------------------------------------------------------
+# WKSP-304 Phase 3: query-layer workspace_id scoping (TASK-3.1)
+# ---------------------------------------------------------------------------
+#
+# Every read function below takes an ``identity: AuthIdentity | None = None``
+# parameter. These tests prove the D4 contract for each touched function:
+#   (a) identity=None -> byte-identical to the pre-WKSP-304 query/result.
+#   (b) identity supplied + isolation actively enforced -> the parameterized
+#       ``AND workspace_id = ?`` predicate actually filters.
+#   (c) identity supplied + isolation advisory/inactive (today's real
+#       default) -> still byte-identical/unscoped.
+#
+# catalog_items rows always carry workspace_id="default" (catalog_service's
+# own import path hardcodes this per the WKSP-303 comment in _base_row), so
+# identity.workspace_id="default" is the "same workspace" case and any other
+# value is the "different workspace" case for catalog_items-backed reads.
+
+from research_foundry.api.auth.provider import AuthIdentity  # noqa: E402
+from research_foundry.config import FoundryConfig  # noqa: E402
+
+_WS_DEFAULT_IDENTITY = AuthIdentity("u1", "default", ("owner",))
+_WS_OTHER_IDENTITY = AuthIdentity("u2", "other-workspace", ("owner",))
+
+
+def _force_isolation_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Simulate ``workspace_isolation_enforcement`` resolving active.
+
+    Monkeypatches :meth:`FoundryConfig.resolve_workspace_isolation_enforced`
+    itself (never a private helper) so the test exercises the real Phase 1
+    resolver's call contract, not a reimplementation. The resolver's default
+    (advisory, since ``auth.provider`` is unset in ``tmp_foundry``) is left
+    untouched everywhere else in the suite.
+    """
+
+    monkeypatch.setattr(
+        FoundryConfig,
+        "resolve_workspace_isolation_enforced",
+        lambda self, provider, bind_host: True,
+    )
+
+
+def test_search_identity_none_is_byte_identical(tmp_foundry: FoundryPaths) -> None:
+    """(a) identity=None: search() result is unaffected by workspace scoping."""
+
+    build_catalog_run(tmp_foundry, sensitivity="public", include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+
+    baseline = svc.search(tmp_foundry, page_size=200)
+    with_none_identity = svc.search(tmp_foundry, page_size=200, identity=None)
+    assert with_none_identity == baseline
+    assert baseline["total"] > 0
+
+
+def test_search_identity_active_scopes_to_workspace(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """(b) identity + active enforcement: only matching-workspace rows return."""
+
+    build_catalog_run(tmp_foundry, sensitivity="public", include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+    total_unscoped = svc.search(tmp_foundry, page_size=200)["total"]
+    assert total_unscoped > 0
+
+    _force_isolation_active(monkeypatch)
+
+    same_ws = svc.search(tmp_foundry, page_size=200, identity=_WS_DEFAULT_IDENTITY)
+    assert same_ws["total"] == total_unscoped
+
+    other_ws = svc.search(tmp_foundry, page_size=200, identity=_WS_OTHER_IDENTITY)
+    assert other_ws["total"] == 0
+    assert other_ws["items"] == []
+    # Facets must not leak values that exist only in another workspace either.
+    assert other_ws["facets"] == {"projects": [], "statuses": [], "sensitivities": []}
+
+
+def test_search_identity_present_but_inactive_stays_unscoped(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """(c) identity supplied + advisory/inactive (today's real default): unscoped."""
+
+    build_catalog_run(tmp_foundry, sensitivity="public", include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+    baseline_total = svc.search(tmp_foundry, page_size=200)["total"]
+
+    # No monkeypatch: tmp_foundry's auth.provider is unset ("none") -> AUTO
+    # resolves advisory (False). A different-workspace identity must not
+    # filter anything under the real, unmodified default resolver.
+    scoped_but_inactive = svc.search(
+        tmp_foundry, page_size=200, identity=_WS_OTHER_IDENTITY
+    )
+    assert scoped_but_inactive["total"] == baseline_total
+
+
+def test_get_item_identity_none_is_byte_identical(tmp_foundry: FoundryPaths) -> None:
+    build_catalog_run(tmp_foundry, sensitivity="public", include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+    source_id = svc._make_item_id("source", "rf_run_catalog001", "src_alpha")
+
+    baseline = svc.get_item(tmp_foundry, source_id)
+    assert baseline is not None
+    assert svc.get_item(tmp_foundry, source_id, identity=None) == baseline
+
+
+def test_get_item_identity_active_hides_cross_workspace_item(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build_catalog_run(tmp_foundry, sensitivity="public", include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+    source_id = svc._make_item_id("source", "rf_run_catalog001", "src_alpha")
+
+    _force_isolation_active(monkeypatch)
+
+    assert svc.get_item(tmp_foundry, source_id, identity=_WS_DEFAULT_IDENTITY) is not None
+    # Fail-closed: a cross-workspace lookup is indistinguishable from "not found".
+    assert svc.get_item(tmp_foundry, source_id, identity=_WS_OTHER_IDENTITY) is None
+
+
+def test_get_item_identity_present_but_inactive_stays_unscoped(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    build_catalog_run(tmp_foundry, sensitivity="public", include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    _write_threshold(tmp_foundry, "client_sensitive")
+    source_id = svc._make_item_id("source", "rf_run_catalog001", "src_alpha")
+
+    assert svc.get_item(tmp_foundry, source_id, identity=_WS_OTHER_IDENTITY) is not None
+
+
+def test_get_draft_index_and_list_draft_index_workspace_scoping(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One test covering get_draft_index() + list_draft_index() (a)/(b)/(c)."""
+
+    from research_foundry.services import builder_service as bsvc
+
+    draft = bsvc.create_draft(
+        tmp_foundry, title="WS-scoped draft", sensitivity="public", workspace_id="default"
+    )
+    draft_id = draft["report_draft_id"]
+
+    # (a) identity=None is byte-identical.
+    baseline_item = svc.get_draft_index(tmp_foundry, draft_id)
+    assert baseline_item is not None
+    assert svc.get_draft_index(tmp_foundry, draft_id, identity=None) == baseline_item
+    baseline_list = svc.list_draft_index(tmp_foundry)
+    assert svc.list_draft_index(tmp_foundry, identity=None) == baseline_list
+    assert len(baseline_list) == 1
+
+    # (c) identity present, isolation advisory/inactive (real default): unscoped.
+    assert svc.get_draft_index(tmp_foundry, draft_id, identity=_WS_OTHER_IDENTITY) is not None
+    assert len(svc.list_draft_index(tmp_foundry, identity=_WS_OTHER_IDENTITY)) == 1
+
+    # (b) identity present, isolation active: scoped predicate filters.
+    _force_isolation_active(monkeypatch)
+    assert svc.get_draft_index(tmp_foundry, draft_id, identity=_WS_DEFAULT_IDENTITY) is not None
+    assert svc.get_draft_index(tmp_foundry, draft_id, identity=_WS_OTHER_IDENTITY) is None
+    assert len(svc.list_draft_index(tmp_foundry, identity=_WS_DEFAULT_IDENTITY)) == 1
+    assert svc.list_draft_index(tmp_foundry, identity=_WS_OTHER_IDENTITY) == []
+
+
+def test_get_draft_index_closes_catalog_links_join_leak(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """TASK-3.4 (AC-4): ``get_draft_index``'s outgoing ``catalog_links`` query
+    joined no other table pre-WKSP-304, so a draft citing a catalog item that
+    lives in a *different* workspace than the draft's own would otherwise
+    leak that item's id through the ``links`` field even once isolation is
+    active — the join-target side needs the same predicate as the primary
+    ``catalog_report_drafts`` row.
+    """
+
+    from research_foundry.services import builder_service as bsvc
+
+    build_catalog_run(tmp_foundry, sensitivity="public", include_unknown=False)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    source_id = svc._make_item_id("source", "rf_run_catalog001", "src_alpha")
+
+    # Simulate a catalog item that lives in a different workspace than the
+    # draft below (import_run always hardcodes "default" today — see
+    # _base_row's WKSP-303 comment — so this is a direct row mutation, the
+    # same technique other tests in this module use to reach schema state
+    # the public API can't produce yet).
+    with svc._db(tmp_foundry) as conn:
+        conn.execute(
+            "UPDATE catalog_items SET workspace_id = ? WHERE catalog_item_id = ?",
+            ("other-workspace", source_id),
+        )
+        conn.commit()
+
+    draft = bsvc.create_draft(
+        tmp_foundry, title="Cross-workspace cite", sensitivity="public", workspace_id="default"
+    )
+    draft_id = draft["report_draft_id"]
+    bsvc.add_source_link(
+        tmp_foundry, draft_id, source_card_id="sc_alpha", catalog_item_id=source_id, relation="cites"
+    )
+
+    def _cited_ids(result: dict[str, Any]) -> set[str]:
+        return {link["catalog_item_id"] for link in result["links"]}
+
+    # (a) identity=None: byte-identical to the pre-WKSP-304 query — the cross
+    # workspace link is present (this function draws no scoping conclusions
+    # about a caller that supplies no identity at all).
+    baseline = svc.get_draft_index(tmp_foundry, draft_id)
+    assert baseline is not None
+    assert source_id in _cited_ids(baseline)
+    assert svc.get_draft_index(tmp_foundry, draft_id, identity=None) == baseline
+
+    # (c) identity present, isolation advisory/inactive (today's real
+    # default): still unscoped, same as baseline.
+    inactive = svc.get_draft_index(tmp_foundry, draft_id, identity=_WS_DEFAULT_IDENTITY)
+    assert inactive is not None
+    assert source_id in _cited_ids(inactive)
+
+    # (b) identity present, isolation active: the draft itself is visible
+    # (same workspace as identity), but the joined-side predicate now
+    # excludes the cross-workspace cited item from ``links``.
+    _force_isolation_active(monkeypatch)
+    scoped = svc.get_draft_index(tmp_foundry, draft_id, identity=_WS_DEFAULT_IDENTITY)
+    assert scoped is not None
+    assert source_id not in _cited_ids(scoped)

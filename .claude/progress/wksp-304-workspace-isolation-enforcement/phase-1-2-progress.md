@@ -11,7 +11,8 @@ created: '2026-07-08'
 updated: '2026-07-09'
 prd_ref: docs/project_plans/PRDs/harden-polish/wksp-304-workspace-isolation-enforcement-v1.md
 plan_ref: docs/project_plans/implementation_plans/harden-polish/wksp-304-workspace-isolation-enforcement-v1.md
-commit_refs: []
+commit_refs:
+- '2208927'
 pr_refs: []
 owners:
 - python-backend-engineer
@@ -86,7 +87,7 @@ tasks:
   - phase-owner-batch1
 - id: TASK-2.4
   description: 'Seam task: P2->P3 propagation verification'
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
@@ -95,6 +96,17 @@ tasks:
   - TASK-3.1
   - TASK-3.2
   - TASK-3.3
+  started: 2026-07-09T03:45Z
+  completed: 2026-07-09T05:15Z
+  evidence:
+  - commit: pending-phase-3-commit
+  - test: pytest tests/ -k 'catalog or agent_job or reports' -> 356 passed
+  - note: router->service identity wiring closed in catalog.py/agent_jobs.py/reports.py
+      for every service method that accepts identity (search,get_item,load_draft,list_drafts,export_markdown,load_job);
+      TODOs left in place (relabeled WKSP-304 P4) for methods not scoped in P3 (create/delete/mutation
+      paths)
+  verified_by:
+  - phase-owner-P3-batch3
 parallelization:
   batch_1:
   - TASK-1.1
@@ -106,10 +118,10 @@ parallelization:
   batch_3:
   - TASK-2.4
 total_tasks: 6
-completed_tasks: 5
+completed_tasks: 6
 in_progress_tasks: 0
 blocked_tasks: 0
-progress: 83
+progress: 100
 completion_ref: .claude/progress/wksp-304-workspace-isolation-enforcement/phase-1-2-completion.md
 ---
 

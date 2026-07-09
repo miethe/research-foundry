@@ -43,8 +43,8 @@ def get_catalog_stats(request: Request, paths: FoundryPaths = _PATHS_DEP) -> dic
 
     Never raises — an empty/never-imported catalog returns zeroed counts.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
-    # TODO(WKSP-304 P3): pass identity=identity once catalog_service accepts it
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (svc.stats() has no identity param; not a Phase 3 scoping target)
+    # TODO(WKSP-304 P4): svc.stats() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
     return svc.stats(paths)
 
 
@@ -66,8 +66,7 @@ def get_catalog_search(
 
     Empty corpus / no matches → ``{"items": [], "total": 0, ...}`` — never 404.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
-    # TODO(WKSP-304 P3): pass identity=identity once catalog_service accepts it
+    identity = getattr(request.state, "identity", None)
     return svc.search(
         paths,
         q=q,
@@ -79,6 +78,7 @@ def get_catalog_search(
         sort=sort,
         page=page,
         page_size=page_size,
+        identity=identity,
     )
 
 
@@ -94,9 +94,8 @@ def get_catalog_item(
     threshold — the two cases are indistinguishable to the caller by design
     (fail-closed: existence of hidden sensitive items is not leaked).
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
-    # TODO(WKSP-304 P3): pass identity=identity once catalog_service accepts it
-    item = svc.get_item(paths, catalog_item_id)
+    identity = getattr(request.state, "identity", None)
+    item = svc.get_item(paths, catalog_item_id, identity=identity)
     if item is None:
         raise HTTPException(status_code=404, detail="catalog item not found")
     return item
@@ -110,9 +109,9 @@ def post_catalog_import_run(
     _rbac: None = _RBAC_CATALOG_WRITE,
 ) -> dict[str, Any]:
     """(Re)import one run. Delete-then-insert — idempotent. 404 on unknown run."""
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (svc.import_run() has no identity param; not a Phase 3 scoping target)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once catalog_service accepts it
+        # TODO(WKSP-304 P4): svc.import_run() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         result = svc.import_run(paths, run_id)
     except svc.CatalogError as exc:
         raise HTTPException(status_code=404, detail="run not found") from exc
@@ -131,8 +130,8 @@ def post_catalog_import_all(
     caller (``[]`` when every run imported cleanly) instead of silently
     dropping it.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
-    # TODO(WKSP-304 P3): pass identity=identity once catalog_service accepts it
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (svc.import_all() has no identity param; not a Phase 3 scoping target)
+    # TODO(WKSP-304 P4): svc.import_all() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
     result = svc.import_all(paths)
     return {
         "imported": {"runs": result["runs"], "items": result["items"]},

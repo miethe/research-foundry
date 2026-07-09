@@ -61,7 +61,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from ..api.auth.provider import AuthIdentity
 from ..api.auth.scope import require_workspace_scope
+from ..config import FoundryConfig
 from ..ids import now_iso
 from ..paths import FoundryPaths
 from . import audit_service
@@ -73,6 +75,46 @@ from .export_service import (
     export_run,
     resolve_threshold,
 )
+
+# ---------------------------------------------------------------------------
+# WKSP-304 Phase 3: query-layer workspace_id scoping (flag-gated, inert by
+# default — decision D4)
+# ---------------------------------------------------------------------------
+#
+# Every read function below accepts an optional ``identity: AuthIdentity |
+# None = None`` parameter. When ``identity is None`` (the byte-identical
+# default — no caller passes one yet; Phase 2 routers extract identity but do
+# not thread it into service calls until a later phase), every query below is
+# unchanged from its pre-WKSP-304 shape. When ``identity`` is supplied AND
+# :func:`_isolation_active` resolves ``True``, an ``AND workspace_id = ?``
+# predicate (parameterized — never string-interpolated) is added to the
+# affected query. This module never reimplements the enforcement truth
+# table — it always defers to
+# :meth:`~research_foundry.config.FoundryConfig.resolve_workspace_isolation_enforced`
+# (Phase 1, TASK-1.2).
+
+
+def _isolation_active(paths: FoundryPaths) -> bool:
+    """Resolve whether WKSP-304 workspace isolation is actively enforced.
+
+    Mirrors the same resolution ``api/app.py`` performs once at app-create
+    time (``app.state.workspace_isolation_enforced``), but services have no
+    handle on ``app.state`` (they are also called from the CLI, with no app
+    at all) — so this recomputes the same cheap, idempotent config read per
+    call rather than reimplementing
+    :meth:`FoundryConfig.resolve_workspace_isolation_enforced`'s truth table.
+    ``auth_provider()`` can raise on a misconfigured/incomplete provider
+    block; that failure mode is not this function's concern (the app itself
+    refuses to start in that case), so it degrades to ``"none"`` here rather
+    than raising out of a read path.
+    """
+
+    config = FoundryConfig(paths=paths)
+    try:
+        provider = config.auth_provider()
+    except ValueError:
+        provider = "none"
+    return config.resolve_workspace_isolation_enforced(provider, config.viewer_bind_host())
 
 # --- schema versioning (D1) --------------------------------------------------
 # v2 (public-multiuser-release P3 Wave D, plan D10/D11/landmine #3): adds the
@@ -1232,8 +1274,16 @@ def search(
     page: int = 1,
     page_size: int = _DEFAULT_PAGE_SIZE,
     sensitivity_threshold: str | None = None,
+    identity: AuthIdentity | None = None,
 ) -> dict[str, Any]:
-    """Search the catalog. Over-threshold items are excluded (fail-closed)."""
+    """Search the catalog. Over-threshold items are excluded (fail-closed).
+
+    ``identity`` is WKSP-304 Phase 3 query-layer scoping (see module docstring
+    section above): ``None`` (the default) is byte-identical to the
+    pre-WKSP-304 query; supplied + isolation active adds a parameterized
+    ``AND workspace_id = ?`` predicate to every statement this function runs,
+    including the facet query.
+    """
 
     if sort not in _VALID_SORTS:
         sort = "updated"
@@ -1241,9 +1291,13 @@ def search(
     page_size = max(1, min(page_size, _MAX_PAGE_SIZE))
 
     threshold_rank = _rank(resolve_threshold(paths, sensitivity_threshold))
+    workspace_scoped = identity is not None and _isolation_active(paths)
 
     where = ["sensitivity_rank <= ?"]
     params: list[Any] = [threshold_rank]
+    if workspace_scoped:
+        where.append("workspace_id = ?")
+        params.append(identity.workspace_id)  # type: ignore[union-attr]
     if item_type:
         where.append("item_type = ?")
         params.append(item_type)
@@ -1298,7 +1352,15 @@ def search(
 
         # Facets always reflect the full (sensitivity-gated) catalog, not the
         # current filter/query selection — so filter dropdowns stay complete.
-        facets = _facets(conn, threshold_rank)
+        # Workspace scoping (when active) is NOT a "current filter" — it is an
+        # identity boundary, so it applies here too (AC-4: a facet must never
+        # leak a project/status/sensitivity value that exists only in another
+        # workspace's rows).
+        facets = _facets(
+            conn,
+            threshold_rank,
+            workspace_id=identity.workspace_id if workspace_scoped else None,  # type: ignore[union-attr]
+        )
 
         if match_ids is not None:
             if not match_ids:
@@ -1373,13 +1435,26 @@ def _fts_query(q: str) -> str | None:
     return " AND ".join(tokens)
 
 
-def _facets(conn: sqlite3.Connection, threshold_rank: int) -> dict[str, list[str]]:
+def _facets(
+    conn: sqlite3.Connection, threshold_rank: int, *, workspace_id: str | None = None
+) -> dict[str, list[str]]:
+    """``workspace_id`` is WKSP-304 Phase 3 scoping — ``None`` (the default)
+    is byte-identical to the pre-WKSP-304 query; a non-``None`` value adds a
+    parameterized ``AND workspace_id = ?`` predicate (caller is responsible
+    for only passing one when ``identity`` is present and isolation is
+    active — see :func:`search`)."""
+
+    extra_where = " AND workspace_id = ?" if workspace_id is not None else ""
+
     def _distinct(column: str) -> list[str]:
+        params: tuple[Any, ...] = (
+            (threshold_rank, workspace_id) if workspace_id is not None else (threshold_rank,)
+        )
         rows = conn.execute(
             f"SELECT DISTINCT {column} FROM catalog_items "
-            f"WHERE sensitivity_rank <= ? AND {column} IS NOT NULL "
+            f"WHERE sensitivity_rank <= ?{extra_where} AND {column} IS NOT NULL "
             f"ORDER BY {column}",
-            (threshold_rank,),
+            params,
         ).fetchall()
         return [r[0] for r in rows]
 
@@ -1395,20 +1470,37 @@ def get_item(
     catalog_item_id: str,
     *,
     sensitivity_threshold: str | None = None,
+    identity: AuthIdentity | None = None,
 ) -> dict[str, Any] | None:
     """Return the full detail for *catalog_item_id*, or ``None`` if unknown or
 
     excluded by the resolved sensitivity threshold (fail-closed — callers
     should translate ``None`` to a 404, never distinguishing "doesn't exist"
     from "not visible").
+
+    ``identity`` is WKSP-304 Phase 3 query-layer scoping (see module
+    docstring): ``None`` (the default) is byte-identical to the pre-WKSP-304
+    query for every statement below, including the outgoing/incoming link
+    joins and the citing-drafts join (AC-4 — the predicate is applied to the
+    joined side, not only the primary ``catalog_items`` row, so a cross-
+    workspace link target can't leak through an edge even once isolation is
+    active).
     """
 
     threshold_rank = _rank(resolve_threshold(paths, sensitivity_threshold))
+    workspace_scoped = identity is not None and _isolation_active(paths)
+    workspace_id = identity.workspace_id if workspace_scoped else None  # type: ignore[union-attr]
 
     with _db(paths) as conn:
-        row = conn.execute(
-            "SELECT * FROM catalog_items WHERE catalog_item_id = ?", (catalog_item_id,)
-        ).fetchone()
+        if workspace_id is not None:
+            row = conn.execute(
+                "SELECT * FROM catalog_items WHERE catalog_item_id = ? AND workspace_id = ?",
+                (catalog_item_id, workspace_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM catalog_items WHERE catalog_item_id = ?", (catalog_item_id,)
+            ).fetchone()
         if row is None or row["sensitivity_rank"] > threshold_rank:
             return None
 
@@ -1420,23 +1512,32 @@ def get_item(
         # at the resolved threshold — otherwise the edge leaks a hidden
         # catalog_item_id (and its relation) even though the requested item
         # is visible. Same rule as search()'s WHERE sensitivity_rank <= ?.
+        # AC-4: the same workspace predicate applied to the primary row above
+        # is applied to the JOINed side (``i.workspace_id``) here too — the
+        # requested item may be in-scope while a linked item is not.
+        outgoing_ws_clause = " AND i.workspace_id = ?" if workspace_id is not None else ""
+        outgoing_params: tuple[Any, ...] = (
+            (catalog_item_id, threshold_rank, workspace_id)
+            if workspace_id is not None
+            else (catalog_item_id, threshold_rank)
+        )
         outgoing = conn.execute(
-            """
+            f"""
             SELECT l.to_item_id AS to_item_id, l.relation AS relation
             FROM catalog_links l
             JOIN catalog_items i ON i.catalog_item_id = l.to_item_id
-            WHERE l.from_item_id = ? AND i.sensitivity_rank <= ?
+            WHERE l.from_item_id = ? AND i.sensitivity_rank <= ?{outgoing_ws_clause}
             """,
-            (catalog_item_id, threshold_rank),
+            outgoing_params,
         ).fetchall()
         incoming = conn.execute(
-            """
+            f"""
             SELECT l.from_item_id AS from_item_id, l.relation AS relation
             FROM catalog_links l
             JOIN catalog_items i ON i.catalog_item_id = l.from_item_id
-            WHERE l.to_item_id = ? AND i.sensitivity_rank <= ?
+            WHERE l.to_item_id = ? AND i.sensitivity_rank <= ?{outgoing_ws_clause}
             """,
-            (catalog_item_id, threshold_rank),
+            outgoing_params,
         ).fetchall()
 
         # D11 reverse-catalog: drafts that cite this item via catalog_links.
@@ -1447,14 +1548,21 @@ def get_item(
         # repopulates the forward rows this query reads).
         # Drafts are gated by their own sensitivity_rank so a draft above the
         # resolved threshold cannot leak its existence through this field.
+        # AC-4: same workspace predicate applied to the joined ``d`` side.
+        citing_ws_clause = " AND d.workspace_id = ?" if workspace_id is not None else ""
+        citing_params: tuple[Any, ...] = (
+            (catalog_item_id, threshold_rank, workspace_id)
+            if workspace_id is not None
+            else (catalog_item_id, threshold_rank)
+        )
         citing_drafts_rows = conn.execute(
-            """
+            f"""
             SELECT d.report_draft_id, d.title, l.relation, d.project_id
             FROM catalog_links l
             JOIN catalog_report_drafts d ON d.report_draft_id = l.from_item_id
-            WHERE l.to_item_id = ? AND d.sensitivity_rank <= ?
+            WHERE l.to_item_id = ? AND d.sensitivity_rank <= ?{citing_ws_clause}
             """,
-            (catalog_item_id, threshold_rank),
+            citing_params,
         ).fetchall()
 
     summary = _row_to_summary(row)
@@ -1472,10 +1580,12 @@ def get_item(
             for r in citing_drafts_rows
         ],
     }
-    # WKSP-301 advisory-mode workspace scope check (non-blocking; identity=None
-    # until WKSP-304 wires the caller identity through the service layer).
+    # WKSP-301 advisory-mode workspace scope check (non-blocking today — see
+    # scope.py's own docstring; WKSP-304 P3 wires the real caller identity
+    # through here instead of a hardcoded None, so the advisory log reflects
+    # the actual caller once a future phase threads identity from the router).
     require_workspace_scope(
-        None, summary, record_type="catalog_item", record_id=catalog_item_id
+        identity, summary, record_type="catalog_item", record_id=catalog_item_id
     )
     return summary
 
@@ -1654,21 +1764,60 @@ def remove_draft_index(paths: FoundryPaths, report_draft_id: str) -> None:
             raise
 
 
-def get_draft_index(paths: FoundryPaths, report_draft_id: str) -> dict[str, Any] | None:
-    """Return the indexed summary row for *report_draft_id*, or ``None``."""
+def get_draft_index(
+    paths: FoundryPaths,
+    report_draft_id: str,
+    *,
+    identity: AuthIdentity | None = None,
+) -> dict[str, Any] | None:
+    """Return the indexed summary row for *report_draft_id*, or ``None``.
+
+    ``identity`` is WKSP-304 Phase 3 query-layer scoping (see module
+    docstring): ``None`` (the default) is byte-identical to the pre-WKSP-304
+    query, including the outgoing ``catalog_links`` query below. TASK-3.4
+    (AC-4): the pre-WKSP-304 links query never joined ``catalog_items``, so
+    it cannot gain an unconditional ``JOIN`` without risking a behavior
+    change for the ``identity=None``/inactive baseline (a dangling
+    ``to_item_id`` with no matching ``catalog_items`` row — however
+    unlikely — would silently vanish from the result under an unconditional
+    INNER JOIN). Instead the JOIN only exists on the actively-scoped branch:
+    a draft can cite a catalog item that lives in a different workspace, and
+    without this the linked item's ``catalog_item_id`` would leak through
+    ``get_draft_index``'s ``links`` field even once isolation is active.
+    """
+
+    workspace_scoped = identity is not None and _isolation_active(paths)
 
     with _db(paths) as conn:
-        row = conn.execute(
-            "SELECT * FROM catalog_report_drafts WHERE report_draft_id = ?",
-            (report_draft_id,),
-        ).fetchone()
+        if workspace_scoped:
+            row = conn.execute(
+                "SELECT * FROM catalog_report_drafts WHERE report_draft_id = ? "
+                "AND workspace_id = ?",
+                (report_draft_id, identity.workspace_id),  # type: ignore[union-attr]
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM catalog_report_drafts WHERE report_draft_id = ?",
+                (report_draft_id,),
+            ).fetchone()
         if row is None:
             return None
         result = {col: row[col] for col in _DRAFT_INDEX_COLUMNS}
-        link_rows = conn.execute(
-            "SELECT to_item_id, relation FROM catalog_links WHERE from_item_id = ?",
-            (report_draft_id,),
-        ).fetchall()
+        if workspace_scoped:
+            link_rows = conn.execute(
+                """
+                SELECT l.to_item_id AS to_item_id, l.relation AS relation
+                FROM catalog_links l
+                JOIN catalog_items i ON i.catalog_item_id = l.to_item_id
+                WHERE l.from_item_id = ? AND i.workspace_id = ?
+                """,
+                (report_draft_id, identity.workspace_id),  # type: ignore[union-attr]
+            ).fetchall()
+        else:
+            link_rows = conn.execute(
+                "SELECT to_item_id, relation FROM catalog_links WHERE from_item_id = ?",
+                (report_draft_id,),
+            ).fetchall()
     result["links"] = [
         {"catalog_item_id": r["to_item_id"], "relation": r["relation"]} for r in link_rows
     ]
@@ -1680,12 +1829,22 @@ def list_draft_index(
     *,
     status: str | None = None,
     sensitivity_threshold: str | None = None,
+    identity: AuthIdentity | None = None,
 ) -> list[dict[str, Any]]:
-    """List indexed draft summaries (fail-closed on the resolved threshold)."""
+    """List indexed draft summaries (fail-closed on the resolved threshold).
+
+    ``identity`` is WKSP-304 Phase 3 query-layer scoping (see module
+    docstring): ``None`` (the default) is byte-identical to the pre-WKSP-304
+    query.
+    """
 
     threshold_rank = _rank(resolve_threshold(paths, sensitivity_threshold))
+    workspace_scoped = identity is not None and _isolation_active(paths)
     where = ["sensitivity_rank <= ?"]
     params: list[Any] = [threshold_rank]
+    if workspace_scoped:
+        where.append("workspace_id = ?")
+        params.append(identity.workspace_id)  # type: ignore[union-attr]
     if status:
         where.append("status = ?")
         params.append(status)

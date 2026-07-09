@@ -42,6 +42,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from ..auth.provider import AuthIdentity
 from ..auth.rbac import require_role
 from ...errors import NotFoundError
 from ...paths import FoundryPaths
@@ -84,10 +85,20 @@ def _get_service(paths: FoundryPaths) -> AgentJobService:
     return AgentJobService(paths)
 
 
-def _load_job_or_404(service: AgentJobService, job_id: str) -> Any:
-    """Load a job from disk; map ValueError/KeyError to indistinguishable 404."""
+def _load_job_or_404(
+    service: AgentJobService, job_id: str, *, identity: AuthIdentity | None = None
+) -> Any:
+    """Load a job from disk; map ValueError/KeyError to indistinguishable 404.
+
+    ``identity`` is WKSP-304 Phase 3 query-layer scoping (see
+    ``AgentJobService.load_job``'s own docstring): threaded straight through so
+    a cross-workspace caller's lookup 404s exactly like a missing job once
+    isolation enforcement is active. ``identity=None`` (the default) is
+    byte-identical to the pre-WKSP-304 call — inert until a future phase
+    activates enforcement.
+    """
     try:
-        return service.load_job(job_id)
+        return service.load_job(job_id, identity=identity)
     except (ValueError, KeyError):
         raise _not_found(job_id)
 
@@ -151,7 +162,7 @@ def launch_job(
     Returns the created :class:`~research_foundry.services.agent_job_schemas.AgentJob`
     record on success (HTTP 201).
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (create_job/spawn_job have no identity param; not Phase 3 scoping targets)
     # Build governance context from the policy_snapshot.
     ps = body.policy_snapshot
     ctx = GuardContext(
@@ -189,7 +200,7 @@ def launch_job(
 
     # Create and persist the job record.
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
+        # TODO(WKSP-304 P4): AgentJobService.create_job() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         job = service.create_job(
             provider=body.provider,
             model_profile=body.model_profile,
@@ -220,7 +231,7 @@ def launch_job(
 
     # Spawn subprocess (only if not an in-process provider).
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
+        # TODO(WKSP-304 P4): AgentJobService.spawn_job() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         service.spawn_job(job, credential_bytes)
     except InProcessProviderError as exc:
         raise HTTPException(
@@ -265,10 +276,9 @@ def get_job(
     Returns the same indistinguishable 404 for malformed IDs and missing jobs
     (no information leakage about whether the ID format is wrong vs. not found).
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)
     service = _get_service(paths)
-    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
-    job = _load_job_or_404(service, job_id)
+    job = _load_job_or_404(service, job_id, identity=identity)
     return job.to_dict()
 
 
@@ -284,13 +294,12 @@ def list_artifacts(
     returned.  Returns the same indistinguishable 404 for malformed IDs and
     missing jobs (no information leakage).
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)
     service = _get_service(paths)
     # Verify job exists first (404 gate).
-    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
-    _load_job_or_404(service, job_id)
+    _load_job_or_404(service, job_id, identity=identity)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
+        # TODO(WKSP-304 P4): AgentJobService.list_staged_artifacts() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return service.list_staged_artifacts(job_id)
     except (ValueError, KeyError):
         raise _not_found(job_id)
@@ -388,11 +397,10 @@ async def stream_events(
     The stream closes when the job reaches a terminal state or the poll
     limit (300 s) is reached.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)
     service = _get_service(paths)
     # Verify job exists before opening the stream (404 gate).
-    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
-    _load_job_or_404(service, job_id)
+    _load_job_or_404(service, job_id, identity=identity)
 
     return StreamingResponse(
         _sse_event_generator(job_id, service, paths),
@@ -428,20 +436,19 @@ def cancel_job(
 
     Returns 200 on success, 404 if job not found.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)
     service = _get_service(paths)
     # 404 gate.
-    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
-    _load_job_or_404(service, job_id)
+    _load_job_or_404(service, job_id, identity=identity)
 
-    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
+    # TODO(WKSP-304 P4): AgentJobService.terminate_job() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
     service.terminate_job(job_id)
-    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
+    # TODO(WKSP-304 P4): AgentJobService.cleanup_job() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
     service.cleanup_job(job_id)
 
     # Update on-disk status to canceled.
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
+        # TODO(WKSP-304 P4): AgentJobService.update_job_status() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         service.update_job_status(job_id, AgentJobStatus.canceled)
     except (KeyError, ValueError) as exc:
         logger.warning("Could not update status for canceled job %s: %s", job_id, exc)
@@ -475,13 +482,12 @@ def accept_job(
 
     Returns 200 with a summary of what was accepted.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)
     service = _get_service(paths)
-    # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
-    _load_job_or_404(service, job_id)
+    _load_job_or_404(service, job_id, identity=identity)
 
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once agent_job_service accepts it
+        # TODO(WKSP-304 P4): AgentJobService.accept_job() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         result = service.accept_job(
             job_id,
             accepted_by=body.accepted_by,

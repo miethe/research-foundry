@@ -229,7 +229,7 @@ def create_draft(
     - ``run``        → seed blocks from run's report_draft + report_anchors
     - ``collection`` → one evidence_summary block per catalog item
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (create_draft_from_run/create_draft_from_collection/create_draft have no identity param; not Phase 3 scoping targets)
     try:
         if body.origin == "run":
             if not body.source_run_id:
@@ -237,7 +237,7 @@ def create_draft(
                     status_code=422,
                     detail="origin 'run' requires source_run_id",
                 )
-            # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+            # TODO(WKSP-304 P4): bsvc.create_draft_from_run() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
             return bsvc.create_draft_from_run(
                 paths,
                 run_id=body.source_run_id,
@@ -258,7 +258,7 @@ def create_draft(
                     status_code=422,
                     detail="origin 'collection' requires catalog_item_ids",
                 )
-            # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+            # TODO(WKSP-304 P4): bsvc.create_draft_from_collection() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
             return bsvc.create_draft_from_collection(
                 paths,
                 catalog_item_ids=ids_,
@@ -271,7 +271,7 @@ def create_draft(
                 sensitivity_threshold=body.sensitivity_threshold or "client_sensitive",
             )
         # blank / template / unknown origin → plain create_draft
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.create_draft() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.create_draft(
             paths,
             title=body.title,
@@ -301,10 +301,13 @@ def list_drafts(
     is silently omitted, mirroring ``catalog_service.search``'s gating.
     Empty/fully-gated corpus → ``[]``.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)
     threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
-    # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
-    return [d for d in bsvc.list_drafts(paths) if _sensitivity_rank(d.get("sensitivity")) <= threshold_rank]
+    return [
+        d
+        for d in bsvc.list_drafts(paths, identity=identity)
+        if _sensitivity_rank(d.get("sensitivity")) <= threshold_rank
+    ]
 
 
 @router.get("/reports/{report_id}", summary="Get report draft detail")
@@ -324,11 +327,10 @@ def get_draft(
     (no-existence-leak, landmine #4; R2 fix: this endpoint previously applied
     zero sensitivity gating, unlike ``catalog_service.get_item``).
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)
     threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
-        draft = bsvc.load_draft(paths, report_id)
+        draft = bsvc.load_draft(paths, report_id, identity=identity)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     if _sensitivity_rank(draft.get("sensitivity")) > threshold_rank:
@@ -350,9 +352,9 @@ def delete_draft(
     service layer's :func:`~research_foundry.services.builder_service._draft_dir`
     raises :class:`NotFoundError` before anything is touched on disk.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.delete_draft() has no identity param; not a Phase 3 scoping target)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.delete_draft() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         bsvc.delete_draft(paths, report_id)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
@@ -378,17 +380,16 @@ def list_versions(
     404 for unknown ids AND drafts whose sensitivity exceeds the resolved threshold
     (no-existence-leak, mirrors ``get_draft`` gating).
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)
     threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
-        draft = bsvc.load_draft(paths, report_id)
+        draft = bsvc.load_draft(paths, report_id, identity=identity)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     if _sensitivity_rank(draft.get("sensitivity")) > threshold_rank:
         raise _not_found(report_id)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.list_revisions() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.list_revisions(paths, report_id)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
@@ -403,9 +404,9 @@ def create_version(
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Snapshot the current draft state into an immutable revision file."""
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.create_revision() has no identity param; not a Phase 3 scoping target)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.create_revision() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.create_revision(
             paths, report_id, created_by=body.created_by, note=body.note
         )
@@ -429,17 +430,16 @@ def get_version(
     404 for unknown ids AND drafts whose sensitivity exceeds the resolved threshold
     (no-existence-leak, mirrors ``get_draft`` gating).
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)
     threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
-        draft = bsvc.load_draft(paths, report_id)
+        draft = bsvc.load_draft(paths, report_id, identity=identity)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     if _sensitivity_rank(draft.get("sensitivity")) > threshold_rank:
         raise _not_found(report_id)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.get_revision() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.get_revision(paths, report_id, version_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail="revision not found") from exc
@@ -460,9 +460,9 @@ def restore_version(
 
     Callers wanting a pre-restore checkpoint should POST /versions first.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.restore_revision() has no identity param; not a Phase 3 scoping target)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.restore_revision() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.restore_revision(paths, report_id, version_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail="revision not found") from exc
@@ -482,9 +482,9 @@ def add_block(
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Append a new block to *report_id*.  Returns the full updated draft."""
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.add_block() has no identity param; not a Phase 3 scoping target)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.add_block() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.add_block(
             paths,
             report_id,
@@ -513,9 +513,9 @@ def reorder_blocks(
     Must be a permutation of all block ids in the draft (builder_service
     enforces this).
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.reorder_blocks() has no identity param; not a Phase 3 scoping target)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.reorder_blocks() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.reorder_blocks(
             paths, report_id, body.block_ids, updated_by=body.updated_by
         )
@@ -535,9 +535,9 @@ def update_block(
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Patch one or more fields of *block_id*.  Returns the full updated draft."""
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.update_block() has no identity param; not a Phase 3 scoping target)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.update_block() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.update_block(
             paths,
             report_id,
@@ -578,9 +578,9 @@ def delete_block(
     silently stomped the cache with ``undefined``. Matches the sibling
     ``add_block``/``update_block``/``reorder_blocks`` contract.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.delete_block() has no identity param; not a Phase 3 scoping target)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.delete_block() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.delete_block(paths, report_id, block_id)
     except NotFoundError as exc:
         raise HTTPException(
@@ -604,9 +604,9 @@ def add_claim_link(
 ) -> dict[str, Any]:
     """Link *claim_id* to *block_id*.  Inserts a ``[claim:<id>]`` tag unless
     ``insert_tag=false``.  Returns the full updated draft."""
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.add_claim_link() has no identity param; not a Phase 3 scoping target)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.add_claim_link() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.add_claim_link(
             paths,
             report_id,
@@ -641,9 +641,9 @@ def remove_claim_link(
 
     Returns the full updated draft (200) — see ``delete_block`` above for why.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.remove_claim_link() has no identity param; not a Phase 3 scoping target)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.remove_claim_link() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.remove_claim_link(paths, report_id, claim_link_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -663,9 +663,9 @@ def add_source_link(
     _rbac: None = _RBAC_REPORT_WRITE,
 ) -> dict[str, Any]:
     """Link a source card to the draft (optionally anchored to a block)."""
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.add_source_link() has no identity param; not a Phase 3 scoping target)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.add_source_link() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.add_source_link(
             paths,
             report_id,
@@ -697,9 +697,9 @@ def remove_source_link(
 
     Returns the full updated draft (200) — see ``delete_block`` above for why.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (bsvc.remove_source_link() has no identity param; not a Phase 3 scoping target)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): bsvc.remove_source_link() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         return bsvc.remove_source_link(paths, report_id, source_link_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -726,9 +726,9 @@ def verify_draft_endpoint(
     Always returns 200 with a structured result (``passed``, per-check details).
     Use /publish-preview for the fail-closed gate.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (verify_draft() is services.verification, not builder_service, and has no identity param; not a Phase 3 scoping target)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
+        # TODO(WKSP-304 P4): verify_draft() (services.verification) does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         result = verify_draft(
             paths, report_id, sensitivity_threshold=sensitivity_threshold
         )
@@ -864,8 +864,7 @@ def publish_preview(
 
     # Step 4: Generate Markdown preview (no side-effects on draft state).
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
-        preview_md = bsvc.export_markdown(paths, report_id)
+        preview_md = bsvc.export_markdown(paths, report_id, identity=identity)
     except NotFoundError as exc:  # pragma: no cover  — already verified load above
         raise _not_found(report_id) from exc
 
@@ -920,18 +919,16 @@ def export_draft(
     The response carries ``{"report_draft_id": ..., "markdown": "..."}`` so
     callers can display or save the output without additional parsing.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)
     threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
-        draft = bsvc.load_draft(paths, report_id)
+        draft = bsvc.load_draft(paths, report_id, identity=identity)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     if _sensitivity_rank(draft.get("sensitivity")) > threshold_rank:
         raise _not_found(report_id)
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
-        md = bsvc.export_markdown(paths, report_id)
+        md = bsvc.export_markdown(paths, report_id, identity=identity)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     return {"report_draft_id": report_id, "markdown": md}
@@ -971,12 +968,11 @@ def create_share_link(
     """
     from ...services.share_store import create_share_link as _create_link
 
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)
 
     # Load the draft to validate it exists and resolve the default threshold.
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
-        draft = bsvc.load_draft(paths, report_id)
+        draft = bsvc.load_draft(paths, report_id, identity=identity)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
 
@@ -1051,7 +1047,7 @@ def resolve_share_link(
     from ...services.share_store import resolve_share_link as _resolve
     from ...services.export_service import SENSITIVITY_ORDER as _SO
 
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P3 (inert until service signatures accept it)
+    identity = getattr(request.state, "identity", None)
 
     link = _resolve(paths, share_token)
     if link is None:
@@ -1065,8 +1061,7 @@ def resolve_share_link(
 
     # Load the current draft state.
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
-        draft = bsvc.load_draft(paths, report_id)
+        draft = bsvc.load_draft(paths, report_id, identity=identity)
     except NotFoundError:
         # Draft was deleted after the share link was created — treat as expired.
         raise HTTPException(
@@ -1093,8 +1088,7 @@ def resolve_share_link(
 
     # Generate read-only Markdown preview.
     try:
-        # TODO(WKSP-304 P3): pass identity=identity once builder_service accepts it
-        preview_md = bsvc.export_markdown(paths, report_id)
+        preview_md = bsvc.export_markdown(paths, report_id, identity=identity)
     except NotFoundError:  # pragma: no cover — draft existence verified above
         raise HTTPException(
             status_code=404, detail="share link not found, revoked, or expired"

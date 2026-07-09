@@ -51,6 +51,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from research_foundry.api.auth.provider import AuthIdentity
 from research_foundry.config import FoundryConfig
 from research_foundry.paths import FoundryPaths
 from research_foundry.services.agent_job_schemas import (
@@ -277,6 +278,31 @@ class AgentJobService:
     def config(self) -> FoundryConfig:
         """Cached :class:`FoundryConfig` for governance pattern access."""
         return self._config
+
+    # ------------------------------------------------------------------
+    # WKSP-304 Phase 3: query-layer workspace_id scoping (flag-gated, inert
+    # by default — decision D4). Same idiom as catalog_service.py's and
+    # builder_service.py's identically-purposed helper (single-owner phase —
+    # see phase-3-query-layer-scoping.md "why single-owner"); this class
+    # already resolves+caches a FoundryConfig at __init__, so this uses
+    # self._config instead of constructing a fresh one per call.
+    # ------------------------------------------------------------------
+
+    def _isolation_active(self) -> bool:
+        """Resolve whether WKSP-304 workspace isolation is actively enforced.
+
+        Never reimplements the enforcement truth table — always defers to
+        :meth:`FoundryConfig.resolve_workspace_isolation_enforced` (Phase 1,
+        TASK-1.2).
+        """
+
+        try:
+            provider = self._config.auth_provider()
+        except ValueError:
+            provider = "none"
+        return self._config.resolve_workspace_isolation_enforced(
+            provider, self._config.viewer_bind_host()
+        )
 
     # ------------------------------------------------------------------
     # Spawn
@@ -803,13 +829,28 @@ class AgentJobService:
         logger.info("Created agent job %s (provider=%s)", job_id, provider)
         return job
 
-    def load_job(self, job_id: str) -> AgentJob:
+    def load_job(self, job_id: str, *, identity: AuthIdentity | None = None) -> AgentJob:
         """Load an :class:`AgentJob` from disk.
 
         Parameters
         ----------
         job_id:
             The agent job id (must satisfy :func:`_validate_path_component`).
+        identity:
+            WKSP-304 Phase 3 query-layer scoping (see :func:`_isolation_active`).
+            This service has no SQL query to add an ``AND workspace_id = ?``
+            predicate to (agent jobs are plain JSON files under
+            ``agent_job_dir(job_id)``, per this module's docstring) — the
+            file-storage equivalent is applied here: when ``identity`` is not
+            ``None`` and isolation is actively enforced, a job whose
+            ``workspace_id`` does not match ``identity.workspace_id`` raises
+            :class:`KeyError`, the same exception this method already raises
+            for a genuinely missing job — the router's existing
+            ``_load_job_or_404`` (catching ``ValueError``/``KeyError``)
+            therefore needs no change to produce the same indistinguishable
+            404 once a future phase threads a real identity through.
+            ``identity=None`` (the default) is byte-identical to the
+            pre-WKSP-304 behavior.
 
         Returns
         -------
@@ -821,7 +862,9 @@ class AgentJobService:
         ValueError
             If *job_id* fails path-component validation.
         KeyError
-            If the job directory or ``job.json`` does not exist.
+            If the job directory or ``job.json`` does not exist, or (when
+            ``identity`` is supplied and isolation is active) the job belongs
+            to a different workspace.
         """
         _validate_path_component(job_id, "job_id")
         job_file = self._paths.agent_job_dir(job_id) / "job.json"
@@ -829,7 +872,11 @@ class AgentJobService:
             raise KeyError(f"agent job not found: {job_id}")
         with job_file.open(encoding="utf-8") as fh:
             data = json.load(fh)
-        return AgentJob.from_dict(data)
+        job = AgentJob.from_dict(data)
+        if identity is not None and self._isolation_active():
+            if job.workspace_id != identity.workspace_id:
+                raise KeyError(f"agent job not found: {job_id}")
+        return job
 
     def update_job_status(self, job_id: str, status: AgentJobStatus) -> AgentJob:
         """Atomically update the on-disk status for *job_id* and return the new record.

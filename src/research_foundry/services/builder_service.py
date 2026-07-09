@@ -44,7 +44,9 @@ from typing import Any
 
 from markdown_it import MarkdownIt
 
+from ..api.auth.provider import AuthIdentity
 from ..api.auth.scope import require_workspace_scope
+from ..config import FoundryConfig
 from ..errors import NotFoundError, RFError
 from ..frontmatter import join_frontmatter
 from ..ids import now_iso, short_hash
@@ -54,6 +56,31 @@ from ..yamlio import dumps_yaml, load_yaml
 from . import audit_service, catalog_service
 from .audit_service import AuditEvent
 from .export_service import SENSITIVITY_ORDER, export_run
+
+# ---------------------------------------------------------------------------
+# WKSP-304 Phase 3: query-layer workspace_id scoping (flag-gated, inert by
+# default — decision D4). Same idiom as catalog_service.py's identically-
+# named helper (single-owner phase — see phase-3-query-layer-scoping.md
+# "why single-owner"): duplicated rather than shared so each of the 3
+# services in this phase stays self-contained; TASK-3.5 (backend-architect)
+# decides whether/how to consolidate into one shared helper for Phase 4.
+# ---------------------------------------------------------------------------
+
+
+def _isolation_active(paths: FoundryPaths) -> bool:
+    """Resolve whether WKSP-304 workspace isolation is actively enforced.
+
+    Never reimplements the enforcement truth table — always defers to
+    :meth:`~research_foundry.config.FoundryConfig.resolve_workspace_isolation_enforced`
+    (Phase 1, TASK-1.2).
+    """
+
+    config = FoundryConfig(paths=paths)
+    try:
+        provider = config.auth_provider()
+    except ValueError:
+        provider = "none"
+    return config.resolve_workspace_isolation_enforced(provider, config.viewer_bind_host())
 
 # Reused verbatim from export_service (D8's text_hash recipe) so a claim
 # link's `quote_text_hash` and P2's `report_anchors[].text_hash` share one
@@ -269,8 +296,28 @@ def _mint_version_id(report_draft_id: str, seq: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-def load_draft(paths: FoundryPaths, report_draft_id: str) -> dict[str, Any]:
-    """Load a draft's current state from disk. Raises :class:`NotFoundError`."""
+def load_draft(
+    paths: FoundryPaths,
+    report_draft_id: str,
+    *,
+    identity: AuthIdentity | None = None,
+) -> dict[str, Any]:
+    """Load a draft's current state from disk. Raises :class:`NotFoundError`.
+
+    ``identity`` is WKSP-304 Phase 3 query-layer scoping (see
+    :func:`_isolation_active`). This module has no SQL query to add an
+    ``AND workspace_id = ?`` predicate to (drafts are file-canonical, per the
+    module docstring) — the file-storage equivalent of that predicate is
+    applied here: when ``identity`` is not ``None`` and isolation is
+    actively enforced, a draft whose ``workspace_id`` does not match
+    ``identity.workspace_id`` is treated exactly like a missing draft
+    (:class:`NotFoundError`), the same fail-closed contract every other
+    "not visible" case in this codebase uses (e.g. catalog_service.get_item's
+    over-threshold items). ``identity=None`` (the default) is byte-identical
+    to the pre-WKSP-304 behavior — every existing caller (:func:`list_drafts`,
+    :func:`export_markdown`, revision helpers) that does not pass ``identity``
+    is unaffected.
+    """
 
     path = _draft_yaml_path(paths, report_draft_id)
     if not path.exists():
@@ -278,10 +325,16 @@ def load_draft(paths: FoundryPaths, report_draft_id: str) -> dict[str, Any]:
     data = load_yaml(path)
     if not isinstance(data, dict):
         raise BuilderError(f"malformed draft.yaml: {path}")
-    # WKSP-301 advisory-mode workspace scope check (non-blocking; identity=None
-    # until WKSP-304 wires the caller identity through the service layer).
+
+    if identity is not None and _isolation_active(paths):
+        if data.get("workspace_id") != identity.workspace_id:
+            raise NotFoundError(f"report draft not found: {report_draft_id}")
+
+    # WKSP-301 advisory-mode workspace scope check (non-blocking today — see
+    # scope.py's own docstring; WKSP-304 P3 wires the real caller identity
+    # through here instead of a hardcoded None).
     require_workspace_scope(
-        None, data, record_type="draft", record_id=report_draft_id
+        identity, data, record_type="draft", record_id=report_draft_id
     )
     return data
 
@@ -316,8 +369,20 @@ def _touch(draft: dict[str, Any], updated_by: str | None) -> None:
         draft["updated_by"] = updated_by
 
 
-def list_drafts(paths: FoundryPaths) -> list[dict[str, Any]]:
-    """Scan on-disk drafts (the source of truth) and return summaries."""
+def list_drafts(
+    paths: FoundryPaths, *, identity: AuthIdentity | None = None
+) -> list[dict[str, Any]]:
+    """Scan on-disk drafts (the source of truth) and return summaries.
+
+    ``identity`` is WKSP-304 Phase 3 query-layer scoping: threading it
+    straight into :func:`load_draft` is deliberate — that function already
+    raises :class:`NotFoundError` for a workspace mismatch when isolation is
+    active, and this loop already treats ``NotFoundError`` as "skip", so a
+    cross-workspace draft is filtered out of the listing for free, with the
+    single predicate living in one place (:func:`load_draft`) rather than
+    duplicated here. ``identity=None`` (the default) is byte-identical to the
+    pre-WKSP-304 listing.
+    """
 
     root = paths.report_drafts
     if not root.is_dir():
@@ -327,7 +392,7 @@ def list_drafts(paths: FoundryPaths) -> list[dict[str, Any]]:
         if not d.is_dir():
             continue
         try:
-            draft = load_draft(paths, d.name)
+            draft = load_draft(paths, d.name, identity=identity)
         except (NotFoundError, BuilderError):
             continue
         out.append(_summary_of(draft))
@@ -1026,15 +1091,25 @@ def create_draft_from_collection(
 # ---------------------------------------------------------------------------
 
 
-def export_markdown(paths: FoundryPaths, report_draft_id: str) -> str:
+def export_markdown(
+    paths: FoundryPaths,
+    report_draft_id: str,
+    *,
+    identity: AuthIdentity | None = None,
+) -> str:
     """Render the draft to Markdown with frontmatter + stable ``[claim:]`` tags.
 
     Blocks already carry ``[claim:<id>]`` tags inline (added by
     :func:`add_claim_link`), so this is a structural frontmatter+body join,
     not a second claim-linking pass.
+
+    ``identity`` is WKSP-304 Phase 3 query-layer scoping — threaded straight
+    into :func:`load_draft`, which raises :class:`NotFoundError` for a
+    cross-workspace draft when isolation is active. ``identity=None`` (the
+    default) is byte-identical to the pre-WKSP-304 export.
     """
 
-    draft = load_draft(paths, report_draft_id)
+    draft = load_draft(paths, report_draft_id, identity=identity)
     frontmatter = {
         "schema_version": "1.0",
         "type": "research_report",

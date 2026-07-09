@@ -558,3 +558,114 @@ def test_reindex_all_drafts_links_derived_from_run_report_item(tmp_foundry: Foun
     expected_report_item = csvc.report_item_id("rf_run_derived")
     relations = {(link["catalog_item_id"], link["relation"]) for link in index["links"]}
     assert (expected_report_item, "derived_from") in relations
+
+
+# ---------------------------------------------------------------------------
+# WKSP-304 Phase 3: query-layer workspace_id scoping (TASK-3.2)
+# ---------------------------------------------------------------------------
+#
+# builder_service drafts are file-canonical (no SQL) — the flag-gated
+# predicate's file-storage equivalent is applied in load_draft(): a
+# cross-workspace draft is treated exactly like a missing one
+# (NotFoundError). list_drafts() and export_markdown() thread `identity`
+# straight into load_draft() rather than duplicating the check, so a single
+# test per function proves (a) identity=None byte-identical, (b) identity +
+# active isolation scopes, (c) identity + advisory/inactive (today's real
+# default) stays unscoped.
+
+from research_foundry.api.auth.provider import AuthIdentity  # noqa: E402
+from research_foundry.config import FoundryConfig  # noqa: E402
+
+_WS_MINE = AuthIdentity("u1", "ws-mine", ("owner",))
+_WS_OTHER = AuthIdentity("u2", "ws-other", ("owner",))
+
+
+def _force_isolation_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Simulate ``workspace_isolation_enforcement`` resolving active.
+
+    Monkeypatches :meth:`FoundryConfig.resolve_workspace_isolation_enforced`
+    itself (never a private helper), so the test exercises the real Phase 1
+    resolver's call contract. Every other test in the suite keeps the
+    real, unmodified default (advisory — tmp_foundry's auth.provider is
+    unset).
+    """
+
+    monkeypatch.setattr(
+        FoundryConfig,
+        "resolve_workspace_isolation_enforced",
+        lambda self, provider, bind_host: True,
+    )
+
+
+def test_load_draft_identity_none_is_byte_identical(tmp_foundry: FoundryPaths) -> None:
+    draft = bsvc.create_draft(tmp_foundry, title="Scoping draft", workspace_id="ws-mine")
+    draft_id = draft["report_draft_id"]
+
+    baseline = bsvc.load_draft(tmp_foundry, draft_id)
+    assert bsvc.load_draft(tmp_foundry, draft_id, identity=None) == baseline
+
+
+def test_load_draft_identity_active_hides_cross_workspace_draft(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    draft = bsvc.create_draft(tmp_foundry, title="Scoping draft", workspace_id="ws-mine")
+    draft_id = draft["report_draft_id"]
+
+    _force_isolation_active(monkeypatch)
+
+    assert bsvc.load_draft(tmp_foundry, draft_id, identity=_WS_MINE)["report_draft_id"] == draft_id
+    with pytest.raises(NotFoundError):
+        bsvc.load_draft(tmp_foundry, draft_id, identity=_WS_OTHER)
+
+
+def test_load_draft_identity_present_but_inactive_stays_unscoped(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    draft = bsvc.create_draft(tmp_foundry, title="Scoping draft", workspace_id="ws-mine")
+    draft_id = draft["report_draft_id"]
+
+    # No monkeypatch: real default resolves advisory (auth.provider unset).
+    loaded = bsvc.load_draft(tmp_foundry, draft_id, identity=_WS_OTHER)
+    assert loaded["report_draft_id"] == draft_id
+
+
+def test_list_drafts_workspace_scoping(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """(a)/(b)/(c) for list_drafts(), which threads identity into load_draft()."""
+
+    mine = bsvc.create_draft(tmp_foundry, title="Mine", workspace_id="ws-mine")
+    other = bsvc.create_draft(tmp_foundry, title="Other", workspace_id="ws-other")
+
+    baseline = {d["report_draft_id"] for d in bsvc.list_drafts(tmp_foundry)}
+    assert baseline == {mine["report_draft_id"], other["report_draft_id"]}
+
+    # (a) identity=None byte-identical.
+    assert {d["report_draft_id"] for d in bsvc.list_drafts(tmp_foundry, identity=None)} == baseline
+
+    # (c) identity present, isolation advisory/inactive: unscoped (both visible).
+    unscoped = {d["report_draft_id"] for d in bsvc.list_drafts(tmp_foundry, identity=_WS_MINE)}
+    assert unscoped == baseline
+
+    # (b) identity present, isolation active: only the matching-workspace draft.
+    _force_isolation_active(monkeypatch)
+    scoped = {d["report_draft_id"] for d in bsvc.list_drafts(tmp_foundry, identity=_WS_MINE)}
+    assert scoped == {mine["report_draft_id"]}
+
+
+def test_export_markdown_workspace_scoping(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    draft = bsvc.create_draft(tmp_foundry, title="Exportable", workspace_id="ws-mine")
+    draft_id = draft["report_draft_id"]
+
+    baseline = bsvc.export_markdown(tmp_foundry, draft_id)
+    assert bsvc.export_markdown(tmp_foundry, draft_id, identity=None) == baseline
+    # (c) advisory/inactive: unscoped.
+    assert bsvc.export_markdown(tmp_foundry, draft_id, identity=_WS_OTHER) == baseline
+
+    # (b) active: cross-workspace export is denied the same way load_draft is.
+    _force_isolation_active(monkeypatch)
+    assert bsvc.export_markdown(tmp_foundry, draft_id, identity=_WS_MINE) == baseline
+    with pytest.raises(NotFoundError):
+        bsvc.export_markdown(tmp_foundry, draft_id, identity=_WS_OTHER)
