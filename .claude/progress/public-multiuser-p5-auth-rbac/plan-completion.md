@@ -48,6 +48,11 @@ Codex caught **17 genuine defects** across the plan that in-loop validators miss
 2. **FU-2 — OIDC/BYO adapter:** design-spec only (`docs/project_plans/design-specs/oidc-byo-adapter-implementation.md`, `maturity: idea`). Append to plan `deferred_items_spec_refs`.
 3. **`cli.py`/`cli` conflict:** resolved in P5.6 (workspace subcommands now invokable).
 4. **Live-mode E2E + live-key redaction:** unrun (no live RF API / Clerk tenant in env); labeled limitations.
+5. **Wire runs-viewer (:3030) to the live RF API (:7432).** *Added 2026-07-08.* The RF backend API is now
+   deployed on the node (`research-foundry-api.service`, `local_static` owner token, RBAC enforced,
+   `http://10.42.10.76:7432`); the viewer stays a static redaction-at-export snapshot for now. To wire live:
+   rebuild the SPA with `VITE_RUNS_FRONTEND_LOOPBACK_API=true` + `VITE_RUNS_LOOPBACK_API_BASE=http://10.42.10.76:7432/api`
+   + `VITE_AUTH_PROVIDER` + browser token handling. Tracked in IntentTree (side_quest).
 
 ## Validation summary
 - 284 must-stay-green backend tests passing; P5 regression suite 57/57; E2E static 32 passed/4 skipped.
