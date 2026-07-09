@@ -40,7 +40,8 @@ related_documents:
 spike_ref: null
 prd_ref: null
 plan_ref: null
-commit_refs: []
+commit_refs:
+  - "870837373190d8322810b286a24d954fc870fe91"
 pr_refs: []
 files_affected:
   - src/research_foundry/services/run_launch.py
