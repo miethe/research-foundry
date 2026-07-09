@@ -612,10 +612,17 @@ class FoundryConfig:
         the ``auth`` block, because workspace isolation and RBAC are
         independent security gates (see WKSP-304 decision log).
 
-        This method is INERT as of WKSP-304 TASK-1.1: nothing in the app
-        calls or consumes the parsed value yet.  The resolver
-        (``resolve_workspace_isolation_enforced``) and ``app.state`` wiring
-        land in TASK-1.2.
+        The parsed value is used by :meth:`resolve_workspace_isolation_enforced`
+        to determine whether row-level ``workspace_id`` scoping is actively
+        enforced in the catalog, builder, and agent-job services. When
+        enforced, :func:`~research_foundry.api.auth.scope.require_workspace_scope`
+        denies cross-workspace reads (404), omits unowned rows from list results,
+        and rejects mutations on unowned records. Enforcement is gated by
+        ``app.state.workspace_isolation_enforced`` and controlled by this flag
+        in concert with ``auth.provider`` (see :class:`WorkspaceIsolationEnforcement`
+        enum for the full AUTO truth table). Single-operator-trust callers
+        (identity ``None``) short-circuit before any enforcement check, so
+        ``provider="none"`` deployments stay advisory-only by default.
 
         Raises:
             ValueError: If the raw config value is not a recognised enum
@@ -635,9 +642,13 @@ class FoundryConfig:
         """Resolve whether workspace row-level isolation is actively enforced.
 
         This is called **once** at app-create time and the result is stored
-        on ``app.state.workspace_isolation_enforced``. Structurally mirrors
-        :meth:`resolve_rbac_enforced` (same fail-closed gate, same
-        ``_is_loopback`` reuse) but resolves the orthogonal
+        on ``app.state.workspace_isolation_enforced``. Every subsequent query
+        in the catalog, builder, and agent-job services reads that flag
+        (via :func:`~research_foundry.api.auth.scope.resolve_workspace_isolation_active`)
+        to determine enforcement mode.
+
+        Structurally mirrors :meth:`resolve_rbac_enforced` (same fail-closed
+        gate, same ``_is_loopback`` reuse) but resolves the orthogonal
         ``workspace_isolation_enforcement`` flag instead of
         ``auth.rbac_enforcement`` — see the WKSP-304 decision log for why
         isolation and RBAC are independent security gates.
@@ -647,15 +658,14 @@ class FoundryConfig:
         the identity-None passthrough in ``require_role``), this resolver's
         ``AUTO`` branch returns the literal provider-keyed truth table
         documented on :class:`WorkspaceIsolationEnforcement`: enforcing when
-        ``provider != "none"``, advisory when ``provider == "none"``. There
-        is no analogous identity-passthrough mechanism at the query-scoping
-        layer (that lands in Phase 4), so ``AUTO`` must resolve to a concrete
-        bool here.
-
-        This method is INERT as of WKSP-304 TASK-1.2: the resolved bool is
-        stored on ``app.state`` but nothing in the app reads or consumes it
-        yet to make an enforcement decision. Query-scoping / deny logic for
-        this flag is Phase 4, not this task.
+        ``provider != "none"``, advisory when ``provider == "none"``. When
+        enforced, :func:`~research_foundry.api.auth.scope.require_workspace_scope`
+        denies mismatched or null ``workspace_id`` (404 to the caller). When
+        advisory-only (the default for single-operator-trust deployments with
+        ``provider="none"``), a mismatch is logged but not denied. The
+        identity-None short-circuit in ``require_workspace_scope`` ensures
+        single-operator-trust callers (no auth middleware) never pay for,
+        and are never affected by, this flag lookup.
 
         Parameters
         ----------
@@ -671,8 +681,9 @@ class FoundryConfig:
         Returns
         -------
         bool
-            ``True``  — isolation is enforced (once Phase 4 wires deny logic).
-            ``False`` — isolation stays advisory-only (log-mismatch-but-allow).
+            ``True``  — isolation is enforced; :func:`~research_foundry.api.auth.scope.require_workspace_scope`
+            denies cross-workspace reads and mutations.
+            ``False`` — isolation is advisory-only; scope mismatches are logged but allowed.
 
         Raises
         ------
