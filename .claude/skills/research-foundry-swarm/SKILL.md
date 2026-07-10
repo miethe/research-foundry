@@ -9,6 +9,8 @@ This skill covers **workspace bootstrap** and **swarm orchestration**. It is the
 
 > For the intent → command route table, the 21-step loop, claim-traceability discipline, and per-command syntax, load the `research-foundry` skill.
 
+> **Shared node instance:** a persistent RF instance runs on the agentic node at `http://10.42.10.76:7432` (auth `Bearer $RF_TOKEN_AGENT` from `~/.config/research-foundry/serve.env`; viewer at `:3030`). Prefer it for shared reads (`GET /api/runs|reports|catalog|audit`) and HTTP launch (`POST /api/runs`, which scaffolds a run but does not drive the swarm). Local-workspace bootstrap below is for standing up a *new* workspace or SSH'd on-node work; see the `research-foundry` skill's "Shared node instance" section for the full API surface.
+
 ---
 
 ## Live Integrations (ARC + IntentTree)

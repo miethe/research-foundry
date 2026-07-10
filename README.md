@@ -32,17 +32,36 @@ deterministic, and diff-friendly.
 
 ---
 
-## Status: MVP
+## Status: working platform, growing beyond the MVP core
 
-This is the 7-day MVP described in the spec. Source of truth:
+Research Foundry started as a 7-day MVP CLI (spec below) and that core — capture → triage → plan →
+ingest → extract → claim-map → synthesize → verify → bundle → writeback — is still intact, still
+fully **offline and deterministic by default**, and remains the differentiated value: the
+deterministic report verifier and the claim ledger it checks against. That core has since grown a
+platform around it: ~30 `rf` CLI commands (Report Builder, evidence catalog, audit log, workspace
+migration), an HTTP API + MCP surface (`rf serve`, `rf-mcp`), and a web app
+(`frontend/runs-viewer/`, Vite + React) with a static read-only mode deployed today and an
+opt-in live-loopback mode for authoring. An early self-host/small-team scaffold — auth providers
+(`none`/`local_static`/`clerk`), role-based access control, and workspace row-level isolation — is
+shipped but **advisory-by-default**, not yet hardened for a shared multi-tenant deployment.
+
+Be clear-eyed about maturity: the governance guard, schema validation, claim verification, and the
+full demo loop need no network and no LLM, and are battle-tested. Several platform-expanding pieces
+are newer and less proven — the Search Router's keyed providers, the ARC/IntentTree bidirectional
+integrations, and the NotebookLM sync loop are implemented against inferred external contracts but
+have not yet had first contact with a live remote system from this repo (see
+`docs/project_plans/exploration/web-app-platform-evolution/current-state-and-direction.md` for the
+full capability-maturity map). Live model adapters (Claude Agent SDK, GPT Researcher, PaperQA2,
+OpenCode, LiteLLM router) remain **opt-in extras**, enabled at init time and only used when you ask
+for them — `rf synthesize --llm` is a deterministic no-op by design; only the Claude Agent SDK
+adapter has confirmed live use (the Path B discovery-swarm workflow).
+
+Source of truth:
 
 - Spec: [`docs/projects/research-foundry/research-foundry-mvp-spec.md`](docs/projects/research-foundry/research-foundry-mvp-spec.md)
 - Plan: [`docs/projects/research-foundry/IMPLEMENTATION_PLAN.md`](docs/projects/research-foundry/IMPLEMENTATION_PLAN.md)
-
-The MVP runs **fully offline and deterministic by default**. The governance guard, schema
-validation, claim verification, and the full demo loop require no network and no LLM. Live model
-adapters (Claude Agent SDK, GPT Researcher, PaperQA2, OpenCode, LiteLLM router) are **opt-in
-extras**, enabled at init time and only used when you ask for them.
+- Service contract (current): [`docs/projects/research-foundry/SERVICE_CONTRACT.md`](docs/projects/research-foundry/SERVICE_CONTRACT.md)
+- Current-state report: [`docs/project_plans/exploration/web-app-platform-evolution/current-state-and-direction.md`](docs/project_plans/exploration/web-app-platform-evolution/current-state-and-direction.md)
 
 ---
 

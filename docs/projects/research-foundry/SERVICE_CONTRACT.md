@@ -4,6 +4,8 @@ type: build_contract
 title: "Research Foundry — Service API & Artifact Contract"
 status: authoritative
 created_at: "2026-06-13"
+updated_at: "2026-07-10"
+prior_version: "2026-06-13 — covered only the original 12 MVP service modules (§1-12 below)"
 ---
 
 # Service API & Artifact Contract
@@ -13,6 +15,21 @@ build (Wave 2). Every service agent implements the signatures below exactly so
 the CLI (Wave 3) can wire them and so services interoperate. When in doubt, the
 MVP spec (`research-foundry-mvp-spec.md`) wins on field names; this doc wins on
 function signatures and Python conventions.
+
+> **2026-07-10 update.** §1-12 are the original MVP contract (2026-06-13,
+> unchanged below) and remain accurate for the offline capture→verify→bundle→
+> writeback core. §13-19 extend the contract to the platform surfaces added
+> since: the Search Router, `rf serve` (HTTP API + auth/RBAC/rate-limit
+> middleware), the agent-jobs subprocess router, the Report Builder service,
+> the evidence catalog, workspace-isolation migration, and the audit log.
+> These sections describe the **coordination boundary each module exposes
+> today** (grounded directly in the current source, not aspirational
+> signatures) rather than a build contract for unwritten code — the modules
+> already exist and are in active use. Maturity varies per module; see the
+> per-section notes and cross-reference
+> `docs/project_plans/exploration/web-app-platform-evolution/current-state-and-direction.md`
+> for the authoritative maturity map (§2) before building further on any of
+> these surfaces.
 
 ## 0. Conventions (apply to ALL services)
 
@@ -464,3 +481,289 @@ A single `register(app: typer.Typer)` attaches all commands per spec §10:
 verify, council, bundle, writeback, guard, skillbom (propose|promote), status,
 doctor, cost, index, ccdash (summarize)`. Each command calls the matching service,
 renders with Rich, and `raise typer.Exit(result.exit_code)` for verify/guard.
+
+---
+
+## 13. `search_router/` — `rf search`, `rf fetch` (Search Router)
+
+**Maturity: offline-validated only.** Keyless providers (jina, github) degrade
+gracefully offline; keyed providers (brave/exa/firecrawl) have never been
+exercised against real API keys from this repo.
+
+```python
+# src/research_foundry/services/search_router/router.py
+def run_search(
+    request: dict[str, Any], *,
+    paths: FoundryPaths | None = None,
+    providers: dict[str, SearchProvider] | None = None,
+) -> dict[str, Any]: ...
+# Validates request against "search_request" schema, resolves a search `mode`
+# (spec ADR §11), builds a Budget/BudgetTracker, mints a run_id, and returns
+# the search_run record: {run_id, request, normalized_results[], source_cards[],
+# degraded}. Optionally creates source cards (unless output_requirements
+# .source_cards is False).
+
+def extract_urls(
+    urls: list[str], *,
+    run_id: str | None = None,
+    paths: FoundryPaths | None = None,
+    providers: dict[str, SearchProvider] | None = None,
+) -> dict[str, Any]: ...
+# One or more known URLs -> source cards directly, bypassing search/ranking.
+```
+
+CLI (`services/search_router/cli.py:24` `register(app)`):
+`rf search <query> [--mode] [--max-results] [--max-cost] [--intent-id]
+[--task-node-id] [--no-cards]` → `run_search()`; `rf fetch <url>...` →
+`extract_urls()`. Both raise `RFError` → `typer.Exit(exc.exit_code)` on
+failure; never network-required for keyless providers. `rf-mcp`
+(`services/search_router/mcp_server.py`, `pyproject.toml` entry point) exposes
+the same two functions as five MCP tools over stdio — the **only** MCP
+surface RF exposes (no MCP server for runs/claims/reports/writebacks).
+
+**Coordination boundary**: consumed by `rf intake` and directly by CLI users;
+does not itself write to the claim ledger — output source cards flow into the
+normal `rf extract` → `rf claim-map` pipeline unchanged.
+
+---
+
+## 14. `api/app.py` + `cli_commands.py:2396` — `rf serve` (HTTP API)
+
+**Maturity: shipped-enforced; confirmed deployed live** on the agentic node
+(`10.42.10.76:7432`, token-auth, `local_static` provider default).
+
+```python
+# src/research_foundry/api/app.py
+def create_app(config: FoundryConfig) -> FastAPI: ...
+```
+
+`create_app()` wires, in order: CORS (`_build_cors_origins`), the auth/RBAC/
+rate-limit middleware stack (below), then registers routers with
+`app.include_router(..., prefix="/api", tags=[...])`: `runs`, `catalog`,
+`reports` (Report Builder), `agent_jobs` (only when `agents.enabled`), `audit`,
+`auth_identity`, `admin`. It resolves and stores two fail-closed booleans on
+`app.state` at boot: `rbac_enforced` (`config.resolve_rbac_enforced(...)`) and
+`workspace_isolation_enforced` (`config.resolve_workspace_isolation_enforced(...)`)
+— both apply the same rule: `*_enforcement=disabled` is only honored on a
+loopback bind; a non-loopback bind without an armed auth provider fails
+`create_app()` before any middleware runs.
+
+**Middleware / auth surface:**
+
+- `api/middleware/auth.py:132` `AuthProviderMiddleware` — resolves identity
+  per request from the configured provider (`none`/`local_static`/`clerk`);
+  true no-op when `auth.provider=none` (default for pure-loopback).
+- `api/auth/rbac.py:128` `require_role(*allowed_roles) -> Callable` — FastAPI
+  dependency factory; gates every mutation route (Report Builder writes,
+  agent-jobs, admin). Fail-closed: passthrough only when no identity is
+  present AND RBAC is not enforced.
+- `api/middleware/rate_limit.py:210` `RateLimitMiddleware` — exempt when
+  `auth.provider=none`.
+- `api/auth/scope.py` — workspace-scoping helper layer; calls the same
+  `resolve_workspace_isolation_enforced()` config method used at boot to
+  decide whether a request's `identity.workspace_id` gets applied as a query
+  predicate. **This is the surface DI-1 (§7 of the current-state report) must
+  re-audit before any shared-store multi-tenant deploy** — two post-hoc leaks
+  (`create_draft_from_run`/`create_draft_from_collection`, `catalog_service
+  .get_item`) were already found and fixed here after a prior "100% coverage"
+  sign-off (`eba75ab`).
+
+**Coordination boundary**: `POST /api/runs` scaffolds+plans a run (mirrors
+`rf plan`) but **never drives the discovery swarm** — status is always
+`"planned"`; runs are launched via the `rf` CLI in practice. Local
+agents/orchestrators call this API with `Authorization: Bearer $RF_TOKEN_AGENT`;
+external delegates (ICA, opencode) are not given the token.
+
+---
+
+## 15. `api/routers/agent_jobs.py` + `services/agent_job_service.py` — Agent Jobs
+
+**Maturity: shipped, flag-gated off by default** (`foundry.yaml:
+agents.enabled=false`). Real subprocess-spawning write path; blocked from any
+multi-user-reachable deployment until RBAC (P5.2) and workspace isolation
+(P5.3) are both fully sealed (DI-1 open).
+
+```python
+# src/research_foundry/api/routers/agent_jobs.py:150
+@router.post("/agent-jobs", status_code=201)
+def launch_job(body: LaunchJobBody, request: Request, ...) -> dict[str, Any]: ...
+```
+
+**Guard gate invariant (API-4.1):** `governance.guard_check()` is called
+*before* any subprocess is spawned; a rejected guard (`exit_code` 3 or 7)
+returns 422/400 immediately and guarantees no subprocess spawns. Additional
+routes: `GET /agent-jobs/{id}`, `GET /agent-jobs/{id}/artifacts`,
+`GET /agent-jobs/{id}/events` (SSE stream), `POST /agent-jobs/{id}/cancel`,
+`POST /agent-jobs/{id}/accept` — the **sole write path** from an agent job's
+staged output into the catalog/report surfaces.
+
+`AgentJobService` (`services/agent_job_service.py:240`) enforces
+**in-process-only providers**: it never dispatches
+`gpt_researcher`/`paperqa2`/`litellm_router`/`opencode`/`arc_council`/
+`notebooklm` to a subprocess. `_is_credential_shaped()` /
+`_safe_artifact_stem()` guard against credential-shaped artifact IDs leaking
+into staged output paths.
+
+**Coordination boundary**: consumes the same `adapters/` registry as
+`rf swarm run`; writes staged artifacts that only become durable
+catalog/report rows via the explicit `accept` step (never auto-promoted).
+
+---
+
+## 16. `services/builder_service.py` — Report Builder (`rf report draft *`)
+
+**Maturity: shipped-enforced** (file-canonical draft authoring surface,
+Phase 3 / P3 Wave D-E). Frontend integration (`BuilderScreen.tsx`) is
+`experimental` — validated only against a typed client + mock draft.
+
+```python
+def create_draft(
+    paths: FoundryPaths, *,
+    title: str, origin: str = "blank", audience: str = "self",
+    sensitivity: str = "public", project_id: str | None = None,
+    workspace_id: str | None = None, created_by: str | None = None,
+    source_run_id: str | None = None, source_template_id: str | None = None,
+    source_collection_id: str | None = None,
+    blocks: list[dict[str, Any]] | None = None,
+    identity: AuthIdentity | None = None,
+) -> dict[str, Any]: ...
+# Create from a template, a run, a collection, or blank (spec §8).
+# workspace_id/created_by are forward-compat (plan D12); identity threads
+# WKSP-304 scoping into create_draft_from_run/create_draft_from_collection
+# (the leak fixed in eba75ab — see §14 note).
+
+def load_draft(...) -> dict[str, Any]: ...
+def list_drafts(...) -> list[dict[str, Any]]: ...
+def delete_draft(paths: FoundryPaths, report_draft_id: str) -> None: ...
+def add_block(...) / update_block(...) / delete_block(...) / reorder_blocks(...) -> ...
+def add_claim_link(...) / remove_claim_link(...) -> ...        # coverage-status recompute
+def add_source_link(...) / remove_source_link(...) -> ...
+def create_revision(...) / list_revisions(...) / get_revision(...) / restore_revision(...) -> ...
+```
+
+Draft state is file-canonical: `<workspace>/reports/drafts/<id>/draft.yaml`
+written via a temp-file + `os.replace` atomic pattern (`_atomic_write_yaml`).
+`verify_draft`/D13 checks (`services/verification.py:1056-1153`) apply the
+same claim-traceability discipline as `rf verify`, including a
+workspace-wide sensitivity scan (`build_global_source_index`) that closes a
+"blank-origin-draft" gap. `rf report draft verify|publish-preview` both fail
+closed on any D13 violation.
+
+**Coordination boundary**: mirrored by the `reports` HTTP router (§14);
+`create_draft_from_run`/`create_draft_from_collection` are the two functions
+where the WKSP-304 identity-threading leak was found and fixed.
+
+---
+
+## 17. `services/catalog_service.py` — Evidence Catalog (`rf catalog *`)
+
+**Maturity: shipped-enforced** (public-multiuser-release Phase 1). SQLite3 +
+FTS5 **derived, rebuildable read model** — never canonical; sensitivity-gated
+at read time, fail-closed on unknown sensitivity labels.
+
+```python
+def import_run(paths: FoundryPaths, run_id: str) -> dict[str, Any]: ...
+# Delete-then-insert in one transaction (idempotent). Raises CatalogError
+# (an RFError subclass) when the run cannot be exported.
+def import_all(paths: FoundryPaths) -> dict[str, Any]: ...
+def rebuild(paths: FoundryPaths) -> dict[str, Any]: ...     # rebuild_schema() + import_all()
+
+def search(
+    paths: FoundryPaths, *,
+    q: str | None = None, item_type: str | None = None, project: str | None = None,
+    status: str | None = None, sensitivity: str | None = None, run_id: str | None = None,
+    sort: str = "updated", page: int = 1, page_size: int = ...,
+    sensitivity_threshold: str | None = None,
+    identity: AuthIdentity | None = None,
+) -> dict[str, Any]: ...
+# Over-threshold items are excluded (fail-closed). identity is WKSP-304 Phase 3
+# query-layer scoping: None (default) is byte-identical to the pre-WKSP-304
+# query; supplied + isolation active adds a parameterized
+# "AND workspace_id = ?" predicate to every statement, including the facet
+# query. get_item() had its own scope-leak fix (eba75ab) — see §14 note.
+```
+
+CLI (`cli_commands.py:1318+`): `rf catalog import|search|show|stats|rebuild`.
+Rows built by `_build_catalog_rows()` covering claims/inferences, sources,
+report summaries, reusable outputs, and writeback records, each carrying a
+`_rank(label)`-derived sensitivity/confidence rank for the fail-closed filter.
+
+**Coordination boundary**: read-only derived index over `runs/**`; safe to
+`rebuild` at any time with zero data loss (source of truth is always the
+run-directory artifacts, never the catalog DB).
+
+---
+
+## 18. `services/workspace_migration_service.py` — Workspace Migration (WKSP-301/302/303/304)
+
+**Maturity: shipped-enforced; dry-run guaranteed zero-write.** Flag-gated
+enforcement — see §14/§17 notes on the DI-1 full-surface audit still open
+before any shared-store multi-tenant deploy.
+
+```python
+def dry_run(paths: FoundryPaths) -> DryRunReport: ...
+# Reads draft.yaml files + catalog.db row count. Performs ZERO writes to any
+# file, table, or lock. Walks <workspace>/reports/drafts/<id>/draft.yaml
+# directly (NOT the derived catalog_report_drafts index).
+
+def backfill(paths: FoundryPaths, workspace_id: str = "default") -> BackfillReport: ...
+# Assigns workspace_id to every legacy draft record that lacks one (falsy:
+# None/empty/absent key only — never overwrites an existing non-null value).
+# Atomic temp-file + os.replace writes per record.
+
+def rollback(paths: FoundryPaths, migration_run_id: str, *, dry_run: bool = False) -> RollbackReport: ...
+# Reverses a prior backfill() run. Safety invariant: NEVER keys on the value
+# workspace_id == "default" — the only authority is the explicit record-id
+# list in the stored migration manifest. catalog_items have no coded
+# per-row rollback (the table is a rebuildable index); RollbackReport's
+# catalog_item_note explains the manual operator step (rf catalog rebuild).
+```
+
+CLI (`cli_commands.py:1482+`): `rf workspace migrate-dry-run|migrate|rollback`.
+Manifest persisted at `_manifest_path(paths, migration_run_id)`, read back by
+`rollback()` via `_read_manifest()`. Operator runbook:
+`docs/dev/architecture/workspace-migration-runbook.md`.
+
+**Coordination boundary**: purely a `draft.yaml` + `catalog.db` backfill tool
+— it makes row-level workspace scoping *available*, but does not itself
+enforce isolation at read/write time (that's `resolve_workspace_isolation
+_enforced()` in `api/app.py` / `services/*` — see §14).
+
+---
+
+## 19. `services/audit_service.py` — Audit Log (`rf audit *`, AUDIT-002/003/004)
+
+**Maturity: shipped-enforced.** Gated by RBAC on the API read side
+(`GET /api/audit*` behind `require_role`); CLI-direct reads bypass RBAC
+(classified single-operator-trust, consistent with the rest of the CLI).
+
+```python
+def record_event(paths: FoundryPaths, event: AuditEvent) -> Optional[str]: ...
+# Records a governed mutation event. FAIL-OPEN -- never raises. Generates a
+# UUID4 audit_event_id + ISO-8601 UTC created_at, redacts error_detail
+# through the governance secret-scan (services/governance.py:redact_payload),
+# then inserts a row into audit_event. Wired into 6 governed mutation types.
+
+def list_events(
+    paths: FoundryPaths, *,
+    mutation_type: Optional[str] = None, actor_user_id: Optional[str] = None,
+    workspace_id: Optional[str] = None, since: Optional[str] = None,
+    until: Optional[str] = None, limit: int = 50, cursor: Optional[str] = None,
+) -> dict[str, Any]: ...
+# Cursor-paginated list of audit events.
+
+def get_event(paths: FoundryPaths, audit_event_id: str) -> Optional[dict[str, Any]]: ...
+def health_check(paths: FoundryPaths) -> AuditHealth: ...   # probe used by `rf audit health`
+def is_healthy_for_exposure(paths: FoundryPaths) -> bool: ...
+```
+
+CLI (`cli_commands.py:2265+`): `rf audit list|show|health`. A P1 security fix
+(`b469fbf`) gated audit reads by role after the initial CLI/API landed —
+consistent with the pattern seen across this whole platform-expansion wave
+(land the surface, then a tight-window follow-up security fix).
+
+**Coordination boundary**: `record_event()` is called by the other governed
+mutation paths above (Report Builder, catalog import, workspace migration,
+agent jobs) as a side effect — it is never itself the primary write path, and
+its fail-open contract means a broken audit sink must never block the
+governed action it is auditing.

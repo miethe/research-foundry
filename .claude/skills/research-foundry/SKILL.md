@@ -9,6 +9,18 @@ Research Foundry is a Markdown/YAML-first research control plane. Every step is 
 
 Operate through the `rf` CLI. Each pipeline step has a subagent posture and a deterministic exit code; you orchestrate, the CLI and validators enforce.
 
+## Shared node instance (prefer for shared reads + launch)
+
+A persistent RF instance runs on the agentic node (`rocket-fedora`, `10.42.10.76`) — **prefer it over a local file workspace** for shared reads and for launching runs, so every agent sees one corpus.
+
+- **API:** `http://10.42.10.76:7432` — base path `/api`, health at `/health`.
+- **Auth:** `Authorization: Bearer $RF_TOKEN_AGENT` (owner token). Source it from `~/.config/research-foundry/serve.env` (mirrored on the laptop): `set -a; . ~/.config/research-foundry/serve.env; set +a`.
+- **Read:** `GET /api/runs`, `/api/runs/{run_id}`, `/api/runs/{run_id}/claims`, `/api/reports`, `/api/catalog`, `/api/audit`.
+- **Launch over HTTP:** `POST /api/runs` — body has exactly one of `text` | `intent_id`, plus optional `sensitivity`/`depth`/`audience`/`tags`/`project`; owner/admin token required; returns `201` + `run_id`. It **scaffolds + registers** the run (capture→triage→plan) — it does NOT drive the discovery swarm; continue the loop via the on-node `rf` CLI or agent-jobs.
+- **Viewer:** runs-viewer UI at `http://10.42.10.76:3030` (live — reflects the API, not static fixtures).
+- **Visibility:** the node serves fully open (`--sensitivity-threshold client_sensitive`) — nothing is redacted (single-user trusted LAN).
+- **Local CLI scope:** the local `rf` CLI operates on the **local file workspace only** (no remote-target seam). Use the HTTP API above to read/launch against the shared node; use the local CLI for local-only runs or when SSH'd onto the node.
+
 ## Execution loop (§11)
 
 Run the loop in order; do not skip the governance preflight or the verification step.
@@ -65,6 +77,11 @@ Match the operator's intent to the loop step, then the `rf` command.
 | Serve loopback API (runs viewer) | — | `rf serve --port 7432 --bind-host 127.0.0.1 --auth-mode none\|token --sensitivity-threshold N` | — |
 | Reconcile backlog ↔ runs | — | `rf backlog reconcile [--dry-run\|--write]` | — |
 | Status / health / cost / redact / index | — | `rf status` · `rf doctor` · `rf cost <run>` · `rf redact <run> --target public` · `rf index rebuild` · `rf ccdash summarize --period daily` | — |
+| Import / search / rebuild the catalog | — | `rf catalog import <path>` · `rf catalog search <query>` · `rf catalog show <id>` · `rf catalog stats` · `rf catalog rebuild` | — |
+| Migrate a workspace to row-level isolation (WKSP-304) | — | `rf workspace migrate-dry-run` · `rf workspace migrate` · `rf workspace rollback` | — |
+| Author / verify a report Builder draft | — | `rf report anchors` · `rf report draft create\|list\|show\|add-block\|update-block\|delete-block\|reorder\|verify\|publish-preview\|export` · `rf report draft claim-link add\|remove` | — |
+| Launch / stream / accept a web-driven agent job | — | `rf agent-job launch` · `rf agent-job list` · `rf agent-job stream <id>` · `rf agent-job accept <id>` · `rf agent-job status <id>` | — |
+| Audit log — list / show / health | — | `rf audit list` · `rf audit show <id>` · `rf audit health` | — |
 
 ### Command notes
 
@@ -76,6 +93,7 @@ Match the operator's intent to the loop step, then the `rf` command.
 - **`rf run export`** produces export schema v1.2 with fields: `cost_usd`, `model_profiles`, `source_count_by_type`, `writebacks` summary, `linked_projects`, `category`, `tags`.
 - **`rf backlog reconcile`** defaults to `--dry-run`; pass `--write` to apply. Reconciles `run.yaml` `backlog_idea_ref` against the idea backlog, advancing status and filling links.
 - **`rf capture --backlog-idea-ref RIB-NNN`** links the captured idea to an entry in `backlog/research_idea_backlog.yaml`. The ref is validated before the idea is written. Run metadata `linked_projects`, `category`, and `tags` are populated on every run.
+- **`rf catalog` / `rf workspace` / `rf report draft` / `rf agent-job` / `rf audit`** are the web-platform surfaces added post-MVP (public multi-user release, `src/research_foundry/api/`, `src/research_foundry/cli/commands/agent_job.py`): catalog indexing, workspace row-level-isolation migration (WKSP-304), the report Builder/drafts workflow, web-driven agent-job launch (distinct from the CLI-orchestrated `rf swarm run`/discovery-agent paths in steps 7–9), and the append-only audit log. They sit alongside, not inside, the 21-step research loop — most are also reachable over HTTP via `rf serve`.
 
 ## Claim-traceability discipline
 
