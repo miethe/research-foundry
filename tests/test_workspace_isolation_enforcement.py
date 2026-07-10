@@ -1043,3 +1043,120 @@ class TestWorkspaceIdBindParamDiscipline:
         lines = self._source_lines(agent_job_service)
         sql_like = [line for line in lines if "workspace_id" in line and ("SELECT" in line or "WHERE" in line)]
         assert sql_like == []
+
+
+# ---------------------------------------------------------------------------
+# karen review follow-up: create_draft_from_run / create_draft_from_collection
+# identity threading (HIGH-1) + create_draft_from_collection cross-workspace
+# catalog read leak (HIGH-2). Mirrors the create_draft identity contract
+# (builder_service.py's create_draft docstring): identity=None is
+# byte-identical to pre-WKSP-304 behavior; identity= stamps workspace_id from
+# identity.workspace_id and, for the collection path, scopes the underlying
+# catalog_service.get_item() lookup so a cross-workspace catalog item can
+# never be embedded into the resulting draft.
+# ---------------------------------------------------------------------------
+
+
+def _plant_minimal_run(paths: FoundryPaths, run_id: str) -> None:
+    """Bare-minimum run scaffold sufficient for ``export_run``/
+    ``create_draft_from_run`` — no source cards or claim ledger entries are
+    needed since this suite only asserts on identity/workspace_id threading,
+    not on seeded blocks/claim_links (covered by
+    ``tests/unit/test_builder_service.py``)."""
+
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "run_id": run_id,
+            "intent_id": f"intent_{run_id}",
+            "status": "verified",
+            "sensitivity": "public",
+            "created_at": "2026-01-01T00:00:00+00:00",
+        },
+        rp.run_yaml,
+    )
+
+
+class TestCreateDraftFromRunAndCollectionIdentityThreading:
+    """TASK-5.5 follow-up (karen HIGH-1/HIGH-2)."""
+
+    def test_create_draft_from_run_legit_owner_allowed(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _plant_minimal_run(tmp_foundry, "rf_run_p5followup_run")
+        _force_isolation_active(monkeypatch)
+        draft = builder_service.create_draft_from_run(
+            tmp_foundry, run_id="rf_run_p5followup_run", identity=_WS_MINE
+        )
+        report_draft_id = draft["report_draft_id"]
+        assert draft["workspace_id"] == "ws-mine"
+        loaded = builder_service.load_draft(tmp_foundry, report_draft_id, identity=_WS_MINE)
+        assert loaded["workspace_id"] == "ws-mine"
+
+    def test_create_draft_from_collection_legit_owner_allowed(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ids_ = _seed_catalog_items(tmp_foundry, [{"local_ref": "c1", "workspace_id": "ws-mine"}])
+        _force_isolation_active(monkeypatch)
+        draft = builder_service.create_draft_from_collection(
+            tmp_foundry,
+            catalog_item_ids=[ids_["c1"]],
+            title="Mine collection draft",
+            identity=_WS_MINE,
+        )
+        report_draft_id = draft["report_draft_id"]
+        assert draft["workspace_id"] == "ws-mine"
+        loaded = builder_service.load_draft(tmp_foundry, report_draft_id, identity=_WS_MINE)
+        assert loaded["workspace_id"] == "ws-mine"
+        assert any(b["block_type"] == "evidence_summary" for b in loaded["blocks"])
+
+    def test_create_draft_from_collection_cross_workspace_catalog_item_not_embedded(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The critical regression: a catalog item owned by ``ws-other`` must
+        not be embedded into a draft created by ``ws-mine`` under
+        enforcement — it must be silently skipped via the existing
+        "unresolved ids are skipped" path (item resolves to ``None``), the
+        same way a genuinely-unknown catalog_item_id is skipped today."""
+
+        ids_ = _seed_catalog_items(tmp_foundry, [{"local_ref": "c1", "workspace_id": "ws-other"}])
+        _force_isolation_active(monkeypatch)
+        draft = builder_service.create_draft_from_collection(
+            tmp_foundry,
+            catalog_item_ids=[ids_["c1"]],
+            title="Leak probe draft",
+            identity=_WS_MINE,
+        )
+        report_draft_id = draft["report_draft_id"]
+        loaded = builder_service.load_draft(tmp_foundry, report_draft_id, identity=_WS_MINE)
+        assert loaded["blocks"] == []
+        all_linked_ids = [cl.get("catalog_item_id") for cl in loaded["claim_links"]]
+        assert ids_["c1"] not in all_linked_ids
+
+    def test_create_draft_from_run_identity_none_is_byte_identical_baseline(
+        self, tmp_foundry: FoundryPaths
+    ) -> None:
+        """AC-6 single-operator baseline: existing callers that never pass
+        ``identity`` (the default) must keep stamping ``workspace_id`` from
+        the ``workspace_id`` parameter exactly as before."""
+
+        _plant_minimal_run(tmp_foundry, "rf_run_p5followup_baseline")
+        draft = builder_service.create_draft_from_run(
+            tmp_foundry, run_id="rf_run_p5followup_baseline", workspace_id="legacy-ws"
+        )
+        assert draft["workspace_id"] == "legacy-ws"
+
+    def test_create_draft_from_collection_identity_none_is_byte_identical_baseline(
+        self, tmp_foundry: FoundryPaths
+    ) -> None:
+        ids_ = _seed_catalog_items(tmp_foundry, [{"local_ref": "c1", "workspace_id": "default"}])
+        draft = builder_service.create_draft_from_collection(
+            tmp_foundry,
+            catalog_item_ids=[ids_["c1"]],
+            title="Baseline collection draft",
+            workspace_id="legacy-ws",
+        )
+        assert draft["workspace_id"] == "legacy-ws"
+        assert any(b["block_type"] == "evidence_summary" for b in draft["blocks"])

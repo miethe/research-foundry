@@ -229,9 +229,8 @@ def create_draft(
     - ``run``        → seed blocks from run's report_draft + report_anchors
     - ``collection`` → one evidence_summary block per catalog item
     """
-    # identity is wired into the blank/template create_draft() call below (WKSP-304 P5);
-    # create_draft_from_run/create_draft_from_collection have no identity param yet
-    # (reserved for a future phase, not Phase 3/5 scoping targets).
+    # identity is wired into the blank/template create_draft() call below, and
+    # into create_draft_from_run()/create_draft_from_collection() (WKSP-304).
     identity = getattr(request.state, "identity", None)
     try:
         if body.origin == "run":
@@ -240,7 +239,6 @@ def create_draft(
                     status_code=422,
                     detail="origin 'run' requires source_run_id",
                 )
-            # TODO(WKSP-304 P4): bsvc.create_draft_from_run() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
             return bsvc.create_draft_from_run(
                 paths,
                 run_id=body.source_run_id,
@@ -251,6 +249,7 @@ def create_draft(
                 workspace_id=body.workspace_id,
                 created_by=body.created_by,
                 sensitivity_threshold=body.sensitivity_threshold or "client_sensitive",
+                identity=identity,
             )
         if body.origin == "collection":
             ids_ = body.catalog_item_ids or (
@@ -261,7 +260,6 @@ def create_draft(
                     status_code=422,
                     detail="origin 'collection' requires catalog_item_ids",
                 )
-            # TODO(WKSP-304 P4): bsvc.create_draft_from_collection() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
             return bsvc.create_draft_from_collection(
                 paths,
                 catalog_item_ids=ids_,
@@ -272,6 +270,7 @@ def create_draft(
                 workspace_id=body.workspace_id,
                 created_by=body.created_by,
                 sensitivity_threshold=body.sensitivity_threshold or "client_sensitive",
+                identity=identity,
             )
         # blank / template / unknown origin → plain create_draft
         return bsvc.create_draft(

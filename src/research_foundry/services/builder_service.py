@@ -996,6 +996,7 @@ def create_draft_from_run(
     workspace_id: str | None = None,
     created_by: str | None = None,
     sensitivity_threshold: str = "client_sensitive",
+    identity: AuthIdentity | None = None,
 ) -> dict[str, Any]:
     """Seed a draft from a run's ``report_draft`` + ``report_anchors`` (P2, D7/D8).
 
@@ -1003,6 +1004,14 @@ def create_draft_from_run(
     claim_links (never re-derives anchor hashes/ids independently — Wave A's
     derivation stays the single source of truth) and :func:`_extract_raw_blocks`
     purely to recover each anchored paragraph's editable text.
+
+    ``identity`` is WKSP-304 create-path scoping, mirroring :func:`create_draft`
+    (see its docstring): it is forwarded verbatim into the inner
+    :func:`create_draft` call below, so the persisted draft's ``workspace_id``
+    is stamped from ``identity.workspace_id`` when ``identity`` is given.
+    ``identity=None`` (the default) is byte-identical to the pre-WKSP-304
+    behavior — the AC-6 single-operator baseline this function's existing
+    callers exercise.
     """
 
     export_data = export_run(paths, run_id, sensitivity_threshold=sensitivity_threshold)
@@ -1035,6 +1044,7 @@ def create_draft_from_run(
         created_by=created_by,
         source_run_id=run_id,
         blocks=seeds,
+        identity=identity,
     )
     report_draft_id = draft["report_draft_id"]
 
@@ -1072,12 +1082,24 @@ def create_draft_from_collection(
     workspace_id: str | None = None,
     created_by: str | None = None,
     sensitivity_threshold: str = "client_sensitive",
+    identity: AuthIdentity | None = None,
 ) -> dict[str, Any]:
     """Seed a draft with one ``evidence_summary`` block per catalog item (spec §8).
 
     Each resolved claim/inference/source becomes a pre-linked block;
     unresolved ids are skipped (best-effort — collection membership can drift
     as the catalog changes underneath a saved selection).
+
+    ``identity`` is WKSP-304 create-path scoping, mirroring :func:`create_draft`
+    (see its docstring): forwarded into the inner :func:`create_draft` call so
+    the persisted draft's ``workspace_id`` is stamped from
+    ``identity.workspace_id`` when given, and forwarded into the
+    :func:`catalog_service.get_item` lookup below so a catalog item owned by a
+    different workspace resolves to ``None`` under enforcement and is skipped
+    by the existing "unresolved ids are skipped" path above — never embedded
+    into the draft. ``identity=None`` (the default) is byte-identical to the
+    pre-WKSP-304 behavior — the AC-6 single-operator baseline this function's
+    existing callers exercise.
     """
 
     draft = create_draft(
@@ -1089,11 +1111,14 @@ def create_draft_from_collection(
         project_id=project_id,
         workspace_id=workspace_id,
         created_by=created_by,
+        identity=identity,
     )
     report_draft_id = draft["report_draft_id"]
 
     for catalog_item_id in catalog_item_ids:
-        item = catalog_service.get_item(paths, catalog_item_id, sensitivity_threshold=sensitivity_threshold)
+        item = catalog_service.get_item(
+            paths, catalog_item_id, sensitivity_threshold=sensitivity_threshold, identity=identity
+        )
         if item is None:
             continue
         markdown = item.get("summary") or item.get("title") or ""
