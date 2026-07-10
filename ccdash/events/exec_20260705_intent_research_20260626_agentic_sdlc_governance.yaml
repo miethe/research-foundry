@@ -1,9 +1,9 @@
-event_id: exec_20260710_intent_research_20260613_what_is_the
-timestamp: '2026-07-10T11:51:36-04:00'
+event_id: exec_20260705_intent_research_20260626_agentic_sdlc_governance
+timestamp: '2026-07-05T23:55:48-04:00'
 project: Research Foundry
-intent_id: intent_research_20260613_what_is_the_current_release_state
+intent_id: intent_research_20260626_agentic_sdlc_governance_prior_art_landscape
 task_node_id: ''
-run_id: rf_run_20260613_what_is_the_current_release_state
+run_id: rf_run_20260626_agentic_sdlc_governance_prior_art_landscape
 agent_postures:
 - researcher
 - operator
@@ -20,18 +20,18 @@ input_artifacts:
 - inbox/raw_ideas/raw_*.md
 - intents/active/intent_*.yaml
 output_artifacts:
-- runs/rf_run_20260613_what_is_the_current_release_state/evidence_bundle.yaml
-- runs/rf_run_20260613_what_is_the_current_release_state/reports/report_final.md
-- runs/rf_run_20260613_what_is_the_current_release_state/writebacks/meatywiki_writeback.md
-- runs/rf_run_20260613_what_is_the_current_release_state/writebacks/skillbom_candidate.md
+- runs/rf_run_20260626_agentic_sdlc_governance_prior_art_landscape/evidence_bundle.yaml
+- runs/rf_run_20260626_agentic_sdlc_governance_prior_art_landscape/reports/report_final.md
+- runs/rf_run_20260626_agentic_sdlc_governance_prior_art_landscape/writebacks/meatywiki_writeback.md
+- runs/rf_run_20260626_agentic_sdlc_governance_prior_art_landscape/writebacks/skillbom_candidate.md
 metrics:
-  source_cards_created: 10
-  claims_total: 91
-  claims_supported: 69
+  source_cards_created: 25
+  claims_total: 143
+  claims_supported: 143
   claims_mixed: 0
   claims_contradicted: 0
-  claims_inference: 20
-  claims_speculation: 2
+  claims_inference: 0
+  claims_speculation: 0
   unsupported_claims: 0
   verification_passed: true
   tokens_estimated: 0
@@ -43,7 +43,6 @@ metrics:
 governance:
   sensitivity: personal
   key_profile_used: personal
-  key_fingerprint: ''
   policy_passed: true
   violations: []
 reuse:

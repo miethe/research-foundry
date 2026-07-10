@@ -8,7 +8,7 @@ swarm_id: swarm_20260614_hybrid_bm25_vector_and_fts5_ranking
 routing_id: route_20260614_hybrid_bm25_vector_and_fts5_ranking
 created_at: '2026-06-14T20:50:47-04:00'
 status: planned
-sensitivity: personal
+sensitivity: public
 human_required: false
 profile:
   depth: deep

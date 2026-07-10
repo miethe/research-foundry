@@ -8,7 +8,7 @@ swarm_id: swarm_20260614_for_turning_a_structured_crochet_ir
 routing_id: route_20260614_for_turning_a_structured_crochet_ir
 created_at: '2026-06-14T17:08:36-04:00'
 status: planned
-sensitivity: personal
+sensitivity: public
 human_required: false
 profile:
   depth: deep

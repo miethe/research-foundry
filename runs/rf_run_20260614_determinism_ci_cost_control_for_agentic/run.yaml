@@ -8,7 +8,7 @@ swarm_id: swarm_20260614_determinism_ci_cost_control_for_agentic
 routing_id: route_20260614_determinism_ci_cost_control_for_agentic
 created_at: '2026-06-14T20:50:48-04:00'
 status: planned
-sensitivity: personal
+sensitivity: public
 human_required: false
 profile:
   depth: deep

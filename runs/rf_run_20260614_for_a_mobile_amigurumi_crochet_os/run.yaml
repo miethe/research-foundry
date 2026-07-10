@@ -8,7 +8,7 @@ swarm_id: swarm_20260614_for_a_mobile_amigurumi_crochet_os
 routing_id: route_20260614_for_a_mobile_amigurumi_crochet_os
 created_at: '2026-06-14T17:08:38-04:00'
 status: planned
-sensitivity: personal
+sensitivity: public
 human_required: false
 profile:
   depth: deep

@@ -8,7 +8,7 @@ swarm_id: swarm_20260613_what_is_the_minimum_viable_architecture
 routing_id: route_20260613_what_is_the_minimum_viable_architecture
 created_at: '2026-06-13T02:11:43-04:00'
 status: planned
-sensitivity: personal
+sensitivity: public
 human_required: false
 profile:
   depth: deep

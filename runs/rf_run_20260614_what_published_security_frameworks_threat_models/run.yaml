@@ -8,7 +8,7 @@ swarm_id: swarm_20260614_what_published_security_frameworks_threat_models
 routing_id: route_20260614_what_published_security_frameworks_threat_models
 created_at: '2026-06-14T14:07:29-04:00'
 status: planned
-sensitivity: personal
+sensitivity: public
 human_required: false
 profile:
   depth: deep

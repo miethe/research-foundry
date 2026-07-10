@@ -8,7 +8,7 @@ swarm_id: swarm_20260614_do_token_logprob_distributions_provide_more
 routing_id: route_20260614_do_token_logprob_distributions_provide_more
 created_at: '2026-06-14T14:07:31-04:00'
 status: planned
-sensitivity: personal
+sensitivity: public
 human_required: false
 profile:
   depth: deep
