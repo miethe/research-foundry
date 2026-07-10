@@ -204,6 +204,79 @@ pytest tests/integration/test_workspace_isolation.py -v
 
 ---
 
+## Enforcement Flag Reference
+
+The `workspace_isolation_enforcement` configuration flag controls how strictly workspace scoping is enforced. This section explains the flag's behavior and deployment trade-offs.
+
+### Flag Values and Resolution
+
+The `workspace_isolation_enforcement` flag accepts three enum values: `auto`, `enabled`, `disabled`.
+
+**`auto` (default)**
+
+Enforcement mode depends on the auth provider:
+- When `auth.provider != "none"` (e.g., `local_static`, `clerk`): **enforcement is active**
+- When `auth.provider == "none"` (single-operator-trust, loopback mode): **enforcement is advisory-only** (mismatches are logged but allowed)
+
+This preserves backward compatibility: existing single-operator deployments continue working while multi-tenant deployments get full isolation.
+
+**`enabled`**
+
+Force enforcement **on** regardless of the auth provider. Useful for hardening loopback deployments or testing scenarios where you want workspace isolation even with `provider="none"`.
+
+**`disabled`**
+
+Force enforcement **off** regardless of auth provider. **Fail-closed**: the server **refuses to start** if `viewer.bind_host` is a non-loopback address (e.g., `0.0.0.0`, LAN IP). You cannot disable isolation on a public-facing deployment.
+
+```yaml
+# This will fail to start if bind_host is not loopback:
+foundry:
+  viewer:
+    bind_host: 0.0.0.0
+  workspace_isolation_enforcement: disabled  # ❌ ValueError at startup
+```
+
+To allow `disabled`, use a loopback bind host:
+
+```yaml
+# This succeeds (loopback + disabled):
+foundry:
+  viewer:
+    bind_host: 127.0.0.1
+  workspace_isolation_enforcement: disabled  # ✓
+```
+
+### Startup Validation Gotcha
+
+**Invariant**: The server raises `ValueError` at startup (before binding) when both conditions hold:
+1. `workspace_isolation_enforcement = disabled`
+2. `viewer.bind_host` is non-loopback (e.g., `0.0.0.0`, `10.x.x.x`, any hostname)
+
+**Remediation**: Either change `bind_host` to loopback (`127.0.0.1`), or use `auto`/`enabled` instead.
+
+### Deployment Recommendations
+
+**For shared-store multi-tenant deployments**
+
+1. **Start with `auto`** (the default) — enforcement activates automatically when you configure `auth.provider`
+2. **Observe advisory-only logs** while `provider="none"` to validate the scoping logic
+3. **Hard-cut to enforcement** by setting `auth.provider` to `local_static` or `clerk`
+
+This gradual approach lets you validate that isolation is working correctly before it becomes hard-blocking (403/404 on scope violations).
+
+**For single-operator or isolation-testing deployments**
+
+- Use `enabled` if you want to force enforcement even when `provider="none"` (useful for development/testing)
+- Use `disabled` only on loopback, single-operator deployments where you want to deliberately bypass isolation checks
+
+### 404 vs 403 Behavior
+
+When isolation is enforced and a request crosses workspace boundaries, the API returns **404** (not found) rather than 403 (forbidden). This follows the no-existence-leak convention: the requesting client cannot distinguish between "record does not exist" and "record exists but you cannot access it."
+
+See [Troubleshooting: Cross-workspace requests now return 404 but I expected 403](#cross-workspace-requests-now-return-404-but-i-expected-403) for details.
+
+---
+
 ## Rollback (If Issues Surface)
 
 If enforcement causes unexpected failures, rollback to the pre-migration state.

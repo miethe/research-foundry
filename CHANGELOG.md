@@ -11,6 +11,46 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Workspace Isolation Enforcement (WKSP-304) — Query-Layer Row-Level Scoping**
+
+- **New `workspace_isolation_enforcement` config flag** — Controls workspace row-level
+  isolation gate behavior (orthogonal to existing `auth.rbac_enforcement`; see
+  `src/research_foundry/config.py`). Three modes:
+  - `auto` (default) — Enforced when `auth.provider != "none"`; advisory-only when
+    `auth.provider == "none"` (preserves single-operator-trust behavior for loopback
+    deployments).
+  - `enabled` — Force enforcement on regardless of provider, even with `auth.provider=none`.
+  - `disabled` — Force enforcement off; **fail-closed** — only permitted on loopback bind
+    hosts (`127.0.0.1`, `::1`, `localhost`). Non-loopback deployments with `disabled`
+    raise `ValueError` at startup, preventing accidental unsafe disclosure on public binds.
+
+- **Query-layer enforcement via `require_workspace_scope()`** — When enforcement is
+  active (resolved truthy), `workspace_id` scoping is evaluated at query time via WHERE
+  predicates in `catalog_service`, `builder_service`, and `agent_job_service`, not
+  post-fetch filtering. Single-operator (identity=None) fallback is short-circuited
+  structurally before any enforcement-flag branch — isolation checks are bypassed
+  unconditionally in single-operator deployments, unchanged from pre-enforcement behavior.
+
+- **Read denials return HTTP 404 (not 403)**; list endpoints silently omit foreign-workspace
+  rows. Mutation attempts against another workspace's resource are denied with 404.
+
+- **Write-path identity threading** — `builder_service.create_draft()` now accepts optional
+  `identity` parameter; when present, persisted `workspace_id` is stamped from
+  `identity.workspace_id` (ensuring the draft records the workspace of its creator). This
+  ensures drafts created while enforcement is active are readable by their creator under
+  the same enforcement rules. Single-operator path (`identity=None`) is byte-identical to
+  pre-enforcement behavior.
+
+- **Share-link decoupling (P5 fix-now gap)** — Draft creation via the blank/template
+  route now threads `identity` through to `create_draft()`, closing the P5.5(b) enforcement
+  gap where drafts persisted with `workspace_id=None` and became unreadable by their own
+  creator once enforcement was forced active (commit `5418568`).
+
+- **Workspace scoping validates across all catalog surfaces**: query builders, agent jobs,
+  and report drafts. Pre-existing single-operator deployments (`auth.provider=none`)
+  experience no behavior change — isolation enforcement is structurally skipped for
+  identity=None regardless of the `workspace_isolation_enforcement` flag value.
+
 #### **HTTP Run-Launch Endpoint — `POST /api/runs` (scaffold + register only)**
 
 - **`POST /api/runs`** — Launch a new run over HTTP: scaffolds and registers a

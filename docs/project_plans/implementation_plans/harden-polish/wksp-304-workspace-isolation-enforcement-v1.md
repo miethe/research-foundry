@@ -1,37 +1,42 @@
 ---
-title: "Implementation Plan: WKSP-304 — Row-Level Workspace Isolation Enforcement"
+title: "Implementation Plan: WKSP-304 \u2014 Row-Level Workspace Isolation Enforcement"
 schema_version: 2
 doc_type: implementation_plan
 it_schema: 1
-status: draft
+status: completed
 created: 2026-07-08
-updated: 2026-07-08
-feature_slug: "wksp-304-workspace-isolation-enforcement"
-feature_version: "v1"
+updated: '2026-07-09'
+feature_slug: wksp-304-workspace-isolation-enforcement
+feature_version: v1
 tier: 2
 prd_ref: docs/project_plans/PRDs/harden-polish/wksp-304-workspace-isolation-enforcement-v1.md
 plan_ref: null
-scope: "Flip row-level workspace_id scoping from advisory logging to fail-closed, query-layer enforcement behind a new orthogonal workspace_isolation_enforcement config flag, across 6 routers and 3 services, with a 40-50 test enforcement regression matrix."
-effort_estimate: "10 pts"
-architecture_summary: "Router (identity extraction) -> Service (query-layer workspace_id predicate, flag-gated) -> raw parameterized SQL -> SQLite/Postgres store. No repository layer; services own SQL directly. identity=None short-circuits before any enforcement branch, by construction."
+scope: Flip row-level workspace_id scoping from advisory logging to fail-closed, query-layer
+  enforcement behind a new orthogonal workspace_isolation_enforcement config flag,
+  across 6 routers and 3 services, with a 40-50 test enforcement regression matrix.
+effort_estimate: 10 pts
+architecture_summary: Router (identity extraction) -> Service (query-layer workspace_id
+  predicate, flag-gated) -> raw parameterized SQL -> SQLite/Postgres store. No repository
+  layer; services own SQL directly. identity=None short-circuits before any enforcement
+  branch, by construction.
 related_documents:
-  - .claude/worknotes/wksp-304-workspace-isolation-enforcement/decisions-block.md
-  - .claude/worknotes/wksp-304-workspace-isolation-enforcement/exploration-findings.md
-  - docs/project_plans/implementation_plans/features/public-multiuser-p5-auth-rbac-v1/phase-3-workspace-migration.md
-  - docs/project_plans/human-briefs/public-multiuser-p5-auth-rbac.md
+- .claude/worknotes/wksp-304-workspace-isolation-enforcement/decisions-block.md
+- .claude/worknotes/wksp-304-workspace-isolation-enforcement/exploration-findings.md
+- docs/project_plans/implementation_plans/features/public-multiuser-p5-auth-rbac-v1/phase-3-workspace-migration.md
+- docs/project_plans/human-briefs/public-multiuser-p5-auth-rbac.md
 references:
   user_docs:
-    - docs/dev/architecture/workspace-migration-runbook.md
+  - docs/dev/architecture/workspace-migration-runbook.md
   context: []
   specs:
-    - .claude/specs/changelog-spec.md
+  - .claude/specs/changelog-spec.md
   related_prds: []
 spike_ref: null
 adr_refs: []
 deferred_items_spec_refs: []
 findings_doc_ref: null
 charter_ref: null
-changelog_ref: null
+changelog_ref: CHANGELOG.md
 test_plan_ref: null
 changelog_required: true
 plan_structure: independent
@@ -40,131 +45,186 @@ owner: nick
 contributors: []
 priority: high
 risk_level: high
-category: "product-planning"
-tags: [implementation, planning, phases, tasks, security, workspace-isolation, wksp-304]
+category: product-planning
+tags:
+- implementation
+- planning
+- phases
+- tasks
+- security
+- workspace-isolation
+- wksp-304
 milestone: null
-commit_refs: []
+commit_refs:
+- "2208927"
+- d179fd4
+- 80ec586
+- 3449b1c
+- 1e93a37
+- caec975
+- 53eb359
+- "5418568"
+- 8bf9666
+- 3d24b6d
+- eba75ab
 pr_refs: []
 files_affected:
-  - src/research_foundry/api/auth/scope.py
-  - src/research_foundry/config.py
-  - src/research_foundry/services/catalog_service.py
-  - src/research_foundry/services/builder_service.py
-  - src/research_foundry/services/agent_job_service.py
-  - src/research_foundry/api/routers/catalog.py
-  - src/research_foundry/api/routers/agent_jobs.py
-  - src/research_foundry/api/routers/reports.py
-  - src/research_foundry/api/routers/admin.py
-  - src/research_foundry/api/routers/audit.py
-  - src/research_foundry/api/routers/auth_identity.py
-  - CHANGELOG.md
-  - docs/dev/architecture/workspace-migration-runbook.md
-planning_maturity: scoped
+- src/research_foundry/api/auth/scope.py
+- src/research_foundry/config.py
+- src/research_foundry/services/catalog_service.py
+- src/research_foundry/services/builder_service.py
+- src/research_foundry/services/agent_job_service.py
+- src/research_foundry/api/routers/catalog.py
+- src/research_foundry/api/routers/agent_jobs.py
+- src/research_foundry/api/routers/reports.py
+- src/research_foundry/api/routers/admin.py
+- src/research_foundry/api/routers/audit.py
+- src/research_foundry/api/routers/auth_identity.py
+- CHANGELOG.md
+- docs/dev/architecture/workspace-migration-runbook.md
+planning_maturity: shipped
 open_questions:
-  - q: "OQ-1: On a cross-workspace read deny, is the 404 silent or does it emit an audit event? Proposal: silent to caller, audit-logged server-side."
-    owner: nick
-    status: resolved-in-phase
-  - q: "OQ-2: Should denied cross-workspace attempts increment a metric / emit structured telemetry for intrusion detection?"
-    owner: nick
-    status: resolved-in-phase
-  - q: "OQ-3: Does Research Foundry support Postgres as a store backend in addition to SQLite? If so, P3 predicates must use the native parameter style."
-    owner: nick
-    status: resolved-in-phase
+- q: 'OQ-1: On a cross-workspace read deny, is the 404 silent or does it emit an audit
+    event? Proposal: silent to caller, audit-logged server-side.'
+  owner: nick
+  status: resolved-in-phase
+- q: 'OQ-2: Should denied cross-workspace attempts increment a metric / emit structured
+    telemetry for intrusion detection?'
+  owner: nick
+  status: resolved-in-phase
+- q: 'OQ-3: Does Research Foundry support Postgres as a store backend in addition
+    to SQLite? If so, P3 predicates must use the native parameter style.'
+  owner: nick
+  status: resolved-in-phase
+- q: "OQ-4: create_draft_from_run / create_draft_from_collection identity threading\
+    \ + create_draft_from_collection cross-workspace read leak via unscoped catalog_service.get_item()\
+    \ \u2014 both fixed per Opus/user-authorized bounded remediation (commit eba75ab),\
+    \ re-verified by karen's end-of-feature re-gate (APPROVED). Broader full-surface\
+    \ workspace-data-access completeness audit (all read/create/list/delete service\
+    \ paths) remains open and is deferred as a hard pre-deploy gate for shared-store\
+    \ multi-tenant deployment (see DI-1)."
+  owner: nick
+  status: resolved-bounded-fix
 decisions:
-  - decision: "New orthogonal workspace_isolation_enforcement flag, not a reuse of auth.rbac_enforcement."
-    rationale: "Isolation and RBAC are independent security gates; conflating them couples two controls and blocks disabling one without the other."
-    status: locked
-  - decision: "Enforce at the query layer (workspace_id WHERE predicate), never post-fetch filtering."
-    rationale: "Post-fetch filtering leaks via COUNT/pagination totals and cannot close JOIN leaks; the query is the single correct chokepoint."
-    status: locked
-  - decision: "identity=None (single-operator) short-circuit is evaluated FIRST, before any enforcement-flag branch, by construction."
-    rationale: "The fallback must be structurally impossible to break by reordering, not a runtime branch (AC-6 is Critical severity)."
-    status: locked
-  - decision: "The workspace_id predicate is applied ONLY when enforcement resolves active; advisory mode leaves queries unscoped + retains the post-hoc advisory log."
-    rationale: "Preserves advisory semantics during transition and makes P4 the single atomic 'arm it' step — P2/P3 build inert machinery that changes no behavior until the flip."
-    status: locked
-  - decision: "Cross-workspace read denies with 404 (not 403); list omits the row."
-    rationale: "404 avoids existence-leaking a foreign record; matches PRD OQ-1 proposal."
-    status: pending
+- decision: New orthogonal workspace_isolation_enforcement flag, not a reuse of auth.rbac_enforcement.
+  rationale: Isolation and RBAC are independent security gates; conflating them couples
+    two controls and blocks disabling one without the other.
+  status: locked
+- decision: Enforce at the query layer (workspace_id WHERE predicate), never post-fetch
+    filtering.
+  rationale: Post-fetch filtering leaks via COUNT/pagination totals and cannot close
+    JOIN leaks; the query is the single correct chokepoint.
+  status: locked
+- decision: identity=None (single-operator) short-circuit is evaluated FIRST, before
+    any enforcement-flag branch, by construction.
+  rationale: The fallback must be structurally impossible to break by reordering,
+    not a runtime branch (AC-6 is Critical severity).
+  status: locked
+- decision: The workspace_id predicate is applied ONLY when enforcement resolves active;
+    advisory mode leaves queries unscoped + retains the post-hoc advisory log.
+  rationale: "Preserves advisory semantics during transition and makes P4 the single\
+    \ atomic 'arm it' step \u2014 P2/P3 build inert machinery that changes no behavior\
+    \ until the flip."
+  status: locked
+- decision: Cross-workspace read denies with 404 (not 403); list omits the row.
+  rationale: 404 avoids existence-leaking a foreign record; matches PRD OQ-1 proposal.
+  status: locked
 decision_gates:
-  - gate: "Cross-workspace read denial code: 404 (not 403)"
-    status: pending
+- gate: 'Cross-workspace read denial code: 404 (not 403)'
+  status: resolved
 success_metrics:
-  - "100% of the ~40-50 new enforcement regression tests pass, including the full 2-workspace x {read, list, mutate} x {allowed, denied} matrix."
-  - "0 cross-workspace record leaks (read, list, or join-linked) detected in the regression matrix when workspace_isolation_enforcement=enabled."
-  - "100% of existing single-operator (identity=None) test suite continues to pass unmodified when enforcement is enabled."
-  - "Startup raises ValueError in 100% of tested non-loopback + advisory-disabled combinations (config validation matrix)."
+- 100% of the ~40-50 new enforcement regression tests pass, including the full 2-workspace
+  x {read, list, mutate} x {allowed, denied} matrix.
+- 0 cross-workspace record leaks (read, list, or join-linked) detected in the regression
+  matrix when workspace_isolation_enforcement=enabled.
+- 100% of existing single-operator (identity=None) test suite continues to pass unmodified
+  when enforcement is enabled.
+- Startup raises ValueError in 100% of tested non-loopback + advisory-disabled combinations
+  (config validation matrix).
 contributors_note: null
 scores: {}
 acceptance_criteria: []
 execution_mode: agent
-agent_title: "WKSP-304: flip workspace isolation advisory->enforcing"
-agent_summary: "Add workspace_isolation_enforcement config flag (mirrors auth.rbac_enforcement), thread caller identity from 6 routers into 3 services, add workspace_id WHERE-clause scoping to ~60-80 query points, flip auth/scope.py deny path, and land a 40-50 test enforcement regression matrix — all while preserving the identity=None single-operator fallback."
-agent_context: "Mode D feature (auth/data-isolation, risk_level: high). The P3-to-P4 ordering invariant is non-negotiable: P4 (the enforcing flip) must not begin until P3's 100%-coverage checklist signs off. See Phase Breakdown entry_criteria for P4."
+agent_title: 'WKSP-304: flip workspace isolation advisory->enforcing'
+agent_summary: "Add workspace_isolation_enforcement config flag (mirrors auth.rbac_enforcement),\
+  \ thread caller identity from 6 routers into 3 services, add workspace_id WHERE-clause\
+  \ scoping to ~60-80 query points, flip auth/scope.py deny path, and land a 40-50\
+  \ test enforcement regression matrix \u2014 all while preserving the identity=None\
+  \ single-operator fallback."
+agent_context: 'Mode D feature (auth/data-isolation, risk_level: high). The P3-to-P4
+  ordering invariant is non-negotiable: P4 (the enforcing flip) must not begin until
+  P3''s 100%-coverage checklist signs off. See Phase Breakdown entry_criteria for
+  P4.'
 wave_plan:
   serialization_barriers: []
   phases:
-    - id: P1
-      depends_on: []
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/config.py
-    - id: P2
-      depends_on: []
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/api/routers/catalog.py
-        - src/research_foundry/api/routers/agent_jobs.py
-        - src/research_foundry/api/routers/reports.py
-        - src/research_foundry/api/routers/admin.py
-        - src/research_foundry/api/routers/audit.py
-        - src/research_foundry/api/routers/auth_identity.py
-    - id: P3
-      depends_on: [P1, P2]
-      isolation: worktree
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/services/catalog_service.py
-        - src/research_foundry/services/builder_service.py
-        - src/research_foundry/services/agent_job_service.py
-    - id: P4
-      depends_on: [P3]
-      isolation: worktree
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/api/auth/scope.py
-        - src/research_foundry/services/catalog_service.py
-        - src/research_foundry/services/builder_service.py
-        - src/research_foundry/services/agent_job_service.py
-    - id: P5
-      depends_on: [P4]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - tests/test_workspace_isolation_enforcement.py
-        - tests/test_config_workspace_enforcement.py
-    - id: P6
-      depends_on: [P5]
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      files_affected:
-        - CHANGELOG.md
-        - docs/dev/architecture/workspace-migration-runbook.md
-        - src/research_foundry/config.py
+  - id: P1
+    depends_on: []
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/config.py
+  - id: P2
+    depends_on: []
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/api/routers/catalog.py
+    - src/research_foundry/api/routers/agent_jobs.py
+    - src/research_foundry/api/routers/reports.py
+    - src/research_foundry/api/routers/admin.py
+    - src/research_foundry/api/routers/audit.py
+    - src/research_foundry/api/routers/auth_identity.py
+  - id: P3
+    depends_on:
+    - P1
+    - P2
+    isolation: worktree
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/services/catalog_service.py
+    - src/research_foundry/services/builder_service.py
+    - src/research_foundry/services/agent_job_service.py
+  - id: P4
+    depends_on:
+    - P3
+    isolation: worktree
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/api/auth/scope.py
+    - src/research_foundry/services/catalog_service.py
+    - src/research_foundry/services/builder_service.py
+    - src/research_foundry/services/agent_job_service.py
+  - id: P5
+    depends_on:
+    - P4
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - tests/test_workspace_isolation_enforcement.py
+    - tests/test_config_workspace_enforcement.py
+  - id: P6
+    depends_on:
+    - P5
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    files_affected:
+    - CHANGELOG.md
+    - docs/dev/architecture/workspace-migration-runbook.md
+    - src/research_foundry/config.py
   waves:
-    - [P1, P2]
-    - [P3]
-    - [P4]
-    - [P5]
-    - [P6]
+  - - P1
+    - P2
+  - - P3
+  - - P4
+  - - P5
+  - - P6
 ---
 
 # Implementation Plan: WKSP-304 — Row-Level Workspace Isolation Enforcement
@@ -266,7 +326,9 @@ Structured ACs are carried over verbatim from PRD §7 (`docs/project_plans/PRDs/
 
 ### Deferred Items
 
-**N/A — no deferred items.** Per PRD §"Deferred Items": all scope identified during exploration is covered by FR-1 through FR-10 and AC-1 through AC-7. Out-of-scope items (PRD §8: auth-core changes, new auth providers, frontend, cross-workspace admin override, multi-region sharding, `runs.py` router) are explicit exclusions, not deferrals, and carry no `DI-` backlog reference. `deferred_items_spec_refs: []` remains empty; no DOC-006-equivalent task is scheduled.
+**DI-1: Full workspace-data-access completeness audit** — Audit all read/create/list/delete service paths across every service (not only the two gaps fixed by this bounded remediation) for cross-workspace isolation enforcement. Discovered by karen's end-of-feature review 2026-07-09. HARD PRE-DEPLOY GATE for any shared-store multi-tenant deployment.
+
+Per PRD §"Deferred Items": all original FR-1 through FR-10 and AC-1 through AC-7 scope from exploration is covered by this implementation. Out-of-scope items (PRD §8: auth-core changes, new auth providers, frontend, cross-workspace admin override, multi-region sharding, `runs.py` router) remain explicit exclusions, not deferrals, and carry no `DI-` backlog reference. DI-1 above is a new deferral discovered during end-of-feature review, not an original-scope gap.
 
 ### In-Flight Findings
 
