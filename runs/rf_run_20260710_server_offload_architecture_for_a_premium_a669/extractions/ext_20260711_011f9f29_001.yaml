@@ -1,0 +1,78 @@
+id: ext_20260711_011f9f29_001
+source_card_id: src_20260710_offload_00
+created_at: '2026-07-11T10:55:24-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Apple's on-device foundation model has a context window of 4096 tokens per LanguageModelSession.
+  locator: Intro / 'context window of 4096 tokens' paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: A token is roughly 3-4 characters in Latin-alphabet languages like English, but roughly one character
+    per token for multi-byte languages such as Chinese, Japanese, and Korean.
+  locator: Intro / token definition paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: All input and output count against the session context window, including instructions, prompts,
+    tool schemas/inputs/outputs, Generable schemas, and every model response.
+  locator: Understand how your app consumes tokens
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The tokenCount(for:) API lets an app measure token consumption of its instructions, prompts, tools,
+    schema, and transcript entries before sending.
+  locator: Understand how your app consumes tokens
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: For oversized tasks Apple recommends splitting into smaller chunks summarized in separate sessions,
+    carrying the previous summary forward in the prompt to preserve context, then reassembling.
+  locator: Split a large task into multiple language model sessions
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: For large knowledge bases Apple recommends RAG (chunk + embed) integrated via Core ML, with the
+    Natural Language framework providing tokenizing and embedding APIs, instead of stuffing the window.
+  locator: Retrieval-Augmented Generation (RAG) section
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Vectorizing a whole knowledge base is computationally heavy, so Apple advises running it as a
+    separate data-preparation process or serving embeddings from a server rather than at request time.
+  locator: RAG section, step 2
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: Exceeding the window makes the framework throw an .exceededContextWindowSize error and the session
+    can no longer respond, so apps must catch it (e.g., by starting a new session).
+  locator: Handle the exceeding context window size error elegantly
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Intro / 'context window of 4096 tokens' paragraph
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Intro / token definition paragraph
+contradictions_or_cautions:
+- text: Scope is Apple's on-device Foundation Models framework specifically (iOS/macOS Apple Intelligence,
+    2025); token ratios and the 4096-token limit are model/hardware-specific and may change across OS
+    versions. Not generalizable to cloud LLMs.
+  locator: card/limitations

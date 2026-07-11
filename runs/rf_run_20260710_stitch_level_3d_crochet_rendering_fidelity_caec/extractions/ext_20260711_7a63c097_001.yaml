@@ -1,0 +1,54 @@
+id: ext_20260711_7a63c097_001
+source_card_id: src_20260710_stitch3d_04
+created_at: '2026-07-11T10:27:03-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: CrochetBench evaluates the shift from describing to doing via fine-grained procedural reasoning
+    in crochet, requiring models to recognize stitches, select structurally appropriate instructions,
+    and generate compilable procedures.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The benchmark adopts the CrochetPARADE DSL as its intermediate representation, enabling structural
+    validation and functional evaluation via execution.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The benchmark spans stitch classification, instruction grounding, and both natural-language-to-DSL
+    and image-to-DSL translation tasks.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Across all tasks, model performance sharply decreases as evaluation shifts from surface-level
+    similarity to executable correctness, revealing weak long-range symbolic reasoning and weak 3D-aware
+    procedural synthesis in VLMs.
+  locator: Abstract (Findings)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The work frames the core unsolved problem as the gap between surface-level understanding and executable
+    precision in real-world creative domains.
+  locator: Abstract (Conclusion)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Abstract (Findings)
+contradictions_or_cautions:
+- text: Evidence drawn from the abstract of an arXiv preprint (accessed via fetched page); per-task quantitative
+    scores and model list are in the full paper body and are not captured here.
+  locator: card/limitations

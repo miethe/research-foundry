@@ -1,0 +1,70 @@
+id: ext_20260711_dd00733d_001
+source_card_id: src_20260710_stitch3d_00
+created_at: '2026-07-11T10:27:03-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Crochet is a fabrication technique that builds a 3D surface from yarn by interlacing loops formed
+    with a special hook.
+  locator: Abstract, para 1
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Standard crochet pictorial symbol notation does not directly show the yarn layout of stitches,
+    making patterns hard for novices and computer programs to parse, visualize, and design.
+  locator: Abstract, para 1
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The paper represents crochet patterns in the 'stitch mesh' paradigm as a library of tiles, where
+    each tile contains yarn geometry and tiles connect along their edges.
+  locator: Abstract, para 2
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: To adapt stitch meshes to crochet, the authors introduce a special edge type capturing the 'current
+    loop' — the loop of yarn held on the crochet hook during fabrication.
+  locator: Abstract, para 2
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The authors create a library of mesh face types that model commonly-used crochet stitches, and
+    demonstrate patterns generated from 3D models.
+  locator: Abstract, para 2
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'The work is an 8-page research article (Article No. 4, pp. 1-8) in SCF ''20: Proceedings of the
+    5th Annual ACM Symposium on Computational Fabrication.'
+  locator: Byline / SCF '20 proceedings header, Article No. 4, Pages 1-8
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Abstract, para 1
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Abstract, para 2
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Byline / SCF '20 proceedings header, Article No. 4, Pages 1-8
+contradictions_or_cautions:
+- text: Evidence here is drawn from the publicly visible abstract and bibliographic metadata (ACM full
+    text is gated); claims about internal methods, results, and the precise stitch taxonomy beyond the
+    abstract are not verified from the full text.
+  locator: card/limitations

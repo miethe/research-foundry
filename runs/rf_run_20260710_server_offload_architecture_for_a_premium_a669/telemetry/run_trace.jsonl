@@ -1,0 +1,15 @@
+{"stage": "plan", "ts": "2026-07-10T21:49:32-04:00", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669"}
+{"stage": "ccdash_event", "ts": "2026-07-11T10:20:59-04:00", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "event_id": "exec_20260711_intent_research_20260710_server_offload_architec"}
+{"stage": "ccdash_event", "ts": "2026-07-11T10:24:51-04:00", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "event_id": "exec_20260711_intent_research_20260710_server_offload_architec"}
+{"ts": "2026-07-11T10:55:24-04:00", "stage": "extract", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "count": 12}
+{"ts": "2026-07-11T10:55:27-04:00", "stage": "claim_map", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "claims_total": 75}
+{"ts": "2026-07-11T11:00:43-04:00", "stage": "synthesize", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "report_id": "report_20260711_research_report_for_rf_run_20260710", "claims_cited": 94}
+{"ts": "2026-07-11T11:06:10-04:00", "stage": "verify", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "exit_code": 4, "passed": false}
+{"ts": "2026-07-11T11:06:46-04:00", "stage": "verify", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "exit_code": 4, "passed": false}
+{"ts": "2026-07-11T11:07:06-04:00", "stage": "verify", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "exit_code": 0, "passed": true}
+{"ts": "2026-07-11T11:07:15-04:00", "stage": "verify", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "exit_code": 0, "passed": true}
+{"ts": "2026-07-11T11:08:07-04:00", "stage": "verify", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "exit_code": 0, "passed": true}
+{"stage": "bundle", "ts": "2026-07-11T11:08:07-04:00", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "bundle_id": "bundle_20260711_intent_research_20260710_server_offload_architec", "verified": true}
+{"stage": "ccdash_event", "ts": "2026-07-11T11:08:11-04:00", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "event_id": "exec_20260711_intent_research_20260710_server_offload_architec"}
+{"stage": "writeback", "ts": "2026-07-11T11:08:11-04:00", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "requires_review": false}
+{"ts": "2026-07-11T11:08:29-04:00", "stage": "verify", "run_id": "rf_run_20260710_server_offload_architecture_for_a_premium_a669", "exit_code": 0, "passed": true}

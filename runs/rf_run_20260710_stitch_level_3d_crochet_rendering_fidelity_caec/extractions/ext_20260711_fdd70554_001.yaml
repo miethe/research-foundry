@@ -1,0 +1,74 @@
+id: ext_20260711_fdd70554_001
+source_card_id: src_20260710_stitch3d_07
+created_at: '2026-07-11T10:27:03-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Amigurumi are crocheted in the round in single crochet with near-constant row height (~= SC width),
+    so each stitch in a row is equidistant to the seed and rows follow geodesic equidistant curves.
+  locator: Why Geodesic Distances for Crochet?
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Stitch locations are found by cutting and flattening the model (vertical = geodesic distance/row
+    number, horizontal = arc length along the equidistant curve/stitch number), then evenly sampling.
+  locator: How? — Rows, stitches and connecting the dots
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Vertical (column) edges of the crochet graph are chosen by solving an optimization that minimizes
+    the total length of the vertical edges.
+  locator: How? — Rows, stitches and connecting the dots
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: '''Crater'' regions (negative mean + positive Gaussian curvature) are unrealizable under maximal-stuffing
+    and are removed by pre-inflating the model; saddle regions (both curvatures negative) use fewer stitches
+    via adapted sampling.'
+  locator: Curvature based inflating, sampling and creasing
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Creases are reproduced by automatically switching to Back-Loop-Only (BLO) / Front-Loop-Only (FLO)
+    stitches where maximal absolute curvature is high and its direction is orthogonal to the crocheting
+    direction.
+  locator: Curvature based inflating, sampling and creasing
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: A 3D preview is produced by embedding the crochet graph via optimization (fix seed, constrain
+    SC/row edge lengths to fixed width, require smoothness); the result is very similar to the crocheted
+    output without any physical simulation.
+  locator: Segmentation and visualization
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: The method joins-and-turns at each round rather than spiraling to avoid stitch slanting (incompatible
+    with their shortest-vertical-edge optimization); spiral compatibility is planned future work.
+  locator: Caveats and What's Next?
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Segmentation and visualization
+contradictions_or_cautions:
+- text: Overview paper, not the full method paper (AmiGo, SCF 2022)
+  locator: card/trust
+- text: Join-and-turn per round rather than spiral crochet
+  locator: card/trust
+- text: Overview/short paper; the full method is in the separate "AmiGo" SCF paper (ref [2]). Method assumes
+    maximal stuffing and square SC stitches (rectangular also supported); join-and-turn construction departs
+    from classic spiral amigurumi, and color/yarn-amount/higher-stitch handling is future work.
+  locator: card/limitations

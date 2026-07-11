@@ -1,0 +1,82 @@
+id: ext_20260711_b16011eb_001
+source_card_id: src_20260710_offload_04
+created_at: '2026-07-11T10:55:24-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: The existing design stance already earmarks on-device AI for small parsing helpers while allowing
+    heavy generation to run cloud-based.
+  locator: §5 Supporting Details → Tech stack (pragmatic)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The spec scopes 3D as structural geometry (stitch-graph/mesh approximation) rendered without simulating
+    actual yarn physics.
+  locator: '§4B) The 3D visualizer: feasible, but choose the right kind of 3D'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: A structured Crochet IR is required as the parse->render contract, with rows[] as sequences of
+    stitch ops and counts.
+  locator: '§5 Supporting Details → Data model: Crochet IR (intermediate representation)'
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'Pattern IP/copyright is flagged the #1 business landmine, constraining ingestion to designer
+    opt-in, licensing, or user-private imports.'
+  locator: §6 Risks / Limits
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The spec cites peer-reviewed work (ACM/AmiGo) generating amigurumi instructions from a closed
+    3D model, seed point, and stitch size as feasibility basis.
+  locator: §4D) 3D object → crochet pattern generator (hardest, but real)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The spec cites a 2025 force-directed graph-layout paper as basis for turning written patterns
+    into a 3D representation.
+  locator: §4B) The 3D visualizer (EG citation)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Parsing ambiguity (inconsistent abbreviations, formatting, charts, freeform notes) is a named
+    risk motivating structured/validator-gated extraction.
+  locator: §6 Risks / Limits
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: '§4B) The 3D visualizer: feasible, but choose the right kind of 3D'
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: §6 Risks / Limits
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: §4D) 3D object → crochet pattern generator (hardest, but real)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: §4B) The 3D visualizer (EG citation)
+contradictions_or_cautions:
+- text: This is a project seed/design spec authored via ChatGPT, not an independent or peer-reviewed authority;
+    it is primary evidence for KnitWit's stated design stance and scope decisions, but its external citations
+    (ACM, EG) should be verified against the cited papers directly.
+  locator: card/limitations

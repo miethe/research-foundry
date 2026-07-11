@@ -1,0 +1,58 @@
+id: ext_20260711_d5685ee5_001
+source_card_id: src_20260710_offload_05
+created_at: '2026-07-11T10:55:24-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Apple's on-device system foundation model supports a context window of up to 4,096 tokens per
+    session instance.
+  locator: Consider context size limits per session
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: A single token maps to roughly three or four characters in English/Spanish/German, and one token
+    per character in Japanese/Chinese/Korean.
+  locator: Consider context size limits per session
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Instructions, all prompts, and all outputs jointly count against the single 4,096-token context
+    window, so prompt plus response must fit within one budget.
+  locator: Consider context size limits per session
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: Data too large for a single context window must be split into smaller chunks, each processed in
+    a separate session, then recombined.
+  locator: Consider context size limits per session
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The framework provides guided generation to produce a developer-defined custom Swift data structure
+    instead of raw string output (structured output).
+  locator: Generate a response
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Consider context size limits per session
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Consider context size limits per session
+contradictions_or_cautions:
+- text: The Foundation Models framework content is Beta-labeled and Apple-version-mutable; token limits
+    and API surface may change across OS releases. The document is undated beyond a 2025 copyright/publication
+    year.
+  locator: card/limitations

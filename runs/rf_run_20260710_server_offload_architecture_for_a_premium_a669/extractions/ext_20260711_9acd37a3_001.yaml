@@ -1,0 +1,92 @@
+id: ext_20260711_9acd37a3_001
+source_card_id: src_20260710_offload_11
+created_at: '2026-07-11T10:55:24-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: GPT-5 mini is positioned as a faster, more cost-efficient GPT-5 variant targeted at cost-sensitive,
+    low-latency, high-volume workloads.
+  locator: Page header / tagline
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: OpenAI recommends starting new low-latency, high-volume workloads on GPT-5.6 Terra rather than
+    GPT-5 mini, indicating a newer preferred tier for offloaded high-volume work.
+  locator: Overview paragraph
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: GPT-5 mini supports the batch endpoint alongside chat_completions and responses, enabling asynchronous/queued
+    offloaded workloads.
+  locator: Current snapshot details — Supported endpoints
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: GPT-5 mini exposes a 400,000-token context window with up to 272,000 input tokens and 128,000
+    output tokens.
+  locator: Current snapshot details — context/limits
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: GPT-5 mini supports structured outputs, function calling, and web search, making it suitable for
+    offloaded structuring and tool-driven tasks.
+  locator: Current snapshot details — Supported features
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: GPT-5 mini is a reasoning-type model whose current snapshot is gpt-5-mini-2025-08-07 with a 2024-05-31
+    knowledge cutoff.
+  locator: Model metadata header
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Page header / tagline
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Overview paragraph
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Current snapshot details — Supported endpoints
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Current snapshot details — context/limits
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Current snapshot details — Supported features
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Model metadata header
+contradictions_or_cautions:
+- text: Live page lists no per-token pricing; pricing lives on a separate pricing page not carded here.
+  locator: card/trust
+- text: Current snapshot is gpt-5-mini-2025-08-07; page recommends migrating to GPT-5.6 Terra for new
+    workloads.
+  locator: card/trust
+- text: The pricing figures ($/M tokens, cached input, batch rates) and the "GPT-5.4 mini/nano released
+    March 2026" claim from the ingest metadata are NOT present on this page and are unconfirmed; pricing
+    lives on a separate OpenAI pricing page.
+  locator: card/limitations
+- text: Current snapshot dates to 2025-08-07; OpenAI steers new workloads to the newer GPT-5.6 line.
+  locator: card/limitations

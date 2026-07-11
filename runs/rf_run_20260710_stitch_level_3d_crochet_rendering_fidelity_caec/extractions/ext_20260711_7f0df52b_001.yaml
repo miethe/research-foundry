@@ -1,0 +1,70 @@
+id: ext_20260711_7f0df52b_001
+source_card_id: src_20260710_stitch3d_05
+created_at: '2026-07-11T10:27:03-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Crochet pattern design is an iterative guess-and-check loop of crocheting, evaluating the physical
+    result, then undoing and remaking stitches across multiple passes.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The method takes a written crochet pattern as input, translates it into a graph, and computes
+    a force-directed graph layout to produce a 3D representation.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The output 3D model reproduces the hand-crocheted pattern's shape and size, letting designers
+    adjust from the digital model without physically crocheting it.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The tool targets both professional designers and beginners, aimed at pre-visualizing a pattern
+    before investing the time and effort to physically make it.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The application is oriented toward amigurumi but the authors state it could be extended to clothing
+    or similar crochet styles.
+  locator: Abstract
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The work is classified under Human-centered computing, Graph drawings, published at the ACM/EG
+    Expressive Symposium (WICED 2025) by The Eurographics Association (DOI 10.2312/exw.20251057).
+  locator: Description / CCS Concepts
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Abstract
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Description / CCS Concepts
+contradictions_or_cautions:
+- text: Evidence is drawn from the abstract and item metadata; the full-text PDF (quantitative fidelity
+    results, limitations, comparisons) was not read. Direct diglib.eg.org access was network-blocked,
+    so the page was retrieved via a reader proxy and transcribed verbatim.
+  locator: card/limitations

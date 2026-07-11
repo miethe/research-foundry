@@ -1,0 +1,76 @@
+id: ext_20260711_20ac41fd_001
+source_card_id: src_20260710_stitch3d_11
+created_at: '2026-07-11T10:27:03-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: AmiGo takes a closed triangle mesh plus a single user-specified seed point and generates crochet
+    instructions that, when crocheted and stuffed, approximate the input geometry.
+  locator: Abstract / Introduction
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Segments are attached via the 'join-as-you-go' method — each segment is crocheted onto the previous
+    segment's last row — so no additional sewing is required and only simple stitches are used.
+  locator: Abstract / Method (join-as-you-go)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: A crochet stitch is modeled as a top, base, and stem (inc/dec stitches have multiple stems), and
+    the 'crochet graph' abstraction represents only stitch heads/bases and stems rather than a full yarn-level
+    representation like Stitch Meshes.
+  locator: Method (crochet stitch / crochet graph)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The crochet graph is a more abstract representation than yarn-level Stitch Meshes, encoding only
+    stitch heads/bases and stems.
+  locator: Method / comparison to Stitch Meshes
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Instruction generation takes only a few minutes, compared to tens of minutes for AutoKnit knitting,
+    aided by crochet's low-resolution models and the avoidance of short rows.
+  locator: Results / Timing
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: A 3D preview is produced by embedding the crochet graph (via ShapeUp) with edge lengths constrained
+    to the stitch size, so purely geometric conditions yield a result similar to the crocheted model —
+    not a yarn physics simulation.
+  locator: 3D Preview / embedding
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_007
+  text: Crochetability is obstructed by 'craters' (regions of positive Gaussian curvature and negative
+    mean curvature), which when stuffed do not reproduce the input geometry.
+  locator: Limitations / Crochetability
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_008
+  text: The method assumes the model is stuffed enough to reach maximal volume but not so much that the
+    yarn stretches and creates gaps.
+  locator: Assumptions / stuffing
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: 3D Preview / embedding
+contradictions_or_cautions:
+- text: Crochetability obstructions (negative mean curvature "craters", branching/multiply-connected topology)
+    mean not all input meshes are reproducible; results depend on the stuffing-to-maximal-volume assumption.
+    Timing figures ("a few minutes") are author-reported and hardware-dependent.
+  locator: card/limitations

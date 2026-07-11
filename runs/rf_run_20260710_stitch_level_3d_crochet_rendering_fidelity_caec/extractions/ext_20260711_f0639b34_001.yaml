@@ -1,0 +1,91 @@
+id: ext_20260711_f0639b34_001
+source_card_id: src_20260710_stitch3d_10
+created_at: '2026-07-11T10:27:03-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: 'The spec defines a four-level 3D capability ladder: L0 = 2D + counters + highlighting, L1 = structural
+    3D preview (stitch graph/mesh approximation), L2 = editable 3D with consistent stitch semantics, L3
+    = 3D object to pattern synthesis.'
+  locator: Section 3, item 3 (Decompose the '3D' ambition)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: The spec recommends the first '3D' be structural geometry (stitches as a connected graph/surface
+    with thickness, textured to suggest yarn) rather than yarn-level physics, to deliver preview and assembly
+    utility 'without melting phones.'
+  locator: Section 4B (The 3D visualizer)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: The spec sketches a Crochet intermediate representation with units (US/UK, gauge, hook, yarn weight),
+    pieces[], rows[] of stitch ops with counts (sc x6, inc, dec, repeat), constraints (expected end-of-row
+    counts, checkpoints), and assembly/placement markers, mapping each stitch to a node/edge with spatial
+    placement rules.
+  locator: Section 5, Data model (Crochet IR sketch)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: The spec cites CrochetPARADE, a 2025 EG paper on force-directed graph layout for crochet, and
+    a peer-reviewed ACM paper on computational amigurumi pattern generation as credible non-physics 3D
+    paths.
+  locator: Section 4B / 4D (research citations)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: The spec identifies a 'Ghost next row' transparent overlay as very doable in 2D now and later
+    in 3D, positioned within the highest-ROI pattern playback feature.
+  locator: Section 4C (Pattern playback mode)
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: 'The spec frames reverse 3D-to-pattern generation as a Phase 3 capability with major hurdles:
+    models need watertight meshes and sane topology, stitch size/tension vary per user, and ''looks like
+    the model'' does not equal pleasant/stable to crochet.'
+  locator: Section 4D / 6 (3D object to pattern generator; Risks)
+  confidence: medium
+  quote_available: true
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Section 3, item 3 (Decompose the '3D' ambition)
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Section 4B (The 3D visualizer)
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Section 5, Data model (Crochet IR sketch)
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Section 4B / 4D (research citations)
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Section 4C (Pattern playback mode)
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Section 4D / 6 (3D object to pattern generator; Risks)
+contradictions_or_cautions:
+- text: Authored by an LLM (ChatGPT 5.2) as a founder-facing design brief; it reflects product framing
+    and strategic recommendation, not validated engineering, and cites external research it did not independently
+    verify.
+  locator: card/limitations

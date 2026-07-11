@@ -1,0 +1,1662 @@
+id: claims_20260711_rf_run_20260710_server_offload_architecture
+intent_id: intent_research_20260710_server_offload_architecture_for_a_premium_cb41
+report_ref: reports/report_draft.md
+verification_status: passed
+claims:
+- claim_id: clm_001
+  text: Apple's on-device foundation model has a context window of 4096 tokens per LanguageModelSession.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_00
+    evidence_id: ev_001
+    relation: supports
+    locator: Intro / 'context window of 4096 tokens' paragraph
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_002
+  text: A token is roughly 3-4 characters in Latin-alphabet languages like English, but roughly one character
+    per token for multi-byte languages such as Chinese, Japanese, and Korean.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_00
+    evidence_id: ev_002
+    relation: supports
+    locator: Intro / token definition paragraph
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_003
+  text: All input and output count against the session context window, including instructions, prompts,
+    tool schemas/inputs/outputs, Generable schemas, and every model response.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_00
+    evidence_id: ev_003
+    relation: supports
+    locator: Understand how your app consumes tokens
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_004
+  text: The tokenCount(for:) API lets an app measure token consumption of its instructions, prompts, tools,
+    schema, and transcript entries before sending.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_00
+    evidence_id: ev_004
+    relation: supports
+    locator: Understand how your app consumes tokens
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_005
+  text: For oversized tasks Apple recommends splitting into smaller chunks summarized in separate sessions,
+    carrying the previous summary forward in the prompt to preserve context, then reassembling.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_00
+    evidence_id: ev_005
+    relation: supports
+    locator: Split a large task into multiple language model sessions
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_006
+  text: For large knowledge bases Apple recommends RAG (chunk + embed) integrated via Core ML, with the
+    Natural Language framework providing tokenizing and embedding APIs, instead of stuffing the window.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_00
+    evidence_id: ev_006
+    relation: supports
+    locator: Retrieval-Augmented Generation (RAG) section
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_007
+  text: Vectorizing a whole knowledge base is computationally heavy, so Apple advises running it as a
+    separate data-preparation process or serving embeddings from a server rather than at request time.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_00
+    evidence_id: ev_007
+    relation: supports
+    locator: RAG section, step 2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_008
+  text: Exceeding the window makes the framework throw an .exceededContextWindowSize error and the session
+    can no longer respond, so apps must catch it (e.g., by starting a new session).
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_00
+    evidence_id: ev_008
+    relation: supports
+    locator: Handle the exceeding context window size error elegantly
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_009
+  text: Cache read (hit) tokens are priced at 0.1x the base input token price.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_07
+    evidence_id: ev_001
+    relation: supports
+    locator: Pricing — multipliers
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_010
+  text: 5-minute cache write tokens cost 1.25x base input, and 1-hour cache write tokens cost 2x base
+    input.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_07
+    evidence_id: ev_002
+    relation: supports
+    locator: Pricing — multipliers
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_011
+  text: The default cache TTL is 5 minutes and is refreshed at no additional cost on each use; a 1-hour
+    TTL is available at extra cost.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_07
+    evidence_id: ev_003
+    relation: supports
+    locator: Default TTL / cache duration
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_012
+  text: For Claude Haiku 4.5, base input is $1/MTok, 5m cache writes $1.25/MTok, 1h cache writes $2/MTok,
+    cache hits/refreshes $0.10/MTok, and output $5/MTok.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_07
+    evidence_id: ev_004
+    relation: supports
+    locator: Pricing example — Claude Haiku 4.5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_013
+  text: Caching references the entire prefix — tools, then system, then messages — up to and including
+    the block marked with cache_control, so a stable prefix maximizes hit rate.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_07
+    evidence_id: ev_005
+    relation: supports
+    locator: Prompt caching caches the full prefix
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_014
+  text: Gemini 2.5 Flash-Lite costs $0.10/M input (text/image/video) and $0.40/M output at standard tier,
+    halving to $0.05/$0.20 under batch tier.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_10
+    evidence_id: ev_001
+    relation: supports
+    locator: Gemini 2.5 Flash-Lite pricing table
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_015
+  text: Gemini 2.5 Flash costs $0.30/M input (text/image/video) and $2.50/M output at standard tier, with
+    batch tier at $0.15/$1.25.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_10
+    evidence_id: ev_002
+    relation: supports
+    locator: Gemini 2.5 Flash pricing table
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_016
+  text: Gemini 3.5 Flash costs $1.50/M input and $9.00/M output at standard tier, with batch tier at $0.75/$4.50
+    (a consistent 50% reduction).
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_10
+    evidence_id: ev_003
+    relation: supports
+    locator: Gemini 3.5 Flash pricing table
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_017
+  text: 'Gemini 3.1 Pro Preview is tiered by prompt length: $2.00/M input and $12.00/M output for prompts
+    <=200k tokens, rising to $4.00/$18.00 above 200k.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_10
+    evidence_id: ev_004
+    relation: supports
+    locator: Gemini 3.1 Pro Preview pricing table
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_018
+  text: Gemini 2.5 Flash Image is priced at $0.039 per image standard, halving to $0.0195 per image under
+    batch.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_10
+    evidence_id: ev_005
+    relation: supports
+    locator: Image generation models pricing
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_019
+  text: The page exposes both a Free Tier (free-of-charge input/output for development) and a Paid Tier,
+    and batch pricing is consistently ~50% of the interactive standard rate across models.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_10
+    evidence_id: ev_006
+    relation: supports
+    locator: Pricing table (Free Tier vs Paid Tier columns) / batch pricing pattern
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_020
+  text: Ray Serve runs long-running inference asynchronously via background task processing so HTTP APIs
+    stay responsive while work runs in the background.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_08
+    evidence_id: ev_001
+    relation: supports
+    locator: Asynchronous Inference (intro)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_021
+  text: For workloads that exceed typical HTTP timeouts (e.g. video processing, large document indexing),
+    the system enqueues work in a background queue and immediately returns a quick response.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_08
+    evidence_id: ev_002
+    relation: supports
+    locator: Why asynchronous inference?
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_022
+  text: Async task execution decouples request lifetime from compute time while still leveraging Serve's
+    scalability.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_08
+    evidence_id: ev_003
+    relation: supports
+    locator: Why asynchronous inference?
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_023
+  text: A background worker (@task_consumer) is a Serve deployment that consumes and executes tasks pulled
+    from a queue, independent of incoming HTTP requests.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_08
+    evidence_id: ev_004
+    relation: supports
+    locator: Key concepts — @task_consumer
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_024
+  text: Backpressure is controlled by max_ongoing_requests on the consumer deployment, capping how many
+    tasks each replica processes simultaneously; failed tasks retry up to max_retries then route to a
+    dead-letter queue.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_08
+    evidence_id: ev_005
+    relation: supports
+    locator: Best practices / concurrency
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_025
+  text: 'Clients poll for results rather than blocking: the API enqueues tasks via enqueue_task_sync and
+    fetches status via get_task_status_sync.'
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_08
+    evidence_id: ev_006
+    relation: supports
+    locator: Example — status checking
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_026
+  text: A built-in AsyncInferenceAutoscalingPolicy polls the message broker for queue length and scales
+    replicas to match demand from pending and in-flight requests.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_08
+    evidence_id: ev_007
+    relation: supports
+    locator: Autoscaling
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_027
+  text: gpt-5.6-terra (workhorse) lists at $2.50 per 1M input tokens, $0.25 cached input, and $15.00 per
+    1M output tokens on the standard tier.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_02
+    evidence_id: ev_001
+    relation: supports
+    locator: Flagship models -> Standard tier pricing table (row)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_028
+  text: gpt-5.6-luna (cheap/fast) lists at $1.00 per 1M input tokens, $0.10 cached input, and $6.00 per
+    1M output tokens on the standard tier.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_02
+    evidence_id: ev_002
+    relation: supports
+    locator: Flagship models -> Standard tier pricing table (row)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_029
+  text: gpt-5.6-sol (frontier) lists at $5.00 per 1M input tokens, $0.50 cached input, and $30.00 per
+    1M output tokens on the standard tier.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_02
+    evidence_id: ev_003
+    relation: supports
+    locator: Flagship models -> Standard tier pricing table (row)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_030
+  text: For gpt-4o-mini and gpt-4.1-mini using the non-preview web search tool, search content is billed
+    as a fixed 8,000-input-token block per call.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_02
+    evidence_id: ev_004
+    relation: supports
+    locator: Tools -> footnote on built-in tool billing
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_031
+  text: Batch-tier pricing for gpt-5.6-terra is exactly half the standard tier ($1.25 input / $7.50 output
+    per 1M), reflecting the documented 50% batch discount.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_02
+    evidence_id: ev_005
+    relation: supports
+    locator: Flagship models -> Batch tier pricing table (row)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_032
+  text: Regional processing (data residency) endpoints add a 10% price uplift for eligible models released
+    on or after March 5, 2026.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_02
+    evidence_id: ev_006
+    relation: supports
+    locator: Standard pricing table -> all-models footnote
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_033
+  text: GPT-5 mini is positioned as a faster, more cost-efficient GPT-5 variant targeted at cost-sensitive,
+    low-latency, high-volume workloads.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_11
+    evidence_id: ev_001
+    relation: supports
+    locator: Page header / tagline
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_034
+  text: OpenAI recommends starting new low-latency, high-volume workloads on GPT-5.6 Terra rather than
+    GPT-5 mini, indicating a newer preferred tier for offloaded high-volume work.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_11
+    evidence_id: ev_002
+    relation: supports
+    locator: Overview paragraph
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_035
+  text: GPT-5 mini supports the batch endpoint alongside chat_completions and responses, enabling asynchronous/queued
+    offloaded workloads.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_11
+    evidence_id: ev_003
+    relation: supports
+    locator: Current snapshot details — Supported endpoints
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_036
+  text: GPT-5 mini exposes a 400,000-token context window with up to 272,000 input tokens and 128,000
+    output tokens.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_11
+    evidence_id: ev_004
+    relation: supports
+    locator: Current snapshot details — context/limits
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_037
+  text: GPT-5 mini supports structured outputs, function calling, and web search, making it suitable for
+    offloaded structuring and tool-driven tasks.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_11
+    evidence_id: ev_005
+    relation: supports
+    locator: Current snapshot details — Supported features
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_038
+  text: GPT-5 mini is a reasoning-type model whose current snapshot is gpt-5-mini-2025-08-07 with a 2024-05-31
+    knowledge cutoff.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_11
+    evidence_id: ev_006
+    relation: supports
+    locator: Model metadata header
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_039
+  text: The existing design stance already earmarks on-device AI for small parsing helpers while allowing
+    heavy generation to run cloud-based.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_04
+    evidence_id: ev_001
+    relation: supports
+    locator: §5 Supporting Details → Tech stack (pragmatic)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_040
+  text: The spec scopes 3D as structural geometry (stitch-graph/mesh approximation) rendered without simulating
+    actual yarn physics.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_04
+    evidence_id: ev_002
+    relation: supports
+    locator: '§4B) The 3D visualizer: feasible, but choose the right kind of 3D'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_041
+  text: A structured Crochet IR is required as the parse->render contract, with rows[] as sequences of
+    stitch ops and counts.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_04
+    evidence_id: ev_003
+    relation: supports
+    locator: '§5 Supporting Details → Data model: Crochet IR (intermediate representation)'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_042
+  text: 'Pattern IP/copyright is flagged the #1 business landmine, constraining ingestion to designer
+    opt-in, licensing, or user-private imports.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_04
+    evidence_id: ev_004
+    relation: supports
+    locator: §6 Risks / Limits
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_043
+  text: The spec cites peer-reviewed work (ACM/AmiGo) generating amigurumi instructions from a closed
+    3D model, seed point, and stitch size as feasibility basis.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_04
+    evidence_id: ev_005
+    relation: supports
+    locator: §4D) 3D object → crochet pattern generator (hardest, but real)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_044
+  text: The spec cites a 2025 force-directed graph-layout paper as basis for turning written patterns
+    into a 3D representation.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_04
+    evidence_id: ev_006
+    relation: supports
+    locator: §4B) The 3D visualizer (EG citation)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_045
+  text: Parsing ambiguity (inconsistent abbreviations, formatting, charts, freeform notes) is a named
+    risk motivating structured/validator-gated extraction.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_04
+    evidence_id: ev_007
+    relation: supports
+    locator: §6 Risks / Limits
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_046
+  text: Adobe Firefly Pro Plus is priced at US$49.99/month (regular rate), with a promotional first-year
+    rate of US$34.97/month.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_03
+    evidence_id: ev_001
+    relation: supports
+    locator: Plans comparison table — Firefly Pro Plus column header
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_047
+  text: Adobe Firefly Premium is priced at US$199.99/month (regular rate), with a promotional first-year
+    rate of US$139.91/month.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_03
+    evidence_id: ev_002
+    relation: supports
+    locator: Plans comparison table — Firefly Premium column header
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_048
+  text: 'Generative credits are a fixed monthly allocation that scales by plan tier: 2,000 (Standard),
+    4,000 (Pro), 10,000 (Pro Plus), and 50,000 (Premium) per month.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_03
+    evidence_id: ev_003
+    relation: supports
+    locator: Plans comparison table — Creative AI › Generative credits row
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_049
+  text: The entry Firefly tiers are Standard at US$9.99/month and Pro at US$19.99/month, establishing
+    the low end of the credit-metered pricing ladder.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_03
+    evidence_id: ev_004
+    relation: supports
+    locator: Plans comparison table — Firefly Standard / Firefly Pro column headers
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_050
+  text: 'Metering is per operation type: caps scale by tier (e.g., 5-second video generations up to 20/40/100),
+    demonstrating differentiated allowances for expensive generative operations.'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_03
+    evidence_id: ev_005
+    relation: supports
+    locator: Plans comparison table — 'Generate 5-second videos' row
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_051
+  text: When a plan's generative credits are exhausted, Adobe directs users to purchase credit add-on
+    plans to continue generating, rather than describing an on-page reduced-speed continuation.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_03
+    evidence_id: ev_006
+    relation: supports
+    locator: '''Out of credits. Not ideas.'' section'
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_052
+  text: Apple ships a compact on-device model of roughly 3 billion parameters alongside a separate mixture-of-experts
+    server model whose architecture is tailored for Private Cloud Compute.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_06
+    evidence_id: ev_001
+    relation: supports
+    locator: Introduction
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_053
+  text: The server model uses a parallel-track mixture-of-experts (PT-MoE) design that reduces synchronization
+    overhead.
+  materiality: background
+  claim_type: causal
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_06
+    evidence_id: ev_002
+    relation: supports
+    locator: Model Architectures
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_054
+  text: Architecture changes to the on-device model reduce KV cache memory usage by 37.5% and improve
+    time-to-first-token.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_06
+    evidence_id: ev_003
+    relation: supports
+    locator: Model Architectures
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_055
+  text: The on-device model is compressed to 2 bits per weight using Quantization-Aware Training.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_06
+    evidence_id: ev_004
+    relation: supports
+    locator: Optimizations
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_056
+  text: The on-device model is optimized for text tasks such as summarization, entity extraction, text
+    understanding, and refinement.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_06
+    evidence_id: ev_005
+    relation: supports
+    locator: Foundation Models Framework
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_057
+  text: Apple states the on-device model is not intended to serve as a general-knowledge chatbot, implying
+    heavier general reasoning is not its role.
+  materiality: background
+  claim_type: attribution
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_06
+    evidence_id: ev_006
+    relation: supports
+    locator: Foundation Models Framework
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_058
+  text: Apple states it does not use users' private personal data or user interactions to train its foundation
+    models.
+  materiality: background
+  claim_type: attribution
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_06
+    evidence_id: ev_007
+    relation: supports
+    locator: Responsible AI
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_059
+  text: Apple's on-device system foundation model supports a context window of up to 4,096 tokens per
+    session instance.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_05
+    evidence_id: ev_001
+    relation: supports
+    locator: Consider context size limits per session
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_060
+  text: A single token maps to roughly three or four characters in English/Spanish/German, and one token
+    per character in Japanese/Chinese/Korean.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_05
+    evidence_id: ev_002
+    relation: supports
+    locator: Consider context size limits per session
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_061
+  text: Instructions, all prompts, and all outputs jointly count against the single 4,096-token context
+    window, so prompt plus response must fit within one budget.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_05
+    evidence_id: ev_003
+    relation: supports
+    locator: Consider context size limits per session
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_062
+  text: Data too large for a single context window must be split into smaller chunks, each processed in
+    a separate session, then recombined.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_05
+    evidence_id: ev_004
+    relation: supports
+    locator: Consider context size limits per session
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_063
+  text: The framework provides guided generation to produce a developer-defined custom Swift data structure
+    instead of raw string output (structured output).
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_05
+    evidence_id: ev_005
+    relation: supports
+    locator: Generate a response
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_064
+  text: RAG output quality depends on how source documents are segmented before indexing, and fixed-length
+    chunks can split concepts or add noise that reduces retrieval precision.
+  materiality: background
+  claim_type: causal
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_09
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_065
+  text: Naive equal-sized chunking dilutes meaning and surfaces incomplete or misleading information,
+    lowering retrieval precision.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_09
+    evidence_id: ev_002
+    relation: supports
+    locator: 1. Introduction (chunking paragraph)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_066
+  text: Advanced chunking methods (semantic, proposition-based, adaptive) improve retrieval by organizing
+    text around meaningful units rather than token counts.
+  materiality: background
+  claim_type: comparative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_09
+    evidence_id: ev_003
+    relation: supports
+    locator: 1. Introduction (chunking paragraph)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_067
+  text: Adaptive chunking substantially outperformed the fixed-length baseline on retrieval metrics (precision
+    0.50, recall 0.88, F1 0.64 vs 0.17, 0.40, 0.24).
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_09
+    evidence_id: ev_004
+    relation: supports
+    locator: Abstract / Results
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_068
+  text: Fixed recursive character windowing performed worst, fragmenting coupled statements and duplicating
+    content across overlapping windows, yielding the lowest scores.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_09
+    evidence_id: ev_005
+    relation: supports
+    locator: 4. Discussion (Interpretation and Significance)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_069
+  text: The adaptive method's added preprocessing stayed computationally practical by reusing pre-computed
+    sentence embeddings and applying a single linear boundary pass.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_09
+    evidence_id: ev_006
+    relation: supports
+    locator: Strengths and Limitations
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_070
+  text: The method takes a written crochet pattern as input, translates it into a graph, and produces
+    a 3D model matching the hand-crocheted object's shape and size.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_01
+    evidence_id: ev_001
+    relation: supports
+    locator: Abstract
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_071
+  text: Each stitch is a node in the pattern graph and the physical connections between stitches (sequential
+    and working) are the edges.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_01
+    evidence_id: ev_002
+    relation: supports
+    locator: Section 4 (graph construction, paragraph on stitch representation)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_072
+  text: The force-directed layout is a non-linear least-squares optimization that minimizes two energy
+    functions (edge length and local curvature).
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_01
+    evidence_id: ev_003
+    relation: supports
+    locator: Section 4.2 (The graph layout)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_073
+  text: The iterative linear solver is the dominant compute cost of the application, which the authors
+    flag as a concern for general-audience usability.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_01
+    evidence_id: ev_004
+    relation: supports
+    locator: Section 4.2 (discussion of lambda / solver cost)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_074
+  text: The layout builds on the Isenburg et al. graph-inflation algorithm, which inflates a planar graph
+    by assigning edge lengths and minimizing curvature to maximize volume.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_01
+    evidence_id: ev_005
+    relation: supports
+    locator: Section 4.2 (implementation)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_075
+  text: The implementation solves the optimization with the Ceres Solver library, using a static blend
+    weight lambda = 0.65 for most pieces.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260710_offload_01
+    evidence_id: ev_006
+    relation: supports
+    locator: Section 4.2 (implementation, lambda)
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf01
+  text: LLM pattern structuring/extraction from PDFs and URLs must be offloaded to a server because typical
+    multi-page patterns exceed Apple's 4096-token on-device window, which throws .exceededContextWindowSize
+    and halts the session.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_001
+    - clm_059
+    - clm_061
+    - clm_008
+    - clm_039
+    reasoning_summary: A 4096-token window (shared by instructions+prompt+output) cannot hold a multi-page
+      PDF pattern plus a structured Crochet IR response; exceeding it errors out, so full-document extraction
+      belongs on a large-context server model rather than on-device.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf02
+  text: Interactive 3D rendering, stitch counters, and step mode should stay on-device (Metal) because
+    they are latency-sensitive, low-compute, and touch no data that requires cloud reasoning.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_040
+    - clm_039
+    - clm_054
+    reasoning_summary: The spec scopes 3D as structural geometry without yarn physics (cheap to render)
+      and already earmarks on-device for small helpers; counters/step-mode need instant response and no
+      server round-trip, so keeping them local minimizes latency and preserves offline use.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf03
+  text: Heavy mesh generation and physics relaxation of stitch graphs should be offloaded to a server
+    GPU/CPU as an asynchronous job, not run interactively on-device, because the iterative least-squares
+    solver is the dominant compute cost of the layout.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_072
+    - clm_073
+    - clm_075
+    - clm_070
+    - clm_021
+    reasoning_summary: The force-directed layout is a non-linear least-squares optimization (Ceres Solver,
+      lambda=0.65) whose iterative solver the authors flag as the dominant cost and a usability concern;
+      such long-running compute fits a server background queue that returns immediately, not an interactive
+      mobile thread.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf04
+  text: For long-context PDF/URL extraction, GPT-5 mini (400k-token window, 272k input) and Gemini 3.1
+    Pro (tiered <=200k / >200k) can ingest whole patterns that the 4096-token on-device model cannot,
+    and all viable cloud options support structured output for direct Crochet IR emission.
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_036
+    - clm_037
+    - clm_017
+    - clm_016
+    - clm_015
+    - clm_063
+    - clm_001
+    reasoning_summary: GPT-5 mini's 400k/272k window and Gemini 3.1 Pro's length-tiered pricing both dwarf
+      4096 tokens; structured-output/function-calling support across GPT-5 mini and Gemini lets extraction
+      return a validated IR object rather than free text.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf05
+  text: Per-pattern extraction cost (~25k input + ~8k structured-IR output tokens) ranges from ~$0.006
+    on Gemini 2.5 Flash-Lite ($0.10/$0.40 per M) to ~$0.028 on Gemini 2.5 Flash, ~$0.073 on gpt-5.6-luna,
+    and ~$0.15 on Gemini 3.1 Pro, each roughly halving under batch tier.
+  materiality: material
+  claim_type: quantitative
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_014
+    - clm_015
+    - clm_028
+    - clm_017
+    - clm_019
+    - clm_031
+    reasoning_summary: 'Applying published per-M input/output rates to a representative 25k-in/8k-out
+      pattern: Flash-Lite 25k*0.10+8k*0.40=~$0.0057; Flash ~$0.0275; luna ~$0.073; 3.1 Pro ~$0.146; documented
+      ~50% batch discount halves all.'
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf06
+  text: At these token prices LLM extraction is not the binding cost for a $9.99-$19.99/month premium
+    tier (a $9.99 plan covers hundreds of Flash-tier extractions); the real cost driver and metering target
+    is server GPU mesh relaxation, not text extraction.
+  materiality: material
+  claim_type: quantitative
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_049
+    - clm_014
+    - clm_015
+    - clm_073
+    - clm_050
+    reasoning_summary: Firefly's low tiers ($9.99/$19.99) set a realistic premium anchor; at ~$0.006-$0.028
+      per extraction a single subscription funds hundreds of extractions, so margin risk concentrates
+      in the compute-dominant solver, which is what per-operation caps should meter.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf07
+  text: 'Caching by pattern hash cuts marginal server cost sharply: identical prompt prefixes bill cache
+    hits at 0.1x input (a ~90% reduction), and cross-user reuse of precomputed meshes/renders keyed by
+    pattern hash drops a popular pattern''s repeat cost toward storage+egress only.'
+  materiality: material
+  claim_type: quantitative
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_009
+    - clm_013
+    - clm_073
+    - clm_018
+    reasoning_summary: Cache reads at 0.1x base input plus stable-prefix caching make re-extraction of
+      the same document ~10% of first-run input cost; storing the solver's expensive mesh output once
+      and serving it to later requests avoids recomputing the dominant-cost relaxation entirely.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf08
+  text: KnitWit premium should adopt Adobe Firefly-style per-operation credit metering, capping expensive
+    operations (mesh generation, image render) by tier rather than offering unlimited compute, with credit
+    add-ons for overage.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_048
+    - clm_050
+    - clm_051
+    - clm_073
+    reasoning_summary: Firefly meters per operation type with tier-scaled caps and add-on purchases on
+      exhaustion; because mesh relaxation is the dominant, unbounded cost, metering it per-operation (not
+      per-token) aligns spend with the true cost driver.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf09
+  text: 'The architecture should split by job duration: PDF/URL extraction and mesh relaxation run as
+    queue+callback async jobs (enqueue, return immediately, client polls), while counters, step mode,
+    and cached-preview rendering run synchronously on-device.'
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_020
+    - clm_021
+    - clm_025
+    - clm_073
+    - clm_002
+    reasoning_summary: Ray Serve's async pattern (enqueue_task_sync + poll get_task_status_sync) exists
+      precisely for work exceeding HTTP timeouts like large document indexing; the solver's long runtime
+      and multi-page extraction both fit this, whereas instant interactions must not block on a server.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf10
+  text: Use pay-per-use cloud LLM APIs for extraction (no infra, batch discount, elastic) and reserve
+    self-hosting for the mesh-relaxation GPU tier only if volume justifies it, since the Ceres-based solver
+    is open-source and deterministic with no per-token cost.
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_027
+    - clm_028
+    - clm_019
+    - clm_075
+    - clm_073
+    reasoning_summary: Cloud LLM pricing with ~50% batch tiers makes bursty extraction cheapest as a metered
+      API; the mesh solver (Ceres, open library) carries fixed compute but no token cost, so self-hosting
+      it becomes economical only past a volume threshold where reserved GPU beats per-call cloud GPU.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf11
+  text: The >4096-token extraction path should be resolved by server-side large-context structured extraction
+    directly into Crochet IR, NOT by on-device chunk-and-summarize, because summarization across sessions
+    risks dropping exact per-round stitch counts that the IR's expected_stitch_count requires.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_005
+    - clm_062
+    - clm_036
+    - clm_063
+    - clm_041
+    reasoning_summary: Apple's on-device remedy is chunking + carried-forward summaries, which is lossy
+      for precise numeric stitch ops; a single large-context server pass with guided/structured output
+      preserves every row's ops and counts needed by the parse->render IR contract.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf12
+  text: When a pattern is too large even for one server pass (e.g., pattern books), chunk adaptively/semantically
+    along Crochet IR round and piece boundaries rather than by fixed token windows, since adaptive chunking
+    beat fixed-length on retrieval (F1 0.64 vs 0.24).
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_067
+    - clm_066
+    - clm_068
+    - clm_041
+    - clm_045
+    reasoning_summary: Fixed recursive windowing scored worst by fragmenting coupled statements; a round's
+      ops must stay intact, so boundary-aware chunking (aligned to pieces/rounds) both preserves meaning
+      and matches the IR's natural units, mitigating parsing-ambiguity risk.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf13
+  text: 'Required privacy posture: route user photos and user-private pattern imports through zero-retention,
+    no-train endpoints with optional data-residency (the ~10% regional uplift is acceptable), and constrain
+    any shared/ingested patterns to designer opt-in or license per the #1 copyright landmine.'
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_058
+    - clm_032
+    - clm_042
+    - clm_007
+    reasoning_summary: Apple's no-private-data-training stance sets the user expectation; regional endpoints
+      exist at a 10% uplift for residency; copyright is flagged the top business risk, so user-private
+      and licensed-only ingestion plus non-training processing is the minimum defensible posture.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf14
+  text: Offline degradation should let cached Crochet IR, precomputed meshes, counters, and step mode
+    run fully on-device, while new extraction and mesh-generation jobs queue locally and dispatch when
+    connectivity returns, with .exceededContextWindowSize caught to fail over to the server path.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_008
+    - clm_039
+    - clm_040
+    - clm_020
+    - clm_022
+    reasoning_summary: Async job decoupling means offloaded work can be enqueued and deferred; on-device
+      rendering/counters need no network; catching the context-window error is the natural trigger to
+      escalate an oversized on-device parse to the queued server job.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf15
+  text: Pattern->3D via force-directed layout is academically demonstrated but not product-ready for interactive
+    mobile use; the product path is server-side precompute plus pattern-hash caching, delivering a static
+    renderable mesh to the device rather than solving on-device in real time.
+  materiality: material
+  claim_type: comparative
+  status: inference
+  confidence: high
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_070
+    - clm_072
+    - clm_074
+    - clm_073
+    - clm_040
+    reasoning_summary: The paper shows the pattern->graph->3D method works (feasibility) but names the
+      iterative solver as the dominant cost and a general-audience usability concern (not product-ready
+      on mobile); precomputing server-side and caching the result reconciles the two.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_inf16
+  text: These placement findings most de-risk gates G2 (Crochet IR viability) and G3 (pattern->3D viability);
+    the highest-value next experiments are EXP-004 (IR->stitch graph) and EXP-005 (stitch-graph->approximate-3D)
+    run server-side to measure real solver latency and validate the async precompute+cache design.
+  materiality: material
+  claim_type: recommendation
+  status: inference
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims:
+    - clm_041
+    - clm_070
+    - clm_073
+    - clm_021
+    reasoning_summary: The IR contract (G2) and the graph->3D step (G3) are exactly where the solver-cost
+      and structured-extraction decisions bite; running EXP-004/005 on a server harness produces the latency
+      numbers needed to confirm queue+callback and caching before committing MVP scope.
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_spec01
+  text: Running the stitch-graph physics relaxation on-device via Metal would likely blow the interactive
+    latency budget for non-trivial amigurumi on current phones (risk severity high, likelihood high);
+    mitigation is mandatory server offload with a queued job and cached result.
+  materiality: material
+  claim_type: prediction
+  status: speculation
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims: []
+    reasoning_summary: 'Forward-looking risk: the authors already flag the iterative solver as dominant
+      cost and a usability concern on general hardware (clm_073); extrapolating to mobile GPUs, interactive
+      on-device relaxation is unlikely to meet UX latency, so this is labeled speculation pending an on-device
+      benchmark.'
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_spec02
+  text: Cross-user cache sharing keyed by pattern hash could leak that a specific user possesses a copyrighted
+    or private pattern (risk severity medium, likelihood medium); mitigation is to share precomputed meshes/renders
+    only for licensed/public patterns and salt user-private hashes so they never collide across accounts.
+  materiality: material
+  claim_type: prediction
+  status: speculation
+  confidence: medium
+  sources: []
+  inference_basis:
+    from_claims: []
+    reasoning_summary: 'Forward-looking privacy/IP risk combining the copyright landmine (clm_042) with
+      cache-hit behavior (clm_009): a shared hash namespace can reveal ownership; labeled speculation
+      because it depends on unspecified cache-key design decisions.'
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_spec03
+  text: With batch-tier extraction and pattern-hash caching, a KnitWit premium tier priced in the Firefly
+    $9.99-$19.99 band is projected to be gross-margin-positive at typical hobbyist usage (a few dozen
+    extractions plus mostly-cached previews per month), with margin risk only from heavy uncached mesh-generation
+    users.
+  materiality: material
+  claim_type: prediction
+  status: speculation
+  confidence: low
+  sources: []
+  inference_basis:
+    from_claims: []
+    reasoning_summary: Forward-looking economics extrapolated from per-pattern costs (clm_inf05), 0.1x
+      cache hits (clm_009), ~50% batch (clm_019), and Firefly price anchors (clm_049); labeled speculation
+      because actual usage distribution and mesh-job frequency are unknown.
+  report_locations: []
+  reviewer_notes: ''
+unresolved_questions: []

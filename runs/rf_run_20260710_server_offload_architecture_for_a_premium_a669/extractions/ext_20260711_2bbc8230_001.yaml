@@ -1,0 +1,89 @@
+id: ext_20260711_2bbc8230_001
+source_card_id: src_20260710_offload_10
+created_at: '2026-07-11T10:55:24-04:00'
+extractor_agent: rf_extractor
+model_profile: rf_extract_cheap
+extracted_facts:
+- evidence_id: ev_001
+  text: Gemini 2.5 Flash-Lite costs $0.10/M input (text/image/video) and $0.40/M output at standard tier,
+    halving to $0.05/$0.20 under batch tier.
+  locator: Gemini 2.5 Flash-Lite pricing table
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_002
+  text: Gemini 2.5 Flash costs $0.30/M input (text/image/video) and $2.50/M output at standard tier, with
+    batch tier at $0.15/$1.25.
+  locator: Gemini 2.5 Flash pricing table
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_003
+  text: Gemini 3.5 Flash costs $1.50/M input and $9.00/M output at standard tier, with batch tier at $0.75/$4.50
+    (a consistent 50% reduction).
+  locator: Gemini 3.5 Flash pricing table
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_004
+  text: 'Gemini 3.1 Pro Preview is tiered by prompt length: $2.00/M input and $12.00/M output for prompts
+    <=200k tokens, rising to $4.00/$18.00 above 200k.'
+  locator: Gemini 3.1 Pro Preview pricing table
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_005
+  text: Gemini 2.5 Flash Image is priced at $0.039 per image standard, halving to $0.0195 per image under
+    batch.
+  locator: Image generation models pricing
+  confidence: medium
+  quote_available: true
+  notes: ''
+- evidence_id: ev_006
+  text: The page exposes both a Free Tier (free-of-charge input/output for development) and a Paid Tier,
+    and batch pricing is consistently ~50% of the interactive standard rate across models.
+  locator: Pricing table (Free Tier vs Paid Tier columns) / batch pricing pattern
+  confidence: medium
+  quote_available: false
+  notes: ''
+extracted_definitions: []
+extracted_metrics:
+- metric_name: evidence_point
+  value: ev_001
+  unit: null
+  date_context: null
+  locator: Gemini 2.5 Flash-Lite pricing table
+- metric_name: evidence_point
+  value: ev_002
+  unit: null
+  date_context: null
+  locator: Gemini 2.5 Flash pricing table
+- metric_name: evidence_point
+  value: ev_003
+  unit: null
+  date_context: null
+  locator: Gemini 3.5 Flash pricing table
+- metric_name: evidence_point
+  value: ev_004
+  unit: null
+  date_context: null
+  locator: Gemini 3.1 Pro Preview pricing table
+- metric_name: evidence_point
+  value: ev_005
+  unit: null
+  date_context: null
+  locator: Image generation models pricing
+- metric_name: evidence_point
+  value: ev_006
+  unit: null
+  date_context: null
+  locator: Pricing table (Free Tier vs Paid Tier columns) / batch pricing pattern
+contradictions_or_cautions:
+- text: Prices change frequently; figures are point-in-time as accessed 2026-07-10.
+  locator: card/trust
+- text: Image-generation per-image rates for 3.1 Flash Image not confirmed from page text.
+  locator: card/trust
+- text: Pricing is volatile and point-in-time (accessed 2026-07-10); re-verify before any budget decision.
+  locator: card/limitations
+- text: Per-image rates for 3.1 Flash Image could not be confirmed from the page text and are omitted.
+  locator: card/limitations
