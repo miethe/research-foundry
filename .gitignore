@@ -62,3 +62,28 @@ website/site/
 
 # Backfill migration backups (run.yaml.bak) — git history is the canonical backup
 runs/**/*.bak
+
+# --- Research Foundry data plane (tracked elsewhere, NOT in this repo) ---
+# Runs, writebacks, and captured artifacts live in the SEPARATE private repo
+# `research-foundry-data` (dual git-dir at /.git-data sharing this worktree).
+# Clean-forward: on-disk files are preserved; only git tracking is removed here.
+/runs/
+/ccdash/
+/iboms/
+/inbox/
+/intents/active/
+/intents/archived/
+/intents/completed/
+/intents/paused/
+/intenttree/
+/skillmeat/
+/meatywiki/
+/.firecrawl/
+/registries/
+# The data-plane second-repo gitdir (this repo must not see it)
+/.git-data/
+
+# --- Regenerable / runtime artifacts (kept out of the clean project repo) ---
+/.rf_state/
+/ai/
+.claude/skills/symbols/ai/

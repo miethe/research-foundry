@@ -1,6 +1,0 @@
-{"ts": "2026-06-15T11:46:39-04:00", "stage": "verify", "run_id": "runs/rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "exit_code": 2, "passed": false}
-{"ts": "2026-06-15T11:47:25-04:00", "stage": "verify", "run_id": "runs/rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "exit_code": 4, "passed": false}
-{"ts": "2026-06-15T11:47:32-04:00", "stage": "verify", "run_id": "runs/rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "exit_code": 4, "passed": false}
-{"ts": "2026-06-15T11:48:18-04:00", "stage": "verify", "run_id": "runs/rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "exit_code": 2, "passed": false}
-{"ts": "2026-06-15T11:48:31-04:00", "stage": "verify", "run_id": "runs/rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "exit_code": 2, "passed": false}
-{"ts": "2026-06-15T11:48:31-04:00", "stage": "verify", "run_id": "runs/rf_run_20260614_closed_loop_telemetry_to_artifact_feedback", "exit_code": 2, "passed": false}
