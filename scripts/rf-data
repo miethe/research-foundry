@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# rf-data — operate the Research Foundry DATA-PLANE repo.
+#
+# The data plane (runs/, ccdash/, iboms/, inbox/,
+# intents/{active,archived,completed,paused}/, intenttree/, skillmeat/,
+# meatywiki/, registries/, reports/, .firecrawl/) lives PHYSICALLY inside this
+# working tree (so `rf` and the runs-viewer read it in place) but is tracked by
+# a SEPARATE git repo — a dual git-dir at $REPO/.git-data — that pushes to the
+# PRIVATE github.com/miethe/research-foundry-data repo. The public project repo
+# (.git) .gitignores the data plane, so it never ships this data.
+#
+# Usage:  ./scripts/rf-data <git-subcommand> [args...]
+#   ./scripts/rf-data status
+#   ./scripts/rf-data add -f runs/<run_id> ccdash registries
+#   ./scripts/rf-data commit -m "add run <id>"
+#   ./scripts/rf-data push
+#
+# NOTE: `add` needs -f — the project .gitignore ignores the data plane, and that
+# ignore file is shared across both repos in this worktree.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ ! -d "$ROOT/.git-data" ]; then
+  echo "rf-data: no .git-data at $ROOT — data-plane repo not initialized on this host." >&2
+  echo "  Bootstrap: git --git-dir=\"$ROOT/.git-data\" init && configure core.worktree + remote." >&2
+  exit 2
+fi
+exec git --git-dir="$ROOT/.git-data" --work-tree="$ROOT" "$@"

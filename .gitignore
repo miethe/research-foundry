@@ -80,6 +80,7 @@ runs/**/*.bak
 /meatywiki/
 /.firecrawl/
 /registries/
+/reports/
 # The data-plane second-repo gitdir (this repo must not see it)
 /.git-data/
 
@@ -87,3 +88,4 @@ runs/**/*.bak
 /.rf_state/
 /ai/
 .claude/skills/symbols/ai/
+.claude/worktrees/
