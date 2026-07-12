@@ -10,6 +10,7 @@ caller's arguments.
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,7 @@ from ..ids import (
 from ..ids import (
     run_id as make_run_id,
 )
-from ..paths import FoundryPaths
+from ..paths import FoundryPaths, RunPaths
 from ..registry import RUN_INDEX, Registry
 from ..schemas import default_registry, validate
 from ..yamlio import append_jsonl, dump_yaml, load_yaml
@@ -219,6 +220,30 @@ def _build_questions(intent: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
     return {"primary": primary, "secondary": secondary}
 
 
+def _gc_partial_run_dir(run: RunPaths) -> None:
+    """Best-effort removal of a scaffolded run dir that never got a ``run.yaml``.
+
+    ``plan_run`` calls this from its except-and-reraise handler when anything
+    fails between ``ensure_scaffold()`` and the registry ``upsert()`` (schema
+    validation, governance block, I/O error, ...). At that point the run
+    directory was just created by this same call -- ``disambiguate_id``
+    already confirmed no directory existed at ``run_id`` beforehand -- so it
+    is safe to remove wholesale rather than leaving an empty/partial stub
+    behind for the runs-viewer to surface as a blank entry (AAR gap 3).
+
+    Guarded on ``run.run_yaml`` still being absent so a failure that somehow
+    occurs *after* ``run.yaml`` was already written (e.g. in code added later)
+    never deletes a run that has real content. Swallows all removal errors --
+    this is cleanup, not the error the caller is already re-raising.
+    """
+
+    try:
+        if not run.run_yaml.exists():
+            shutil.rmtree(run.run, ignore_errors=True)
+    except Exception:  # noqa: BLE001 — best-effort GC, never mask the real error
+        pass
+
+
 def plan_run(
     intent_id: str,
     *,
@@ -355,194 +380,203 @@ def plan_run(
 
     run = paths.run_paths(run_id).ensure_scaffold()
 
-    # --- research_brief.md (front matter TOP LEVEL + body) -------------------
-    brief_fields: dict[str, Any] = {
-        "schema_version": 0.1,
-        "type": "research_brief",
-        "id": b_id,
-        "intent_id": intent_id,
-        "title": title,
-        "audience": audience,
-        "research_depth": depth,
-        "questions": _build_questions(intent),
-        "source_strategy": {
-            "include_source_types": [
-                "official_docs",
-                "peer_reviewed_papers",
-                "standards",
-                "reputable_news",
-                "vendor_docs",
-                "repo_readmes",
-                "personal_notes",
-            ],
-            "exclude_source_types": [
-                "unsourced_social_posts",
-                "SEO_content_farms",
-            ],
-            "freshness": {
-                "required": True,
-                "max_age_days": int(freshness_days),
-                "exceptions": ["foundational_theory", "historical_background"],
-            },
-        },
-        "output_requirements": {
-            "format": "markdown",
-            "include_claim_ledger": True,
-            "include_source_cards": True,
-            "include_inference_log": True,
-            "include_open_questions": True,
-        },
-    }
-    objective = str(intent.get("objective") or title)
-    brief_body = (
-        f"# Research Brief: {title}\n\n"
-        f"**Objective.** {objective}\n\n"
-        f"**Depth.** {depth}  |  **Audience.** {audience}\n\n"
-        "## Questions\n\n"
-        + "\n".join(f"- ({q['id']}) {q['question']}" for q in brief_fields["questions"]["primary"])
-        + "\n"
-    )
-    dump_md(brief_fields, brief_body, run.research_brief)
-    _validate_or_raise(brief_fields, "research_brief", run.research_brief)
-
-    # --- swarm_plan.yaml -----------------------------------------------------
-    agents: list[dict[str, str]] = []
-    for spec in _AGENT_SPECS:
-        profile_key = spec["profile_key"]
-        model_profile = policy.get(profile_key, "none") if profile_key else "none"
-        agents.append(
-            {
-                "role": spec["role"],
-                "posture": spec["posture"],
-                "tool": spec["tool"],
-                "model_profile": model_profile,
-                "task": spec["task"],
-            }
-        )
-    swarm: dict[str, Any] = {
-        "schema_version": 0.1,
-        "type": "swarm_plan",
-        "id": s_id,
-        "brief_id": b_id,
-        "intent_id": intent_id,
-        "created_at": created_at,
-        "status": "planned",
-        "budget": {
-            "max_cost_usd": float(max_cost_usd),
-            "max_runtime_minutes": int(max_runtime_minutes),
-            "extraction_model_profile": policy["extraction_profile"],
-            "synthesis_model_profile": policy["synthesis_profile"],
-            "verification_model_profile": policy["verification_profile"],
-        },
-        "agents": agents,
-        "required_outputs": list(_REQUIRED_OUTPUTS),
-    }
-    dump_yaml(swarm, run.swarm_plan)
-    _validate_or_raise(swarm, "swarm_plan", run.swarm_plan)
-
-    # --- routing_decision.yaml ----------------------------------------------
-    routing: dict[str, Any] = {
-        "schema_version": 0.1,
-        "type": "routing_decision",
-        "id": r_id,
-        "intent_id": intent_id,
-        "active_node_id": active_node_id,
-        "selected_abstraction_level": "L4",
-        "selected_posture_chain": list(_POSTURE_CHAIN),
-        "selected_skillbom": "skill_research_swarm_v0",
-        "selected_context_packs": list(_CONTEXT_PACKS),
-        "selected_tools": _selected_tools(config),
-        "human_required": human_required,
-        "rationale": (
-            "Source-backed synthesis with claim audit. Cheap extraction, deep "
-            "synthesis, balanced verification per the linked I-BOM model policy."
-        ),
-        "expected_output": "evidence_bundle",
-        "validation": list(_VALIDATION_STEPS),
-        "writebacks": [dict(w) for w in _WRITEBACKS],
-    }
-    dump_yaml(routing, run.routing_decision)
-    _validate_or_raise(routing, "routing_decision", run.routing_decision)
-
-    # --- governance preflight (enforcement gate) -----------------------------
-    # Run AFTER the routing decision is written so the guard sees the planned
-    # routing. The effective key profile defaults to the intent's allowed
-    # profile (so a normal personal run is never over-blocked); a caller passing
-    # a conflicting profile (e.g. work_approved on a personal-only intent) is
-    # hard-blocked here per rule no_work_keys_for_personal_runs.
-    intent_gov = intent.get("governance") if isinstance(intent.get("governance"), dict) else {}
-    allowed_profile = intent_gov.get("key_profile_allowed") if isinstance(intent_gov, dict) else None
-    effective_profile = profile or (str(allowed_profile) if allowed_profile else "personal")
-    guard = governance_svc.preflight(intent, ibom, routing, effective_profile, paths=paths)
-    if not guard.passed and guard.exit_code == int(ExitCode.GOVERNANCE):
-        blocked = [v.rule_id for v in guard.violations if v.severity == "block"]
-        raise GovernanceError(
-            "governance preflight blocked planning for "
-            f"{run_id} (profile={effective_profile}): {', '.join(blocked)}",
-            violations=blocked,
-        )
-
-    # --- run.yaml ------------------------------------------------------------
-    run_doc: dict[str, Any] = {
-        "schema_version": 0.1,
-        "type": "run",
-        "run_id": run_id,
-        "intent_id": intent_id,
-        "ibom_id": ibom.get("id") if isinstance(ibom, dict) else None,
-        "brief_id": b_id,
-        "swarm_id": s_id,
-        "routing_id": r_id,
-        "created_at": created_at,
-        "status": "planned",
-        "sensitivity": sensitivity,
-        "human_required": human_required,
-        "project": effective_project,
-        "notebook_id": None,
-        # --- new metadata fields (P3 creation path; backfill in P2) ----------
-        # linked_projects: list of project slugs this run is associated with.
-        "linked_projects": _linked_projects,
-        # category: pillar / thematic grouping derived from backlog idea.
-        "category": _category,
-        # tags: union of backlog idea tags; null when no backlog link.
-        "tags": _tags,
-        # backlog_idea_ref: RIB-NNN backlog reference slug (null if no link).
-        "backlog_idea_ref": _backlog_idea_ref,
-        # backlog_idea_id: stable idea id slug (null if no link).
-        "backlog_idea_id": _backlog_idea_id,
-        # ---------------------------------------------------------------------
-        "profile": {
-            "depth": depth,
-            "audience": audience,
-            "max_cost_usd": float(max_cost_usd),
-            "max_runtime_minutes": int(max_runtime_minutes),
-            "freshness_days": int(freshness_days),
-            "extraction_model_profile": policy["extraction_profile"],
-            "synthesis_model_profile": policy["synthesis_profile"],
-            "verification_model_profile": policy["verification_profile"],
-        },
-    }
-    dump_yaml(run_doc, run.run_yaml)
-
-    # --- registry + telemetry ------------------------------------------------
-    Registry.open(RUN_INDEX, paths=paths).upsert(
-        {
-            "id": run_id,
+    try:
+        # --- research_brief.md (front matter TOP LEVEL + body) -------------------
+        brief_fields: dict[str, Any] = {
+            "schema_version": 0.1,
+            "type": "research_brief",
+            "id": b_id,
             "intent_id": intent_id,
-            "status": "planned",
+            "title": title,
+            "audience": audience,
+            "research_depth": depth,
+            "questions": _build_questions(intent),
+            "source_strategy": {
+                "include_source_types": [
+                    "official_docs",
+                    "peer_reviewed_papers",
+                    "standards",
+                    "reputable_news",
+                    "vendor_docs",
+                    "repo_readmes",
+                    "personal_notes",
+                ],
+                "exclude_source_types": [
+                    "unsourced_social_posts",
+                    "SEO_content_farms",
+                ],
+                "freshness": {
+                    "required": True,
+                    "max_age_days": int(freshness_days),
+                    "exceptions": ["foundational_theory", "historical_background"],
+                },
+            },
+            "output_requirements": {
+                "format": "markdown",
+                "include_claim_ledger": True,
+                "include_source_cards": True,
+                "include_inference_log": True,
+                "include_open_questions": True,
+            },
+        }
+        objective = str(intent.get("objective") or title)
+        brief_body = (
+            f"# Research Brief: {title}\n\n"
+            f"**Objective.** {objective}\n\n"
+            f"**Depth.** {depth}  |  **Audience.** {audience}\n\n"
+            "## Questions\n\n"
+            + "\n".join(f"- ({q['id']}) {q['question']}" for q in brief_fields["questions"]["primary"])
+            + "\n"
+        )
+        dump_md(brief_fields, brief_body, run.research_brief)
+        _validate_or_raise(brief_fields, "research_brief", run.research_brief)
+
+        # --- swarm_plan.yaml -----------------------------------------------------
+        agents: list[dict[str, str]] = []
+        for spec in _AGENT_SPECS:
+            profile_key = spec["profile_key"]
+            model_profile = policy.get(profile_key, "none") if profile_key else "none"
+            agents.append(
+                {
+                    "role": spec["role"],
+                    "posture": spec["posture"],
+                    "tool": spec["tool"],
+                    "model_profile": model_profile,
+                    "task": spec["task"],
+                }
+            )
+        swarm: dict[str, Any] = {
+            "schema_version": 0.1,
+            "type": "swarm_plan",
+            "id": s_id,
+            "brief_id": b_id,
+            "intent_id": intent_id,
             "created_at": created_at,
+            "status": "planned",
+            "budget": {
+                "max_cost_usd": float(max_cost_usd),
+                "max_runtime_minutes": int(max_runtime_minutes),
+                "extraction_model_profile": policy["extraction_profile"],
+                "synthesis_model_profile": policy["synthesis_profile"],
+                "verification_model_profile": policy["verification_profile"],
+            },
+            "agents": agents,
+            "required_outputs": list(_REQUIRED_OUTPUTS),
+        }
+        dump_yaml(swarm, run.swarm_plan)
+        _validate_or_raise(swarm, "swarm_plan", run.swarm_plan)
+
+        # --- routing_decision.yaml ----------------------------------------------
+        routing: dict[str, Any] = {
+            "schema_version": 0.1,
+            "type": "routing_decision",
+            "id": r_id,
+            "intent_id": intent_id,
+            "active_node_id": active_node_id,
+            "selected_abstraction_level": "L4",
+            "selected_posture_chain": list(_POSTURE_CHAIN),
+            "selected_skillbom": "skill_research_swarm_v0",
+            "selected_context_packs": list(_CONTEXT_PACKS),
+            "selected_tools": _selected_tools(config),
+            "human_required": human_required,
+            "rationale": (
+                "Source-backed synthesis with claim audit. Cheap extraction, deep "
+                "synthesis, balanced verification per the linked I-BOM model policy."
+            ),
+            "expected_output": "evidence_bundle",
+            "validation": list(_VALIDATION_STEPS),
+            "writebacks": [dict(w) for w in _WRITEBACKS],
+        }
+        dump_yaml(routing, run.routing_decision)
+        _validate_or_raise(routing, "routing_decision", run.routing_decision)
+
+        # --- governance preflight (enforcement gate) -----------------------------
+        # Run AFTER the routing decision is written so the guard sees the planned
+        # routing. The effective key profile defaults to the intent's allowed
+        # profile (so a normal personal run is never over-blocked); a caller passing
+        # a conflicting profile (e.g. work_approved on a personal-only intent) is
+        # hard-blocked here per rule no_work_keys_for_personal_runs.
+        intent_gov = intent.get("governance") if isinstance(intent.get("governance"), dict) else {}
+        allowed_profile = intent_gov.get("key_profile_allowed") if isinstance(intent_gov, dict) else None
+        effective_profile = profile or (str(allowed_profile) if allowed_profile else "personal")
+        guard = governance_svc.preflight(intent, ibom, routing, effective_profile, paths=paths)
+        if not guard.passed and guard.exit_code == int(ExitCode.GOVERNANCE):
+            blocked = [v.rule_id for v in guard.violations if v.severity == "block"]
+            raise GovernanceError(
+                "governance preflight blocked planning for "
+                f"{run_id} (profile={effective_profile}): {', '.join(blocked)}",
+                violations=blocked,
+            )
+
+        # --- run.yaml ------------------------------------------------------------
+        run_doc: dict[str, Any] = {
+            "schema_version": 0.1,
+            "type": "run",
+            "run_id": run_id,
+            "intent_id": intent_id,
+            "ibom_id": ibom.get("id") if isinstance(ibom, dict) else None,
             "brief_id": b_id,
             "swarm_id": s_id,
             "routing_id": r_id,
+            "created_at": created_at,
+            "status": "planned",
+            "sensitivity": sensitivity,
             "human_required": human_required,
-            "run_dir": str(run.run),
-            # Metadata fields — kept in sync with run.yaml (single-writer consistency).
+            "project": effective_project,
+            "notebook_id": None,
+            # --- new metadata fields (P3 creation path; backfill in P2) ----------
+            # linked_projects: list of project slugs this run is associated with.
             "linked_projects": _linked_projects,
+            # category: pillar / thematic grouping derived from backlog idea.
             "category": _category,
+            # tags: union of backlog idea tags; null when no backlog link.
             "tags": _tags,
+            # backlog_idea_ref: RIB-NNN backlog reference slug (null if no link).
             "backlog_idea_ref": _backlog_idea_ref,
+            # backlog_idea_id: stable idea id slug (null if no link).
             "backlog_idea_id": _backlog_idea_id,
+            # ---------------------------------------------------------------------
+            "profile": {
+                "depth": depth,
+                "audience": audience,
+                "max_cost_usd": float(max_cost_usd),
+                "max_runtime_minutes": int(max_runtime_minutes),
+                "freshness_days": int(freshness_days),
+                "extraction_model_profile": policy["extraction_profile"],
+                "synthesis_model_profile": policy["synthesis_profile"],
+                "verification_model_profile": policy["verification_profile"],
+            },
         }
-    )
+        dump_yaml(run_doc, run.run_yaml)
+
+        # --- registry + telemetry ------------------------------------------------
+        Registry.open(RUN_INDEX, paths=paths).upsert(
+            {
+                "id": run_id,
+                "intent_id": intent_id,
+                "status": "planned",
+                "created_at": created_at,
+                "brief_id": b_id,
+                "swarm_id": s_id,
+                "routing_id": r_id,
+                "human_required": human_required,
+                "run_dir": str(run.run),
+                # Metadata fields — kept in sync with run.yaml (single-writer consistency).
+                "linked_projects": _linked_projects,
+                "category": _category,
+                "tags": _tags,
+                "backlog_idea_ref": _backlog_idea_ref,
+                "backlog_idea_id": _backlog_idea_id,
+            }
+        )
+    except Exception:
+        # The run dir was just created by ensure_scaffold() above (disambiguate_id
+        # confirmed no directory existed at this run_id before this call), and
+        # nothing durable (run.yaml, registry entry) is written until the very end
+        # of this block -- GC the partial scaffold on ANY failure in between so it
+        # never surfaces as a blank/orphaned stub dir in the runs-viewer (AAR gap 3).
+        _gc_partial_run_dir(run)
+        raise
 
     # Record project→run association in the NotebookLM correlation registry.
     # notebook_id=None because no notebook exists yet; this is a pure local

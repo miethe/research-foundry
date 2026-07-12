@@ -8,9 +8,13 @@ that the routing decision's ``human_required`` flag reflects the intent's
 
 from __future__ import annotations
 
+import pytest
+
+from research_foundry.errors import SchemaError
 from research_foundry.frontmatter import load_md
 from research_foundry.registry import RUN_INDEX, Registry
 from research_foundry.schemas import default_registry, validate
+from research_foundry.services import planning as planning_module
 from research_foundry.services.capture import capture_idea, triage_idea
 from research_foundry.services.planning import PlanResult, plan_run
 from research_foundry.yamlio import load_yaml
@@ -111,3 +115,67 @@ def test_run_index_gets_a_row(tmp_foundry, sample_idea_text):
     assert row["intent_id"] == intent_id
     assert row["status"] == "planned"
     assert row["brief_id"] == result.brief_id
+
+
+def test_disambiguated_run_ids_leave_no_empty_stub_dir(tmp_foundry):
+    """AAR gap 3 (real-run path): two intents whose titles share the same
+    first-6-word slug must mint two distinct, fully-populated run
+    directories -- never an empty/un-suffixed stub left over from a
+    directory created before the final (possibly-suffixed) run_id was
+    resolved.
+    """
+
+    same_title = "Same Title For Both Ideas Here"
+    intent_id_1, _ = _make_intent(same_title, sensitivity="personal", tmp_foundry=tmp_foundry)
+    intent_id_2, _ = _make_intent(same_title, sensitivity="personal", tmp_foundry=tmp_foundry)
+    assert intent_id_1 != intent_id_2  # triage_idea already disambiguates intents
+
+    result1 = plan_run(intent_id_1, paths=tmp_foundry)
+    result2 = plan_run(intent_id_2, paths=tmp_foundry)
+
+    assert result1.run_id != result2.run_id
+    # Second run collides on the base slug -> disambiguate_id suffixes it.
+    assert result2.run_id.startswith(result1.run_id + "_")
+
+    for result in (result1, result2):
+        assert result.run_dir.is_dir()
+        assert (result.run_dir / "run.yaml").exists()
+        assert any(result.run_dir.iterdir())  # never an empty stub
+
+    # runs/ contains exactly the two real, suffix-correct directories -- no
+    # stray un-suffixed empty directory sitting alongside them.
+    assert {p.name for p in tmp_foundry.runs.iterdir()} == {result1.run_id, result2.run_id}
+
+
+def test_plan_run_gcs_partial_scaffold_on_failure(tmp_foundry, sample_idea_text, monkeypatch):
+    """AAR gap 3 (partial-failure path): a failure between ``ensure_scaffold()``
+    and the registry write (schema error, governance block, I/O error, ...)
+    must not leave an orphaned run directory -- not even a partially
+    populated one missing ``run.yaml`` -- for the runs-viewer to surface as
+    a blank entry.
+    """
+
+    intent_id, _ = _make_intent(sample_idea_text, sensitivity="personal", tmp_foundry=tmp_foundry)
+
+    real_validate_or_raise = planning_module._validate_or_raise
+
+    def _boom(obj, schema_name, path):
+        # Let research_brief validate fine (so the run dir has real partial
+        # content, mirroring a genuine mid-scaffold failure), then explode on
+        # the next artifact.
+        if schema_name == "swarm_plan":
+            raise SchemaError("injected failure for test_plan_run_gcs_partial_scaffold_on_failure")
+        return real_validate_or_raise(obj, schema_name, path)
+
+    monkeypatch.setattr(planning_module, "_validate_or_raise", _boom)
+
+    runs_dir = tmp_foundry.runs
+    before = {p.name for p in runs_dir.iterdir()} if runs_dir.exists() else set()
+
+    with pytest.raises(SchemaError):
+        planning_module.plan_run(intent_id, paths=tmp_foundry)
+
+    after = {p.name for p in runs_dir.iterdir()} if runs_dir.exists() else set()
+    # The scaffolded run dir (which had research_brief.md written, but never
+    # got run.yaml or a registry entry) was GC'd -- no orphan left behind.
+    assert after == before
