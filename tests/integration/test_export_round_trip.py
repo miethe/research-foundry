@@ -17,6 +17,44 @@ import pytest
 from research_foundry.paths import FoundryPaths
 from research_foundry.services import export_service as svc
 
+
+def test_build_claims_preserves_legacy_shape_with_optional_assertion_lineage():
+    claim = {
+        "claim_id": "clm_001",
+        "text": "Exact lineage fact.",
+        "materiality": "material",
+        "claim_type": "factual",
+        "status": "supported",
+        "confidence": "high",
+        "sources": [
+            {
+                "source_card_id": "src_001",
+                "evidence_id": "ev_001",
+                "locator": "para/1",
+                "relation": "supports",
+            }
+        ],
+        "report_locations": ["reports/report_draft.md#claim-1"],
+        "inference_basis": {"from_claims": [], "reasoning_summary": None},
+    }
+    legacy = svc._build_claims({"claims": [claim]}, {}, 0)[0]
+    assert "persistent_references" not in legacy
+    references = {
+        "source_edition_id": "sed_" + "1" * 64,
+        "passage_id": "psg_" + "2" * 64,
+        "source_assertion_id": "ast_" + "3" * 64,
+        "assertion_version": 1,
+    }
+    enriched_claim = {**claim, "persistent_references": references}
+    enriched = svc._build_claims({"claims": [enriched_claim]}, {}, 0)[0]
+    assert enriched == {**legacy, "persistent_references": references}
+    for field in ("claim_id", "sources", "report_locations", "inference_basis"):
+        assert enriched[field] == legacy[field]
+    assert not any(
+        key in references
+        for key in ("canonical_claim_id", "canonical_claim_version", "inference_id")
+    )
+
 REF_RUN = "rf_run_20260613_what_is_the_current_release_state"
 
 

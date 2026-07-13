@@ -131,14 +131,17 @@ files_modified:
 - src/research_foundry/services/source_cards.py
 - tests/unit/test_assertion_registry.py
 - tests/fixtures/assertion_ledger/p2_formats/
-progress: 75
+progress: 100
 ---
 
 # Reusable Assertion Ledger — Phase 3 (P2): Edition and Passage Registry
 
-P2-001 through P2-003 are implemented and await independent review. The registry
-is private and file-canonical; source-card integration is explicit opt-in, so
-assertion-only mode and all feature flags remain unchanged.
+P2-001 through P2-003 were approved and completed by task
+`019f5d44-9f26-7152-ba82-1d454d11087f` at
+`d65971e035b2b7a575d29405ea3fd8dac76c10ab` / tree
+`d9ab53bdfaa64df8304682ea0c69adc2214cb6ad`. The registry is private and
+file-canonical; source-card integration is explicit opt-in, so assertion-only
+mode and all feature flags remain unchanged.
 
 ## Validation record
 
@@ -149,9 +152,10 @@ assertion-only mode and all feature flags remain unchanged.
 | Saved-checkout Python mypy with `--follow-imports=skip` for changed Python/test files | Passed: no issues in 3 source files. |
 | `git diff --check` | Passed. |
 
-## Review scope
+## Approved review scope
 
-Review idempotency, raw and normalized hashes, revision lineage, rights metadata,
-exact selectors, typed drift/ambiguity handling, atomic-retry recovery, isolated
-multi-format file trees, and the opt-in source-card seam. Do not authorize
-feature flags, canonical-claim behavior, or Phase 4.
+The approved review covered idempotency, raw and normalized hashes, revision
+lineage, rights metadata, exact selectors, typed drift/ambiguity handling,
+atomic-retry recovery, isolated multi-format file trees, and the opt-in
+source-card seam. Approval did not authorize feature flags, canonical behavior,
+or Phase 4.

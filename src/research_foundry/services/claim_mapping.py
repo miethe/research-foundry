@@ -10,8 +10,10 @@ backed by extracted evidence. No network or model is required.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ..errors import NotFoundError, SchemaError
 from ..ids import now_iso, slugify, today_compact
@@ -24,6 +26,8 @@ _NUMERIC = re.compile(r"\d|%")
 _COMPARATIVE = re.compile(r"\b(more|less|than|vs\.?|versus|fewer|greater|higher|lower)\b", re.I)
 _CAUSAL = re.compile(r"\b(because|causes?|leads? to|reduces?|increases?|results? in)\b", re.I)
 _ATTRIBUTION = re.compile(r"\b(says?|according to|claims?|reports?|states?)\b", re.I)
+FactReferenceKey = tuple[str, str, str]
+PersistentReferenceCandidates = Mapping[str, Any] | Sequence[Mapping[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -34,6 +38,7 @@ class ClaimMapResult:
     ledger_path: Path
     claims_total: int
     by_status: dict  # {supported: n, inference: n, ...}
+    lineage_abstentions: tuple[dict[str, Any], ...] = ()
 
 
 def _schema_registry(paths: FoundryPaths) -> SchemaRegistry | None:
@@ -76,11 +81,37 @@ def _materiality(text: str, claim_type: str) -> str:
     return "background"
 
 
+def _resolve_persistent_reference(value: PersistentReferenceCandidates | object) -> tuple[dict[str, Any] | None, str | None]:
+    """Resolve one exact assertion-only reference without guessing a candidate."""
+    if isinstance(value, Mapping):
+        candidates = [value]
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        candidates = list(value)
+    else:
+        return None, "invalid_persistent_reference"
+    if len(candidates) != 1:
+        return None, "ambiguous_persistent_reference" if len(candidates) > 1 else "invalid_persistent_reference"
+    candidate = candidates[0]
+    if not isinstance(candidate, Mapping):
+        return None, "invalid_persistent_reference"
+    forbidden = ("canonical_claim_id", "canonical_claim_version", "inference_id")
+    if any(candidate.get(field) is not None for field in forbidden):
+        return None, "invalid_persistent_reference"
+    fields = ("source_edition_id", "passage_id", "source_assertion_id")
+    if not all(isinstance(candidate.get(field), str) and candidate[field] for field in fields):
+        return None, "invalid_persistent_reference"
+    version = candidate.get("assertion_version")
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        return None, "invalid_persistent_reference"
+    return {field: candidate[field] for field in (*fields, "assertion_version")}, None
+
+
 def build_claim_ledger(
     run_id: str,
     *,
     intent_id: str | None = None,
     paths: FoundryPaths | None = None,
+    persistent_references_by_fact: Mapping[FactReferenceKey, PersistentReferenceCandidates] | None = None,
 ) -> ClaimMapResult:
     """Build ``claims/claim_ledger.yaml`` from a run's extraction cards."""
 
@@ -94,6 +125,7 @@ def build_claim_ledger(
         intent_id = _intent_from_run(run_paths) or f"intent_research_{today_compact()}_{slugify(run_id)}"
 
     claims: list[dict] = []
+    lineage_abstentions: list[dict[str, Any]] = []
     contradictions: list[dict] = []
     counter = 0
 
@@ -110,8 +142,7 @@ def build_claim_ledger(
             claim_type = _claim_type(text)
             evidence_id = str(fact.get("evidence_id") or "ev_001")
             locator = str(fact.get("locator") or "para/0")
-            claims.append(
-                {
+            claim = {
                     "claim_id": f"clm_{counter:03d}",
                     "text": text or "(no text)",
                     "materiality": _materiality(text, claim_type),
@@ -129,8 +160,15 @@ def build_claim_ledger(
                     "inference_basis": {"from_claims": [], "reasoning_summary": None},
                     "report_locations": [],
                     "reviewer_notes": "",
-                }
-            )
+            }
+            key = (source_card_id, evidence_id, locator)
+            if persistent_references_by_fact is not None and key in persistent_references_by_fact:
+                reference, reason = _resolve_persistent_reference(persistent_references_by_fact[key])
+                if reference is not None:
+                    claim["persistent_references"] = reference
+                else:
+                    lineage_abstentions.append({"claim_id": claim["claim_id"], "source_card_id": source_card_id, "evidence_id": evidence_id, "locator": locator, "reason": reason})
+            claims.append(claim)
 
         # Seed contradictions from extraction cautions.
         for caution in card.get("contradictions_or_cautions") or []:
@@ -151,6 +189,8 @@ def build_claim_ledger(
         "claims": claims,
         "unresolved_questions": _seed_questions(claims),
     }
+    if lineage_abstentions:
+        ledger["persistent_reference_abstentions"] = lineage_abstentions
 
     ledger_path = run_paths.claim_ledger
     dump_yaml(ledger, ledger_path)
@@ -192,6 +232,7 @@ def build_claim_ledger(
         ledger_path=ledger_path,
         claims_total=len(claims),
         by_status=by_status,
+        lineage_abstentions=tuple(lineage_abstentions),
     )
 
 

@@ -199,3 +199,125 @@ def test_claim_type_heuristics(tmp_foundry, tmp_path):
     assert "comparative" in type_set or "quantitative" in type_set
     assert "causal" in type_set
     assert "attribution" in type_set or "factual" in type_set
+
+
+def test_optional_persistent_references_preserve_legacy_claims(tmp_foundry, tmp_path):
+    _scaffold(tmp_foundry)
+    doc = tmp_path / "lineage.txt"
+    doc.write_text(
+        "First exact lineage fact.\n\nSecond exact lineage fact.\n",
+        encoding="utf-8",
+    )
+    source_cards.ingest_source(
+        str(doc), run_id=RUN_ID, title="Lineage", paths=tmp_foundry
+    )
+    extraction.extract_run(RUN_ID, paths=tmp_foundry)
+    card = load_yaml(next(tmp_foundry.run_paths(RUN_ID).extractions.glob("*.yaml")))
+    assert len(card["extracted_facts"]) == 2
+    result = claim_mapping.build_claim_ledger(RUN_ID, paths=tmp_foundry)
+    ledger = load_yaml(result.ledger_path)
+    assert len(ledger["claims"]) == 2
+    assert all("persistent_references" not in claim for claim in ledger["claims"])
+    assert "persistent_reference_abstentions" not in ledger
+    assert result.lineage_abstentions == ()
+    legacy_claims = ledger["claims"]
+    first_fact = card["extracted_facts"][0]
+    key = (
+        card["source_card_id"],
+        first_fact["evidence_id"],
+        first_fact["locator"],
+    )
+    reference = {
+        "source_edition_id": "sed_" + "1" * 64,
+        "passage_id": "psg_" + "2" * 64,
+        "source_assertion_id": "ast_" + "3" * 64,
+        "assertion_version": 1,
+    }
+    enriched_result = claim_mapping.build_claim_ledger(
+        RUN_ID,
+        paths=tmp_foundry,
+        persistent_references_by_fact={key: reference},
+    )
+    enriched = load_yaml(enriched_result.ledger_path)
+    validation = _registry(tmp_foundry).validate(enriched, "claim_ledger")
+    assert validation.ok, validation.errors
+    assert enriched_result.lineage_abstentions == ()
+    assert enriched["claims"][0]["persistent_references"] == reference
+    assert "persistent_references" not in enriched["claims"][1]
+    for enriched_claim, legacy_claim in zip(
+        enriched["claims"], legacy_claims, strict=True
+    ):
+        comparable = dict(enriched_claim)
+        comparable.pop("persistent_references", None)
+        assert comparable == legacy_claim
+    assert not any(
+        forbidden in reference
+        for forbidden in ("canonical_claim_id", "canonical_claim_version", "inference_id")
+    )
+    second_fact = card["extracted_facts"][1]
+    second_key = (
+        card["source_card_id"],
+        second_fact["evidence_id"],
+        second_fact["locator"],
+    )
+    ref2 = {
+        "source_edition_id": "sed_" + "4" * 64,
+        "passage_id": "psg_" + "5" * 64,
+        "source_assertion_id": "ast_" + "6" * 64,
+        "assertion_version": 1,
+    }
+    ref3 = {
+        "source_edition_id": "sed_" + "7" * 64,
+        "passage_id": "psg_" + "8" * 64,
+        "source_assertion_id": "ast_" + "9" * 64,
+        "assertion_version": 1,
+    }
+    ambiguous_result = claim_mapping.build_claim_ledger(
+        RUN_ID,
+        paths=tmp_foundry,
+        persistent_references_by_fact={key: reference, second_key: [ref2, ref3]},
+    )
+    ambiguous = load_yaml(ambiguous_result.ledger_path)
+    validation = _registry(tmp_foundry).validate(ambiguous, "claim_ledger")
+    assert validation.ok, validation.errors
+    assert ambiguous["claims"][0]["persistent_references"] == reference
+    assert "persistent_references" not in ambiguous["claims"][1]
+    abstention = {
+        "claim_id": ambiguous["claims"][1]["claim_id"],
+        "source_card_id": card["source_card_id"],
+        "evidence_id": second_fact["evidence_id"],
+        "locator": second_fact["locator"],
+        "reason": "ambiguous_persistent_reference",
+    }
+    assert ambiguous_result.lineage_abstentions == (abstention,)
+    assert ambiguous["persistent_reference_abstentions"] == [abstention]
+    for ambiguous_claim, legacy_claim in zip(
+        ambiguous["claims"], legacy_claims, strict=True
+    ):
+        comparable = dict(ambiguous_claim)
+        comparable.pop("persistent_references", None)
+        assert comparable == legacy_claim
+    invalid_result = claim_mapping.build_claim_ledger(
+        RUN_ID,
+        paths=tmp_foundry,
+        persistent_references_by_fact={
+            key: {**reference, "canonical_claim_id": "ccl_" + "9" * 64}
+        },
+    )
+    invalid = load_yaml(invalid_result.ledger_path)
+    assert "persistent_references" not in invalid["claims"][0]
+    invalid_abstention = {
+        "claim_id": invalid["claims"][0]["claim_id"],
+        "source_card_id": card["source_card_id"],
+        "evidence_id": first_fact["evidence_id"],
+        "locator": first_fact["locator"],
+        "reason": "invalid_persistent_reference",
+    }
+    assert invalid_result.lineage_abstentions == (invalid_abstention,)
+    assert invalid["persistent_reference_abstentions"] == [invalid_abstention]
+    for invalid_claim, legacy_claim in zip(
+        invalid["claims"], legacy_claims, strict=True
+    ):
+        comparable = dict(invalid_claim)
+        comparable.pop("persistent_references", None)
+        assert comparable == legacy_claim

@@ -202,6 +202,18 @@ class AssertionRegistry:
         """Return only the atomically published passage generation."""
         return tuple(self._load_passages(self._source_id(source_key), edition_id))
 
+    def get_edition(self, source_key: str, edition_id: str) -> dict[str, Any] | None:
+        """Return only an edition published by this workspace-qualified source."""
+        source_id = self._source_id(source_key)
+        manifest_path = self._source_manifest(source_id)
+        if not manifest_path.exists():
+            return None
+        manifest = load_yaml(manifest_path)
+        if edition_id not in manifest.get("edition_ids", []):
+            return None
+        path = self._edition_path(source_id, edition_id)
+        return dict(load_yaml(path)) if path.exists() else None
+
     def _publish_passages(self, source_id: str, edition_id: str, passages: Mapping[str, dict[str, Any]], interrupt: bool) -> None:
         passage_ids = sorted(passages)
         generation_id = f"gen_{_digest(':'.join(passage_ids))}"
