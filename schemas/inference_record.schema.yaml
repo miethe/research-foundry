@@ -1,0 +1,57 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/inference_record.schema.yaml/v1"
+title: Inference Record
+description: >-
+  Derived reasoning record. It is intentionally distinct from a source
+  assertion and records the immutable assertion versions from which it was made.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: inference_record
+  inference_id:
+    type: string
+  inference_version:
+    type: integer
+    minimum: 1
+  conclusion:
+    type: string
+    minLength: 1
+  source_assertion_refs:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required: [assertion_id, assertion_version]
+      properties:
+        assertion_id:
+          type: string
+          pattern: "^ast_[a-f0-9]{64}$"
+        assertion_version:
+          type: integer
+          minimum: 1
+  reasoning:
+    type: object
+    additionalProperties: false
+    required: [summary, method]
+    properties:
+      summary:
+        type: string
+      method:
+        type: string
+      producer:
+        type: [string, "null"]
+  status:
+    enum: [active, stale, invalidated]
+required:
+  - schema_version
+  - type
+  - inference_id
+  - inference_version
+  - conclusion
+  - source_assertion_refs
+  - reasoning
+  - status

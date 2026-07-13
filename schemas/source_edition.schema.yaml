@@ -1,0 +1,45 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/source_edition.schema.yaml/v1"
+title: Source Edition
+description: >-
+  Immutable, content-addressed rendition of a source. A new material byte
+  sequence is a new edition; mutable source metadata is intentionally outside
+  this record.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: source_edition
+  source_edition_id:
+    type: string
+    pattern: "^sed_[a-f0-9]{64}$"
+  content_sha256:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  source_id:
+    type: string
+  media_type:
+    type: string
+  captured_at:
+    type: string
+    format: date-time
+  retrieval_locator:
+    type: object
+    additionalProperties: true
+  predecessor_edition_id:
+    type: [string, "null"]
+  access_scope:
+    type: string
+  metadata_extensions:
+    type: object
+    description: Preserved non-identity metadata; never included in content identity.
+    additionalProperties: true
+required:
+  - schema_version
+  - type
+  - source_edition_id
+  - content_sha256
+  - source_id
+  - captured_at

@@ -1,0 +1,118 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/assertion_lifecycle_event.schema.yaml/v1"
+title: Assertion Lifecycle Event
+description: >-
+  Immutable, ordered event that changes authoritative eligibility before any
+  asynchronous reconciliation of dependent projections.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: assertion_lifecycle_event
+  event_id:
+    type: string
+  sequence:
+    type: integer
+    minimum: 1
+  idempotency_key:
+    type: string
+    minLength: 1
+  occurred_at:
+    type: string
+    format: date-time
+  cause:
+    enum: [corrected_edition, invalid_extraction, formal_retraction, manual_tombstone, merge_reversal]
+  target:
+    type: object
+    additionalProperties: false
+    required: [kind, id, version]
+    properties:
+      kind:
+        enum: [source_edition, passage, source_assertion, canonical_claim, inference_record]
+      id:
+        type: string
+      version:
+        type: integer
+        minimum: 1
+  transition:
+    type: object
+    additionalProperties: false
+    required: [from, to]
+    properties:
+      from:
+        enum: [eligible, stale, invalidated, tombstoned]
+      to:
+        enum: [stale, invalidated, tombstoned]
+  authoritative_action:
+    enum: [block_reuse]
+  dependent_actions:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [object_kind, action]
+      properties:
+        object_kind:
+          enum: [canonical_claim_edge, inference, report_revision, run, export, cache_index, writeback_receipt]
+        action:
+          enum: [block_reuse, mark_stale, retract, regenerate, purge_derived_cache, queue_default_denied_reconciliation]
+required:
+  - schema_version
+  - type
+  - event_id
+  - sequence
+  - idempotency_key
+  - occurred_at
+  - cause
+  - target
+  - transition
+allOf:
+  - oneOf:
+      - properties:
+          transition:
+            properties:
+              from: {const: eligible}
+              to: {const: stale}
+      - properties:
+          transition:
+            properties:
+              from: {const: eligible}
+              to: {const: invalidated}
+      - properties:
+          transition:
+            properties:
+              from: {const: eligible}
+              to: {const: tombstoned}
+      - properties:
+          transition:
+            properties:
+              from: {const: stale}
+              to: {const: invalidated}
+      - properties:
+          transition:
+            properties:
+              from: {const: stale}
+              to: {const: tombstoned}
+      - properties:
+          transition:
+            properties:
+              from: {const: invalidated}
+              to: {const: tombstoned}
+  - if:
+      properties:
+        transition:
+          properties:
+            to:
+              enum: [invalidated, tombstoned]
+      required: [transition]
+    then:
+      required: [authoritative_action, dependent_actions]
+      properties:
+        dependent_actions:
+          minItems: 1
+          contains:
+            properties:
+              action: {const: block_reuse}
+            required: [action]

@@ -38,7 +38,7 @@ from ..frontmatter import split_frontmatter
 from ..paths import FoundryPaths, RunPaths
 from ..yamlio import loads_yaml
 
-EXPORT_SCHEMA_VERSION = "1.4"
+EXPORT_SCHEMA_VERSION = "1.5"
 
 AOS_CORRELATION_FIELDS = (
     "aos_run_uuid",
@@ -640,22 +640,25 @@ def _build_claims(
             if isinstance(c, dict)
         ]
         basis = claim.get("inference_basis") or {}
-        claims_out.append(
-            {
-                "claim_id": claim.get("claim_id"),
-                "text": claim.get("text"),
-                "materiality": claim.get("materiality"),
-                "claim_type": claim.get("claim_type"),
-                "status": claim.get("status"),
-                "confidence": claim.get("confidence"),
-                "report_locations": claim.get("report_locations") or [],
-                "inference_basis": {
-                    "from_claims": basis.get("from_claims") or [],
-                    "reasoning_summary": basis.get("reasoning_summary"),
-                },
-                "sources": sources,
-            }
-        )
+        claim_out: dict[str, Any] = {
+            "claim_id": claim.get("claim_id"),
+            "text": claim.get("text"),
+            "materiality": claim.get("materiality"),
+            "claim_type": claim.get("claim_type"),
+            "status": claim.get("status"),
+            "confidence": claim.get("confidence"),
+            "report_locations": claim.get("report_locations") or [],
+            "inference_basis": {
+                "from_claims": basis.get("from_claims") or [],
+                "reasoning_summary": basis.get("reasoning_summary"),
+            },
+            "sources": sources,
+        }
+        # Persistent references are additive. Never manufacture IDs for legacy
+        # claim ledgers; omission remains the assertion-ledger-absent signal.
+        if "persistent_references" in claim:
+            claim_out["persistent_references"] = claim.get("persistent_references")
+        claims_out.append(claim_out)
     return claims_out
 
 

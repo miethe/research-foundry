@@ -4,7 +4,7 @@
  * Re-exports:
  *   1. run-export.ts  — hand-written RFRunExport / RFClaim / RFResolvedSource etc.
  *      (matches the frozen run.json contract from rf-run-export-schema.md)
- *   2. generated files — auto-generated from all 20 schemas/*.schema.yaml files
+ *   2. generated files — auto-generated from all 27 viewer-consumed schemas/*.schema.yaml files
  *      (run `pnpm codegen` to regenerate)
  *
  * Consumers should import from "@/types/rf" only, not from sub-files.
@@ -28,6 +28,7 @@ export type {
   RFReportAnchorClaimLink,
   RFReportAnchorBlock,
   RFClaim,
+  RFPersistentReferences,
   RFClaimCounts,
   RFVerificationCheck,
   RFVerification,
@@ -104,3 +105,10 @@ export type { RawIdea }                   from "./raw_idea.generated.js";
 export type { ReportFrontMatter }         from "./report_frontmatter.generated.js";
 export type { RoutingDecision }           from "./routing_decision.generated.js";
 export type { SkillBOMCandidate }         from "./skillbom_candidate.generated.js";
+export type { AssertionEvaluation }        from "./assertion_evaluation.generated.js";
+export type { AssertionLifecycleEvent }    from "./assertion_lifecycle_event.generated.js";
+export type { CanonicalClaim }             from "./canonical_claim.generated.js";
+export type { InferenceRecord }            from "./inference_record.generated.js";
+export type { Passage }                    from "./passage.generated.js";
+export type { SourceAssertion }            from "./source_assertion.generated.js";
+export type { SourceEdition }              from "./source_edition.generated.js";

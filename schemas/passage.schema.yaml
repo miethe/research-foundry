@@ -1,0 +1,70 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/passage.schema.yaml/v1"
+title: Passage
+description: >-
+  Immutable, normalized excerpt from one immutable source edition. The raw
+  rendition and normalized text are both retained so normalization changes
+  cannot conceal material source changes.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: passage
+  passage_id:
+    type: string
+    pattern: "^psg_[a-f0-9]{64}$"
+  source_edition_id:
+    type: string
+    pattern: "^sed_[a-f0-9]{64}$"
+  normalized_text:
+    type: string
+    minLength: 1
+  normalized_text_sha256:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  raw_text_sha256:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  selectors:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: true
+      required: [kind, value]
+      properties:
+        kind:
+          type: string
+        value:
+          type: string
+        confidence:
+          type: [number, "null"]
+  predecessor_passage_id:
+    type: [string, "null"]
+  normalization:
+    type: object
+    additionalProperties: false
+    required: [algorithm, version]
+    properties:
+      algorithm:
+        type: string
+      version:
+        type: string
+      options:
+        type: object
+        additionalProperties: true
+  context:
+    type: object
+    additionalProperties: true
+required:
+  - schema_version
+  - type
+  - passage_id
+  - source_edition_id
+  - normalized_text
+  - normalized_text_sha256
+  - raw_text_sha256
+  - selectors
+  - normalization

@@ -34,6 +34,18 @@ export interface ClaimLedger {
       reasoning_summary?: string | null;
       [k: string]: any;
     };
+    /**
+     * Optional durable-ledger links. Legacy run-local claims omit this block and require no synthetic persistent IDs.
+     */
+    persistent_references?: {
+      source_edition_id?: string | null;
+      passage_id?: string | null;
+      source_assertion_id?: string | null;
+      assertion_version?: number | null;
+      canonical_claim_id?: string | null;
+      canonical_claim_version?: number | null;
+      inference_id?: string | null;
+    } | null;
     report_locations?: {
       file?: string;
       heading?: string;

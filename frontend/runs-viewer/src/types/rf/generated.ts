@@ -1,16 +1,21 @@
 /* AUTO-GENERATED barrel — do not edit by hand. Run `pnpm codegen` to regenerate. */
 
 export * from "./arc_review_request.generated.js";
+export * from "./assertion_evaluation.generated.js";
+export * from "./assertion_lifecycle_event.generated.js";
+export * from "./canonical_claim.generated.js";
 export * from "./ccdash_event.generated.js";
 export * from "./claim_ledger.generated.js";
 export * from "./evidence_bundle.generated.js";
 export * from "./extraction_card.generated.js";
 export * from "./foundry.generated.js";
 export * from "./ibom.generated.js";
+export * from "./inference_record.generated.js";
 export * from "./intenttree_node.generated.js";
 export * from "./intenttree_update.generated.js";
 export * from "./meatywiki_writeback.generated.js";
 export * from "./notebooklm_update.generated.js";
+export * from "./passage.generated.js";
 export * from "./raw_idea.generated.js";
 export * from "./report_frontmatter.generated.js";
 export * from "./research_brief.generated.js";
@@ -19,4 +24,6 @@ export * from "./review_packet.generated.js";
 export * from "./routing_decision.generated.js";
 export * from "./skillbom_candidate.generated.js";
 export * from "./source_card.generated.js";
+export * from "./source_assertion.generated.js";
+export * from "./source_edition.generated.js";
 export * from "./swarm_plan.generated.js";

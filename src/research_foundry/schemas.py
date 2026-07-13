@@ -102,6 +102,10 @@ class SchemaRegistry:
         for err in sorted(validator.iter_errors(instance), key=lambda e: list(e.path)):
             loc = "/".join(str(p) for p in err.path) or "<root>"
             errors.append(f"{loc}: {err.message}")
+        if schema_name == "source_assertion" and isinstance(instance, dict):
+            from .assertion_identity import validate_source_assertion_identity
+
+            errors.extend(validate_source_assertion_identity(instance))
         return ValidationResult(schema=schema_name, errors=errors)
 
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import shutil
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,11 @@ import jsonschema
 import pytest
 
 from research_foundry import ids
+from research_foundry.assertion_identity import (
+    SOURCE_ASSERTION_MATERIAL_FIELDS,
+    source_assertion_fingerprint,
+    source_assertion_id,
+)
 from research_foundry.paths import FoundryPaths, distribution_root
 from research_foundry.schemas import SchemaRegistry, validate
 
@@ -31,38 +37,21 @@ from research_foundry.schemas import SchemaRegistry, validate
 # parametrization itself documents the expected surface; cross-checked against
 # ``SchemaRegistry().names()`` in ``test_registry_lists_all_schemas``.
 EXPECTED_SCHEMA_NAMES: list[str] = [
-    "arc_review_request",
-    "ccdash_event",
-    "claim_ledger",
-    "evidence_bundle",
-    "extraction_card",
-    "foundry",
-    "ibom",
-    "intenttree_node",
-    "intenttree_update",
-    "meatywiki_writeback",
-    "notebooklm_update",
-    "raw_idea",
-    "report_draft",
-    "report_frontmatter",
-    "research_brief",
-    "research_idea_backlog",
-    "research_intent",
-    "review_packet",
-    "routing_decision",
-    "search_request",
-    "search_run",
-    "skillbom_candidate",
-    "source_card",
-    "swarm_plan",
-    "tool_profile",
+    "arc_review_request", "assertion_evaluation", "assertion_lifecycle_event",
+    "canonical_claim", "ccdash_event", "claim_ledger", "evidence_bundle",
+    "extraction_card", "foundry", "ibom", "inference_record", "intenttree_node",
+    "intenttree_update", "meatywiki_writeback", "notebooklm_update", "passage",
+    "raw_idea", "report_draft", "report_frontmatter", "research_brief",
+    "research_idea_backlog", "research_intent", "review_packet", "routing_decision",
+    "search_request", "search_run", "skillbom_candidate", "source_assertion",
+    "source_card", "source_edition", "swarm_plan", "tool_profile",
 ]
 
 
 def _valid(name: str) -> dict:
     """Return a minimal instance that satisfies ``name``'s required fields."""
 
-    builders = {
+    builders: dict[str, dict[str, Any]] = {
         # required: id, run_id, evidence_bundle_id, target, objective, council, roles,
         #           claims_for_review, rf_exit_code, status, governance_context
         "arc_review_request": {
@@ -77,6 +66,26 @@ def _valid(name: str) -> dict:
             "rf_exit_code": 7,
             "status": "proposed",
             "governance_context": {"sensitivity": "personal", "requires_review": False},
+        },
+        "assertion_evaluation": {
+            "schema_version": "1.0", "type": "assertion_evaluation", "evaluation_id": "eval_demo",
+            "assertion_id": "ast_" + "a" * 64, "assertion_version": 1,
+            "evaluation_kind": "grounding", "verdict": "pass",
+            "evaluator": {"kind": "rule", "id": "schema_guard"}, "evaluated_at": "2026-07-13T12:00:00Z",
+        },
+        "assertion_lifecycle_event": {
+            "schema_version": "1.0", "type": "assertion_lifecycle_event", "event_id": "evt_demo",
+            "sequence": 1, "idempotency_key": "demo-1", "occurred_at": "2026-07-13T12:00:00Z",
+            "cause": "invalid_extraction",
+            "target": {"kind": "source_assertion", "id": "ast_" + "a" * 64, "version": 1},
+            "transition": {"from": "eligible", "to": "invalidated"},
+            "authoritative_action": "block_reuse",
+            "dependent_actions": [{"object_kind": "canonical_claim_edge", "action": "block_reuse"}],
+        },
+        "canonical_claim": {
+            "schema_version": "1.0", "type": "canonical_claim", "canonical_claim_id": "ccl_demo",
+            "canonical_claim_version": 1, "state": "proposed", "statement": "Demo grouped claim.",
+            "source_assertion_refs": [{"assertion_id": "ast_" + "a" * 64, "assertion_version": 1, "relation": "supports"}],
         },
         # required: event_id, timestamp, project
         "ccdash_event": {
@@ -125,6 +134,13 @@ def _valid(name: str) -> dict:
             "run_id": "run_demo",
             "update_timestamp": "2026-06-13T09:41:00Z",
             "status": "in_progress",
+        },
+        "inference_record": {
+            "schema_version": "1.0", "type": "inference_record", "inference_id": "inf_demo",
+            "inference_version": 1, "conclusion": "A derived conclusion.",
+            "source_assertion_refs": [{"assertion_id": "ast_" + "a" * 64, "assertion_version": 1}],
+            "reasoning": {"summary": "Derived from the source assertion.", "method": "reviewed synthesis"},
+            "status": "active",
         },
         # required: id, evidence_bundle_id
         "meatywiki_writeback": {
@@ -184,6 +200,27 @@ def _valid(name: str) -> dict:
             "type": "source_card",
             "source": {"title": "Demo Source"},
         },
+        "source_assertion": {
+            "schema_version": "1.0", "type": "source_assertion",
+            "assertion_version": 1, "source_edition_id": "sed_" + "b" * 64, "passage_id": "psg_" + "c" * 64,
+            "assertion_text": "The source states the demo fact.",
+            "assertion_text_sha256": sha256(b"The source states the demo fact.").hexdigest(),
+            "qualifiers": {}, "qualifier_extensions": {},
+            "extraction_provenance": {"extractor": "schema_guard", "schema_version": "1.0", "observed_at": "2026-07-13T12:00:00Z"},
+            "lifecycle_state": "eligible",
+            "identity": {"algorithm": "sha256-canonical-json-v1", "fingerprint": "", "material_fields": list(SOURCE_ASSERTION_MATERIAL_FIELDS)},
+        },
+        "source_edition": {
+            "schema_version": "1.0", "type": "source_edition", "source_edition_id": "sed_" + "b" * 64,
+            "content_sha256": "b" * 64, "source_id": "src_demo", "captured_at": "2026-07-13T12:00:00Z",
+        },
+        "passage": {
+            "schema_version": "1.0", "type": "passage", "passage_id": "psg_" + "c" * 64,
+            "source_edition_id": "sed_" + "b" * 64, "normalized_text": "Demo passage.",
+            "normalized_text_sha256": "c" * 64, "raw_text_sha256": "d" * 64,
+            "selectors": [{"kind": "text_quote", "value": "Demo passage."}],
+            "normalization": {"algorithm": "unicode-nfc", "version": "1"},
+        },
         # required: id, brief_id, intent_id
         "swarm_plan": {
             "id": "swarm_demo",
@@ -222,7 +259,11 @@ def _valid(name: str) -> dict:
             "provider": "brave",
         },
     }
-    return dict(builders[name])
+    instance = dict(builders[name])
+    if name == "source_assertion":
+        instance["identity"]["fingerprint"] = source_assertion_fingerprint(instance)
+        instance["assertion_id"] = source_assertion_id(instance)
+    return instance
 
 
 def _invalid(name: str) -> dict:
@@ -247,6 +288,9 @@ def _invalid(name: str) -> dict:
     # Drop the first required field for every other schema.
     required_first = {
         "arc_review_request": "id",
+        "assertion_evaluation": "evaluation_id",
+        "assertion_lifecycle_event": "event_id",
+        "canonical_claim": "canonical_claim_id",
         "ccdash_event": "event_id",
         "claim_ledger": "id",
         "evidence_bundle": "id",
@@ -255,6 +299,7 @@ def _invalid(name: str) -> dict:
         "ibom": "id",
         "intenttree_node": "node_id",
         "intenttree_update": "run_id",
+        "inference_record": "inference_id",
         "meatywiki_writeback": "id",
         "notebooklm_update": "run_id",
         "raw_idea": "id",
@@ -267,6 +312,9 @@ def _invalid(name: str) -> dict:
         "search_request": "query",
         "search_run": "run_id",
         "skillbom_candidate": "id",
+        "source_assertion": "assertion_id",
+        "source_edition": "source_edition_id",
+        "passage": "passage_id",
         "swarm_plan": "id",
         "tool_profile": "id",
     }
@@ -347,7 +395,6 @@ def _tmp_foundry_for_schema(tmp_path: Path) -> FoundryPaths:
 def _build_full_export_run(paths: FoundryPaths) -> dict[str, Any]:
     """Build a fully-enriched run and return export_run() output for schema validation."""
     from research_foundry.frontmatter import dump_md
-    from research_foundry.paths import RunPaths
     from research_foundry.services.export_service import export_run
     from research_foundry.yamlio import dump_yaml
 
@@ -414,6 +461,10 @@ def _build_full_export_run(paths: FoundryPaths) -> dict[str, Any]:
                     "confidence": "high",
                     "sources": [{"source_card_id": "src_guard", "evidence_id": "ev_001",
                                  "relation": "supports", "locator": "p1"}],
+                    "persistent_references": {
+                        "source_edition_id": "sed_guard", "passage_id": "psg_guard",
+                        "source_assertion_id": "ast_guard", "assertion_version": 1,
+                    },
                     "inference_basis": {"from_claims": [], "reasoning_summary": None},
                 }
             ],

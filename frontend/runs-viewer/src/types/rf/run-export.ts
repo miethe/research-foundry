@@ -2,7 +2,7 @@
  * RF Run Export Types — hand-written to match the frozen run.json contract.
  *
  * Source of truth: docs/dev/architecture/rf-run-export-schema.json (JSON Schema draft-07)
- * Bound to schema_version "1.4".
+ * Bound to schema_version "1.5".
  *
  * Codegen evaluated (P1/SCH-003): json-schema-to-typescript was tested against
  * rf-run-export-schema.json. Rejected because: (1) codegen inlines all
@@ -135,6 +135,17 @@ export interface RFReportLocation {
   paragraph_id?: string;
 }
 
+/** Optional durable identity links for a run-local claim. Legacy exports omit it. */
+export interface RFPersistentReferences {
+  source_edition_id?:       string | null;
+  passage_id?:              string | null;
+  source_assertion_id?:     string | null;
+  assertion_version?:       number | null;
+  canonical_claim_id?:      string | null;
+  canonical_claim_version?: number | null;
+  inference_id?:            string | null;
+}
+
 // ── Report Anchors (§16, schema 1.4 — P2 Wave A/D7-D8) ───────────────────────
 //
 // Backend-derived (markdown-it-py AST, never regex) block/paragraph anchors +
@@ -186,6 +197,7 @@ export interface RFClaim {
   confidence?:       RFClaimConfidence;
   report_locations?: RFReportLocation[];
   inference_basis?:  RFInferenceBasis;
+  persistent_references?: RFPersistentReferences | null;
   sources:           RFResolvedSource[];
 }
 

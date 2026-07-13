@@ -80,6 +80,29 @@ properties:
                 - string
                 - "null"
           additionalProperties: true
+        persistent_references:
+          type: [object, "null"]
+          description: >-
+            Optional durable-ledger links. Legacy run-local claims omit this
+            block and require no synthetic persistent IDs.
+          additionalProperties: false
+          properties:
+            source_edition_id:
+              type: [string, "null"]
+            passage_id:
+              type: [string, "null"]
+            source_assertion_id:
+              type: [string, "null"]
+            assertion_version:
+              type: [integer, "null"]
+              minimum: 1
+            canonical_claim_id:
+              type: [string, "null"]
+            canonical_claim_version:
+              type: [integer, "null"]
+              minimum: 1
+            inference_id:
+              type: [string, "null"]
         report_locations:
           type: array
           items:

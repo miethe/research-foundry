@@ -1,0 +1,50 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/assertion_evaluation.schema.yaml/v1"
+title: Assertion Evaluation
+description: Immutable evaluation or reviewer decision for one source assertion version.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: assertion_evaluation
+  evaluation_id:
+    type: string
+  assertion_id:
+    type: string
+    pattern: "^ast_[a-f0-9]{64}$"
+  assertion_version:
+    type: integer
+    minimum: 1
+  evaluation_kind:
+    enum: [grounding, atomicity, qualifier_completeness, human_review, reuse_eligibility]
+  verdict:
+    enum: [pass, fail, abstain, needs_review]
+  evaluator:
+    type: object
+    additionalProperties: false
+    required: [kind, id]
+    properties:
+      kind:
+        enum: [human, model, rule]
+      id:
+        type: string
+      version:
+        type: [string, "null"]
+  evaluated_at:
+    type: string
+    format: date-time
+  details:
+    type: object
+    additionalProperties: true
+required:
+  - schema_version
+  - type
+  - evaluation_id
+  - assertion_id
+  - assertion_version
+  - evaluation_kind
+  - verdict
+  - evaluator
+  - evaluated_at

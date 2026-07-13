@@ -1,7 +1,7 @@
 /**
  * generate-types.mjs — P2-TS-CODEGEN
  *
- * Reads all 20 schemas/*.schema.yaml files from the repo root, converts YAML
+ * Reads the 27 viewer-consumed schemas/*.schema.yaml files from the repo root, converts YAML
  * to JSON-Schema, and uses json-schema-to-typescript to emit TypeScript
  * interfaces into src/types/rf/.
  *
@@ -9,6 +9,7 @@
  *   node codegen/generate-types.mjs
  *   # or:
  *   pnpm run codegen
+ *   pnpm run codegen:check
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -21,19 +22,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../../");
 const SCHEMAS_DIR = join(REPO_ROOT, "schemas");
 const OUT_DIR = join(__dirname, "../src/types/rf");
+const CHECK_ONLY = process.argv.includes("--check");
 
 const SCHEMA_FILES = [
   "arc_review_request.schema.yaml",
+  "assertion_evaluation.schema.yaml",
+  "assertion_lifecycle_event.schema.yaml",
+  "canonical_claim.schema.yaml",
   "ccdash_event.schema.yaml",
   "claim_ledger.schema.yaml",
   "evidence_bundle.schema.yaml",
   "extraction_card.schema.yaml",
   "foundry.schema.yaml",
   "ibom.schema.yaml",
+  "inference_record.schema.yaml",
   "intenttree_node.schema.yaml",
   "intenttree_update.schema.yaml",
   "meatywiki_writeback.schema.yaml",
   "notebooklm_update.schema.yaml",
+  "passage.schema.yaml",
   "raw_idea.schema.yaml",
   "report_frontmatter.schema.yaml",
   "research_brief.schema.yaml",
@@ -42,6 +49,8 @@ const SCHEMA_FILES = [
   "routing_decision.schema.yaml",
   "skillbom_candidate.schema.yaml",
   "source_card.schema.yaml",
+  "source_assertion.schema.yaml",
+  "source_edition.schema.yaml",
   "swarm_plan.schema.yaml",
 ];
 
@@ -56,7 +65,23 @@ const COMPILE_OPTIONS = {
 mkdirSync(OUT_DIR, { recursive: true });
 
 let generatedCount = 0;
+const staleFiles = [];
 const barrel = ["/* AUTO-GENERATED barrel — do not edit by hand. Run `pnpm codegen` to regenerate. */\n"];
+
+function writeGenerated(outPath, contents) {
+  if (!CHECK_ONLY) {
+    writeFileSync(outPath, contents, "utf-8");
+    return;
+  }
+  let existing = "";
+  try {
+    existing = readFileSync(outPath, "utf-8");
+  } catch {
+    staleFiles.push(outPath);
+    return;
+  }
+  if (existing !== contents) staleFiles.push(outPath);
+}
 
 for (const schemaFile of SCHEMA_FILES) {
   const schemaPath = join(SCHEMAS_DIR, schemaFile);
@@ -73,7 +98,7 @@ for (const schemaFile of SCHEMA_FILES) {
 
   try {
     const ts = await compile(jsonSchema, jsonSchema.title ?? baseName, COMPILE_OPTIONS);
-    writeFileSync(outPath, ts, "utf-8");
+    writeGenerated(outPath, ts);
     console.log(`  ✓ ${schemaFile} → ${outFile}`);
     barrel.push(`export * from "./${baseName}.generated.js";`);
     generatedCount++;
@@ -84,6 +109,12 @@ for (const schemaFile of SCHEMA_FILES) {
 
 // Write barrel (re-exports all generated files)
 // Note: .js extension needed in ESM barrel for bundler resolution
-writeFileSync(join(OUT_DIR, "generated.ts"), barrel.join("\n") + "\n", "utf-8");
+writeGenerated(join(OUT_DIR, "generated.ts"), barrel.join("\n") + "\n");
 
-console.log(`\nCodegen complete: ${generatedCount}/${SCHEMA_FILES.length} schemas → src/types/rf/`);
+if (CHECK_ONLY && staleFiles.length) {
+  console.error(`\nCodegen drift: ${staleFiles.length} generated file(s) differ. Run \`pnpm codegen\`.`);
+  for (const staleFile of staleFiles) console.error(`  ✗ ${staleFile}`);
+  process.exitCode = 1;
+} else {
+  console.log(`\nCodegen ${CHECK_ONLY ? "check passed" : "complete"}: ${generatedCount}/${SCHEMA_FILES.length} schemas → src/types/rf/`);
+}

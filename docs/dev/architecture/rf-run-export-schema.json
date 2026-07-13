@@ -2,15 +2,15 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "rf-run-export-schema.json",
   "title": "RFRunExport",
-  "description": "Formal JSON Schema for the denormalized run.json contract emitted by `rf run export --json`. Schema version 1.2 adds five run-metadata enrichment fields (linked_projects, category, tags, backlog_idea_ref, backlog_idea_id). Schema version 1.4 adds report_anchors (AST-derived report block/paragraph anchors + claim spans, P2 Wave A) plus optional AOS correlation IDs and RF native alias metadata. All new/additive fields are optional/nullable for backwards compatibility with pre-migration run.json documents (schema 1.0-1.3).",
+  "description": "Formal JSON Schema for the denormalized run.json contract emitted by `rf run export --json`. Schema version 1.5 adds optional claim persistent_references for the Reusable Assertion Ledger while preserving the schema 1.4 report anchors, AOS correlation IDs, and RF native aliases. All new/additive fields are optional/nullable for backwards compatibility with pre-migration run.json documents.",
   "type": "object",
   "required": ["schema_version", "run_id", "status_derived", "claims"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
       "type": "string",
-      "description": "Export contract version. '1.4' adds report_anchors and AOS correlation IDs; '1.3' fully populates context; '1.2' adds metadata enrichment fields; '1.1' added report_draft; '1.0' is the initial frozen contract.",
-      "examples": ["1.4", "1.3", "1.2", "1.1", "1.0"]
+      "description": "Export contract version. '1.5' adds optional claim persistent_references; '1.4' adds report_anchors and AOS correlation IDs; '1.3' fully populates context; '1.2' adds metadata enrichment fields; '1.1' added report_draft; '1.0' is the initial frozen contract.",
+      "examples": ["1.5", "1.4", "1.3", "1.2", "1.1", "1.0"]
     },
     "run_id": {
       "type": "string",
@@ -246,6 +246,19 @@
     }
   },
   "$defs": {
+    "RFPersistentReferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_edition_id": { "type": ["string", "null"] },
+        "passage_id": { "type": ["string", "null"] },
+        "source_assertion_id": { "type": ["string", "null"] },
+        "assertion_version": { "type": ["integer", "null"], "minimum": 1 },
+        "canonical_claim_id": { "type": ["string", "null"] },
+        "canonical_claim_version": { "type": ["integer", "null"], "minimum": 1 },
+        "inference_id": { "type": ["string", "null"] }
+      }
+    },
     "RFReportAnchorClaimLink": {
       "type": "object",
       "required": ["claim_id", "span_start", "span_end", "relation", "link_status"],
@@ -434,6 +447,14 @@
             { "$ref": "#/$defs/RFInferenceBasis" },
             { "type": "null" }
           ]
+        },
+        "persistent_references": {
+          "oneOf": [
+            { "$ref": "#/$defs/RFPersistentReferences" },
+            { "type": "null" }
+          ],
+          "description": "Optional durable assertion-ledger references. Omitted entirely for legacy claim ledgers; never synthesized by export.",
+          "nullable": true
         },
         "sources":           { "type": "array", "items": { "$ref": "#/$defs/RFResolvedSource" } }
       }

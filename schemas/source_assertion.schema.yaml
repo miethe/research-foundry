@@ -1,0 +1,112 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/source_assertion.schema.yaml/v1"
+title: Source Assertion
+description: >-
+  Immutable statement limited to one exact passage. This object is not a
+  canonical claim and cannot carry inferred reasoning as source evidence.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: source_assertion
+  assertion_id:
+    type: string
+    pattern: "^ast_[a-f0-9]{64}$"
+  assertion_version:
+    type: integer
+    minimum: 1
+  source_edition_id:
+    type: string
+    pattern: "^sed_[a-f0-9]{64}$"
+  passage_id:
+    type: string
+    pattern: "^psg_[a-f0-9]{64}$"
+  assertion_text:
+    type: string
+    minLength: 1
+  assertion_text_sha256:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  qualifiers:
+    type: object
+    additionalProperties: false
+    properties:
+      modality:
+        type: [string, "null"]
+      negation:
+        type: [boolean, "null"]
+      population:
+        type: [string, "null"]
+      geography:
+        type: [string, "null"]
+      timeframe:
+        type: [string, "null"]
+      intervention_or_exposure:
+        type: [string, "null"]
+      outcome:
+        type: [string, "null"]
+  qualifier_extensions:
+    type: object
+    description: Unknown optional qualifiers preserved verbatim and included in the identity payload.
+    additionalProperties: true
+  extraction_provenance:
+    type: object
+    additionalProperties: false
+    required: [extractor, schema_version, observed_at]
+    properties:
+      extractor:
+        type: string
+      provider:
+        type: [string, "null"]
+      model:
+        type: [string, "null"]
+      prompt_version:
+        type: [string, "null"]
+      schema_version:
+        type: string
+      code_version:
+        type: [string, "null"]
+      observed_at:
+        type: string
+        format: date-time
+  predecessor_assertion_id:
+    type: [string, "null"]
+  predecessor_assertion_version:
+    type: [integer, "null"]
+    minimum: 1
+  lifecycle_state:
+    enum: [eligible, stale, invalidated, tombstoned]
+  identity:
+    type: object
+    additionalProperties: false
+    required: [algorithm, fingerprint, material_fields]
+    properties:
+      algorithm:
+        const: sha256-canonical-json-v1
+      fingerprint:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      material_fields:
+        type: array
+        const:
+          - source_edition_id
+          - passage_id
+          - assertion_text_sha256
+          - qualifiers
+          - qualifier_extensions
+required:
+  - schema_version
+  - type
+  - assertion_id
+  - assertion_version
+  - source_edition_id
+  - passage_id
+  - assertion_text
+  - assertion_text_sha256
+  - qualifiers
+  - qualifier_extensions
+  - extraction_provenance
+  - lifecycle_state
+  - identity
