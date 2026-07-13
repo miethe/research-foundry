@@ -11,6 +11,7 @@ from research_foundry.paths import FoundryPaths
 from research_foundry.schemas import SchemaRegistry
 from research_foundry.services.assertion_registry import AssertionRegistry
 from research_foundry.services.source_cards import ingest_source
+from research_foundry.yamlio import dump_yaml, load_yaml
 
 RIGHTS = {"sensitivity": "personal", "allowed_for_work_output": True}
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "assertion_ledger" / "p2_formats"
@@ -172,3 +173,34 @@ def test_source_card_first_ingest_accepts_later_granular_passages(tmp_foundry) -
     assert len(granular.passages) == 3
     assert len({passage["passage_id"] for passage in granular.passages}) == 3
     assert granular.passages == repeated.passages
+
+
+def test_published_generation_rejects_absolute_traversal_and_tampered_records(tmp_foundry) -> None:
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    imported = registry.ingest("paper:1", "Exact passage.", allowed_use=RIGHTS)
+    assert imported.edition is not None
+    edition_id, passage_id = imported.edition["source_edition_id"], imported.passages[0]["passage_id"]
+    source_id = imported.source_id
+    published_path = registry._publication_path(source_id, edition_id)
+    original_publication = load_yaml(published_path)
+    outside = tmp_foundry.root / "outside.yaml"
+    dump_yaml({"not": "a passage"}, outside)
+    tampered = (
+        {"generation_id": str(outside), "passage_ids": [passage_id]},
+        {"generation_id": "../../outside", "passage_ids": [passage_id]},
+        {"generation_id": original_publication["generation_id"], "passage_ids": ["../../outside"]},
+        {"generation_id": original_publication["generation_id"], "passage_ids": ["psg_" + "f" * 64]},
+    )
+    for publication in tampered:
+        dump_yaml(publication, published_path)
+        read = registry.read_published_passages("paper:1", edition_id)
+        assert read.passages == () and read.reason == "invalid_published_generation"
+        assert registry.list_passages("paper:1", edition_id) == ()
+        assert registry.resolve_passage("paper:1", edition_id, passage_id, "Exact passage.").reason == "invalid_published_generation"
+    generation_id = "gen_" + "e" * 64
+    alternate = registry._generation_path(source_id, edition_id, generation_id, passage_id)
+    dump_yaml({**imported.passages[0], "passage_id": "psg_" + "d" * 64}, alternate)
+    dump_yaml({"generation_id": generation_id, "passage_ids": [passage_id]}, published_path)
+    read = registry.read_published_passages("paper:1", edition_id)
+    assert read.passages == () and read.reason == "invalid_published_generation"
+    assert outside.read_bytes() == b"not: a passage\n"

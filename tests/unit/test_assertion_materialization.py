@@ -4,7 +4,7 @@ from shutil import copy2
 
 from research_foundry.paths import FoundryPaths
 from research_foundry.schemas import SchemaRegistry
-from research_foundry.services import extraction
+from research_foundry.services import extraction, source_cards
 from research_foundry.services.assertion_materialization import (
     AssertionMaterializer,
     materialize_assertion,
@@ -15,6 +15,31 @@ from research_foundry.yamlio import dump_yaml, load_yaml
 
 RIGHTS = {"sensitivity": "personal", "allowed_for_work_output": True}
 PROVENANCE = {"contract": "extracted_facts-1to1-v1", "extractor": "test", "observed_at": "2026-07-13T00:00:00Z"}
+
+
+def _durable_inputs(tmp_foundry, *, content: str = "Exact fact."):
+    """Create a real extraction-card fact and a matching published passage."""
+
+    run_id = "rf_run_materialization"
+    tmp_foundry.run_paths(run_id).ensure_scaffold()
+    source_cards.ingest_source("materialization.txt", run_id=run_id, content=content, paths=tmp_foundry)
+    extraction.extract_run(run_id, paths=tmp_foundry)
+    card = load_yaml(next(tmp_foundry.run_paths(run_id).extractions.glob("*.yaml")))
+    facts = card["extracted_facts"]
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    edition = registry.ingest("paper:1", "\n".join(fact["text"] for fact in facts), passages=[fact["text"] for fact in facts], allowed_use=RIGHTS)
+    passages_by_quote = {passage["context"]["exact_quote"]: passage for passage in edition.passages}
+    provenance = [
+        {
+            **PROVENANCE,
+            "extraction_card_id": card["id"],
+            "source_card_id": card["source_card_id"],
+            "evidence_id": fact["evidence_id"],
+            "locator": fact["locator"],
+        }
+        for fact in facts
+    ]
+    return edition, facts, passages_by_quote, provenance
 
 
 def test_phase0_extraction_fixture_backfill_is_bounded_and_immutable(tmp_path):
@@ -59,12 +84,13 @@ def test_phase0_extraction_fixture_backfill_is_bounded_and_immutable(tmp_path):
 
 
 def test_materializes_published_passage(tmp_foundry):
-    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
-    edition = registry.ingest("paper:1", "Exact fact.", allowed_use=RIGHTS)
+    edition, facts, passages_by_quote, provenance = _durable_inputs(tmp_foundry)
+    fact, extraction_provenance = facts[0], provenance[0]
+    passage = passages_by_quote[fact["text"]]
     materializer = AssertionMaterializer(workspace_id="workspace-a", paths=tmp_foundry)
-    result = materializer.materialize(source_key="paper:1", passage=edition.passages[0], text="Exact fact.", extraction_provenance=PROVENANCE)
+    result = materializer.materialize(source_key="paper:1", passage=passage, text=fact["text"], extraction_provenance=extraction_provenance)
     before = sorted(path.relative_to(materializer.root) for path in materializer.root.rglob("*"))
-    repeated = materializer.materialize(source_key="paper:1", passage=edition.passages[0], text="Exact fact.", extraction_provenance=PROVENANCE)
+    repeated = materializer.materialize(source_key="paper:1", passage=passage, text=fact["text"], extraction_provenance=extraction_provenance)
     schemas = SchemaRegistry(schemas_dir=tmp_foundry.schemas)
     assert result.created and result.assertion and result.evaluation
     assert schemas.validate(result.assertion, "source_assertion").ok
@@ -72,7 +98,7 @@ def test_materializes_published_passage(tmp_foundry):
     assert not repeated.created and repeated.assertion["assertion_id"] == result.assertion["assertion_id"] and repeated.evaluation["evaluation_id"] == result.evaluation["evaluation_id"]
     assert sorted(path.relative_to(materializer.root) for path in materializer.root.rglob("*")) == before
     assert result.audit["allowed_use"] == RIGHTS and result.audit["access_scope"] == "private"
-    assert result.audit["contract_version"] == PROVENANCE["contract"] and result.audit["source_edition_id"] == edition.edition["source_edition_id"] and result.audit["passage_id"] == edition.passages[0]["passage_id"]
+    assert result.audit["contract_version"] == PROVENANCE["contract"] and result.audit["source_edition_id"] == edition.edition["source_edition_id"] and result.audit["passage_id"] == passage["passage_id"]
     assert not any("canonical_claim" in str(path) for path in materializer.root.rglob("*"))
 
 
@@ -87,14 +113,15 @@ def test_replay_is_bounded_resumable_and_deterministic():
 
 
 def test_qualifiers_and_extensions_change_assertion_identity(tmp_foundry):
-    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
-    edition = registry.ingest("paper:1", "Exact fact.", allowed_use=RIGHTS)
+    _, facts, passages_by_quote, provenance = _durable_inputs(tmp_foundry)
+    fact, extraction_provenance = facts[0], provenance[0]
+    passage = passages_by_quote[fact["text"]]
     materializer = AssertionMaterializer(workspace_id="workspace-a", paths=tmp_foundry)
-    may = materializer.materialize(source_key="paper:1", passage=edition.passages[0], text="Exact fact.", extraction_provenance=PROVENANCE, qualifiers={"modality": "may"})
-    must = materializer.materialize(source_key="paper:1", passage=edition.passages[0], text="Exact fact.", extraction_provenance=PROVENANCE, qualifiers={"modality": "must"})
-    extension = materializer.materialize(source_key="paper:1", passage=edition.passages[0], text="Exact fact.", extraction_provenance=PROVENANCE, qualifiers={"modality": "may"}, qualifier_extensions={"custom": "x"})
+    may = materializer.materialize(source_key="paper:1", passage=passage, text=fact["text"], extraction_provenance=extraction_provenance, qualifiers={"modality": "may"})
+    must = materializer.materialize(source_key="paper:1", passage=passage, text=fact["text"], extraction_provenance=extraction_provenance, qualifiers={"modality": "must"})
+    extension = materializer.materialize(source_key="paper:1", passage=passage, text=fact["text"], extraction_provenance=extraction_provenance, qualifiers={"modality": "may"}, qualifier_extensions={"custom": "x"})
     assert len({may.assertion["assertion_id"], must.assertion["assertion_id"], extension.assertion["assertion_id"]}) == 3
-    assert materializer.materialize(source_key="paper:1", passage=edition.passages[0], text="Exact fact.", extraction_provenance=PROVENANCE, qualifiers={"modality": "may"}).assertion["assertion_id"] == may.assertion["assertion_id"]
+    assert materializer.materialize(source_key="paper:1", passage=passage, text=fact["text"], extraction_provenance=extraction_provenance, qualifiers={"modality": "may"}).assertion["assertion_id"] == may.assertion["assertion_id"]
 
 
 def test_builder_returns_typed_abstentions():
@@ -119,28 +146,30 @@ def test_durable_binding_failures_do_not_write(tmp_foundry):
 
 
 def test_atomic_materialization_publish_retries_after_interruption(tmp_foundry):
-    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
-    edition = registry.ingest("paper:1", "Exact fact.", allowed_use=RIGHTS)
+    _, facts, passages_by_quote, provenance = _durable_inputs(tmp_foundry)
+    fact, extraction_provenance = facts[0], provenance[0]
+    passage = passages_by_quote[fact["text"]]
     materializer = AssertionMaterializer(workspace_id="workspace-a", paths=tmp_foundry)
     with __import__("pytest").raises(RuntimeError, match="publication interruption"):
-        materializer.materialize(source_key="paper:1", passage=edition.passages[0], text="Fact", extraction_provenance=PROVENANCE, _interrupt_before_publish=True)
+        materializer.materialize(source_key="paper:1", passage=passage, text=fact["text"], extraction_provenance=extraction_provenance, _interrupt_before_publish=True)
     assert not list((materializer.root / "published").glob("*.yaml")) if (materializer.root / "published").exists() else True
-    published = materializer.materialize(source_key="paper:1", passage=edition.passages[0], text="Fact", extraction_provenance=PROVENANCE)
+    published = materializer.materialize(source_key="paper:1", passage=passage, text=fact["text"], extraction_provenance=extraction_provenance)
     topology = sorted(path.relative_to(materializer.root) for path in materializer.root.rglob("*"))
-    repeated = materializer.materialize(source_key="paper:1", passage=edition.passages[0], text="Fact", extraction_provenance=PROVENANCE)
+    repeated = materializer.materialize(source_key="paper:1", passage=passage, text=fact["text"], extraction_provenance=extraction_provenance)
     assert published.created and published.assertion and published.evaluation and published.audit
     assert not repeated.created and sorted(path.relative_to(materializer.root) for path in materializer.root.rglob("*")) == topology
 
 
 def test_published_manifest_rejects_path_escape(tmp_foundry):
-    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
-    edition = registry.ingest("paper:1", "Exact fact.", allowed_use=RIGHTS)
+    _, facts, passages_by_quote, provenance = _durable_inputs(tmp_foundry)
+    fact, extraction_provenance = facts[0], provenance[0]
+    passage = passages_by_quote[fact["text"]]
     materializer = AssertionMaterializer(workspace_id="workspace-a", paths=tmp_foundry)
     created = materializer.materialize(
         source_key="paper:1",
-        passage=edition.passages[0],
-        text="Fact",
-        extraction_provenance=PROVENANCE,
+        passage=passage,
+        text=fact["text"],
+        extraction_provenance=extraction_provenance,
     )
     assert created.assertion is not None
     topology = sorted(path.relative_to(materializer.root) for path in materializer.root.rglob("*"))
@@ -157,11 +186,45 @@ def test_published_manifest_rejects_path_escape(tmp_foundry):
     )
     repeated = materializer.materialize(
         source_key="paper:1",
-        passage=edition.passages[0],
-        text="Fact",
-        extraction_provenance=PROVENANCE,
+        passage=passage,
+        text=fact["text"],
+        extraction_provenance=extraction_provenance,
     )
     assert repeated.assertion is None and repeated.evaluation is None and repeated.audit is None
     assert not repeated.created and repeated.reason == "invalid_published_manifest"
     assert not outside.exists()
     assert sorted(path.relative_to(materializer.root) for path in materializer.root.rglob("*")) == topology
+
+
+def test_durable_materialization_rejects_fabricated_fact_or_forged_binding(tmp_foundry):
+    _, facts, passages_by_quote, provenance = _durable_inputs(tmp_foundry)
+    fact, extraction_provenance = facts[0], provenance[0]
+    materializer = AssertionMaterializer(workspace_id="workspace-a", paths=tmp_foundry)
+    before = []
+    for text, forged in (
+        ("Fabricated assertion text.", extraction_provenance),
+        (fact["text"], {**extraction_provenance, "source_card_id": "src_forged"}),
+        (fact["text"], {**extraction_provenance, "evidence_id": "ev_forged"}),
+        (fact["text"], {**extraction_provenance, "locator": "para/forged"}),
+    ):
+        result = materializer.materialize(source_key="paper:1", passage=passages_by_quote[fact["text"]], text=text, extraction_provenance=forged)
+        assert result.reason == "unverified_extraction_fact"
+        assert (list(materializer.root.rglob("*")) if materializer.root.exists() else []) == before
+
+
+def test_published_manifest_rejects_in_root_cross_packet_substitution(tmp_foundry):
+    _, facts, passages_by_quote, provenance = _durable_inputs(tmp_foundry, content="First verified fact.\n\nSecond verified fact.")
+    materializer = AssertionMaterializer(workspace_id="workspace-a", paths=tmp_foundry)
+    left = materializer.materialize(source_key="paper:1", passage=passages_by_quote[facts[0]["text"]], text=facts[0]["text"], extraction_provenance=provenance[0])
+    right = materializer.materialize(source_key="paper:1", passage=passages_by_quote[facts[1]["text"]], text=facts[1]["text"], extraction_provenance=provenance[1])
+    assert left.assertion and right.assertion
+    manifest_path = materializer._published_path(left.assertion["assertion_id"])
+    manifest = load_yaml(manifest_path)
+    other_manifest = load_yaml(materializer._published_path(right.assertion["assertion_id"]))
+    for entry in ("assertion", "evaluation", "audit"):
+        dump_yaml({**manifest, entry: other_manifest[entry]}, manifest_path)
+        topology = sorted(path.relative_to(materializer.root) for path in materializer.root.rglob("*"))
+        reloaded = materializer.materialize(source_key="paper:1", passage=passages_by_quote[facts[0]["text"]], text=facts[0]["text"], extraction_provenance=provenance[0])
+        assert reloaded.reason == "invalid_published_manifest" and reloaded.assertion is None
+        assert sorted(path.relative_to(materializer.root) for path in materializer.root.rglob("*")) == topology
+        dump_yaml(manifest, manifest_path)

@@ -10,12 +10,13 @@ the next complete record.
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ..ids import now_iso
 from ..paths import FoundryPaths
@@ -66,10 +67,21 @@ class RegistryImportResult:
     reason: str | None = None
 
 
+@dataclass(frozen=True)
+class PublishedPassagesResult:
+    """A confined read of the currently published passage generation."""
+
+    passages: tuple[dict[str, Any], ...]
+    reason: str | None = None
+
+
 class AssertionRegistry:
     """Workspace-isolated persistence for immutable editions and passages."""
 
     _SUPPORTED_MEDIA_TYPES = {"text/plain", "text/html", "application/pdf", "text/ocr"}
+    _EDITION_ID_RE = re.compile(r"sed_[0-9a-f]{64}\Z")
+    _GENERATION_ID_RE = re.compile(r"gen_[0-9a-f]{64}\Z")
+    _PASSAGE_ID_RE = re.compile(r"psg_[0-9a-f]{64}\Z")
 
     def __init__(self, *, workspace_id: str, paths: FoundryPaths | None = None) -> None:
         if not workspace_id or not workspace_id.strip():
@@ -144,7 +156,10 @@ class AssertionRegistry:
         passage_records = [self._passage(edition_id, text, index) for index, text in enumerate(selected)]
         if edition_path.exists() and edition_id in edition_ids:
             edition = load_yaml(edition_path)
-            existing = {passage["passage_id"]: passage for passage in self._load_passages(source_id, edition_id)}
+            published = self._load_passages(source_id, edition_id)
+            if published.reason is not None:
+                return RegistryImportResult(source_id, edition, (), False, False, published.reason)
+            existing = {passage["passage_id"]: passage for passage in published.passages}
             changed = False
             for passage in passage_records:
                 if passage["passage_id"] not in existing:
@@ -182,37 +197,117 @@ class AssertionRegistry:
         """Resolve only an exact passage; changes become an explicit drift result."""
 
         source_id = self._source_id(source_key)
-        passage = next((item for item in self._load_passages(source_id, edition_id) if item["passage_id"] == passage_id), None)
+        published = self._load_passages(source_id, edition_id)
+        if published.reason is not None:
+            return PassageResolution(False, None, published.reason)
+        passage = next((item for item in published.passages if item["passage_id"] == passage_id), None)
         if passage is None:
             return PassageResolution(False, None, "unresolved")
         if passage.get("raw_text_sha256") != _digest(raw_text):
             return PassageResolution(False, passage, "drift")
         return PassageResolution(True, passage)
 
-    def _load_passages(self, source_id: str, edition_id: str) -> list[dict[str, Any]]:
+    @classmethod
+    def _is_edition_id(cls, value: object) -> bool:
+        return isinstance(value, str) and bool(cls._EDITION_ID_RE.fullmatch(value))
+
+    @classmethod
+    def _is_generation_id(cls, value: object) -> bool:
+        return isinstance(value, str) and bool(cls._GENERATION_ID_RE.fullmatch(value))
+
+    @classmethod
+    def _is_passage_id(cls, value: object) -> bool:
+        return isinstance(value, str) and bool(cls._PASSAGE_ID_RE.fullmatch(value))
+
+    def _load_passages(self, source_id: str, edition_id: str) -> PublishedPassagesResult:
+        if not self._is_edition_id(edition_id):
+            return PublishedPassagesResult((), "invalid_published_generation")
         publication = self._publication_path(source_id, edition_id)
         if publication.exists():
-            data = load_yaml(publication)
-            generation_id = data["generation_id"]
-            return [load_yaml(self._generation_path(source_id, edition_id, generation_id, passage_id)) for passage_id in data["passage_ids"]]
+            try:
+                data = load_yaml(publication)
+            except Exception:  # noqa: BLE001 - malformed persisted YAML is untrusted input.
+                return PublishedPassagesResult((), "invalid_published_generation")
+            if not isinstance(data, Mapping):
+                return PublishedPassagesResult((), "invalid_published_generation")
+            generation_id, passage_ids = data.get("generation_id"), data.get("passage_ids")
+            if (
+                not self._is_generation_id(generation_id)
+                or not isinstance(passage_ids, Sequence)
+                or isinstance(passage_ids, (str, bytes))
+                or not passage_ids
+                or len(set(passage_ids)) != len(passage_ids)
+                or not all(self._is_passage_id(passage_id) for passage_id in passage_ids)
+            ):
+                return PublishedPassagesResult((), "invalid_published_generation")
+            safe_generation_id = cast(str, generation_id)
+            safe_passage_ids = cast(Sequence[str], passage_ids)
+            generation_dir = self._edition_dir(source_id, edition_id) / "generations" / safe_generation_id / "passages"
+            generation_root = generation_dir.resolve()
+            records: list[dict[str, Any]] = []
+            for passage_id in safe_passage_ids:
+                path = self._generation_path(source_id, edition_id, safe_generation_id, passage_id)
+                if not path.resolve().is_relative_to(generation_root) or not path.is_file():
+                    return PublishedPassagesResult((), "invalid_published_generation")
+                try:
+                    record = load_yaml(path)
+                except Exception:  # noqa: BLE001 - malformed persisted YAML is untrusted input.
+                    return PublishedPassagesResult((), "invalid_published_generation")
+                if (
+                    not isinstance(record, dict)
+                    or record.get("type") != "passage"
+                    or record.get("passage_id") != passage_id
+                    or record.get("source_edition_id") != edition_id
+                ):
+                    return PublishedPassagesResult((), "invalid_published_generation")
+                records.append(record)
+            return PublishedPassagesResult(tuple(records))
         directory = self._edition_dir(source_id, edition_id) / "passages"
-        return [load_yaml(path) for path in sorted(directory.glob("*.yaml"))] if directory.exists() else []
+        if not directory.exists():
+            return PublishedPassagesResult(())
+        legacy_records: list[dict[str, Any]] = []
+        for path in sorted(directory.glob("*.yaml")):
+            try:
+                record = load_yaml(path)
+            except Exception:  # noqa: BLE001 - malformed persisted YAML is untrusted input.
+                return PublishedPassagesResult((), "invalid_published_generation")
+            if not isinstance(record, dict) or not self._is_passage_id(record.get("passage_id")) or record.get("source_edition_id") != edition_id:
+                return PublishedPassagesResult((), "invalid_published_generation")
+            legacy_records.append(record)
+        return PublishedPassagesResult(tuple(legacy_records))
 
     def list_passages(self, source_key: str, edition_id: str) -> tuple[dict[str, Any], ...]:
         """Return only the atomically published passage generation."""
-        return tuple(self._load_passages(self._source_id(source_key), edition_id))
+        return self.read_published_passages(source_key, edition_id).passages
+
+    def read_published_passages(self, source_key: str, edition_id: str) -> PublishedPassagesResult:
+        """Read a confined publication or return a typed non-mutating failure."""
+        return self._load_passages(self._source_id(source_key), edition_id)
 
     def get_edition(self, source_key: str, edition_id: str) -> dict[str, Any] | None:
         """Return only an edition published by this workspace-qualified source."""
+        if not self._is_edition_id(edition_id):
+            return None
         source_id = self._source_id(source_key)
         manifest_path = self._source_manifest(source_id)
         if not manifest_path.exists():
             return None
-        manifest = load_yaml(manifest_path)
-        if edition_id not in manifest.get("edition_ids", []):
+        try:
+            manifest = load_yaml(manifest_path)
+        except Exception:  # noqa: BLE001 - manifest is a persisted trust boundary.
+            return None
+        if not isinstance(manifest, Mapping) or edition_id not in manifest.get("edition_ids", []):
             return None
         path = self._edition_path(source_id, edition_id)
-        return dict(load_yaml(path)) if path.exists() else None
+        if not path.exists():
+            return None
+        try:
+            edition = load_yaml(path)
+        except Exception:  # noqa: BLE001 - immutable edition is a persisted trust boundary.
+            return None
+        if not isinstance(edition, Mapping) or edition.get("source_edition_id") != edition_id or edition.get("source_id") != source_id:
+            return None
+        return dict(edition)
 
     def _publish_passages(self, source_id: str, edition_id: str, passages: Mapping[str, dict[str, Any]], interrupt: bool) -> None:
         passage_ids = sorted(passages)
@@ -242,4 +337,4 @@ class AssertionRegistry:
         }
 
 
-__all__ = ["AssertionRegistry", "PassageResolution", "RegistryImportResult"]
+__all__ = ["AssertionRegistry", "PassageResolution", "PublishedPassagesResult", "RegistryImportResult"]

@@ -57,6 +57,71 @@ class AssertionMaterializer:
             return None
         return resolved
 
+    def _verify_extraction_fact(self, *, text: str, extraction_provenance: dict[str, Any]) -> str | None:
+        """Require the caller binding to resolve to one actual versioned fact."""
+
+        fields = ("extraction_card_id", "source_card_id", "evidence_id", "locator")
+        binding = {field: extraction_provenance.get(field) for field in fields}
+        if not all(isinstance(value, str) and value.strip() for value in binding.values()):
+            return "unverified_extraction_fact"
+        matches = 0
+        for card_path in self.paths.runs.glob("*/extractions/*.yaml"):
+            try:
+                card = load_yaml(card_path)
+            except Exception:  # noqa: BLE001 - persisted cards are untrusted at this boundary.
+                continue
+            if not isinstance(card, dict) or card.get("id") != binding["extraction_card_id"] or card.get("source_card_id") != binding["source_card_id"]:
+                continue
+            facts = card.get("extracted_facts")
+            if not isinstance(facts, list):
+                continue
+            matches += sum(
+                isinstance(fact, dict)
+                and fact.get("evidence_id") == binding["evidence_id"]
+                and fact.get("locator") == binding["locator"]
+                and fact.get("text") == text
+                for fact in facts
+            )
+        return None if matches == 1 else "unverified_extraction_fact"
+
+    @staticmethod
+    def _published_packet_is_valid(
+        assertion: object,
+        evaluation: object,
+        audit: object,
+        expected: MaterializationResult,
+    ) -> bool:
+        """Reject in-root artifact substitution as strictly as path escape."""
+
+        if not isinstance(assertion, dict) or not isinstance(evaluation, dict) or not isinstance(audit, dict):
+            return False
+        expected_assertion = expected.assertion
+        expected_evaluation = expected.evaluation
+        expected_audit = expected.audit
+        if expected_assertion is None or expected_evaluation is None or expected_audit is None:
+            return False
+        assertion_id = expected_assertion["assertion_id"]
+        evaluation_id = expected_evaluation["evaluation_id"]
+        edition_id = expected_assertion["source_edition_id"]
+        passage_id = expected_assertion["passage_id"]
+        return (
+            assertion.get("type") == "source_assertion"
+            and assertion.get("assertion_id") == assertion_id
+            and assertion.get("source_edition_id") == edition_id
+            and assertion.get("passage_id") == passage_id
+            and evaluation.get("type") == "assertion_evaluation"
+            and evaluation.get("evaluation_id") == evaluation_id
+            and evaluation.get("assertion_id") == assertion_id
+            and evaluation.get("assertion_version") == expected_assertion["assertion_version"]
+            and evaluation.get("details", {}).get("source_edition_id") == edition_id
+            and evaluation.get("details", {}).get("passage_id") == passage_id
+            and audit.get("type") == "assertion_materialization_audit"
+            and audit.get("assertion_id") == assertion_id
+            and audit.get("evaluation_id") == evaluation_id
+            and audit.get("source_edition_id") == edition_id
+            and audit.get("passage_id") == passage_id
+        )
+
     @staticmethod
     def _atomic_dump(data: dict[str, Any], path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -107,13 +172,19 @@ class AssertionMaterializer:
         edition = registry.get_edition(source_key, edition_id)
         if edition is None:
             return MaterializationResult(None, reason="unpublished_edition")
-        published = next((item for item in registry.list_passages(source_key, edition_id) if item["passage_id"] == passage_id), None)
+        published_read = registry.read_published_passages(source_key, edition_id)
+        if published_read.reason is not None:
+            return MaterializationResult(None, reason=published_read.reason)
+        published = next((item for item in published_read.passages if item["passage_id"] == passage_id), None)
         if published is None:
             return MaterializationResult(None, reason="unpublished_passage")
         for field in ("raw_text_sha256", "normalized_text_sha256", "selectors"):
             if field in passage and passage[field] != published.get(field):
                 return MaterializationResult(None, reason="passage_binding_drift")
         passage = published
+        verification_reason = self._verify_extraction_fact(text=text, extraction_provenance=extraction_provenance)
+        if verification_reason is not None:
+            return MaterializationResult(None, reason=verification_reason)
         result = self.build(passage=passage, text=text, extraction_provenance=extraction_provenance, qualifiers=qualifiers, qualifier_extensions=qualifier_extensions, _edition=edition)
         if result.assertion is None:
             return result
@@ -128,12 +199,15 @@ class AssertionMaterializer:
             audit_path = self._resolve_manifest_entry(packet.get("audit"))
             if assertion_path is None or evaluation_path is None or audit_path is None:
                 return MaterializationResult(None, reason="invalid_published_manifest")
-            return MaterializationResult(
-                assertion=load_yaml(assertion_path),
-                evaluation=load_yaml(evaluation_path),
-                audit=load_yaml(audit_path),
-                created=False,
-            )
+            try:
+                assertion = load_yaml(assertion_path)
+                evaluation = load_yaml(evaluation_path)
+                audit = load_yaml(audit_path)
+            except Exception:  # noqa: BLE001 - published packet files are untrusted at reload.
+                return MaterializationResult(None, reason="invalid_published_manifest")
+            if not self._published_packet_is_valid(assertion, evaluation, audit, result):
+                return MaterializationResult(None, reason="invalid_published_manifest")
+            return MaterializationResult(assertion=assertion, evaluation=evaluation, audit=audit, created=False)
         generation = self.root / "generations" / assertion_id
         assertion_path, evaluation_path, audit_path = generation / "assertion.yaml", generation / "evaluation.yaml", generation / "audit.yaml"
         self._atomic_dump(result.assertion, assertion_path)
