@@ -15,7 +15,8 @@ created: '2026-07-13T20:53:25Z'
 started: '2026-07-13T20:53:25Z'
 completed: null
 updated: '2026-07-13T20:53:25Z'
-commit_refs: []
+commit_refs:
+- 78bcb239d4bb4417dcb31c9d865b5fd93271608b
 pr_refs: []
 overall_progress: 75
 completion_estimate: on-track
@@ -82,6 +83,7 @@ tasks:
   - artifact: src/research_foundry/services/source_cards.py
   - test: tests/unit/test_assertion_registry.py::test_interrupted_write_keeps_prior_manifest_complete
   - test: tests/unit/test_assertion_registry.py::test_source_card_registry_seam_is_opt_in_and_preserves_card_identity
+  - test: tests/unit/test_assertion_registry.py::test_source_card_first_ingest_accepts_later_granular_passages
   - validation: Saved-checkout Python focused pytest 18 passed; Ruff passed; mypy passed with --follow-imports=skip
   verified_by: [P2-REVIEW]
 - id: P2-REVIEW

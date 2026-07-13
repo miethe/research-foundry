@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,15 @@ FIXTURES = Path(__file__).parents[1] / "fixtures" / "assertion_ledger" / "p2_for
 
 def _tree(root: Path) -> dict[str, bytes]:
     return {str(path.relative_to(root)): path.read_bytes() for path in sorted(root.rglob("*")) if path.is_file()}
+
+
+def _stable_tree(root: Path) -> dict[str, str]:
+    """Compare deterministic payload/topology without wall-clock YAML fields."""
+
+    return {
+        str(path.relative_to(root)): re.sub(r"(captured_at|updated_at): .*", r"\\1: <timestamp>", path.read_text(encoding="utf-8"))
+        for path in sorted(root.rglob("*.yaml"))
+    }
 
 
 def test_idempotent_edition_and_schema_valid_passage(tmp_foundry) -> None:
@@ -58,7 +68,7 @@ def test_workspace_paths_are_isolated_and_unsupported_content_is_typed(tmp_found
 def test_multiformat_identity_is_deterministic_in_three_input_orders(tmp_path) -> None:
     formats = [("text/plain", "fixture.txt"), ("text/html", "fixture.html"), ("application/pdf", "fixture.pdf"), ("text/ocr", "fixture.ocr")]
     expected: dict[str, tuple[str, str]] | None = None
-    expected_tree: dict[str, bytes] | None = None
+    expected_tree: dict[str, str] | None = None
     for number, order in enumerate((formats, tuple(reversed(formats)), (formats[1], formats[3], formats[0], formats[2]))):
         paths = FoundryPaths(tmp_path / f"order-{number}")
         registry = AssertionRegistry(workspace_id="workspace-multiformat", paths=paths)
@@ -71,7 +81,7 @@ def test_multiformat_identity_is_deterministic_in_three_input_orders(tmp_path) -
             observed[filename] = (result.edition["source_edition_id"], result.passages[0]["passage_id"])
             drift = registry.resolve_passage(filename, result.edition["source_edition_id"], result.passages[0]["passage_id"], raw + b" drift" if isinstance(raw, bytes) else raw + " drift")
             assert drift.reusable is False and drift.reason == "drift"
-        tree = _tree(paths.root)
+        tree = _stable_tree(paths.root)
         if expected is None:
             expected = observed
             expected_tree = tree
@@ -120,3 +130,27 @@ def test_source_card_registry_seam_is_opt_in_and_preserves_card_identity(tmp_fou
 
     assert result.source_card_id == baseline.source_card_id
     assert list((tmp_foundry.root / "assertion_ledger" / "workspaces").glob("*/sources/*/source.yaml"))
+
+
+def test_source_card_first_ingest_accepts_later_granular_passages(tmp_foundry) -> None:
+    run_id = "rf_run_p2_granular"
+    tmp_foundry.run_paths(run_id).ensure_scaffold()
+    content = "First granular passage.\n\nSecond granular passage."
+    source = ingest_source(
+        "granular.txt", run_id=run_id, content=content, paths=tmp_foundry,
+        assertion_registry_workspace_id="workspace-a",
+    )
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    granular = registry.ingest(
+        source.source_card_id, content, allowed_use=RIGHTS,
+        passages=["First granular passage.", "Second granular passage."],
+    )
+    repeated = registry.ingest(
+        source.source_card_id, content, allowed_use=RIGHTS,
+        passages=["First granular passage.", "Second granular passage."],
+    )
+
+    assert granular.edition == repeated.edition
+    assert len(granular.passages) == 3
+    assert len({passage["passage_id"] for passage in granular.passages}) == 3
+    assert granular.passages == repeated.passages

@@ -134,9 +134,15 @@ class AssertionRegistry:
         selected = list(passages) if passages is not None else [raw.decode("utf-8", errors="replace")]
         if len({_normalise(text) for text in selected}) != len(selected):
             return RegistryImportResult(source_id, None, (), False, False, "ambiguous_selector")
+        passage_records = [self._passage(edition_id, text, index) for index, text in enumerate(selected)]
         if edition_path.exists() and edition_id in edition_ids:
             edition = load_yaml(edition_path)
-            return RegistryImportResult(source_id, edition, tuple(self._load_passages(source_id, edition_id)), False, True)
+            existing = {passage["passage_id"]: passage for passage in self._load_passages(source_id, edition_id)}
+            for passage in passage_records:
+                if passage["passage_id"] not in existing:
+                    _atomic_dump(passage, self._passage_path(source_id, edition_id, passage["passage_id"]))
+                    existing[passage["passage_id"]] = passage
+            return RegistryImportResult(source_id, edition, tuple(existing[key] for key in sorted(existing)), False, True)
 
         predecessor = edition_ids[-1] if edition_ids else None
         normalized_content = _normalise(raw.decode("utf-8", errors="replace"))
@@ -152,8 +158,6 @@ class AssertionRegistry:
                 "allowed_use": dict(allowed_use),
             },
         }
-        passage_records = [self._passage(edition_id, text, index) for index, text in enumerate(selected)]
-
         # Write immutable children first; publish the manifest last.
         _atomic_dump(edition, edition_path)
         if _interrupt_after_edition_write:
