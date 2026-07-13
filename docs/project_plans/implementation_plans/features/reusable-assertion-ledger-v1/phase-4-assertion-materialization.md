@@ -14,7 +14,8 @@ prd_ref: docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/reusable-assertion-ledger-v1.md
 entry_criteria:
   - P2 registry passed review.
-  - Citation/segmentation contracts needed by extraction are versioned.
+  - The existing versioned deterministic 1:1 `extraction_card.extracted_facts` to
+    claim-ledger mapping/locator contract is accepted for this assertion-only route.
 exit_criteria:
   - Passage-bound assertions and evaluations persist with exact dedupe and extraction provenance.
   - Historical runs can reference durable IDs additively without changing local IDs.
@@ -44,6 +45,14 @@ files_affected:
 
 **Effort:** 8 points
 **Dependencies:** P2 approved.
+
+## Constrained prerequisite decision
+
+P3 consumes the existing versioned deterministic 1:1
+`extraction_card.extracted_facts` → claim-mapping/locator contract. The draft
+citation-precision/recall and claim-segmentation/alignment charters are deferred:
+they do not gate this bounded assertion-only materialization route. No reusable
+assertion, canonical-claim, or related feature flag is enabled by this phase.
 
 ## Outcome
 
