@@ -118,6 +118,24 @@ def test_interrupted_write_keeps_prior_manifest_complete(tmp_foundry) -> None:
     assert registry.resolve_passage("paper:1", recovered.edition["source_edition_id"], recovered.passages[0]["passage_id"], "Changed").reusable
 
 
+def test_interrupted_multi_passage_union_keeps_published_generation_complete(tmp_foundry) -> None:
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    base = registry.ingest("paper:1", "One. Two.", allowed_use=RIGHTS)
+    assert base.edition is not None
+    with pytest.raises(RuntimeError, match="generation publication interruption"):
+        registry.ingest(
+            "paper:1", "One. Two.", allowed_use=RIGHTS,
+            passages=["One.", "Two."], _interrupt_before_generation_publish=True,
+        )
+
+    observed = registry.list_passages("paper:1", base.edition["source_edition_id"])
+    assert len(observed) in {1, 3}
+    assert len(observed) == 1
+    retried = registry.ingest("paper:1", "One. Two.", allowed_use=RIGHTS, passages=["One.", "Two."])
+    assert len(retried.passages) == 3
+    assert len({item["passage_id"] for item in retried.passages}) == 3
+
+
 def test_source_card_registry_seam_is_opt_in_and_preserves_card_identity(tmp_foundry) -> None:
     baseline_run, registry_run = "rf_run_p2_baseline", "rf_run_p2_registry"
     tmp_foundry.run_paths(baseline_run).ensure_scaffold()

@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 from urllib.parse import urlparse
 
 from ..errors import NotFoundError, SchemaError
@@ -301,12 +302,13 @@ def ingest_source(
     if assertion_registry_workspace_id and content is not None and not degraded:
         from .assertion_registry import AssertionRegistry
 
+        registry_usage: dict[str, Any] = dict(cast(dict[str, Any], front_matter["usage"]))
         AssertionRegistry(workspace_id=assertion_registry_workspace_id, paths=paths).ingest(
             src_id,
             content,
             media_type="text/html" if is_url else "text/plain",
             access_scope=sensitivity,
-            allowed_use=front_matter["usage"],
+            allowed_use=registry_usage,
             retrieval_locator={"url": loc_url, "file_path": loc_file},
         )
 

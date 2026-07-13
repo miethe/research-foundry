@@ -84,6 +84,8 @@ tasks:
   - test: tests/unit/test_assertion_registry.py::test_interrupted_write_keeps_prior_manifest_complete
   - test: tests/unit/test_assertion_registry.py::test_source_card_registry_seam_is_opt_in_and_preserves_card_identity
   - test: tests/unit/test_assertion_registry.py::test_source_card_first_ingest_accepts_later_granular_passages
+  - review: Independent task-completion-validator REQUEST CHANGES; thread 019f5d44-9f26-7152-ba82-1d454d11087f; checkpoint ceb3bfc32b6551606f4df5df5a541b9eac6e67d9; atomic generation correction pending review
+  - test: tests/unit/test_assertion_registry.py::test_interrupted_multi_passage_union_keeps_published_generation_complete
   - validation: Saved-checkout Python focused pytest 18 passed; Ruff passed; mypy passed with --follow-imports=skip
   verified_by: [P2-REVIEW]
 - id: P2-REVIEW

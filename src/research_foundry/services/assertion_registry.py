@@ -94,8 +94,14 @@ class AssertionRegistry:
     def _edition_path(self, source_id: str, edition_id: str) -> Path:
         return self._source_dir(source_id) / "editions" / f"{edition_id}.yaml"
 
-    def _passage_path(self, source_id: str, edition_id: str, passage_id: str) -> Path:
-        return self._source_dir(source_id) / "editions" / edition_id / "passages" / f"{passage_id}.yaml"
+    def _edition_dir(self, source_id: str, edition_id: str) -> Path:
+        return self._source_dir(source_id) / "editions" / edition_id
+
+    def _publication_path(self, source_id: str, edition_id: str) -> Path:
+        return self._edition_dir(source_id, edition_id) / "published.yaml"
+
+    def _generation_path(self, source_id: str, edition_id: str, generation_id: str, passage_id: str) -> Path:
+        return self._edition_dir(source_id, edition_id) / "generations" / generation_id / "passages" / f"{passage_id}.yaml"
 
     def ingest(
         self,
@@ -109,6 +115,7 @@ class AssertionRegistry:
         passages: Sequence[str] | None = None,
         metadata_extensions: Mapping[str, Any] | None = None,
         _interrupt_after_edition_write: bool = False,
+        _interrupt_before_generation_publish: bool = False,
     ) -> RegistryImportResult:
         """Persist an immutable edition and deterministic passage records.
 
@@ -138,10 +145,13 @@ class AssertionRegistry:
         if edition_path.exists() and edition_id in edition_ids:
             edition = load_yaml(edition_path)
             existing = {passage["passage_id"]: passage for passage in self._load_passages(source_id, edition_id)}
+            changed = False
             for passage in passage_records:
                 if passage["passage_id"] not in existing:
-                    _atomic_dump(passage, self._passage_path(source_id, edition_id, passage["passage_id"]))
                     existing[passage["passage_id"]] = passage
+                    changed = True
+            if changed:
+                self._publish_passages(source_id, edition_id, existing, _interrupt_before_generation_publish)
             return RegistryImportResult(source_id, edition, tuple(existing[key] for key in sorted(existing)), False, True)
 
         predecessor = edition_ids[-1] if edition_ids else None
@@ -162,8 +172,7 @@ class AssertionRegistry:
         _atomic_dump(edition, edition_path)
         if _interrupt_after_edition_write:
             raise RuntimeError("simulated atomic-write interruption")
-        for passage in passage_records:
-            _atomic_dump(passage, self._passage_path(source_id, edition_id, passage["passage_id"]))
+        self._publish_passages(source_id, edition_id, {p["passage_id"]: p for p in passage_records}, _interrupt_before_generation_publish)
         manifest["edition_ids"] = [*edition_ids, edition_id]
         manifest["updated_at"] = now_iso()
         _atomic_dump(manifest, manifest_path)
@@ -173,17 +182,34 @@ class AssertionRegistry:
         """Resolve only an exact passage; changes become an explicit drift result."""
 
         source_id = self._source_id(source_key)
-        path = self._passage_path(source_id, edition_id, passage_id)
-        if not path.exists():
+        passage = next((item for item in self._load_passages(source_id, edition_id) if item["passage_id"] == passage_id), None)
+        if passage is None:
             return PassageResolution(False, None, "unresolved")
-        passage = load_yaml(path)
         if passage.get("raw_text_sha256") != _digest(raw_text):
             return PassageResolution(False, passage, "drift")
         return PassageResolution(True, passage)
 
     def _load_passages(self, source_id: str, edition_id: str) -> list[dict[str, Any]]:
-        directory = self._source_dir(source_id) / "editions" / edition_id / "passages"
+        publication = self._publication_path(source_id, edition_id)
+        if publication.exists():
+            data = load_yaml(publication)
+            generation_id = data["generation_id"]
+            return [load_yaml(self._generation_path(source_id, edition_id, generation_id, passage_id)) for passage_id in data["passage_ids"]]
+        directory = self._edition_dir(source_id, edition_id) / "passages"
         return [load_yaml(path) for path in sorted(directory.glob("*.yaml"))] if directory.exists() else []
+
+    def list_passages(self, source_key: str, edition_id: str) -> tuple[dict[str, Any], ...]:
+        """Return only the atomically published passage generation."""
+        return tuple(self._load_passages(self._source_id(source_key), edition_id))
+
+    def _publish_passages(self, source_id: str, edition_id: str, passages: Mapping[str, dict[str, Any]], interrupt: bool) -> None:
+        passage_ids = sorted(passages)
+        generation_id = f"gen_{_digest(':'.join(passage_ids))}"
+        for passage_id in passage_ids:
+            _atomic_dump(passages[passage_id], self._generation_path(source_id, edition_id, generation_id, passage_id))
+        if interrupt:
+            raise RuntimeError("simulated generation publication interruption")
+        _atomic_dump({"generation_id": generation_id, "passage_ids": passage_ids}, self._publication_path(source_id, edition_id))
 
     def _passage(self, edition_id: str, raw_text: str, index: int) -> dict[str, Any]:
         normalized = _normalise(raw_text)
