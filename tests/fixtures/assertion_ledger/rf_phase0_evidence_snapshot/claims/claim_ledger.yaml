@@ -1,0 +1,271 @@
+id: claims_20260713_rf_run_reusable_assertion_ledger_p0
+intent_id: intent_research_20260713_rf_run_reusable_assertion_ledger_p0
+report_ref: reports/report_draft.md
+verification_status: passed
+claims:
+- claim_id: clm_001
+  text: '# Reusable Assertion Ledger Phase 0 deterministic fixture metrics'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_144e728c
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_002
+  text: This local-only source records the generated metrics and limitations of the frozen Phase 0 fixture.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_144e728c
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_003
+  text: The fixture safe reuse rate is 36 divided by 144, which equals 25.0 percent.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_144e728c
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_004
+  text: The fixture provenance rate is 36 divided by 36, which equals 100.0 percent, with zero fixture
+    provenance mismatches.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_144e728c
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_005
+  text: The fixture baseline and replay values are 144 and 108 model calls, 720 and 576 elapsed fixture
+    seconds, 144 and 108 cost units, and 72 and 54 review fixture minutes.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_144e728c
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_006
+  text: The fixture rejection counts are 28 changed editions, 24 expired freshness states, 20 extraction-contract
+    mismatches, 18 rights-or-sensitivity denials, and 18 evaluation-not-approved states.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_144e728c
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_007
+  text: The fixture contains 12 retraction-propagation graphs and 120 expected affected objects, and it
+    enumerates 120 of 120 objects.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_144e728c
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_008
+  text: The fixture checks complete, duplicate, out-of-order, interrupted, and partial-resume delivery
+    for all 12 invalidating fixture events against an independently authored expected-object manifest.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_144e728c
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_009
+  text: '# Reusable Assertion Ledger Phase 0 deterministic fixture evidence'
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_2cc94967
+    evidence_id: ev_001
+    relation: supports
+    locator: para/1
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_010
+  text: This local-only source describes the frozen `reusable-assertion-ledger-phase0-local-only-v1` fixture.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_2cc94967
+    evidence_id: ev_002
+    relation: supports
+    locator: para/2
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_011
+  text: The fixture contains 12 synthetic runs and 120 synthetic source inputs.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_2cc94967
+    evidence_id: ev_003
+    relation: supports
+    locator: para/3
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_012
+  text: The fixture defines 144 run-source processing opportunities, of which 36 are safe reuse opportunities.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_2cc94967
+    evidence_id: ev_004
+    relation: supports
+    locator: para/4
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_013
+  text: The fixture audits all 36 eligible reused assertions and records 36 correct passage-provenance
+    checks.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_2cc94967
+    evidence_id: ev_005
+    relation: supports
+    locator: para/5
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_014
+  text: The fixture identity check compares 240 assertions across three reruns in two input orders, for
+    1,440 comparisons.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_2cc94967
+    evidence_id: ev_006
+    relation: supports
+    locator: para/6
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_015
+  text: The fixture changes 48 assertion timeframes and validates 48 new identities, 48 predecessor links,
+    and retention of all prior fixture IDs.
+  materiality: material
+  claim_type: quantitative
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_2cc94967
+    evidence_id: ev_007
+    relation: supports
+    locator: para/7
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+- claim_id: clm_016
+  text: The fixture runs `proposed -> reviewed -> active -> split -> superseded -> rolled_back`; source
+    IDs and history persist.
+  materiality: background
+  claim_type: factual
+  status: supported
+  confidence: medium
+  sources:
+  - source_card_id: src_20260713_reusable_assertion_ledger_phase_0_fixture_2cc94967
+    evidence_id: ev_008
+    relation: supports
+    locator: para/8
+  inference_basis:
+    from_claims: []
+    reasoning_summary: null
+  report_locations: []
+  reviewer_notes: ''
+unresolved_questions: []

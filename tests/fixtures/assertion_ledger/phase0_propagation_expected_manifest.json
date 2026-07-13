@@ -1,0 +1,605 @@
+{
+  "fixture_name": "reusable-assertion-ledger-phase0-propagation-expected-v1",
+  "expected_objects": [
+    {
+      "object_id": "corrected_edition-0-source_edition",
+      "object_class": "source_edition",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "corrected_edition-0-passage",
+      "object_class": "passage",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "corrected_edition-0-assertion_version",
+      "object_class": "assertion_version",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "corrected_edition-0-canonical_claim_edge",
+      "object_class": "canonical_claim_edge",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-0-inference",
+      "object_class": "inference",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-0-report_revision",
+      "object_class": "report_revision",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-0-run",
+      "object_class": "run",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-0-export",
+      "object_class": "export",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-0-derived_cache_or_index",
+      "object_class": "derived_cache_or_index",
+      "action": "purge_current_read"
+    },
+    {
+      "object_id": "corrected_edition-0-mock_writeback_receipt",
+      "object_class": "mock_writeback_receipt",
+      "action": "queue_default_denied_reconciliation"
+    },
+    {
+      "object_id": "corrected_edition-1-source_edition",
+      "object_class": "source_edition",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "corrected_edition-1-passage",
+      "object_class": "passage",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "corrected_edition-1-assertion_version",
+      "object_class": "assertion_version",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "corrected_edition-1-canonical_claim_edge",
+      "object_class": "canonical_claim_edge",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-1-inference",
+      "object_class": "inference",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-1-report_revision",
+      "object_class": "report_revision",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-1-run",
+      "object_class": "run",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-1-export",
+      "object_class": "export",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-1-derived_cache_or_index",
+      "object_class": "derived_cache_or_index",
+      "action": "purge_current_read"
+    },
+    {
+      "object_id": "corrected_edition-1-mock_writeback_receipt",
+      "object_class": "mock_writeback_receipt",
+      "action": "queue_default_denied_reconciliation"
+    },
+    {
+      "object_id": "corrected_edition-2-source_edition",
+      "object_class": "source_edition",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "corrected_edition-2-passage",
+      "object_class": "passage",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "corrected_edition-2-assertion_version",
+      "object_class": "assertion_version",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "corrected_edition-2-canonical_claim_edge",
+      "object_class": "canonical_claim_edge",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-2-inference",
+      "object_class": "inference",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-2-report_revision",
+      "object_class": "report_revision",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-2-run",
+      "object_class": "run",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-2-export",
+      "object_class": "export",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-2-derived_cache_or_index",
+      "object_class": "derived_cache_or_index",
+      "action": "purge_current_read"
+    },
+    {
+      "object_id": "corrected_edition-2-mock_writeback_receipt",
+      "object_class": "mock_writeback_receipt",
+      "action": "queue_default_denied_reconciliation"
+    },
+    {
+      "object_id": "corrected_edition-3-source_edition",
+      "object_class": "source_edition",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "corrected_edition-3-passage",
+      "object_class": "passage",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "corrected_edition-3-assertion_version",
+      "object_class": "assertion_version",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "corrected_edition-3-canonical_claim_edge",
+      "object_class": "canonical_claim_edge",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-3-inference",
+      "object_class": "inference",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-3-report_revision",
+      "object_class": "report_revision",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-3-run",
+      "object_class": "run",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-3-export",
+      "object_class": "export",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "corrected_edition-3-derived_cache_or_index",
+      "object_class": "derived_cache_or_index",
+      "action": "purge_current_read"
+    },
+    {
+      "object_id": "corrected_edition-3-mock_writeback_receipt",
+      "object_class": "mock_writeback_receipt",
+      "action": "queue_default_denied_reconciliation"
+    },
+    {
+      "object_id": "invalid_extraction-0-source_edition",
+      "object_class": "source_edition",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "invalid_extraction-0-passage",
+      "object_class": "passage",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "invalid_extraction-0-assertion_version",
+      "object_class": "assertion_version",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "invalid_extraction-0-canonical_claim_edge",
+      "object_class": "canonical_claim_edge",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-0-inference",
+      "object_class": "inference",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-0-report_revision",
+      "object_class": "report_revision",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-0-run",
+      "object_class": "run",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-0-export",
+      "object_class": "export",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-0-derived_cache_or_index",
+      "object_class": "derived_cache_or_index",
+      "action": "purge_current_read"
+    },
+    {
+      "object_id": "invalid_extraction-0-mock_writeback_receipt",
+      "object_class": "mock_writeback_receipt",
+      "action": "queue_default_denied_reconciliation"
+    },
+    {
+      "object_id": "invalid_extraction-1-source_edition",
+      "object_class": "source_edition",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "invalid_extraction-1-passage",
+      "object_class": "passage",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "invalid_extraction-1-assertion_version",
+      "object_class": "assertion_version",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "invalid_extraction-1-canonical_claim_edge",
+      "object_class": "canonical_claim_edge",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-1-inference",
+      "object_class": "inference",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-1-report_revision",
+      "object_class": "report_revision",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-1-run",
+      "object_class": "run",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-1-export",
+      "object_class": "export",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-1-derived_cache_or_index",
+      "object_class": "derived_cache_or_index",
+      "action": "purge_current_read"
+    },
+    {
+      "object_id": "invalid_extraction-1-mock_writeback_receipt",
+      "object_class": "mock_writeback_receipt",
+      "action": "queue_default_denied_reconciliation"
+    },
+    {
+      "object_id": "invalid_extraction-2-source_edition",
+      "object_class": "source_edition",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "invalid_extraction-2-passage",
+      "object_class": "passage",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "invalid_extraction-2-assertion_version",
+      "object_class": "assertion_version",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "invalid_extraction-2-canonical_claim_edge",
+      "object_class": "canonical_claim_edge",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-2-inference",
+      "object_class": "inference",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-2-report_revision",
+      "object_class": "report_revision",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-2-run",
+      "object_class": "run",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-2-export",
+      "object_class": "export",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-2-derived_cache_or_index",
+      "object_class": "derived_cache_or_index",
+      "action": "purge_current_read"
+    },
+    {
+      "object_id": "invalid_extraction-2-mock_writeback_receipt",
+      "object_class": "mock_writeback_receipt",
+      "action": "queue_default_denied_reconciliation"
+    },
+    {
+      "object_id": "invalid_extraction-3-source_edition",
+      "object_class": "source_edition",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "invalid_extraction-3-passage",
+      "object_class": "passage",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "invalid_extraction-3-assertion_version",
+      "object_class": "assertion_version",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "invalid_extraction-3-canonical_claim_edge",
+      "object_class": "canonical_claim_edge",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-3-inference",
+      "object_class": "inference",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-3-report_revision",
+      "object_class": "report_revision",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-3-run",
+      "object_class": "run",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-3-export",
+      "object_class": "export",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "invalid_extraction-3-derived_cache_or_index",
+      "object_class": "derived_cache_or_index",
+      "action": "purge_current_read"
+    },
+    {
+      "object_id": "invalid_extraction-3-mock_writeback_receipt",
+      "object_class": "mock_writeback_receipt",
+      "action": "queue_default_denied_reconciliation"
+    },
+    {
+      "object_id": "formal_retraction-0-source_edition",
+      "object_class": "source_edition",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "formal_retraction-0-passage",
+      "object_class": "passage",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "formal_retraction-0-assertion_version",
+      "object_class": "assertion_version",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "formal_retraction-0-canonical_claim_edge",
+      "object_class": "canonical_claim_edge",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-0-inference",
+      "object_class": "inference",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-0-report_revision",
+      "object_class": "report_revision",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-0-run",
+      "object_class": "run",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-0-export",
+      "object_class": "export",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-0-derived_cache_or_index",
+      "object_class": "derived_cache_or_index",
+      "action": "purge_current_read"
+    },
+    {
+      "object_id": "formal_retraction-0-mock_writeback_receipt",
+      "object_class": "mock_writeback_receipt",
+      "action": "queue_default_denied_reconciliation"
+    },
+    {
+      "object_id": "formal_retraction-1-source_edition",
+      "object_class": "source_edition",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "formal_retraction-1-passage",
+      "object_class": "passage",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "formal_retraction-1-assertion_version",
+      "object_class": "assertion_version",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "formal_retraction-1-canonical_claim_edge",
+      "object_class": "canonical_claim_edge",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-1-inference",
+      "object_class": "inference",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-1-report_revision",
+      "object_class": "report_revision",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-1-run",
+      "object_class": "run",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-1-export",
+      "object_class": "export",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-1-derived_cache_or_index",
+      "object_class": "derived_cache_or_index",
+      "action": "purge_current_read"
+    },
+    {
+      "object_id": "formal_retraction-1-mock_writeback_receipt",
+      "object_class": "mock_writeback_receipt",
+      "action": "queue_default_denied_reconciliation"
+    },
+    {
+      "object_id": "formal_retraction-2-source_edition",
+      "object_class": "source_edition",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "formal_retraction-2-passage",
+      "object_class": "passage",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "formal_retraction-2-assertion_version",
+      "object_class": "assertion_version",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "formal_retraction-2-canonical_claim_edge",
+      "object_class": "canonical_claim_edge",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-2-inference",
+      "object_class": "inference",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-2-report_revision",
+      "object_class": "report_revision",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-2-run",
+      "object_class": "run",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-2-export",
+      "object_class": "export",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-2-derived_cache_or_index",
+      "object_class": "derived_cache_or_index",
+      "action": "purge_current_read"
+    },
+    {
+      "object_id": "formal_retraction-2-mock_writeback_receipt",
+      "object_class": "mock_writeback_receipt",
+      "action": "queue_default_denied_reconciliation"
+    },
+    {
+      "object_id": "formal_retraction-3-source_edition",
+      "object_class": "source_edition",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "formal_retraction-3-passage",
+      "object_class": "passage",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "formal_retraction-3-assertion_version",
+      "object_class": "assertion_version",
+      "action": "block_reuse"
+    },
+    {
+      "object_id": "formal_retraction-3-canonical_claim_edge",
+      "object_class": "canonical_claim_edge",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-3-inference",
+      "object_class": "inference",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-3-report_revision",
+      "object_class": "report_revision",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-3-run",
+      "object_class": "run",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-3-export",
+      "object_class": "export",
+      "action": "mark_stale"
+    },
+    {
+      "object_id": "formal_retraction-3-derived_cache_or_index",
+      "object_class": "derived_cache_or_index",
+      "action": "purge_current_read"
+    },
+    {
+      "object_id": "formal_retraction-3-mock_writeback_receipt",
+      "object_class": "mock_writeback_receipt",
+      "action": "queue_default_denied_reconciliation"
+    }
+  ]
+}

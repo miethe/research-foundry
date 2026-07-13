@@ -1,0 +1,54 @@
+{
+  "fixture_name": "reusable-assertion-ledger-phase0-local-only-v1",
+  "fixture_kind": "synthetic_deterministic",
+  "seed": "ral-p0-2026-07-13",
+  "private_corpus_access": false,
+  "historical_replay": {
+    "runs": 12,
+    "source_inputs": 120,
+    "run_source_memberships": 144,
+    "safe_reuse": 36,
+    "rejection_reasons": {
+      "changed_edition": 28,
+      "freshness_expired": 24,
+      "extraction_contract_mismatch": 20,
+      "rights_or_sensitivity_denied": 18,
+      "evaluation_not_approved": 18
+    },
+    "provenance_audit": {"sampled": 36, "correct": 36},
+    "baseline": {"model_calls": 144, "elapsed_seconds": 720, "cost_units": 144, "review_minutes": 72},
+    "replay": {"model_calls": 108, "elapsed_seconds": 576, "cost_units": 108, "review_minutes": 54}
+  },
+  "identity_merge": {
+    "editions": 32,
+    "assertions": 240,
+    "reruns_per_order": 3,
+    "orders": 2,
+    "material_changes": 48,
+    "merge_candidates": 108,
+    "hard_negatives": 48,
+    "human_reviewer_labels": false,
+    "state_machine": {
+      "initial_state": "proposed",
+      "transitions": ["reviewed", "active", "split", "superseded", "rolled_back"],
+      "required_preservation": ["source_assertion_id", "historical_reference", "predecessor_assertion_id"]
+    }
+  },
+  "retraction_propagation": {
+    "graphs_per_event": 4,
+    "event_types": ["corrected_edition", "invalid_extraction", "formal_retraction"],
+    "object_classes": ["source_edition", "passage", "assertion_version", "canonical_claim_edge", "inference", "report_revision", "run", "export", "derived_cache_or_index", "mock_writeback_receipt"],
+    "expected_action_by_class": {
+      "source_edition": "block_reuse",
+      "passage": "block_reuse",
+      "assertion_version": "block_reuse",
+      "canonical_claim_edge": "mark_stale",
+      "inference": "mark_stale",
+      "report_revision": "mark_stale",
+      "run": "mark_stale",
+      "export": "mark_stale",
+      "derived_cache_or_index": "purge_current_read",
+      "mock_writeback_receipt": "queue_default_denied_reconciliation"
+    }
+  }
+}
