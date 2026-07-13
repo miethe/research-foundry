@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..assertion_identity import source_assertion_fingerprint, source_assertion_id
+from ..frontmatter import load_md
 from ..paths import FoundryPaths
 from ..yamlio import dumps_yaml, load_yaml
 from .assertion_registry import AssertionRegistry
@@ -57,15 +58,26 @@ class AssertionMaterializer:
             return None
         return resolved
 
-    def _verify_extraction_fact(self, *, text: str, extraction_provenance: dict[str, Any]) -> str | None:
-        """Require the caller binding to resolve to one actual versioned fact."""
+    def _verify_extraction_fact(
+        self,
+        *,
+        source_key: str,
+        edition: dict[str, Any],
+        passage: dict[str, Any],
+        text: str,
+        extraction_provenance: dict[str, Any],
+    ) -> str | None:
+        """Bind one extracted fact to its source card and exact published passage."""
 
         fields = ("extraction_card_id", "source_card_id", "evidence_id", "locator")
         binding = {field: extraction_provenance.get(field) for field in fields}
         if not all(isinstance(value, str) and value.strip() for value in binding.values()):
             return "unverified_extraction_fact"
-        matches = 0
+        runs_root = self.paths.runs.resolve()
+        extraction_matches = 0
         for card_path in self.paths.runs.glob("*/extractions/*.yaml"):
+            if not card_path.resolve().is_relative_to(runs_root):
+                continue
             try:
                 card = load_yaml(card_path)
             except Exception:  # noqa: BLE001 - persisted cards are untrusted at this boundary.
@@ -75,14 +87,46 @@ class AssertionMaterializer:
             facts = card.get("extracted_facts")
             if not isinstance(facts, list):
                 continue
-            matches += sum(
+            extraction_matches += sum(
                 isinstance(fact, dict)
                 and fact.get("evidence_id") == binding["evidence_id"]
                 and fact.get("locator") == binding["locator"]
                 and fact.get("text") == text
                 for fact in facts
             )
-        return None if matches == 1 else "unverified_extraction_fact"
+        if extraction_matches != 1:
+            return "unverified_extraction_fact"
+        source_matches = 0
+        for source_path in self.paths.runs.glob("*/sources/*.md"):
+            if not source_path.resolve().is_relative_to(runs_root):
+                continue
+            try:
+                source_card, _ = load_md(source_path)
+            except Exception:  # noqa: BLE001 - persisted source cards are untrusted at this boundary.
+                continue
+            if source_card.get("source_card_id") != binding["source_card_id"]:
+                continue
+            points = source_card.get("extracted_points")
+            if not isinstance(points, list):
+                continue
+            source_matches += sum(
+                isinstance(point, dict)
+                and point.get("evidence_id") == binding["evidence_id"]
+                and point.get("locator") == binding["locator"]
+                and point.get("summary") == text
+                for point in points
+            )
+        if source_matches != 1:
+            return "source_passage_binding_mismatch"
+        if source_key != binding["source_card_id"]:
+            return "source_card_binding_mismatch"
+        if (
+            edition.get("source_edition_id") != passage.get("source_edition_id")
+            or not isinstance(passage.get("context"), dict)
+            or passage["context"].get("exact_quote") != text
+        ):
+            return "source_passage_binding_mismatch"
+        return None
 
     @staticmethod
     def _published_packet_is_valid(
@@ -182,7 +226,13 @@ class AssertionMaterializer:
             if field in passage and passage[field] != published.get(field):
                 return MaterializationResult(None, reason="passage_binding_drift")
         passage = published
-        verification_reason = self._verify_extraction_fact(text=text, extraction_provenance=extraction_provenance)
+        verification_reason = self._verify_extraction_fact(
+            source_key=source_key,
+            edition=edition,
+            passage=passage,
+            text=text,
+            extraction_provenance=extraction_provenance,
+        )
         if verification_reason is not None:
             return MaterializationResult(None, reason=verification_reason)
         result = self.build(passage=passage, text=text, extraction_provenance=extraction_provenance, qualifiers=qualifiers, qualifier_extensions=qualifier_extensions, _edition=edition)
