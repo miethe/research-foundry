@@ -160,6 +160,7 @@ def ingest_source(
     fetch: bool = False,
     content: str | None = None,
     extra_limitations: list[str] | None = None,
+    assertion_registry_workspace_id: str | None = None,
     paths: FoundryPaths | None = None,
 ) -> IngestResult:
     """Ingest one source into ``runs/<run>/sources/`` as a source_card.
@@ -294,6 +295,20 @@ def ingest_source(
     )
 
     _trace(run_paths, stage="ingest", source_card_id=src_id, degraded=degraded)
+
+    # Explicit opt-in seam: the default source-card flow remains run-local.
+    # The registry never enables reuse or canonical-claim feature flags.
+    if assertion_registry_workspace_id and content is not None and not degraded:
+        from .assertion_registry import AssertionRegistry
+
+        AssertionRegistry(workspace_id=assertion_registry_workspace_id, paths=paths).ingest(
+            src_id,
+            content,
+            media_type="text/html" if is_url else "text/plain",
+            access_scope=sensitivity,
+            allowed_use=front_matter["usage"],
+            retrieval_locator={"url": loc_url, "file_path": loc_file},
+        )
 
     # Audit: record artifact acceptance after file write + registry upsert (fail-open).
     audit_service.record_event(
