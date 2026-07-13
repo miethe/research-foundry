@@ -10,18 +10,20 @@ phase_plan_ref: docs/project_plans/implementation_plans/features/reusable-assert
 execution_model: sequential
 phase: 3
 title: P2 Edition and Passage Registry
-status: review
+status: complete
 created: '2026-07-13T20:53:25Z'
 started: '2026-07-13T20:53:25Z'
-completed: null
-updated: '2026-07-13T20:53:25Z'
+completed: '2026-07-13T21:05:22Z'
+updated: '2026-07-13T21:05:22Z'
 commit_refs:
 - 78bcb239d4bb4417dcb31c9d865b5fd93271608b
+- ceb3bfc32b6551606f4df5df5a541b9eac6e67d9
+- d65971e035b2b7a575d29405ea3fd8dac76c10ab
 pr_refs: []
-overall_progress: 75
-completion_estimate: on-track
+overall_progress: 100
+completion_estimate: complete
 total_tasks: 4
-completed_tasks: 3
+completed_tasks: 4
 in_progress_tasks: 0
 blocked_tasks: 0
 owners:
@@ -90,7 +92,7 @@ tasks:
   verified_by: [P2-REVIEW]
 - id: P2-REVIEW
   description: Independent task-completion-validator review of P2-001 through P2-003 and AC P2-REGISTRY; this writer must not self-approve phase completion.
-  status: pending
+  status: completed
   assigned_to: [task-completion-validator]
   dependencies: [P2-003]
   estimated_effort: review gate
@@ -98,6 +100,11 @@ tasks:
   assigned_model: sonnet
   model_effort: extended
   acceptance_criteria: [P2-REGISTRY]
+  started: '2026-07-13T20:53:25Z'
+  completed: '2026-07-13T21:05:22Z'
+  evidence:
+  - review: Independent task-completion-validator APPROVE; thread 019f5d44-9f26-7152-ba82-1d454d11087f; approved commit d65971e035b2b7a575d29405ea3fd8dac76c10ab; tree d9ab53bdfaa64df8304682ea0c69adc2214cb6ad; prior request-changes correction cycles ceb3bfc32b6551606f4df5df5a541b9eac6e67d9 and d65971e035b2b7a575d29405ea3fd8dac76c10ab accepted
+  verified_by: [task-completion-validator]
 parallelization:
   batch_1: [P2-001]
   batch_2: [P2-002]
@@ -114,10 +121,10 @@ blockers:
 success_criteria:
 - id: AC-P2-REGISTRY
   description: Registry resolves immutable editions and passages deterministically while drift, ambiguity, and missing rights remain non-reusable.
-  status: pending
+  status: completed
   maps_to: [P2-001, P2-002, P2-003, P2-REVIEW]
 notes:
-- Reviewer pending; this writer has not self-approved P2.
+- Independent review approved P2 at d65971e035b2b7a575d29405ea3fd8dac76c10ab.
 - No schema or frontend contract changed, so codegen:check and TypeScript gates are not applicable to this Python-only checkpoint.
 files_modified:
 - src/research_foundry/services/assertion_registry.py
