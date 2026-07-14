@@ -5,7 +5,7 @@ title: "Implementation Plan: Reusable Assertion Ledger v1"
 description: "Tier 3 delivery plan for a private, passage-bound assertion ledger with governed reuse and lifecycle propagation."
 status: review
 created: 2026-07-12
-updated: 2026-07-13
+updated: 2026-07-14
 feature_slug: reusable-assertion-ledger
 feature_version: v1
 prd_ref: docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
@@ -21,6 +21,7 @@ category: features
 tags: [implementation, planning, tier-3, assertions, provenance, private-first]
 spike_ref: docs/project_plans/SPIKEs/reusable-assertion-ledger-historical-replay-charter.md
 related_documents:
+  - docs/project_plans/aars/2026-07-14-reusable-assertion-ledger-p0-p5-execution.md
   - .codex/worknotes/reusable-assertion-ledger/decisions-block.md
   - docs/project_plans/reports/investigations/reusable-assertion-ledger-findings.md
   - docs/project_plans/SPIKEs/reusable-assertion-ledger-historical-replay-charter.md
@@ -125,18 +126,24 @@ wave_plan:
 
 # Implementation Plan: Reusable Assertion Ledger v1
 
-## Phase 0 evidence status (pre-review)
+## Execution checkpoint (P0-P5 complete; P6-P8 remaining)
 
-The three P0 result artifacts and the deterministic local-only harness are
-ready for independent review. Their verdict is `conditional`, because no
-representative private corpus or concluded citation, segmentation, and
-contradiction contracts were available. The canonical P0 tracker is
-`.Codex/progress/reusable-assertion-ledger/phase-1-progress.md`; it must retain
-the pending `P0-GATES` reviewer task. No P1 implementation or flag enablement is
-authorized by this pre-review evidence.
+The original P0 pre-execution record was `conditional`: the three P0 result
+artifacts and deterministic local-only harness were awaiting independent review
+because no representative private corpus or concluded citation, segmentation,
+and contradiction contracts were available. Its pending `P0-GATES` language
+is historical and no longer describes the current tracker state.
+
+At the current checkpoint, logical P0-P5 (physical phases 1-6) are complete and
+account for 48 of 71 planned points. Logical P6-P8 remain at 23 points, so this
+plan remains in `review` and is not fully complete. Private, live-provider, and
+external-writeback paths remain `not_executed` where owner data, authorization,
+or release gates were unavailable; the partial AAR records the exact reviewed
+commit/tree and final validation evidence.
 
 **Human Brief:** `docs/project_plans/human-briefs/reusable-assertion-ledger.md`
 **Decisions Block:** `.codex/worknotes/reusable-assertion-ledger/decisions-block.md`
+**Partial AAR:** [P0-P5 execution](../../aars/2026-07-14-reusable-assertion-ledger-p0-p5-execution.md)
 **Track:** Tier 3; `task-completion-validator` closes each phase, and `karen` reviews P0, P4, P7, and feature closeout.
 
 ## Executive summary
