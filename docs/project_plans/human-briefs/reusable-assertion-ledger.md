@@ -26,7 +26,7 @@ audience: [humans]
 priority: high
 confidence: 0.82
 created: 2026-07-12
-updated: 2026-07-12
+updated: 2026-07-14
 target_release: null
 tags: [human-brief, tier-3, assertions, provenance, private-first]
 ---
@@ -34,7 +34,7 @@ tags: [human-brief, tier-3, assertions, provenance, private-first]
 # Reusable Assertion Ledger — Human Brief
 
 > Living document for human orchestrators. Agents: do not load unless explicitly instructed.
-> Status: draft | Updated: 2026-07-12
+> Status: draft | Updated: 2026-07-14
 
 ## 1. Context Pointers
 
@@ -47,26 +47,26 @@ tags: [human-brief, tier-3, assertions, provenance, private-first]
 
 ## 2. Estimation Sanity Check
 
-**Bottom-up total**: 71 points across P0–P8, including 11 embedded H6 points; the 11 points are not additive.
+**Bottom-up total**: 72 points across P0–P8, including 12 embedded H6 points; the 12 points are not additive.
 **Top-down anchor**: The findings estimate 4–7 engineer-weeks for a private pilot and 3–6 engineer-months for a durable private beta. No directly comparable completed feature provides a stronger H5 anchor.
-**Reconciliation**: The 71-point plan covers the durable private-beta slice, not only a proof of concept. Confidence is 0.82 because phase scope and gates are explicit, while replay economics, identity safety, and propagation feasibility remain SPIKE-dependent.
+**Reconciliation**: The 72-point plan covers the durable private-beta slice, not only a proof of concept. Confidence is 0.82 because phase scope and gates are explicit, while replay economics, identity safety, and propagation feasibility remain SPIKE-dependent.
 
 H1–H6 heuristic application:
 
 - **H1 (new durable nouns)**: Immutable editions, passages, assertions, evaluations, lifecycle/audit records, relationships, and workspace-scoped projections justify the P1–P4 schema/repository/service floor.
 - **H2 (dual implementation)**: No local-plus-enterprise duplicate implementation is planned. The v1 boundary is one private, workspace-scoped architecture, so no 1.8× multiplier applies.
 - **H3 (algorithmic services)**: Identity/versioning, qualifier-aware merge proposals, dependency traversal, reuse decisions, ranking, and invalidation are algorithmic. P0 therefore runs three blocking SPIKEs; merge failure selects assertion-only mode.
-- **H4 (bundle versus sum)**: Nine phase estimates sum to the locked 71 points across research, schemas, registry, materialization, API/search, lifecycle, UI, hardening, and rollout. The plan total does not discount any capability-area subtotal.
+- **H4 (bundle versus sum)**: Nine phase estimates sum to the locked 72 points across research, schemas, registry, materialization, API/search, lifecycle, UI, hardening, and rollout. The plan total does not discount any capability-area subtotal.
 - **H5 (anchor)**: The findings' private pilot/private beta ranges are the best available anchor. Actual replay time, review effort, and storage/index behavior must recalibrate the plan after P0.
-- **H6 (hidden plumbing)**: 11 points are embedded in P1-003 (2), P3-003 (2), P4-003 (2), P6-001 (1), P8-001 (2), P8-002 (1), and DOC-006 (1) for compatibility, DTO/codegen, export seams, flags, migration/rollback, telemetry, docs, and deferred-spec capture.
+- **H6 (hidden plumbing)**: 12 points are embedded in P1-003 (2), P3-003 (2), P4-003 (2), P6-000 (1), P6-001 (1), P8-001 (2), P8-002 (1), and DOC-006 (1) for compatibility, DTO/codegen, export seams, the impact read seam, flags, migration/rollback, telemetry, docs, and deferred-spec capture.
 
 ## 3. Wave & Orchestration Notes
 
-**Critical path**: `P0 -> P1 -> P2 -> P3 -> P4 -> P5 -> P7 -> P8`. P0 can stop or narrow the feature; deterministic identity, complete impact enumeration, and isolation are hard blockers for automated reuse.
+**Critical path**: `P0 -> P1 -> P2 -> P3 -> P4 -> P5 -> P6 -> P7 -> P8`. P0 can stop or narrow the feature; deterministic identity, complete impact enumeration, and isolation are hard blockers for automated reuse.
 
-**Parallel opportunities**: Historical replay and identity/merge can run in parallel. Retraction propagation consumes the identity fixture contract, and verdict synthesis follows all three SPIKE results. After the P4 OpenAPI/type-generation barrier, P5 lifecycle work and P6 reviewer UI may proceed in parallel with disjoint owners.
+**Parallel opportunities**: Historical replay and identity/merge can run in parallel. Retraction propagation consumes the identity fixture contract, and verdict synthesis follows all three SPIKE results. Evaluation fixture authoring may overlap P2–P5, but P6 is serialized after P5: P6-000 consumes P5-002/P5-003, and every remaining P6 task depends directly or indirectly on P6-000.
 
-**Merge order**: Land approved P0 result artifacts before contract work; then schemas/ADR (P1), registry (P2), materialization/export lineage (P3), API/OpenAPI and generated types (P4), P5/P6 branches, integrated hardening (P7), and docs/private-rollout artifacts (P8). Only one writer owns a file at a time. P7 must test the combined P5/P6 result before P8.
+**Merge order**: Land approved P0 result artifacts before contract work; then schemas/ADR (P1), registry (P2), materialization/export lineage (P3), API/OpenAPI and generated types (P4), lifecycle/impact work (P5), the P6-000 impact read seam followed by the remaining reviewer experience (P6), integrated hardening (P7), and docs/private-rollout artifacts (P8). Only one writer owns a file at a time. P7 must test the serialized P5-to-P6 result before P8.
 
 **Cross-feature coupling**: Compose with existing source-card, claim-ledger, export, catalog, WKSP-304 isolation, writeback-default-deny, and runs-viewer contracts. Do not replace these seams or create parallel governance mechanisms.
 
@@ -131,4 +131,5 @@ H1–H6 heuristic application:
 
 ## 9. Running Log
 
-- [2026-07-12] Brief created from the accepted findings report, draft Tier 3 PRD/plan, nine phase plans, and three blocking SPIKE charters. Estimate locked at 71 points with 11 embedded H6 points; confidence set to 0.82 pending P0 verdicts.
+- [2026-07-12] Brief created from the accepted findings report, draft Tier 3 PRD/plan, nine phase plans, and three blocking SPIKE charters; confidence set to 0.82 pending P0 verdicts.
+- [2026-07-14] P6 reviewer experience gained the P6-000 impact read seam (1 embedded H6 point). Current estimate locked at 72 points with 12 embedded H6 points; P6 is serialized after P5-002/P5-003, with every remaining P6 task ordered behind P6-000 directly or transitively.

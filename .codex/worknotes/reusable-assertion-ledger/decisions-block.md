@@ -4,9 +4,9 @@ doc_type: decisions_block
 title: "Decisions Block: Reusable Assertion Ledger"
 description: "Tier 3 architecture, phase, risk, estimation, and agent-routing decisions for a private-first reusable assertion ledger."
 created: 2026-07-12
-updated: 2026-07-13
+updated: 2026-07-14
 feature_slug: reusable-assertion-ledger
-estimated_points: "71"
+estimated_points: "72"
 tier: 3
 related_feature_prd: docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
 ---
@@ -76,7 +76,7 @@ This block records only the new decisions for implementation planning. Stable be
 - P1 freezes compatibility before any persistent registry or API implementation.
 - P2 owns source truth; P3 owns extracted observations. This prevents extraction output from becoming source identity.
 - P4 remains a rebuildable read projection; P5 owns lifecycle behavior and dependent-output invalidation.
-- P6 starts after API contracts stabilize, but UI design may begin with fixtures after P4 schemas are fixed.
+- P6 starts only after P5-002 and P5-003 are complete. P6-000 consumes their impact-read and lifecycle/audit contracts, and every remaining P6 task depends directly or indirectly on P6-000.
 - P7 is a hard barrier before rollout, not trailing cleanup.
 
 ## 3. Agent Routing
@@ -97,7 +97,7 @@ This block records only the new decisions for implementation planning. Stable be
 
 - P0 historical replay and identity/merge work can run in parallel; retraction propagation consumes the identity fixture contract, and verdict synthesis follows all three artifacts.
 - After P1, P2 implementation and P3 fixture design may overlap, but P3 persistence waits on P2.
-- P4 API fixture work and P6 UI wireframing may overlap after contract freeze; generated types/OpenAPI are serialization barriers.
+- P6 is serialized after P5: P6-000 consumes P5-002/P5-003 before any downstream reviewer-experience task begins.
 - P7 evaluation fixture authoring should begin during P2-P5, while final hardening waits on all implementation phases.
 
 ## 4. Risk Hotspots
@@ -134,7 +134,7 @@ This block records only the new decisions for implementation planning. Stable be
 
 ## 5. Estimation Anchors
 
-### Total: 71 points
+### Total: 72 points
 
 | Phase | Points | Reasoning Anchor |
 |---|---:|---|
@@ -144,7 +144,7 @@ This block records only the new decisions for implementation planning. Stable be
 | P3 | 8 | Backfill/creation-path seam comparable to run-metadata-enrichment but adds dedupe/provenance |
 | P4 | 8 | Catalog/API slice plus OpenAPI barrier and scoped query behavior |
 | P5 | 8 | H3 dependency/impact graph, refresh, correction/retraction propagation |
-| P6 | 7 | Runs-frontend claim/provenance UI anchor with additional review states |
+| P6 | 8 | Runs-frontend claim/provenance UI anchor with additional review states and the P6-000 impact read seam |
 | P7 | 8 | Gold sets, security/isolation, performance, compatibility, reviewer gates |
 | P8 | 8 | Docs, migration/runbook, feature flag, monitoring, private rollout, including its H6 operational allocation |
 
@@ -155,13 +155,13 @@ This block records only the new decisions for implementation planning. Stable be
 - H3: identity/merge, contradiction classification, impact traversal, diff/refresh, and ranking are algorithmic and SPIKE-gated.
 - H4: schema/identity, source registry, assertion materialization, search/API, lifecycle, UI, and evaluation are independently estimated.
 - H5 anchors: `run-metadata-enrichment-v1` (16-20 pts), `runs-frontend-v1` (13 pts), `wksp-304-workspace-isolation-enforcement-v1` (10 pts), and `public-multiuser-p5-auth-rbac-v1` (47.25 pts). This feature exceeds each narrow anchor because it combines their storage, lifecycle, policy, API, and UI surfaces.
-- H6: 11 points are labeled and embedded across the 71 phase points; do not add them again or hide generated types, OpenAPI, migration inventory, feature flags, audit fields, changelog, or runbooks inside unlabeled tasks.
+- H6: 12 points are labeled and embedded across the 72 phase points, including P6-000 (1) for the impact read seam; do not add them again or hide generated types, OpenAPI, migration inventory, feature flags, audit fields, changelog, or runbooks inside unlabeled tasks.
 
 ## 6. Dependency Map
 
-**Critical path**: P0 -> P1 -> P2 -> P3 -> P4 -> P5 -> P7 -> P8
+**Critical path**: P0 -> P1 -> P2 -> P3 -> P4 -> P5 -> P6 -> P7 -> P8
 
-**Parallelizable slices**: UI design after P1; P6 implementation after P4; evaluation fixture authoring during P2-P5; documentation drafts after P4.
+**Parallelizable slices**: Evaluation fixture authoring during P2-P5 and documentation drafts after P4. P6 is not parallelizable with P5; P6-000 is its phase-entry serialization barrier.
 
 ```mermaid
 graph LR
@@ -170,9 +170,8 @@ graph LR
   P2 --> P3["P3 assertions/backfill"]
   P3 --> P4["P4 catalog/API"]
   P4 --> P5["P5 reuse/impact"]
-  P4 --> P6["P6 reviewer UI"]
-  P5 --> P7["P7 hardening"]
-  P6 --> P7
+  P5 --> P6["P6 P6-000 seam, then reviewer UI"]
+  P6 --> P7["P7 hardening"]
   P7 --> P8["P8 private rollout"]
 ```
 

@@ -12,7 +12,7 @@ prd_ref: docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
 plan_ref: null
 human_brief_ref: docs/project_plans/human-briefs/reusable-assertion-ledger.md
 scope: "SPIKE-gated private assertion memory, immutable source editions/passages, durable assertions, scoped discovery, reuse policy, impact propagation, reviewer UI, hardening, and private rollout."
-effort_estimate: "71 pts"
+effort_estimate: "72 pts"
 priority: high
 risk_level: high
 owner: nick
@@ -96,10 +96,10 @@ wave_plan:
       parallelizable: false
       files_affected: [src/research_foundry/services/assertion_reuse.py, src/research_foundry/services/assertion_impact.py]
     - id: P6
-      depends_on: [P4]
+      depends_on: [P5]
       model: sonnet
       effort: adaptive
-      parallelizable: true
+      parallelizable: false
       files_affected: [frontend/runs-viewer/src/screens/CatalogScreen.tsx, frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.tsx, frontend/runs-viewer/src/components/ProvenanceModal/ProvenanceModal.tsx]
     - id: P7
       depends_on: [P5, P6]
@@ -119,7 +119,8 @@ wave_plan:
     - [P2]
     - [P3]
     - [P4]
-    - [P5, P6]
+    - [P5]
+    - [P6]
     - [P7]
     - [P8]
 ---
@@ -135,7 +136,7 @@ and contradiction contracts were available. Its pending `P0-GATES` language
 is historical and no longer describes the current tracker state.
 
 At the current checkpoint, logical P0-P5 (physical phases 1-6) are complete and
-account for 48 of 71 planned points. Logical P6-P8 remain at 23 points, so this
+account for 48 of 72 planned points. Logical P6-P8 remain at 24 points, so this
 plan remains in `review` and is not fully complete. Private, live-provider, and
 external-writeback paths remain `not_executed` where owner data, authorization,
 or release gates were unavailable; the partial AAR records the exact reviewed
@@ -167,9 +168,9 @@ The target is private beta only. Public promotion, shared retrieval indexes, cro
 
 ### Critical path
 
-`P0 -> P1 -> P2 -> P3 -> P4 -> P5 -> P7 -> P8`
+`P0 -> P1 -> P2 -> P3 -> P4 -> P5 -> P6 -> P7 -> P8`
 
-P6 may proceed beside P5 after the P4 OpenAPI/type-generation barrier. Only one writing agent owns a file at a time. P7 integrates both paths and performs the Tier 3 hardening gate.
+P6 is serialized after P5 because P6-000 consumes the P5-002 impact-read contract and P5-003 lifecycle/audit fixtures. Every other P6 task depends directly or indirectly on P6-000. Only one writing agent owns a file at a time, and P7 performs the Tier 3 hardening gate after the complete P5-to-P6 seam lands.
 
 ### Phase summary
 
@@ -181,12 +182,14 @@ P6 may proceed beside P5 after the P4 OpenAPI/type-generation barrier. Only one 
 | P3 | Assertion materialization | 8 pts | python-backend-engineer, backend-architect | sonnet | adaptive | [Phase 4](./reusable-assertion-ledger-v1/phase-4-assertion-materialization.md) |
 | P4 | Catalog, search, and API | 8 pts | python-backend-engineer, data-layer-expert | sonnet | adaptive | [Phase 5](./reusable-assertion-ledger-v1/phase-5-catalog-search-api.md) |
 | P5 | Reuse, refresh, and impact | 8 pts | backend-architect, python-backend-engineer | sonnet | extended | [Phase 6](./reusable-assertion-ledger-v1/phase-6-reuse-refresh-impact.md) |
-| P6 | Reviewer experience | 7 pts | ui-engineer-enhanced, frontend-developer | sonnet | adaptive | [Phase 7](./reusable-assertion-ledger-v1/phase-7-reviewer-experience.md) |
+| P6 | Reviewer experience | 8 pts | ui-engineer-enhanced, frontend-developer | sonnet | adaptive | [Phase 7](./reusable-assertion-ledger-v1/phase-7-reviewer-experience.md) |
 | P7 | Evaluation and hardening | 8 pts | python-backend-engineer, data-layer-expert, frontend-developer | sonnet | extended | [Phase 8](./reusable-assertion-ledger-v1/phase-8-evaluation-hardening.md) |
 | P8 | Documentation and private rollout | 8 pts | documentation-writer, DevOps, lead-pm | sonnet/haiku | adaptive | [Phase 9](./reusable-assertion-ledger-v1/phase-9-docs-private-rollout.md) |
-| **Total** |  | **71 pts** |  |  |  |  |
+| **Total** |  | **72 pts** |  |  |  |  |
 
-The phase rows and detailed task estimates both sum to the locked 71-point total. The H6 plumbing reserve is embedded in labeled tasks and is not additive to 71.
+The phase rows and detailed task estimates both sum to the locked 72-point total. The H6 plumbing reserve is embedded in labeled tasks and is not additive to 72.
+
+P6 begins only after P5-002 and P5-003 are complete. P6-000 is the phase-entry seam, and the remaining reviewer-experience tasks are ordered behind it directly or transitively.
 
 ### H6 plumbing allocation
 
@@ -195,11 +198,12 @@ The phase rows and detailed task estimates both sum to the locked 71-point total
 | P1-003 | Compatibility and schema-generation contract | 2 |
 | P3-003 | Run/export persistent-reference seam | 2 |
 | P4-003 | DTO, OpenAPI, generated-type barrier | 2 |
+| P6-000 | Impact read seam | 1 |
 | P6-001 | Frontend client/type plumbing | 1 |
 | P8-001 | Feature flags, migration, rollback, monitoring | 2 |
 | P8-002 | User/dev docs and CHANGELOG | 1 |
 | DOC-006 | Deferred design-spec capture and reference append | 1 |
-| **H6 total** |  | **11** |
+| **H6 total** |  | **12** |
 
 ## File ownership and serialization
 
