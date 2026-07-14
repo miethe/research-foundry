@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "codegen": "node codegen/generate-types.mjs",
-    "codegen:check": "node codegen/generate-types.mjs --check"
+    "codegen:check": "node codegen/generate-types.mjs --check",
+    "test:codegen:contract": "node codegen/generate-types.contract.test.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",

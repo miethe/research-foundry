@@ -55,10 +55,10 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-_logger = logging.getLogger(__name__)
-
 from ..config import FoundryConfig
-from .auth.adapters import local_static as _local_static_module  # noqa: F401 — triggers self-registration
+from .auth.adapters import (
+    local_static as _local_static_module,  # noqa: F401 — triggers self-registration
+)
 from .auth.adapters.local_static import LocalStaticAuthProvider
 from .auth.provider import get_provider, register_provider
 from .middleware.allowlist import IPAllowlistMiddleware
@@ -66,11 +66,14 @@ from .middleware.auth import AuthProviderMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
 from .routers.admin import router as admin_router
 from .routers.agent_jobs import router as agent_jobs_router
+from .routers.assertions import router as assertions_router
 from .routers.audit import router as audit_router
 from .routers.auth_identity import router as auth_identity_router
 from .routers.catalog import router as catalog_router
 from .routers.reports import router as reports_router
 from .routers.runs import router as runs_router
+
+_logger = logging.getLogger(__name__)
 
 # Default origins covered by a plain wildcard pattern are not supported by
 # CORSMiddleware; we use explicit prefixes that cover localhost variants.
@@ -164,7 +167,7 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # PATCH /api/admin/rate-limit-config writes here; GET reads it merged with
     # config defaults.  Cleared on restart (intentional — use foundry.yaml for
     # persistent overrides).
-    app.state.rate_limit_overrides: dict = {}
+    app.state.rate_limit_overrides = {}
 
     # --- Middleware (outermost → innermost: CORS → allowlist → auth → rate-limit) ---
     #
@@ -358,6 +361,9 @@ def create_app(config: FoundryConfig) -> FastAPI:
     app.include_router(runs_router, prefix="/api", tags=["runs"])
     # Shared evidence catalog (public-multiuser-release Phase 1).
     app.include_router(catalog_router, prefix="/api", tags=["catalog"])
+    # Reusable assertion ledger (P4): private, workspace-scoped lexical
+    # discovery and complete evidence packets.  No vector/graph routes exist.
+    app.include_router(assertions_router, prefix="/api", tags=["assertions"])
     # Report Builder draft API (public-multiuser-release Phase 3 Wave E).
     # NOTE: GET /api/reports/{run_id}/anchors (runs_router) remains unambiguous
     # because it has a fixed '/anchors' suffix — different path-segment count.

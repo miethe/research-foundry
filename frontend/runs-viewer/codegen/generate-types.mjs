@@ -14,6 +14,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { compile } from "json-schema-to-typescript";
@@ -22,6 +23,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../../");
 const SCHEMAS_DIR = join(REPO_ROOT, "schemas");
 const OUT_DIR = join(__dirname, "../src/types/rf");
+const OPENAPI_PATH = join(REPO_ROOT, "src/research_foundry/api/openapi.json");
 const CHECK_ONLY = process.argv.includes("--check");
 
 const SCHEMA_FILES = [
@@ -62,6 +64,21 @@ const COMPILE_OPTIONS = {
   unknownAny: false,
 };
 
+const ASSERTION_COMPONENTS = [
+  "RightsDecision",
+  "AssertionSummary",
+  "AssertionFacets",
+  "AssertionSearchResponse",
+  "EvidencePacket",
+  "AssertionLineage",
+];
+
+const ASSERTION_PATHS = [
+  "/api/assertions/search",
+  "/api/assertions/{assertion_id}",
+  "/api/assertions/{assertion_id}/lineage",
+];
+
 mkdirSync(OUT_DIR, { recursive: true });
 
 let generatedCount = 0;
@@ -81,6 +98,119 @@ function writeGenerated(outPath, contents) {
     return;
   }
   if (existing !== contents) staleFiles.push(outPath);
+}
+
+function asObject(value, description) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`OpenAPI ${description} must be an object`);
+  }
+  return value;
+}
+
+function refName(ref) {
+  const prefix = "#/components/schemas/";
+  if (typeof ref !== "string" || !ref.startsWith(prefix)) {
+    throw new Error(`Unsupported OpenAPI schema reference: ${ref}`);
+  }
+  return ref.slice(prefix.length);
+}
+
+function schemaType(schema) {
+  const value = asObject(schema, "schema");
+  if (value.$ref) return refName(value.$ref);
+  if (Array.isArray(value.anyOf)) {
+    return [...new Set(value.anyOf.map(schemaType))].join(" | ");
+  }
+  if (value.type === "array") return `Array<${schemaType(value.items ?? {})}>`;
+  if (value.type === "object" || value.additionalProperties) {
+    if (value.additionalProperties && value.additionalProperties !== true) {
+      return `Record<string, ${schemaType(value.additionalProperties)}>`;
+    }
+    return "Record<string, unknown>";
+  }
+  if (value.type === "integer" || value.type === "number") return "number";
+  if (value.type === "boolean") return "boolean";
+  if (value.type === "string") return "string";
+  if (value.type === "null") return "null";
+  return "unknown";
+}
+
+function propertyName(name) {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
+}
+
+function renderInterface(name, schema, typeOverrides = {}) {
+  const properties = asObject(schema.properties, `${name}.properties`);
+  const required = new Set(schema.required ?? []);
+  const lines = Object.entries(properties).map(([property, definition]) => {
+    const optional = required.has(property) ? "" : "?";
+    return `  ${propertyName(property)}${optional}: ${typeOverrides[property] ?? schemaType(definition)};`;
+  });
+  return `export interface ${name} {\n${lines.join("\n")}\n}`;
+}
+
+function renderAssertionApiTypes() {
+  const openapi = JSON.parse(readFileSync(OPENAPI_PATH, "utf8"));
+  const paths = asObject(openapi.paths, "paths");
+  const schemas = asObject(openapi.components?.schemas, "components.schemas");
+
+  for (const path of ASSERTION_PATHS) {
+    if (!paths[path]) throw new Error(`OpenAPI assertion path is missing: ${path}`);
+  }
+  for (const name of ASSERTION_COMPONENTS) {
+    if (!schemas[name]) throw new Error(`OpenAPI assertion component is missing: ${name}`);
+  }
+
+  const searchOperation = asObject(paths["/api/assertions/search"].get, "search operation");
+  const parameters = Array.isArray(searchOperation.parameters)
+    ? searchOperation.parameters
+    : [];
+  const searchParameters = Object.fromEntries(
+    parameters.map((parameter) => {
+      const item = asObject(parameter, "search parameter");
+      if (item.in !== "query" || typeof item.name !== "string") {
+        throw new Error("OpenAPI assertion search parameters must be named query parameters");
+      }
+      return [item.name, item];
+    }),
+  );
+  const cursor = searchParameters.cursor;
+  if (!cursor?.schema) throw new Error("OpenAPI assertion search cursor is missing");
+
+  const requestLines = Object.entries(searchParameters).map(([name, parameter]) => {
+    const optional = parameter.required ? "" : "?";
+    const type = name === "cursor" ? "AssertionSearchCursor" : schemaType(parameter.schema);
+    return `  ${propertyName(name)}${optional}: ${type};`;
+  });
+  const responseProperties = asObject(
+    schemas.AssertionSearchResponse.properties,
+    "AssertionSearchResponse.properties",
+  );
+  if (!responseProperties.next_cursor || !responseProperties.denial_reason) {
+    throw new Error("OpenAPI assertion search response is missing cursor or denial fields");
+  }
+
+  return `/** Generated from src/research_foundry/api/openapi.json. Do not edit manually. */
+export type AssertionSearchCursor = ${schemaType(cursor.schema)};
+
+export interface AssertionSearchRequest {
+${requestLines.join("\n")}
+}
+
+${ASSERTION_COMPONENTS.map((name) => renderInterface(
+  name,
+  schemas[name],
+  name === "AssertionSearchResponse" ? { next_cursor: "AssertionSearchCursor" } : {},
+)).join("\n\n")}
+
+/** A rights-denied search result uses the normal response envelope with no results. */
+export interface AssertionSearchDenialResponse {
+  items: Array<never>;
+  next_cursor: null;
+  facets: AssertionFacets;
+  denial_reason: string;
+}
+`;
 }
 
 for (const schemaFile of SCHEMA_FILES) {
@@ -106,6 +236,12 @@ for (const schemaFile of SCHEMA_FILES) {
     console.error(`  ✗ ${schemaFile}: ${err.message}`);
   }
 }
+
+writeGenerated(
+  join(OUT_DIR, "assertions_api.generated.ts"),
+  renderAssertionApiTypes(),
+);
+barrel.push('export * from "./assertions_api.generated.js";');
 
 // Write barrel (re-exports all generated files)
 // Note: .js extension needed in ESM barrel for bundler resolution

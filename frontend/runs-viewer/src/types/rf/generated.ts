@@ -27,3 +27,4 @@ export * from "./source_card.generated.js";
 export * from "./source_assertion.generated.js";
 export * from "./source_edition.generated.js";
 export * from "./swarm_plan.generated.js";
+export * from "./assertions_api.generated.js";

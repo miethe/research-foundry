@@ -1935,6 +1935,204 @@
           }
         }
       }
+    },
+    "/api/assertions/search": {
+      "get": {
+        "tags": [
+          "assertions"
+        ],
+        "summary": "Search governed assertions",
+        "description": "Search the caller's private assertion projection.\n\nAuthorization and rights filtering occur before lexical matching, counts,\nfacets, and pagination.  Missing context produces a typed empty response.",
+        "operationId": "search_assertions_api_assertions_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "lifecycle_state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lifecycle State"
+            }
+          },
+          {
+            "name": "access_scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Access Scope"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertionSearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assertions/{assertion_id}/lineage": {
+      "get": {
+        "tags": [
+          "assertions"
+        ],
+        "summary": "Get assertion lineage",
+        "description": "Return typed, bounded lineage already present in durable ledger records.",
+        "operationId": "get_assertion_lineage_api_assertions__assertion_id__lineage_get",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertionLineage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assertions/{assertion_id}": {
+      "get": {
+        "tags": [
+          "assertions"
+        ],
+        "summary": "Get a governed evidence packet",
+        "description": "Return an assertion only with its passage, edition, rights, and lineage.",
+        "operationId": "get_assertion_packet_api_assertions__assertion_id__get",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePacket"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2691,6 +2889,281 @@
         "type": "object",
         "title": "LaunchRunRequest",
         "description": "Body for POST /api/runs.\n\nExactly one of ``text`` / ``intent_id`` is required \u2014 supplying both or\nneither is a 400 (raised as ``ValueError`` by\n:func:`~research_foundry.services.run_launch.launch_run` and mapped here).\n\n``title``, ``sensitivity``, ``urgency``, ``tags``, and ``backlog_idea_ref``\nare ``text``-path fields (forwarded to ``capture_idea``) and are ignored\nwhen ``intent_id`` is supplied instead. The remaining fields are common\nplanning passthrough forwarded to ``plan_run`` on both paths."
+      },
+      "RightsDecision": {
+        "properties": {
+          "allowed": {
+            "type": "boolean",
+            "title": "Allowed"
+          },
+          "reason_code": {
+            "type": "string",
+            "title": "Reason Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "allowed",
+          "reason_code"
+        ],
+        "title": "RightsDecision"
+      },
+      "AssertionFacets": {
+        "properties": {
+          "lifecycle_states": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lifecycle States"
+          },
+          "access_scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Access Scopes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lifecycle_states",
+          "access_scopes"
+        ],
+        "title": "AssertionFacets"
+      },
+      "AssertionSummary": {
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id"
+          },
+          "assertion_version": {
+            "type": "integer",
+            "title": "Assertion Version"
+          },
+          "lifecycle_state": {
+            "type": "string",
+            "title": "Lifecycle State"
+          },
+          "access_scope": {
+            "type": "string",
+            "title": "Access Scope"
+          },
+          "rights_decision": {
+            "$ref": "#/components/schemas/RightsDecision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assertion_id",
+          "assertion_version",
+          "lifecycle_state",
+          "access_scope",
+          "rights_decision"
+        ],
+        "title": "AssertionSummary"
+      },
+      "EvidencePacket": {
+        "properties": {
+          "packet_version": {
+            "type": "string",
+            "title": "Packet Version"
+          },
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id"
+          },
+          "assertion_version": {
+            "type": "integer",
+            "title": "Assertion Version"
+          },
+          "assertion": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Assertion"
+          },
+          "passage": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Passage"
+          },
+          "source_edition": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Source Edition"
+          },
+          "qualifiers": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Qualifiers"
+          },
+          "qualifier_extensions": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Qualifier Extensions"
+          },
+          "evaluations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Evaluations"
+          },
+          "freshness": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Freshness"
+          },
+          "access_scope": {
+            "type": "string",
+            "title": "Access Scope"
+          },
+          "rights_decision": {
+            "$ref": "#/components/schemas/RightsDecision"
+          },
+          "relationships": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Relationships"
+          },
+          "run_uses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Uses"
+          },
+          "report_uses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Report Uses"
+          }
+        },
+        "type": "object",
+        "required": [
+          "packet_version",
+          "assertion_id",
+          "assertion_version",
+          "assertion",
+          "passage",
+          "source_edition",
+          "qualifiers",
+          "qualifier_extensions",
+          "evaluations",
+          "freshness",
+          "access_scope",
+          "rights_decision",
+          "relationships",
+          "run_uses",
+          "report_uses"
+        ],
+        "title": "EvidencePacket"
+      },
+      "AssertionSearchResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AssertionSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "facets": {
+            "$ref": "#/components/schemas/AssertionFacets"
+          },
+          "denial_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denial Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor",
+          "facets",
+          "denial_reason"
+        ],
+        "title": "AssertionSearchResponse"
+      },
+      "AssertionLineage": {
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id"
+          },
+          "assertion_version": {
+            "type": "integer",
+            "title": "Assertion Version"
+          },
+          "relationships": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Relationships"
+          },
+          "run_uses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Uses"
+          },
+          "report_uses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Report Uses"
+          },
+          "denial_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denial Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assertion_id",
+          "assertion_version",
+          "relationships",
+          "run_uses",
+          "report_uses",
+          "denial_reason"
+        ],
+        "title": "AssertionLineage"
       }
     }
   }

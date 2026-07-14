@@ -25,10 +25,13 @@ Claude-Code-agent-driven activity. See
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ..paths import FoundryPaths
+from .assertion_reuse import ReuseDecision, evaluate_reuse
 from .capture import capture_idea, triage_idea
 from .planning import plan_run
 
@@ -49,6 +52,30 @@ class LaunchRunResult:
     brief_path: Path
     swarm_path: Path
     routing_path: Path
+    reuse_decision: ReuseDecision | None = None
+
+
+def retrieve_first_reuse_decision(
+    assertion: Mapping[str, Any] | None,
+    *,
+    workspace_id: str | None,
+    required_edition_id: str | None = None,
+    required_extraction_contract: str | None = None,
+) -> ReuseDecision:
+    """Evaluate a supplied assertion before a caller schedules a reuse path.
+
+    The normal run scaffold remains unchanged unless a caller explicitly asks
+    for assertion reuse.  This seam gives run orchestration the same
+    fail-closed policy decision as the ledger, before any dependent work is
+    scheduled or a candidate can be treated as current.
+    """
+
+    return evaluate_reuse(
+        assertion,
+        workspace_id=workspace_id,
+        required_edition_id=required_edition_id,
+        required_extraction_contract=required_extraction_contract,
+    )
 
 
 def launch_run(
@@ -66,6 +93,10 @@ def launch_run(
     freshness_days: int = 180,
     profile: str | None = None,
     project: str | None = None,
+    reuse_assertion: Mapping[str, Any] | None = None,
+    reuse_workspace_id: str | None = None,
+    required_reuse_edition_id: str | None = None,
+    required_extraction_contract: str | None = None,
     paths: FoundryPaths | None = None,
 ) -> LaunchRunResult:
     """Scaffold and register a new run (scaffold + register only).
@@ -103,6 +134,17 @@ def launch_run(
             "Exactly one of 'text' or 'intent_id' is required "
             f"(text={'set' if text else 'unset'}, intent_id={'set' if intent_id else 'unset'})."
         )
+
+    reuse_decision: ReuseDecision | None = None
+    if reuse_assertion is not None:
+        reuse_decision = retrieve_first_reuse_decision(
+            reuse_assertion,
+            workspace_id=reuse_workspace_id,
+            required_edition_id=required_reuse_edition_id,
+            required_extraction_contract=required_extraction_contract,
+        )
+        if not reuse_decision.allowed:
+            raise ValueError(f"reuse_not_eligible:{reuse_decision.reason_code}")
 
     paths = paths or FoundryPaths.discover()
 
@@ -151,7 +193,8 @@ def launch_run(
         brief_path=plan_result.brief_path,
         swarm_path=plan_result.swarm_path,
         routing_path=plan_result.routing_path,
+        reuse_decision=reuse_decision,
     )
 
 
-__all__ = ["LaunchRunResult", "launch_run"]
+__all__ = ["LaunchRunResult", "launch_run", "retrieve_first_reuse_decision"]

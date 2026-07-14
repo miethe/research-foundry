@@ -77,6 +77,21 @@ STATUS_LADDER = [
 
 _CLAIM_TAG_RE = re.compile(r"\[claim:(clm_[A-Za-z0-9]+)\]")
 
+
+def assertion_lifecycle_export_status(lifecycle_state: object) -> str:
+    """Return the only safe current-read status for an assertion dependency.
+
+    Export is a derived representation.  It must not retain a current-looking
+    assertion after authoritative invalidation, and an unknown lifecycle is
+    deliberately withheld rather than guessed from older exported content.
+    """
+
+    if lifecycle_state == "eligible":
+        return "current"
+    if lifecycle_state == "stale":
+        return "stale"
+    return "withheld"
+
 # --- report anchor derivation (P2 Wave A — D7/D8) ---------------------------
 # Regex used to extract [claim:clm_XXX] spans from *normalized* block text
 # when deriving report_anchors. Deliberately broader than the module-level
@@ -1304,6 +1319,7 @@ __all__ = [
     "DEFAULT_THRESHOLD",
     "STATUS_LADDER",
     "REDACTION_MARKER",
+    "assertion_lifecycle_export_status",
     "ExportError",
     "resolve_threshold",
     "discover_run_yamls",

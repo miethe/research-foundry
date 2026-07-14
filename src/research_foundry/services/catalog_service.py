@@ -1951,6 +1951,20 @@ def list_draft_index(
     return [{col: r[col] for col in _DRAFT_INDEX_COLUMNS} for r in rows]
 
 
+def purge_lifecycle_derived_file(path: Path, *, lifecycle_state: object) -> bool:
+    """Purge a derived catalog/cache file only after an authoritative block.
+
+    Reconciliation callers provide the already-persisted lifecycle state.  A
+    stale, unknown, or merely requested event cannot delete a current read;
+    symlinks are likewise rejected so cleanup cannot escape the workspace.
+    """
+
+    if lifecycle_state != "blocked" or not path.exists() or path.is_symlink() or not path.is_file():
+        return False
+    path.unlink()
+    return True
+
+
 __all__ = [
     "SCHEMA_VERSION",
     "ITEM_TYPES",
@@ -1966,5 +1980,6 @@ __all__ = [
     "remove_draft_index",
     "get_draft_index",
     "list_draft_index",
+    "purge_lifecycle_derived_file",
     "report_item_id",
 ]
