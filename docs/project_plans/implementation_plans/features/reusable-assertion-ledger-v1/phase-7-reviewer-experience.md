@@ -2,7 +2,7 @@
 schema_version: 2
 doc_type: phase_plan
 title: "Phase 7 (P6): Reviewer Experience"
-status: draft
+status: completed
 created: 2026-07-12
 updated: 2026-07-14
 feature_slug: reusable-assertion-ledger
@@ -50,6 +50,7 @@ files_affected:
   - frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx
   - frontend/runs-viewer/src/test/assertion-ledger-review.test.tsx
   - tests/api/test_assertions_api.py
+planning_maturity: shipped
 ---
 
 # Phase 7 (P6): Reviewer Experience

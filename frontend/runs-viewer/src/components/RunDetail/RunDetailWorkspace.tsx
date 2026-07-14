@@ -24,6 +24,15 @@ export interface RunDetailWorkspaceProps {
   onOpenProvenance?: (claimId: string) => void;
   /** Called when the user double-clicks a lineage row or clicks ⤢ in LineageDetailPanel. */
   onExpandNode?: (node: LineageNode) => void;
+  /**
+   * P6-003: persistent selected source-assertion version + impact state,
+   * surfaced in the Audit and Lineage tab paths. Orthogonal to claim
+   * selection — absent by default, so existing claim-only run detail
+   * behavior is unchanged when no assertion context is supplied.
+  */
+  assertionId?: string | null;
+  onOpenReplacementEdition?: (editionId: string) => void;
+  onViewPriorUses?: (assertionId: string) => void;
 }
 
 export function RunDetailWorkspace({
@@ -34,8 +43,16 @@ export function RunDetailWorkspace({
   onTabChange,
   onOpenProvenance,
   onExpandNode,
+  assertionId = null,
+  onOpenReplacementEdition,
+  onViewPriorUses,
 }: RunDetailWorkspaceProps) {
   const writebackAvailable = hasWritebackExport(run);
+  // The explicit prop remains the deep-link override. Lineage otherwise
+  // follows the selected claim's durable assertion reference, without
+  // freezing ClaimAuditWorkbench's independently-managed selection.
+  const selectedClaim = run.claims.find((claim) => claim.claim_id === selectedClaimId) ?? null;
+  const lineageAssertionId = assertionId ?? selectedClaim?.persistent_references?.source_assertion_id ?? null;
   const tabs = useMemo(
     () =>
       [
@@ -111,6 +128,8 @@ export function RunDetailWorkspace({
               initialClaimId={selectedClaimId}
               onClaimChange={(claimId) => onTabChange("ledger", claimId)}
               onOpenProvenance={onOpenProvenance}
+              assertionId={assertionId}
+              onOpenReplacementEdition={onOpenReplacementEdition}
             />
           </div>
         )}
@@ -133,6 +152,8 @@ export function RunDetailWorkspace({
               onSelectClaim={(claimId) => onTabChange("lineage", claimId)}
               onOpenProvenance={onOpenProvenance}
               onExpandNode={onExpandNode}
+              assertionId={lineageAssertionId}
+              onViewPriorUses={onViewPriorUses}
             />
           </div>
         )}

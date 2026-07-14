@@ -3,6 +3,16 @@ import { useNavigate } from "react-router-dom";
 import type { RFClaim, RFReportAnchorBlock, RFResolvedSource, RFRunExport } from "@/types/rf";
 import { deriveClaimTitle, deriveReportLocationTitle, deriveSourceTitle, shouldRedactSource, titleFromSlug } from "@/lib/runs";
 import { isAgentsLoopbackEnabled } from "@/hooks/useAgentJobs";
+import {
+  useAssertionImpact,
+  useClearAssertionStateOnWorkspaceChange,
+  useEvidencePacket,
+} from "@/hooks/useAssertions";
+import {
+  AssertionInspector,
+  AssertionStatusBand,
+  useJustBecameBlocked,
+} from "@/components/ClaimLedger/AssertionAuditPanel";
 import { deriveAuditHighlight, isFacetEmpty } from "@/lib/auditStateMachine";
 import type { AuditAnchorState } from "@/lib/auditStateMachine";
 import {
@@ -28,9 +38,23 @@ interface ClaimAuditWorkbenchProps {
   initialClaimId?: string | null;
   onClaimChange?: (claimId: string) => void;
   onOpenProvenance?: (claimId: string) => void;
+  /**
+   * P6-003: optional selected source-assertion context. When this explicit
+   * override is absent, the active claim supplies its durable
+   * persistent_references.source_assertion_id link from run-export schema v1.5.
+  */
+  assertionId?: string | null;
+  onOpenReplacementEdition?: (editionId: string) => void;
 }
 
-export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpenProvenance }: ClaimAuditWorkbenchProps) {
+export function ClaimAuditWorkbench({
+  run,
+  initialClaimId,
+  onClaimChange,
+  onOpenProvenance,
+  assertionId = null,
+  onOpenReplacementEdition,
+}: ClaimAuditWorkbenchProps) {
   const modalRef = useRef<ProvenanceModalHandle>(null);
   const firstClaimId = run.claims[0]?.claim_id ?? null;
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(initialClaimId ?? firstClaimId);
@@ -117,6 +141,9 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
     setSelectedClaimId(null);
     setSelectedBlockId(null);
   }, []);
+  // A selected claim is also the source of the audit assertion ID. Clear it
+  // together with assertion-query state on workspace/auth-scope transitions.
+  useClearAssertionStateOnWorkspaceChange(clearSelection);
 
   // P4.5 UI-5.4 — "Research this" entry point
   const navigate = useNavigate();
@@ -135,6 +162,26 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
   const openDetailModal = useCallback((claimId: string) => {
     setDetailModalPayload({ kind: "claim", claimId, claims: run.claims });
   }, [run.claims]);
+
+  // An explicit assertion is a deep-link override; otherwise use the selected
+  // claim's durable run-export linkage.
+  const selectedAssertionId = assertionId ?? selectedClaim?.persistent_references?.source_assertion_id ?? null;
+  const { state: packetState } = useEvidencePacket(selectedAssertionId);
+  const packet = "data" in packetState ? packetState.data : undefined;
+  // The receipt route is keyed by assertion id; its event_id comes from the response.
+  const impactQuery = useAssertionImpact(selectedAssertionId);
+  const impactState = impactQuery.state;
+  const impact = "data" in impactState ? impactState.data : undefined;
+  // The impact receipt is the authority for both reuse blocking and its
+  // lifecycle. Packets are immutable provenance and can legitimately remain
+  // current while a separate governed impact receipt blocks reuse.
+  const showAuthoritativeImpact = impact?.authoritative_reuse_blocked === true;
+  const justBecameBlocked = useJustBecameBlocked(showAuthoritativeImpact);
+  const impactSectionRef = useRef<HTMLDivElement | null>(null);
+  const scrollToImpactSection = useCallback(() => {
+    impactSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    impactSectionRef.current?.focus?.();
+  }, []);
 
   if (run.claims.length === 0) {
     return (
@@ -172,6 +219,13 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
           </button>
         </div>
       </div>
+
+      <AssertionStatusBand
+        visible={showAuthoritativeImpact}
+        reasonCode={impact?.reason_code}
+        onViewImpactReceipt={scrollToImpactSection}
+        justBecameBlocked={justBecameBlocked}
+      />
 
       <div className="rv-audit-grid">
         <aside className="rv-audit-ledger it-card" aria-label="Claim ledger">
@@ -234,7 +288,14 @@ export function ClaimAuditWorkbench({ run, initialClaimId, onClaimChange, onOpen
           </div>
         </main>
 
-        {selectedBlockId && reportAnchors ? (
+        {showAuthoritativeImpact && packet ? (
+          <AssertionInspector
+            packet={packet}
+            impactState={impactState}
+            onOpenReplacementEdition={onOpenReplacementEdition}
+            impactSectionRef={impactSectionRef}
+          />
+        ) : selectedBlockId && reportAnchors ? (
           <ParagraphInspector
             block={findAnchorBlock(reportAnchors, selectedBlockId)}
             claims={run.claims}

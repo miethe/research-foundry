@@ -131,7 +131,7 @@
           "runs"
         ],
         "summary": "Get run detail",
-        "description": "Return the full denormalized export for *run_id*.\n\nAll sensitivity redaction is applied by\n:func:`~research_foundry.services.export_service.export_run` (R1).\n\nRaises 404 when the run does not exist.",
+        "description": "Return the full denormalized export for *run_id*.\n\nAll sensitivity redaction is applied by\n:func:`~research_foundry.services.export_service.export_run` (R1).\n\nAn existence gate is enforced: a run whose sensitivity exceeds the\nthreshold returns 404, indistinguishable from a genuinely absent run\n(no-existence-leak / landmine #4).\n\nRaises 404 when the run does not exist or is over-threshold.\nRaises 400 on invalid sensitivity_threshold.",
         "operationId": "get_run_detail_api_runs__run_id__get",
         "parameters": [
           {
@@ -142,6 +142,24 @@
               "type": "string",
               "title": "Run Id"
             }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public)."
           }
         ],
         "responses": {
@@ -176,7 +194,7 @@
           "runs"
         ],
         "summary": "Get claim ledger for a run",
-        "description": "Return the claims array from the run's denormalized export.\n\nEmpty ledger returns ``[]`` \u2014 never null.  Propagates 404 when the run\ndoes not exist.  All data routed through export_service (R1).",
+        "description": "Return the claims array from the run's denormalized export.\n\nEmpty ledger returns ``[]`` \u2014 never null.  Propagates 404 when the run\ndoes not exist or is over-threshold.  All data routed through\nexport_service (R1).",
         "operationId": "get_run_claims_api_runs__run_id__claims_get",
         "parameters": [
           {
@@ -187,6 +205,24 @@
               "type": "string",
               "title": "Run Id"
             }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public)."
           }
         ],
         "responses": {
@@ -224,7 +260,7 @@
           "runs"
         ],
         "summary": "Get a resolved source from a run's claim graph",
-        "description": "Return the first :class:`RFResolvedSource` whose ``source_card_id``\nmatches *source_card_id*.\n\nScans ``export_run(...)[\"claims\"][*][\"sources\"]`` \u2014 data always routed\nthrough the export service (R1).\n\nRaises 404 when the run is absent or when no claim cites the requested\nsource card.",
+        "description": "Return the first :class:`RFResolvedSource` whose ``source_card_id``\nmatches *source_card_id*.\n\nScans ``export_run(...)[\"claims\"][*][\"sources\"]`` \u2014 data always routed\nthrough the export service (R1).\n\nRaises 404 when the run is absent, over-threshold, or when no claim\ncites the requested source card.",
         "operationId": "get_source_card_api_runs__run_id__sources__source_card_id__get",
         "parameters": [
           {
@@ -244,6 +280,24 @@
               "type": "string",
               "title": "Source Card Id"
             }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public)."
           }
         ],
         "responses": {
@@ -278,7 +332,7 @@
           "runs"
         ],
         "summary": "Get report anchors for a run",
-        "description": "Return the ``report_anchors`` block for *run_id*.\n\nThe response shape is ``{\"run_id\": str, \"report_anchors\": list | null}``,\nwhere ``report_anchors`` mirrors the same-named field in the run's\n``run.json`` (schema 1.4 / D8).  ``null`` when the run has no report\ndraft.\n\n**Sensitivity gating**: this endpoint ADDS a run-level existence gate on\ntop of export-time field redaction \u2014 an over-threshold run returns 404,\nindistinguishable from an unknown run (fail-closed: existence of hidden\nsensitive runs is not leaked). Sibling run-detail endpoints\n(``get_run_detail`` / ``get_run_claims`` / ``get_source_card``) do NOT\napply this existence gate; they rely solely on ``export_run``'s\nfield-level redaction. Accepts a ``sensitivity_threshold`` query\nparameter, honored consistently for both the existence gate and\nexport-time content filtering (which claims are visible, and therefore\nwhich claim links appear in the derived anchors).",
+        "description": "Return the ``report_anchors`` block for *run_id*.\n\nThe response shape is ``{\"run_id\": str, \"report_anchors\": list | null}``,\nwhere ``report_anchors`` mirrors the same-named field in the run's\n``run.json`` (schema 1.4 / D8).  ``null`` when the run has no report\ndraft.\n\n**Sensitivity gating**: an existence gate is applied \u2014 an over-threshold\nrun returns 404, indistinguishable from an unknown run (fail-closed:\nexistence of hidden sensitive runs is not leaked / landmine #4).\nThe ``sensitivity_threshold`` query parameter is honored consistently for\nboth the existence gate and export-time content filtering (which claims\nare visible, and therefore which claim links appear in the derived anchors).",
         "operationId": "get_run_anchors_api_reports__run_id__anchors_get",
         "parameters": [
           {
@@ -638,6 +692,267 @@
         }
       }
     },
+    "/api/assertions/search": {
+      "get": {
+        "tags": [
+          "assertions"
+        ],
+        "summary": "Search governed assertions",
+        "description": "Search the caller's private assertion projection.\n\nAuthorization and rights filtering occur before lexical matching, counts,\nfacets, and pagination.  Missing context produces a typed empty response.",
+        "operationId": "search_assertions_api_assertions_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "lifecycle_state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lifecycle State"
+            }
+          },
+          {
+            "name": "access_scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Access Scope"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertionSearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assertions/{assertion_id}/lineage": {
+      "get": {
+        "tags": [
+          "assertions"
+        ],
+        "summary": "Get assertion lineage",
+        "description": "Return typed, bounded lineage already present in durable ledger records.",
+        "operationId": "get_assertion_lineage_api_assertions__assertion_id__lineage_get",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertionLineage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assertions/{assertion_id}/impact": {
+      "get": {
+        "tags": [
+          "assertions"
+        ],
+        "summary": "Get a governed assertion impact summary",
+        "description": "Expose a policy-authorized P5 receipt without ledger-path details.\n\nMissing, malformed, interrupted-unreadable, and cross-workspace state all\nresolve to the identical unavailable response.  This route is read-only;\nlifecycle reconciliation remains outside the HTTP API.",
+        "operationId": "get_assertion_impact_api_assertions__assertion_id__impact_get",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertionImpactSummary"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Impact read denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertionImpactReasonResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Impact unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertionImpactReasonResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assertions/{assertion_id}": {
+      "get": {
+        "tags": [
+          "assertions"
+        ],
+        "summary": "Get a governed evidence packet",
+        "description": "Return an assertion only with its passage, edition, rights, and lineage.",
+        "operationId": "get_assertion_packet_api_assertions__assertion_id__get",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePacket"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/reports": {
       "post": {
         "tags": [
@@ -804,7 +1119,7 @@
           "reports"
         ],
         "summary": "Delete a report draft",
-        "description": "Delete draft directory (draft.yaml + revisions) and its catalog index row.\n\nIdempotent: deleting a non-existent (but well-formed) draft id returns\n204. A malformed id (bad shape / traversal attempt) 404s instead \u2014 the\nservice layer's :func:`~research_foundry.services.builder_service._draft_dir`\nraises :class:`NotFoundError` before anything is touched on disk.",
+        "description": "Delete draft directory (draft.yaml + revisions) and its catalog index row.\n\nIdempotent: deleting a non-existent (but well-formed) draft id returns\n204. A malformed id (bad shape / traversal attempt) 404s instead \u2014 the\nservice layer's :func:`~research_foundry.services.builder_service._draft_dir`\nraises :class:`NotFoundError` before anything is touched on disk.\n\nWKSP-304 P4 (TASK-4.3, AC-5): a workspace-scoped pre-flight check gates\nthe actual delete, but the idempotent-204 contract above must survive it.\n``bsvc.load_draft`` cannot distinguish \"malformed id\" / \"genuinely\nmissing\" from \"exists but is cross-workspace-denied\" \u2014 all three raise\nthe same :class:`NotFoundError` (by design, no-existence-leak). So when\nthe identity-scoped load denies, a second identity=None probe (byte-\nidentical to pre-Phase-4 behavior) tells us which case we are in: if the\ndraft doesn't exist AT ALL either, this is the pre-existing idempotent\nno-op path \u2014 fall through unchanged to ``bsvc.delete_draft`` below. If\nthe identity=None probe SUCCEEDS, the draft genuinely exists in another\nworkspace \u2014 fail closed (404) WITHOUT ever calling ``bsvc.delete_draft``,\nso no cross-workspace file is ever touched.",
         "operationId": "delete_draft_api_reports__report_id__delete",
         "parameters": [
           {
@@ -840,7 +1155,7 @@
           "reports"
         ],
         "summary": "List draft revisions",
-        "description": "Return revision pointer list (report_version_id, created_at, note) for *report_id*.",
+        "description": "Return revision pointer list (report_version_id, created_at, note) for *report_id*.\n\n404 for unknown ids AND drafts whose sensitivity exceeds the resolved threshold\n(no-existence-leak, mirrors ``get_draft`` gating).",
         "operationId": "list_versions_api_reports__report_id__versions_get",
         "parameters": [
           {
@@ -851,6 +1166,24 @@
               "type": "string",
               "title": "Report Id"
             }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public)."
           }
         ],
         "responses": {
@@ -941,7 +1274,7 @@
           "reports"
         ],
         "summary": "Get a revision snapshot",
-        "description": "Return the full snapshot for *version_id* under *report_id*.",
+        "description": "Return the full snapshot for *version_id* under *report_id*.\n\n404 for unknown ids AND drafts whose sensitivity exceeds the resolved threshold\n(no-existence-leak, mirrors ``get_draft`` gating).",
         "operationId": "get_version_api_reports__report_id__versions__version_id__get",
         "parameters": [
           {
@@ -961,6 +1294,24 @@
               "type": "string",
               "title": "Version Id"
             }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public)."
           }
         ],
         "responses": {
@@ -1556,7 +1907,7 @@
           "reports"
         ],
         "summary": "Publish-preview gate (D13 fail-closed)",
-        "description": "Run D13 checks FAIL-CLOSED and return a Markdown preview on pass.\n\n**Failure behavior (spec \u00a711)**:\n- ``paragraph_has_support`` fails \u2192 ``{ok: false, blocking: [...]}`` + HTTP 422\n- ``report_body_sensitivity`` fails (raw sensitive quote in body) \u2192 same\n- Any other error-severity D13 failure \u2192 same\n\n**Success**: ``{ok: true, preview_markdown: \"...\", checks: [...]}`` + HTTP 200\n\nThe preview Markdown is generated from the current draft blocks.  Nothing\nis persisted \u2014 callers decide whether to actually publish.",
+        "description": "Run D13 checks FAIL-CLOSED and return a Markdown preview on pass.\n\n**Failure behavior (spec \u00a711)**:\n- ``paragraph_has_support`` fails \u2192 ``{ok: false, blocking: [...]}`` + HTTP 422\n- ``report_body_sensitivity`` fails (raw sensitive quote in body) \u2192 same\n- Any other error-severity D13 failure \u2192 same\n\n**Success**: ``{ok: true, preview_markdown: \"...\", checks: [...]}`` + HTTP 200\n\n**PRD AC-2 \u2014 Role-independent fail-closed gate**:\nThe D13 sensitivity checks fire BEFORE the RBAC role gate.  Any\nerror-severity sensitivity failure returns 422 for ALL callers regardless of\ntheir role \u2014 including ``owner`` and ``admin``.  No role can bypass the\nsensitivity gate.  RBAC (``report:publish`` \u2192 owner/admin only) is enforced\nin step 3, after the sensitivity gate passes.\n\nThe preview Markdown is generated from the current draft blocks.  Nothing\nis persisted \u2014 callers decide whether to actually publish.\n\n**RBAC-901 note**: this route enforces ``report:publish`` (owner/admin)\nmanually rather than via ``Depends(require_role(...))`` so that the\nsensitivity gate (step 2, 422) fires before the role gate (step 3, 403).\nThe test_rbac_route_sweep.py MANUALLY_GATED_ROUTES exemption documents this.",
         "operationId": "publish_preview_api_reports__report_id__publish_preview_post",
         "parameters": [
           {
@@ -1619,7 +1970,7 @@
           "reports"
         ],
         "summary": "Export draft as Markdown",
-        "description": "Return the draft rendered as Markdown with YAML frontmatter.\n\nThe response carries ``{\"report_draft_id\": ..., \"markdown\": \"...\"}`` so\ncallers can display or save the output without additional parsing.",
+        "description": "Return the draft rendered as Markdown with YAML frontmatter.\n\n404 for unknown ids AND drafts whose sensitivity exceeds the resolved threshold\n(no-existence-leak, mirrors ``get_draft`` gating).  The sensitivity check runs\nbefore any content is returned.\n\nThe response carries ``{\"report_draft_id\": ..., \"markdown\": \"...\"}`` so\ncallers can display or save the output without additional parsing.",
         "operationId": "export_draft_api_reports__report_id__export_get",
         "parameters": [
           {
@@ -1630,6 +1981,24 @@
               "type": "string",
               "title": "Report Id"
             }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public)."
           }
         ],
         "responses": {
@@ -1658,245 +2027,22 @@
         }
       }
     },
-    "/api/agent-jobs": {
+    "/api/reports/{report_id}/share-links": {
       "post": {
         "tags": [
-          "agent-jobs"
+          "reports"
         ],
-        "summary": "Launch a new agent job",
-        "description": "Launch a new agent job, gated by ``governance.guard_check()``.\n\n**Guard gate (API-4.1 invariant):** ``guard_check()`` is called *before*\nany subprocess is spawned.  A rejected guard (exit_code 3 or 7) returns\n422/400 immediately and guarantees no subprocess is spawned.\n\nReturns the created :class:`~research_foundry.services.agent_job_schemas.AgentJob`\nrecord on success (HTTP 201).",
-        "operationId": "launch_job_api_agent_jobs_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LaunchJobBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Launch Job Api Agent Jobs Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/agent-jobs/{job_id}": {
-      "get": {
-        "tags": [
-          "agent-jobs"
-        ],
-        "summary": "Get agent job detail",
-        "description": "Return status and metadata for *job_id*.\n\nReturns the same indistinguishable 404 for malformed IDs and missing jobs\n(no information leakage about whether the ID format is wrong vs. not found).",
-        "operationId": "get_job_api_agent_jobs__job_id__get",
+        "summary": "Create a sensitivity-scoped share link (read-only)",
+        "description": "Create a read-only, sensitivity-scoped share link for *report_id*.\n\nThe returned ``share_token`` is a bearer credential that grants read\naccess to the draft at ``sensitivity_threshold``.  Sensitivity is\nre-checked at resolution time (``GET /reports/shares/{token}``) \u2014 the\ntoken alone cannot bypass the gate (PRD AC-2).\n\nShare link records are stored in ``.rf_state/rbac.db`` (NEVER\n``catalog.db`` \u2014 the catalog store drops and rebuilds on schema\nversion mismatch, which would silently invalidate live tokens).",
+        "operationId": "create_share_link_api_reports__report_id__share_links_post",
         "parameters": [
           {
-            "name": "job_id",
+            "name": "report_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Job Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Get Job Api Agent Jobs  Job Id  Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/agent-jobs/{job_id}/artifacts": {
-      "get": {
-        "tags": [
-          "agent-jobs"
-        ],
-        "summary": "List staged artifacts for a job",
-        "description": "Return staged (not-yet-accepted) artifacts for *job_id*.\n\nDistinct from accepted items: only artifacts with ``accepted == False`` are\nreturned.  Returns the same indistinguishable 404 for malformed IDs and\nmissing jobs (no information leakage).",
-        "operationId": "list_artifacts_api_agent_jobs__job_id__artifacts_get",
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Job Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": true
-                  },
-                  "title": "Response List Artifacts Api Agent Jobs  Job Id  Artifacts Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/agent-jobs/{job_id}/events": {
-      "get": {
-        "tags": [
-          "agent-jobs"
-        ],
-        "summary": "Stream agent job events (SSE)",
-        "description": "Deliver stage-transition events for *job_id* as a Server-Sent Events stream.\n\n**Security invariant (API-4.3):** every event payload is passed through\n:func:`~research_foundry.services.governance.redact_payload` server-side\nbefore being sent to the client.  Credentials and secrets are never echoed.\n\nUses FastAPI's :class:`~fastapi.responses.StreamingResponse` with\n``media_type=\"text/event-stream\"``.  Events follow the SSE wire format::\n\n    data: {json}\\n\\n\n\nThe stream closes when the job reaches a terminal state or the poll\nlimit (300 s) is reached.",
-        "operationId": "stream_events_api_agent_jobs__job_id__events_get",
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Job Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/agent-jobs/{job_id}/cancel": {
-      "post": {
-        "tags": [
-          "agent-jobs"
-        ],
-        "summary": "Cancel an agent job",
-        "description": "Cancel *job_id*, guaranteeing credential temp-file cleanup.\n\nCalls :meth:`~research_foundry.services.agent_job_service.AgentJobService.terminate_job`\nthen :meth:`~research_foundry.services.agent_job_service.AgentJobService.cleanup_job`,\nwhich reuses the SEC-2.2 crash-safe cleanup path (credential temp files are\nalways unlinked regardless of child exit status).\n\nAfter cancel, zero staged artifacts are promoted (cancel before accept means\nnothing was accepted \u2014 the existing behaviour is preserved).\n\nReturns 200 on success, 404 if job not found.",
-        "operationId": "cancel_job_api_agent_jobs__job_id__cancel_post",
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Job Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Cancel Job Api Agent Jobs  Job Id  Cancel Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/agent-jobs/{job_id}/accept": {
-      "post": {
-        "tags": [
-          "agent-jobs"
-        ],
-        "summary": "Accept agent job output",
-        "description": "Promote staged artifacts from *job_id* into the catalog or report store.\n\n**This is the SOLE WRITE PATH from agent-job staging into catalog/report.**\nNo other route in this router writes directly from agent-job context.\n\nGate: only jobs in ``waiting_for_approval`` or ``completed`` state may be\naccepted.  Jobs in other terminal states (``failed``, ``canceled``) return 422.\n\nAccepted items carry a resolvable ``created_by_agent_job_id`` field pointing\nback to this job.\n\nReturns 200 with a summary of what was accepted.",
-        "operationId": "accept_job_api_agent_jobs__job_id__accept_post",
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Job Id"
+              "title": "Report Id"
             }
           }
         ],
@@ -1905,7 +2051,387 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AcceptJobBody"
+                "$ref": "#/components/schemas/CreateShareLinkBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Share Link Api Reports  Report Id  Share Links Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/shares/{share_token}": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Resolve a share link (read-only, token-authenticated)",
+        "description": "Resolve a share link token to a read-only Markdown preview.\n\nThis endpoint is publicly accessible via the share token (no session auth\nrequired \u2014 the token IS the bearer credential).\n\n**PRD AC-2 \u2014 Sensitivity re-applied at resolution time**:\nThe draft's current sensitivity label is re-checked against the share\nlink's stored threshold at every request.  The creation-time check is NOT\ntrusted.  If the draft's sensitivity has increased since the link was\ncreated (e.g. relabelled from ``public`` to ``client_sensitive``), this\nendpoint returns 422 (fail-closed).\n\nReturns:\n- ``404`` \u2014 token not found, revoked, or expired.\n- ``422`` \u2014 draft's current sensitivity exceeds the share link threshold.\n- ``200`` \u2014 ``{ok: true, report_draft_id, sensitivity_threshold, preview_markdown}``.",
+        "operationId": "resolve_share_link_api_reports_shares__share_token__get",
+        "parameters": [
+          {
+            "name": "share_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Share Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Resolve Share Link Api Reports Shares  Share Token  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audit": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "List audit events (paginated)",
+        "description": "Return a cursor-paginated list of audit events, most-recent-first.\n\nPass ``cursor`` (the ``next_cursor`` value from a prior response) to\nretrieve the next page.  An empty audit log returns ``{\"items\": [],\n\"next_cursor\": null, \"total_hint\": null}`` \u2014 never 404.",
+        "operationId": "list_audit_events_api_audit_get",
+        "parameters": [
+          {
+            "name": "mutation_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by mutation type",
+              "title": "Mutation Type"
+            },
+            "description": "Filter by mutation type"
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by actor user id",
+              "title": "Actor"
+            },
+            "description": "Filter by actor user id"
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by workspace id",
+              "title": "Workspace"
+            },
+            "description": "Filter by workspace id"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO-8601 lower bound (inclusive)",
+              "title": "Since"
+            },
+            "description": "ISO-8601 lower bound (inclusive)"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO-8601 upper bound (inclusive)",
+              "title": "Until"
+            },
+            "description": "ISO-8601 upper bound (inclusive)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Page size",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Page size"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Pagination cursor (last audit_event_id from prior page)",
+              "title": "Cursor"
+            },
+            "description": "Pagination cursor (last audit_event_id from prior page)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Audit Events Api Audit Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audit/health": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "Audit store health state",
+        "description": "Return the persisted health state of the audit store.\n\nThis is a read-only endpoint \u2014 it returns the last persisted probe\nresult from ``audit_health`` without triggering a new probe.\n\n``status`` is ``\"healthy\"`` when the store is operational or has never\nbeen probed; ``\"degraded\"`` when the last probe detected a failure.",
+        "operationId": "get_audit_health_api_audit_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Audit Health Api Audit Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audit/{audit_event_id}": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "Get a single audit event",
+        "description": "Return the full detail for *audit_event_id*.\n\n404 when the id is unknown.",
+        "operationId": "get_audit_event_api_audit__audit_event_id__get",
+        "parameters": [
+          {
+            "name": "audit_event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Audit Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Audit Event Api Audit  Audit Event Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/identity": {
+      "get": {
+        "tags": [
+          "auth",
+          "auth"
+        ],
+        "summary": "Get Auth Identity",
+        "description": "Return the current request's resolved :class:`~AuthIdentity`.\n\nThe response shape matches the FE ``AuthIdentity`` interface in\n``useClerkAuth.ts`` exactly:\n\n.. code-block:: json\n\n    {\"user_id\": \"string\", \"workspace_id\": \"string\", \"roles\": [\"string\"]}\n\nIn ``auth.provider=none`` mode every field is ``null`` / ``[]``:\n\n.. code-block:: json\n\n    {\"user_id\": null, \"workspace_id\": null, \"roles\": []}\n\nReturns:\n    A JSON dict with ``user_id`` (str | None), ``workspace_id``\n    (str | None), and ``roles`` (list[str]).  HTTP 401 is returned\n    by the upstream middleware before this handler runs when auth is\n    enabled and the request carries no valid credential.",
+        "operationId": "get_auth_identity_api_auth_identity_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Auth Identity Api Auth Identity Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/workspace": {
+      "get": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "List workspace members and roles",
+        "description": "Return the member list for the caller's workspace.\n\nReturns ``members: null`` when the workspace has no recorded memberships\n(e.g. a freshly bootstrapped single-operator workspace that has not yet\nsynced its token-configured identities to the durable RBAC store).\n\nAccess: owner / admin only.  403 for all other authenticated roles.\nIn single-operator mode (no identity), passes unconditionally.",
+        "operationId": "get_workspace_members_api_admin_workspace_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Workspace Members Api Admin Workspace Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/members/{user_id}/role": {
+      "patch": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Update a workspace member's role",
+        "description": "Update *user_id*'s role within the caller's workspace.\n\nRequest body: ``{ \"role\": \"<role_name>\" }``\n\n``role`` must be one of the canonical values: owner, admin, researcher,\nreviewer, viewer.  Invalid values are rejected by the RBAC store FK\nconstraint.\n\nReturns 404 when the user has no existing membership in this workspace.\nUse ``PATCH /api/admin/workspace`` to invite new members (future P5 work).\n\nAccess: owner / admin only.",
+        "operationId": "update_member_role_api_admin_members__user_id__role_patch",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Body"
               }
             }
           }
@@ -1918,7 +2444,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Accept Job Api Agent Jobs  Job Id  Accept Post"
+                  "title": "Response Update Member Role Api Admin Members  User Id  Role Patch"
                 }
               }
             }
@@ -1936,101 +2462,84 @@
         }
       }
     },
-    "/api/assertions/search": {
+    "/api/admin/auth-provider-status": {
       "get": {
         "tags": [
-          "assertions"
+          "admin",
+          "admin"
         ],
-        "summary": "Search governed assertions",
-        "description": "Search the caller's private assertion projection.\n\nAuthorization and rights filtering occur before lexical matching, counts,\nfacets, and pagination.  Missing context produces a typed empty response.",
-        "operationId": "search_assertions_api_assertions_search_get",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "maxLength": 512
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Q"
-            }
-          },
-          {
-            "name": "lifecycle_state",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Lifecycle State"
-            }
-          },
-          {
-            "name": "access_scope",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Access Scope"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
-              "default": 25,
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "maxLength": 512
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          }
-        ],
+        "summary": "Active auth provider name and availability",
+        "description": "Return the active auth provider name and whether it is operational.\n\n**Security invariant**: This endpoint NEVER returns raw credentials,\nJWKS secrets, Clerk secret keys, Bearer tokens, or any other private\nmaterial.  Only the provider name and a boolean availability flag are\nincluded.\n\n``available`` reflects whether the registered provider's\n:meth:`~research_foundry.api.auth.provider.AuthProvider.available` method\nreturns ``True``.  For ``provider=none`` this is always ``True`` (no-op\nprovider needs no external dependencies).\n\nAccess: owner / admin only.",
+        "operationId": "get_auth_provider_status_api_admin_auth_provider_status_get",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AssertionSearchResponse"
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Auth Provider Status Api Admin Auth Provider Status Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/rate-limit-config": {
+      "get": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Current rate-limit budget",
+        "description": "Return the current per-(identity, route) rate-limit budget.\n\nReflects any in-memory updates applied via ``PATCH /api/admin/rate-limit-config``.\n\n``per_identity`` and ``per_route`` are always ``true`` \u2014 they document the\nkeying strategy (one counter per ``(user_id, route)`` pair) rather than a\nconfigurable option.\n\nAccess: owner / admin only.",
+        "operationId": "get_rate_limit_config_api_admin_rate_limit_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Rate Limit Config Api Admin Rate Limit Config Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Update rate-limit budget (in-memory, until next restart)",
+        "description": "Apply in-memory overrides to the rate-limit budget.\n\nOnly the keys present in the body are updated; omitted keys retain their\ncurrent value.  Changes take effect for **new** requests immediately but\nare not persisted to ``foundry.yaml`` \u2014 a server restart restores the\nconfig-file defaults.\n\nAccepted body fields:\n  ``max_requests``   (int)  \u2014 max requests per window per (user, route)\n  ``window_seconds`` (int)  \u2014 sliding window width in seconds\n\n**Startup-only field (cannot be changed here)**:\n  ``enabled`` is wired into ``RateLimitMiddleware`` at startup from\n  ``foundry.yaml`` (``auth.rate_limit.enabled``).  The middleware reads\n  ``self._limiter`` only \u2014 it never consults ``app.state`` \u2014 so sending\n  ``enabled`` in the body has no effect on the running limiter.  Any\n  ``enabled`` key in the request body is silently ignored.\n\nReturns the full updated config object on success.\n\nAccess: owner / admin only.",
+        "operationId": "update_rate_limit_config_api_admin_rate_limit_config_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Body"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Update Rate Limit Config Api Admin Rate Limit Config Patch"
                 }
               }
             }
@@ -2048,85 +2557,24 @@
         }
       }
     },
-    "/api/assertions/{assertion_id}/lineage": {
+    "/api/admin/rbac-status": {
       "get": {
         "tags": [
-          "assertions"
+          "admin",
+          "admin"
         ],
-        "summary": "Get assertion lineage",
-        "description": "Return typed, bounded lineage already present in durable ledger records.",
-        "operationId": "get_assertion_lineage_api_assertions__assertion_id__lineage_get",
-        "parameters": [
-          {
-            "name": "assertion_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Assertion Id"
-            }
-          }
-        ],
+        "summary": "RBAC enforcement state (read-only; any authenticated user)",
+        "description": "Return the current RBAC enforcement configuration.\n\nUnlike other admin endpoints this route is accessible by **any\nauthenticated user** (no owner/admin gate) so that client-side code can\ncheck whether the server is running in enforced or pass-through mode.\n\nIn single-operator mode (``auth.provider=none``, no identity on\n``request.state``) the endpoint is also accessible unconditionally.\n\nResponse shape:\n``rbac_enforcement``  (str)  \u2014 raw configured value (auto / disabled / enabled)\n``rbac_enforced``     (bool) \u2014 resolved effective state stored on app.state\n``auth_provider``     (str)  \u2014 active auth.provider value",
+        "operationId": "get_rbac_status_api_admin_rbac_status_get",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AssertionLineage"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/assertions/{assertion_id}": {
-      "get": {
-        "tags": [
-          "assertions"
-        ],
-        "summary": "Get a governed evidence packet",
-        "description": "Return an assertion only with its passage, edition, rights, and lineage.",
-        "operationId": "get_assertion_packet_api_assertions__assertion_id__get",
-        "parameters": [
-          {
-            "name": "assertion_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Assertion Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EvidencePacket"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Rbac Status Api Admin Rbac Status Get"
                 }
               }
             }
@@ -2137,35 +2585,6 @@
   },
   "components": {
     "schemas": {
-      "AcceptJobBody": {
-        "properties": {
-          "accepted_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Accepted By"
-          },
-          "notes": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notes"
-          }
-        },
-        "type": "object",
-        "title": "AcceptJobBody",
-        "description": "Body for POST /api/agent-jobs/{job_id}/accept."
-      },
       "AddBlockBody": {
         "properties": {
           "block_type": {
@@ -2366,6 +2785,317 @@
         ],
         "title": "AddSourceLinkBody"
       },
+      "AssertionFacets": {
+        "properties": {
+          "lifecycle_states": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lifecycle States"
+          },
+          "access_scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Access Scopes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lifecycle_states",
+          "access_scopes"
+        ],
+        "title": "AssertionFacets"
+      },
+      "AssertionImpactAction": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "object_class": {
+            "type": "string",
+            "title": "Object Class"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed",
+              "failed",
+              "blocked"
+            ],
+            "title": "Status"
+          },
+          "writeback_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "default_denied",
+                  "denied",
+                  "queued"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Writeback Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "object_class",
+          "action",
+          "status"
+        ],
+        "title": "AssertionImpactAction"
+      },
+      "AssertionImpactReasonDetail": {
+        "properties": {
+          "reason_code": {
+            "type": "string",
+            "title": "Reason Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason_code"
+        ],
+        "title": "AssertionImpactReasonDetail",
+        "description": "A safe, reason-code-only detail payload for impact denial or absence."
+      },
+      "AssertionImpactReasonResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/AssertionImpactReasonDetail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "AssertionImpactReasonResponse",
+        "description": "The runtime HTTPException envelope for governed impact failures."
+      },
+      "AssertionImpactSummary": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id"
+          },
+          "lifecycle_state": {
+            "type": "string",
+            "title": "Lifecycle State"
+          },
+          "access_scope": {
+            "type": "string",
+            "title": "Access Scope"
+          },
+          "authoritative_reuse_blocked": {
+            "type": "boolean",
+            "const": true,
+            "title": "Authoritative Reuse Blocked"
+          },
+          "operation_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "blocked",
+              "completed"
+            ],
+            "title": "Operation Status"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "replacement_edition_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replacement Edition Id"
+          },
+          "resumable": {
+            "type": "boolean",
+            "title": "Resumable"
+          },
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/AssertionImpactAction"
+            },
+            "type": "array",
+            "title": "Actions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "assertion_id",
+          "lifecycle_state",
+          "access_scope",
+          "authoritative_reuse_blocked",
+          "operation_status",
+          "resumable",
+          "actions"
+        ],
+        "title": "AssertionImpactSummary"
+      },
+      "AssertionLineage": {
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id"
+          },
+          "assertion_version": {
+            "type": "integer",
+            "title": "Assertion Version"
+          },
+          "relationships": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Relationships"
+          },
+          "run_uses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Uses"
+          },
+          "report_uses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Report Uses"
+          },
+          "denial_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denial Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assertion_id",
+          "assertion_version",
+          "relationships",
+          "run_uses",
+          "report_uses",
+          "denial_reason"
+        ],
+        "title": "AssertionLineage"
+      },
+      "AssertionSearchResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AssertionSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "facets": {
+            "$ref": "#/components/schemas/AssertionFacets"
+          },
+          "denial_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denial Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor",
+          "facets",
+          "denial_reason"
+        ],
+        "title": "AssertionSearchResponse"
+      },
+      "AssertionSummary": {
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id"
+          },
+          "assertion_version": {
+            "type": "integer",
+            "title": "Assertion Version"
+          },
+          "lifecycle_state": {
+            "type": "string",
+            "title": "Lifecycle State"
+          },
+          "access_scope": {
+            "type": "string",
+            "title": "Access Scope"
+          },
+          "rights_decision": {
+            "$ref": "#/components/schemas/RightsDecision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assertion_id",
+          "assertion_version",
+          "lifecycle_state",
+          "access_scope",
+          "rights_decision"
+        ],
+        "title": "AssertionSummary"
+      },
       "CreateDraftBody": {
         "properties": {
           "origin": {
@@ -2501,6 +3231,148 @@
         "type": "object",
         "title": "CreateRevisionBody"
       },
+      "CreateShareLinkBody": {
+        "properties": {
+          "sensitivity_threshold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sensitivity Threshold"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          }
+        },
+        "type": "object",
+        "title": "CreateShareLinkBody",
+        "description": "Body for POST /api/reports/{report_id}/share-links.\n\n*sensitivity_threshold* defaults to the draft's own sensitivity label when\nomitted.  The resolved threshold must be ``<=`` the draft's sensitivity rank\n(creating a share link at a *higher* threshold than the draft's label is\npermitted \u2014 the gate will still block access when the draft's label exceeds\nthe threshold at resolution time).\n\n*expires_at* is an optional ISO-8601 UTC timestamp after which the link is\nconsidered expired.  ``None`` means the link never expires (revocation is\nthe only mechanism to invalidate it)."
+      },
+      "EvidencePacket": {
+        "properties": {
+          "packet_version": {
+            "type": "string",
+            "title": "Packet Version"
+          },
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id"
+          },
+          "assertion_version": {
+            "type": "integer",
+            "title": "Assertion Version"
+          },
+          "assertion": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Assertion"
+          },
+          "passage": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Passage"
+          },
+          "source_edition": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Source Edition"
+          },
+          "qualifiers": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Qualifiers"
+          },
+          "qualifier_extensions": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Qualifier Extensions"
+          },
+          "evaluations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Evaluations"
+          },
+          "freshness": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Freshness"
+          },
+          "access_scope": {
+            "type": "string",
+            "title": "Access Scope"
+          },
+          "rights_decision": {
+            "$ref": "#/components/schemas/RightsDecision"
+          },
+          "relationships": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Relationships"
+          },
+          "run_uses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Uses"
+          },
+          "report_uses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Report Uses"
+          }
+        },
+        "type": "object",
+        "required": [
+          "packet_version",
+          "assertion_id",
+          "assertion_version",
+          "assertion",
+          "passage",
+          "source_edition",
+          "qualifiers",
+          "qualifier_extensions",
+          "evaluations",
+          "freshness",
+          "access_scope",
+          "rights_decision",
+          "relationships",
+          "run_uses",
+          "report_uses"
+        ],
+        "title": "EvidencePacket"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2513,265 +3385,6 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
-      },
-      "LaunchJobBody": {
-        "properties": {
-          "provider": {
-            "type": "string",
-            "title": "Provider"
-          },
-          "model_profile": {
-            "type": "string",
-            "title": "Model Profile"
-          },
-          "request_kind": {
-            "type": "string",
-            "title": "Request Kind"
-          },
-          "policy_snapshot": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Policy Snapshot"
-          },
-          "project_id": {
-            "type": "string",
-            "title": "Project Id",
-            "default": "default"
-          },
-          "workspace_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Workspace Id"
-          },
-          "created_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created By"
-          },
-          "input_claim_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Input Claim Ids",
-            "default": []
-          },
-          "input_source_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Input Source Ids",
-            "default": []
-          },
-          "input_report_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Input Report Id"
-          },
-          "budget_usd": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Budget Usd"
-          },
-          "max_runtime_minutes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Runtime Minutes"
-          },
-          "credential_b64": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Credential B64"
-          }
-        },
-        "type": "object",
-        "required": [
-          "provider",
-          "model_profile",
-          "request_kind",
-          "policy_snapshot"
-        ],
-        "title": "LaunchJobBody",
-        "description": "Body for POST /api/agent-jobs.\n\n``policy_snapshot`` is required and must contain at least\n``allowed_tools`` and ``data_scopes`` (validated by\n:func:`~research_foundry.services.agent_job_schemas.validate_agent_job`).\n``workspace_id`` and ``created_by`` are nullable (D12 \u2014 auth in P5).\n``credential_b64`` is the base64-encoded raw credential bytes forwarded to\nthe spawned subprocess; omit (or pass ``null``) to use empty bytes."
-      },
-      "ReorderBlocksBody": {
-        "properties": {
-          "block_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Block Ids"
-          },
-          "updated_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated By"
-          }
-        },
-        "type": "object",
-        "required": [
-          "block_ids"
-        ],
-        "title": "ReorderBlocksBody"
-      },
-      "UpdateBlockBody": {
-        "properties": {
-          "markdown": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Markdown"
-          },
-          "block_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Block Type"
-          },
-          "materiality": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Materiality"
-          },
-          "order": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Order"
-          },
-          "risk_flags": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Risk Flags"
-          },
-          "updated_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated By"
-          }
-        },
-        "type": "object",
-        "title": "UpdateBlockBody"
-      },
-      "ValidationError": {
-        "properties": {
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Location"
-          },
-          "msg": {
-            "type": "string",
-            "title": "Message"
-          },
-          "type": {
-            "type": "string",
-            "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
-          }
-        },
-        "type": "object",
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
-        "title": "ValidationError"
       },
       "LaunchRunRequest": {
         "properties": {
@@ -2890,6 +3503,33 @@
         "title": "LaunchRunRequest",
         "description": "Body for POST /api/runs.\n\nExactly one of ``text`` / ``intent_id`` is required \u2014 supplying both or\nneither is a 400 (raised as ``ValueError`` by\n:func:`~research_foundry.services.run_launch.launch_run` and mapped here).\n\n``title``, ``sensitivity``, ``urgency``, ``tags``, and ``backlog_idea_ref``\nare ``text``-path fields (forwarded to ``capture_idea``) and are ignored\nwhen ``intent_id`` is supplied instead. The remaining fields are common\nplanning passthrough forwarded to ``plan_run`` on both paths."
       },
+      "ReorderBlocksBody": {
+        "properties": {
+          "block_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Block Ids"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "block_ids"
+        ],
+        "title": "ReorderBlocksBody"
+      },
       "RightsDecision": {
         "properties": {
           "allowed": {
@@ -2908,174 +3548,9 @@
         ],
         "title": "RightsDecision"
       },
-      "AssertionFacets": {
+      "UpdateBlockBody": {
         "properties": {
-          "lifecycle_states": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Lifecycle States"
-          },
-          "access_scopes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Access Scopes"
-          }
-        },
-        "type": "object",
-        "required": [
-          "lifecycle_states",
-          "access_scopes"
-        ],
-        "title": "AssertionFacets"
-      },
-      "AssertionSummary": {
-        "properties": {
-          "assertion_id": {
-            "type": "string",
-            "title": "Assertion Id"
-          },
-          "assertion_version": {
-            "type": "integer",
-            "title": "Assertion Version"
-          },
-          "lifecycle_state": {
-            "type": "string",
-            "title": "Lifecycle State"
-          },
-          "access_scope": {
-            "type": "string",
-            "title": "Access Scope"
-          },
-          "rights_decision": {
-            "$ref": "#/components/schemas/RightsDecision"
-          }
-        },
-        "type": "object",
-        "required": [
-          "assertion_id",
-          "assertion_version",
-          "lifecycle_state",
-          "access_scope",
-          "rights_decision"
-        ],
-        "title": "AssertionSummary"
-      },
-      "EvidencePacket": {
-        "properties": {
-          "packet_version": {
-            "type": "string",
-            "title": "Packet Version"
-          },
-          "assertion_id": {
-            "type": "string",
-            "title": "Assertion Id"
-          },
-          "assertion_version": {
-            "type": "integer",
-            "title": "Assertion Version"
-          },
-          "assertion": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Assertion"
-          },
-          "passage": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Passage"
-          },
-          "source_edition": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Source Edition"
-          },
-          "qualifiers": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Qualifiers"
-          },
-          "qualifier_extensions": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Qualifier Extensions"
-          },
-          "evaluations": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Evaluations"
-          },
-          "freshness": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Freshness"
-          },
-          "access_scope": {
-            "type": "string",
-            "title": "Access Scope"
-          },
-          "rights_decision": {
-            "$ref": "#/components/schemas/RightsDecision"
-          },
-          "relationships": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Relationships"
-          },
-          "run_uses": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Run Uses"
-          },
-          "report_uses": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Report Uses"
-          }
-        },
-        "type": "object",
-        "required": [
-          "packet_version",
-          "assertion_id",
-          "assertion_version",
-          "assertion",
-          "passage",
-          "source_edition",
-          "qualifiers",
-          "qualifier_extensions",
-          "evaluations",
-          "freshness",
-          "access_scope",
-          "rights_decision",
-          "relationships",
-          "run_uses",
-          "report_uses"
-        ],
-        "title": "EvidencePacket"
-      },
-      "AssertionSearchResponse": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/AssertionSummary"
-            },
-            "type": "array",
-            "title": "Items"
-          },
-          "next_cursor": {
+          "markdown": {
             "anyOf": [
               {
                 "type": "string"
@@ -3084,12 +3559,9 @@
                 "type": "null"
               }
             ],
-            "title": "Next Cursor"
+            "title": "Markdown"
           },
-          "facets": {
-            "$ref": "#/components/schemas/AssertionFacets"
-          },
-          "denial_reason": {
+          "block_type": {
             "anyOf": [
               {
                 "type": "string"
@@ -3098,72 +3570,98 @@
                 "type": "null"
               }
             ],
-            "title": "Denial Reason"
+            "title": "Block Type"
+          },
+          "materiality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Materiality"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          },
+          "risk_flags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Flags"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
           }
         },
         "type": "object",
-        "required": [
-          "items",
-          "next_cursor",
-          "facets",
-          "denial_reason"
-        ],
-        "title": "AssertionSearchResponse"
+        "title": "UpdateBlockBody"
       },
-      "AssertionLineage": {
+      "ValidationError": {
         "properties": {
-          "assertion_id": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
             "type": "string",
-            "title": "Assertion Id"
+            "title": "Message"
           },
-          "assertion_version": {
-            "type": "integer",
-            "title": "Assertion Version"
+          "type": {
+            "type": "string",
+            "title": "Error Type"
           },
-          "relationships": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Relationships"
+          "input": {
+            "title": "Input"
           },
-          "run_uses": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Run Uses"
-          },
-          "report_uses": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Report Uses"
-          },
-          "denial_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Denial Reason"
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
         "required": [
-          "assertion_id",
-          "assertion_version",
-          "relationships",
-          "run_uses",
-          "report_uses",
-          "denial_reason"
+          "loc",
+          "msg",
+          "type"
         ],
-        "title": "AssertionLineage"
+        "title": "ValidationError"
       }
     }
   }

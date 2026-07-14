@@ -31,24 +31,35 @@ import type { RFResolvedSource } from "@/types/rf";
 import { SourceCard } from "@/components/SourceCard/SourceCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { RunDetailModal } from "@/components/RunDetail/RunDetailModal";
+import { AssertionCatalogPane } from "@/components/AssertionCatalog/AssertionCatalogPane";
 import { formatDateTime } from "@/lib/runs";
 import { projectColorClass } from "./projectColor";
 import "@/styles/catalog.css";
+import "@/styles/assertions.css";
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
+//
+// "assertions" replaces the former "claim" tab (spec §4.4: "Existing `Claims`
+// catalog tab → `Source assertions`, while retaining other current tabs").
+// It is backed by the workspace-scoped source-assertion ledger
+// (useAssertionSearch/useEvidencePacket), not the old per-run CatalogItemType
+// "claim" domain, so it does not participate in tabCount/useCatalogSearch.
 
-type CatalogTabId = "claim" | "source" | "inference" | "report" | "report-ready";
+type CatalogTabId = "assertions" | "source" | "inference" | "report" | "report-ready";
 
 const TABS: { id: CatalogTabId; label: string }[] = [
-  { id: "claim", label: "Claims" },
+  { id: "assertions", label: "Source assertions" },
   { id: "source", label: "Sources" },
   { id: "inference", label: "Inferences" },
   { id: "report", label: "Reports" },
   { id: "report-ready", label: "Report-ready" },
 ];
 
-function tabCount(stats: { counts: Record<CatalogItemType, number> } | undefined, tab: CatalogTabId): number | null {
-  if (!stats) return null;
+function tabCount(
+  stats: { counts: Record<CatalogItemType, number> } | undefined,
+  tab: CatalogTabId,
+): number | null {
+  if (!stats || tab === "assertions") return null;
   if (tab === "report-ready") return stats.counts.reusable_output + stats.counts.writeback;
   return stats.counts[tab];
 }
@@ -416,7 +427,7 @@ const PAGE_SIZE = 20;
 export function CatalogScreen() {
   const { data: stats, isLoading: statsLoading } = useCatalogStats();
 
-  const [tab, setTab] = useState<CatalogTabId>("claim");
+  const [tab, setTab] = useState<CatalogTabId>("assertions");
   const [project, setProject] = useState("");
   const [status, setStatus] = useState("");
   const [sensitivity, setSensitivity] = useState("");
@@ -446,7 +457,9 @@ export function CatalogScreen() {
   const mainParams = useMemo(
     () => ({
       ...baseParams,
-      item_type: tab === "report-ready" ? undefined : tab,
+      // "assertions" is backed by a separate ledger (AssertionCatalogPane), not
+      // this CatalogItemType search — treated the same as "report-ready" here.
+      item_type: tab === "report-ready" || tab === "assertions" ? undefined : tab,
       page,
       page_size: PAGE_SIZE,
     }),
@@ -487,15 +500,26 @@ export function CatalogScreen() {
     );
   }
 
-  const total = tab === "report-ready" ? undefined : mainResult.data?.total;
+  const total = tab === "report-ready" || tab === "assertions" ? undefined : mainResult.data?.total;
 
   return (
     <div className="rv-catalog" data-testid="catalog-screen">
       <header className="rv-catalog__header">
-        <h1 className="rv-catalog__title">Evidence Catalog</h1>
-        <p className="rv-catalog__subtitle">
-          Shared claims, sources, inferences, and reports across runs and projects.
-        </p>
+        {tab === "assertions" ? (
+          <>
+            <h1 className="rv-catalog__title">Assertion Catalog</h1>
+            <p className="rv-catalog__subtitle">
+              Reusable source assertions with exact provenance, lifecycle, and prior use.
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="rv-catalog__title">Evidence Catalog</h1>
+            <p className="rv-catalog__subtitle">
+              Shared claims, sources, inferences, and reports across runs and projects.
+            </p>
+          </>
+        )}
       </header>
 
       <div className="it-seg rv-catalog-tabs" role="tablist" aria-label="Catalog item type">
@@ -517,6 +541,10 @@ export function CatalogScreen() {
         })}
       </div>
 
+      {tab === "assertions" ? (
+        <AssertionCatalogPane />
+      ) : (
+      <>
       <div className="rv-catalog-filters" role="search" aria-label="Filter catalog">
         <label className="rv-catalog-filter">
           <span>Project</span>
@@ -653,6 +681,8 @@ export function CatalogScreen() {
           onSelectItem={handleSelect}
         />
       </div>
+      </>
+      )}
 
       <RunDetailModal runId={openRunId} onClose={() => setOpenRunId(null)} />
     </div>

@@ -1,0 +1,585 @@
+/* ============================================================================
+   Reusable assertion ledger reviewer experience (P6-002) — rv-assertion* /
+   rv-modal__reusable-fields BEM, token-driven. Extends (never overrides)
+   .rv-catalog* from catalog.css and .rv-modal* from runs-viewer.css; no
+   mockup-sampled hex values — every color below is an existing semantic or
+   primitive token from tokens.css.
+   ============================================================================ */
+
+/* ── Filters / table (reuse .rv-catalog-filter, .rv-catalog-table) ── */
+
+.rv-assertion-filters__summary {
+  display: none;
+  cursor: pointer;
+  min-height: 44px;
+  align-items: center;
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-primary);
+}
+
+.rv-assertion-filters__controls {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--it-space-4);
+}
+
+.rv-assertion-table-wrap.is-fetching {
+  opacity: 0.6;
+  transition: opacity var(--it-dur-fast) var(--it-ease-out);
+}
+
+.rv-assertion-id-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-2);
+}
+
+.rv-assertion-id-cell code {
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+  color: var(--it-text-secondary);
+}
+
+.rv-assertion-muted {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-tertiary);
+  margin: 0;
+}
+
+.rv-assertion-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--it-space-3);
+  padding: var(--it-space-5);
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-lg);
+}
+
+.rv-assertion-denied-inline {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+  margin: 0;
+}
+
+.rv-assertion-reason-code {
+  font-size: var(--it-text-xs);
+  color: var(--it-text-tertiary);
+  margin: 0;
+}
+
+.rv-assertion-reason-code code {
+  font-family: var(--it-font-mono);
+  color: var(--it-red-600);
+}
+
+/* ── Packet inspector (docked, extends .rv-catalog-inspector) ── */
+
+.rv-assertion-packet__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+}
+
+.rv-assertion-packet__eyebrow-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rv-assertion-eyebrow {
+  font-size: 10.5px;
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-blue-600);
+}
+
+.rv-assertion-packet__signature-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--it-space-2);
+}
+
+.rv-assertion-signature code {
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-sm);
+  color: var(--it-text-primary);
+  font-weight: var(--it-weight-semibold);
+}
+
+.rv-assertion-packet__text {
+  font-size: var(--it-text-md);
+  font-weight: var(--it-weight-semibold);
+  color: var(--it-text-primary);
+  line-height: var(--it-leading-snug);
+  margin: 0;
+}
+
+.rv-assertion-packet__footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+  border-top: 1px solid var(--it-border-subtle);
+  padding-top: var(--it-space-4);
+}
+
+.rv-assertion-footer-label {
+  font-size: 10.5px;
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+}
+
+.rv-assertion-footer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--it-space-2);
+}
+
+/* ── Packet field sections (shared by Catalog inspector + Provenance column) ── */
+
+.rv-assertion-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+  border-top: 1px solid var(--it-border-subtle);
+  padding-top: var(--it-space-4);
+}
+
+.rv-assertion-section--compact {
+  padding-top: var(--it-space-3);
+  gap: var(--it-space-1_5);
+}
+
+.rv-assertion-section h4 {
+  font-size: 10.5px;
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+  margin: 0;
+}
+
+.rv-assertion-legacy-note {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-tertiary);
+  font-style: italic;
+  margin: 0;
+}
+
+.rv-assertion-micro-eyebrow {
+  font-size: 10px;
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-muted);
+}
+
+.rv-assertion-id-row {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-2);
+}
+
+.rv-assertion-id-row code {
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+  color: var(--it-text-secondary);
+}
+
+.rv-assertion-edition {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--it-space-2);
+}
+
+.rv-assertion-passage-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+}
+
+.rv-assertion-blockquote {
+  margin: 0;
+  padding: var(--it-space-3) var(--it-space-4);
+  background: var(--it-blue-50);
+  border-left: 3px solid var(--it-blue-300);
+  border-radius: var(--it-radius-sm);
+  font-size: var(--it-text-sm);
+  color: var(--it-text-primary);
+  line-height: var(--it-leading-normal);
+}
+
+.rv-assertion-locator {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--it-space-2);
+  font-size: var(--it-text-xs);
+}
+
+.rv-assertion-locator__label {
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+}
+
+.rv-assertion-locator__value {
+  color: var(--it-text-secondary);
+}
+
+.rv-assertion-dl {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.rv-assertion-dl__row {
+  display: grid;
+  grid-template-columns: minmax(90px, 40%) 1fr;
+  gap: var(--it-space-3);
+  padding: var(--it-space-1_5) 0;
+  border-bottom: 1px solid var(--it-border-subtle);
+}
+
+.rv-assertion-dl__row:last-child { border-bottom: none; }
+
+.rv-assertion-dl__row dt {
+  font-size: 10.5px;
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+}
+
+.rv-assertion-dl__row dd {
+  margin: 0;
+  font-size: var(--it-text-sm);
+  color: var(--it-text-primary);
+}
+
+.rv-assertion-dl--compact .rv-assertion-dl__row {
+  padding: var(--it-space-1) 0;
+}
+
+.rv-assertion-extensions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1);
+  margin-top: var(--it-space-2);
+}
+
+.rv-assertion-evaluations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+}
+
+.rv-assertion-evaluation-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--it-space-2);
+  font-size: var(--it-text-sm);
+}
+
+.rv-assertion-evaluation-kind {
+  font-weight: var(--it-weight-medium);
+  color: var(--it-text-primary);
+  min-width: 140px;
+}
+
+.rv-assertion-uses-summary {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+  margin: 0;
+}
+
+.rv-assertion-relationships {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1_5);
+  margin: 0;
+  padding-left: var(--it-space-4);
+  color: var(--it-text-secondary);
+  font-size: var(--it-text-sm);
+}
+
+.rv-assertion-relationships code {
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.rv-assertion-copy-btn {
+  padding: 2px 8px;
+}
+
+/* ── Denied catalog panel (spec §6.C) ── */
+
+.rv-assertion-denied {
+  max-width: 460px;
+  margin: var(--it-space-8) auto;
+  padding: var(--it-space-8) var(--it-space-6);
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-lg);
+  box-shadow: var(--it-shadow-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--it-space-3);
+}
+
+.rv-assertion-denied__icon {
+  color: var(--it-red-500);
+}
+
+.rv-assertion-denied__title {
+  font-size: var(--it-text-xl);
+  font-weight: var(--it-weight-bold);
+  color: var(--it-text-primary);
+  margin: 0;
+}
+
+.rv-assertion-denied__copy {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+  margin: 0;
+}
+
+.rv-assertion-denied__divider {
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--it-border-subtle);
+  margin: 0;
+}
+
+.rv-assertion-denied__reason {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+  margin: 0;
+}
+
+.rv-assertion-denied__reason code {
+  font-family: var(--it-font-mono);
+  color: var(--it-red-600);
+}
+
+.rv-assertion-denied__disclosure,
+.rv-assertion-denied__recovery {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-tertiary);
+  margin: 0;
+}
+
+.rv-assertion-denied__action {
+  width: 100%;
+  margin-top: var(--it-space-2);
+  background: transparent;
+  color: var(--it-red-600);
+  border: 1px solid var(--it-red-400);
+}
+
+.rv-assertion-denied__action:hover {
+  background: var(--it-red-50);
+}
+
+/* ── ProvenanceModal: reusable-assertion-fields column (spec §5.2, §6.B) ── */
+
+.rv-modal--assertion-columns {
+  max-width: 960px;
+}
+
+.rv-modal__provenance-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--it-space-6);
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .rv-modal__provenance-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rv-modal__provenance-left,
+.rv-modal__reusable-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-4);
+  min-width: 0;
+}
+
+.rv-assertion-legacy-explainer {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+  margin: 0;
+}
+
+.rv-assertion-legacy-dl {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.rv-assertion-legacy-dl__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--it-space-3);
+  padding: var(--it-space-2) 0;
+  border-bottom: 1px solid var(--it-border-subtle);
+}
+
+.rv-assertion-legacy-dl__row:last-child { border-bottom: none; }
+
+.rv-assertion-legacy-dl__row dt {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-2);
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-medium);
+  color: var(--it-text-primary);
+}
+
+.rv-assertion-legacy-dl__icon {
+  color: var(--it-orange-500);
+}
+
+.rv-assertion-legacy-dl__row dd {
+  margin: 0;
+  font-size: var(--it-text-sm);
+  white-space: nowrap;
+}
+
+.rv-assertion-legacy-dl__unavailable {
+  color: var(--it-orange-600);
+  font-weight: var(--it-weight-medium);
+}
+
+.rv-assertion-legacy-dl__scope {
+  color: var(--it-text-tertiary);
+}
+
+/* ── P7 responsive review surfaces ── */
+
+.rv-assertion-lineage-unavailable {
+  margin: 0 0 var(--it-space-3);
+  padding: var(--it-space-3);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-md);
+  background: var(--it-neutral-100);
+  color: var(--it-text-secondary);
+  font-size: var(--it-text-sm);
+}
+
+@media (min-width: 1100px) and (max-width: 1439px) {
+  .rv-catalog-content {
+    grid-template-columns: 1fr;
+  }
+
+  .rv-catalog-inspector {
+    position: static;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1099px) {
+  .rv-assertion-filters {
+    display: block;
+  }
+
+  .rv-assertion-filters__summary {
+    display: flex;
+  }
+
+  .rv-assertion-filters__controls {
+    padding-top: var(--it-space-3);
+  }
+
+  .rv-catalog-table-wrap {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 767px) {
+  .rv-catalog {
+    padding: var(--it-space-4) var(--it-space-3);
+  }
+
+  .rv-assertion-filters {
+    display: block;
+  }
+
+  .rv-assertion-filters__summary {
+    display: flex;
+  }
+
+  .rv-assertion-filters__controls {
+    padding-top: var(--it-space-3);
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rv-catalog-filter,
+  .rv-catalog-filter--search {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .rv-catalog-filter input,
+  .rv-catalog-filter select,
+  .rv-catalog-pagination .it-btn,
+  .rv-catalog-inspector .it-btn {
+    min-height: 44px;
+  }
+
+  .rv-catalog-table,
+  .rv-catalog-table tbody,
+  .rv-catalog-table tr,
+  .rv-catalog-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .rv-catalog-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .rv-catalog-row {
+    margin-bottom: var(--it-space-3);
+    border: 1px solid var(--it-border-soft);
+    border-radius: var(--it-radius-md);
+  }
+
+  .rv-catalog-td {
+    padding: var(--it-space-2) var(--it-space-3);
+  }
+
+  .rv-catalog-inspector {
+    width: 100%;
+    position: static;
+  }
+
+  .rv-assertion-lineage__canvas {
+    min-height: 320px;
+  }
+}

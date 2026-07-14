@@ -15,6 +15,17 @@ export {
   catalogItemQueryKey,
 } from "./useCatalog.js";
 export {
+  useAssertionSearch,
+  useEvidencePacket,
+  useAssertionLineage,
+  useAssertionImpact,
+  useClearAssertionStateOnWorkspaceChange,
+  assertionSearchQueryKey,
+  assertionPacketQueryKey,
+  assertionLineageQueryKey,
+  assertionImpactQueryKey,
+} from "./useAssertions.js";
+export {
   isBuilderLoopbackEnabled,
   useReportDraftList,
   useReportDraft,

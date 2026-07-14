@@ -29,6 +29,13 @@ import type { CatalogItemDetail, CatalogSearchParams, CatalogSearchResult, Catal
 import { getViewerSettings } from "@/lib/viewerSettings";
 import { buildCatalogIndex, catalogStats as computeCatalogStats, getCatalogItem, normalizeCatalogItemDetail, searchCatalog } from "@/lib/catalog";
 import type { CatalogIndex } from "@/lib/catalog";
+import type {
+  AssertionImpactSummary,
+  AssertionLineage,
+  AssertionSearchRequest,
+  AssertionSearchResponse,
+  EvidencePacket,
+} from "@/types/rf/assertions_api.generated";
 
 // ── Env flag ─────────────────────────────────────────────────────────────────
 
@@ -166,10 +173,13 @@ const BASE_URL =
 
 export class ClientError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  /** Safe server-supplied code, when the endpoint provides one. */
+  readonly reasonCode?: string;
+  constructor(status: number, message: string, reasonCode?: string) {
     super(message);
     this.name = "ClientError";
     this.status = status;
+    this.reasonCode = reasonCode;
   }
 }
 
@@ -237,9 +247,24 @@ async function loopbackGet<T>(path: string): Promise<T> {
   }
 
   if (!res.ok) {
-    throw new ClientError(res.status, `Loopback GET ${url} failed: ${res.statusText}`);
+    const reasonCode = await readSafeReasonCode(res);
+    throw new ClientError(res.status, `Loopback GET ${url} failed: ${res.statusText}`, reasonCode);
   }
   return res.json() as Promise<T>;
+}
+
+/** Extract only the documented safe denial reason from a JSON error envelope. */
+async function readSafeReasonCode(res: Response): Promise<string | undefined> {
+  try {
+    const body: unknown = await res.clone().json();
+    if (!body || typeof body !== "object") return undefined;
+    const detail = (body as Record<string, unknown>).detail;
+    if (!detail || typeof detail !== "object") return undefined;
+    const reasonCode = (detail as Record<string, unknown>).reason_code;
+    return typeof reasonCode === "string" ? reasonCode : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -470,6 +495,50 @@ export async function fetchCatalogItem(catalogItemId: string): Promise<CatalogIt
   const index = await getCatalogIndex();
   const item = getCatalogItem(index, catalogItemId);
   return item ? normalizeCatalogItemDetail(item) : null;
+}
+
+// ── Governed assertion ledger (P6-001) ──────────────────────────────────────
+
+/** Build the generated assertion-search query without broadening its contract. */
+function assertionSearchQueryString(params: AssertionSearchRequest): string {
+  const query = new URLSearchParams();
+  if (params.q) query.set("q", params.q);
+  if (params.lifecycle_state) query.set("lifecycle_state", params.lifecycle_state);
+  if (params.access_scope) query.set("access_scope", params.access_scope);
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.cursor) query.set("cursor", params.cursor);
+  const value = query.toString();
+  return value ? `?${value}` : "";
+}
+
+/**
+ * Assertion reads have no static-export substitute: their authorization is
+ * evaluated by the RF API. Consumers should surface the resulting safe state,
+ * never derive packets from exported run data.
+ */
+function assertionApiGet<T>(path: string): Promise<T> {
+  if (!LOOPBACK_ENABLED) {
+    return Promise.reject(new ClientError(503, "Governed assertion data is unavailable in static mode"));
+  }
+  return loopbackGet<T>(path);
+}
+
+export function fetchAssertionSearch(
+  request: AssertionSearchRequest = {},
+): Promise<AssertionSearchResponse> {
+  return assertionApiGet<AssertionSearchResponse>(`/assertions/search${assertionSearchQueryString(request)}`);
+}
+
+export function fetchEvidencePacket(assertionId: string): Promise<EvidencePacket> {
+  return assertionApiGet<EvidencePacket>(`/assertions/${encodeURIComponent(assertionId)}`);
+}
+
+export function fetchAssertionLineage(assertionId: string): Promise<AssertionLineage> {
+  return assertionApiGet<AssertionLineage>(`/assertions/${encodeURIComponent(assertionId)}/lineage`);
+}
+
+export function fetchAssertionImpact(assertionId: string): Promise<AssertionImpactSummary> {
+  return assertionApiGet<AssertionImpactSummary>(`/assertions/${encodeURIComponent(assertionId)}/impact`);
 }
 
 // ── Admin API (P5.6 T5 — RBAC status) ────────────────────────────────────────

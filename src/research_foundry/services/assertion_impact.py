@@ -19,10 +19,14 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from yaml import YAMLError
+
+from ..api.auth.provider import AuthIdentity
 from ..paths import FoundryPaths
 from ..schemas import SchemaRegistry
 from ..yamlio import dumps_yaml, load_yaml
-from .assertion_registry import AssertionRegistry
+from .assertion_catalog import AssertionCatalog, AssertionCatalogDenied, AssertionCatalogError
+from .assertion_registry import AssertionRegistry, RegistryIntegrityError
 from .assertion_reuse import block_authoritative_reuse
 
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
@@ -61,6 +65,21 @@ _ACTIONS = {
     "mock_writeback_receipt": "queue_default_denied_reconciliation",
 }
 
+# These are the only reason codes written into a durable blocked receipt by
+# ``_new_receipt``.  Keep the read seam closed over the writer's vocabulary so
+# arbitrary receipt content cannot be reflected through the API.
+_BLOCKED_RECEIPT_REASON_CODES = frozenset(
+    {
+        "dependency_manifest_missing",
+        "dependency_manifest_invalid",
+    }
+)
+
+# ``default_denied`` is the status emitted by the current mock writeback
+# writer.  The other values are retained receipt vocabulary for authorized
+# writeback adapters; all are deliberately separate from action progress.
+_WRITEBACK_STATUSES = frozenset({"default_denied", "denied", "queued"})
+
 
 class ImpactOperationError(ValueError):
     """A persisted lifecycle operation cannot safely continue."""
@@ -68,6 +87,14 @@ class ImpactOperationError(ValueError):
 
 class ImpactInterrupted(RuntimeError):
     """Test-only interruption after a durable action checkpoint."""
+
+
+class AssertionImpactReadDenied(ValueError):
+    """A safe, typed reason why an impact receipt cannot be read."""
+
+    def __init__(self, reason_code: str) -> None:
+        super().__init__(reason_code)
+        self.reason_code = reason_code
 
 
 @dataclass(frozen=True)
@@ -80,6 +107,122 @@ class ReconciliationResult:
     receipt_path: Path
     action_count: int
 
+
+class AssertionImpactReader:
+    """Read one policy-authorized, workspace-local impact receipt.
+
+    The reader intentionally treats unavailable, malformed, interrupted, and
+    cross-workspace receipt state as the same absence.  It never falls back to
+    scanning another workspace or reconstructing dependencies from ledger
+    relationships, so callers cannot use the endpoint as a membership oracle.
+    """
+
+    def __init__(self, paths: FoundryPaths | None = None) -> None:
+        self.paths = paths or FoundryPaths.discover()
+        self.catalog = AssertionCatalog(self.paths)
+
+    def summary(self, assertion_id: str, *, identity: AuthIdentity | None) -> dict[str, Any] | None:
+        """Return an authorized receipt summary, or ``None`` without hints.
+
+        ``None`` deliberately covers an absent assertion, absent receipt,
+        malformed artifacts, and a receipt owned by another workspace.  A
+        caller lacking workspace context or rights receives a typed denial.
+        """
+
+        workspace_id = getattr(identity, "workspace_id", None)
+        if not isinstance(workspace_id, str) or not workspace_id.strip():
+            raise AssertionImpactReadDenied("workspace_context_missing")
+        if not isinstance(assertion_id, str) or not _TOKEN_RE.fullmatch(assertion_id):
+            return None
+
+        try:
+            packet = self.catalog.packet(assertion_id, identity=identity)
+        except AssertionCatalogDenied as exc:
+            raise AssertionImpactReadDenied(exc.reason_code) from exc
+        except AssertionCatalogError:
+            return None
+        if packet is None:
+            return None
+
+        try:
+            registry = AssertionRegistry(workspace_id=workspace_id, paths=self.paths)
+            policy = self._mapping(
+                registry,
+                registry.root / "lifecycle_policy" / f"{assertion_id}.yaml",
+            )
+            if not self._valid_policy(policy, assertion_id):
+                return None
+            event_id = policy["invalidation_event_id"]
+            assert isinstance(event_id, str)
+            receipt = AssertionImpactReconciler(
+                workspace_id=workspace_id,
+                paths=self.paths,
+            ).validated_receipt(
+                assertion_id=assertion_id,
+                event_id=event_id,
+            )
+            if receipt is None:
+                return None
+            status = receipt["status"]
+            assert isinstance(status, str)
+            actions = receipt["actions"]
+            assert isinstance(actions, list)
+            reason_code = receipt.get("reason_code")
+            projected_actions: list[dict[str, str]] = []
+            for action in actions:
+                projected_action = {
+                    "object_id": action["object_id"],
+                    "object_class": action["object_class"],
+                    "action": action["action"],
+                    "status": action["status"],
+                }
+                if "writeback_status" in action:
+                    projected_action["writeback_status"] = action["writeback_status"]
+                projected_actions.append(projected_action)
+
+            return {
+                "event_id": event_id,
+                "assertion_id": assertion_id,
+                "lifecycle_state": policy["lifecycle_state"],
+                "access_scope": packet["access_scope"],
+                "authoritative_reuse_blocked": True,
+                "operation_status": status,
+                "reason_code": reason_code if isinstance(reason_code, str) else None,
+                # P5 receipts do not carry an independently authorized edition
+                # target.  Do not surface a future extension until its target has
+                # its own governed read check.
+                "replacement_edition_id": None,
+                "resumable": status == "pending",
+                "actions": projected_actions,
+            }
+        except (ImpactOperationError, FileNotFoundError, OSError, RegistryIntegrityError, ValueError, YAMLError):
+            return None
+        except Exception:
+            # A receipt is an untrusted persisted boundary.  Do not let an
+            # unexpected projection or validation failure become a 500 or
+            # distinguish malformed state from absence.
+            return None
+
+    @staticmethod
+    def _mapping(registry: AssertionRegistry, path: Path) -> dict[str, Any]:
+        """Read one in-workspace YAML artifact without following symlinks."""
+
+        value = registry._load_yaml_file(path, path.parent)
+        if not isinstance(value, dict):
+            raise ValueError("impact_receipt_invalid")
+        return value
+
+    @staticmethod
+    def _valid_policy(policy: Mapping[str, Any], assertion_id: str) -> bool:
+        event_id = policy.get("invalidation_event_id")
+        return (
+            policy.get("type") == "assertion_lifecycle_policy_state"
+            and policy.get("assertion_id") == assertion_id
+            and policy.get("invalidation_state") == "blocked"
+            and policy.get("lifecycle_state") == "blocked"
+            and isinstance(event_id, str)
+            and bool(_TOKEN_RE.fullmatch(event_id))
+        )
 
 def _atomic_dump(data: Mapping[str, Any], path: Path) -> None:
     """Atomically replace a YAML operation artifact after flushing it."""
@@ -361,6 +504,22 @@ class AssertionImpactReconciler:
             "status": "recorded",
         }
 
+    def validated_receipt(
+        self,
+        *,
+        assertion_id: str,
+        event_id: str,
+    ) -> dict[str, Any] | None:
+        """Return a receipt only when it satisfies reconciliation invariants.
+
+        This is intentionally the reader's validation seam as well as the
+        reconciler's resume seam.  It verifies the exact manifest action set
+        and every completed action's durable effect receipt before either
+        caller can trust projected action data.
+        """
+
+        return self._load_receipt(self.receipt_path(event_id), assertion_id, event_id)
+
     def _load_receipt(
         self,
         path: Path,
@@ -372,22 +531,52 @@ class AssertionImpactReconciler:
         receipt = self._load_mapping(path, "impact_receipt_invalid")
         actions = receipt.get("actions")
         if (
-            receipt.get("type") != "assertion_impact_operation"
+            receipt.get("schema_version") != "1.0"
+            or receipt.get("type") != "assertion_impact_operation"
             or receipt.get("event_id") != event_id
             or receipt.get("assertion_id") != assertion_id
             or receipt.get("status") not in {"pending", "completed", "blocked"}
             or not isinstance(actions, list)
         ):
             raise ImpactOperationError("impact_receipt_invalid")
+        status = receipt["status"]
+        reason_code = receipt.get("reason_code")
+        if status == "blocked":
+            if (
+                actions
+                or not isinstance(reason_code, str)
+                or reason_code not in _BLOCKED_RECEIPT_REASON_CODES
+            ):
+                raise ImpactOperationError("impact_receipt_invalid")
+        elif reason_code is not None:
+            raise ImpactOperationError("impact_receipt_invalid")
+        seen_pending_action = False
         for action in actions:
             if (
                 not isinstance(action, dict)
                 or not isinstance(action.get("object_id"), str)
                 or not action["object_id"]
                 or not isinstance(action.get("object_class"), str)
-                or action.get("action") != _ACTIONS.get(action["object_class"])
-                or action.get("status") not in {"pending", "completed"}
+                or not isinstance(action.get("action"), str)
+                or not isinstance(action.get("status"), str)
+                or action["action"] != _ACTIONS.get(action["object_class"])
+                or action["status"] not in {"pending", "completed"}
             ):
+                raise ImpactOperationError("impact_receipt_invalid")
+            if action["status"] == "pending":
+                seen_pending_action = True
+            elif seen_pending_action:
+                raise ImpactOperationError("impact_receipt_invalid")
+            writeback_status = action.get("writeback_status")
+            if action["object_class"] == "mock_writeback_receipt":
+                if action["status"] == "completed" and (
+                    not isinstance(writeback_status, str)
+                    or writeback_status not in _WRITEBACK_STATUSES
+                ):
+                    raise ImpactOperationError("impact_receipt_invalid")
+                if action["status"] == "pending" and "writeback_status" in action:
+                    raise ImpactOperationError("impact_receipt_invalid")
+            elif "writeback_status" in action:
                 raise ImpactOperationError("impact_receipt_invalid")
             if action["status"] == "completed":
                 effect_path = self._effect_path(event_id, action)
@@ -395,16 +584,20 @@ class AssertionImpactReconciler:
                     raise ImpactOperationError("impact_effect_invalid")
                 if self._load_mapping(effect_path, "impact_effect_invalid") != self._effect_record(event_id, action):
                     raise ImpactOperationError("impact_effect_invalid")
-        actual_identities = [
-            (action["object_id"], action["object_class"], action["action"])
-            for action in actions
-        ]
+        if status == "blocked":
+            # Writer-persisted zero-action blocked receipts deliberately
+            # record manifest read failures.  Re-reading that unavailable or
+            # invalid manifest here would hide the authoritative block.
+            return receipt
+        actual_identities = [(action["object_id"], action["object_class"], action["action"]) for action in actions]
         expected_identities = [
             (action.object_id, action.object_class, action.action)
             for action in self._manifest_actions(event_id, assertion_id)
         ]
         if actual_identities != expected_identities:
             raise ImpactOperationError("impact_receipt_action_set_invalid")
+        if status == "completed" and any(action["status"] != "completed" for action in actions):
+            raise ImpactOperationError("impact_receipt_invalid")
         return receipt
 
     def _manifest_actions(self, event_id: str, assertion_id: str) -> tuple[ImpactAction, ...]:
@@ -497,6 +690,8 @@ def resume_impact(receipt: ImpactReceipt, *, completed_object_ids: Iterable[str]
 
 
 __all__ = [
+    "AssertionImpactReadDenied",
+    "AssertionImpactReader",
     "AssertionImpactReconciler",
     "ImpactAction",
     "ImpactInterrupted",

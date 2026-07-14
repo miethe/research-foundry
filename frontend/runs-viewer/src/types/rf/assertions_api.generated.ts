@@ -61,6 +61,35 @@ export interface AssertionLineage {
   denial_reason: string | null;
 }
 
+export interface AssertionImpactAction {
+  object_id: string;
+  object_class: string;
+  action: string;
+  status: "pending" | "completed" | "failed" | "blocked";
+  writeback_status?: "default_denied" | "denied" | "queued" | null;
+}
+
+export interface AssertionImpactSummary {
+  event_id: string;
+  assertion_id: string;
+  lifecycle_state: string;
+  access_scope: string;
+  authoritative_reuse_blocked: true;
+  operation_status: "pending" | "blocked" | "completed";
+  reason_code?: string | null;
+  replacement_edition_id?: string | null;
+  resumable: boolean;
+  actions: Array<AssertionImpactAction>;
+}
+
+export interface AssertionImpactReasonDetail {
+  reason_code: string;
+}
+
+export interface AssertionImpactReasonResponse {
+  detail: AssertionImpactReasonDetail;
+}
+
 /** A rights-denied search result uses the normal response envelope with no results. */
 export interface AssertionSearchDenialResponse {
   items: Array<never>;

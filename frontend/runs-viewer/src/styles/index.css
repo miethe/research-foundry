@@ -14,6 +14,7 @@
 @import "./catalog.css";
 @import "./builder.css";
 @import "./agents.css";
+@import "./assertion-impact.css";
 
 /* Accessibility — visually-hidden live regions for screen-reader status */
 .sr-only {

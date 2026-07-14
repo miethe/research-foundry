@@ -210,9 +210,11 @@ describe("CatalogScreen — loading state and tab counts", () => {
 
   it("renders the tab strip with live counts once the index resolves", async () => {
     renderCatalog();
-    const claimsTab = await screen.findByTestId("catalog-tab-claim");
-    expect(claimsTab.textContent).toContain("Claims");
-    expect(claimsTab.textContent).toContain("1"); // one claim (c1)
+    // "assertions" (Source assertions) replaced the old "claim" tab (P6-002,
+    // spec §4.4) — it is backed by a separate workspace-scoped ledger, so it
+    // carries no CatalogItemType-derived tab count.
+    const assertionsTab = await screen.findByTestId("catalog-tab-assertions");
+    expect(assertionsTab.textContent).toContain("Source assertions");
 
     const inferenceTab = screen.getByTestId("catalog-tab-inference");
     expect(inferenceTab.textContent).toContain("1"); // one inference (c2)
@@ -231,16 +233,17 @@ describe("CatalogScreen — loading state and tab counts", () => {
 // ── Tab switching ─────────────────────────────────────────────────────────────
 
 describe("CatalogScreen — tab switching", () => {
-  it("shows the claim row on the default Claims tab", async () => {
+  it("shows the Source assertions pane on the default tab", async () => {
+    // Source assertions is the first/active tab (P6-002, design guidance §A);
+    // it renders AssertionCatalogPane, not the old CatalogItemType "claim" rows.
     renderCatalog();
-    await screen.findByTestId("catalog-tab-claim");
-    const row = await screen.findByTestId(/^catalog-row-ci_/);
-    expect(row.textContent).toContain("Hybrid retrieval reduces latency");
+    await screen.findByTestId("catalog-tab-assertions");
+    expect(await screen.findByTestId("assertion-search-input")).toBeInTheDocument();
   });
 
   it("switching to Sources shows the deduped source row", async () => {
     renderCatalog();
-    await screen.findByTestId("catalog-tab-claim");
+    await screen.findByTestId("catalog-tab-source");
     fireEvent.click(screen.getByTestId("catalog-tab-source"));
     await waitFor(() => {
       expect(screen.getByTestId("catalog-results-table").textContent).toContain("Benchmark Paper");
@@ -249,7 +252,7 @@ describe("CatalogScreen — tab switching", () => {
 
   it("switching to Reports shows the published-report entry (absorbed Library semantics)", async () => {
     renderCatalog();
-    await screen.findByTestId("catalog-tab-claim");
+    await screen.findByTestId("catalog-tab-report");
     fireEvent.click(screen.getByTestId("catalog-tab-report"));
     await waitFor(() => {
       expect(screen.getByTestId("catalog-results-table").textContent).toContain("Catalog Test Report");
@@ -258,7 +261,7 @@ describe("CatalogScreen — tab switching", () => {
 
   it("switching to Report-ready shows reusable outputs + writeback artifacts (absorbed Library semantics)", async () => {
     renderCatalog();
-    await screen.findByTestId("catalog-tab-claim");
+    await screen.findByTestId("catalog-tab-report-ready");
     fireEvent.click(screen.getByTestId("catalog-tab-report-ready"));
     const reusableGroup = await screen.findByTestId("catalog-group-reusable");
     expect(reusableGroup.textContent).toContain("Reusable retrieval eval harness");
@@ -271,15 +274,19 @@ describe("CatalogScreen — tab switching", () => {
 
 describe("CatalogScreen — free-text search", () => {
   it("filters rows by a debounced search query", async () => {
+    // Redirected to the "source" tab — "assertions" (default) is backed by a
+    // separate ledger/search (AssertionCatalogPane), not this shared
+    // searchInput/debouncedQuery state used by the other CatalogItemType tabs.
     const { container } = renderCatalog();
-    await screen.findByTestId("catalog-tab-claim");
+    await screen.findByTestId("catalog-tab-source");
+    fireEvent.click(screen.getByTestId("catalog-tab-source"));
     await screen.findByTestId(/^catalog-row-ci_/);
 
-    fireEvent.change(screen.getByTestId("catalog-search-input"), { target: { value: "hybrid retrieval" } });
+    fireEvent.change(screen.getByTestId("catalog-search-input"), { target: { value: "Benchmark" } });
 
     await waitFor(
       () => {
-        expect(screen.getByTestId("catalog-results-table").textContent).toContain("Hybrid retrieval");
+        expect(screen.getByTestId("catalog-results-table").textContent).toContain("Benchmark Paper");
       },
       { timeout: 2000 },
     );
@@ -303,26 +310,36 @@ describe("CatalogScreen — free-text search", () => {
 
 describe("CatalogScreen — selecting a row populates the inspector", () => {
   it("shows the empty inspector state before any selection", async () => {
+    // Redirected to "source" — "assertions" (default) renders its own docked
+    // inspector empty state (assertion-inspector-empty), not this generic
+    // CatalogInspector one.
     renderCatalog();
-    await screen.findByTestId("catalog-tab-claim");
-    expect(screen.getByTestId("catalog-inspector-empty")).toBeInTheDocument();
+    await screen.findByTestId("catalog-tab-source");
+    fireEvent.click(screen.getByTestId("catalog-tab-source"));
+    expect(await screen.findByTestId("catalog-inspector-empty")).toBeInTheDocument();
   });
 
-  it("populates the inspector with the selected claim's provenance and source cards", async () => {
+  it("populates the inspector with the selected inference's provenance and inference basis", async () => {
+    // Redirected to "inference" (c2) — the old "claim" tab (c1) no longer
+    // exists (P6-002 replaced it with Source assertions); "inference" is
+    // still CatalogItemType-backed and isClaimLike, preserving this test's
+    // intent (provenance strip + non-source claim-like sections).
     renderCatalog();
-    await screen.findByTestId("catalog-tab-claim");
+    await screen.findByTestId("catalog-tab-inference");
+    fireEvent.click(screen.getByTestId("catalog-tab-inference"));
     const row = await screen.findByTestId(/^catalog-row-ci_/);
     fireEvent.click(row);
 
     const inspector = await screen.findByTestId("catalog-inspector");
-    expect(inspector.textContent).toContain("c1");
+    expect(inspector.textContent).toContain("c2");
     expect(screen.getByTestId("catalog-provenance")).toBeInTheDocument();
-    expect(screen.getByTestId("catalog-inspector-sources").textContent).toContain("Benchmark Paper");
+    expect(screen.getByTestId("catalog-inference-basis").textContent).toContain("c1");
   });
 
   it("shows disabled action buttons with the Phase 3/4 planned tooltips", async () => {
     renderCatalog();
-    await screen.findByTestId("catalog-tab-claim");
+    await screen.findByTestId("catalog-tab-source");
+    fireEvent.click(screen.getByTestId("catalog-tab-source"));
     const row = await screen.findByTestId(/^catalog-row-ci_/);
     fireEvent.click(row);
     await screen.findByTestId("catalog-inspector");
@@ -338,7 +355,8 @@ describe("CatalogScreen — selecting a row populates the inspector", () => {
 
   it("shows an 'Open run' action that opens the run detail modal", async () => {
     renderCatalog();
-    await screen.findByTestId("catalog-tab-claim");
+    await screen.findByTestId("catalog-tab-source");
+    fireEvent.click(screen.getByTestId("catalog-tab-source"));
     const row = await screen.findByTestId(/^catalog-row-ci_/);
     fireEvent.click(row);
     await screen.findByTestId("catalog-inspector");

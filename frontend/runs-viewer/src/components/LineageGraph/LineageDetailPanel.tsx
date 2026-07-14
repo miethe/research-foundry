@@ -4,6 +4,14 @@
  *
  * P5 DISP-005: accepts optional runMeta for reference tag/category chips in the panel header.
  * Chips are non-interactive context only; omitted when tags/category null/absent (R-P2).
+ *
+ * P6-003: this panel models the claim-lineage object graph only (LineageNode /
+ * LINEAGE_KIND_META below). The typed assertion-relationship lineage (source
+ * edition → passage → source assertion → report/run uses, plus inference)
+ * has a materially different, packet/DTO-shaped inspector — see the sibling
+ * AssertionOnlyInspector in ./AssertionOnlyLineage.tsx, which reuses this
+ * file's `.rv-lineage-detail` CSS scaffold rather than this component's
+ * LineageNode-typed props.
  */
 
 import type { LineageNode } from "./lineageTree";

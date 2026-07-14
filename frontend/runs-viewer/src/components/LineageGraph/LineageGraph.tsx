@@ -11,6 +11,7 @@ import { buildLineageTree, type LineageNode } from "./lineageTree";
 import { LineageList } from "./LineageList";
 import { LineageDetailPanel } from "./LineageDetailPanel";
 import { LineageFlow } from "./LineageFlow";
+import { AssertionOnlyLineage } from "./AssertionOnlyLineage";
 
 export interface ArtifactLineageGraphProps {
   run: RFRunExport;
@@ -19,6 +20,15 @@ export interface ArtifactLineageGraphProps {
   onOpenProvenance?: (claimId: string) => void;
   /** Called when the user double-clicks a lineage row or clicks the ⤢ button in LineageDetailPanel. */
   onExpandNode?: (node: LineageNode) => void;
+  /**
+   * P6-003: optional selected source-assertion context. When present, the
+   * Lineage tab renders the typed assertion-relationship chain (source
+   * edition → passage → source assertion → report/run uses) instead of the
+   * claim-based tree — orthogonal to selectedClaimId/onSelectClaim, which
+   * continue to drive the default claim lineage when this is absent.
+   */
+  assertionId?: string | null;
+  onViewPriorUses?: (assertionId: string) => void;
 }
 
 type ViewMode = "list" | "graph";
@@ -29,6 +39,8 @@ export function ArtifactLineageGraph({
   onSelectClaim,
   onOpenProvenance,
   onExpandNode,
+  assertionId = null,
+  onViewPriorUses,
 }: ArtifactLineageGraphProps) {
   const tree = useMemo(() => buildLineageTree(run), [run]);
   const allIds = useMemo(() => flattenNodeIds(tree), [tree]);
@@ -89,6 +101,16 @@ export function ArtifactLineageGraph({
   const selectedNode: LineageNode | null = selectedNodeId
     ? (findNode(tree, selectedNodeId) ?? null)
     : null;
+
+  if (assertionId) {
+    return (
+      <AssertionOnlyLineage
+        assertionId={assertionId}
+        onOpenProvenance={onOpenProvenance}
+        onViewPriorUses={onViewPriorUses}
+      />
+    );
+  }
 
   return (
     <div className="rv-lineage rv-lineage-explorer" data-testid="lineage-graph">

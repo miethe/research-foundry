@@ -1,0 +1,411 @@
+/* assertion-impact.css — P6-003 reviewer-experience additions.
+ *
+ * Scope: ClaimAuditWorkbench stale-impact band/inspector, the assertion-only
+ * lineage view, and the canonical-claims-disabled notice. Consumes only
+ * existing semantic/primitive tokens from tokens.css — no mockup-sampled hex
+ * values (see docs/project_plans/design-specs/
+ * reusable-assertion-ledger-reviewer-experience-v1.md §3).
+ */
+
+/* ── Stale-impact status band (ClaimAuditWorkbench, spec §5.3/§6.D) ───────── */
+
+.rv-assertion-band {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--it-space-3);
+  padding: var(--it-space-3) var(--it-space-4);
+  margin: var(--it-space-3) 0;
+  background: var(--it-orange-50);
+  border: 1px solid rgba(194, 100, 26, 0.28);
+  border-radius: var(--it-radius-md);
+  color: var(--it-orange-700, var(--it-orange-600));
+}
+
+.rv-assertion-band__icon {
+  flex-shrink: 0;
+  color: var(--it-orange-500);
+  margin-top: 1px;
+}
+
+.rv-assertion-band__copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1);
+  flex: 1;
+}
+
+.rv-assertion-band__copy strong {
+  color: var(--it-text-primary);
+  font-size: var(--it-text-base);
+}
+
+.rv-assertion-band__copy span {
+  color: var(--it-text-secondary);
+  font-size: var(--it-text-sm);
+}
+
+.rv-assertion-band__reason {
+  color: var(--it-text-tertiary);
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+}
+
+.rv-assertion-band__action {
+  flex-shrink: 0;
+  align-self: center;
+  border-color: rgba(194, 100, 26, 0.35);
+  color: var(--it-orange-600);
+}
+
+/* ── Selected-assertion inspector (ClaimAuditWorkbench) ────────────────────── */
+
+.rv-assertion-passage {
+  margin: 0;
+  padding: var(--it-space-3);
+  background: var(--it-neutral-100, rgba(20, 26, 44, 0.03));
+  border-left: 3px solid var(--it-gold-300);
+  border-radius: var(--it-radius-sm);
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+}
+
+.rv-assertion-passage__chip {
+  align-self: flex-start;
+}
+
+.rv-assertion-lifecycle-facts {
+  display: flex;
+  gap: var(--it-space-2);
+  flex-wrap: wrap;
+}
+
+.rv-assertion-fact .it-chip {
+  gap: var(--it-space-1);
+}
+
+.rv-assertion-edition-transition {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--it-space-1_5);
+  font-family: var(--it-font-mono);
+}
+
+.rv-assertion-impact-unavailable {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-2);
+  align-items: flex-start;
+}
+
+.rv-assertion-impact-signature {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-2);
+  font-family: var(--it-font-mono);
+}
+
+.rv-assertion-impact-facts {
+  margin-top: var(--it-space-2);
+}
+
+.rv-assertion-affected-uses {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1_5);
+}
+
+.rv-assertion-affected-uses__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--it-space-2);
+  padding: var(--it-space-1_5) 0;
+  border-bottom: 1px solid var(--it-border-subtle);
+}
+
+.rv-assertion-affected-uses__row:last-child {
+  border-bottom: none;
+}
+
+.rv-assertion-affected-uses__label {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+}
+
+.rv-assertion-affected-uses__badge {
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-medium);
+  background: var(--it-neutral-100, rgba(20, 26, 44, 0.04));
+  border-radius: var(--it-radius-sm);
+  padding: 2px var(--it-space-2);
+  flex-shrink: 0;
+}
+
+.rv-assertion-affected-uses__badge--compound {
+  color: var(--it-red-600);
+}
+
+.rv-assertion-reconciliation {
+  margin: 0;
+  font-size: var(--it-text-sm);
+  color: var(--it-text-secondary);
+}
+
+.rv-assertion-action-progress {
+  margin: 0 0 var(--it-space-2);
+  color: var(--it-text-secondary);
+  font-size: var(--it-text-sm);
+}
+
+.rv-assertion-action-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1_5);
+  margin: 0;
+  padding-left: var(--it-space-5);
+}
+
+.rv-assertion-action-list__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--it-space-2);
+  align-items: baseline;
+  color: var(--it-text-secondary);
+  font-size: var(--it-text-sm);
+}
+
+.rv-assertion-action-list__item code {
+  overflow-wrap: anywhere;
+}
+
+.rv-assertion-action-list__status {
+  color: var(--it-text-primary);
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+}
+
+.rv-assertion-action-list__writeback-facts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--it-space-2);
+}
+
+.rv-assertion-action-list__fact-label {
+  margin-right: var(--it-space-1);
+  color: var(--it-text-tertiary);
+  font-family: var(--it-font-sans);
+}
+
+.rv-assertion-replacement-btn {
+  width: 100%;
+  justify-content: center;
+  margin-top: var(--it-space-2);
+}
+
+/* ── Canonical-claims / assertion-only notice (Lineage, spec §5.4, §6.E) ─── */
+
+.rv-assertion-only-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--it-space-3);
+  padding: var(--it-space-3) var(--it-space-4);
+  margin-bottom: var(--it-space-3);
+  background: var(--it-gold-50);
+  border: 1px solid rgba(184, 138, 43, 0.28);
+  border-radius: var(--it-radius-md);
+}
+
+.rv-assertion-only-notice__icon {
+  color: var(--it-gold-400);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.rv-assertion-only-notice__copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1);
+}
+
+.rv-assertion-only-notice__copy strong {
+  color: var(--it-text-primary);
+  font-size: var(--it-text-base);
+}
+
+.rv-assertion-only-notice__copy span {
+  color: var(--it-text-secondary);
+  font-size: var(--it-text-sm);
+}
+
+/* ── Assertion-only lineage chain (LineageGraph composition) ───────────────── */
+
+.rv-assertion-lineage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-4);
+}
+
+.rv-assertion-lineage__canvas {
+  height: 420px;
+  min-height: 320px;
+  border: 1px solid var(--it-border-subtle);
+  border-radius: var(--it-radius-lg);
+  background: var(--it-surface-base);
+  position: relative;
+}
+
+.rv-assertion-lineage__canvas--hidden,
+.rv-assertion-lineage__list--hidden {
+  display: none;
+}
+
+.rv-assertion-lineage__list {
+  border: 1px solid var(--it-border-subtle);
+  border-radius: var(--it-radius-lg);
+  padding: var(--it-space-2);
+  background: var(--it-surface-base);
+}
+
+@media (max-width: 767px) {
+  .rv-lineage-view-toggle {
+    display: none;
+  }
+
+  .rv-assertion-lineage__canvas {
+    display: none;
+  }
+
+  .rv-assertion-lineage__list--hidden {
+    display: block !important;
+  }
+}
+
+.rv-assertion-lnode {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1_5);
+  padding: var(--it-space-2_5) var(--it-space-3);
+  min-width: 190px;
+  max-width: 240px;
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-subtle);
+  border-radius: var(--it-radius-md);
+  box-shadow: var(--it-shadow-sm);
+}
+
+.rv-assertion-lnode--selected {
+  border-color: var(--it-blue-300);
+  box-shadow: var(--it-shadow-glow-blue);
+}
+
+.rv-assertion-lnode__eyebrow {
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--it-text-tertiary);
+}
+
+.rv-assertion-lnode__title {
+  font-size: var(--it-text-sm);
+  color: var(--it-text-primary);
+}
+
+.rv-assertion-lnode__subtitle {
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+  color: var(--it-text-tertiary);
+}
+
+.rv-assertion-lnode__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--it-space-1);
+}
+
+.rv-assertion-lnode--inference {
+  border: 1px dashed var(--it-purple-400);
+  background: var(--it-purple-50);
+}
+
+.rv-assertion-lnode__inference-label {
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--it-purple-600);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--it-space-1);
+}
+
+.rv-assertion-lnode__inputs {
+  font-family: var(--it-font-mono);
+  font-size: var(--it-text-xs);
+  color: var(--it-purple-600);
+}
+
+/* ── Assertion lineage inspector sections ──────────────────────────────────── */
+
+.rv-assertion-lineage-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--it-space-1_5);
+  padding: var(--it-space-2) 0;
+  border-bottom: 1px solid var(--it-border-subtle);
+}
+
+.rv-assertion-lineage-detail__section:last-child {
+  border-bottom: none;
+}
+
+.rv-assertion-lineage-detail__label {
+  font-size: var(--it-text-xs);
+  font-weight: var(--it-weight-semibold);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--it-text-tertiary);
+}
+
+.rv-assertion-lineage-detail__copy-row {
+  display: flex;
+  align-items: center;
+  gap: var(--it-space-2);
+  font-family: var(--it-font-mono);
+}
+
+/* ── P7 tablet layout contract (spec §9) ────────────────────────────────────
+ * The desktop audit and lineage workspaces use multiple columns. At tablet
+ * widths, keep the primary review surface first in document order and place
+ * the contextual inspector beneath it so neither pane is compressed past a
+ * readable width. The existing <=820px fallback remains responsible for the
+ * smaller-screen refinements.
+ */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .rv-audit-grid,
+  .rv-lineage-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rv-claim-inspector,
+  .rv-lineage-detail {
+    grid-column: 1;
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rv-assertion-band,
+  .rv-assertion-only-notice {
+    transition: none;
+  }
+}

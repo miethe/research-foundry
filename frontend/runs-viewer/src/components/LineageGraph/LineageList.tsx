@@ -14,6 +14,8 @@ import { KindIcon, ChevronDown, ChevronRight } from "./kindIcons";
 
 export interface LineageViewProps {
   roots: LineageNode[];
+  /** Defaults to the run-oriented label; assertion lineage supplies its own scope. */
+  ariaLabel?: string;
   expanded: Set<string>;
   onToggle: (id: string) => void;
   selectedNodeId: string | null;
@@ -31,12 +33,12 @@ export interface LineageViewProps {
 
 // ── LineageList ────────────────────────────────────────────────────────────────
 
-export function LineageList({ roots, expanded, onToggle, selectedNodeId, onSelectNode, onExpandNode }: LineageViewProps) {
+export function LineageList({ roots, ariaLabel = "Run lineage explorer", expanded, onToggle, selectedNodeId, onSelectNode, onExpandNode }: LineageViewProps) {
   return (
     <div
       className="rv-lineage-tree rv-lineage-list"
       role="tree"
-      aria-label="Run lineage explorer"
+      aria-label={ariaLabel}
     >
       {roots.map((node, idx) => (
         <LineageListRow

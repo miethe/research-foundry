@@ -71,12 +71,17 @@ const ASSERTION_COMPONENTS = [
   "AssertionSearchResponse",
   "EvidencePacket",
   "AssertionLineage",
+  "AssertionImpactAction",
+  "AssertionImpactSummary",
+  "AssertionImpactReasonDetail",
+  "AssertionImpactReasonResponse",
 ];
 
 const ASSERTION_PATHS = [
   "/api/assertions/search",
   "/api/assertions/{assertion_id}",
   "/api/assertions/{assertion_id}/lineage",
+  "/api/assertions/{assertion_id}/impact",
 ];
 
 mkdirSync(OUT_DIR, { recursive: true });
@@ -118,6 +123,10 @@ function refName(ref) {
 function schemaType(schema) {
   const value = asObject(schema, "schema");
   if (value.$ref) return refName(value.$ref);
+  if (Object.hasOwn(value, "const")) return JSON.stringify(value.const);
+  if (Array.isArray(value.enum)) {
+    return value.enum.map((item) => JSON.stringify(item)).join(" | ");
+  }
   if (Array.isArray(value.anyOf)) {
     return [...new Set(value.anyOf.map(schemaType))].join(" | ");
   }

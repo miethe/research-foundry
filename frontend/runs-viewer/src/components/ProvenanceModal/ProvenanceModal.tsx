@@ -16,9 +16,11 @@
  *   modalRef.current?.close();
  */
 
-import { useState, useCallback, forwardRef, useEffect, useImperativeHandle } from "react";
+import { useState, useCallback, forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { RFClaim, RFSensitivity } from "@/types/rf";
 import { SourceCard } from "@/components/SourceCard/SourceCard";
+import { ReusableAssertionFieldsColumn } from "@/components/AssertionCatalog/ReusableAssertionFieldsColumn";
+import "@/styles/assertions.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -56,14 +58,26 @@ const STATUS_CHIP: Record<string, string> = {
 export const ProvenanceModal = forwardRef<ProvenanceModalHandle, ProvenanceModalProps>(
   function ProvenanceModal({ claims, onChainClick, stacked = false, onOpenChange, sensitivityThreshold }, ref) {
     const [openClaimId, setOpenClaimId] = useState<string | null>(null);
+    const openerRef = useRef<HTMLElement | null>(null);
+    const dialogRef = useRef<HTMLDivElement | null>(null);
+    const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
     const open  = useCallback((claimId: string) => {
-      setOpenClaimId(claimId);
+      const activeElement = document.activeElement;
+      setOpenClaimId((currentClaimId) => {
+        if (currentClaimId === null && activeElement instanceof HTMLElement) {
+          openerRef.current = activeElement;
+        }
+        return claimId;
+      });
       onOpenChange?.(true);
     }, [onOpenChange]);
     const close = useCallback(() => {
       setOpenClaimId(null);
       onOpenChange?.(false);
+      const opener = openerRef.current;
+      openerRef.current = null;
+      if (opener?.isConnected) opener.focus();
     }, [onOpenChange]);
 
     useImperativeHandle(ref, () => ({ open, close }), [open, close]);
@@ -71,11 +85,38 @@ export const ProvenanceModal = forwardRef<ProvenanceModalHandle, ProvenanceModal
     useEffect(() => {
       if (!openClaimId) return undefined;
       const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key === "Escape") close();
+        if (event.key === "Escape") {
+          close();
+          return;
+        }
+        if (event.key !== "Tab") return;
+        const dialog = dialogRef.current;
+        if (!dialog) return;
+        const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        )).filter((element) => !element.hasAttribute("disabled") && element.getAttribute("aria-hidden") !== "true");
+        if (focusable.length === 0) {
+          event.preventDefault();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const activeElement = document.activeElement;
+        if (event.shiftKey && (activeElement === first || !dialog.contains(activeElement))) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && (activeElement === last || !dialog.contains(activeElement))) {
+          event.preventDefault();
+          first.focus();
+        }
       };
       document.addEventListener("keydown", handleKeyDown);
       return () => document.removeEventListener("keydown", handleKeyDown);
     }, [close, openClaimId]);
+
+    useEffect(() => {
+      if (openClaimId) closeButtonRef.current?.focus();
+    }, [openClaimId]);
 
     if (!openClaimId) return null;
 
@@ -90,7 +131,8 @@ export const ProvenanceModal = forwardRef<ProvenanceModalHandle, ProvenanceModal
         role="presentation"
       >
         <div
-          className="rv-modal"
+          ref={dialogRef}
+          className={`rv-modal${claim ? " rv-modal--assertion-columns" : ""}`}
           role="dialog"
           aria-modal="true"
           aria-label={`Provenance for ${openClaimId}`}
@@ -116,6 +158,7 @@ export const ProvenanceModal = forwardRef<ProvenanceModalHandle, ProvenanceModal
               )}
             </div>
             <button
+              ref={closeButtonRef}
               type="button"
               className="it-btn ghost sm rv-modal__close"
               data-testid="modal-close"
@@ -135,6 +178,8 @@ export const ProvenanceModal = forwardRef<ProvenanceModalHandle, ProvenanceModal
             </div>
           ) : (
             <div className="rv-modal__body" data-testid="modal-body">
+            <div className="rv-modal__provenance-columns" data-testid="modal-provenance-columns">
+            <div className="rv-modal__provenance-left" data-testid="modal-provenance-left">
 
               {/* ── Claim text ── */}
               <div className="rv-modal__claim-text" data-testid="modal-claim-text">
@@ -233,6 +278,12 @@ export const ProvenanceModal = forwardRef<ProvenanceModalHandle, ProvenanceModal
                 </div>
               ) : null}
 
+            </div>
+
+            {/* ── Reusable assertion fields (P6-002) ── */}
+            <ReusableAssertionFieldsColumn claim={claim} />
+
+            </div>
             </div>
           )}
         </div>

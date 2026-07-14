@@ -86,6 +86,18 @@ export type {
 
 // Auto-generated schema types (run `pnpm codegen` to regenerate)
 export type { SourceCard }                from "./source_card.generated.js";
+export type {
+  AssertionSearchRequest,
+  AssertionSearchResponse,
+  AssertionSearchDenialResponse,
+  AssertionSummary,
+  AssertionFacets,
+  EvidencePacket,
+  AssertionLineage,
+  AssertionImpactSummary,
+  AssertionImpactAction,
+  RightsDecision,
+} from "./assertions_api.generated.js";
 export type { ClaimLedger }               from "./claim_ledger.generated.js";
 export type { EvidenceBundle }            from "./evidence_bundle.generated.js";
 export type { ExtractionCard }            from "./extraction_card.generated.js";
