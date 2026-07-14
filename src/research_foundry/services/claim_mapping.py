@@ -25,6 +25,22 @@ _COMPARATIVE = re.compile(r"\b(more|less|than|vs\.?|versus|fewer|greater|higher|
 _CAUSAL = re.compile(r"\b(because|causes?|leads? to|reduces?|increases?|results? in)\b", re.I)
 _ATTRIBUTION = re.compile(r"\b(says?|according to|claims?|reports?|states?)\b", re.I)
 
+EXTRACTION_FACT_CLAIM_MAPPING_VERSION = "extraction-card-fact-claim-v1"
+
+
+@dataclass(frozen=True)
+class ExtractionFactClaimMapping:
+    """The deliberately narrow P3 fact-to-run-local-claim contract."""
+
+    extraction_card_path: Path
+    extraction_card_id: str
+    fact_index: int
+    claim_id: str
+    source_card_id: str
+    evidence_id: str
+    locator: str
+    text: str
+
 
 @dataclass(frozen=True)
 class ClaimMapResult:
@@ -34,6 +50,89 @@ class ClaimMapResult:
     ledger_path: Path
     claims_total: int
     by_status: dict  # {supported: n, inference: n, ...}
+
+
+def extraction_fact_claim_mappings(
+    run_id: str, *, paths: FoundryPaths | None = None
+) -> tuple[ExtractionFactClaimMapping, ...]:
+    """Build the versioned 1:1 extraction-fact to claim locator mapping.
+
+    This intentionally does not add citation-recall or segmentation heuristics.
+    A P3 caller receives a mapping only when all fields are explicit,
+    non-empty, and ordered exactly as :func:`build_claim_ledger` numbers
+    run-local claims.
+    """
+
+    paths = paths or FoundryPaths.discover()
+    run_paths = paths.run_paths(run_id)
+    mappings: list[ExtractionFactClaimMapping] = []
+    counter = 0
+    for extraction_path in sorted(run_paths.extractions.glob("*.yaml")):
+        card = load_yaml(extraction_path)
+        if not isinstance(card, dict):
+            raise ValueError("invalid_extraction_card")
+        extraction_card_id = card.get("id")
+        source_card_id = card.get("source_card_id")
+        facts = card.get("extracted_facts")
+        if not isinstance(extraction_card_id, str) or not extraction_card_id:
+            raise ValueError("invalid_extraction_card_id")
+        if not isinstance(source_card_id, str) or not source_card_id:
+            raise ValueError("invalid_source_card_id")
+        if not isinstance(facts, list):
+            raise ValueError("invalid_extracted_facts")
+        for fact_index, fact in enumerate(facts):
+            if not isinstance(fact, dict):
+                raise ValueError("invalid_extracted_fact")
+            text = fact.get("text")
+            evidence_id = fact.get("evidence_id")
+            locator = fact.get("locator")
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError("incomplete_fact_locator_contract")
+            if not isinstance(evidence_id, str) or not evidence_id.strip():
+                raise ValueError("incomplete_fact_locator_contract")
+            if not isinstance(locator, str) or not locator.strip():
+                raise ValueError("incomplete_fact_locator_contract")
+            counter += 1
+            mappings.append(
+                ExtractionFactClaimMapping(
+                    extraction_card_path=extraction_path,
+                    extraction_card_id=extraction_card_id,
+                    fact_index=fact_index,
+                    claim_id=f"clm_{counter:03d}",
+                    source_card_id=source_card_id,
+                    evidence_id=evidence_id,
+                    locator=locator,
+                    text=text,
+                )
+            )
+    return tuple(mappings)
+
+
+def validate_extraction_fact_claim_mappings(
+    run_id: str, ledger: dict, *, paths: FoundryPaths | None = None
+) -> tuple[ExtractionFactClaimMapping, ...]:
+    """Reject any non-1:1 claim ledger before P3 materialization mutates data."""
+
+    mappings = extraction_fact_claim_mappings(run_id, paths=paths)
+    claims = ledger.get("claims")
+    if not isinstance(claims, list) or len(claims) != len(mappings):
+        raise ValueError("non_bijective_fact_claim_mapping")
+    for mapping, claim in zip(mappings, claims, strict=True):
+        if not isinstance(claim, dict):
+            raise ValueError("invalid_claim")
+        sources = claim.get("sources")
+        if (
+            claim.get("claim_id") != mapping.claim_id
+            or claim.get("text") != mapping.text
+            or not isinstance(sources, list)
+            or len(sources) != 1
+            or not isinstance(sources[0], dict)
+            or sources[0].get("source_card_id") != mapping.source_card_id
+            or sources[0].get("evidence_id") != mapping.evidence_id
+            or sources[0].get("locator") != mapping.locator
+        ):
+            raise ValueError("non_bijective_fact_claim_mapping")
+    return mappings
 
 
 def _schema_registry(paths: FoundryPaths) -> SchemaRegistry | None:
@@ -228,4 +327,11 @@ def _trace(run_paths, **fields) -> None:
         pass
 
 
-__all__ = ["ClaimMapResult", "build_claim_ledger"]
+__all__ = [
+    "ClaimMapResult",
+    "ExtractionFactClaimMapping",
+    "EXTRACTION_FACT_CLAIM_MAPPING_VERSION",
+    "build_claim_ledger",
+    "extraction_fact_claim_mappings",
+    "validate_extraction_fact_claim_mappings",
+]

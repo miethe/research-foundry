@@ -11,10 +11,13 @@ execution_model: sequential
 phase: 2
 title: P1 Canonical Contracts
 status: complete
+created: '2026-07-13T15:08:00Z'
 started: '2026-07-13T15:08:00Z'
-completed: '2026-07-13T17:14:52Z'
-updated: '2026-07-13T17:14:52Z'
-commit_refs: []
+completed: '2026-07-13T20:45:14Z'
+updated: '2026-07-13T20:45:14Z'
+commit_refs:
+- 7fec855e8f5221d7af9076cf82e7e6371e59821f
+- 24277e8226817ca1a6a977bf17b51dd7d2ca787e
 pr_refs: []
 overall_progress: 100
 completion_estimate: complete
@@ -122,9 +125,10 @@ tasks:
   acceptance_criteria:
   - P1-IDENTITY
   started: '2026-07-13T17:14:52Z'
-  completed: '2026-07-13T17:14:52Z'
+  completed: '2026-07-13T20:45:14Z'
   evidence:
-  - review: Independent task-completion-validator APPROVE; thread 019f5c63-505a-7712-b4dd-c6b82ee6d768; tree e186fdb836ff06d15b9dd69c2b4e971f7ac247a5
+  - review: Independent task-completion-validator REQUEST CHANGES; thread 019f5d31-9ec7-74a2-b575-3f2e22792cc4; scope commit 7fec855e8f5221d7af9076cf82e7e6371e59821f; tree f5e34e065f9fb3bbeb55d5d1caadb33626f9baea; corrected-tracker recertification pending
+  - review: Independent task-completion-validator APPROVE; thread 019f5d31-9ec7-74a2-b575-3f2e22792cc4; reviewed implementation commit 7fec855e8f5221d7af9076cf82e7e6371e59821f; tree f5e34e065f9fb3bbeb55d5d1caadb33626f9baea; correction checkpoint 24277e8226817ca1a6a977bf17b51dd7d2ca787e
   - test: 'Focused P1 suite passed: 199 tests'
   verified_by:
   - task-completion-validator
@@ -163,11 +167,13 @@ success_criteria:
   - P1-003
   - P1-REVIEW
 completion_evidence:
-- review: Independent task-completion-validator APPROVE; thread 019f5c63-505a-7712-b4dd-c6b82ee6d768; tree e186fdb836ff06d15b9dd69c2b4e971f7ac247a5
+- review: Independent task-completion-validator APPROVE; thread 019f5d31-9ec7-74a2-b575-3f2e22792cc4; reviewed implementation commit 7fec855e8f5221d7af9076cf82e7e6371e59821f; tree f5e34e065f9fb3bbeb55d5d1caadb33626f9baea; correction checkpoint 24277e8226817ca1a6a977bf17b51dd7d2ca787e
 - validation: Ruff, mypy, codegen drift 27/27, exact TypeScript, 33-schema meta-validation, artifact validation, phase gate, AC coverage, and git diff check passed
 - protected_assets_fingerprint: a5ec9d56934724d037aac51dc1a715d0e3c9286d71d8cb61c96d6d7fca620e77
 verified_by:
 - task-completion-validator
+notes:
+- 'Residual closeout: rerun codegen:check and mypy in the dependency-complete writer/integration environment.'
 files_modified:
 - schemas/source_edition.schema.yaml
 - schemas/passage.schema.yaml
@@ -197,8 +203,8 @@ progress: 75
 
 # Reusable Assertion Ledger — Phase 2 (P1): Canonical Contracts
 
-Independent review approved P1-001 through P1-003; `P1-REVIEW` is complete and
-the phase is marked complete.
+Independent review approved P1-001 through P1-003 and the corrected tracker;
+`P1-REVIEW` is complete and the phase is marked complete.
 
 ## Implementation decisions
 
@@ -228,9 +234,15 @@ the phase is marked complete.
 | `./frontend/runs-viewer/node_modules/.bin/tsc --noEmit -p frontend/runs-viewer/tsconfig.app.json` | Passed. |
 | `pnpm --dir frontend/runs-viewer run codegen` and `pnpm --dir frontend/runs-viewer run codegen:check` | Passed: generated and verified 27 viewer-consumed schemas, including all seven P1 schemas. |
 | Supersession regression correction: versioned `replaces[]` schema fixture | Passed: a valid `superseded` canonical claim accepts `canonical_claim_id` plus `canonical_claim_version`. |
-| Artifact validation, `validate-phase-completion.py`, and `ac-coverage-report.py` | Passed; phase is complete, and `P1-REVIEW` is approved. |
+| Artifact validation, `validate-phase-completion.py`, and `ac-coverage-report.py` | Passed; phase is complete and `P1-REVIEW` is independently approved. |
 
 ## Review closeout
 
-Independent review recorded `APPROVE`; legacy semantics and the absence of
-feature-enablement or deployment authority were confirmed.
+Independent review recorded `APPROVE` for correction checkpoint
+`24277e8226817ca1a6a977bf17b51dd7d2ca787e` and implementation commit
+`7fec855e8f5221d7af9076cf82e7e6371e59821f` at tree
+`f5e34e065f9fb3bbeb55d5d1caadb33626f9baea`. Legacy semantics and the absence
+of feature-enablement or deployment authority remain unchanged.
+
+Residual closeout: rerun `codegen:check` and `mypy` later in the
+dependency-complete writer/integration environment.
