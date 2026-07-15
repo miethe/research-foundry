@@ -123,6 +123,12 @@ export function AssertionPacketInspector({ state, onClose }: AssertionPacketInsp
         </h3>
       </header>
 
+      {state.kind === "legacy-missing" && (
+        <p className="rv-assertion-legacy-note" data-testid="assertion-packet-legacy-missing" role="status">
+          Legacy packet: some fields were not recorded.
+        </p>
+      )}
+
       <AssertionPacketFields packet={packet} missingFields={missingFields} />
 
       <footer className="rv-assertion-packet__footer">

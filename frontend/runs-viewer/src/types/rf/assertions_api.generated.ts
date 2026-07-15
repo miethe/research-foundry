@@ -42,7 +42,7 @@ export interface EvidencePacket {
   passage: Record<string, unknown>;
   source_edition: Record<string, unknown>;
   qualifiers: Record<string, unknown>;
-  qualifier_extensions: Record<string, unknown>;
+  qualifier_extensions?: Record<string, unknown> | null;
   evaluations: Array<Record<string, unknown>>;
   freshness: Record<string, unknown>;
   access_scope: string;

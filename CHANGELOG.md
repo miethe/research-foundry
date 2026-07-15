@@ -11,6 +11,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Reusable Assertion Ledger — Default-Off Readiness Controls (P8)**
+
+- **Three independent default-off controls** under `foundry.assertion_ledger`:
+  ledger writes, automated reuse, and canonical claims. Reuse and canonical
+  capability checks fail closed unless ledger writes are also explicitly
+  enabled; no private rollout or public behavior is enabled by this change.
+- **Local readiness rehearsal** via `scripts/assertion_ledger_readiness.py`:
+  idempotent migration/backfill dry-run and disable/rollback receipts plus
+  aggregate-only health/economics metrics that omit passage text, source
+  locators, workspace identifiers, and external-writeback payloads.
+- **Operator and user documentation** for assertion-only operation, denial and
+  correction semantics, private-boundary requirements, and recovery.
+
 #### **Workspace Isolation Enforcement (WKSP-304) — Query-Layer Row-Level Scoping**
 
 - **New `workspace_isolation_enforcement` config flag** — Controls workspace row-level

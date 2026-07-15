@@ -172,6 +172,16 @@ static-file server. Sensitivity redaction is applied at export time — governed
 content never reaches the viewer. See
 `docs/dev/architecture/adr-runs-read-path.md` for the full read-path decision.
 
+### Reusable Assertion Ledger Readiness
+
+The optional reusable assertion ledger is default-off. Its local readiness
+controls, safe aggregate metrics, and disable rehearsal are documented in the
+[operator runbook](docs/dev/architecture/runbooks/assertion-ledger-readiness.md).
+The user-facing model (assertions, inferences, denial and correction states) is
+in [the assertion-ledger guide](docs/user/assertion-ledger.md). Neither document
+authorizes private rollout, shared indexing, public promotion, or external
+writeback.
+
 ### Serving Runs Live (Loopback API)
 
 Alternatively, run a local HTTP server to serve live run data without pre-exporting:

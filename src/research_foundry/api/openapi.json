@@ -3306,8 +3306,15 @@
             "title": "Qualifiers"
           },
           "qualifier_extensions": {
-            "additionalProperties": true,
-            "type": "object",
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Qualifier Extensions"
           },
           "evaluations": {
@@ -3362,7 +3369,6 @@
           "passage",
           "source_edition",
           "qualifiers",
-          "qualifier_extensions",
           "evaluations",
           "freshness",
           "access_scope",

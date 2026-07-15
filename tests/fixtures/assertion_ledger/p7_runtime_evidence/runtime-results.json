@@ -1,0 +1,78 @@
+{
+  "fixture": {
+    "full_run": "rf_run_p7_full",
+    "full_assertion": "ast_121afb987b3b9e19c4a67066513ea26422637b5e9c4cc4837b62501f17e5fc7d",
+    "legacy_run": "rf_run_p7_legacy",
+    "legacy_assertion": "ast_86e91c5e5d53a9546ab793514330893cd9a54e55bca815bedc07b4fdbfc3f432",
+    "stale_run": "rf_run_p7_stale",
+    "stale_assertion": "ast_d36ec5b25693c91981fd0590fe87569bdd7f22e85d89af00f9d3015919bcde18",
+    "denied_run": "rf_run_p7_denied",
+    "denied_assertion": "ast_d984665205547230b58a16097abbeb23bb572e2877cc7148b2f53523698afc05"
+  },
+  "browser": "system Google Chrome via Playwright",
+  "owner_private_status": "not_executed",
+  "results": [
+    {
+      "name": "full-catalog",
+      "viewport": "1440x900",
+      "checks": [
+        "CatalogScreen",
+        "full packet",
+        "AssertionPacketInspector"
+      ]
+    },
+    {
+      "name": "legacy-missing",
+      "viewport": "1440x900",
+      "checks": [
+        "CatalogScreen",
+        "legacy-missing qualifier_extensions"
+      ]
+    },
+    {
+      "name": "provenance-focus",
+      "viewport": "1440x900",
+      "checks": [
+        "ClaimAuditWorkbench",
+        "ProvenanceModal",
+        "role=dialog aria-modal=true",
+        "named close control",
+        "dialog initial focus"
+      ]
+    },
+    {
+      "name": "provenance-keyboard",
+      "checks": [
+        "Escape closes dialog",
+        "focus restored to Open modal"
+      ]
+    },
+    {
+      "name": "stale-audit",
+      "viewport": "1440x900",
+      "checks": [
+        "RunDetailWorkspace",
+        "ClaimAuditWorkbench",
+        "stale packet"
+      ]
+    },
+    {
+      "name": "assertion-only-lineage",
+      "viewport": "1440x900",
+      "checks": [
+        "RunDetailWorkspace",
+        "LineageDetailPanel path",
+        "assertion-only mode"
+      ]
+    },
+    {
+      "name": "denied-catalog",
+      "viewport": "1440x900",
+      "checks": [
+        "CatalogScreen",
+        "denied state",
+        "zero candidate rows"
+      ]
+    }
+  ]
+}

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlparse
 
+from ..config import FoundryConfig
 from ..errors import NotFoundError, SchemaError
 from ..frontmatter import dump_md
 from ..ids import now_iso, source_card_id
@@ -299,7 +300,10 @@ def ingest_source(
 
     # Explicit opt-in seam: the default source-card flow remains run-local.
     # The registry never enables reuse or canonical-claim feature flags.
-    if assertion_registry_workspace_id and content is not None and not degraded:
+    ledger_writes_allowed = (
+        FoundryConfig(paths=paths).assertion_ledger_capabilities().ledger_write_allowed
+    )
+    if assertion_registry_workspace_id and content is not None and not degraded and ledger_writes_allowed:
         from .assertion_registry import AssertionRegistry
 
         registry_usage: dict[str, Any] = dict(cast(dict[str, Any], front_matter["usage"]))
@@ -313,6 +317,8 @@ def ingest_source(
             retrieval_locator={"url": loc_url, "file_path": loc_file},
             source_card_snapshot=registry.source_card_snapshot(src_id, front_matter),
         )
+    elif assertion_registry_workspace_id and content is not None and not degraded:
+        _trace(run_paths, stage="ingest", assertion_ledger_write_disabled=True)
 
     # Audit: record artifact acceptance after file write + registry upsert (fail-open).
     audit_service.record_event(

@@ -5,7 +5,7 @@ title: "Implementation Plan: Reusable Assertion Ledger v1"
 description: "Tier 3 delivery plan for a private, passage-bound assertion ledger with governed reuse and lifecycle propagation."
 status: review
 created: 2026-07-12
-updated: 2026-07-14
+updated: 2026-07-15
 feature_slug: reusable-assertion-ledger
 feature_version: v1
 prd_ref: docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
@@ -32,7 +32,9 @@ related_documents:
   - docs/project_plans/exploration/contradiction-log-v1/contradiction-log-v1-charter.md
   - docs/project_plans/implementation_plans/harden-polish/wksp-304-workspace-isolation-enforcement-v1.md
   - docs/project_plans/implementation_plans/features/runs-frontend-v1.md
-deferred_items_spec_refs: []
+deferred_items_spec_refs:
+  - docs/project_plans/design-specs/reusable-assertion-ledger-shared-indexes.md
+  - docs/project_plans/design-specs/reusable-assertion-ledger-public-rights-promotion.md
 findings_doc_ref: null
 charter_ref: null
 changelog_ref: null
@@ -40,7 +42,10 @@ changelog_required: true
 test_plan_ref: null
 plan_structure: independent
 progress_init: pre-created
-commit_refs: []
+commit_refs:
+- f5ce6ae004b7a83970320e4ec6f992cb1e8ed68a
+- 9cf7e6b8f12cb16d8f755eb50bf8be0d513c0ee1
+- 26e8f77afc2f8fb079f8e49cf2f760844a51214d
 pr_refs: []
 files_affected:
   - schemas/
@@ -127,7 +132,7 @@ wave_plan:
 
 # Implementation Plan: Reusable Assertion Ledger v1
 
-## Execution checkpoint (P0-P5 complete; P6-P8 remaining)
+## Execution checkpoint (P0-P8 repository readiness complete; private rollout not executed)
 
 The original P0 pre-execution record was `conditional`: the three P0 result
 artifacts and deterministic local-only harness were awaiting independent review
@@ -135,12 +140,15 @@ because no representative private corpus or concluded citation, segmentation,
 and contradiction contracts were available. Its pending `P0-GATES` language
 is historical and no longer describes the current tracker state.
 
-At the current checkpoint, logical P0-P5 (physical phases 1-6) are complete and
-account for 48 of 72 planned points. Logical P6-P8 remain at 24 points, so this
-plan remains in `review` and is not fully complete. Private, live-provider, and
-external-writeback paths remain `not_executed` where owner data, authorization,
-or release gates were unavailable; the partial AAR records the exact reviewed
-commit/tree and final validation evidence.
+At the current checkpoint, logical P0-P8 repository-owned work is complete.
+Phase 8/P7 was approved by Terra at
+`f5ce6ae004b7a83970320e4ec6f992cb1e8ed68a` /
+`d6f3fe1ad01b53907aab6ad949941fe0a62f7673`; Phase 9/P8 was approved after
+correction at `9cf7e6b8f12cb16d8f755eb50bf8be0d513c0ee1` /
+`26e8f77afc2f8fb079f8e49cf2f760844a51214d`, with Sol's final high-risk review
+also approved. P8-004 remains `not_executed_owner_data_absent`; therefore this
+is repository-readiness closeout only and does not claim private rollout,
+deployment, release, or external writeback.
 
 **Human Brief:** `docs/project_plans/human-briefs/reusable-assertion-ledger.md`
 **Decisions Block:** `.codex/worknotes/reusable-assertion-ledger/decisions-block.md`

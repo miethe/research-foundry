@@ -11,6 +11,9 @@ from research_foundry.yamlio import dump_yaml, load_yaml
 
 
 def _materialize(tmp_foundry, run_id: str, workspace_id: str, content: str) -> str:
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"]["assertion_ledger"] = {"ledger_write_enabled": True}
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
     tmp_foundry.run_paths(run_id).ensure_scaffold()
     ingest_source(
         f"{run_id}.txt",

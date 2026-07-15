@@ -96,6 +96,36 @@ class WorkspaceIsolationEnforcement(str, enum.Enum):
     ENABLED = "enabled"
 
 
+@dataclass(frozen=True)
+class AssertionLedgerControls:
+    """Independent, default-off controls for the reusable assertion ledger.
+
+    These values describe capability authorization only; they do not grant
+    private-workspace, production, public-promotion, or writeback authority.
+    Automated reuse and canonical claims remain separate opt-ins after ledger
+    writes are permitted.
+    """
+
+    ledger_write_enabled: bool = False
+    automated_reuse_enabled: bool = False
+    canonical_claims_enabled: bool = False
+
+
+@dataclass(frozen=True)
+class AssertionLedgerCapabilities:
+    """Resolved assertion-ledger capabilities after dependency checks.
+
+    The three controls remain independently configured, but reuse and
+    canonical-claim handling cannot run when the ledger itself is not allowed
+    to write authoritative records.  The resolver is intentionally local: it
+    neither changes a flag nor grants any workspace or rollout authority.
+    """
+
+    ledger_write_allowed: bool = False
+    automated_reuse_allowed: bool = False
+    canonical_claims_allowed: bool = False
+
+
 def _is_loopback(bind_host: str) -> bool:
     """Return ``True`` if *bind_host* is a loopback address.
 
@@ -325,6 +355,48 @@ class FoundryConfig:
         or static-export deployments before P5 RBAC ships.
         """
         return bool(self.agents.get("enabled", False))
+
+    @property
+    def assertion_ledger(self) -> dict[str, Any]:
+        """Return the assertion-ledger control block with an empty default."""
+
+        ledger = self.foundry.get("assertion_ledger", {})
+        return ledger if isinstance(ledger, dict) else {}
+
+    def assertion_ledger_controls(self) -> AssertionLedgerControls:
+        """Resolve the three independent assertion-ledger controls.
+
+        All controls default to ``False``.  This resolver intentionally does
+        not infer an enabled state from test fixtures, workspace contents, or
+        other feature flags.
+        """
+
+        ledger = self.assertion_ledger
+        return AssertionLedgerControls(
+            ledger_write_enabled=ledger.get("ledger_write_enabled") is True,
+            automated_reuse_enabled=ledger.get("automated_reuse_enabled") is True,
+            canonical_claims_enabled=ledger.get("canonical_claims_enabled") is True,
+        )
+
+    def assertion_ledger_capabilities(self) -> AssertionLedgerCapabilities:
+        """Resolve fail-closed capability dependencies without changing flags.
+
+        Automated reuse and canonical claims require their own explicit flag
+        *and* the ledger-write capability.  This ensures a partial
+        configuration cannot make a derived surface available without the
+        authoritative ledger being enabled first.
+        """
+
+        controls = self.assertion_ledger_controls()
+        return AssertionLedgerCapabilities(
+            ledger_write_allowed=controls.ledger_write_enabled,
+            automated_reuse_allowed=(
+                controls.ledger_write_enabled and controls.automated_reuse_enabled
+            ),
+            canonical_claims_allowed=(
+                controls.ledger_write_enabled and controls.canonical_claims_enabled
+            ),
+        )
 
     # --- auth block (P5.1 canonical auth provider) ---------------------------
 
@@ -747,6 +819,8 @@ class FoundryConfig:
 
 
 __all__ = [
+    "AssertionLedgerCapabilities",
+    "AssertionLedgerControls",
     "AuthRbacEnforcement",
     "FoundryConfig",
     "GOVERNANCE",

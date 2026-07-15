@@ -11,6 +11,7 @@ from research_foundry.paths import FoundryPaths
 from research_foundry.schemas import SchemaRegistry
 from research_foundry.services.assertion_registry import AssertionRegistry
 from research_foundry.services.source_cards import ingest_source
+from research_foundry.yamlio import dump_yaml, load_yaml
 
 RIGHTS = {"sensitivity": "personal", "allowed_for_work_output": True}
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "assertion_ledger" / "p2_formats"
@@ -156,6 +157,9 @@ def test_source_card_registry_seam_is_opt_in_and_preserves_card_identity(tmp_fou
     baseline_run, registry_run = "rf_run_p2_baseline", "rf_run_p2_registry"
     tmp_foundry.run_paths(baseline_run).ensure_scaffold()
     tmp_foundry.run_paths(registry_run).ensure_scaffold()
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"]["assertion_ledger"] = {"ledger_write_enabled": True}
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
     baseline = ingest_source("notes.txt", run_id=baseline_run, content="Registry seam evidence.", paths=tmp_foundry)
     result = ingest_source(
         "notes.txt", run_id=registry_run, content="Registry seam evidence.", paths=tmp_foundry,
@@ -169,6 +173,9 @@ def test_source_card_registry_seam_is_opt_in_and_preserves_card_identity(tmp_fou
 def test_source_card_first_ingest_accepts_later_granular_passages(tmp_foundry) -> None:
     run_id = "rf_run_p2_granular"
     tmp_foundry.run_paths(run_id).ensure_scaffold()
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"]["assertion_ledger"] = {"ledger_write_enabled": True}
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
     content = "First granular passage.\n\nSecond granular passage."
     source = ingest_source(
         "granular.txt", run_id=run_id, content=content, paths=tmp_foundry,

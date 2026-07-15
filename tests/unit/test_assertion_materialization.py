@@ -22,6 +22,9 @@ from research_foundry.yamlio import dump_yaml, load_yaml
 def _setup_run(tmp_foundry, run_id: str, *, content: str = "The measured result was 42 percent."):
     """Create the smallest P2-registered run satisfying the P3 mapping contract."""
 
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"]["assertion_ledger"] = {"ledger_write_enabled": True}
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
     tmp_foundry.run_paths(run_id).ensure_scaffold()
     source = ingest_source(
         "evidence.txt",

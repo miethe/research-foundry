@@ -53,7 +53,10 @@ class EvidencePacket(BaseModel):
     passage: dict[str, Any]
     source_edition: dict[str, Any]
     qualifiers: dict[str, Any]
-    qualifier_extensions: dict[str, Any]
+    # Older ledger exports predate this additive map.  Preserve that absence
+    # through the read boundary so consumers can render an explicit legacy
+    # state instead of mistaking it for an authoritatively empty map.
+    qualifier_extensions: dict[str, Any] | None = None
     evaluations: list[dict[str, Any]]
     freshness: dict[str, Any]
     access_scope: str

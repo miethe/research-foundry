@@ -550,7 +550,6 @@ class AssertionImpactReconciler:
                 raise ImpactOperationError("impact_receipt_invalid")
         elif reason_code is not None:
             raise ImpactOperationError("impact_receipt_invalid")
-        seen_pending_action = False
         for action in actions:
             if (
                 not isinstance(action, dict)
@@ -563,10 +562,6 @@ class AssertionImpactReconciler:
                 or action["status"] not in {"pending", "completed"}
             ):
                 raise ImpactOperationError("impact_receipt_invalid")
-            if action["status"] == "pending":
-                seen_pending_action = True
-            elif seen_pending_action:
-                raise ImpactOperationError("impact_receipt_invalid")
             writeback_status = action.get("writeback_status")
             if action["object_class"] == "mock_writeback_receipt":
                 if action["status"] == "completed" and (
@@ -578,12 +573,6 @@ class AssertionImpactReconciler:
                     raise ImpactOperationError("impact_receipt_invalid")
             elif "writeback_status" in action:
                 raise ImpactOperationError("impact_receipt_invalid")
-            if action["status"] == "completed":
-                effect_path = self._effect_path(event_id, action)
-                if action.get("effect_receipt") != str(effect_path.relative_to(self.root)):
-                    raise ImpactOperationError("impact_effect_invalid")
-                if self._load_mapping(effect_path, "impact_effect_invalid") != self._effect_record(event_id, action):
-                    raise ImpactOperationError("impact_effect_invalid")
         if status == "blocked":
             # Writer-persisted zero-action blocked receipts deliberately
             # record manifest read failures.  Re-reading that unavailable or
@@ -596,6 +585,18 @@ class AssertionImpactReconciler:
         ]
         if actual_identities != expected_identities:
             raise ImpactOperationError("impact_receipt_action_set_invalid")
+        seen_pending_action = False
+        for action in actions:
+            if action["status"] == "pending":
+                seen_pending_action = True
+                continue
+            if seen_pending_action:
+                raise ImpactOperationError("impact_receipt_invalid")
+            effect_path = self._effect_path(event_id, action)
+            if action.get("effect_receipt") != str(effect_path.relative_to(self.root)):
+                raise ImpactOperationError("impact_effect_invalid")
+            if self._load_mapping(effect_path, "impact_effect_invalid") != self._effect_record(event_id, action):
+                raise ImpactOperationError("impact_effect_invalid")
         if status == "completed" and any(action["status"] != "completed" for action in actions):
             raise ImpactOperationError("impact_receipt_invalid")
         return receipt

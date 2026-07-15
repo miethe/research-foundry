@@ -297,7 +297,10 @@ class AssertionCatalog:
                 "passage": passage,
                 "source_edition": edition,
                 "qualifiers": assertion.get("qualifiers", {}),
-                "qualifier_extensions": assertion.get("qualifier_extensions", {}),
+                # Do not normalize a genuinely absent additive field into an
+                # empty map: P6 consumers distinguish legacy absence from an
+                # authoritatively recorded empty qualifier-extension map.
+                "qualifier_extensions": assertion.get("qualifier_extensions"),
                 "evaluations": matching_evaluations,
                 "freshness": {"lifecycle_state": assertion.get("lifecycle_state")},
                 "access_scope": edition.get("access_scope"),

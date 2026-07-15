@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..config import AssertionLedgerCapabilities, FoundryConfig
 from ..paths import FoundryPaths
 from .assertion_reuse import ReuseDecision, evaluate_reuse
 from .capture import capture_idea, triage_idea
@@ -61,6 +62,7 @@ def retrieve_first_reuse_decision(
     workspace_id: str | None,
     required_edition_id: str | None = None,
     required_extraction_contract: str | None = None,
+    capabilities: AssertionLedgerCapabilities | None = None,
 ) -> ReuseDecision:
     """Evaluate a supplied assertion before a caller schedules a reuse path.
 
@@ -70,12 +72,15 @@ def retrieve_first_reuse_decision(
     scheduled or a candidate can be treated as current.
     """
 
-    return evaluate_reuse(
+    decision = evaluate_reuse(
         assertion,
         workspace_id=workspace_id,
         required_edition_id=required_edition_id,
         required_extraction_contract=required_extraction_contract,
     )
+    if decision.allowed and capabilities is not None and not capabilities.automated_reuse_allowed:
+        return ReuseDecision("deny", "automated_reuse_disabled", decision.assertion_id)
+    return decision
 
 
 def launch_run(
@@ -135,6 +140,8 @@ def launch_run(
             f"(text={'set' if text else 'unset'}, intent_id={'set' if intent_id else 'unset'})."
         )
 
+    paths = paths or FoundryPaths.discover()
+
     reuse_decision: ReuseDecision | None = None
     if reuse_assertion is not None:
         reuse_decision = retrieve_first_reuse_decision(
@@ -142,11 +149,10 @@ def launch_run(
             workspace_id=reuse_workspace_id,
             required_edition_id=required_reuse_edition_id,
             required_extraction_contract=required_extraction_contract,
+            capabilities=FoundryConfig(paths=paths).assertion_ledger_capabilities(),
         )
         if not reuse_decision.allowed:
             raise ValueError(f"reuse_not_eligible:{reuse_decision.reason_code}")
-
-    paths = paths or FoundryPaths.discover()
 
     raw_idea_id: str | None = None
 

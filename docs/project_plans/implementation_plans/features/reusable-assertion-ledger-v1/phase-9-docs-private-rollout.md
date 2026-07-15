@@ -2,9 +2,9 @@
 schema_version: 2
 doc_type: phase_plan
 title: "Phase 9 (P8): Documentation and Private Rollout"
-status: draft
+status: review
 created: 2026-07-12
-updated: 2026-07-12
+updated: 2026-07-15
 feature_slug: reusable-assertion-ledger
 feature_version: v1
 phase: 9

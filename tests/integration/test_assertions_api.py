@@ -13,6 +13,7 @@ from research_foundry.config import FoundryConfig
 from research_foundry.services import claim_mapping, extraction
 from research_foundry.services.assertion_materialization import AssertionMaterializer
 from research_foundry.services.source_cards import ingest_source
+from research_foundry.yamlio import dump_yaml, load_yaml
 
 
 class _IdentityMiddleware(BaseHTTPMiddleware):
@@ -28,6 +29,9 @@ class _IdentityMiddleware(BaseHTTPMiddleware):
 
 def _setup_assertion(tmp_foundry) -> str:
     run_id = "rf_run_p4_api"
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"]["assertion_ledger"] = {"ledger_write_enabled": True}
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
     tmp_foundry.run_paths(run_id).ensure_scaffold()
     ingest_source(
         "p4-api.txt",

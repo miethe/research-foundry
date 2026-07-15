@@ -116,6 +116,7 @@ and field semantics:
 | `feature_contract` | `docs/project_plans/feature_contracts/[category]/[feature-slug].md` (Tier 1, 3-8 pts) |
 | `exploration_charter` | `docs/project_plans/exploration/**` (SPIKE-adjacent charter documents, e.g. this doc's own source legs under `web-app-platform-evolution/`) |
 | `progress` | `.claude/progress/[prd]/phase-N-progress.md` — same file family as `phase_plan`; the `progress.schema.yaml` schema governs the status/task-tracking fields specifically |
+| `assertion_ledger_readiness_receipt` | `.rf_state/assertion_ledger/readiness/*.json` in an explicitly selected local workspace; aggregate-only dry-run or disable-rehearsal evidence, never a private-rollout result |
 
 **One rule that applies to all of these and does not apply to §1-3 above**: per this repo's
 `CLAUDE.md` Documentation Policy, there is exactly **ONE** progress file per phase and **ONE**

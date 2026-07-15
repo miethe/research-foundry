@@ -40,6 +40,9 @@ def _client(tmp_foundry, identity: AuthIdentity | None) -> TestClient:
 
 def _setup_assertion(tmp_foundry) -> str:
     run_id = "rf_run_p6_impact_api"
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"]["assertion_ledger"] = {"ledger_write_enabled": True}
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
     tmp_foundry.run_paths(run_id).ensure_scaffold()
     ingest_source(
         "p6-impact-api.txt",

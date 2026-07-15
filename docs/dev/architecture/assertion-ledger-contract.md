@@ -122,3 +122,23 @@ RF type barrel exports both the generated P1 types and
   guessed persistent link.
 - Workspace authorization, retrieval, ranking, and cache isolation remain
   later-phase responsibilities.
+
+## P8 readiness controls and local receipts
+
+The repository-owned P8 controls live under `foundry.assertion_ledger` in
+`foundry.yaml`. Each is `false` when omitted and must be explicitly set to the
+literal boolean `true`; truthy strings and fixture contents do not enable it.
+
+| Control | Direct effect | Dependency constraint |
+|---|---|---|
+| `ledger_write_enabled` | Permits the explicit source-card-to-registry write seam. | None; it is still not private-rollout authority. |
+| `automated_reuse_enabled` | Permits the run-launch reuse consumer to consider an otherwise eligible assertion. | Requires `ledger_write_enabled`; an enabled reuse flag alone fails closed. |
+| `canonical_claims_enabled` | Authorizes a future canonical-claim consumer. | Requires `ledger_write_enabled`; P8 does not implement that consumer. |
+
+`scripts/assertion_ledger_readiness.py` produces aggregate-only local metrics,
+an idempotent backfill dry-run receipt, and a disable/rollback rehearsal
+receipt. It never reads or emits passage text, source locators, workspace IDs,
+or external-writeback payloads. Receipt writing is local and explicit
+(`--write-receipts`); it is not rollout evidence. The operator procedure and
+private-authority boundary are in
+[`runbooks/assertion-ledger-readiness.md`](runbooks/assertion-ledger-readiness.md).

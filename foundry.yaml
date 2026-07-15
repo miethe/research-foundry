@@ -39,6 +39,15 @@ foundry:
   viewer:
     sensitivity_threshold: public
 
+  # Reusable Assertion Ledger P8 controls. Every capability is deliberately
+  # default-off and must be authorized independently.  Enabling a control does
+  # not authorize private rollout, public promotion, shared indexes, or an
+  # external writeback.
+  assertion_ledger:
+    ledger_write_enabled: false
+    automated_reuse_enabled: false
+    canonical_claims_enabled: false
+
   # Authentication provider for ``rf serve`` (P5.1 canonical auth selector).
   # The provider abstracts the auth boundary — swappable adapters connect to
   # different identity systems without call-site branching. This is the **central
