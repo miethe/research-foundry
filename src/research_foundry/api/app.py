@@ -169,6 +169,39 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # persistent overrides).
     app.state.rate_limit_overrides = {}
 
+    # --- fix/catalog-visibility: catalog sensitivity-threshold override -----
+    #
+    # `rf serve --sensitivity-threshold <X>` mutates `config.viewer
+    # ["sensitivity_threshold"]` in cli_commands.py's serve() BEFORE calling
+    # create_app() (see that function's "Apply ALL CLI overrides to config
+    # BEFORE the gate runs" comment) — so by the time we get here, `config`
+    # already reflects the correct precedence: explicit CLI flag > whatever
+    # foundry.yaml has on disk.
+    #
+    # Without this, that resolved value went nowhere: the catalog router only
+    # receives a bare `FoundryPaths` via the `get_paths()` dependency, which
+    # is a *fresh* `FoundryConfig.load()` — a different instance from `config`
+    # that re-reads foundry.yaml from disk and has never seen the CLI-time
+    # mutation. `catalog_service.resolve_threshold()` falls back to the same
+    # kind of fresh disk read when no explicit override reaches it. Result: an
+    # explicit `--sensitivity-threshold` flag was silently ignored by every
+    # catalog endpoint (stats/search/item detail), which always resolved to
+    # whatever foundry.yaml's `viewer.sensitivity_threshold` said instead
+    # (`"public"` in the shipped config).
+    #
+    # Storing the resolved value on app.state — the same pattern already used
+    # for rbac_enforced/workspace_isolation_enforced above — lets the catalog
+    # router pass it through as `resolve_threshold()`'s explicit `override`
+    # argument. When no CLI flag was passed, config.viewer.get(...) is
+    # whatever foundry.yaml already had, so this is a no-op relative to prior
+    # behavior — the fail-closed default (`"public"`) is unchanged.
+    #
+    # Resolution order (catalog_service.resolve_threshold): explicit `rf serve
+    # --sensitivity-threshold` > foundry.yaml viewer.sensitivity_threshold >
+    # hardcoded "public" default (the latter two remain resolve_threshold's
+    # own responsibility when this override is None).
+    app.state.catalog_sensitivity_threshold = config.viewer.get("sensitivity_threshold") or None
+
     # --- Middleware (outermost → innermost: CORS → allowlist → auth → rate-limit) ---
     #
     # Starlette/FastAPI middleware is processed in *reverse* insertion order at

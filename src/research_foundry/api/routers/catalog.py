@@ -37,6 +37,19 @@ _PATHS_DEP = Depends(get_paths)
 _RBAC_CATALOG_WRITE = Depends(require_role("owner", "admin", "researcher"))
 
 
+def _sensitivity_threshold_override(request: Request) -> str | None:
+    """Read the serve-time sensitivity-threshold override off ``app.state``.
+
+    Set once at startup by :func:`research_foundry.api.app.create_app` from
+    the (already CLI-flag > foundry.yaml resolved) ``FoundryConfig`` — see
+    that function for why the catalog router cannot resolve this itself from
+    ``paths`` alone. ``None`` when no override was captured, in which case
+    ``catalog_service.resolve_threshold()`` falls back to its own foundry.yaml
+    / hardcoded-default resolution, unchanged from prior behavior.
+    """
+    return getattr(request.app.state, "catalog_sensitivity_threshold", None)
+
+
 @router.get("/catalog/stats", summary="Catalog aggregate counts")
 def get_catalog_stats(request: Request, paths: FoundryPaths = _PATHS_DEP) -> dict[str, Any]:
     """Return per-item-type counts (visible only), runs indexed, last import.
@@ -45,7 +58,7 @@ def get_catalog_stats(request: Request, paths: FoundryPaths = _PATHS_DEP) -> dic
     """
     identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (svc.stats() has no identity param; not a Phase 3 scoping target)
     # TODO(WKSP-304 P4): svc.stats() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
-    return svc.stats(paths)
+    return svc.stats(paths, sensitivity_threshold=_sensitivity_threshold_override(request))
 
 
 @router.get("/catalog/search", summary="Search the catalog")
@@ -78,6 +91,7 @@ def get_catalog_search(
         sort=sort,
         page=page,
         page_size=page_size,
+        sensitivity_threshold=_sensitivity_threshold_override(request),
         identity=identity,
     )
 
@@ -95,7 +109,12 @@ def get_catalog_item(
     (fail-closed: existence of hidden sensitive items is not leaked).
     """
     identity = getattr(request.state, "identity", None)
-    item = svc.get_item(paths, catalog_item_id, identity=identity)
+    item = svc.get_item(
+        paths,
+        catalog_item_id,
+        sensitivity_threshold=_sensitivity_threshold_override(request),
+        identity=identity,
+    )
     if item is None:
         raise HTTPException(status_code=404, detail="catalog item not found")
     return item

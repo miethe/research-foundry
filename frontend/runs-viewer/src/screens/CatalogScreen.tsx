@@ -39,16 +39,22 @@ import "@/styles/assertions.css";
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 //
-// "assertions" replaces the former "claim" tab (spec §4.4: "Existing `Claims`
-// catalog tab → `Source assertions`, while retaining other current tabs").
-// It is backed by the workspace-scoped source-assertion ledger
-// (useAssertionSearch/useEvidencePacket), not the old per-run CatalogItemType
-// "claim" domain, so it does not participate in tabCount/useCatalogSearch.
+// "assertions" is the reviewer-facing "Source assertions" tab added alongside
+// the (retained) classic "claim" tab (spec §4.4 originally called for a
+// replace, but the assertion ledger starts empty per workspace — see
+// 2026-07-15 catalog-visibility fix — so the classic, fully-indexed
+// per-run CatalogItemType "claim" tab is kept as an additional tab rather
+// than removed). "assertions" is backed by the workspace-scoped
+// source-assertion ledger (useAssertionSearch/useEvidencePacket), not this
+// CatalogItemType search, so it does not participate in tabCount/useCatalogSearch.
+// "claim" is a real CatalogItemType and reuses the same generic
+// CatalogResultsTable/CatalogInspector as "source"/"inference"/"report".
 
-type CatalogTabId = "assertions" | "source" | "inference" | "report" | "report-ready";
+type CatalogTabId = "assertions" | "claim" | "source" | "inference" | "report" | "report-ready";
 
 const TABS: { id: CatalogTabId; label: string }[] = [
   { id: "assertions", label: "Source assertions" },
+  { id: "claim", label: "Claims" },
   { id: "source", label: "Sources" },
   { id: "inference", label: "Inferences" },
   { id: "report", label: "Reports" },

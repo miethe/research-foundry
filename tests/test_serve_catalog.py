@@ -17,6 +17,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from research_foundry.api.app import create_app
+from research_foundry.api.routers.runs import get_paths as get_paths_dep
 from research_foundry.config import FoundryConfig
 from research_foundry.frontmatter import dump_md
 from research_foundry.paths import FoundryPaths
@@ -229,6 +230,76 @@ def test_search_sensitivity_threshold_enforced(tmp_path):
 
     direct = svc.search(cfg.paths)
     assert direct["total"] == data["total"]
+
+
+def test_no_serve_override_defaults_to_public_threshold_unchanged(tmp_path):
+    """(a) No explicit `rf serve --sensitivity-threshold` override → the
+    foundry.yaml viewer default (``"public"`` in the shipped config) remains
+    the effective catalog threshold, exactly as before the serve-override
+    plumbing fix. This is the fail-closed invariant that must never regress:
+    adding the override path must not change default (no-flag) behavior.
+    """
+
+    client, cfg = _make_client(tmp_path)
+    assert cfg.viewer.get("sensitivity_threshold") == "public"
+
+    _plant_run(cfg.paths, "rf_run_default_gate", sensitivity="client_sensitive")
+    svc.import_run(cfg.paths, "rf_run_default_gate")
+
+    stats_resp = client.get("/api/catalog/stats")
+    assert stats_resp.status_code == 200
+    stats_data = stats_resp.json()
+    assert stats_data["counts"]["claim"] == 0
+    assert stats_data["counts"]["source"] == 0
+    assert stats_data["runs_indexed"] == 0
+
+    search_resp = client.get("/api/catalog/search")
+    assert search_resp.status_code == 200
+    assert search_resp.json()["total"] == 0
+
+
+def test_explicit_serve_override_takes_precedence_over_foundry_yaml(tmp_path):
+    """(b) An explicit `rf serve --sensitivity-threshold` override must reach
+    the catalog stats/search endpoints even when foundry.yaml on disk still
+    says ``"public"``.
+
+    Regression test for the catalog-visibility bug: ``rf serve
+    --sensitivity-threshold client_sensitive`` mutates ``config.viewer
+    ["sensitivity_threshold"]`` in memory (cli_commands.py's serve(), BEFORE
+    calling create_app() — see that function's "Apply ALL CLI overrides to
+    config BEFORE the gate runs" step). Prior to the fix, that mutation went
+    nowhere the catalog router/service could see: ``get_paths()`` and
+    ``catalog_service.resolve_threshold()`` both constructed a *fresh*
+    ``FoundryConfig`` per request and re-read foundry.yaml from disk — which
+    still said ``"public"`` — silently ignoring the serve-time override. We
+    reproduce that exact mutation here (without touching the on-disk YAML) to
+    prove the fix threads it through ``app.state`` instead.
+    """
+
+    cfg = _make_config(tmp_path)
+    assert cfg.viewer.get("sensitivity_threshold") == "public"  # on-disk default, untouched
+
+    # Simulate `rf serve --sensitivity-threshold client_sensitive`.
+    cfg.viewer["sensitivity_threshold"] = "client_sensitive"
+
+    app = create_app(cfg)
+    app.dependency_overrides[get_paths_dep] = lambda: cfg.paths
+    client = TestClient(app, raise_server_exceptions=True)
+
+    _plant_run(cfg.paths, "rf_run_override_gate", sensitivity="client_sensitive")
+    svc.import_run(cfg.paths, "rf_run_override_gate")
+
+    stats_resp = client.get("/api/catalog/stats")
+    assert stats_resp.status_code == 200
+    stats_data = stats_resp.json()
+    assert stats_data["counts"]["claim"] == 1
+    assert stats_data["counts"]["source"] == 1
+    assert stats_data["runs_indexed"] == 1
+
+    search_resp = client.get("/api/catalog/search")
+    assert search_resp.status_code == 200
+    search_data = search_resp.json()
+    assert search_data["total"] > 0
 
 
 def test_search_pagination_params(tmp_path):
