@@ -43,10 +43,15 @@ foundry:
   # default-off and must be authorized independently.  Enabling a control does
   # not authorize private rollout, public promotion, shared indexes, or an
   # external writeback.
+  #
+  # Single-operator opt-in: this deployment enables all three local capabilities
+  # (durable ledger writes + automated reuse + canonical-claim grouping). Per the
+  # user guide this local enablement grants no private-workspace, pilot, shared-
+  # index, public-promotion, or external-writeback authority — those remain gated.
   assertion_ledger:
-    ledger_write_enabled: false
-    automated_reuse_enabled: false
-    canonical_claims_enabled: false
+    ledger_write_enabled: true
+    automated_reuse_enabled: true
+    canonical_claims_enabled: true
 
   # Authentication provider for ``rf serve`` (P5.1 canonical auth selector).
   # The provider abstracts the auth boundary — swappable adapters connect to
