@@ -308,6 +308,23 @@ def ingest_source(
 
         registry_usage: dict[str, Any] = dict(cast(dict[str, Any], front_matter["usage"]))
         registry = AssertionRegistry(workspace_id=assertion_registry_workspace_id, paths=paths)
+        # Segment the edition by each point's verbatim quote so a short exact
+        # quote can bind via find_exact_passages() instead of only ever
+        # matching the single whole-document passage the registry stored
+        # before this fix (see docs/project_plans/SPIKEs/
+        # assertion-ledger-backfill-mapping.md, defect 1b). Dedupe
+        # whitespace-normalized duplicates: registry.ingest() rejects an
+        # ambiguous passage selector list outright. Falls back to `None`
+        # (whole-document passage) when no point carries a short-enough quote.
+        seen_quotes: set[str] = set()
+        quote_passages: list[str] = []
+        for point in points:
+            point_quote = point.get("quote")
+            if isinstance(point_quote, str) and point_quote:
+                normalized = " ".join(point_quote.split())
+                if normalized not in seen_quotes:
+                    seen_quotes.add(normalized)
+                    quote_passages.append(point_quote)
         registry.ingest(
             src_id,
             content,
@@ -315,6 +332,7 @@ def ingest_source(
             access_scope=sensitivity,
             allowed_use=registry_usage,
             retrieval_locator={"url": loc_url, "file_path": loc_file},
+            passages=quote_passages or None,
             source_card_snapshot=registry.source_card_snapshot(src_id, front_matter),
         )
     elif assertion_registry_workspace_id and content is not None and not degraded:

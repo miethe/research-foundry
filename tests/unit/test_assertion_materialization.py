@@ -77,6 +77,98 @@ def test_p3_materializes_one_exact_fact_claim_passage_chain(tmp_foundry) -> None
     assert materializer.schemas.validate(evaluation, "assertion_evaluation").ok
 
 
+_PARAGRAPH_ONE = (
+    "The average research task takes around 3 minutes to complete. "
+    "It also costs about ten cents per run."
+)
+_PARAGRAPH_TWO = "A second paragraph adds unrelated context that is not quoted."
+_MULTI_PARAGRAPH_CONTENT = f"{_PARAGRAPH_ONE}\n\n{_PARAGRAPH_TWO}"
+
+
+def test_paraphrased_multi_paragraph_source_materializes_via_verbatim_quote(tmp_foundry) -> None:
+    """The 0->1 proof for both SPIKE defects together (assertion-ledger-backfill-
+    mapping.md): paragraph one's extraction fact.text is a paraphrase (its first
+    sentence only) of a two-sentence verbatim quote -- previously this always
+    abstained with ``fact_source_quote_mismatch`` (defect 1a). Paragraph two's
+    paraphrase already equals its quote, yet previously still abstained because
+    the registry stored only one whole-document passage per edition, never a
+    per-point passage a short quote could bind to (defect 1b). Both facts now
+    find exactly one exact-passage match and materialize.
+    """
+
+    run_id = "rf_run_p3_paraphrase_granular"
+    _setup_run(tmp_foundry, run_id, content=_MULTI_PARAGRAPH_CONTENT)
+    ledger = _ledger(tmp_foundry, run_id)
+    assert len(ledger["claims"]) == 2
+    # Paraphrase (claim text) differs from the verbatim quote for paragraph one.
+    assert ledger["claims"][0]["text"] == "The average research task takes around 3 minutes to complete."
+    source_path = next(tmp_foundry.run_paths(run_id).sources.glob("*.md"))
+    metadata, _ = load_md(source_path)
+    assert metadata["extracted_points"][0]["quote"] == _PARAGRAPH_ONE
+    assert metadata["extracted_points"][1]["quote"] == _PARAGRAPH_TWO
+
+    materializer = AssertionMaterializer(workspace_id="workspace-a", paths=tmp_foundry)
+    result = materializer.materialize_run(run_id)
+
+    assert result.status == "materialized"
+    assert len(result.assertion_ids) == 2
+    assertion_texts = {
+        load_yaml(materializer._assertion_path(assertion_id))["assertion_text"]
+        for assertion_id in result.assertion_ids
+    }
+    # Both assertions bind the verbatim quote, never the paraphrase.
+    assert assertion_texts == {_PARAGRAPH_ONE, _PARAGRAPH_TWO}
+
+
+def test_ledger_disabled_ingest_path_is_unchanged_by_passage_wiring(tmp_foundry) -> None:
+    """HARD INVARIANT: the no-``assertion_registry_workspace_id`` / ledger-write-
+    disabled path stays byte-identical. The new ``passages=`` wiring in
+    ``source_cards.ingest_source`` only runs inside the already-gated
+    ``ledger_writes_allowed`` branch, so a caller that never opts in (no
+    workspace id, or a workspace id without ``ledger_write_enabled``) must see
+    no registry writes and an unchanged source card.
+    """
+
+    run_id = "rf_run_p3_ledger_disabled"
+    tmp_foundry.run_paths(run_id).ensure_scaffold()
+    # This repo's checked-in foundry.yaml enables ledger writes by default
+    # (single-operator opt-in, commit ba9e551); explicitly disable here so
+    # this test exercises the disabled path regardless of that default.
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"]["assertion_ledger"] = {"ledger_write_enabled": False}
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
+
+    no_workspace = ingest_source(
+        "evidence-a.txt",
+        run_id=run_id,
+        title="No Workspace",
+        sensitivity="personal",
+        content=_MULTI_PARAGRAPH_CONTENT,
+        paths=tmp_foundry,
+    )
+    assert not (tmp_foundry.root / "assertion_ledger").exists()
+
+    disabled_workspace = ingest_source(
+        "evidence-b.txt",
+        run_id=run_id,
+        title="Disabled Workspace",
+        sensitivity="personal",
+        content=_MULTI_PARAGRAPH_CONTENT,
+        assertion_registry_workspace_id="workspace-a",
+        paths=tmp_foundry,
+    )
+    assert not (tmp_foundry.root / "assertion_ledger").exists()
+
+    for result in (no_workspace, disabled_workspace):
+        assert result.degraded is False
+        metadata, _ = load_md(result.path)
+        assert metadata["extracted_points"][0]["quote"] == _PARAGRAPH_ONE
+        assert metadata["extracted_points"][1]["quote"] == _PARAGRAPH_TWO
+        assert metadata["extracted_points"][0]["summary"] == (
+            "The average research task takes around 3 minutes to complete."
+        )
+
+
 def test_identical_historical_runs_share_assertion_identity_but_keep_observations(tmp_foundry) -> None:
     _setup_run(tmp_foundry, "rf_run_p3_history_a")
     _setup_run(tmp_foundry, "rf_run_p3_history_b")
@@ -188,8 +280,11 @@ def test_fabricated_passage_provenance_abstains_without_materialization(tmp_foun
 
     result = materializer.materialize_run("rf_run_p3_forged")
 
+    # A forged quote cannot bind: the registry's exact-passage store still only
+    # contains the real, previously-ingested passage (see AssertionRegistry.ingest's
+    # passages= wiring), so find_exact_passages() finds no match for the forgery.
     assert result.status == "abstained"
-    assert result.abstention_code == "fact_source_quote_mismatch"
+    assert result.abstention_code == "unresolved_passage_binding"
     _assert_no_materialization(materializer)
 
 
@@ -235,7 +330,14 @@ def test_tampered_source_card_snapshot_cannot_select_registry_edition(tmp_foundr
     _assert_no_materialization(materializer)
 
 
-def test_tampered_extraction_snapshot_cannot_select_registry_passage(tmp_foundry) -> None:
+def test_assertion_text_binds_to_verbatim_quote_not_paraphrased_fact_text(tmp_foundry) -> None:
+    """DEFECT 1 fix: assertion_text must come from the source card's verbatim
+    extracted_points[].quote, never from the (paraphrased, and here forged)
+    extraction fact/claim text -- a consistently "forged" paraphrase that still
+    binds by evidence_id + locator does not let that paraphrase impersonate the
+    persisted assertion; the real verbatim quote is what gets materialized.
+    """
+
     run_id = "rf_run_p3_extraction_snapshot"
     _setup_run(tmp_foundry, run_id)
     extraction_path = next(tmp_foundry.run_paths(run_id).extractions.glob("*.yaml"))
@@ -249,9 +351,11 @@ def test_tampered_extraction_snapshot_cannot_select_registry_passage(tmp_foundry
 
     result = materializer.materialize_run(run_id)
 
-    assert result.status == "abstained"
-    assert result.abstention_code == "fact_source_quote_mismatch"
-    _assert_no_materialization(materializer)
+    assert result.status == "materialized"
+    assertion = load_yaml(materializer._assertion_path(result.assertion_ids[0]))
+    assert assertion["assertion_text"] == "The measured result was 42 percent."
+    assert assertion["assertion_text"] != "Forged extracted fact."
+    assert assertion["assertion_text_sha256"] == sha256(assertion["assertion_text"].encode("utf-8")).hexdigest()
 
 
 @pytest.mark.parametrize(

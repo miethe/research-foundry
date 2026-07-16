@@ -182,13 +182,18 @@ def test_source_card_first_ingest_accepts_later_granular_passages(tmp_foundry) -
         assertion_registry_workspace_id="workspace-a",
     )
     registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    # ingest_source() itself now segments the edition by each source-card
+    # point's verbatim quote ("First granular passage.", "Second granular
+    # passage."), so a later, richer ingest additively binds a passage
+    # ingest_source() did not already produce -- here, the whole-document
+    # span -- without conflicting with the existing edition.
     granular = registry.ingest(
         source.source_card_id, content, allowed_use=RIGHTS,
-        passages=["First granular passage.", "Second granular passage."],
+        passages=["First granular passage.", "Second granular passage.", content],
     )
     repeated = registry.ingest(
         source.source_card_id, content, allowed_use=RIGHTS,
-        passages=["First granular passage.", "Second granular passage."],
+        passages=["First granular passage.", "Second granular passage.", content],
     )
 
     assert granular.edition == repeated.edition

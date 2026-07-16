@@ -290,11 +290,17 @@ class AssertionMaterializer:
 
         source_meta, source_bytes = self._source_card(mapping.source_card_id, run_id)
         evidence = self._evidence_point(source_meta, mapping)
+        # Bind the assertion to the source card's verbatim extracted_points[].quote,
+        # not the paraphrased extraction fact/claim text (mapping.text). The claim
+        # pipeline stores a paraphrase in fact.text/claim.text by design (see
+        # docs/project_plans/SPIKEs/assertion-ledger-backfill-mapping.md, defect
+        # 1a); requiring that paraphrase to be byte-identical to the quote made
+        # the exact-passage gate below fail almost universally. The evidence
+        # point is already uniquely selected by evidence_id + locator, so no
+        # additional text-equality check against mapping.text is needed here.
         quote = evidence.get("quote")
         if not isinstance(quote, str) or not quote:
             raise _Abstain("missing_exact_passage_quote")
-        if quote != mapping.text:
-            raise _Abstain("fact_source_quote_mismatch")
         source = source_meta.get("source")
         usage = source_meta.get("usage")
         sensitivity = source_meta.get("sensitivity")
@@ -338,8 +344,8 @@ class AssertionMaterializer:
             "assertion_version": 1,
             "source_edition_id": edition["source_edition_id"],
             "passage_id": passage["passage_id"],
-            "assertion_text": mapping.text,
-            "assertion_text_sha256": _digest(mapping.text),
+            "assertion_text": quote,
+            "assertion_text_sha256": _digest(quote),
             "qualifiers": qualifiers,
             "qualifier_extensions": qualifier_extensions,
             "extraction_provenance": extraction_provenance,
