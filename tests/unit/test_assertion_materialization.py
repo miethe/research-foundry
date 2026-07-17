@@ -8,6 +8,18 @@ from pathlib import Path
 
 import pytest
 
+# P1.5-03 (phase-1-5-extraction-contract-fix.md): reuse P1's shared
+# dual-workspace isolation fixture rather than re-deriving an equivalent
+# two-workspace AssertionRegistry pair (P1-03: "do not duplicate the fixture
+# per phase"). Importing a fixture function into this module's namespace is
+# how pytest discovers it here -- no conftest.py promotion needed. Both names
+# are used only as pytest fixture references (by name, in test signatures),
+# which static import-usage analysis cannot see -- hence the targeted noqas.
+from tests.unit.test_assertion_workspace_isolation import (
+    dual_workspace_registries,  # noqa: F401
+    guarded_ingest,
+)
+
 from research_foundry.frontmatter import dump_md, load_md
 from research_foundry.services import claim_mapping, export_service, extraction
 from research_foundry.services.assertion_materialization import (
@@ -15,6 +27,7 @@ from research_foundry.services.assertion_materialization import (
     MaterializationConflict,
     MaterializationInterrupted,
 )
+from research_foundry.services.assertion_workspace import resolve_or_deny
 from research_foundry.services.source_cards import ingest_source
 from research_foundry.yamlio import dump_yaml, load_yaml
 
@@ -120,6 +133,49 @@ def test_paraphrased_multi_paragraph_source_materializes_via_verbatim_quote(tmp_
     assert assertion_texts == {_PARAGRAPH_ONE, _PARAGRAPH_TWO}
 
 
+def test_ac8_verbatim_quote_forward_yield_proof_end_to_end(tmp_foundry) -> None:
+    """AC-8 anchor (phase-1-5-extraction-contract-fix.md, task P1.5-03a): a real
+    fact with a resolvable verbatim quote materializes through the FULL forward
+    pipeline -- source card -> ``ingest_source()`` (with ``passages=``) ->
+    ``extraction.extract_run()`` -> ``claim_mapping.build_claim_ledger()`` ->
+    ``AssertionMaterializer.materialize_run()`` -- with >=1 exact-passage match
+    proven *directly* via ``find_exact_passages()``, not merely inferred from
+    ``materialize_run()``'s internal success. This is the live proof that the
+    P1.5 contract fix (bind ``assertion_text`` to the source card's verbatim
+    quote, segment registry passages by quote on ingest) closes the near-0%
+    forward-yield gap the P2-01 SPIKE measured pre-fix -- mirroring the SPIKE's
+    own throwaway-registry methodology (real, unmodified services against an
+    isolated registry; here, pytest's ``tmp_foundry`` fixture rooted at
+    ``tmp_path`` rather than a hand-rolled ``tempfile.mkdtemp``, so it is never
+    the real ``.rf_state/assertion_ledger`` or run artifacts).
+    """
+
+    run_id = "rf_run_p1_5_ac8_forward_yield"
+    quote = "The measured result was 42 percent."
+    source = _setup_run(tmp_foundry, run_id, content=quote)
+
+    ledger = _ledger(tmp_foundry, run_id)
+    assert len(ledger["claims"]) == 1
+
+    materializer = AssertionMaterializer(workspace_id="workspace-a", paths=tmp_foundry)
+    result = materializer.materialize_run(run_id)
+
+    assert result.status == "materialized"
+    assert len(result.assertion_ids) >= 1
+
+    # The literal AC-8 anchor: an independent find_exact_passages() call
+    # confirms the verbatim quote is bound in the registry -- proof the
+    # passage-segmentation wiring (defect 1b) and the quote-binding fix
+    # (defect 1a) both actually closed the forward-yield gap, not just that
+    # materialize_run() happened to succeed internally.
+    matches = materializer.registry.find_exact_passages(source.source_card_id, quote)
+    assert len(matches) >= 1
+
+    assertion = load_yaml(materializer._assertion_path(result.assertion_ids[0]))
+    assert assertion["assertion_text"] == quote
+    assert assertion["assertion_text_sha256"] == sha256(quote.encode("utf-8")).hexdigest()
+
+
 def test_ledger_disabled_ingest_path_is_unchanged_by_passage_wiring(tmp_foundry) -> None:
     """HARD INVARIANT: the no-``assertion_registry_workspace_id`` / ledger-write-
     disabled path stays byte-identical. The new ``passages=`` wiring in
@@ -167,6 +223,67 @@ def test_ledger_disabled_ingest_path_is_unchanged_by_passage_wiring(tmp_foundry)
         assert metadata["extracted_points"][0]["summary"] == (
             "The average research task takes around 3 minutes to complete."
         )
+
+
+def test_ac9_no_workspace_id_and_ledger_disabled_paths_are_byte_identical_post_p1_5(
+    tmp_foundry, dual_workspace_registries  # noqa: F811 (pytest fixture injection by name)
+) -> None:
+    """AC-9 anchor (phase-1-5-extraction-contract-fix.md, task P1.5-03b): the
+    P1.5 contract fix (verbatim-quote binding in
+    ``assertion_materialization.py`` + ``passages=`` wiring in
+    ``source_cards.py``) must not change either of the two write-suppression
+    paths every P1/P2/P3/P4 assertion-ledger write call site relies on:
+
+      (a) no usable ``workspace_id`` -> ``resolve_or_deny()`` typed denial,
+          zero registry writes. Reuses P1's shared ``dual_workspace_registries``
+          / ``guarded_ingest`` fixture (``test_assertion_workspace_isolation.py``)
+          rather than re-deriving an equivalent two-workspace registry pair --
+          P1.5 touched neither ``assertion_workspace.py`` nor the ``ingest()``
+          call shape ``guarded_ingest`` exercises, so this contract must be
+          exactly as before.
+      (b) ``ledger_write_enabled=false`` -> ``ingest_source()`` performs zero
+          registry construction even though a real ``workspace_id`` is
+          supplied, and the source card itself is unaffected by the new
+          ``passages=`` computation (which never runs on this path).
+    """
+
+    # (a) No workspace_id -> typed denial, zero writes, via the shared P1
+    # fixture -- byte-identical to pre-P1.5 behavior since P1.5 never touches
+    # this code path.
+    resolution = resolve_or_deny(None)
+    assert resolution.allowed is False
+
+    guarded_ingest(
+        dual_workspace_registries,
+        resolution,
+        source_key="paper:1",
+        content="Should never land post-P1.5 either.",
+    )
+
+    assert not dual_workspace_registries.alpha.root.exists()
+    assert not dual_workspace_registries.bravo.root.exists()
+
+    # (b) ledger_write_enabled=false -> ingest_source() performs zero registry
+    # writes even with a real workspace_id supplied.
+    run_id = "rf_run_p1_5_ac9_ledger_disabled"
+    tmp_foundry.run_paths(run_id).ensure_scaffold()
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"]["assertion_ledger"] = {"ledger_write_enabled": False}
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
+
+    result = ingest_source(
+        "evidence.txt",
+        run_id=run_id,
+        title="Ledger Disabled Post P1.5",
+        sensitivity="personal",
+        content=_PARAGRAPH_ONE,
+        assertion_registry_workspace_id="workspace-a",
+        paths=tmp_foundry,
+    )
+
+    assert not (tmp_foundry.root / "assertion_ledger").exists()
+    metadata, _ = load_md(result.path)
+    assert metadata["extracted_points"][0]["quote"] == _PARAGRAPH_ONE
 
 
 def test_identical_historical_runs_share_assertion_identity_but_keep_observations(tmp_foundry) -> None:
