@@ -2392,6 +2392,79 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(audit_app, name="audit")
 
+    # ----- assertion (reusable assertion ledger — Phase 2 backfill) -----
+    assertion_app = typer.Typer(help="Reusable assertion ledger — backfill and readiness operations.")
+
+    @assertion_app.command("backfill")
+    def assertion_backfill(
+        dry_run: bool = typer.Option(
+            False,
+            "--dry-run",
+            help="Preview only: report candidate claim ledgers without writing anything.",
+        ),
+        run: list[str] = typer.Option(
+            None,
+            "--run",
+            help="Backfill only this run id (repeatable). Default: every run with a claim ledger.",
+        ),
+        workspace_id: str = typer.Option(
+            "default",
+            "--workspace-id",
+            help="assertion_registry_workspace_id to write under "
+            "(single-operator convention: 'default' — see assertion_workspace.py).",
+        ),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output (default: rich table)"),
+    ) -> None:
+        """Historical claim-to-assertion backfill (Phase 2).
+
+        Explicit, operator-gated: this command is never invoked automatically
+        on startup or on any request path. Requires
+        ``foundry.assertion_ledger.ledger_write_enabled: true``; otherwise it
+        reports the write-disabled reason and performs zero writes.
+
+        Without ``--dry-run``, resolves the workspace via P1's fail-closed
+        gate before any write and reports the actually measured per-run and
+        aggregate materialized/abstained counts — never an assumed yield.
+        """
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services import assertion_rollout as rollout
+
+        paths = FoundryPaths.discover()
+
+        if dry_run:
+            receipt = rollout.backfill_dry_run(paths=paths)
+        else:
+            receipt = rollout.backfill_corpus(
+                assertion_registry_workspace_id=workspace_id,
+                paths=paths,
+                run_ids=list(run) if run else None,
+            )
+
+        if json_out:
+            typer.echo(_json.dumps(receipt, ensure_ascii=False, indent=2))
+        else:
+            table = Table(
+                title="rf assertion backfill" + (" (--dry-run)" if dry_run else ""),
+                show_header=False,
+            )
+            table.add_column("Field", style="bold")
+            table.add_column("Value")
+            for key, value in receipt.items():
+                if key == "runs":
+                    table.add_row("runs", str(len(value)))
+                    continue
+                display = _json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+                table.add_row(key, display)
+            console.print(table)
+
+        if not dry_run and receipt.get("allowed") is False:
+            raise typer.Exit(1)
+
+    app.add_typer(assertion_app, name="assertion")
+
     # ----- serve (loopback API) -----
     @app.command()
     def serve(
