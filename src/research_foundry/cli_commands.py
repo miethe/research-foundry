@@ -321,14 +321,30 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         title: str | None = typer.Option(None, "--title"),
         fetch: bool = typer.Option(False, "--fetch/--no-fetch", help="attempt URL fetch"),
     ) -> None:
-        """Ingest a source into a run and create a source card (spec §10.5)."""
+        """Ingest a source into a run and create a source card (spec §10.5).
+
+        Forward-writes to the reusable assertion ledger (P3, gated on
+        ``foundry.assertion_ledger.ledger_write_enabled``): resolves the
+        single-operator ``assertion_registry_workspace_id`` ("default", per
+        P1-01's resolution rule) through P1's fail-closed
+        :func:`~research_foundry.services.assertion_workspace.resolve_or_deny`
+        gate before threading it into ``ingest_source``. ``ingest_source``
+        itself re-checks the ledger-write flag and every other gate condition
+        (degraded/content-less sources), so a denied resolution or a disabled
+        flag never causes a hard failure here -- only a skipped ledger write.
+        """
 
         from .services import source_cards as svc
+        from .services.assertion_workspace import resolve_or_deny
+
+        resolution = resolve_or_deny("default")
+        workspace_id = resolution.workspace_id if resolution.allowed else None
 
         try:
             r = svc.ingest_source(
                 locator, run_id=run, source_type=source_type,
                 sensitivity=sensitivity, title=title, fetch=fetch,
+                assertion_registry_workspace_id=workspace_id,
             )
         except RFError as e:
             _fail(e)
