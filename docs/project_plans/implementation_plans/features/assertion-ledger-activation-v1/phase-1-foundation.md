@@ -72,4 +72,13 @@ This phase introduces no new backend *response* field consumed by any frontend s
 
 ## Findings (P1-01 resolution slot)
 
-_To be filled in during execution: the confirmed default-workspace resolution rule for a single-operator deployment._
+**Resolution rule (closes OQ-3 / DF-002)**: a single-operator Research Foundry deployment resolves `assertion_registry_workspace_id` to the literal string `"default"`.
+
+Evidence:
+
+1. `api/auth/scope.py::require_workspace_scope` treats `identity is None` (single-operator-trust — no auth middleware configured) as "no workspace context to compare" and returns before any workspace_id lookup runs. It never invents a workspace_id itself; that resolution is the *caller's* job (routers extract `identity` before the scope check ever runs).
+2. Where this codebase needs a fixed sentinel for the single-operator / pre-multi-tenant baseline, it consistently uses the literal string `"default"`: `services/workspace_migration_service.py` defaults `target_workspace_id: str = "default"` on every backfill/dry-run/rollback dataclass (WKSP-301/302), and `api/auth/adapters/clerk.py` falls back to `payload.get("org_id") or "default"`. `AuthIdentity.workspace_id`'s own docstring names this same convention ("Single-tenant deployments may use a fixed sentinel (e.g. `"default"`)").
+
+No new mechanism was added — this confirms/adapts the existing convention. `assertion_workspace.py::resolve_or_deny()` does not perform this resolution itself (it has no per-request `AuthIdentity` to inspect, unlike `scope.py`); it only enforces the fail-closed contract on whatever value the call site already produced. **P2/P3's future CLI/HTTP entry points are responsible for passing the literal `"default"` string as `assertion_registry_workspace_id` in a single-operator deployment** before calling `resolve_or_deny()`. Full resolution narrative lives in the new module's docstring (`src/research_foundry/services/assertion_workspace.py`).
+
+DF-002 is closed inline; no standalone design-spec was needed — the ambiguity resolved cleanly to an existing, already-adopted convention.
