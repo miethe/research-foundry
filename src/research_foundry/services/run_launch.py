@@ -33,6 +33,7 @@ from typing import Any
 from ..config import AssertionLedgerCapabilities, FoundryConfig
 from ..paths import FoundryPaths
 from .assertion_reuse import ReuseDecision, evaluate_reuse
+from .assertion_workspace import resolve_or_deny
 from .capture import capture_idea, triage_idea
 from .planning import plan_run
 
@@ -70,11 +71,21 @@ def retrieve_first_reuse_decision(
     for assertion reuse.  This seam gives run orchestration the same
     fail-closed policy decision as the ledger, before any dependent work is
     scheduled or a candidate can be treated as current.
+
+    ``workspace_id`` is first normalized through P1's shared
+    :func:`~research_foundry.services.assertion_workspace.resolve_or_deny`
+    gate (the same helper every assertion-ledger write call site uses) so an
+    absent/blank/whitespace-only workspace context collapses to the same
+    ``"workspace_context_missing"`` reason :func:`evaluate_reuse` already
+    reports for a falsy ``workspace_id`` -- this adds no new policy, it just
+    routes the normalization through the existing P1 gate rather than
+    relying on ``evaluate_reuse``'s own truthiness check alone.
     """
 
+    resolution = resolve_or_deny(workspace_id)
     decision = evaluate_reuse(
         assertion,
-        workspace_id=workspace_id,
+        workspace_id=resolution.workspace_id,
         required_edition_id=required_edition_id,
         required_extraction_contract=required_extraction_contract,
     )

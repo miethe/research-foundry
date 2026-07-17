@@ -248,6 +248,19 @@ class LaunchRunRequest(BaseModel):
     are ``text``-path fields (forwarded to ``capture_idea``) and are ignored
     when ``intent_id`` is supplied instead. The remaining fields are common
     planning passthrough forwarded to ``plan_run`` on both paths.
+
+    ``reuse_assertion``, ``reuse_workspace_id``, ``required_reuse_edition_id``,
+    and ``required_extraction_contract`` are optional reuse-reachability
+    fields (Phase 4 of the assertion-ledger activation plan). All four are
+    absent by default and, when omitted, ``run_launch.launch_run`` performs
+    NO reuse evaluation at all -- launch behaves exactly as it did before
+    this field set existed. When ``reuse_assertion`` is supplied, it is
+    routed through the existing ``assertion_reuse.evaluate_reuse`` /
+    ``retrieve_first_reuse_decision`` seam (no new policy logic here); an
+    ineligible result (deny or refresh -- including a target denied via the
+    existing ``block_authoritative_reuse`` lifecycle path, or a cross-
+    workspace target) surfaces as a 400 via the existing
+    ``except ValueError`` mapping below.
     """
 
     text: str | None = None
@@ -263,6 +276,10 @@ class LaunchRunRequest(BaseModel):
     freshness_days: int = 180
     profile: str | None = None
     project: str | None = None
+    reuse_assertion: dict[str, Any] | None = None
+    reuse_workspace_id: str | None = None
+    required_reuse_edition_id: str | None = None
+    required_extraction_contract: str | None = None
 
 
 @router.post("/runs", summary="Launch a new run (scaffold + register only)", status_code=201)
@@ -305,6 +322,10 @@ def launch_run_endpoint(
             freshness_days=body.freshness_days,
             profile=body.profile,
             project=body.project,
+            reuse_assertion=body.reuse_assertion,
+            reuse_workspace_id=body.reuse_workspace_id,
+            required_reuse_edition_id=body.required_reuse_edition_id,
+            required_extraction_contract=body.required_extraction_contract,
             paths=paths,
         )
     except ValueError as exc:
@@ -352,7 +373,7 @@ def launch_run_endpoint(
         ),
     )
 
-    return {
+    response: dict[str, Any] = {
         "run_id": result.run_id,
         "status": result.status,
         "intent_id": result.intent_id,
@@ -368,6 +389,17 @@ def launch_run_endpoint(
             f"{result.run_id}."
         ),
     }
+    # reuse_decision is populated ONLY when a caller supplied reuse_assertion
+    # (see LaunchRunRequest docstring) -- omitted entirely otherwise, so a
+    # request with no reuse_* fields gets a byte-identical response shape to
+    # before this field set existed (no behavior change on omission).
+    if result.reuse_decision is not None:
+        response["reuse_decision"] = {
+            "action": result.reuse_decision.action,
+            "reason_code": result.reuse_decision.reason_code,
+            "assertion_id": result.reuse_decision.assertion_id,
+        }
+    return response
 
 
 # RBAC-005 / RBAC-901 audit: runs.py has one mutation route as of the

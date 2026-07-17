@@ -3503,11 +3503,56 @@
               }
             ],
             "title": "Project"
+          },
+          "reuse_assertion": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reuse Assertion"
+          },
+          "reuse_workspace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reuse Workspace Id"
+          },
+          "required_reuse_edition_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Reuse Edition Id"
+          },
+          "required_extraction_contract": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Extraction Contract"
           }
         },
         "type": "object",
         "title": "LaunchRunRequest",
-        "description": "Body for POST /api/runs.\n\nExactly one of ``text`` / ``intent_id`` is required \u2014 supplying both or\nneither is a 400 (raised as ``ValueError`` by\n:func:`~research_foundry.services.run_launch.launch_run` and mapped here).\n\n``title``, ``sensitivity``, ``urgency``, ``tags``, and ``backlog_idea_ref``\nare ``text``-path fields (forwarded to ``capture_idea``) and are ignored\nwhen ``intent_id`` is supplied instead. The remaining fields are common\nplanning passthrough forwarded to ``plan_run`` on both paths."
+        "description": "Body for POST /api/runs.\n\nExactly one of ``text`` / ``intent_id`` is required \u2014 supplying both or\nneither is a 400 (raised as ``ValueError`` by\n:func:`~research_foundry.services.run_launch.launch_run` and mapped here).\n\n``title``, ``sensitivity``, ``urgency``, ``tags``, and ``backlog_idea_ref``\nare ``text``-path fields (forwarded to ``capture_idea``) and are ignored\nwhen ``intent_id`` is supplied instead. The remaining fields are common\nplanning passthrough forwarded to ``plan_run`` on both paths.\n\n``reuse_assertion``, ``reuse_workspace_id``, ``required_reuse_edition_id``,\nand ``required_extraction_contract`` are optional reuse-reachability\nfields (Phase 4 of the assertion-ledger activation plan). All four are\nabsent by default and, when omitted, ``run_launch.launch_run`` performs\nNO reuse evaluation at all -- launch behaves exactly as it did before\nthis field set existed. When ``reuse_assertion`` is supplied, it is\nrouted through the existing ``assertion_reuse.evaluate_reuse`` /\n``retrieve_first_reuse_decision`` seam (no new policy logic here); an\nineligible result (deny or refresh -- including a target denied via the\nexisting ``block_authoritative_reuse`` lifecycle path, or a cross-\nworkspace target) surfaces as a 400 via the existing\n``except ValueError`` mapping below."
       },
       "ReorderBlocksBody": {
         "properties": {
