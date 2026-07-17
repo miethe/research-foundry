@@ -3,7 +3,7 @@ title: "Implementation Plan: Assertion-Ledger Population & Activation"
 schema_version: 2
 doc_type: implementation_plan
 it_schema: 1
-status: draft
+status: complete
 created: 2026-07-15
 updated: 2026-07-15
 feature_slug: assertion-ledger-activation
@@ -35,10 +35,11 @@ spike_ref: docs/project_plans/SPIKEs/assertion-ledger-backfill-mapping.md   # P2
                   # mandatory track; Phase 2 backfill adopts accept-low-yield + a narrow fuzzy>=0.9
                   # quote-recovery add-on. See "P2-01 SPIKE Verdict" callout below.
 adr_refs: []
-deferred_items_spec_refs: []
+deferred_items_spec_refs:
+  - docs/project_plans/design-specs/assertion-ledger-backfill-mapping-strategy.md
 findings_doc_ref: null
 charter_ref: null
-changelog_ref: null
+changelog_ref: CHANGELOG.md
 test_plan_ref: null
 plan_structure: unified
 progress_init: auto

@@ -81,6 +81,8 @@ runs/**/*.bak
 /.firecrawl/
 /registries/
 /reports/
+# Assertion ledger (populated by `rf assertion backfill` / forward `rf ingest`; data plane)
+/assertion_ledger/
 # The data-plane second-repo gitdir (this repo must not see it)
 /.git-data/
 

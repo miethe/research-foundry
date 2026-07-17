@@ -437,6 +437,28 @@ def _write_backfill_receipt(receipt: Mapping[str, Any], path: Path) -> None:
     _atomic_yaml_dump(receipt, path)
 
 
+def _denied_backfill_receipt(*, reason: str, workspace_id: str | None = None) -> dict[str, Any]:
+    """Zero-write fail-closed denial receipt shared by every backfill write
+    entry point (P6 DI-1 F2: :func:`backfill_run`'s self-gate and
+    :func:`backfill_corpus`'s two denial branches return this exact shape --
+    not merely a visually similar one -- so a direct ``backfill_run`` caller
+    and the corpus driver speak the same denial vocabulary)."""
+
+    return {
+        "schema_version": _RECEIPT_SCHEMA_VERSION,
+        "operation": "assertion_ledger_backfill",
+        "allowed": False,
+        "reason": reason,
+        "workspace_id": workspace_id,
+        "runs": [],
+        "runs_total": 0,
+        "materialized_total": 0,
+        "abstained_total": 0,
+        "abstention_breakdown": {},
+        "fuzzy_recovery_candidates_total": 0,
+    }
+
+
 def backfill_run(
     run_id: str,
     *,
@@ -461,12 +483,30 @@ def backfill_run(
     :class:`~research_foundry.services.assertion_materialization.MaterializationConflict`
     (a real integrity conflict) is not caught here and propagates -- a corpus
     backfill fails closed on a corrupted run rather than silently skipping it.
+
+    P6 DI-1 F2 -- self-gated defense-in-depth: this function is public (see
+    ``__all__``) and callable directly, not only via :func:`backfill_corpus`,
+    which already resolves and gates its own call into this function. A
+    direct caller supplying an unchecked ``workspace_id`` must not be able to
+    bypass confinement, so this function re-runs :func:`resolve_or_deny`
+    itself at entry; a denial (``None``, absent, blank, or whitespace-only)
+    returns :func:`_denied_backfill_receipt` -- zero writes, no exception --
+    instead of constructing :class:`AssertionRegistry`/
+    :class:`AssertionMaterializer` from the unchecked value. This does not
+    change :func:`backfill_corpus`'s behavior: it already passes its own
+    resolved (stripped, non-blank) ``workspace_id`` through, which resolves
+    identically here.
     """
 
-    registry = AssertionRegistry(workspace_id=workspace_id, paths=paths)
+    resolution = resolve_or_deny(workspace_id)
+    if not resolution.allowed:
+        return _denied_backfill_receipt(reason=resolution.reason)
+    assert resolution.workspace_id is not None  # narrows for mypy; guaranteed by resolve_or_deny when allowed
+
+    registry = AssertionRegistry(workspace_id=resolution.workspace_id, paths=paths)
     source_cards = _ingest_run_source_cards(run_id, registry=registry, paths=paths)
 
-    materializer = AssertionMaterializer(workspace_id=workspace_id, paths=paths)
+    materializer = AssertionMaterializer(workspace_id=resolution.workspace_id, paths=paths)
     result = materializer.materialize_run(run_id, _interrupt_before_publish=_interrupt_before_publish)
 
     abstention_breakdown: dict[str, int] = {}
@@ -480,7 +520,7 @@ def backfill_run(
         "type": "assertion_backfill_run_receipt",
         "operation": "assertion_ledger_backfill",
         "run_id": run_id,
-        "workspace_id": workspace_id,
+        "workspace_id": resolution.workspace_id,
         "source_cards": source_cards,
         "materialization_status": result.status,
         "run_level_abstention_code": result.abstention_code if not result.abstained_claims else None,
@@ -526,35 +566,11 @@ def backfill_corpus(
 
     resolution = resolve_or_deny(assertion_registry_workspace_id)
     if not resolution.allowed:
-        return {
-            "schema_version": _RECEIPT_SCHEMA_VERSION,
-            "operation": "assertion_ledger_backfill",
-            "allowed": False,
-            "reason": resolution.reason,
-            "workspace_id": None,
-            "runs": [],
-            "runs_total": 0,
-            "materialized_total": 0,
-            "abstained_total": 0,
-            "abstention_breakdown": {},
-            "fuzzy_recovery_candidates_total": 0,
-        }
+        return _denied_backfill_receipt(reason=resolution.reason)
 
     capabilities = FoundryConfig(paths=paths).assertion_ledger_capabilities()
     if not capabilities.ledger_write_allowed:
-        return {
-            "schema_version": _RECEIPT_SCHEMA_VERSION,
-            "operation": "assertion_ledger_backfill",
-            "allowed": False,
-            "reason": "ledger_write_disabled",
-            "workspace_id": resolution.workspace_id,
-            "runs": [],
-            "runs_total": 0,
-            "materialized_total": 0,
-            "abstained_total": 0,
-            "abstention_breakdown": {},
-            "fuzzy_recovery_candidates_total": 0,
-        }
+        return _denied_backfill_receipt(reason="ledger_write_disabled", workspace_id=resolution.workspace_id)
 
     selected = list(run_ids) if run_ids is not None else _discover_backfill_candidates(paths)
     assert resolution.workspace_id is not None  # narrows for mypy; guaranteed by resolve_or_deny when allowed

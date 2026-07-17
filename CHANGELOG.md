@@ -11,6 +11,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Assertion Ledger Activation — Workspace-Scoped Writes, Historical Backfill, and Merge UI**
+
+- **Workspace-scoped, fail-closed write contract** (P1) — Shared assertion-ledger write gate enforces workspace isolation via `assertion_workspace.resolve_or_deny()`; single-operator mode resolves to "default" workspace; writes rejected (typed denial, zero mutations) when workspace is absent or unresolved.
+- **Fixed extraction/ingest contract** (P1.5, blocking) — Assertion text now binds to source card's verbatim `extracted_points[].quote` instead of paraphrased extraction text; passage segmentation wired into `AssertionRegistry.ingest()` via `source_cards.ingest_source()` to enable quote recovery and reduce abstention rate. End-to-end verification: >=1 exact-match materialization; flag-off regression confirmed.
+- **Historical backfill driver** (P2) — Idempotent, resumable migration of claim ledger facts to assertions via `rf assertion backfill [--dry-run] [--run ID] [--workspace-id ID]` CLI; accepts low exact-match-eligible yield (94.78% fact-level materialization on real corpus of 42 runs after P1.5 fix; 156 abstentions at document boundaries and passage-binding gaps; 23 fuzzy-recovery candidates flagged for spot-check). Shares `AssertionRegistry.ingest()` and `AssertionMaterializer.materialize_run()` write paths with forward driver; skip-and-continue mode tolerates trailing inference/speculation claims in claim ledger.
+- **Forward write driver** (P3) — `rf ingest` command now threads `assertion_registry_workspace_id` and `ledger_write_allowed` into `source_cards.ingest_source()` to populate ledger for new runs; flag-off path byte-identical to pre-activation behavior.
+- **Reuse reachability** (P4) — LaunchRunRequest now exposes `reuse_assertion`, `reuse_workspace_id`, and `required_reuse_edition_id` fields, wired to existing `assertion_reuse` and `assertion_impact` decision services; denials surface via `block_authoritative_reuse`.
+- **Canonical-merge UI activation** (P5) — `VITE_RF_CANONICAL_CLAIMS_ENABLED` build flag wired through standard deploy/bootstrap path (mirroring `RF_UI_LOOPBACK` pattern); canonical merge-review controls in ClaimAuditWorkbench now render when flag is enabled.
+
 #### **Reusable Assertion Ledger — Default-Off Readiness Controls (P8)**
 
 - **Three independent default-off controls** under `foundry.assertion_ledger`:

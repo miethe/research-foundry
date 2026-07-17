@@ -24,6 +24,7 @@ from ..registry import SOURCE_INDEX, Registry
 from ..schemas import SchemaRegistry
 from ..yamlio import append_jsonl
 from . import audit_service
+from .assertion_workspace import resolve_or_deny
 from .audit_service import AuditEvent
 
 _MAX_POINTS = 8
@@ -303,11 +304,18 @@ def ingest_source(
     ledger_writes_allowed = (
         FoundryConfig(paths=paths).assertion_ledger_capabilities().ledger_write_allowed
     )
-    if assertion_registry_workspace_id and content is not None and not degraded and ledger_writes_allowed:
+    # P6 DI-1 F1: this is one of the call sites assertion_workspace.py's module
+    # docstring names as required to call resolve_or_deny itself -- it must not
+    # trust an already-checked caller (e.g. the CLI). A denied resolution
+    # (None, absent, blank, or whitespace-only) performs zero ledger writes and
+    # never raises; the source-card markdown above is written either way.
+    workspace_resolution = resolve_or_deny(assertion_registry_workspace_id)
+    if workspace_resolution.allowed and content is not None and not degraded and ledger_writes_allowed:
         from .assertion_registry import AssertionRegistry
 
+        assert workspace_resolution.workspace_id is not None  # narrows for mypy; guaranteed by resolve_or_deny when allowed
         registry_usage: dict[str, Any] = dict(cast(dict[str, Any], front_matter["usage"]))
-        registry = AssertionRegistry(workspace_id=assertion_registry_workspace_id, paths=paths)
+        registry = AssertionRegistry(workspace_id=workspace_resolution.workspace_id, paths=paths)
         # Segment the edition by each point's verbatim quote so a short exact
         # quote can bind via find_exact_passages() instead of only ever
         # matching the single whole-document passage the registry stored
@@ -335,7 +343,7 @@ def ingest_source(
             passages=quote_passages or None,
             source_card_snapshot=registry.source_card_snapshot(src_id, front_matter),
         )
-    elif assertion_registry_workspace_id and content is not None and not degraded:
+    elif workspace_resolution.allowed and content is not None and not degraded:
         _trace(run_paths, stage="ingest", assertion_ledger_write_disabled=True)
 
     # Audit: record artifact acceptance after file write + registry upsert (fail-open).

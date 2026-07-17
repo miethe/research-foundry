@@ -449,6 +449,28 @@ def test_backfill_run_reports_valid_receipt_when_no_exact_match_eligible_claims(
     assert receipt["fuzzy_recovery_candidates"] == []
 
 
+def test_backfill_run_denies_directly_with_blank_workspace_id(tmp_foundry) -> None:
+    """P6 DI-1 F2: ``backfill_run`` self-gates via ``resolve_or_deny`` at its
+    own entry point rather than relying solely on ``backfill_corpus`` having
+    gated upstream. A direct caller supplying a blank/whitespace-only
+    ``workspace_id`` must see the same typed fail-closed denial shape
+    ``backfill_corpus`` returns -- zero writes, no exception -- instead of
+    constructing ``AssertionRegistry``/``AssertionMaterializer`` from the
+    unchecked value.
+    """
+
+    run_id = "rf_run_p6_di1_f2_blank_workspace"
+    _setup_historical_run(tmp_foundry, run_id)
+
+    receipt = rollout.backfill_run(run_id, workspace_id="   ", paths=tmp_foundry)
+
+    assert receipt["allowed"] is False
+    assert receipt["reason"] == "workspace_context_missing"
+    assert receipt["workspace_id"] is None
+    assert receipt["runs"] == []
+    assert not (tmp_foundry.root / "assertion_ledger").exists()
+
+
 def test_backfill_corpus_denies_when_workspace_context_missing(tmp_foundry) -> None:
     receipt = rollout.backfill_corpus(assertion_registry_workspace_id=None, paths=tmp_foundry)
 

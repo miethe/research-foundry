@@ -233,3 +233,43 @@ def test_rf_ingest_flag_on_forward_writes_verbatim_quote_bound_assertion(
     cross_workspace_matches = dual_workspace_registries.alpha.find_exact_passages(source_card_id, quote)
     assert cross_workspace_matches == ()
     assert dual_workspace_registries.alpha.root.exists() is False
+
+
+# ---------------------------------------------------------------------------
+# P6 DI-1 F1: ingest_source() self-gates resolve_or_deny rather than trusting
+# an already-checked caller (e.g. the CLI, which resolves "default" before
+# calling in). A direct caller passing an unchecked, whitespace-only
+# workspace id must be denied by ingest_source() itself.
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_source_whitespace_only_workspace_id_skips_ledger_write_without_raising(
+    tmp_foundry: FoundryPaths, tmp_path: Path
+) -> None:
+    """A whitespace-only ``assertion_registry_workspace_id`` passed directly to
+    ``ingest_source()`` (bypassing the CLI's own ``resolve_or_deny("default")``
+    call) must deny exactly like ``None`` -- zero ledger writes, no exception
+    -- while ``ledger_write_enabled=True`` (so the denial is provably due to
+    the blank workspace id, not the flag), and the source-card markdown is
+    still written normally.
+    """
+
+    _set_ledger_write_enabled(tmp_foundry, True)
+    run_id = "rf_run_p6_di1_f1_whitespace_workspace"
+    tmp_foundry.run_paths(run_id).ensure_scaffold()
+    content = "The measured result was 42 percent."
+    source_file = _write_source_file(tmp_path, "evidence.txt", content)
+
+    result = source_cards.ingest_source(
+        str(source_file),
+        run_id=run_id,
+        title="Whitespace Workspace",
+        sensitivity="personal",
+        source_type="other",
+        assertion_registry_workspace_id="   ",
+        paths=tmp_foundry,
+    )
+
+    assert result.degraded is False
+    assert result.path.is_file()
+    assert not (tmp_foundry.root / "assertion_ledger").exists()
