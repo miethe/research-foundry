@@ -108,16 +108,42 @@ def extraction_fact_claim_mappings(
     return tuple(mappings)
 
 
+_TOLERATED_TRAILING_CLAIM_STATUSES = frozenset({"inference", "speculation"})
+
+
 def validate_extraction_fact_claim_mappings(
     run_id: str, ledger: dict, *, paths: FoundryPaths | None = None
 ) -> tuple[ExtractionFactClaimMapping, ...]:
-    """Reject any non-1:1 claim ledger before P3 materialization mutates data."""
+    """Reject a claim ledger whose fact-derived prefix is not exactly
+    reproducible from a fresh extraction-card scan.
+
+    Defect 1c (docs/project_plans/SPIKEs/assertion-ledger-backfill-mapping.md,
+    "Post-fix re-measurement"): this function used to require ``claims`` to be
+    byte-identical, claim-for-claim, to a fresh re-scan of ``extractions/*.yaml``
+    -- with zero tolerance for anything appended after the fact-derived prefix.
+    That rejected 39/42 real runs, because normal report synthesis appends
+    ``inference``/``speculation`` claims onto the same ``claims[]`` list after
+    :func:`build_claim_ledger` first writes it.
+
+    This is a careful integrity-gate accommodation, not a blind relaxation:
+
+    - The fact-derived prefix (``claims[:len(mappings)]``) must still be
+      byte-identical to the fresh scan. Any modification, reordering, or
+      deletion within that prefix still raises
+      ``non_bijective_fact_claim_mapping`` -- unchanged from before.
+    - A trailing suffix (``claims[len(mappings):]``) is tolerated *only* when
+      every trailing claim is typed ``inference`` or ``speculation``. Any
+      trailing claim typed otherwise (e.g. a smuggled extra ``supported``/
+      ``fact`` claim) still raises the same error.
+    """
 
     mappings = extraction_fact_claim_mappings(run_id, paths=paths)
     claims = ledger.get("claims")
-    if not isinstance(claims, list) or len(claims) != len(mappings):
+    if not isinstance(claims, list) or len(claims) < len(mappings):
         raise ValueError("non_bijective_fact_claim_mapping")
-    for mapping, claim in zip(mappings, claims, strict=True):
+
+    prefix = claims[: len(mappings)]
+    for mapping, claim in zip(mappings, prefix, strict=True):
         if not isinstance(claim, dict):
             raise ValueError("invalid_claim")
         sources = claim.get("sources")
@@ -132,6 +158,14 @@ def validate_extraction_fact_claim_mappings(
             or sources[0].get("locator") != mapping.locator
         ):
             raise ValueError("non_bijective_fact_claim_mapping")
+
+    for trailing_claim in claims[len(mappings) :]:
+        if (
+            not isinstance(trailing_claim, dict)
+            or trailing_claim.get("status") not in _TOLERATED_TRAILING_CLAIM_STATUSES
+        ):
+            raise ValueError("non_bijective_fact_claim_mapping")
+
     return mappings
 
 

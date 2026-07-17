@@ -82,6 +82,19 @@ class _Abstain(MaterializationError):
 
 
 @dataclass(frozen=True)
+class AbstainedClaim:
+    """One individually-abstained fact within a skip-and-continue run (P2-01b).
+
+    Recorded per-fact in a run's abstention breakdown instead of the first
+    abstention aborting the entire run -- see
+    :meth:`AssertionMaterializer._prepare`.
+    """
+
+    claim_id: str
+    code: str
+
+
+@dataclass(frozen=True)
 class MaterializationResult:
     """One run's immutable P3 materialization outcome."""
 
@@ -91,6 +104,7 @@ class MaterializationResult:
     claim_ids: tuple[str, ...] = ()
     generation_id: str | None = None
     abstention_code: str | None = None
+    abstained_claims: tuple[AbstainedClaim, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -171,12 +185,27 @@ class AssertionMaterializer:
             ledger = load_yaml(run_paths.claim_ledger)
             if not isinstance(ledger, dict):
                 raise _Abstain("invalid_claim_ledger")
-            prepared = self._prepare(run_id, ledger)
+            prepared, abstained = self._prepare(run_id, ledger)
         except _Abstain as abstention:
             return MaterializationResult(
                 run_id=run_id,
                 status="abstained",
                 abstention_code=abstention.code,
+            )
+
+        if not prepared:
+            # Skip-and-continue (P2-01b): every fact in this run individually
+            # abstained, but the run itself (ledger, mappings) is valid -- the
+            # run completes with a 100% abstention receipt instead of raising.
+            # Preserve the pre-P2-01b single-abstention_code contract when
+            # there is exactly one abstaining fact (the historical single-fact
+            # abstain shape); multi-fact abstention breakdowns live in
+            # abstained_claims.
+            return MaterializationResult(
+                run_id=run_id,
+                status="abstained",
+                abstention_code=abstained[0].code if len(abstained) == 1 else None,
+                abstained_claims=tuple(abstained),
             )
 
         generation = self._generation(run_id, prepared)
@@ -189,7 +218,7 @@ class AssertionMaterializer:
                 raise MaterializationConflict("published_run_manifest_conflict")
             self._verify_published_records(prepared)
             self._apply_claim_references(run_id, ledger, prepared)
-            return self._result(run_id, "reused", prepared, generation["generation_id"])
+            return self._result(run_id, "reused", prepared, generation["generation_id"], abstained)
 
         self._preflight_existing(prepared)
         for item in prepared:
@@ -210,7 +239,7 @@ class AssertionMaterializer:
             pointer,
         )
         self._apply_claim_references(run_id, ledger, prepared)
-        return self._result(run_id, "materialized", prepared, generation["generation_id"])
+        return self._result(run_id, "materialized", prepared, generation["generation_id"], abstained)
 
     def replay_p0(
         self,
@@ -232,7 +261,20 @@ class AssertionMaterializer:
         has_more = start + len(selected) < len(ordered)
         return ReplayResult(results=results, next_cursor=selected[-1] if has_more and selected else None)
 
-    def _prepare(self, run_id: str, ledger: dict[str, Any]) -> tuple[_PreparedRecord, ...]:
+    def _prepare(
+        self, run_id: str, ledger: dict[str, Any]
+    ) -> tuple[tuple[_PreparedRecord, ...], tuple[AbstainedClaim, ...]]:
+        """Prepare every materializable fact; skip-and-continue on the rest.
+
+        P2-01b: a single fact's ``_Abstain`` no longer propagates out of this
+        loop and aborts the whole run. Each fact is evaluated independently;
+        an abstaining fact is recorded in the returned abstention breakdown
+        and processing continues with the run's remaining facts. Ledger-level
+        failures (invalid mapping, empty mapping) still abort the whole run --
+        those are preconditions for iterating facts at all, not a per-fact
+        outcome.
+        """
+
         try:
             mappings = validate_extraction_fact_claim_mappings(run_id, ledger, paths=self.paths)
         except ValueError as exc:
@@ -240,13 +282,20 @@ class AssertionMaterializer:
         if not mappings:
             raise _Abstain("empty_fact_claim_mapping")
 
-        claims = ledger["claims"]
+        # ``claims`` may carry a tolerated trailing suffix of inference/
+        # speculation claims (P2-01a) beyond the fact-derived prefix; only the
+        # prefix (one claim per mapping) is ever a materialization candidate.
+        claims = ledger["claims"][: len(mappings)]
         prepared: list[_PreparedRecord] = []
+        abstained: list[AbstainedClaim] = []
         for mapping, claim in zip(mappings, claims, strict=True):
             if not isinstance(claim, dict):  # guarded by mapping validation
                 raise _Abstain("invalid_claim")
-            prepared.append(self._prepare_one(run_id, mapping, claim))
-        return tuple(prepared)
+            try:
+                prepared.append(self._prepare_one(run_id, mapping, claim))
+            except _Abstain as abstention:
+                abstained.append(AbstainedClaim(claim_id=mapping.claim_id, code=abstention.code))
+        return tuple(prepared), tuple(abstained)
 
     def _prepare_one(
         self,
@@ -615,6 +664,7 @@ class AssertionMaterializer:
         status: str,
         prepared: Sequence[_PreparedRecord],
         generation_id: str,
+        abstained: Sequence[AbstainedClaim] = (),
     ) -> MaterializationResult:
         return MaterializationResult(
             run_id=run_id,
@@ -622,6 +672,7 @@ class AssertionMaterializer:
             assertion_ids=tuple(item.assertion["assertion_id"] for item in prepared),
             claim_ids=tuple(item.mapping.claim_id for item in prepared),
             generation_id=generation_id,
+            abstained_claims=tuple(abstained),
         )
 
     def _assertion_path(self, assertion_id: str) -> Path:
@@ -683,6 +734,7 @@ def materialize_run(
 
 
 __all__ = [
+    "AbstainedClaim",
     "AssertionMaterializer",
     "MaterializationConflict",
     "MaterializationError",
