@@ -247,6 +247,12 @@
         "from_claims": [],
         "reasoning_summary": null
       },
+      "persistent_references": {
+        "source_assertion_id": "ast_fixture_p5_canonical_demo_01",
+        "assertion_version": 1,
+        "canonical_claim_id": "ccl_fixture_p5_merge_demo",
+        "canonical_claim_version": 1
+      },
       "sources": [
         {
           "source_card_id": "src_20260613_rib008_08",
@@ -291,6 +297,12 @@
         "from_claims": [],
         "reasoning_summary": null
       },
+      "persistent_references": {
+        "source_assertion_id": "ast_fixture_p5_canonical_demo_02",
+        "assertion_version": 1,
+        "canonical_claim_id": "ccl_fixture_p5_merge_demo",
+        "canonical_claim_version": 1
+      },
       "sources": [
         {
           "source_card_id": "src_20260613_rib008_08",
@@ -334,6 +346,12 @@
       "inference_basis": {
         "from_claims": [],
         "reasoning_summary": null
+      },
+      "persistent_references": {
+        "source_assertion_id": "ast_fixture_p5_canonical_demo_03",
+        "assertion_version": 1,
+        "canonical_claim_id": "ccl_fixture_p5_merge_demo",
+        "canonical_claim_version": 1
       },
       "sources": [
         {

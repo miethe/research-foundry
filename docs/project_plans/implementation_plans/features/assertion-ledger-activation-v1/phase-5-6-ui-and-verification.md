@@ -48,14 +48,43 @@ Resolved inline (not deferred to a standalone design-spec): verify against **rea
 
 ### Quality Gates
 
-- [ ] `tsc -p tsconfig.app.json --noEmit` clean.
-- [ ] Screenshots captured (flag on/off) per AC-6.
-- [ ] Deploy-flag documentation drafted (finalized in P6-05).
-- [ ] `task-completion-validator` passes P5.
+- [x] `tsc -p tsconfig.app.json --noEmit` clean. Re-verified 2026-07-17 after the
+      P5-02 merge-review control landed.
+- [x] Screenshots captured (flag on/off) per AC-6. Desktop 1440x900, run
+      `rf_run_20260613_what_is_the_current_release_state` with a documented
+      synthetic canonical-grouping fixture (3 claims, `ccl_fixture_p5_merge_demo`)
+      patched into the gitignored `public/data/` local static copy (per OQ-4's
+      permitted-fixture resolution — real backfill data does not exist yet;
+      P2/Wave 2 has not landed). See
+      `docs/project_plans/design-specs/assets/assertion-ledger-activation-v1/verification-p5-canonical-claims-flag-on.png`
+      and `verification-p5-canonical-claims-flag-off.png`.
+- [x] Deploy-flag documentation drafted (finalized in P6-05). See
+      `frontend/runs-viewer/README.md` ("Canonical-claim merge review" +
+      "Deploy-flag wiring (agentic-node bootstrap)" sections). The bootstrap-side
+      mirror of `RF_UI_LOOPBACK` (in `agentic_meta_dev/infra/agentic-node/bootstrap-agentic-node.sh`,
+      a separate repo) is explicitly NOT landed by this phase — tracked as a
+      cross-repo follow-up for P6-05, not silently assumed done.
+- [ ] `task-completion-validator` passes P5. Not yet run — do not treat the three
+      checked items above as a substitute for this separate reviewer gate.
+
+### P5-02 implementation note (2026-07-17)
+
+The merge-review control did not previously exist anywhere in
+`ClaimAuditWorkbench.tsx` (confirmed via `git log --all -- <the two target
+files>`; the last touch to both was `b0e923b`, the prior reviewer-experience
+feature, not this one). This pass added it: `ClaimInspector` now renders a
+"Canonical Claim" section (chip + ID/version + sibling-claim list) when
+`isCanonicalClaimsEnabled()` is true AND the selected claim's
+`persistent_references.canonical_claim_id` is present; sibling claims are
+derived client-side from the already-loaded `run.claims` (no new API/fetch).
+Absent otherwise — never a disabled/empty control, per
+`reusable-assertion-ledger-reviewer-experience-v1.md` §7. Covered by a unit
+test for the pure `deriveCanonicalMergeGroup()` helper
+(`ClaimAuditWorkbench.test.ts`) and the two screenshots above.
 
 ### Key Files
 
-`frontend/runs-viewer/src/lib/canonicalClaimsFlag.ts`, `frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.tsx`.
+`frontend/runs-viewer/src/lib/canonicalClaimsFlag.ts`, `frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.tsx`, `frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.test.ts` (new), `frontend/runs-viewer/README.md`.
 
 ---
 

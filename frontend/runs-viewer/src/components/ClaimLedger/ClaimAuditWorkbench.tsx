@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { RFClaim, RFReportAnchorBlock, RFResolvedSource, RFRunExport } from "@/types/rf";
 import { deriveClaimTitle, deriveReportLocationTitle, deriveSourceTitle, shouldRedactSource, titleFromSlug } from "@/lib/runs";
 import { isAgentsLoopbackEnabled } from "@/hooks/useAgentJobs";
+import { isCanonicalClaimsEnabled } from "@/lib/canonicalClaimsFlag";
 import {
   useAssertionImpact,
   useClearAssertionStateOnWorkspaceChange,
@@ -344,6 +345,39 @@ interface RunMetaRef {
   category?: string | null;
 }
 
+/**
+ * Canonical-claim merge group for a selected claim (assertion-ledger-activation-v1
+ * P5-02). Derived entirely from already-loaded `run.claims` — no separate fetch:
+ * sibling claims are any other claim in the run whose
+ * `persistent_references.canonical_claim_id` matches. Returns null when the claim
+ * carries no canonical_claim_id, which is the caller's cue to render nothing
+ * (per reusable-assertion-ledger-reviewer-experience-v1.md §7: "Otherwise the
+ * controls are absent" — never a disabled/empty merge control).
+ */
+export interface CanonicalMergeGroup {
+  canonicalClaimId: string;
+  canonicalClaimVersion: number | null;
+  siblingClaims: RFClaim[];
+}
+
+export function deriveCanonicalMergeGroup(
+  runClaims: RFClaim[],
+  claim: RFClaim | null,
+): CanonicalMergeGroup | null {
+  const canonicalClaimId = claim?.persistent_references?.canonical_claim_id;
+  if (!claim || !canonicalClaimId) return null;
+  const siblingClaims = runClaims.filter(
+    (candidate) =>
+      candidate.claim_id !== claim.claim_id &&
+      candidate.persistent_references?.canonical_claim_id === canonicalClaimId,
+  );
+  return {
+    canonicalClaimId,
+    canonicalClaimVersion: claim.persistent_references?.canonical_claim_version ?? null,
+    siblingClaims,
+  };
+}
+
 function ClaimInspector({
   runClaims,
   claim,
@@ -383,6 +417,11 @@ function ClaimInspector({
   const isInference = claim.claim_type === "inference" || claim.status === "inference";
   const isSpeculation = claim.claim_type === "speculation" || claim.status === "speculation";
   const confidence = confidenceScore(claim.confidence);
+  // P5-02 (assertion-ledger-activation-v1): merge-review controls — present
+  // only when the build flag is on AND the claim carries a canonical_claim_id
+  // (generated contract field). Flag off or field absent => canonicalGroup is
+  // null and the section below renders nothing (AC-6 resilience contract).
+  const canonicalGroup = isCanonicalClaimsEnabled() ? deriveCanonicalMergeGroup(runClaims, claim) : null;
 
   return (
     <aside className="rv-claim-inspector it-card" data-testid="claim-inspector" data-claim-id={claim.claim_id}>
@@ -431,6 +470,11 @@ function ClaimInspector({
         {claim.claim_type && <span className={`it-chip ${claim.claim_type === "factual" ? "" : claim.claim_type === "inference" ? "blue" : "orange"}`}>{claim.claim_type}</span>}
         {claim.status && <span className={`it-chip ${statusTone(claim.status)}`}>{claim.status}</span>}
         {claim.materiality && <span className="it-chip">{claim.materiality}</span>}
+        {canonicalGroup && (
+          <span className="it-chip purple" data-testid="canonical-claim-chip" title="Grouped under a canonical claim (merge review)">
+            Canonical claim
+          </span>
+        )}
         <span className={`rv-confidence-ring rv-confidence-ring--${confidence.tone}`} title={`${confidence.label} confidence`}>
           {confidence.score}
         </span>
@@ -452,6 +496,46 @@ function ClaimInspector({
           <div><dt>Locations</dt><dd>{claim.report_locations?.length ?? 0}</dd></div>
         </dl>
       </section>
+
+      {/*
+        P5-02 (assertion-ledger-activation-v1) — merge-review controls.
+        Present only when VITE_RF_CANONICAL_CLAIMS_ENABLED is on AND this claim
+        carries a canonical_claim_id (canonicalGroup is null otherwise, so the
+        whole section is absent — never a disabled/empty merge control, per
+        reusable-assertion-ledger-reviewer-experience-v1.md §7).
+      */}
+      {canonicalGroup && (
+        <section className="rv-inspector-section" data-testid="canonical-claim-section">
+          <h4>Canonical Claim</h4>
+          <dl className="rv-inspector-dl">
+            <div><dt>Canonical ID</dt><dd><code>{canonicalGroup.canonicalClaimId}</code></dd></div>
+            <div><dt>Version</dt><dd>{canonicalGroup.canonicalClaimVersion ?? "unknown"}</dd></div>
+            <div><dt>Merged claims</dt><dd>{canonicalGroup.siblingClaims.length} other</dd></div>
+          </dl>
+          {canonicalGroup.siblingClaims.length > 0 ? (
+            <div className="rv-basis-flow" data-testid="canonical-merge-candidate-list">
+              <div className="rv-basis-flow__chain">
+                {canonicalGroup.siblingClaims.map((sibling, index) => (
+                  <span key={sibling.claim_id} className="rv-basis-flow__item">
+                    <button
+                      type="button"
+                      className="rv-basis-flow__claim"
+                      title={sibling.text}
+                      onClick={() => onSelectClaim(sibling.claim_id)}
+                      data-testid={`canonical-merge-candidate-${sibling.claim_id}`}
+                    >
+                      {sibling.claim_id}
+                    </button>
+                    {index < canonicalGroup.siblingClaims.length - 1 && <span aria-hidden="true">+</span>}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="rv-muted">No other claims in this run share this canonical grouping yet.</p>
+          )}
+        </section>
+      )}
 
       <section className="rv-inspector-section">
         <h4>Source Cards</h4>
