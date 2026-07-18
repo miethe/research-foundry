@@ -382,6 +382,132 @@ def test_get_source_not_found_returns_404(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# TEST-012  GET /api/runs/{run_id}/context (DFR-001 v2 lazy-load endpoint)
+# ---------------------------------------------------------------------------
+
+
+def _plant_run_context(
+    paths: FoundryPaths,
+    run_id: str,
+    *,
+    routing_sensitivity: str | None = None,
+    swarm_sensitivity: str | None = None,
+) -> None:
+    """Write routing_decision.yaml + swarm_plan.yaml for *run_id*.
+
+    Mirrors ``tests/unit/test_export_service.py::_build_run_with_routing`` —
+    the only existing fixture that exercises ``export_service._context_summary``.
+    ``*_sensitivity`` optionally sets the artifact-level ``sensitivity`` label
+    consumed by the context redaction pass (P2-003).
+    """
+    rp = paths.run_paths(run_id)
+    routing: dict[str, Any] = {
+        "schema_version": "0.1",
+        "type": "routing_decision",
+        "id": f"route_{run_id}",
+        "selected_abstraction_level": "L4",
+        "rationale": "Test rationale for routing",
+        "human_required": False,
+    }
+    if routing_sensitivity is not None:
+        routing["sensitivity"] = routing_sensitivity
+    dump_yaml(routing, rp.routing_decision)
+
+    swarm: dict[str, Any] = {
+        "schema_version": "0.1",
+        "type": "swarm_plan",
+        "id": f"swarm_{run_id}",
+        "agents": [{"role": "source_scout", "posture": "researcher"}],
+        "required_outputs": ["source_cards"],
+    }
+    if swarm_sensitivity is not None:
+        swarm["sensitivity"] = swarm_sensitivity
+    dump_yaml(swarm, rp.swarm_plan)
+
+
+def test_get_context_unknown_run_returns_404(tmp_path):
+    """Unknown run_id → 404 with structured {"detail": ...}."""
+    client, _ = _make_client(tmp_path)
+    resp = client.get("/api/runs/rf_run_ctx_ghost/context")
+    assert resp.status_code == 404
+    assert "detail" in resp.json()
+
+
+def test_get_context_null_when_no_context_artifacts(tmp_path):
+    """Run exists but has no routing_decision/swarm_plan/research_brief →
+    200 with JSON null (not 404, not {}).
+
+    ``sensitivity_threshold="personal"`` is pinned explicitly (matching
+    ``_plant_run``'s default ``sensitivity="personal"``) rather than relying
+    on the copied dist ``foundry.yaml`` template's default — the same
+    ambient-default gap that pre-dates this endpoint and already fails
+    ``test_get_run_detail_known_run_returns_200`` et al. on this worktree.
+    """
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="personal")
+    _plant_run(cfg.paths, "rf_run_ctx_empty")
+
+    resp = client.get("/api/runs/rf_run_ctx_empty/context")
+    assert resp.status_code == 200
+    assert resp.json() is None
+
+
+def test_get_context_populated_matches_run_json_context_key(tmp_path):
+    """Populated context → 200 with the identical shape as
+    export_run(...)["context"] (parity with run.json's "context" key).
+
+    ``sensitivity_threshold`` pinned to "personal" — see
+    ``test_get_context_null_when_no_context_artifacts`` docstring.
+    """
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="personal")
+    run_id = "rf_run_ctx_populated"
+    _plant_run(cfg.paths, run_id)
+    _plant_run_context(cfg.paths, run_id)
+
+    resp = client.get(f"/api/runs/{run_id}/context")
+    assert resp.status_code == 200
+    ctx = resp.json()
+    assert ctx is not None
+    assert ctx["routing_decision"]["rationale"] == "Test rationale for routing"
+    assert ctx["swarm_plan"]["agents"] == ["source_scout"]
+
+    direct = export_run(cfg.paths, run_id, sensitivity_threshold="personal")
+    assert ctx == direct["context"]
+
+
+def test_get_context_sensitivity_existence_gate_returns_404(tmp_path):
+    """A work_sensitive run at threshold=public → 404 on /context too (same
+    no-existence-leak gate as GET /runs/{run_id} and /claims)."""
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="public")
+    run_id = "rf_run_ctx_gated"
+    _plant_run(cfg.paths, run_id, sensitivity="work_sensitive")
+    _plant_run_context(cfg.paths, run_id)
+
+    resp = client.get(f"/api/runs/{run_id}/context")
+    assert resp.status_code == 404
+    assert "detail" in resp.json()
+
+
+def test_get_context_redacts_over_threshold_artifact_content(tmp_path):
+    """Run itself is at/under threshold, but routing_decision.yaml carries a
+    higher artifact-level sensitivity → its string fields are redacted
+    (P2-003), matching export_service parity."""
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="public")
+    run_id = "rf_run_ctx_redact"
+    _plant_run(cfg.paths, run_id, sensitivity="public")
+    _plant_run_context(cfg.paths, run_id, routing_sensitivity="work_sensitive")
+
+    resp = client.get(f"/api/runs/{run_id}/context")
+    assert resp.status_code == 200
+    ctx = resp.json()
+    assert ctx is not None
+    assert ctx["routing_decision"]["rationale"] == REDACTION_MARKER
+    assert "Test rationale for routing" not in str(ctx)
+
+    direct = export_run(cfg.paths, run_id, sensitivity_threshold="public")
+    assert ctx == direct["context"]
+
+
+# ---------------------------------------------------------------------------
 # TEST-004  GET /data/governance.json
 # ---------------------------------------------------------------------------
 

@@ -7,6 +7,12 @@ export { useClaimLedger,  claimLedgerQueryKey } from "./useClaimLedger.js";
 export { useSourceCard,   sourceCardQueryKey } from "./useSourceCard.js";
 export { useCollapseState } from "./useCollapseState.js";
 export {
+  useRunContext,
+  runContextQueryKey,
+  CONTEXT_SIZE_THRESHOLD_BYTES,
+  CONTEXT_FETCH_TIMEOUT_MS,
+} from "./useRunContext.js";
+export {
   useCatalogStats,
   useCatalogSearch,
   useCatalogItem,

@@ -15,6 +15,9 @@ Endpoint → client.ts mapping:
   GET  /api/runs/{run_id}                     → fetchRunDetail()
   GET  /api/runs/{run_id}/claims              → fetchClaimLedger()
   GET  /api/runs/{run_id}/sources/{sc_id}     → fetchSourceCard()
+  GET  /api/runs/{run_id}/context             → fetchRunContext() (DFR-001 v2
+                                                 lazy-load; same shape as
+                                                 run.json's "context" key)
   POST /api/runs                              → scaffold + register a new run
                                                  (http-run-launch-endpoint contract;
                                                  does NOT drive the Path B swarm)
@@ -171,6 +174,40 @@ def get_run_claims(
     # export_run always populates "claims" as a list; guard defensively
     claims = data.get("claims")
     return claims if isinstance(claims, list) else []
+
+
+@router.get("/runs/{run_id}/context", summary="Get context block for a run")
+def get_run_context(
+    run_id: str,
+    sensitivity_threshold: str | None = Query(
+        None,
+        description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+    ),
+    paths: FoundryPaths = Depends(get_paths),
+) -> dict[str, Any] | None:
+    """Return the ``context`` block for *run_id* (DFR-001 v2 lazy-load endpoint).
+
+    Response shape matches ``run.json``'s top-level ``context`` key exactly
+    (schema 1.3 contract, §9 of ``rf-run-export-schema.md``) — the same shape
+    the SPA's embedded ``run.context`` fallback already renders. Returns
+    ``null`` (HTTP 200) when the run exists but carries no v2 context
+    artifacts (no ``routing_decision.yaml``, ``swarm_plan.yaml``, or
+    ``research_brief.md``).
+
+    **Sensitivity gating**: identical existence-gate + redaction pass as
+    ``GET /runs/{run_id}`` — a run whose sensitivity exceeds the threshold
+    returns 404, indistinguishable from an unknown run (no-existence-leak /
+    landmine #4). Redaction of ``routing_decision`` / ``swarm_plan`` /
+    ``research_brief_md`` content is applied by
+    :func:`~research_foundry.services.export_service._context_summary`
+    before reaching this handler — data is always routed through the export
+    service (R1), never read directly from run artifact files here.
+
+    Raises 404 when the run does not exist or is over-threshold.
+    Raises 400 on invalid sensitivity_threshold.
+    """
+    data = _enforce_existence_gate(paths, run_id, sensitivity_threshold)
+    return data.get("context")
 
 
 @router.get(
@@ -405,11 +442,12 @@ def launch_run_endpoint(
 # RBAC-005 / RBAC-901 audit: runs.py has one mutation route as of the
 # http-run-launch-endpoint contract — POST /runs (gated by
 # Depends(require_role("owner", "admin")) via _RBAC_RUN_LAUNCH, mirroring
-# agent_jobs.py's mutation-route pattern exactly). The five GET routes below
+# agent_jobs.py's mutation-route pattern exactly). The six GET routes below
 # remain read-only:
 #   GET  /runs
 #   GET  /runs/{run_id}
 #   GET  /runs/{run_id}/claims
+#   GET  /runs/{run_id}/context
 #   GET  /runs/{run_id}/sources/{source_card_id}
 #   GET  /reports/{run_id}/anchors
 #

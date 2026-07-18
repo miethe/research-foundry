@@ -111,6 +111,27 @@ export function shouldRedactSource(
  */
 const KNOWN_VALID_SCHEMA_VERSIONS = new Set(["1.1", "1.2"]);
 
+/**
+ * Returns true when a run's schema_version is at least "1.3".
+ * Uses simple numeric version comparison on the first two semver parts.
+ * Falls back to false when version is absent or unparseable (safe default).
+ *
+ * Shared by ContextPane (schema guard for rendering context panels) and
+ * useRunContext (DFR-001 lazy-load hook — gates the live-fetch path so a
+ * pre-1.3 run, whose context is always discarded by the render guard, never
+ * fires a network request in the first place).
+ */
+export function isSchemaAtLeast13(schemaVersion: string | undefined): boolean {
+  if (!schemaVersion) return false;
+  const parts = schemaVersion.split(".").map(Number);
+  const major = parts[0] ?? 0;
+  const minor = parts[1] ?? 0;
+  // 1.3, 1.4, 2.x, etc. are all >= 1.3
+  if (major > 1) return true;
+  if (major === 1 && minor >= 3) return true;
+  return false;
+}
+
 export interface RunAttentionSummary {
   failedChecks: number;
   warningChecks: number;

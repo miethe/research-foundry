@@ -24,6 +24,7 @@
  */
 
 import type { RFRunExport, RFRunSummary } from "@/types/rf";
+import type { RFRunContextSummary } from "@/types/rf/run-export";
 import type { GovernanceConfig } from "@/types/governance";
 import type { CatalogItemDetail, CatalogSearchParams, CatalogSearchResult, CatalogStats } from "@/types/rf/catalog";
 import { getViewerSettings } from "@/lib/viewerSettings";
@@ -396,6 +397,42 @@ export async function fetchSourceCard(
     if (src) return src;
   }
   return null;
+}
+
+// ── Run Context (DFR-001 — hybrid embed + lazy-load v2) ─────────────────────
+
+/**
+ * GET /api/runs/:runId/context → live context block (routing_decision,
+ * research_brief_md, swarm_plan, upstream_entities) — identical shape to the
+ * `context` key embedded in run.json (schema 1.3 contract, unchanged by v2).
+ *
+ * Loopback-only: rejects in static mode (mirrors assertionApiGet below).
+ * There is intentionally no static-mode substitute here — the embedded
+ * `run.context` on RFRunExport already serves that purpose; callers
+ * (useRunContext) fall back to it directly instead of calling this function
+ * when the API is unavailable.
+ *
+ * Returns null (not throws) when the run exists but has no context artifacts,
+ * per the endpoint's documented `HTTP 200 JSON null` contract.
+ *
+ * Accepts an optional AbortSignal so callers can enforce a short client-side
+ * timeout (useRunContext uses 2s) without ever blocking panel render.
+ */
+export async function fetchRunContext(
+  runId: string,
+  options?: { signal?: AbortSignal },
+): Promise<RFRunContextSummary | null> {
+  if (!LOOPBACK_ENABLED) {
+    throw new ClientError(503, "Run context API is unavailable in static mode");
+  }
+  const url = `${LOOPBACK_BASE}/runs/${encodeURIComponent(runId)}/context`;
+  const headers = buildAuthHeaders();
+  const res = await fetch(url, { method: "GET", headers, signal: options?.signal });
+  if (!res.ok) {
+    const reasonCode = await readSafeReasonCode(res);
+    throw new ClientError(res.status, `Loopback GET ${url} failed: ${res.statusText}`, reasonCode);
+  }
+  return res.json() as Promise<RFRunContextSummary | null>;
 }
 
 // ── Evidence Catalog (public-multiuser-p0p1, Phase 1) ────────────────────────

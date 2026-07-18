@@ -27,30 +27,14 @@ import { RoutingDecisionCard, SwarmPlanSection } from "@/screens/SwarmScreen";
 import { ReportRenderer } from "@/components/ReportOverlay/ReportRenderer";
 import { ChevronDown, ChevronRight } from "@/components/LineageGraph/kindIcons";
 import { useCollapseState } from "@/hooks/useCollapseState";
+import { useRunContext } from "@/hooks/useRunContext";
+import { isSchemaAtLeast13 } from "@/lib/runs";
 import "@/styles/context-pane.css";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 export interface ContextPaneProps {
   run: RFRunExport;
-}
-
-// ── Schema version helper ─────────────────────────────────────────────────────
-
-/**
- * Returns true when the run's schema_version is at least "1.3".
- * Uses simple numeric version comparison on the first two semver parts.
- * Falls back to false when version is absent or unparseable (safe default).
- */
-function isSchemaAtLeast13(schemaVersion: string | undefined): boolean {
-  if (!schemaVersion) return false;
-  const parts = schemaVersion.split(".").map(Number);
-  const major = parts[0] ?? 0;
-  const minor = parts[1] ?? 0;
-  // 1.3, 1.4, 2.x, etc. are all >= 1.3
-  if (major > 1) return true;
-  if (major === 1 && minor >= 3) return true;
-  return false;
 }
 
 // ── CollapsibleSection ────────────────────────────────────────────────────────
@@ -478,8 +462,15 @@ function UpstreamEntitiesSection({
 // ── ContextPane ───────────────────────────────────────────────────────────────
 
 export function ContextPane({ run }: ContextPaneProps) {
+  // DFR-001: resolve context via the hybrid embed + lazy-load hook — small
+  // embedded blocks render with no network call; larger ones prefer a live
+  // API fetch (2s timeout, loopback mode only) and fall back to the embedded
+  // snapshot silently on any failure. Offline/static builds always resolve
+  // to the embedded value, unchanged from pre-DFR-001 behavior.
+  const { context: resolvedContext } = useRunContext(run);
+
   // Schema guard: require 1.3+ AND a context block to show any panels.
-  const hasContext = isSchemaAtLeast13(run.schema_version) && run.context != null;
+  const hasContext = isSchemaAtLeast13(run.schema_version) && resolvedContext != null;
 
   if (!hasContext) {
     return (
@@ -506,7 +497,7 @@ export function ContextPane({ run }: ContextPaneProps) {
   }
 
   const runId = run.run_id;
-  const context = run.context;
+  const context = resolvedContext;
 
   return (
     <div className="rv-context-pane" data-testid="context-pane">
