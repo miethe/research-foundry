@@ -36,6 +36,7 @@ export type {
   RFTimelineEvent,
   RFArtifactSchemaVersions,
   RFWritebackTarget,
+  RFWritebackPreview,
   RFRunWritebacksSummary,
   RFRunExport,
   RFRunSummary,

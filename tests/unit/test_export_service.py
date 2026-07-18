@@ -250,7 +250,7 @@ def test_dangling_source_is_flagged_not_dropped(tmp_foundry: FoundryPaths) -> No
 def test_claim_counts_and_top_level_shape(tmp_foundry: FoundryPaths) -> None:
     build_run(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_test001")
-    assert data["schema_version"] == svc.EXPORT_SCHEMA_VERSION == "1.5"
+    assert data["schema_version"] == svc.EXPORT_SCHEMA_VERSION == "1.6"
     assert data["run_id"] == "rf_run_test001"
     assert data["claim_counts"]["total"] == 5
     assert data["claim_counts"]["supported"] == 3
@@ -539,10 +539,10 @@ def test_report_draft_falls_back_to_final(tmp_foundry: FoundryPaths) -> None:
     assert data["report_draft"] == final_content
 
 
-def test_schema_version_is_1_5(tmp_foundry: FoundryPaths) -> None:
+def test_schema_version_is_1_6(tmp_foundry: FoundryPaths) -> None:
     build_run(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_test001")
-    assert data["schema_version"] == "1.5"
+    assert data["schema_version"] == "1.6"
 
 
 # --------------------------------------------------------------------------
@@ -628,12 +628,12 @@ def test_metadata_fields_null_on_pre_migration_run(tmp_foundry: FoundryPaths) ->
     assert data["backlog_idea_id"] is None
 
 
-def test_schema_version_bumped_to_1_5(tmp_foundry: FoundryPaths) -> None:
-    """EXP-003: schema_version in export output is '1.5'."""
-    assert svc.EXPORT_SCHEMA_VERSION == "1.5"
+def test_schema_version_bumped_to_1_6(tmp_foundry: FoundryPaths) -> None:
+    """FR-13: schema_version in export output is '1.6'."""
+    assert svc.EXPORT_SCHEMA_VERSION == "1.6"
     _build_run_with_metadata(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_meta001")
-    assert data["schema_version"] == "1.5"
+    assert data["schema_version"] == "1.6"
 
 
 def test_existing_fields_unaffected_by_metadata_addition(tmp_foundry: FoundryPaths) -> None:
@@ -648,7 +648,7 @@ def test_existing_fields_unaffected_by_metadata_addition(tmp_foundry: FoundryPat
 
     # Core fields still present and correct
     assert data["run_id"] == "rf_run_meta001"
-    assert data["schema_version"] == "1.5"
+    assert data["schema_version"] == "1.6"
     assert data["status_derived"] == "planned"
     assert "claims" in data
     assert "claim_counts" in data
@@ -1044,7 +1044,7 @@ def test_enrichment_extra_fields_all_present_on_full_run(tmp_foundry: FoundryPat
     assert data["context"]["routing_decision"] is not None
     assert data["context"]["swarm_plan"] is not None
     # schema_version is now 1.5
-    assert data["schema_version"] == "1.5"
+    assert data["schema_version"] == "1.6"
 
 
 def test_enrichment_extra_fields_null_on_pre_enrichment_run(
@@ -1651,7 +1651,7 @@ def test_schema_13_context_null_when_no_v2_artifacts(tmp_foundry: FoundryPaths) 
     build_run(tmp_foundry, "rf_run_noctx12")
     data = svc.export_run(tmp_foundry, "rf_run_noctx12")
 
-    assert data["schema_version"] == "1.5"
+    assert data["schema_version"] == "1.6"
     assert "context" in data
     assert data["context"] is None
 
@@ -1665,7 +1665,7 @@ def test_schema_13_context_shape_complete_when_v2_artifacts_present(
     _build_run_with_routing(tmp_foundry, "rf_run_ctx13")
     data = svc.export_run(tmp_foundry, "rf_run_ctx13")
 
-    assert data["schema_version"] == "1.5"
+    assert data["schema_version"] == "1.6"
     ctx = data.get("context")
     assert ctx is not None
 
@@ -2031,7 +2031,7 @@ def test_context_full_pipeline_round_trip(tmp_foundry: FoundryPaths) -> None:
     assert out.exists()
     data = json.loads(out.read_text(encoding="utf-8"))
 
-    assert data["schema_version"] == "1.5"
+    assert data["schema_version"] == "1.6"
     ctx = data["context"]
     assert ctx is not None
     for key in (
@@ -2050,3 +2050,133 @@ def test_context_full_pipeline_round_trip(tmp_foundry: FoundryPaths) -> None:
     # upstream entities populated
     assert ctx["upstream_entities"]["intent_id"] == "intent_p2_001"
     assert ctx["upstream_entities"]["intenttree_node_id"] == "node_p2_001"
+
+
+# --------------------------------------------------------------------------
+# FR-13 — writeback candidate previews + reviewer_notes/required_fix (schema 1.6)
+# --------------------------------------------------------------------------
+def _write_council_review(
+    rp: RunPaths,
+    *,
+    decision: str = "approve",
+    reviewer_notes: str | None = "Deterministic council review.",
+    concerns: list[dict[str, Any]] | None = None,
+) -> None:
+    """Write a minimal review_packet-shaped reviews/council_review.yaml.
+
+    Mirrors the real shape written by
+    research_foundry.services.writeback.council_review(): reviewer_notes is a
+    top-level packet field; each concern may carry its own required_fix.
+    """
+    packet: dict[str, Any] = {
+        "id": "council_test",
+        "evidence_bundle_id": "bundle_test",
+        "voting": {"allowed_votes": ["approve", "concern", "block"]},
+        "members": [{"role": "domain_reviewer", "posture": "researcher", "vote": "approve"}],
+        "output": {"decision": decision, "concerns": concerns or []},
+    }
+    if reviewer_notes is not None:
+        packet["reviewer_notes"] = reviewer_notes
+    dump_yaml(packet, rp.council_review)
+
+
+def test_previews_one_entry_per_present_writeback_file(tmp_foundry: FoundryPaths) -> None:
+    rp = build_run(tmp_foundry, with_writebacks=True)  # writes ccdash_event.yaml
+    rp.meatywiki_writeback.write_text("# MeatyWiki Candidate\n\nSome content.\n", encoding="utf-8")
+    rp.skillbom_candidate.write_text("# SkillBOM Candidate\n\nOther content.\n", encoding="utf-8")
+
+    data = svc.export_run(tmp_foundry, "rf_run_test001", sensitivity_threshold="work_sensitive")
+    previews = data["writebacks"]["previews"]
+    by_target = {p["target"]: p for p in previews}
+
+    assert len(previews) == 3  # only the 3 present files get a preview entry
+    assert by_target["meatywiki"] == {
+        "target": "meatywiki",
+        "filename": "meatywiki_writeback.md",
+        "content_type": "markdown",
+        "content": "# MeatyWiki Candidate\n\nSome content.\n",
+    }
+    assert by_target["skillbom"]["content_type"] == "markdown"
+    assert "Other content" in by_target["skillbom"]["content"]
+    assert by_target["ccdash"]["content_type"] == "yaml"
+    assert by_target["ccdash"]["filename"] == "ccdash_event.yaml"
+
+
+def test_previews_content_redacted_over_threshold(tmp_foundry: FoundryPaths) -> None:
+    # build_run()'s run.yaml sensitivity is "personal" (rank 1); default
+    # threshold is "public" (rank 0) -> redact.
+    rp = build_run(tmp_foundry, with_writebacks=True)
+    rp.meatywiki_writeback.write_text("SECRET_WRITEBACK_TEXT\n", encoding="utf-8")
+
+    data = svc.export_run(tmp_foundry, "rf_run_test001")
+    preview = next(p for p in data["writebacks"]["previews"] if p["target"] == "meatywiki")
+    assert preview["content"] == svc.REDACTION_MARKER
+
+
+def test_previews_content_unredacted_when_threshold_allows(tmp_foundry: FoundryPaths) -> None:
+    rp = build_run(tmp_foundry, with_writebacks=True)
+    rp.meatywiki_writeback.write_text("VISIBLE_WRITEBACK_TEXT\n", encoding="utf-8")
+
+    data = svc.export_run(tmp_foundry, "rf_run_test001", sensitivity_threshold="work_sensitive")
+    preview = next(p for p in data["writebacks"]["previews"] if p["target"] == "meatywiki")
+    assert "VISIBLE_WRITEBACK_TEXT" in preview["content"]
+
+
+def test_reviewer_notes_and_required_fix_populated_from_council_review(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    rp = build_run(tmp_foundry, with_writebacks=True)
+    _write_council_review(
+        rp,
+        decision="required_block",
+        reviewer_notes="Council flagged a blocking concern.",
+        concerns=[
+            {"concern_id": "c1", "severity": "blocker", "text": "bad thing",
+             "required_fix": "Fix the bad thing."},
+            {"concern_id": "c2", "severity": "medium", "text": "also bad",
+             "required_fix": "Fix the also-bad thing."},
+        ],
+    )
+    data = svc.export_run(tmp_foundry, "rf_run_test001", sensitivity_threshold="work_sensitive")
+    assert data["writebacks"]["reviewer_notes"] == "Council flagged a blocking concern."
+    assert data["writebacks"]["required_fix"] == "Fix the bad thing.\nFix the also-bad thing."
+
+
+def test_reviewer_notes_and_required_fix_null_when_no_review_packet(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    build_run(tmp_foundry, with_writebacks=True)  # no reviews/council_review.yaml written
+    data = svc.export_run(tmp_foundry, "rf_run_test001")
+    assert data["writebacks"]["reviewer_notes"] is None
+    assert data["writebacks"]["required_fix"] is None
+
+
+def test_required_fix_null_when_council_approves_with_no_concerns(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    rp = build_run(tmp_foundry, with_writebacks=True)
+    _write_council_review(rp, decision="approve", reviewer_notes="All clear.", concerns=[])
+    data = svc.export_run(tmp_foundry, "rf_run_test001", sensitivity_threshold="work_sensitive")
+    assert data["writebacks"]["reviewer_notes"] == "All clear."
+    assert data["writebacks"]["required_fix"] is None
+
+
+def test_reviewer_notes_and_required_fix_redacted_over_threshold(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    rp = build_run(tmp_foundry, with_writebacks=True)  # sensitivity "personal", default threshold public
+    _write_council_review(
+        rp,
+        reviewer_notes="SECRET_REVIEWER_NOTE",
+        concerns=[{"concern_id": "c1", "severity": "low", "text": "x",
+                   "required_fix": "SECRET_FIX"}],
+    )
+    data = svc.export_run(tmp_foundry, "rf_run_test001")
+    assert data["writebacks"]["reviewer_notes"] == svc.REDACTION_MARKER
+    assert data["writebacks"]["required_fix"] == svc.REDACTION_MARKER
+
+
+def test_zero_writebacks_writebacks_key_is_none(tmp_foundry: FoundryPaths) -> None:
+    build_run(tmp_foundry, with_writebacks=False)
+    data = svc.export_run(tmp_foundry, "rf_run_test001")
+    assert data["writebacks"] is None

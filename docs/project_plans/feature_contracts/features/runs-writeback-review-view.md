@@ -4,7 +4,7 @@ schema_version: 2
 doc_type: feature_contract
 it_schema: 1
 description: "Upgrade the runs-viewer Writeback tab from a status stub into a governance review surface with rendered writeback-candidate cards and reviewer_notes/required_fix visibility."
-status: draft
+status: completed
 created: 2026-07-18
 updated: 2026-07-18
 feature_slug: "runs-writeback-review-view"
@@ -36,10 +36,12 @@ commit_refs: []
 pr_refs: []
 files_affected:
   - src/research_foundry/services/export_service.py
-  - schemas/evidence_bundle.schema.yaml
+  - tests/unit/test_export_service.py
+  - docs/dev/architecture/rf-run-export-schema.json
   - frontend/runs-viewer/src/types/rf/run-export.ts
+  - frontend/runs-viewer/src/types/rf/index.ts
   - frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx
-  - frontend/runs-viewer/src/components/RunDetail/RunDetailModal.tsx
+  - frontend/runs-viewer/src/test/fr13-writeback-review.test.tsx
   - CHANGELOG.md
 ---
 
@@ -410,3 +412,209 @@ This contract is your specification. Implement to satisfy the acceptance criteri
 Stay within scope. The read-only invariant (§4, §8, §9) is the one boundary in this contract that
 must never be crossed, even under scope-ambiguity pressure — when in doubt, render less, never add
 a mutation path. The reviewer will check for scope drift and for any mutation-capable code path.
+
+---
+
+## Completion Report
+
+### Summary
+
+Extended `_collect_writebacks()` to populate `reviewer_notes`/`required_fix` (sourced empirically
+from the council review packet, `reviews/council_review.yaml`, not `evidence_bundle.governance`)
+and a new typed `previews[]` array (one `{target, filename, content_type, content}` entry per
+present writeback file, content passed through the existing `_redact_str_values` redaction gate).
+Bumped `EXPORT_SCHEMA_VERSION` "1.5" → "1.6"; the schema diff was reviewed and **APPROVED** by
+`backend-architect` before any frontend work began. Upgraded the runs-viewer Writeback tab
+(`RunDetailWorkspace.tsx`, shared by the full-page and modal detail views) from a 3-row status
+stub into a governance status panel plus one candidate card per preview, with Markdown rendering
+for `.md` files and a pre-formatted structured block for `.yaml` files — strictly read-only, no
+mutation-capable control anywhere in the tab.
+
+### Files Changed
+
+- `src/research_foundry/services/export_service.py` — bumped `EXPORT_SCHEMA_VERSION` to `"1.6"`;
+  hoisted `_WRITEBACK_TARGETS` to module scope (no duplication); added
+  `_review_packet_reviewer_fields()` helper (reads `reviews/council_review.yaml`, joins multiple
+  concerns' `required_fix` values); rewrote `_collect_writebacks()` to build `previews[]` and
+  populate `reviewer_notes`/`required_fix`, both redacted via `_redact_str_values` when the run's
+  sensitivity exceeds the export threshold.
+- `tests/unit/test_export_service.py` — bumped 9 pre-existing hardcoded `"1.5"` schema-version
+  assertions to `"1.6"` (2 test functions renamed `..._1_5` → `..._1_6` to match); added 8 new
+  tests covering previews shape/redaction, reviewer_notes/required_fix population/null/redaction,
+  and the zero-writebacks no-op path.
+- `docs/dev/architecture/rf-run-export-schema.json` — the hand-written TS types' stated "source of
+  truth" JSON Schema (manual-sync-by-PR-review per its own header comment); updated
+  `schema_version` description/examples, added `RFWritebackPreview` definition, wired
+  `previews` items to it. Not in the contract's `files_affected` list but directly implied by that
+  file's own documented sync contract — flagged here as a deviation, not silently done.
+- `frontend/runs-viewer/src/types/rf/run-export.ts` — added `RFWritebackPreview` interface;
+  changed `RFRunWritebacksSummary.previews` from `unknown[] | null` to `RFWritebackPreview[] | null`;
+  updated the schema_version doc comment.
+- `frontend/runs-viewer/src/types/rf/index.ts` — added `RFWritebackPreview` to the public type
+  barrel (deviation: not in contract's `files_affected`, but required for the new type to be
+  importable via the project's `@/types/rf` convention — every sibling writeback type is already
+  barrel-exported there).
+- `frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx` — replaced the
+  `activeTab === "writeback"` stub with `WritebackTabPanel`/`WritebackGovernancePanel`/
+  `WritebackCandidateCard` (local functions, following the file's existing `RunOverview`-style
+  pattern); added a minimal Markdown renderer using `react-markdown`/`remark-gfm` (already project
+  dependencies) instead of reusing `ReportRenderer`.
+- `frontend/runs-viewer/src/test/fr13-writeback-review.test.tsx` — new test file (15 tests) covering
+  empty state, governance panel (including null → "Not set"), candidate cards (markdown + yaml
+  rendering), legacy (pre-1.6) degradation, and the read-only invariant (no `<form>`/`<button>`/
+  `<input>` in the tab).
+- `CHANGELOG.md` — added an `[Unreleased]` entry for the schema bump and tab upgrade.
+
+**Not changed** (see Deviations below): `schemas/evidence_bundle.schema.yaml`,
+`frontend/runs-viewer/src/components/RunDetail/RunDetailModal.tsx`.
+
+### Acceptance Criteria Status
+
+- [x] `writebacks.previews[]` exports one entry per present writeback file, each carrying
+      `{target, filename, content_type, content}`, redacted through `_redact_str_values`.
+- [x] `writebacks.reviewer_notes`/`required_fix` populated when present, explicit `null` (not
+      absent/empty-string) when not.
+- [x] `EXPORT_SCHEMA_VERSION` bumped to `"1.6"`; `backend-architect` review recorded below
+      (APPROVED, before frontend work began).
+- [x] Writeback tab (both `RunDetailWorkspace.tsx` full-page and `RunDetailModal.tsx` modal paths —
+      the modal renders `RunDetailWorkspace` directly, so both paths share one implementation)
+      renders the governance status panel + one candidate card per preview.
+- [x] `.md` candidates render as formatted Markdown; `.yaml` candidates render as a
+      pre-formatted structured block (verified via `<pre>`/`<code>` DOM assertions in tests).
+- [x] No-writeback-files run shows the existing empty-state message, copy unchanged.
+- [x] Pre-1.6 export (previews/reviewer_notes/required_fix keys entirely absent) renders without
+      error — governance panel + "Not set"/"No previews" fallbacks (see interpretation note below).
+- [x] No code path in the SPA can set `approved_for_writeback`/`reviewer_notes`/`required_fix` —
+      verified by diff inspection (no new API client calls, no form, no button anywhere in the new
+      code) and by 3 explicit read-only-invariant tests (`<form>`/`<button>`/`<input,select,textarea>`
+      absence).
+- [x] Trust Panel governance block and all other RunDetail tabs unchanged — diff touches only the
+      `writeback` branch, its local helper functions, and imports; `TrustPanel.tsx` untouched.
+
+### backend-architect Review Outcome
+
+**APPROVED** (recorded verbatim from the review agent, run before any frontend edits):
+
+> Additive/backward-compatible: yes — no key removed, no existing-field type narrowed; `previews`
+> narrows from `unknown[]` but that field was always empty pre-1.6, so no real consumer breaks.
+> Source-of-truth choice (review packet, not evidence_bundle.governance) is sound and matches where
+> the writeback module actually authors those fields; `_load_yaml_dict` no-ops cleanly when the
+> packet is absent. Redaction via run-level sensitivity (vs. a per-file label, which doesn't exist)
+> is a reasonable, fail-safe default — same pattern already used for `routing_decision`/`swarm_plan`.
+> `_WRITEBACK_TARGETS` hoist is a pure no-behavior-change refactor. No bugs found. No changes
+> requested.
+
+### Validation Run
+
+| Command | Result | Notes |
+|---|---|---|
+| `pnpm --dir frontend/runs-viewer exec tsc -p tsconfig.app.json --noEmit` | Pass | Clean, no errors |
+| `pnpm --dir frontend/runs-viewer lint` | Pass (baseline parity) | 9 pre-existing problems (1 error, 8 warnings) in 4 unrelated files (`AuthContext.tsx`, `LocalLoginForm.tsx`, `AssertionAuditPanel.tsx`, `ClaimAuditWorkbench.tsx`); confirmed identical via `git stash` — zero new lint issues in changed files |
+| `pnpm --dir frontend/runs-viewer test` | Pass (baseline parity) | 1001/1002 passed; the 1 failure (`provenance-correctness.test.ts`) plus the 1 failed suite (`codegen/generate-types.contract.test.mjs`, "No test suite found") both reproduce identically with all my changes stashed — pre-existing, unrelated to this contract (project memory: "4 frontend test files are known-failing baseline") |
+| `pnpm --dir frontend/runs-viewer build` | Pass | Builds clean (pre-existing >500kB chunk-size warning, unrelated) |
+| `PYTHONPATH=<worktree>/src <main>/.venv/bin/python -m pytest -k writeback` | Pass | 97 passed across the whole repo (project venv, not the pyenv shim) |
+| `PYTHONPATH=<worktree>/src <main>/.venv/bin/python -m pytest tests/unit/test_export_service.py` | Pass | 124 passed (full file, includes all 8 new + 9 version-bumped tests) |
+| `flake8 src/research_foundry/services/export_service.py --select=E9,F63,F7,F82` | Pass | No errors |
+| `backend-architect` schema review | **APPROVED** | See above; recorded before frontend work began, per §8 |
+| CHANGELOG entry | Done | `[Unreleased]` section, schema 1.5→1.6 + tab upgrade |
+
+Also spot-checked `tests/test_serve_api.py`/`tests/integration/test_export_round_trip.py`/
+`tests/integration/test_p5_regression_suite.py` for regressions: 5 pre-existing `test_serve_api.py`
+failures (404-vs-200, a test-isolation issue that only surfaces when run alongside other files)
+reproduce identically with changes stashed — confirmed unrelated to this diff.
+
+### Deviations From Contract
+
+1. **`schemas/evidence_bundle.schema.yaml` — not modified.** Risk Area 3 explicitly asked the
+   executing agent to confirm empirically whether `reviewer_notes`/`required_fix` live on
+   `evidence_bundle.governance` or a separate `review_packet` artifact before wiring the export.
+   Traced `research_foundry.services.writeback.council_review()`: both fields are written onto
+   `reviews/council_review.yaml` (schema `review_packet`), which already declares them —
+   `evidence_bundle.governance` (schemas/evidence_bundle.schema.yaml:59-78) does not declare either
+   field and needed no change. Listed in the contract's original `files_affected` on the design
+   spec's untested assumption; the empirical finding supersedes it.
+2. **`frontend/runs-viewer/src/components/RunDetail/RunDetailModal.tsx` — not modified.**
+   `RunDetailModal.tsx` does not duplicate Writeback-tab markup; it renders `<RunDetailWorkspace>`
+   directly and only shows one already-existing pre-flight banner (`!writebackAvailable &&
+   activeTab === "writeback"`) above it. Upgrading `RunDetailWorkspace.tsx`'s tab content
+   automatically upgrades the modal path with zero additional code — verified by inspection, not
+   assumed. No edit was needed to satisfy "mirror the same tab content in RunDetailModal.tsx."
+3. **New Markdown component instead of `ReportRenderer` reuse.** `ReportRenderer` requires
+   non-optional `claims`/`onClaimSelect` props, applies a metadata-frontmatter-stripping pass
+   (risk of eating legitimate writeback content lines that happen to look like `Key: value`), and
+   carries claim-chip/anchor-block logic irrelevant to writeback markdown. Built a small local
+   renderer using the same already-present dependencies (`react-markdown` + `remark-gfm`) instead —
+   no new dependency added, per §8's constraint.
+4. **`.yaml` previews rendered as pre-formatted text, not parsed.** The contract's "readable
+   structured/pretty-printed block" requirement is satisfied by rendering the backend's exact YAML
+   text inside a `<pre><code>` block (monospace, line-preserving) rather than parsing it into a JS
+   object. This avoids needing a YAML parser in the browser bundle (`js-yaml` is currently a
+   dev-only dependency used by codegen scripts, not shipped to the client) — consistent with the
+   contract's note that "no new YAML-parsing dependency should be needed."
+5. **Legacy-degradation interpretation.** AC7 asks for the tab to render "in its current
+   (pre-this-feature) stub form" when the 1.6 keys are absent. The new implementation does not
+   reproduce the old 3-row `<dl>` byte-for-byte; instead it shows the same new governance panel
+   with "Not set"/"No previews" fallbacks (the null-coalescing pattern already used everywhere else
+   in this codebase for additive fields, e.g. `report_anchors`). No crash, no missing/blank rows —
+   interpreted "graceful degradation" as behavior-equivalent rather than markup-identical. Flagging
+   this explicitly per the contract's own escalation instructions rather than silently assuming.
+6. **`docs/dev/architecture/rf-run-export-schema.json` updated** (not in `files_affected`). This
+   JSON Schema file's own header states it is the manually-synced "source of truth" for the
+   hand-written TS types, kept current "by PR review" — leaving it stale after exactly this kind of
+   schema-adding change would violate that file's stated policy, so it was updated (new
+   `RFWritebackPreview` definition, `previews` items ref, version description/examples).
+7. **`frontend/runs-viewer/src/types/rf/index.ts` updated** (not in `files_affected`). Required to
+   barrel-export the new `RFWritebackPreview` type per the project's own "import from `@/types/rf`
+   only" convention stated in that file's header — every sibling writeback type
+   (`RFWritebackTarget`, `RFRunWritebacksSummary`) is already exported there.
+8. **`tests/unit/test_export_service.py` updated beyond adding new tests** (not in
+   `files_affected`). 9 pre-existing tests hardcoded the literal string `"1.5"` as the expected
+   `schema_version`; these had to be bumped to `"1.6"` or the full suite would fail on an unrelated
+   assertion. Two test functions were renamed (`test_schema_version_is_1_5` →
+   `test_schema_version_is_1_6`, `test_schema_version_bumped_to_1_5` →
+   `test_schema_version_bumped_to_1_6`) to keep names accurate.
+
+### Risks and Limitations
+
+- **No per-writeback-file sensitivity label.** Redaction of `previews[]`/`reviewer_notes`/
+  `required_fix` uses the run's overall `sensitivity` vs. the export threshold (the same pattern
+  already used for `routing_decision`/`swarm_plan`), because no writeback file carries an
+  independent sensitivity label today. `backend-architect` confirmed this is a reasonable
+  fail-safe default but flagged it as a known limitation: if a future writeback target ever embeds
+  content more sensitive than the run's declared label, it would inherit the run's (possibly lower)
+  redaction decision. Not a regression — the same limitation already existed for other context
+  fields — but worth tracking if a writeback target's sensitivity profile diverges from the run's.
+- **`required_fix` join strategy.** When a council review has multiple concerns each carrying a
+  `required_fix`, they are newline-joined into one string (de-duplicated, order-preserved). This
+  is a reasonable display choice but is a lossy simplification versus exposing the full
+  `concerns[]` array structure (out of scope per contract — `required_fix` is typed as a single
+  `string | null`).
+- **Two known-failing frontend test files remain untouched** (`provenance-correctness.test.ts`,
+  `codegen/generate-types.contract.test.mjs`) — pre-existing baseline failures per project memory,
+  confirmed unrelated via `git stash` comparison; not chased per that memory's guidance.
+
+### Follow-Up Recommendations
+
+- Consider extending `previews[]` rendering with bespoke per-target UI for the three lower-priority
+  targets (`intenttree_update.yaml`, `arc_review_request.yaml`, `notebooklm_update.yaml`) if
+  operator feedback shows the generic YAML-block treatment is insufficient for those targets —
+  explicitly deferred by the contract's Out-of-Scope section.
+- If a future writeback target needs independent sensitivity labeling (distinct from the run's
+  overall sensitivity), `_collect_writebacks()`'s `redact` parameter would need to become
+  per-file rather than a single run-level boolean — flagging now so it isn't a surprise later.
+- The two pre-existing failing frontend test files and the 5 pre-existing `test_serve_api.py`
+  cross-file-isolation failures are unrelated to this contract but remain open technical debt;
+  not remediated here per scope discipline.
+
+### Memory Candidates Captured
+
+- **Gotcha**: `docs/dev/architecture/rf-run-export-schema.json` is a JSON Schema that the
+  hand-written `frontend/runs-viewer/src/types/rf/run-export.ts` claims as its "source of truth,"
+  synced manually "by PR review" (per its own header comment) — not covered by any automated
+  contract test (`codegen/generate-types.contract.test.mjs` only checks the OpenAPI-generated
+  assertions API types, a separate concern). Future schema bumps to `RFRunWritebacksSummary`/etc.
+  should update both files together; there is no CI gate that would catch drift.
+- **Gotcha**: `reviewer_notes`/`required_fix` for writeback governance live on the `review_packet`
+  artifact (`reviews/council_review.yaml`), not `evidence_bundle.governance` — the latter's schema
+  (`schemas/evidence_bundle.schema.yaml`) does not declare either field. Any future work reading
+  "governance" fields for writeback approval context should check `council_review.yaml` first.

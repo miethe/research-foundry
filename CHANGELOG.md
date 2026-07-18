@@ -11,6 +11,28 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Runs-Viewer Writeback Review Governance View (FR-13)**
+
+- **Export schema 1.5 → 1.6** — `_collect_writebacks()` now populates
+  `writebacks.reviewer_notes`/`required_fix` (sourced from the council review
+  packet, `reviews/council_review.yaml` — not `evidence_bundle.governance`,
+  which does not declare either field) and a concrete typed
+  `writebacks.previews[]` array (`{target, filename, content_type, content}`,
+  one entry per present writeback file). Preview content passes through the
+  existing `_redact_str_values` sensitivity gate — writeback content is not
+  exempt from redaction. Additive/nullable only; pre-1.6 exports omit the new
+  keys and degrade gracefully. Schema-bump reviewed and approved by
+  `backend-architect` per the frozen-schema policy gate.
+- **Writeback tab upgraded to a governance review surface** — the runs-viewer
+  Writeback tab (`RunDetailWorkspace.tsx`, shared by the full-page and modal
+  paths) now renders a governance status panel (approval state, reviewer
+  notes, required fix — each with an explicit "Not set" state) plus one
+  candidate card per exported preview. `.md` candidates render as formatted
+  Markdown; `.yaml` candidates render as a pre-formatted structured block.
+  Strictly read-only — no button, form, or control anywhere in the tab can
+  set `approved_for_writeback`, `reviewer_notes`, or `required_fix`; approval
+  remains a CLI-only operation (`rf bundle --approve`).
+
 #### **Assertion Ledger Activation — Workspace-Scoped Writes, Historical Backfill, and Merge UI**
 
 - **Workspace-scoped, fail-closed write contract** (P1) — Shared assertion-ledger write gate enforces workspace isolation via `assertion_workspace.resolve_or_deny()`; single-operator mode resolves to "default" workspace; writes rejected (typed denial, zero mutations) when workspace is absent or unresolved.
