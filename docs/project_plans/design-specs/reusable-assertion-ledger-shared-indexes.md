@@ -5,9 +5,13 @@ schema_version: 2
 status: deferred
 maturity: shaping
 created: 2026-07-15
-updated: 2026-07-15
+updated: 2026-07-18
 feature_slug: reusable-assertion-ledger
 deferred_from: docs/project_plans/implementation_plans/features/reusable-assertion-ledger-v1/phase-9-docs-private-rollout.md
+related_documents:
+  - docs/project_plans/PRDs/enhancements/research-foundry-knowledge-mcp-v1.md
+  - docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
+  - docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-cache-isolation.md
 ---
 
 # Reusable Assertion Ledger Shared-Index Isolation Spec
