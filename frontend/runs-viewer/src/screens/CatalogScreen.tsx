@@ -18,7 +18,14 @@
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { useCatalogItem, useCatalogSearch, useCatalogStats } from "@/hooks";
+import { useNavigate } from "react-router-dom";
+import {
+  isAgentsLoopbackEnabled,
+  isBuilderLoopbackEnabled,
+  useCatalogItem,
+  useCatalogSearch,
+  useCatalogStats,
+} from "@/hooks";
 import type { CatalogProvenance } from "@/lib/catalog";
 import type {
   CatalogItemDetail,
@@ -39,26 +46,27 @@ import "@/styles/assertions.css";
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 //
-// "assertions" is the reviewer-facing "Source assertions" tab added alongside
-// the (retained) classic "claim" tab (spec §4.4 originally called for a
-// replace, but the assertion ledger starts empty per workspace — see
-// 2026-07-15 catalog-visibility fix — so the classic, fully-indexed
-// per-run CatalogItemType "claim" tab is kept as an additional tab rather
-// than removed). "assertions" is backed by the workspace-scoped
+// Tab order and default selection match the screens-7-10 facelift mockup
+// (docs/project_plans/design-specs/assets/screens-7-10/catalog.png): Claims
+// is the default/first tab, followed by Sources, Inferences, Reports, and
+// Report-ready. "assertions" is the reviewer-facing "Source assertions" tab
+// (P6-002) — a real, retained feature backed by the workspace-scoped
 // source-assertion ledger (useAssertionSearch/useEvidencePacket), not this
-// CatalogItemType search, so it does not participate in tabCount/useCatalogSearch.
+// CatalogItemType search, so it does not participate in tabCount/
+// useCatalogSearch. It is kept as a trailing tab rather than removed since
+// the mockup predates the assertion-ledger feature.
 // "claim" is a real CatalogItemType and reuses the same generic
 // CatalogResultsTable/CatalogInspector as "source"/"inference"/"report".
 
 type CatalogTabId = "assertions" | "claim" | "source" | "inference" | "report" | "report-ready";
 
 const TABS: { id: CatalogTabId; label: string }[] = [
-  { id: "assertions", label: "Source assertions" },
   { id: "claim", label: "Claims" },
   { id: "source", label: "Sources" },
   { id: "inference", label: "Inferences" },
   { id: "report", label: "Reports" },
   { id: "report-ready", label: "Report-ready" },
+  { id: "assertions", label: "Source assertions" },
 ];
 
 function tabCount(
@@ -304,6 +312,10 @@ interface CatalogInspectorProps {
 }
 
 function CatalogInspector({ item, isLoading, onOpenRun, onSelectItem }: CatalogInspectorProps) {
+  const navigate = useNavigate();
+  const canAddToReport = isBuilderLoopbackEnabled();
+  const canRunFollowup = isAgentsLoopbackEnabled();
+
   if (isLoading) {
     return (
       <aside className="rv-catalog-inspector" data-testid="catalog-inspector-loading">
@@ -397,24 +409,26 @@ function CatalogInspector({ item, isLoading, onOpenRun, onSelectItem }: CatalogI
         <button
           type="button"
           className="it-btn primary"
-          disabled
-          title="Planned — Report Builder (Phase 3)"
+          disabled={!canAddToReport}
+          title={canAddToReport ? undefined : "Available in loopback mode"}
+          onClick={canAddToReport ? () => navigate("/builder") : undefined}
           data-testid="catalog-action-add-to-report"
         >
           Add to Report
         </button>
         <button
           type="button"
-          className="it-btn secondary"
-          disabled
-          title="Planned — Agent Research (Phase 4)"
+          className="it-btn agent"
+          disabled={!canRunFollowup}
+          title={canRunFollowup ? undefined : "Available in loopback mode"}
+          onClick={canRunFollowup ? () => navigate("/agents") : undefined}
           data-testid="catalog-action-followup-research"
         >
           Run Follow-up Research
         </button>
         <button
           type="button"
-          className="it-btn ghost"
+          className="rv-catalog-inspector__open-run"
           onClick={() => onOpenRun(item.run_id)}
           data-testid="catalog-action-open-run"
         >
@@ -433,7 +447,7 @@ const PAGE_SIZE = 20;
 export function CatalogScreen() {
   const { data: stats, isLoading: statsLoading } = useCatalogStats();
 
-  const [tab, setTab] = useState<CatalogTabId>("assertions");
+  const [tab, setTab] = useState<CatalogTabId>("claim");
   const [project, setProject] = useState("");
   const [status, setStatus] = useState("");
   const [sensitivity, setSensitivity] = useState("");

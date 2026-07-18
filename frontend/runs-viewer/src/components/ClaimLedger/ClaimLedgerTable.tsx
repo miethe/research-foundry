@@ -86,7 +86,6 @@ export function ClaimLedgerTable({ claims, onClaimSelect, selectedClaimId, onExp
             <th className="rv-ledger-th rv-ledger-th--status">Status</th>
             <th className="rv-ledger-th rv-ledger-th--conf">Confidence</th>
             <th className="rv-ledger-th rv-ledger-th--mat">Materiality</th>
-            <th className="rv-ledger-th rv-ledger-th--sources">Sources</th>
           </tr>
         </thead>
         <tbody>
@@ -171,13 +170,6 @@ export function ClaimLedgerTable({ claims, onClaimSelect, selectedClaimId, onExp
                   ) : (
                     <span className="rv-ledger-dash">—</span>
                   )}
-                </td>
-
-                {/* Source count */}
-                <td className="rv-ledger-td rv-ledger-td--sources">
-                  <span className="rv-ledger-source-count" data-testid={`ledger-sources-${claim.claim_id}`}>
-                    {claim.sources.length}
-                  </span>
                 </td>
               </tr>
             );

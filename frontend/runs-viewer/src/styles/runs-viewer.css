@@ -2993,7 +2993,6 @@ button.active .rv-tab-count {
 .rv-ledger-th--status { width: 110px; }
 .rv-ledger-th--conf   { width: 90px; }
 .rv-ledger-th--mat    { width: 110px; }
-.rv-ledger-th--sources { width: 64px; text-align: center; }
 
 .rv-ledger-row {
   cursor: pointer;
@@ -3017,8 +3016,6 @@ button.active .rv-tab-count {
   padding: var(--it-space-2) var(--it-space-3);
   vertical-align: middle;
 }
-
-.rv-ledger-td--sources { text-align: center; }
 
 .rv-ledger-claim-id {
   font-family: var(--it-font-mono);
@@ -3044,13 +3041,6 @@ button.active .rv-tab-count {
 .rv-ledger-dash {
   color: var(--it-text-muted);
   font-size: var(--it-text-xs);
-}
-
-.rv-ledger-source-count {
-  font-variant-numeric: tabular-nums;
-  font-size: var(--it-text-xs);
-  color: var(--it-text-secondary);
-  font-weight: var(--it-weight-medium);
 }
 
 .rv-ledger-empty {
@@ -4672,24 +4662,6 @@ button.active .rv-tab-count {
 
 .rv-tag-chip--overflow {
   color: var(--it-text-secondary);
-}
-
-/* ── StatusLane: project sub-label ──────────────────────────────────────── */
-
-/* The lane run button is already a grid; the project sub-label spans col 1 */
-.rv-lane-run__project {
-  grid-column: 1;
-  font-size: 11px;
-  color: var(--it-blue-600, #1e5fa8);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-top: -2px;
-}
-
-/* Re-target lane-run grid to allow sub-label row */
-.rv-lane-run {
-  grid-template-rows: auto auto;
 }
 
 /* ── RunTable: Project column ────────────────────────────────────────────── */

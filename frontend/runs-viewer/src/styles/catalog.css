@@ -362,6 +362,34 @@
   cursor: not-allowed;
 }
 
+/* "Open run" renders as a plain centered text action, not a full-chrome
+   button — matches the screens-7-10 catalog mockup (bottom of the inspector
+   rail, below the two solid action buttons). */
+.rv-catalog-inspector__open-run {
+  align-self: center;
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: var(--it-text-secondary);
+  font: inherit;
+  font-size: var(--it-text-sm);
+  font-weight: var(--it-weight-medium);
+  padding: var(--it-space-1) 0;
+  cursor: pointer;
+  transition: color var(--it-dur-fast) var(--it-ease-out);
+}
+
+.rv-catalog-inspector__open-run:hover {
+  color: var(--it-text-primary);
+  text-decoration: underline;
+}
+
+.rv-catalog-inspector__open-run:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(59, 111, 189, 0.3);
+  border-radius: var(--it-radius-sm);
+}
+
 /* ── Usage policy chips ── */
 
 .rv-catalog-usage-chips {

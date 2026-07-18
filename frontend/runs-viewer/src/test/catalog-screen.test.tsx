@@ -10,7 +10,7 @@
  *   - Free-text search (debounced) filters rows.
  *   - Selecting a row populates the inspector.
  *   - Disabled "Add to Report" / "Run Follow-up Research" actions carry the
- *     Phase 3/4 tooltip text.
+ *     "Available in loopback mode" tooltip text.
  *   - Reports / Report-ready tabs show the absorbed old-Library content
  *     (published report entries; reusable outputs + writeback artifacts).
  *
@@ -210,9 +210,9 @@ describe("CatalogScreen — loading state and tab counts", () => {
 
   it("renders the tab strip with live counts once the index resolves", async () => {
     renderCatalog();
-    // "assertions" (Source assertions) replaced the old "claim" tab (P6-002,
-    // spec §4.4) — it is backed by a separate workspace-scoped ledger, so it
-    // carries no CatalogItemType-derived tab count.
+    // "assertions" (Source assertions) is a trailing tab (P6-002) backed by a
+    // separate workspace-scoped ledger, so it carries no CatalogItemType-derived
+    // tab count.
     const assertionsTab = await screen.findByTestId("catalog-tab-assertions");
     expect(assertionsTab.textContent).toContain("Source assertions");
 
@@ -233,11 +233,23 @@ describe("CatalogScreen — loading state and tab counts", () => {
 // ── Tab switching ─────────────────────────────────────────────────────────────
 
 describe("CatalogScreen — tab switching", () => {
-  it("shows the Source assertions pane on the default tab", async () => {
-    // Source assertions is the first/active tab (P6-002, design guidance §A);
-    // it renders AssertionCatalogPane, not the old CatalogItemType "claim" rows.
+  it("shows the Claims tab (CatalogItemType rows) as the default tab", async () => {
+    // Claims is the default/active tab, matching the screens-7-10 facelift
+    // mockup (docs/project_plans/design-specs/assets/screens-7-10/catalog.png)
+    // — it renders the generic CatalogResultsTable, not AssertionCatalogPane.
+    renderCatalog();
+    const claimTab = await screen.findByTestId("catalog-tab-claim");
+    expect(claimTab.getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByTestId("assertion-search-input")).toBeNull();
+  });
+
+  it("switching to Source assertions shows the assertion ledger pane", async () => {
+    // "Source assertions" (P6-002) is a trailing tab backed by the separate
+    // workspace-scoped assertion ledger, retained alongside the mockup's
+    // Claims/Sources/Inferences/Reports/Report-ready set.
     renderCatalog();
     await screen.findByTestId("catalog-tab-assertions");
+    fireEvent.click(screen.getByTestId("catalog-tab-assertions"));
     expect(await screen.findByTestId("assertion-search-input")).toBeInTheDocument();
   });
 
@@ -274,9 +286,9 @@ describe("CatalogScreen — tab switching", () => {
 
 describe("CatalogScreen — free-text search", () => {
   it("filters rows by a debounced search query", async () => {
-    // Redirected to the "source" tab — "assertions" (default) is backed by a
-    // separate ledger/search (AssertionCatalogPane), not this shared
-    // searchInput/debouncedQuery state used by the other CatalogItemType tabs.
+    // Switches to the "source" tab to exercise the shared searchInput/
+    // debouncedQuery state used by the CatalogItemType tabs (default tab is
+    // "claim").
     const { container } = renderCatalog();
     await screen.findByTestId("catalog-tab-source");
     fireEvent.click(screen.getByTestId("catalog-tab-source"));
@@ -310,9 +322,9 @@ describe("CatalogScreen — free-text search", () => {
 
 describe("CatalogScreen — selecting a row populates the inspector", () => {
   it("shows the empty inspector state before any selection", async () => {
-    // Redirected to "source" — "assertions" (default) renders its own docked
-    // inspector empty state (assertion-inspector-empty), not this generic
-    // CatalogInspector one.
+    // Switches to "source" (a CatalogItemType tab) — "assertions" renders its
+    // own docked inspector empty state (assertion-inspector-empty) rather than
+    // this generic CatalogInspector one.
     renderCatalog();
     await screen.findByTestId("catalog-tab-source");
     fireEvent.click(screen.getByTestId("catalog-tab-source"));
@@ -320,14 +332,20 @@ describe("CatalogScreen — selecting a row populates the inspector", () => {
   });
 
   it("populates the inspector with the selected inference's provenance and inference basis", async () => {
-    // Redirected to "inference" (c2) — the old "claim" tab (c1) no longer
-    // exists (P6-002 replaced it with Source assertions); "inference" is
-    // still CatalogItemType-backed and isClaimLike, preserving this test's
-    // intent (provenance strip + non-source claim-like sections).
-    renderCatalog();
+    // Default tab is "claim" (c1); switches to "inference" to select c2.
+    // useCatalogSearch uses keepPreviousData (tab-switch UX), so the previous
+    // tab's row can still be in the DOM under the same "catalog-row-ci_*"
+    // testid pattern (catalog_item_id is "ci_"-prefixed for every item type)
+    // right after the click — locate the row by its item-type marker instead
+    // of a generic id-prefix regex to avoid grabbing the stale c1 row.
+    const { container } = renderCatalog();
     await screen.findByTestId("catalog-tab-inference");
     fireEvent.click(screen.getByTestId("catalog-tab-inference"));
-    const row = await screen.findByTestId(/^catalog-row-ci_/);
+    const row = await waitFor(() => {
+      const el = container.querySelector('[data-item-type="inference"]');
+      if (!el) throw new Error("inference row not yet rendered");
+      return el as HTMLElement;
+    });
     fireEvent.click(row);
 
     const inspector = await screen.findByTestId("catalog-inspector");
@@ -336,7 +354,11 @@ describe("CatalogScreen — selecting a row populates the inspector", () => {
     expect(screen.getByTestId("catalog-inference-basis").textContent).toContain("c1");
   });
 
-  it("shows disabled action buttons with the Phase 3/4 planned tooltips", async () => {
+  it("shows disabled action buttons with the loopback-mode capability tooltip in static mode", async () => {
+    // In static/fixture mode (the vitest default — no VITE_RUNS_FRONTEND_LOOPBACK_API),
+    // both isBuilderLoopbackEnabled() and isAgentsLoopbackEnabled() are false, so
+    // "Add to Report" / "Run Follow-up Research" render disabled with the shared
+    // capability-gating tooltip (see BuilderScreen/AgentsScreen for the same pattern).
     renderCatalog();
     await screen.findByTestId("catalog-tab-source");
     fireEvent.click(screen.getByTestId("catalog-tab-source"));
@@ -346,11 +368,11 @@ describe("CatalogScreen — selecting a row populates the inspector", () => {
 
     const addToReport = screen.getByTestId("catalog-action-add-to-report") as HTMLButtonElement;
     expect(addToReport.disabled).toBe(true);
-    expect(addToReport.getAttribute("title")).toBe("Planned — Report Builder (Phase 3)");
+    expect(addToReport.getAttribute("title")).toBe("Available in loopback mode");
 
     const followUp = screen.getByTestId("catalog-action-followup-research") as HTMLButtonElement;
     expect(followUp.disabled).toBe(true);
-    expect(followUp.getAttribute("title")).toBe("Planned — Agent Research (Phase 4)");
+    expect(followUp.getAttribute("title")).toBe("Available in loopback mode");
   });
 
   it("shows an 'Open run' action that opens the run detail modal", async () => {

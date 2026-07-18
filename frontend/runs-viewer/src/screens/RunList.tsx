@@ -530,11 +530,6 @@ function StatusLane({
               onClick={() => onOpen(run.run_id)}
             >
               <span>{run.title ?? titleFromSlug(run.run_id) ?? run.run_id}</span>
-              {run.linked_projects?.length ? (
-                <span className="rv-lane-run__project" data-testid="lane-run-project">
-                  {run.linked_projects.join(", ")}
-                </span>
-              ) : null}
               <strong>{getClaimTotal(run.claim_counts).toLocaleString()}</strong>
             </button>
           ))}

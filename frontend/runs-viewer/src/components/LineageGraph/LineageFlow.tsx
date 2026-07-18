@@ -255,7 +255,8 @@ function LineageFlowInner({
         pannable
         zoomable
         className="rv-flow-minimap"
-        maskColor="rgba(238,243,247,0.72)"
+        bgColor="var(--it-surface-base, #fff)"
+        maskColor="var(--it-surface-glass, rgba(238,243,247,0.72))"
       />
       <FlowLegend />
     </ReactFlow>

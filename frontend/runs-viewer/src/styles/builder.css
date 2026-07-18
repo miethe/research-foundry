@@ -186,7 +186,17 @@
 }
 
 .rv-builder-catalog__tabs {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.rv-builder-catalog__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.rv-builder-catalog__tabs button {
+  flex-shrink: 0;
 }
 
 .rv-builder-catalog__searchrow {
