@@ -65,6 +65,14 @@ verifier_checks:
   - id: source_cards_have_locators
     severity: warning
 
+  # PRD FR-3.1 (AC-RFUP3-1/2): a supported claim citing a source card should
+  # have an exact quoted passage (extracted_points[].quote) anchoring it, not
+  # merely a locator. Severity here is metadata only — whether this check
+  # actually blocks publish is governed by `verify.exact_passage` below
+  # (warn: informational only; strict: treated as an unsupported claim).
+  - id: exact_passage_present
+    severity: warning
+
   - id: inferences_have_basis
     severity: error
 
@@ -88,3 +96,14 @@ verifier_checks:
 
   - id: work_sensitive_claims_block_public_report
     severity: error
+
+# Verification runtime behavior overrides (PRD FR-3.2, decisions-block OQ-1).
+# exact_passage: warn|strict
+#   warn   — (default) an exact-passage eligibility mismatch is surfaced as a
+#            warning; it does not block verification or change the exit code.
+#   strict — the same mismatch is treated as an error and blocks verification.
+#   A run-level CLI override (`rf verify --exact-passage warn|strict`) always
+#   wins over this config value; an invalid override fails closed (RFError)
+#   rather than silently falling back to this default.
+verify:
+  exact_passage: warn

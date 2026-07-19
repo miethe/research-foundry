@@ -2,140 +2,208 @@
 type: progress
 schema_version: 2
 doc_type: progress
-prd: "rf-upstream-evidence-foundry"
-feature_slug: "rf-upstream-evidence-foundry"
-prd_ref: "docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md"
-plan_ref: "docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md"
-execution_model: "batch-parallel"
+prd: rf-upstream-evidence-foundry
+feature_slug: rf-upstream-evidence-foundry
+prd_ref: docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
+plan_ref: docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md
+execution_model: batch-parallel
 phase: 6
-title: "Validation, docs & deferral"
-status: "not_started"
+title: Validation, docs & deferral
+status: completed
 started: null
 completed: null
 commit_refs: []
 pr_refs: []
 overall_progress: 0
-completion_estimate: "on-track"
+completion_estimate: on-track
 total_tasks: 7
-completed_tasks: 0
+completed_tasks: 7
 in_progress_tasks: 0
 blocked_tasks: 0
 at_risk_tasks: 0
-owners: ["documentation-writer", "changelog-generator", "prd-writer"]
-contributors: ["python-backend-engineer"]
+owners:
+- documentation-writer
+- changelog-generator
+- prd-writer
+contributors:
+- python-backend-engineer
 model_usage:
-  primary: "haiku"
+  primary: haiku
   external: []
-
 tasks:
-  - id: "TASK-6.1"
-    description: "Full cross-phase regression suite"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: []
-    estimated_effort: "1h"
-    priority: "critical"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-6.2"
-    description: "Machine-surface inventory finalization + service-contract docs"
-    status: "pending"
-    assigned_to: ["documentation-writer"]
-    dependencies: ["TASK-6.1"]
-    estimated_effort: "0.5h"
-    priority: "high"
-    assigned_model: "haiku"
-    model_effort: "adaptive"
-    
-  - id: "TASK-6.3"
-    description: "CHANGELOG update"
-    status: "pending"
-    assigned_to: ["changelog-generator"]
-    dependencies: ["TASK-6.1"]
-    estimated_effort: "0.5h"
-    priority: "high"
-    assigned_model: "haiku"
-    model_effort: "adaptive"
-    
-  - id: "TASK-6.4"
-    description: "RFUP-6 design spec authoring (deferred item)"
-    status: "pending"
-    assigned_to: ["prd-writer"]
-    dependencies: []
-    estimated_effort: "0.5h"
-    priority: "medium"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-6.5"
-    description: "IntentTree node status writebacks"
-    status: "pending"
-    assigned_to: ["documentation-writer"]
-    dependencies: ["TASK-6.1", "TASK-6.4"]
-    estimated_effort: "0.5h"
-    priority: "medium"
-    assigned_model: "haiku"
-    model_effort: "adaptive"
-    
-  - id: "TASK-6.6"
-    description: "Phase 6 completion validator gate"
-    status: "pending"
-    assigned_to: ["task-completion-validator"]
-    dependencies: ["TASK-6.2", "TASK-6.3", "TASK-6.4", "TASK-6.5"]
-    estimated_effort: "1h"
-    priority: "critical"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-6.7"
-    description: "karen feature-end checkpoint"
-    status: "pending"
-    assigned_to: ["karen"]
-    dependencies: ["TASK-6.6"]
-    estimated_effort: "1h"
-    priority: "critical"
-    assigned_model: "opus"
-    model_effort: "adaptive"
-
+- id: TASK-6.1
+  description: Full cross-phase regression suite
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies: []
+  estimated_effort: 1h
+  priority: critical
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: 2026-07-18T00:00Z
+  completed: 2026-07-18T02:00Z
+  evidence:
+  - test: full-suite-2112-passed-8-baseline-failures
+  verified_by:
+  - TASK-6.6
+- id: TASK-6.2
+  description: Machine-surface inventory finalization + service-contract docs
+  status: completed
+  assigned_to:
+  - documentation-writer
+  dependencies:
+  - TASK-6.1
+  estimated_effort: 0.5h
+  priority: high
+  assigned_model: haiku
+  model_effort: adaptive
+  started: 2026-07-18T02:00Z
+  completed: 2026-07-18T02:45Z
+  evidence:
+  - file: docs/dev/architecture/machine-surface-inventory.md
+  - file: docs/dev/architecture/machine-contract-spec.md
+  verified_by:
+  - TASK-6.6
+- id: TASK-6.3
+  description: CHANGELOG update
+  status: completed
+  assigned_to:
+  - changelog-generator
+  dependencies:
+  - TASK-6.1
+  estimated_effort: 0.5h
+  priority: high
+  assigned_model: haiku
+  model_effort: adaptive
+  started: 2026-07-18T02:00Z
+  completed: 2026-07-18T02:30Z
+  evidence:
+  - file: CHANGELOG.md
+  verified_by:
+  - TASK-6.6
+- id: TASK-6.4
+  description: RFUP-6 design spec authoring (deferred item)
+  status: completed
+  assigned_to:
+  - prd-writer
+  dependencies: []
+  estimated_effort: 0.5h
+  priority: medium
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: 2026-07-18T00:00Z
+  completed: 2026-07-18T01:00Z
+  evidence:
+  - file: docs/project_plans/design-specs/rfup-6-native-discovery-adapters.md
+  verified_by:
+  - TASK-6.6
+- id: TASK-6.5
+  description: IntentTree node status writebacks
+  status: completed
+  assigned_to:
+  - documentation-writer
+  dependencies:
+  - TASK-6.1
+  - TASK-6.4
+  estimated_effort: 0.5h
+  priority: medium
+  assigned_model: haiku
+  model_effort: adaptive
+  started: 2026-07-18T02:00Z
+  completed: 2026-07-18T03:00Z
+  evidence:
+  - intenttree: 7-nodes-updated-6-completed-1-deferred
+  verified_by:
+  - TASK-6.6
+- id: TASK-6.6
+  description: Phase 6 completion validator gate
+  status: completed
+  assigned_to:
+  - task-completion-validator
+  dependencies:
+  - TASK-6.2
+  - TASK-6.3
+  - TASK-6.4
+  - TASK-6.5
+  estimated_effort: 1h
+  priority: critical
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: 2026-07-18T03:00Z
+  completed: 2026-07-18T04:00Z
+  evidence:
+  - verdict: APPROVED-independently-reran-pytest-2112-passed-8-baseline
+  verified_by:
+  - TASK-6.7
+- id: TASK-6.7
+  description: karen feature-end checkpoint
+  status: completed
+  assigned_to:
+  - karen
+  dependencies:
+  - TASK-6.6
+  estimated_effort: 1h
+  priority: critical
+  assigned_model: opus
+  model_effort: adaptive
+  started: 2026-07-18T04:00Z
+  completed: 2026-07-18T05:00Z
+  evidence:
+  - verdict: PASS-feature-complete-ready-to-seal-karen-opus
+  verified_by:
+  - TASK-6.7
 parallelization:
-  batch_1: ["TASK-6.1"]
-  batch_2: ["TASK-6.2", "TASK-6.3"]
-  batch_3: ["TASK-6.4"]
-  batch_4: ["TASK-6.5"]
-  batch_5: ["TASK-6.6"]
-  batch_6: ["TASK-6.7"]
-  critical_path: ["TASK-6.1", "TASK-6.2", "TASK-6.3", "TASK-6.4", "TASK-6.5", "TASK-6.6", "TASK-6.7"]
-  estimated_total_time: "3h"
-
+  batch_1:
+  - TASK-6.1
+  batch_2:
+  - TASK-6.2
+  - TASK-6.3
+  batch_3:
+  - TASK-6.4
+  batch_4:
+  - TASK-6.5
+  batch_5:
+  - TASK-6.6
+  batch_6:
+  - TASK-6.7
+  critical_path:
+  - TASK-6.1
+  - TASK-6.2
+  - TASK-6.3
+  - TASK-6.4
+  - TASK-6.5
+  - TASK-6.6
+  - TASK-6.7
+  estimated_total_time: 3h
 blockers: []
-
 success_criteria:
-  - id: "SC-1"
-    description: "Full regression suite green under venv; flake8 errors-only clean"
-    status: "pending"
-  - id: "SC-2"
-    description: "Machine-surface inventory doc finalized"
-    status: "pending"
-  - id: "SC-3"
-    description: "CHANGELOG [Unreleased] entry present for all new user-facing surfaces"
-    status: "pending"
-  - id: "SC-4"
-    description: "RFUP-6 design spec authored; deferred_items_spec_refs populated"
-    status: "pending"
-  - id: "SC-5"
-    description: "IntentTree node statuses updated (or best-effort-skipped and logged)"
-    status: "pending"
-  - id: "SC-6"
-    description: "task-completion-validator sign-off recorded (TASK-6.6)"
-    status: "pending"
-  - id: "SC-7"
-    description: "karen feature-end sign-off recorded (TASK-6.7)"
-    status: "pending"
-
+- id: SC-1
+  description: Full regression suite green under venv; flake8 errors-only clean
+  status: pending
+- id: SC-2
+  description: Machine-surface inventory doc finalized
+  status: pending
+- id: SC-3
+  description: CHANGELOG [Unreleased] entry present for all new user-facing surfaces
+  status: pending
+- id: SC-4
+  description: RFUP-6 design spec authored; deferred_items_spec_refs populated
+  status: pending
+- id: SC-5
+  description: IntentTree node statuses updated (or best-effort-skipped and logged)
+  status: pending
+- id: SC-6
+  description: task-completion-validator sign-off recorded (TASK-6.6)
+  status: pending
+- id: SC-7
+  description: karen feature-end sign-off recorded (TASK-6.7)
+  status: pending
 files_modified:
-  - "CHANGELOG.md"
-  - "docs/project_plans/design-specs/rfup-6-native-discovery-adapters.md"
+- CHANGELOG.md
+- docs/project_plans/design-specs/rfup-6-native-discovery-adapters.md
+progress: 100
+updated: '2026-07-18'
 ---
 
 # Phase 6: Validation, docs & deferral

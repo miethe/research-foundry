@@ -32,6 +32,7 @@ from uuid import UUID
 
 from markdown_it import MarkdownIt
 
+from .. import RF_SCHEMA_VERSION
 from ..config import FoundryConfig
 from ..errors import ExitCode, RFError
 from ..frontmatter import split_frontmatter
@@ -1112,6 +1113,7 @@ def export_run(
 
     return {
         "schema_version": EXPORT_SCHEMA_VERSION,
+        "rf_schema_version": RF_SCHEMA_VERSION,
         "run_id": run_id,
         "title": _derive_run_title(run_id, report_draft),
         "intent_id": run_meta.get("intent_id"),

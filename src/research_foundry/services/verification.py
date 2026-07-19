@@ -21,10 +21,11 @@ precedence (first that applies wins):
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .. import RF_SCHEMA_VERSION
 from ..config import FoundryConfig
 from ..errors import ExitCode, RFError
 from ..frontmatter import load_md
@@ -55,6 +56,7 @@ _DEFAULT_VERIFIER_CHECKS = [
     {"id": "material_claims_have_claim_ids", "severity": "error"},
     {"id": "supported_claims_have_source_cards", "severity": "error"},
     {"id": "source_cards_have_locators", "severity": "warning"},
+    {"id": "exact_passage_present", "severity": "warning"},
     {"id": "inferences_have_basis", "severity": "error"},
     {"id": "speculation_is_labeled", "severity": "error"},
     {"id": "unsupported_claims_block_publish", "severity": "error"},
@@ -148,6 +150,28 @@ class VerificationResult:
     verification_path: Path
     unsupported: list[str]
     human_review_required: bool = False
+    #: Stamped so any `--json` serialization of this dataclass (e.g. via
+    #: dataclasses.asdict) carries the same top-level rf_schema_version field
+    #: already written into verification.yaml's `record` dict below (PRD
+    #: FR-4.1 / AC-RFUP4-1). Defaulted so existing keyword-arg construction
+    #: sites are unaffected.
+    rf_schema_version: str = RF_SCHEMA_VERSION
+    #: Resolved ``verify.exact_passage`` mode for this run (PRD FR-3.2, OQ-1):
+    #: ``"warn"`` (default) or ``"strict"``. Plumbing only in this phase — the
+    #: eligibility check that consumes it is wired in a later task. Defaulted
+    #: so existing keyword-arg construction sites are unaffected.
+    exact_passage_mode: str = "warn"
+    #: Claim ids flagged by the ``exact_passage_present`` check (TASK-2.2) as
+    #: missing an exact-passage quote anchor — populated whenever there ARE
+    #: violations, REGARDLESS of ``exact_passage_mode`` (PRD FR-3.3/FR-3.4,
+    #: AC-RFUP3-4). Distinct from ``source_cards_have_locators``'s own
+    #: ``CheckResult.locations`` (that check flags missing *locators*, not
+    #: missing exact-passage *quotes* — the two must never be conflated).
+    #: Defaulted to an empty list so existing keyword-arg construction sites,
+    #: and any downstream consumer doing ``result.exact_passage_violations``
+    #: or ``record.get("exact_passage_violations", [])``, are unaffected when
+    #: there are zero violations (AC-RFUP3-5 resilience).
+    exact_passage_violations: list[str] = field(default_factory=list)
 
 
 # --- Parsing ----------------------------------------------------------------
@@ -247,7 +271,12 @@ def _is_material(sentence: _Sentence, material_types: list[str]) -> bool:
 
 
 def _index_source_cards(rp) -> dict[str, dict[str, Any]]:
-    """Map source_card_id -> {sensitivity, has_locator, path} for the run."""
+    """Map source_card_id -> {sensitivity, has_locator, has_quote, path} for the run.
+
+    ``has_quote`` (PRD FR-3.1) is ``True`` when the card has at least one
+    ``extracted_points[]`` entry with a non-empty ``quote`` — i.e. the card
+    can serve as an exact-passage anchor, not merely a locator-only citation.
+    """
 
     index: dict[str, dict[str, Any]] = {}
     sources_dir = rp.sources
@@ -266,9 +295,12 @@ def _index_source_cards(rp) -> dict[str, dict[str, Any]]:
         has_locator = bool(locator) and any(
             v for v in locator.values() if v not in (None, "")
         )
+        points = [pt for pt in (meta.get("extracted_points") or []) if isinstance(pt, dict)]
+        has_quote = any(pt.get("quote") for pt in points)
         index[sid] = {
             "sensitivity": meta.get("sensitivity"),
             "has_locator": has_locator,
+            "has_quote": has_quote,
             "path": str(p),
         }
     return index
@@ -377,6 +409,60 @@ def _severity_for(check_id: str, checks: list[dict[str, Any]]) -> str:
     return "error"
 
 
+# Valid values for verify.exact_passage (PRD FR-3.2, decisions-block OQ-1).
+_VALID_EXACT_PASSAGE_MODES = frozenset({"warn", "strict"})
+
+
+def resolve_exact_passage_mode(paths: FoundryPaths, override: str | None = None) -> str:
+    """Resolve the effective ``verify.exact_passage`` mode (PRD FR-3.2, OQ-1).
+
+    Precedence: an explicit *override* (the CLI's ``--exact-passage`` flag)
+    always wins over the ``verify.exact_passage`` key in
+    ``config/claim_policy.yaml``. When neither is present or the config value
+    is invalid/missing, the mode defaults to ``"warn"`` — the safe,
+    non-regressing default for this whole phase (the actual eligibility check
+    that consumes this mode is wired in a later task).
+
+    Parameters
+    ----------
+    paths:
+        Workspace paths, used to load ``config/claim_policy.yaml`` via
+        :class:`~research_foundry.config.FoundryConfig` (mirrors
+        :func:`_load_policy`'s loading style).
+    override:
+        Optional run-level value (typically sourced from a CLI flag). Must be
+        ``"warn"`` or ``"strict"`` (case-insensitive) when provided.
+
+    Returns
+    -------
+    str
+        Either ``"warn"`` or ``"strict"``.
+
+    Raises
+    ------
+    RFError
+        If *override* is provided but is not one of ``warn``/``strict`` —
+        fails closed rather than silently ignoring a bad flag.
+    """
+    if override is not None:
+        normalized_override = str(override).strip().lower()
+        if normalized_override not in _VALID_EXACT_PASSAGE_MODES:
+            raise RFError(
+                f"--exact-passage={override!r} is not valid; "
+                f"must be one of: {', '.join(sorted(_VALID_EXACT_PASSAGE_MODES))}"
+            )
+        return normalized_override
+
+    cfg = FoundryConfig(paths=paths)
+    policy = cfg.claim_policy if isinstance(cfg.claim_policy, dict) else {}
+    verify_block = policy.get("verify") if isinstance(policy, dict) else None
+    if not isinstance(verify_block, dict):
+        return "warn"
+    raw = verify_block.get("exact_passage", "warn")
+    normalized = str(raw).strip().lower() if raw else "warn"
+    return normalized if normalized in _VALID_EXACT_PASSAGE_MODES else "warn"
+
+
 def _resolve_explicit_path(rp, given: Path | None, label: str) -> Path | None:
     """Resolve an explicitly-provided path: run-dir first, then CWD.
 
@@ -426,6 +512,7 @@ def verify_report(
     report_path: Path | None = None,
     claim_ledger_path: Path | None = None,
     fail_on_unsupported: bool = True,
+    exact_passage_override: str | None = None,
     paths: FoundryPaths | None = None,
 ) -> VerificationResult:
     """Verify a run's report against its claim ledger (spec §12.3).
@@ -441,6 +528,7 @@ def verify_report(
     rp.ensure_scaffold()
 
     material_types, check_specs = _load_policy(paths)
+    exact_passage_mode = resolve_exact_passage_mode(paths, exact_passage_override)
 
     checks: list[CheckResult] = []
     unsupported: list[str] = []
@@ -621,6 +709,50 @@ def verify_report(
             "cited source cards that resolve have locators",
         )
 
+    # 6b) exact_passage_present (PRD FR-3.1, AC-RFUP3-1/2) ------------------
+    # Distinct from source_cards_have_locators above: a claim can have a
+    # perfectly good locator (page/section reference) and still lack an exact
+    # quoted passage a reader could match back to the source. This check
+    # looks for at least one *quote* anchor (extracted_points[].quote) on any
+    # of a supported claim's cited, resolvable source cards. Population is
+    # "supported claims that cite >=1 source card" — a claim with zero cited
+    # sources is already caught by supported_claims_have_source_cards above
+    # and is out of scope here.
+    #
+    # Gating is mode-dependent (resolve_exact_passage_mode, TASK-2.1):
+    #   warn (default)  -> CheckResult.status == "warn"; never added to
+    #                       unsupported[]; passed/exit_code unchanged.
+    #   strict          -> CheckResult.status == "fail"; claim_ids added to
+    #                       unsupported[] so they block publish exactly like
+    #                       material_claims_have_claim_ids does above.
+    missing_anchor: list[str] = []
+    for c in claims:
+        if c.get("status") != "supported":
+            continue
+        cited = [s.get("source_card_id") for s in (c.get("sources") or []) if s.get("source_card_id")]
+        if not cited:
+            continue
+        has_anchor = any(source_index.get(sid, {}).get("has_quote") for sid in cited)
+        if not has_anchor:
+            missing_anchor.append(c.get("claim_id") or "<no-id>")
+    missing_anchor = sorted(set(missing_anchor))
+    if missing_anchor:
+        detail = (
+            "supported claims cite a source card but no exact-passage quote anchor "
+            "resolves: " + ", ".join(missing_anchor)
+        )
+        if exact_passage_mode == "strict":
+            add("exact_passage_present", "fail", detail, missing_anchor)
+            unsupported.extend(f"[exact_passage] {cid}" for cid in missing_anchor)
+        else:
+            add("exact_passage_present", "warn", detail, missing_anchor)
+    else:
+        add(
+            "exact_passage_present",
+            "pass",
+            "every supported claim citing a source card has a matching exact-passage quote anchor",
+        )
+
     # 7) inferences_have_basis ----------------------------------------------
     no_basis = []
     for c in claims:
@@ -761,6 +893,7 @@ def verify_report(
 
     # --- Persist verification.yaml ----------------------------------------
     record = {
+        "rf_schema_version": RF_SCHEMA_VERSION,
         "run_id": run_id,
         "passed": passed,
         "exit_code": exit_code,
@@ -779,6 +912,12 @@ def verify_report(
             for c in checks
         ],
         "unsupported": list(unsupported),
+        # AC-RFUP3-4/AC-RFUP3-5: dedicated, mode-independent violation list
+        # (see missing_anchor above) — distinct key from the
+        # source_cards_have_locators check's own locations. Always present
+        # (empty list when there are zero violations) to match this dict's
+        # existing convention for optional list fields (e.g. "unsupported").
+        "exact_passage_violations": list(missing_anchor),
     }
     dump_yaml(record, rp.verification)
 
@@ -800,6 +939,8 @@ def verify_report(
         verification_path=rp.verification,
         unsupported=list(unsupported),
         human_review_required=human_review_required,
+        exact_passage_mode=exact_passage_mode,
+        exact_passage_violations=list(missing_anchor),
     )
 
 
@@ -1214,6 +1355,7 @@ def verify_draft(
     exit_code = int(ExitCode.OK) if passed else int(ExitCode.UNSUPPORTED)
 
     record = {
+        "rf_schema_version": RF_SCHEMA_VERSION,
         "report_draft_id": report_draft_id,
         "passed": passed,
         "exit_code": exit_code,

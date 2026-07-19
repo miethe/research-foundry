@@ -527,7 +527,7 @@ def test_export_run_passes_strict_json_schema_validation(
     validator = jsonschema.Draft7Validator(schema)
     errors = list(validator.iter_errors(export_dict))
     error_messages = [
-        f"  [{e.path_deque and '.'.join(str(p) for p in e.absolute_path) or 'root'}] {e.message}"
+        f"  [{'.'.join(str(p) for p in e.absolute_path) or 'root'}] {e.message}"
         for e in errors
     ]
     assert not errors, (

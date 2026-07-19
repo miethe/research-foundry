@@ -114,6 +114,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
     wraps the existing `capture_idea`/`triage_idea`/`plan_run` functions
     unmodified; owns only the "exactly one of `text`/`intent_id`" validation.
 
+#### **RF Upstream Evidence Foundry — Machine Contract, Hard-Gating, PDF Extraction & Run Seal**
+
+- **`rf_schema_version` Machine Contract** — `RF_SCHEMA_VERSION` ("1.0.0") is stamped additively across CLI `--json` outputs, `rf verify` output, the LAN API (`/api/runs`, `/api/reports`, `/api/catalog`), and run-export, enabling versioned, hard-gatable machine contracts for downstream consumers and preventing version-skew integration failures.
+- **Exact-Passage Hard-Gating** — New `verify.exact_passage: warn|strict` config key (default `warn`) plus `--exact-passage` CLI override on `rf verify` backs a new `exact_passage_present` eligibility check; `strict` mode hard-blocks claims citing a source card without a resolvable exact quote/passage anchor.
+- **Governed PDF Extraction** — `rf fetch` now extracts text from PDF URLs via a new optional `research-foundry[pdf]` extra (pypdf); source cards gain an `extraction_status` field (`full_text|partial|locator_only`) tracking extraction fidelity and enabling intelligent fallback to locator-only citation when full text is unavailable.
+- **Council Verdict Normalization** — `arc_council` adapter verdicts are now normalized into a controlled `approve|concern|block` enum (raw verdict retained in metadata); CLI/YAML-only, no run-export schema change.
+- **Run Seal / Tamper-Evidence** — New additive `--seal` flag on `rf run export` computes a sha256 content digest over the run's evidence chain (claim ledger + source cards + report) and writes an append-only lineage record, enabling offline verification and detecting accidental or malicious mutations to evidence artifacts.
+
 #### **Agent Jobs API — Embedded Research with Credential Isolation (P4)**
 
 - **`/api/agent-jobs` HTTP endpoints** — Launch, list, stream events, accept, cancel, and query status for governed agent research jobs. Jobs run under subprocess-per-job credential isolation (ADR-002: Credential Process Isolation), preventing provider credentials from leaking into job artifacts, browser network traffic, or telemetry payloads.

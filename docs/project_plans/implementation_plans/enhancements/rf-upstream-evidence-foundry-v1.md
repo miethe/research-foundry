@@ -1,38 +1,44 @@
 ---
-title: "Implementation Plan: rf Upstream Evidence Foundry (RFUP-1..5, RFUP-7)"
+title: 'Implementation Plan: rf Upstream Evidence Foundry (RFUP-1..5, RFUP-7)'
 schema_version: 2
 doc_type: implementation_plan
 it_schema: 1
-status: draft
-created: 2026-07-18
-updated: 2026-07-18
-feature_slug: "rf-upstream-evidence-foundry"
-feature_version: "v1"
+status: completed
+created: '2026-07-18'
+updated: '2026-07-18'
+feature_slug: rf-upstream-evidence-foundry
+feature_version: v1
 tier: 3
 prd_ref: docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
 plan_ref: null
-scope: "Six upstream enhancements to Research Foundry's evidence/verified-claim control plane (RFUP-1, RFUP-2, RFUP-3, RFUP-4, RFUP-5, RFUP-7) so the downstream Evidence Foundry seam can consume rf bundles as pinned, versioned, tamper-evident evidence; RFUP-6 (native discovery adapters) is deferred, not built here."
-effort_estimate: "~29 pts"
-architecture_summary: "Backend/CLI Python work in the research_foundry package (verify, fetch/extraction, council adapter, run storage) plus one JS workflow-script parameterization; no new frontend surface except an additive-only runs-viewer export check."
+scope: Six upstream enhancements to Research Foundry's evidence/verified-claim control
+  plane (RFUP-1, RFUP-2, RFUP-3, RFUP-4, RFUP-5, RFUP-7) so the downstream Evidence
+  Foundry seam can consume rf bundles as pinned, versioned, tamper-evident evidence;
+  RFUP-6 (native discovery adapters) is deferred, not built here.
+effort_estimate: ~29 pts
+architecture_summary: Backend/CLI Python work in the research_foundry package (verify,
+  fetch/extraction, council adapter, run storage) plus one JS workflow-script parameterization;
+  no new frontend surface except an additive-only runs-viewer export check.
 related_documents:
-  - /Users/miethe/dev/homelab/development/pediatric-anemia-site/docs/project_plans/expansion/02-evidence-foundry-on-research-foundry.md
-  - .claude/worknotes/rf-upstream-evidence-foundry/decisions-block.md
-  - .claude/worknotes/rf-upstream-evidence-foundry/current-state.md
-  - docs/project_plans/human-briefs/rf-upstream-evidence-foundry.md
+- /Users/miethe/dev/homelab/development/pediatric-anemia-site/docs/project_plans/expansion/02-evidence-foundry-on-research-foundry.md
+- .claude/worknotes/rf-upstream-evidence-foundry/decisions-block.md
+- .claude/worknotes/rf-upstream-evidence-foundry/current-state.md
+- docs/project_plans/human-briefs/rf-upstream-evidence-foundry.md
 references:
   user_docs: []
   context: []
   specs:
-    - .claude/skills/planning/references/ac-schema.md
-    - .claude/specs/changelog-spec.md
-    - .claude/skills/planning/references/deferred-items-and-findings.md
+  - .claude/skills/planning/references/ac-schema.md
+  - .claude/specs/changelog-spec.md
+  - .claude/skills/planning/references/deferred-items-and-findings.md
   related_prds: []
 spike_ref: /Users/miethe/dev/homelab/development/pediatric-anemia-site/docs/project_plans/expansion/02-evidence-foundry-on-research-foundry.md
 adr_refs: []
-deferred_items_spec_refs: []
+deferred_items_spec_refs:
+- docs/project_plans/design-specs/rfup-6-native-discovery-adapters.md
 findings_doc_ref: null
 charter_ref: null
-changelog_ref: null
+changelog_ref: CHANGELOG.md
 changelog_required: true
 test_plan_ref: null
 plan_structure: unified
@@ -41,145 +47,225 @@ owner: null
 contributors: []
 priority: high
 risk_level: medium
-category: "enhancements"
-tags: [implementation, planning, phases, tasks, research-foundry, evidence-foundry, upstream, rf-verify, rf-fetch, rf-council]
+category: enhancements
+tags:
+- implementation
+- planning
+- phases
+- tasks
+- research-foundry
+- evidence-foundry
+- upstream
+- rf-verify
+- rf-fetch
+- rf-council
 milestone: null
 commit_refs: []
 pr_refs: []
 files_affected:
-  - errors.py
-  - cli_commands.py
-  - services/verification.py
-  - services/search_router/router.py
-  - services/source_cards.py
-  - adapters/arc_council.py
-  - paths.py
-  - services/assertion_registry.py
-  - .claude/workflows/rf-run-execute.js
+- errors.py
+- cli_commands.py
+- services/verification.py
+- services/search_router/router.py
+- services/source_cards.py
+- adapters/arc_council.py
+- paths.py
+- services/assertion_registry.py
+- .claude/workflows/rf-run-execute.js
 intenttree_workspace: ws_01KV8VMWXK05CTAZVHKT57HY0H
 intenttree_tree: tree_01KXQ7WC1HQE2GKZSCNDVXA9G7
 planning_maturity: scoped
 open_questions:
-  - q: "OQ-1: exact config key + profile shape for strict passage gating (verify.exact_passage vs sensitivity-profile-driven)"
-    owner: implementation-planner
-    status: resolved
-    resolution: "verify.exact_passage: warn|strict (default warn), set BOTH as a config default and a run-level CLI override flag; run-level flag wins on conflict. See TASK-2.1."
-  - q: "OQ-2: seal trigger surface — new `rf seal <run>` command vs flag on existing finalize/export path"
-    owner: implementation-planner
-    status: resolved
-    resolution: "Additive flag on the existing finalize/export CLI path (smaller surface); fall back to a new `rf seal <run>` command only if exploration finds no clean attach point, flagged as a deviation in the Phase 4 Completion Report. See TASK-4.2."
-  - q: "OQ-3: which PDF extraction lib (pypdf vs pdfminer.six)"
-    owner: implementation-planner
-    status: resolved
-    resolution: "pypdf, installed as optional extra research-foundry[pdf]. No existing PDF dependency signal in pyproject.toml (grep confirmed zero hits for pdf/pypdf/pdfminer), so the decisions-block §7 fallback default applies. See TASK-3.1."
-  - q: "OQ-4: whether council enum lands in run export schema now (bump 1.6) or stays CLI/YAML-only"
-    owner: implementation-planner
-    status: resolved
-    resolution: "Stays CLI/YAML-only this feature; no field added to run-export.ts, no 1.6 bump. See TASK-4.1, AC-RFUP5-4."
+- q: 'OQ-1: exact config key + profile shape for strict passage gating (verify.exact_passage
+    vs sensitivity-profile-driven)'
+  owner: implementation-planner
+  status: resolved
+  resolution: 'verify.exact_passage: warn|strict (default warn), set BOTH as a config
+    default and a run-level CLI override flag; run-level flag wins on conflict. See
+    TASK-2.1.'
+- q: "OQ-2: seal trigger surface \u2014 new `rf seal <run>` command vs flag on existing\
+    \ finalize/export path"
+  owner: implementation-planner
+  status: resolved
+  resolution: Additive flag on the existing finalize/export CLI path (smaller surface);
+    fall back to a new `rf seal <run>` command only if exploration finds no clean
+    attach point, flagged as a deviation in the Phase 4 Completion Report. See TASK-4.2.
+- q: 'OQ-3: which PDF extraction lib (pypdf vs pdfminer.six)'
+  owner: implementation-planner
+  status: resolved
+  resolution: "pypdf, installed as optional extra research-foundry[pdf]. No existing\
+    \ PDF dependency signal in pyproject.toml (grep confirmed zero hits for pdf/pypdf/pdfminer),\
+    \ so the decisions-block \xA77 fallback default applies. See TASK-3.1."
+- q: 'OQ-4: whether council enum lands in run export schema now (bump 1.6) or stays
+    CLI/YAML-only'
+  owner: implementation-planner
+  status: resolved
+  resolution: Stays CLI/YAML-only this feature; no field added to run-export.ts, no
+    1.6 bump. See TASK-4.1, AC-RFUP5-4.
 decisions:
-  - decision: "RFUP-6 (native discovery adapter install/eval) is explicitly deferred, not phased into this plan"
-    rationale: "IntentTree node text: only after a measured value/security gap; 0/6 live non-arc_council adapters installed today per current-state.md"
-    status: accepted
-  - decision: "Hard seam boundary: FHIR mapping, clinical rule DSL, and claim/bundle signing stay downstream in pediatric-anemia-site"
-    rationale: "rf owns evidence -> verified claim; the CDS converter owns verified claim -> executable rule -> signed release"
-    status: accepted
-  - decision: "verify.exact_passage defaults to warn, not strict, to avoid regressing the existing 2,835-assertion real corpus"
-    rationale: "Risk hotspot HIGH (decisions block §3); Evidence Foundry opts into strict per-run/profile"
-    status: accepted
-  - decision: "Phase order is P1 (machine contract) first, because Phases 2-4 emit new fields under the stamped schema"
-    rationale: "Decisions block §1 ordering rationale; avoids re-stamping fields added before the version constant exists"
-    status: accepted
-  - decision: "Phase 5 (Path-B workflow parameterization) is scheduled in wave 3, not wave 1, despite having no real technical dependency on Phase 1"
-    rationale: "Deliberate review-bandwidth placement — avoids contending with the Python phases (P2-P4) for reviewer attention; JS-side work is fully independent per decisions block §1"
-    status: accepted
+- decision: RFUP-6 (native discovery adapter install/eval) is explicitly deferred,
+    not phased into this plan
+  rationale: 'IntentTree node text: only after a measured value/security gap; 0/6
+    live non-arc_council adapters installed today per current-state.md'
+  status: accepted
+- decision: 'Hard seam boundary: FHIR mapping, clinical rule DSL, and claim/bundle
+    signing stay downstream in pediatric-anemia-site'
+  rationale: rf owns evidence -> verified claim; the CDS converter owns verified claim
+    -> executable rule -> signed release
+  status: accepted
+- decision: verify.exact_passage defaults to warn, not strict, to avoid regressing
+    the existing 2,835-assertion real corpus
+  rationale: "Risk hotspot HIGH (decisions block \xA73); Evidence Foundry opts into\
+    \ strict per-run/profile"
+  status: accepted
+- decision: Phase order is P1 (machine contract) first, because Phases 2-4 emit new
+    fields under the stamped schema
+  rationale: "Decisions block \xA71 ordering rationale; avoids re-stamping fields\
+    \ added before the version constant exists"
+  status: accepted
+- decision: Phase 5 (Path-B workflow parameterization) is scheduled in wave 3, not
+    wave 1, despite having no real technical dependency on Phase 1
+  rationale: "Deliberate review-bandwidth placement \u2014 avoids contending with\
+    \ the Python phases (P2-P4) for reviewer attention; JS-side work is fully independent\
+    \ per decisions block \xA71"
+  status: accepted
 success_metrics:
-  - "rf_schema_version stamped on 100% of enumerated machine surfaces (run export, verify output, catalog/API payloads, --json outputs) with zero renamed/removed existing fields"
-  - "verify.exact_passage=strict blocks 100% of a synthetic violation corpus while default mode produces zero new failures on a real-corpus regression sample"
-  - "rf seal produces a tamper-evident digest detectable on 100% of post-seal mutation attempts in the test suite, with zero behavior change to unsealed runs"
+- rf_schema_version stamped on 100% of enumerated machine surfaces (run export, verify
+  output, catalog/API payloads, --json outputs) with zero renamed/removed existing
+  fields
+- verify.exact_passage=strict blocks 100% of a synthetic violation corpus while default
+  mode produces zero new failures on a real-corpus regression sample
+- rf seal produces a tamper-evident digest detectable on 100% of post-seal mutation
+  attempts in the test suite, with zero behavior change to unsealed runs
 execution_mode: agent
-agent_title: "rf upstream evidence-foundry enablement (RFUP-1..5,7)"
-agent_summary: "Add machine schema versioning, strict exact-passage verify gating, a governed PDF extraction adapter, council verdict normalization, run-seal lineage, and Path-B workflow parameterization to Research Foundry so the downstream Evidence Foundry seam can consume rf as its evidence control plane; FHIR/DSL/signing stay downstream."
+agent_title: rf upstream evidence-foundry enablement (RFUP-1..5,7)
+agent_summary: Add machine schema versioning, strict exact-passage verify gating,
+  a governed PDF extraction adapter, council verdict normalization, run-seal lineage,
+  and Path-B workflow parameterization to Research Foundry so the downstream Evidence
+  Foundry seam can consume rf as its evidence control plane; FHIR/DSL/signing stay
+  downstream.
 wave_plan:
   serialization_barriers:
-    - services/verification.py   # P1 and P2 both touch verify output emission; P1 lands first in wave order so this is a soft note, not a hard collision
+  - services/verification.py
   phases:
-    - id: P1
-      depends_on: []
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
-      exit_criteria: ["contract tests green", "documented machine-surface inventory", "task-completion-validator pass"]
-      files_affected:
-        - errors.py
-        - cli_commands.py
-        - services/verification.py
-        - run-export.ts
-    - id: P2
-      depends_on: [P1]
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
-      exit_criteria: ["strict mode blocks synthetic violation corpus", "default mode unchanged on existing real corpus", "validator pass"]
-      agent_context: "Rebases on P1's stamped schema. Both P1 and P2 write to services/verification.py's output emission path — a serialization note (decisions-block §2), not a hard wave-conflict, because P1 completes in wave 1 before P2 starts in wave 2."
-      files_affected:
-        - services/verification.py
-    - id: P3
-      depends_on: [P1]
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
-      exit_criteria: ["PDF fixture produces full-text source card", "degradation path emits explicit extraction_status", "governance gate exercised in tests", "validator pass"]
-      files_affected:
-        - services/search_router/router.py
-        - services/source_cards.py
-        - pyproject.toml
-    - id: P4
-      depends_on: [P1]
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
-      exit_criteria: ["sealed-run mutation attempt detected by digest check", "council enum present in machine output", "validator pass"]
-      files_affected:
-        - adapters/arc_council.py
-        - paths.py
-        - services/assertion_registry.py
-        - cli_commands.py
-    - id: P5
-      depends_on: [P1]
-      isolation: shared
-      parallelizable: true
-      owner_skills: [workflow-authoring]
-      model: sonnet
-      effort: adaptive
-      exit_criteria: ["node --check + dry-run with args succeeds on a scratch run", "no literal machine paths remain", "validator pass"]
-      agent_context: "P5 is JS-side and technically independent of P1-P4 (decisions-block §1: 'schedulable any time, kept late to avoid contending with Python phases in review'). depends_on: [P1] here is a soft/scheduling dependency only — it forces P5 into wave 3 rather than wave 1, deliberately trading earliest-possible-start for reviewer-bandwidth isolation from the concurrent Python phases in wave 2. There is no technical coupling to P1's schema stamp."
-      files_affected:
-        - .claude/workflows/rf-run-execute.js
-    - id: P6
-      depends_on: [P2, P3, P4, P5]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      model: haiku
-      effort: adaptive
-      exit_criteria: ["karen end-of-feature pass", "full suite green", "deferred spec authored"]
-      agent_context: "Phase default is haiku/adaptive for the docs+changelog tasks (TASK-6.2, TASK-6.3, TASK-6.5). TASK-6.1 (regression suite) and TASK-6.4 (RFUP-6 design spec) override to sonnet/adaptive at the task level — see per-task Model column."
-      files_affected:
-        - CHANGELOG.md
-        - docs/project_plans/design-specs/rfup-6-native-discovery-adapters.md
+  - id: P1
+    depends_on: []
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    model: sonnet
+    effort: adaptive
+    exit_criteria:
+    - contract tests green
+    - documented machine-surface inventory
+    - task-completion-validator pass
+    files_affected:
+    - errors.py
+    - cli_commands.py
+    - services/verification.py
+    - run-export.ts
+  - id: P2
+    depends_on:
+    - P1
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    model: sonnet
+    effort: adaptive
+    exit_criteria:
+    - strict mode blocks synthetic violation corpus
+    - default mode unchanged on existing real corpus
+    - validator pass
+    agent_context: "Rebases on P1's stamped schema. Both P1 and P2 write to services/verification.py's\
+      \ output emission path \u2014 a serialization note (decisions-block \xA72),\
+      \ not a hard wave-conflict, because P1 completes in wave 1 before P2 starts\
+      \ in wave 2."
+    files_affected:
+    - services/verification.py
+  - id: P3
+    depends_on:
+    - P1
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    model: sonnet
+    effort: adaptive
+    exit_criteria:
+    - PDF fixture produces full-text source card
+    - degradation path emits explicit extraction_status
+    - governance gate exercised in tests
+    - validator pass
+    files_affected:
+    - services/search_router/router.py
+    - services/source_cards.py
+    - pyproject.toml
+  - id: P4
+    depends_on:
+    - P1
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    model: sonnet
+    effort: adaptive
+    exit_criteria:
+    - sealed-run mutation attempt detected by digest check
+    - council enum present in machine output
+    - validator pass
+    files_affected:
+    - adapters/arc_council.py
+    - paths.py
+    - services/assertion_registry.py
+    - cli_commands.py
+  - id: P5
+    depends_on:
+    - P1
+    isolation: shared
+    parallelizable: true
+    owner_skills:
+    - workflow-authoring
+    model: sonnet
+    effort: adaptive
+    exit_criteria:
+    - node --check + dry-run with args succeeds on a scratch run
+    - no literal machine paths remain
+    - validator pass
+    agent_context: "P5 is JS-side and technically independent of P1-P4 (decisions-block\
+      \ \xA71: 'schedulable any time, kept late to avoid contending with Python phases\
+      \ in review'). depends_on: [P1] here is a soft/scheduling dependency only \u2014\
+      \ it forces P5 into wave 3 rather than wave 1, deliberately trading earliest-possible-start\
+      \ for reviewer-bandwidth isolation from the concurrent Python phases in wave\
+      \ 2. There is no technical coupling to P1's schema stamp."
+    files_affected:
+    - .claude/workflows/rf-run-execute.js
+  - id: P6
+    depends_on:
+    - P2
+    - P3
+    - P4
+    - P5
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    model: haiku
+    effort: adaptive
+    exit_criteria:
+    - karen end-of-feature pass
+    - full suite green
+    - deferred spec authored
+    agent_context: "Phase default is haiku/adaptive for the docs+changelog tasks (TASK-6.2,\
+      \ TASK-6.3, TASK-6.5). TASK-6.1 (regression suite) and TASK-6.4 (RFUP-6 design\
+      \ spec) override to sonnet/adaptive at the task level \u2014 see per-task Model\
+      \ column."
+    files_affected:
+    - CHANGELOG.md
+    - docs/project_plans/design-specs/rfup-6-native-discovery-adapters.md
   waves:
-    - [P1]
-    - [P2, P3, P4]
-    - [P5]
-    - [P6]
+  - - P1
+  - - P2
+    - P3
+    - P4
+  - - P5
+  - - P6
 ---
 
 # Implementation Plan: rf Upstream Evidence Foundry (RFUP-1..5, RFUP-7)

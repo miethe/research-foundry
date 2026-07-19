@@ -15,15 +15,34 @@ export const meta = {
 
 let A = args || {}
 if (typeof A === 'string') { try { A = JSON.parse(A) } catch (e) { A = {} } }
-const RF = '/Users/miethe/.local/bin/rf'
-const REPO = '/Users/miethe/dev/homelab/development/research-foundry'
-const TMP = '/Users/miethe/.claude/jobs/85ede6ca/tmp'
-const STAMP = '20260613'
+
+// Resolve a possibly-relative config path against the invocation cwd. No `path` import —
+// this file has none, so plain string handling is used (matches sibling workflow style).
+function resolvePath(p) {
+  if (!p) return p
+  return p.startsWith('/') ? p : (process.cwd().replace(/\/$/, '') + '/' + p)
+}
+// Derive a YYYYMMDD run-date stamp from args.timestamp (an ISO-8601 string set by the
+// orchestrator/Opus pre-flight — see workflow-authoring-spec.md Four-Constraints Checklist:
+// no Date.now()/new Date() in the script body). Falls back to the historical literal default.
+function stampFromTimestamp(ts) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ts || '')
+  return m ? (m[1] + m[2] + m[3]) : null
+}
+
+const RF = resolvePath(A.rf_bin || '/Users/miethe/.local/bin/rf')
+const REPO = resolvePath(A.repo || '/Users/miethe/dev/homelab/development/research-foundry')
+const TMP = resolvePath(A.tmp_dir || '/Users/miethe/.claude/jobs/85ede6ca/tmp')
+const STAMP = stampFromTimestamp(A.timestamp) || '20260613'
 const run = A.run_id
 const refslug = (A.ref || 'rib').toLowerCase().replace(/[^a-z0-9]+/g, '')
 const MAXS = A.max_sources || 12
 
 if (!run) { return { error: 'missing run_id in args' } }
+
+if (A.dry_run === true) {
+  return { status: 'dry_run', rf_bin: RF, repo: REPO, tmp_dir: TMP, stamp: STAMP, run, args: A }
+}
 
 // ---------- schemas ----------
 const CAND_SCHEMA = {

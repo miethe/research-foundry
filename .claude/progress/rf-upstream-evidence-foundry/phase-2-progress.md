@@ -2,98 +2,135 @@
 type: progress
 schema_version: 2
 doc_type: progress
-prd: "rf-upstream-evidence-foundry"
-feature_slug: "rf-upstream-evidence-foundry"
-prd_ref: "docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md"
-plan_ref: "docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md"
-execution_model: "batch-parallel"
+prd: rf-upstream-evidence-foundry
+feature_slug: rf-upstream-evidence-foundry
+prd_ref: docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
+plan_ref: docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md
+execution_model: batch-parallel
 phase: 2
-title: "Exact-passage hard-gating in rf verify (RFUP-3)"
-status: "not_started"
+title: Exact-passage hard-gating in rf verify (RFUP-3)
+status: completed
 started: null
 completed: null
 commit_refs: []
 pr_refs: []
 overall_progress: 0
-completion_estimate: "on-track"
+completion_estimate: on-track
 total_tasks: 4
-completed_tasks: 0
+completed_tasks: 4
 in_progress_tasks: 0
 blocked_tasks: 0
 at_risk_tasks: 0
-owners: ["python-backend-engineer"]
+owners:
+- python-backend-engineer
 contributors: []
 model_usage:
-  primary: "sonnet"
+  primary: sonnet
   external: []
-
 tasks:
-  - id: "TASK-2.1"
-    description: "verify.exact_passage config key + run-level override (OQ-1)"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: []
-    estimated_effort: "1h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-2.2"
-    description: "New exact-passage eligibility check"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["TASK-2.1"]
-    estimated_effort: "1.5h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-2.3"
-    description: "Violation list + real-corpus regression"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["TASK-2.2"]
-    estimated_effort: "1.5h"
-    priority: "critical"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-2.4"
-    description: "Phase 2 quality gate - task-completion-validator"
-    status: "pending"
-    assigned_to: ["task-completion-validator"]
-    dependencies: ["TASK-2.3"]
-    estimated_effort: "0.5h"
-    priority: "critical"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-
+- id: TASK-2.1
+  description: verify.exact_passage config key + run-level override (OQ-1)
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies: []
+  estimated_effort: 1h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T00:00:00Z'
+  completed: '2026-07-18T00:30:00Z'
+  evidence:
+  - test: tests/test_verification_exact_passage.py
+  - test: tests/test_verification_exact_passage.py
+  verified_by:
+  - TASK-2.4
+- id: TASK-2.2
+  description: New exact-passage eligibility check
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - TASK-2.1
+  estimated_effort: 1.5h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T00:30:00Z'
+  completed: '2026-07-18T01:15:00Z'
+  evidence:
+  - test: tests/test_verification_exact_passage.py
+  - test: tests/test_verification_exact_passage.py
+  verified_by:
+  - TASK-2.4
+- id: TASK-2.3
+  description: Violation list + real-corpus regression
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - TASK-2.2
+  estimated_effort: 1.5h
+  priority: critical
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T01:15:00Z'
+  completed: '2026-07-18T02:15:00Z'
+  evidence:
+  - test: tests/test_verification_exact_passage.py
+  - test: tests/test_verification_exact_passage.py
+  verified_by:
+  - TASK-2.4
+- id: TASK-2.4
+  description: Phase 2 quality gate - task-completion-validator
+  status: completed
+  assigned_to:
+  - task-completion-validator
+  dependencies:
+  - TASK-2.3
+  estimated_effort: 0.5h
+  priority: critical
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T02:15:00Z'
+  completed: '2026-07-18T02:45:00Z'
+  evidence:
+  - validator: APPROVED
+  verified_by:
+  - TASK-2.4
 parallelization:
-  batch_1: ["TASK-2.1"]
-  batch_2: ["TASK-2.2"]
-  batch_3: ["TASK-2.3"]
-  batch_4: ["TASK-2.4"]
-  critical_path: ["TASK-2.1", "TASK-2.2", "TASK-2.3", "TASK-2.4"]
-  estimated_total_time: "4h"
-
+  batch_1:
+  - TASK-2.1
+  batch_2:
+  - TASK-2.2
+  batch_3:
+  - TASK-2.3
+  batch_4:
+  - TASK-2.4
+  critical_path:
+  - TASK-2.1
+  - TASK-2.2
+  - TASK-2.3
+  - TASK-2.4
+  estimated_total_time: 4h
 blockers: []
-
 success_criteria:
-  - id: "SC-1"
-    description: "Strict mode blocks synthetic violation corpus; default mode unchanged"
-    status: "pending"
-  - id: "SC-2"
-    description: "Real-corpus regression sample shows zero new failures (default mode)"
-    status: "pending"
-  - id: "SC-3"
-    description: "exact_passage_violations field optional and non-breaking (AC-RFUP3-5)"
-    status: "pending"
-  - id: "SC-4"
-    description: "task-completion-validator sign-off recorded"
-    status: "pending"
-
+- id: SC-1
+  description: Strict mode blocks synthetic violation corpus; default mode unchanged
+  status: pending
+- id: SC-2
+  description: Real-corpus regression sample shows zero new failures (default mode)
+  status: pending
+- id: SC-3
+  description: exact_passage_violations field optional and non-breaking (AC-RFUP3-5)
+  status: pending
+- id: SC-4
+  description: task-completion-validator sign-off recorded
+  status: pending
 files_modified:
-  - "src/research_foundry/services/verification.py"
+- src/research_foundry/services/verification.py
+progress: 100
+updated: '2026-07-18'
 ---
 
 # Phase 2: Exact-passage hard-gating in rf verify (RFUP-3)

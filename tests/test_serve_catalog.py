@@ -186,6 +186,7 @@ def test_search_empty_catalog_returns_empty_not_404(tmp_path):
         "page": 1,
         "page_size": 25,
         "facets": {"projects": [], "statuses": [], "sensitivities": []},
+        "rf_schema_version": "1.0.0",
     }
 
 
@@ -374,7 +375,10 @@ def test_post_import_run(tmp_path):
     resp = client.post("/api/catalog/import/run/rf_run_import_one")
     assert resp.status_code == 200
     data = resp.json()
-    assert data == {"imported": {"runs": 1, "items": 2}}  # 1 claim + 1 source
+    assert data == {
+        "imported": {"runs": 1, "items": 2},  # 1 claim + 1 source
+        "rf_schema_version": "1.0.0",
+    }
 
     # Idempotent: importing again does not error or duplicate.
     resp2 = client.post("/api/catalog/import/run/rf_run_import_one")
@@ -397,7 +401,11 @@ def test_post_import_all(tmp_path):
     resp = client.post("/api/catalog/import")
     assert resp.status_code == 200
     data = resp.json()
-    assert data == {"imported": {"runs": 2, "items": 4}, "errors": []}
+    assert data == {
+        "imported": {"runs": 2, "items": 4},
+        "errors": [],
+        "rf_schema_version": "1.0.0",
+    }
 
     stats_resp = client.get("/api/catalog/stats")
     assert stats_resp.json()["runs_indexed"] == 2
@@ -424,4 +432,5 @@ def test_post_import_all_passes_through_errors(tmp_path, monkeypatch):
     assert resp.json() == {
         "imported": {"runs": 1, "items": 2},
         "errors": [{"run_id": "rf_run_bad", "error": "boom"}],
+        "rf_schema_version": "1.0.0",
     }

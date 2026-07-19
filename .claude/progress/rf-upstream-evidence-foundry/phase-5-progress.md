@@ -2,101 +2,138 @@
 type: progress
 schema_version: 2
 doc_type: progress
-prd: "rf-upstream-evidence-foundry"
-feature_slug: "rf-upstream-evidence-foundry"
-prd_ref: "docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md"
-plan_ref: "docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md"
-execution_model: "batch-parallel"
+prd: rf-upstream-evidence-foundry
+feature_slug: rf-upstream-evidence-foundry
+prd_ref: docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
+plan_ref: docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md
+execution_model: batch-parallel
 phase: 5
-title: "Parameterize Path-B workflow (RFUP-1)"
-status: "not_started"
+title: Parameterize Path-B workflow (RFUP-1)
+status: completed
 started: null
 completed: null
 commit_refs: []
 pr_refs: []
 overall_progress: 0
-completion_estimate: "on-track"
+completion_estimate: on-track
 total_tasks: 4
-completed_tasks: 0
+completed_tasks: 4
 in_progress_tasks: 0
 blocked_tasks: 0
 at_risk_tasks: 0
-owners: ["ai-artifacts-engineer"]
+owners:
+- ai-artifacts-engineer
 contributors: []
 model_usage:
-  primary: "sonnet"
+  primary: sonnet
   external: []
-
 tasks:
-  - id: "TASK-5.1"
-    description: "Replace hard-coded paths with config/args"
-    status: "pending"
-    assigned_to: ["ai-artifacts-engineer"]
-    dependencies: []
-    estimated_effort: "2h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-5.2"
-    description: "Run-date computed at invocation"
-    status: "pending"
-    assigned_to: ["ai-artifacts-engineer"]
-    dependencies: ["TASK-5.1"]
-    estimated_effort: "1h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-5.3"
-    description: "Validation + registry update"
-    status: "pending"
-    assigned_to: ["ai-artifacts-engineer"]
-    dependencies: ["TASK-5.2"]
-    estimated_effort: "1h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-5.4"
-    description: "Phase 5 quality gate - task-completion-validator"
-    status: "pending"
-    assigned_to: ["task-completion-validator"]
-    dependencies: ["TASK-5.3"]
-    estimated_effort: "0.5h"
-    priority: "critical"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-
+- id: TASK-5.1
+  description: Replace hard-coded paths with config/args
+  status: completed
+  assigned_to:
+  - ai-artifacts-engineer
+  dependencies: []
+  estimated_effort: 2h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T00:00:00Z'
+  completed: '2026-07-18T00:00:00Z'
+  evidence:
+  - diff: .claude/workflows/rf-run-execute.js
+  verified_by:
+  - TASK-5.4
+- id: TASK-5.2
+  description: Run-date computed at invocation
+  status: completed
+  assigned_to:
+  - ai-artifacts-engineer
+  dependencies:
+  - TASK-5.1
+  estimated_effort: 1h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T00:00:00Z'
+  completed: '2026-07-18T00:00:00Z'
+  evidence:
+  - diff: .claude/workflows/rf-run-execute.js (stampFromTimestamp)
+  verified_by:
+  - TASK-5.4
+- id: TASK-5.3
+  description: Validation + registry update
+  status: completed
+  assigned_to:
+  - ai-artifacts-engineer
+  dependencies:
+  - TASK-5.2
+  estimated_effort: 1h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T00:00:00Z'
+  completed: '2026-07-18T00:00:00Z'
+  evidence:
+  - diff: .claude/specs/workflows/workflow-registry.md (rf-run-execute row)
+  verified_by:
+  - TASK-5.4
+- id: TASK-5.4
+  description: Phase 5 quality gate - task-completion-validator
+  status: completed
+  assigned_to:
+  - task-completion-validator
+  dependencies:
+  - TASK-5.3
+  estimated_effort: 0.5h
+  priority: critical
+  assigned_model: sonnet
+  model_effort: adaptive
+  evidence:
+  - validator: 'PASS (fix-cycle: registry Status active->draft)'
+  - verdict: 'PASS (fix-cycle: registry Status active->draft)'
+  verified_by:
+  - TASK-5.4
+  started: '2026-07-18T00:10:00Z'
+  completed: '2026-07-18T00:30:00Z'
 parallelization:
-  batch_1: ["TASK-5.1"]
-  batch_2: ["TASK-5.2"]
-  batch_3: ["TASK-5.3"]
-  batch_4: ["TASK-5.4"]
-  critical_path: ["TASK-5.1", "TASK-5.2", "TASK-5.3", "TASK-5.4"]
-  estimated_total_time: "4h"
-
+  batch_1:
+  - TASK-5.1
+  batch_2:
+  - TASK-5.2
+  batch_3:
+  - TASK-5.3
+  batch_4:
+  - TASK-5.4
+  critical_path:
+  - TASK-5.1
+  - TASK-5.2
+  - TASK-5.3
+  - TASK-5.4
+  estimated_total_time: 4h
 blockers: []
-
 success_criteria:
-  - id: "SC-1"
-    description: "node --check passes"
-    status: "pending"
-  - id: "SC-2"
-    description: "Dry-run with explicit args reproduces prior default behavior on this machine"
-    status: "pending"
-  - id: "SC-3"
-    description: "No literal absolute machine paths remain (grep-verifiable)"
-    status: "pending"
-  - id: "SC-4"
-    description: "Date stamp computed at invocation time (distinct stamps across two dry-run dates)"
-    status: "pending"
-  - id: "SC-5"
-    description: "task-completion-validator sign-off recorded"
-    status: "pending"
-
+- id: SC-1
+  description: node --check passes
+  status: pending
+- id: SC-2
+  description: Dry-run with explicit args reproduces prior default behavior on this
+    machine
+  status: pending
+- id: SC-3
+  description: No literal absolute machine paths remain (grep-verifiable)
+  status: pending
+- id: SC-4
+  description: Date stamp computed at invocation time (distinct stamps across two
+    dry-run dates)
+  status: pending
+- id: SC-5
+  description: task-completion-validator sign-off recorded
+  status: pending
 files_modified:
-  - ".claude/workflows/rf-run-execute.js"
+- .claude/workflows/rf-run-execute.js
+progress: 100
+updated: '2026-07-18'
 ---
 
 # Phase 5: Parameterize Path-B workflow (RFUP-1)

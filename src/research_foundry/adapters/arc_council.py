@@ -9,9 +9,95 @@ pipeline stays testable offline with no ARC installation.
 
 from __future__ import annotations
 
+import re
+from enum import Enum
 from typing import Any
 
 from .base import AdapterResult, BaseAdapter, register
+
+
+class CouncilVerdict(str, Enum):
+    """Normalized ARC council verdict.
+
+    ARC returns a free-form verdict string; this enum is the adapter-boundary
+    normalization target. Fail-toward-caution: anything unparseable or
+    ambiguous maps to ``concern``, never silently to ``approve``.
+    """
+
+    approve = "approve"
+    concern = "concern"
+    block = "block"
+
+
+# Recognized "approve" phrasing — checked as whole-word/phrase matches against
+# the lowercased, normalized raw verdict text.
+_APPROVE_PATTERNS: tuple[str, ...] = (
+    "approve",
+    "approved",
+    "approval",
+    "lgtm",
+    "ship it",
+    "go ahead",
+    "sign off",
+    "signed off",
+    "no objection",
+)
+
+# Recognized unambiguous block/reject phrasing. Kept conservative — only
+# language that clearly means "do not proceed" belongs here.
+_BLOCK_PATTERNS: tuple[str, ...] = (
+    "block",
+    "blocked",
+    "blocking",
+    "reject",
+    "rejected",
+    "rejection",
+    "do not proceed",
+    "must not proceed",
+    "veto",
+    "vetoed",
+    "denied",
+    "deny",
+)
+
+
+def normalize_council_verdict(raw: str | None) -> tuple[CouncilVerdict, str]:
+    """Map a free-form ARC verdict string to a :class:`CouncilVerdict`.
+
+    Returns a ``(verdict, confidence)`` tuple where ``confidence`` is
+    ``"high"`` for confidently-recognized approve/block phrasing and
+    ``"low"`` for anything ambiguous, empty, or unparseable — in which case
+    the result is always ``CouncilVerdict.concern`` (fail-toward-caution).
+
+    This function is pure and side-effect free: it never mutates ``raw`` or
+    any ARC record; callers are responsible for retaining the original text
+    alongside the normalized result.
+    """
+
+    if raw is None:
+        return CouncilVerdict.concern, "low"
+
+    text = raw.strip().lower()
+    if not text:
+        return CouncilVerdict.concern, "low"
+
+    # Collapse punctuation/whitespace so phrase matches are robust to
+    # formatting variance (e.g. "APPROVED!", "approved.", "re-jected").
+    normalized = re.sub(r"[^a-z0-9\s]+", " ", text)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+
+    has_block = any(pattern in normalized for pattern in _BLOCK_PATTERNS)
+    has_approve = any(pattern in normalized for pattern in _APPROVE_PATTERNS)
+
+    # Ambiguous: both signals present (e.g. "approved but blocking concerns
+    # remain") — fail toward caution rather than guessing.
+    if has_block and has_approve:
+        return CouncilVerdict.concern, "low"
+    if has_block:
+        return CouncilVerdict.block, "high"
+    if has_approve:
+        return CouncilVerdict.approve, "high"
+    return CouncilVerdict.concern, "low"
 
 
 class ARCCouncilAdapter(BaseAdapter):
@@ -76,6 +162,9 @@ class ARCCouncilAdapter(BaseAdapter):
                         notes.append(f"ARC verdict: {verdict}")
                     artifacts["arc_run_id"] = arc_run_id
                     artifacts["arc_verdict"] = str(verdict or "pending")
+                    normalized_verdict, confidence = normalize_council_verdict(verdict)
+                    artifacts["arc_verdict_normalized"] = normalized_verdict.value
+                    artifacts["arc_verdict_normalization_confidence"] = confidence
 
             return AdapterResult(
                 adapter=self.id,
@@ -102,4 +191,4 @@ class ARCCouncilAdapter(BaseAdapter):
 
 register(ARCCouncilAdapter())
 
-__all__ = ["ARCCouncilAdapter"]
+__all__ = ["ARCCouncilAdapter", "CouncilVerdict", "normalize_council_verdict"]

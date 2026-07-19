@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 from research_foundry import ids
 from research_foundry.paths import FoundryPaths
 from research_foundry.schemas import SchemaRegistry
+from research_foundry.services.extractors.pdf_extractor import extract_pdf
 from research_foundry.yamlio import dump_yaml
 
 from .budgets import Budget, BudgetTracker
@@ -87,6 +88,28 @@ def _apply_constraints(hits: list[SearchHit], constraints: dict[str, Any]) -> li
             continue
         out.append(hit)
     return out
+
+
+def _is_pdf_url(url: str) -> bool:
+    """Detect a PDF locator by URL path suffix only (no content-type sniffing)."""
+
+    try:
+        path = urlparse(url).path
+    except ValueError:
+        return False
+    return path.lower().endswith(".pdf")
+
+
+def _download_pdf_bytes(url: str) -> bytes | None:
+    """Best-effort raw-bytes download for PDF extraction; never raises."""
+
+    try:
+        import urllib.request
+
+        with urllib.request.urlopen(url, timeout=8) as resp:  # noqa: S310
+            return resp.read()
+    except Exception:  # noqa: BLE001  (offline / unreachable -> None, never raise)
+        return None
 
 
 def _first_extraction_provider(
@@ -318,7 +341,28 @@ def extract_urls(
     for url in urls:
         markdown: str | None = None
         risk_flags: list[str] = []
-        if extractor is not None:
+        pdf_extraction_status: str | None = None
+        if _is_pdf_url(url):
+            # PDF-aware path: download raw bytes ourselves and run the local
+            # pypdf-backed extractor instead of the jina/firecrawl chain,
+            # which isn't PDF-aware. Every failure mode here (no download,
+            # missing pdf extra, corrupted PDF, no text layer) degrades to
+            # markdown=None, which falls into the existing locator_only path
+            # below -- never an unhandled exception. The tri-state
+            # ``PdfExtractionResult.status`` (full_text/partial/locator_only)
+            # is threaded through to ``create_source_card`` below so a
+            # truncated (>100KB) PDF is recorded as "partial" rather than
+            # being mislabeled "full_text" by the content-derived default.
+            try:
+                data = _download_pdf_bytes(url)
+                if data:
+                    pdf_result = extract_pdf(data)
+                    markdown = pdf_result.text
+                    pdf_extraction_status = pdf_result.status
+            except Exception:  # noqa: BLE001
+                markdown = None
+                pdf_extraction_status = None
+        elif extractor is not None:
             try:
                 res = extractor.extract([url])
                 doc = res.docs[0] if res.docs else None
@@ -336,6 +380,7 @@ def extract_urls(
                 extra_limitations=risk_flags or None,
                 fetch=False,
                 paths=paths,
+                extraction_status=pdf_extraction_status,
             )
         except Exception:  # noqa: BLE001
             degraded_any = True

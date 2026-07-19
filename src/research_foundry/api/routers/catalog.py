@@ -19,9 +19,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from ..auth.rbac import require_role
 from ...paths import FoundryPaths
 from ...services import catalog_service as svc
+from ..auth.rbac import require_role
+from ..response_stamp import stamp
 from .runs import get_paths
 
 router = APIRouter()
@@ -58,7 +59,7 @@ def get_catalog_stats(request: Request, paths: FoundryPaths = _PATHS_DEP) -> dic
     """
     identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (svc.stats() has no identity param; not a Phase 3 scoping target)
     # TODO(WKSP-304 P4): svc.stats() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
-    return svc.stats(paths, sensitivity_threshold=_sensitivity_threshold_override(request))
+    return stamp(svc.stats(paths, sensitivity_threshold=_sensitivity_threshold_override(request)))
 
 
 @router.get("/catalog/search", summary="Search the catalog")
@@ -80,19 +81,21 @@ def get_catalog_search(
     Empty corpus / no matches → ``{"items": [], "total": 0, ...}`` — never 404.
     """
     identity = getattr(request.state, "identity", None)
-    return svc.search(
-        paths,
-        q=q,
-        item_type=item_type,
-        project=project,
-        status=status,
-        sensitivity=sensitivity,
-        run_id=run_id,
-        sort=sort,
-        page=page,
-        page_size=page_size,
-        sensitivity_threshold=_sensitivity_threshold_override(request),
-        identity=identity,
+    return stamp(
+        svc.search(
+            paths,
+            q=q,
+            item_type=item_type,
+            project=project,
+            status=status,
+            sensitivity=sensitivity,
+            run_id=run_id,
+            sort=sort,
+            page=page,
+            page_size=page_size,
+            sensitivity_threshold=_sensitivity_threshold_override(request),
+            identity=identity,
+        )
     )
 
 
@@ -117,7 +120,7 @@ def get_catalog_item(
     )
     if item is None:
         raise HTTPException(status_code=404, detail="catalog item not found")
-    return item
+    return stamp(item)
 
 
 @router.post("/catalog/import/run/{run_id}", summary="(Re)import a single run")
@@ -134,7 +137,7 @@ def post_catalog_import_run(
         result = svc.import_run(paths, run_id)
     except svc.CatalogError as exc:
         raise HTTPException(status_code=404, detail="run not found") from exc
-    return {"imported": {"runs": 1, "items": result["items"]}}
+    return stamp({"imported": {"runs": 1, "items": result["items"]}})
 
 
 @router.post("/catalog/import", summary="(Re)import every discovered run")
@@ -152,10 +155,12 @@ def post_catalog_import_all(
     identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (svc.import_all() has no identity param; not a Phase 3 scoping target)
     # TODO(WKSP-304 P4): svc.import_all() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
     result = svc.import_all(paths)
-    return {
-        "imported": {"runs": result["runs"], "items": result["items"]},
-        "errors": result["errors"],
-    }
+    return stamp(
+        {
+            "imported": {"runs": result["runs"], "items": result["items"]},
+            "errors": result["errors"],
+        }
+    )
 
 
 __all__ = ["router"]

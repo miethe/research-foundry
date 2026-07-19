@@ -2,111 +2,162 @@
 type: progress
 schema_version: 2
 doc_type: progress
-prd: "rf-upstream-evidence-foundry"
-feature_slug: "rf-upstream-evidence-foundry"
-prd_ref: "docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md"
-plan_ref: "docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md"
-execution_model: "batch-parallel"
+prd: rf-upstream-evidence-foundry
+feature_slug: rf-upstream-evidence-foundry
+prd_ref: docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
+plan_ref: docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md
+execution_model: batch-parallel
 phase: 1
-title: "Machine contract & schema versioning (RFUP-4)"
-status: "not_started"
+title: Machine contract & schema versioning (RFUP-4)
+status: completed
 started: null
 completed: null
 commit_refs: []
 pr_refs: []
 overall_progress: 0
-completion_estimate: "on-track"
+completion_estimate: on-track
 total_tasks: 5
-completed_tasks: 0
+completed_tasks: 5
 in_progress_tasks: 0
 blocked_tasks: 0
 at_risk_tasks: 0
-owners: ["python-backend-engineer"]
-contributors: ["api-designer"]
+owners:
+- python-backend-engineer
+contributors:
+- api-designer
 model_usage:
-  primary: "sonnet"
+  primary: sonnet
   external: []
-
 tasks:
-  - id: "TASK-1.1"
-    description: "Schema-version constant & inventory scaffold"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: []
-    estimated_effort: "1h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-1.2"
-    description: "Stamp CLI `--json` outputs + exit-code contract doc"
-    status: "pending"
-    assigned_to: ["python-backend-engineer", "api-designer"]
-    dependencies: ["TASK-1.1"]
-    estimated_effort: "1.5h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-1.3"
-    description: "Stamp verify output, run export, and LAN API payloads"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["TASK-1.1"]
-    estimated_effort: "1.5h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-1.4"
-    description: "Contract drift tests + fixture key-diff"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["TASK-1.2", "TASK-1.3"]
-    estimated_effort: "1h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-1.5"
-    description: "Phase 1 quality gate - task-completion-validator"
-    status: "pending"
-    assigned_to: ["task-completion-validator"]
-    dependencies: ["TASK-1.4"]
-    estimated_effort: "0.5h"
-    priority: "critical"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-
+- id: TASK-1.1
+  description: Schema-version constant & inventory scaffold
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies: []
+  estimated_effort: 1h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T19:07:48Z'
+  completed: '2026-07-18T19:09:49Z'
+  evidence:
+  - file: src/research_foundry/__init__.py
+  - file: docs/dev/architecture/machine-surface-inventory.md
+  verified_by:
+  - TASK-1.5
+- id: TASK-1.2
+  description: Stamp CLI `--json` outputs + exit-code contract doc
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  - api-designer
+  dependencies:
+  - TASK-1.1
+  estimated_effort: 1.5h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T19:09:49Z'
+  completed: '2026-07-18T19:29:48Z'
+  evidence:
+  - file: src/research_foundry/cli_commands.py
+  - file: docs/dev/architecture/machine-contract-spec.md
+  verified_by:
+  - TASK-1.5
+- id: TASK-1.3
+  description: Stamp verify output, run export, and LAN API payloads
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - TASK-1.1
+  estimated_effort: 1.5h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T19:09:49Z'
+  completed: '2026-07-18T20:27:21Z'
+  evidence:
+  - file: src/research_foundry/services/verification.py
+  - file: src/research_foundry/api/response_stamp.py
+  - file: frontend/runs-viewer/src/types/rf/run-export.ts
+  - file: src/research_foundry/services/export_service.py
+  - file: docs/dev/architecture/rf-run-export-schema.json
+  verified_by:
+  - TASK-1.5
+- id: TASK-1.4
+  description: Contract drift tests + fixture key-diff
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - TASK-1.2
+  - TASK-1.3
+  estimated_effort: 1h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T19:29:54Z'
+  completed: '2026-07-18T19:41:00Z'
+  evidence:
+  - test: tests/test_contract_drift_rf_schema_version.py
+  verified_by:
+  - TASK-1.5
+- id: TASK-1.5
+  description: Phase 1 quality gate - task-completion-validator
+  status: completed
+  assigned_to:
+  - task-completion-validator
+  dependencies:
+  - TASK-1.4
+  estimated_effort: 0.5h
+  priority: critical
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T19:42:06Z'
+  completed: '2026-07-18T20:32:14Z'
+  evidence:
+  - test: tests/test_contract_drift_rf_schema_version.py
+  verified_by:
+  - TASK-1.5
 parallelization:
-  batch_1: ["TASK-1.1"]
-  batch_2: ["TASK-1.2", "TASK-1.3"]
-  batch_3: ["TASK-1.4"]
-  batch_4: ["TASK-1.5"]
-  critical_path: ["TASK-1.1", "TASK-1.2", "TASK-1.4", "TASK-1.5"]
-  estimated_total_time: "5h"
-
+  batch_1:
+  - TASK-1.1
+  batch_2:
+  - TASK-1.2
+  - TASK-1.3
+  batch_3:
+  - TASK-1.4
+  batch_4:
+  - TASK-1.5
+  critical_path:
+  - TASK-1.1
+  - TASK-1.2
+  - TASK-1.4
+  - TASK-1.5
+  estimated_total_time: 5h
 blockers: []
-
 success_criteria:
-  - id: "SC-1"
-    description: "rf_schema_version present on all Phase-1-enumerated surfaces"
-    status: "pending"
-  - id: "SC-2"
-    description: "Contract drift tests fail on divergence, pass on unmodified code"
-    status: "pending"
-  - id: "SC-3"
-    description: "Zero renamed/removed keys in fixture key-diff"
-    status: "pending"
-  - id: "SC-4"
-    description: "task-completion-validator sign-off recorded"
-    status: "pending"
-
+- id: SC-1
+  description: rf_schema_version present on all Phase-1-enumerated surfaces
+  status: pending
+- id: SC-2
+  description: Contract drift tests fail on divergence, pass on unmodified code
+  status: pending
+- id: SC-3
+  description: Zero renamed/removed keys in fixture key-diff
+  status: pending
+- id: SC-4
+  description: task-completion-validator sign-off recorded
+  status: pending
 files_modified:
-  - "src/research_foundry/errors.py"
-  - "src/research_foundry/cli_commands.py"
-  - "src/research_foundry/services/verification.py"
-  - "frontend/src/types/run-export.ts"
+- src/research_foundry/errors.py
+- src/research_foundry/cli_commands.py
+- src/research_foundry/services/verification.py
+- frontend/src/types/run-export.ts
+progress: 100
+updated: '2026-07-18'
 ---
 
 # Phase 1: Machine contract & schema versioning (RFUP-4)

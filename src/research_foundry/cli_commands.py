@@ -17,6 +17,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from . import RF_SCHEMA_VERSION
 from .errors import ExitCode, RFError
 
 console = Console()
@@ -26,6 +27,19 @@ err_console = Console(stderr=True)
 def _fail(exc: Exception, code: ExitCode = ExitCode.USAGE) -> NoReturn:
     err_console.print(f"[red]{exc}[/red]")
     raise typer.Exit(int(getattr(exc, "exit_code", code)))
+
+
+def _stamp(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return ``payload`` with the canonical ``rf_schema_version`` top-level
+    field added (additive-only — FR-4.1/FR-4.4; see
+    ``docs/dev/architecture/machine-surface-inventory.md``).
+
+    Every dict-shaped ``--json`` CLI output threads through here so the
+    stamped value always tracks :data:`research_foundry.RF_SCHEMA_VERSION`.
+    Does not mutate ``payload`` in place.
+    """
+
+    return {"rf_schema_version": RF_SCHEMA_VERSION, **payload}
 
 
 def _arc_council_via(run_id: str, console: Console, err_console: Console, svc: object) -> None:
@@ -433,6 +447,9 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         report: str | None = typer.Option(None, "--report"),
         claim_ledger: str | None = typer.Option(None, "--claim-ledger"),
         fail_on_unsupported: bool = typer.Option(True, "--fail-on-unsupported/--no-fail-on-unsupported"),
+        exact_passage: str | None = typer.Option(
+            None, "--exact-passage", help="Override verify.exact_passage config: warn|strict"
+        ),
     ) -> None:
         """Verify every material claim maps or is labeled (spec §10.10). Exit codes per §10.10."""
 
@@ -444,6 +461,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                 report_path=Path(report) if report else None,
                 claim_ledger_path=Path(claim_ledger) if claim_ledger else None,
                 fail_on_unsupported=fail_on_unsupported,
+                exact_passage_override=exact_passage,
             )
         except RFError as e:
             _fail(e, ExitCode.SCHEMA)
@@ -1276,6 +1294,12 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             "--sensitivity-threshold",
             help="override foundry.yaml viewer.sensitivity_threshold",
         ),
+        seal: bool = typer.Option(
+            False,
+            "--seal",
+            help="append a tamper-evidence lineage record for the run after export "
+                 "(single --run-id only; TASK-4.3 owns the real digest logic)",
+        ),
     ) -> None:
         """Export a denormalized run.json claim graph (deterministic; no LLM)."""
 
@@ -1286,6 +1310,13 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         from .services import export_service as svc
 
         paths = FoundryPaths.discover()
+
+        # --seal only applies to a single explicit --run-id (not --all): sealing
+        # is a per-run tamper-evidence trigger, not a bulk operation, so we fail
+        # closed rather than silently loop over every discovered run.
+        if seal and all_runs:
+            _fail(RFError("--seal requires a single --run-id (not --all)"))
+
         try:
             if all_runs:
                 written = svc.export_all(paths, sensitivity_threshold=sensitivity_threshold)
@@ -1300,15 +1331,25 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                 data = svc.export_run(
                     paths, run_id, sensitivity_threshold=sensitivity_threshold
                 )
-                typer.echo(_json.dumps(data, ensure_ascii=False, indent=2))
+                typer.echo(_json.dumps(_stamp(data), ensure_ascii=False, indent=2))
             else:
                 out = svc.export_to_file(
                     paths, run_id, sensitivity_threshold=sensitivity_threshold
                 )
                 console.print(f"[green]exported[/green] {out}")
         except svc.ExportError as exc:
-            print(_json.dumps(exc.as_payload()), file=_sys.stderr)
+            print(_json.dumps(_stamp(exc.as_payload())), file=_sys.stderr)
             raise typer.Exit(int(exc.exit_code)) from exc
+
+        if seal:
+            from .services import run_seal as seal_svc
+
+            entry = seal_svc.seal_run(paths, run_id)
+            console.print(f"[green]sealed[/green] {run_id} -> {paths.run_paths(run_id).lineage}")
+            if entry.get("digest") is None:
+                console.print(
+                    "[yellow]note[/yellow] placeholder seal entry — digest logic pending (TASK-4.3)"
+                )
 
     @run_app.command("list")
     def run_list(
@@ -1323,6 +1364,10 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
         paths = FoundryPaths.discover()
         summaries = svc.list_runs(paths)
+        # NOTE: root is a bare JSON array (list[dict]), not an object — there is
+        # no top-level key to stamp without changing the response shape from
+        # array to object, which would not be additive-only (FR-4.4). Left
+        # unstamped; see docs/dev/architecture/machine-surface-inventory.md.
         typer.echo(_json.dumps(summaries, ensure_ascii=False, indent=2))
 
     app.add_typer(run_app, name="run")
@@ -1348,16 +1393,16 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         paths = FoundryPaths.discover()
         if all_runs:
             result = svc.import_all(paths)
-            typer.echo(_json.dumps(result, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps(_stamp(result), ensure_ascii=False, indent=2))
             return
         if not run_id:
             _fail(RFError("provide RUN_ID or --all"))
         try:
             result = svc.import_run(paths, run_id)
         except svc.CatalogError as exc:
-            print(_json.dumps(exc.as_payload()), file=_sys.stderr)
+            print(_json.dumps(_stamp(exc.as_payload())), file=_sys.stderr)
             raise typer.Exit(int(exc.exit_code)) from exc
-        typer.echo(_json.dumps(result, ensure_ascii=False, indent=2))
+        typer.echo(_json.dumps(_stamp(result), ensure_ascii=False, indent=2))
 
     @catalog_app.command("search")
     def catalog_search(
@@ -1399,7 +1444,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             sensitivity_threshold=sensitivity_threshold,
         )
         if json_out:
-            typer.echo(_json.dumps(result, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps(_stamp(result), ensure_ascii=False, indent=2))
             return
         table = Table(title="rf catalog search")
         table.add_column("ID")
@@ -1443,7 +1488,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         if item is None:
             _fail(RFError(f"catalog item not found (or excluded by sensitivity threshold): "
                           f"{catalog_item_id}"))
-        typer.echo(_json.dumps(item, ensure_ascii=False, indent=2))
+        typer.echo(_json.dumps(_stamp(item), ensure_ascii=False, indent=2))
 
     @catalog_app.command("stats")
     def catalog_stats(
@@ -1464,7 +1509,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         paths = FoundryPaths.discover()
         result = svc.stats(paths, sensitivity_threshold=sensitivity_threshold)
         if json_out:
-            typer.echo(_json.dumps(result, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps(_stamp(result), ensure_ascii=False, indent=2))
             return
         table = Table(title="rf catalog stats")
         table.add_column("Item type")
@@ -1518,14 +1563,14 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         if json_out:
             typer.echo(
                 _json.dumps(
-                    {
+                    _stamp({
                         "total_drafts": report.total_drafts,
                         "drafts_missing_workspace_id": report.drafts_missing_workspace_id,
                         "drafts_missing_created_by": report.drafts_missing_created_by,
                         "total_catalog_items": report.total_catalog_items,
                         "target_workspace_id": report.target_workspace_id,
                         "caller_impact_summary": report.caller_impact_summary,
-                    },
+                    }),
                     ensure_ascii=False,
                     indent=2,
                 )
@@ -1599,7 +1644,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             if json_out:
                 typer.echo(
                     _json.dumps(
-                        {
+                        _stamp({
                             "mode": "dry_run_only",
                             "total_drafts": preview.total_drafts,
                             "drafts_missing_workspace_id": preview.drafts_missing_workspace_id,
@@ -1607,7 +1652,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                             "total_catalog_items": preview.total_catalog_items,
                             "target_workspace_id": preview.target_workspace_id,
                             "caller_impact_summary": preview.caller_impact_summary,
-                        },
+                        }),
                         ensure_ascii=False,
                         indent=2,
                     )
@@ -1635,7 +1680,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             if json_out:
                 typer.echo(
                     _json.dumps(
-                        {"status": "already_migrated", "message": already_msg},
+                        _stamp({"status": "already_migrated", "message": already_msg}),
                         ensure_ascii=False,
                         indent=2,
                     )
@@ -1650,7 +1695,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         if json_out:
             typer.echo(
                 _json.dumps(
-                    {
+                    _stamp({
                         "status": "applied",
                         "migration_run_id": report.migration_run_id,
                         "target_workspace_id": report.target_workspace_id,
@@ -1659,7 +1704,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                         "total_failed": report.total_failed,
                         "catalog_rebuild_ok": report.catalog_rebuild_ok,
                         "catalog_rebuild_error": report.catalog_rebuild_error,
-                    },
+                    }),
                     ensure_ascii=False,
                     indent=2,
                 )
@@ -1733,14 +1778,14 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         if json_out:
             typer.echo(
                 _json.dumps(
-                    {
+                    _stamp({
                         "migration_run_id": report.migration_run_id,
                         "total_attempted": report.total_attempted,
                         "total_reverted_drafts": report.total_reverted_drafts,
                         "total_failed": report.total_failed,
                         "catalog_item_note": report.catalog_item_note,
                         "is_dry_run": report.is_dry_run,
-                    },
+                    }),
                     ensure_ascii=False,
                     indent=2,
                 )
@@ -1822,7 +1867,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         anchors = data.get("report_anchors")
 
         if json_out:
-            typer.echo(_json.dumps({"run_id": run_id, "report_anchors": anchors}, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps(_stamp({"run_id": run_id, "report_anchors": anchors}), ensure_ascii=False, indent=2))
             return
 
         if anchors is None:
@@ -1920,7 +1965,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             _fail(exc)
 
         if json_out:
-            typer.echo(_json.dumps(draft, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps(_stamp(draft), ensure_ascii=False, indent=2))
             return
         console.print(f"[green]created[/green] {draft['report_draft_id']}  ({draft['title']})")
 
@@ -1938,6 +1983,9 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         paths = FoundryPaths.discover()
         drafts = bsvc.list_drafts(paths)
         if json_out:
+            # NOTE: root is a bare JSON array (list[dict]) — no top-level key to
+            # stamp without a non-additive shape change (FR-4.4). Left
+            # unstamped; see machine-surface-inventory.md.
             typer.echo(_json.dumps(drafts, ensure_ascii=False, indent=2))
             return
         if not drafts:
@@ -1981,7 +2029,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             _fail(exc)
 
         if json_out:
-            typer.echo(_json.dumps(draft, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps(_stamp(draft), ensure_ascii=False, indent=2))
             return
         console.print(f"[bold]{draft['report_draft_id']}[/bold]  {draft['title']}")
         console.print(f"  status={draft.get('status')}  sensitivity={draft.get('sensitivity')}  blocks={len(draft.get('blocks', []))}")
@@ -2009,7 +2057,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             _fail(exc)
 
         if json_out:
-            typer.echo(_json.dumps(draft, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps(_stamp(draft), ensure_ascii=False, indent=2))
             return
         blk = draft["blocks"][-1]
         console.print(f"[green]added block[/green] {blk['block_id']}  (type={blk['block_type']})")
@@ -2038,7 +2086,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             _fail(exc)
 
         if json_out:
-            typer.echo(_json.dumps(draft, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps(_stamp(draft), ensure_ascii=False, indent=2))
         else:
             console.print(f"[green]updated block[/green] {block_id}")
 
@@ -2115,7 +2163,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         except (NotFoundError, bsvc.BuilderError) as exc:
             _fail(exc)
         if json_out:
-            typer.echo(_json.dumps(draft, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps(_stamp(draft), ensure_ascii=False, indent=2))
         else:
             console.print(f"[green]linked[/green] claim {claim_id} to block {block_id}")
 
@@ -2167,7 +2215,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             _fail(exc)
 
         if json_out:
-            typer.echo(_json.dumps({
+            typer.echo(_json.dumps(_stamp({
                 "report_draft_id": report_id,
                 "passed": result.passed,
                 "exit_code": result.exit_code,
@@ -2176,7 +2224,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                      "detail": c.detail, "locations": c.locations}
                     for c in result.checks
                 ],
-            }, ensure_ascii=False, indent=2))
+            }), ensure_ascii=False, indent=2))
             raise typer.Exit(0 if result.passed else result.exit_code)
 
         color = "green" if result.passed else "red"
@@ -2224,7 +2272,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
         if blocking:
             if json_out:
-                typer.echo(_json.dumps({"ok": False, "blocking": blocking, "checks": check_dicts}, ensure_ascii=False, indent=2))
+                typer.echo(_json.dumps(_stamp({"ok": False, "blocking": blocking, "checks": check_dicts}), ensure_ascii=False, indent=2))
             else:
                 err_console.print(f"[red]BLOCKED[/red] publish-preview failed for {report_id}")
                 for c in blocking:
@@ -2237,7 +2285,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             _fail(exc)
 
         if json_out:
-            typer.echo(_json.dumps({"ok": True, "preview_markdown": preview_md, "checks": check_dicts}, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps(_stamp({"ok": True, "preview_markdown": preview_md, "checks": check_dicts}), ensure_ascii=False, indent=2))
         else:
             console.print(f"[green]PASS[/green] publish-preview ({report_id})")
             console.print(preview_md)
@@ -2308,7 +2356,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             cursor=cursor,
         )
         if json_out:
-            typer.echo(_json.dumps(result, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps(_stamp(result), ensure_ascii=False, indent=2))
             return
         table = Table(title="rf audit list")
         table.add_column("audit_event_id", no_wrap=True)
@@ -2348,7 +2396,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             err_console.print(f"[red]audit event not found: {audit_event_id}[/red]")
             raise typer.Exit(int(ExitCode.USAGE))
         if json_out:
-            typer.echo(_json.dumps(event, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps(_stamp(event), ensure_ascii=False, indent=2))
             return
         # Rich key-value table — show all non-null fields.
         table = Table(title=f"rf audit show {audit_event_id}", show_header=False)
@@ -2386,12 +2434,12 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             state = svc.get_health_state(paths)
 
         if json_out:
-            typer.echo(_json.dumps({
+            typer.echo(_json.dumps(_stamp({
                 "healthy": state.healthy,
                 "last_probe_at": state.last_probe_at,
                 "last_success_at": state.last_success_at,
                 "error_detail": state.error_detail,
-            }, indent=2))
+            }), indent=2))
             if not state.healthy:
                 raise typer.Exit(1)
             return
@@ -2460,7 +2508,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             )
 
         if json_out:
-            typer.echo(_json.dumps(receipt, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps(_stamp(receipt), ensure_ascii=False, indent=2))
         else:
             table = Table(
                 title="rf assertion backfill" + (" (--dry-run)" if dry_run else ""),

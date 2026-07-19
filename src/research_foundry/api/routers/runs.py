@@ -46,6 +46,7 @@ from ...services.export_service import (
     resolve_threshold,
 )
 from ..auth.rbac import require_role
+from ..response_stamp import stamp
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +153,7 @@ def get_run_detail(
     Raises 404 when the run does not exist or is over-threshold.
     Raises 400 on invalid sensitivity_threshold.
     """
-    return _enforce_existence_gate(paths, run_id, sensitivity_threshold)
+    return stamp(_enforce_existence_gate(paths, run_id, sensitivity_threshold))
 
 
 @router.get("/runs/{run_id}/claims", summary="Get claim ledger for a run")
@@ -237,7 +238,7 @@ def get_source_card(
     for claim in (data.get("claims") or []):
         for source in (claim.get("sources") or []):
             if source.get("source_card_id") == source_card_id:
-                return source
+                return stamp(source)
 
     raise HTTPException(status_code=404, detail="source not found")
 
@@ -266,7 +267,7 @@ def get_run_anchors(
     are visible, and therefore which claim links appear in the derived anchors).
     """
     data = _enforce_existence_gate(paths, run_id, sensitivity_threshold)
-    return {"run_id": run_id, "report_anchors": data.get("report_anchors")}
+    return stamp({"run_id": run_id, "report_anchors": data.get("report_anchors")})
 
 
 # ---------------------------------------------------------------------------
@@ -436,7 +437,7 @@ def launch_run_endpoint(
             "reason_code": result.reuse_decision.reason_code,
             "assertion_id": result.reuse_decision.assertion_id,
         }
-    return response
+    return stamp(response)
 
 
 # RBAC-005 / RBAC-901 audit: runs.py has one mutation route as of the

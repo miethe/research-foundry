@@ -116,6 +116,7 @@ def test_reuse_fields_absent_leaves_response_shape_unchanged(tmp_foundry) -> Non
         "swarm_path",
         "routing_path",
         "next_step",
+        "rf_schema_version",
     }
 
 

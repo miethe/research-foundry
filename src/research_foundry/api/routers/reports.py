@@ -54,13 +54,15 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from ..auth.rbac import require_role
 from ...errors import NotFoundError
 from ...paths import FoundryPaths
-from ...services import audit_service, builder_service as bsvc
+from ...services import audit_service
+from ...services import builder_service as bsvc
 from ...services.audit_service import AuditEvent
 from ...services.export_service import SENSITIVITY_ORDER, ExportError, resolve_threshold
 from ...services.verification import verify_draft
+from ..auth.rbac import require_role
+from ..response_stamp import stamp
 from .runs import get_paths
 
 router = APIRouter()
@@ -239,17 +241,19 @@ def create_draft(
                     status_code=422,
                     detail="origin 'run' requires source_run_id",
                 )
-            return bsvc.create_draft_from_run(
-                paths,
-                run_id=body.source_run_id,
-                title=body.title if body.title != "Untitled Draft" else None,
-                audience=body.audience,
-                sensitivity=body.sensitivity if body.sensitivity != "public" else None,
-                project_id=body.project_id,
-                workspace_id=body.workspace_id,
-                created_by=body.created_by,
-                sensitivity_threshold=body.sensitivity_threshold or "client_sensitive",
-                identity=identity,
+            return stamp(
+                bsvc.create_draft_from_run(
+                    paths,
+                    run_id=body.source_run_id,
+                    title=body.title if body.title != "Untitled Draft" else None,
+                    audience=body.audience,
+                    sensitivity=body.sensitivity if body.sensitivity != "public" else None,
+                    project_id=body.project_id,
+                    workspace_id=body.workspace_id,
+                    created_by=body.created_by,
+                    sensitivity_threshold=body.sensitivity_threshold or "client_sensitive",
+                    identity=identity,
+                )
             )
         if body.origin == "collection":
             ids_ = body.catalog_item_ids or (
@@ -260,29 +264,33 @@ def create_draft(
                     status_code=422,
                     detail="origin 'collection' requires catalog_item_ids",
                 )
-            return bsvc.create_draft_from_collection(
+            return stamp(
+                bsvc.create_draft_from_collection(
+                    paths,
+                    catalog_item_ids=ids_,
+                    title=body.title,
+                    audience=body.audience,
+                    sensitivity=body.sensitivity,
+                    project_id=body.project_id,
+                    workspace_id=body.workspace_id,
+                    created_by=body.created_by,
+                    sensitivity_threshold=body.sensitivity_threshold or "client_sensitive",
+                    identity=identity,
+                )
+            )
+        # blank / template / unknown origin → plain create_draft
+        return stamp(
+            bsvc.create_draft(
                 paths,
-                catalog_item_ids=ids_,
                 title=body.title,
+                origin=body.origin,
                 audience=body.audience,
                 sensitivity=body.sensitivity,
                 project_id=body.project_id,
                 workspace_id=body.workspace_id,
                 created_by=body.created_by,
-                sensitivity_threshold=body.sensitivity_threshold or "client_sensitive",
                 identity=identity,
             )
-        # blank / template / unknown origin → plain create_draft
-        return bsvc.create_draft(
-            paths,
-            title=body.title,
-            origin=body.origin,
-            audience=body.audience,
-            sensitivity=body.sensitivity,
-            project_id=body.project_id,
-            workspace_id=body.workspace_id,
-            created_by=body.created_by,
-            identity=identity,
         )
     except bsvc.BuilderError as exc:
         raise _builder_error(exc) from exc
@@ -337,7 +345,7 @@ def get_draft(
         raise _not_found(report_id) from exc
     if _sensitivity_rank(draft.get("sensitivity")) > threshold_rank:
         raise _not_found(report_id)
-    return draft
+    return stamp(draft)
 
 
 @router.delete("/reports/{report_id}", summary="Delete a report draft", status_code=204)
@@ -434,8 +442,10 @@ def create_version(
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     try:
-        return bsvc.create_revision(
-            paths, report_id, created_by=body.created_by, note=body.note
+        return stamp(
+            bsvc.create_revision(
+                paths, report_id, created_by=body.created_by, note=body.note
+            )
         )
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
@@ -467,7 +477,7 @@ def get_version(
         raise _not_found(report_id)
     try:
         # TODO(WKSP-304 P4): bsvc.get_revision() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
-        return bsvc.get_revision(paths, report_id, version_id)
+        return stamp(bsvc.get_revision(paths, report_id, version_id))
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail="revision not found") from exc
 
@@ -493,7 +503,7 @@ def restore_version(
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     try:
-        return bsvc.restore_revision(paths, report_id, version_id)
+        return stamp(bsvc.restore_revision(paths, report_id, version_id))
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail="revision not found") from exc
 
@@ -518,14 +528,16 @@ def add_block(
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     try:
-        return bsvc.add_block(
-            paths,
-            report_id,
-            block_type=body.block_type,
-            markdown=body.markdown,
-            order=body.order,
-            materiality=body.materiality,
-            updated_by=body.updated_by,
+        return stamp(
+            bsvc.add_block(
+                paths,
+                report_id,
+                block_type=body.block_type,
+                markdown=body.markdown,
+                order=body.order,
+                materiality=body.materiality,
+                updated_by=body.updated_by,
+            )
         )
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
@@ -552,8 +564,10 @@ def reorder_blocks(
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     try:
-        return bsvc.reorder_blocks(
-            paths, report_id, body.block_ids, updated_by=body.updated_by
+        return stamp(
+            bsvc.reorder_blocks(
+                paths, report_id, body.block_ids, updated_by=body.updated_by
+            )
         )
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
@@ -577,16 +591,18 @@ def update_block(
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     try:
-        return bsvc.update_block(
-            paths,
-            report_id,
-            block_id,
-            markdown=body.markdown,
-            block_type=body.block_type,
-            materiality=body.materiality,
-            order=body.order,
-            risk_flags=body.risk_flags,
-            updated_by=body.updated_by,
+        return stamp(
+            bsvc.update_block(
+                paths,
+                report_id,
+                block_id,
+                markdown=body.markdown,
+                block_type=body.block_type,
+                materiality=body.materiality,
+                order=body.order,
+                risk_flags=body.risk_flags,
+                updated_by=body.updated_by,
+            )
         )
     except NotFoundError as exc:
         raise HTTPException(
@@ -623,7 +639,7 @@ def delete_block(
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     try:
-        return bsvc.delete_block(paths, report_id, block_id)
+        return stamp(bsvc.delete_block(paths, report_id, block_id))
     except NotFoundError as exc:
         raise HTTPException(
             status_code=404,
@@ -652,18 +668,20 @@ def add_claim_link(
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     try:
-        return bsvc.add_claim_link(
-            paths,
-            report_id,
-            block_id=body.block_id,
-            claim_id=body.claim_id,
-            relation=body.relation,
-            source_run_id=body.source_run_id,
-            catalog_item_id=body.catalog_item_id,
-            span_start=body.span_start,
-            span_end=body.span_end,
-            insert_tag=body.insert_tag,
-            updated_by=body.updated_by,
+        return stamp(
+            bsvc.add_claim_link(
+                paths,
+                report_id,
+                block_id=body.block_id,
+                claim_id=body.claim_id,
+                relation=body.relation,
+                source_run_id=body.source_run_id,
+                catalog_item_id=body.catalog_item_id,
+                span_start=body.span_start,
+                span_end=body.span_end,
+                insert_tag=body.insert_tag,
+                updated_by=body.updated_by,
+            )
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -692,7 +710,7 @@ def remove_claim_link(
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     try:
-        return bsvc.remove_claim_link(paths, report_id, claim_link_id)
+        return stamp(bsvc.remove_claim_link(paths, report_id, claim_link_id))
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -717,15 +735,17 @@ def add_source_link(
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     try:
-        return bsvc.add_source_link(
-            paths,
-            report_id,
-            source_card_id=body.source_card_id,
-            run_id=body.run_id,
-            catalog_item_id=body.catalog_item_id,
-            block_id=body.block_id,
-            relation=body.relation,
-            updated_by=body.updated_by,
+        return stamp(
+            bsvc.add_source_link(
+                paths,
+                report_id,
+                source_card_id=body.source_card_id,
+                run_id=body.run_id,
+                catalog_item_id=body.catalog_item_id,
+                block_id=body.block_id,
+                relation=body.relation,
+                updated_by=body.updated_by,
+            )
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -754,7 +774,7 @@ def remove_source_link(
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
     try:
-        return bsvc.remove_source_link(paths, report_id, source_link_id)
+        return stamp(bsvc.remove_source_link(paths, report_id, source_link_id))
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -789,22 +809,24 @@ def verify_draft_endpoint(
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
 
-    return {
-        "report_draft_id": report_id,
-        "passed": result.passed,
-        "exit_code": result.exit_code,
-        "checks": [
-            {
-                "id": c.id,
-                "severity": c.severity,
-                "status": c.status,
-                "detail": c.detail,
-                "locations": c.locations,
-            }
-            for c in result.checks
-        ],
-        "unsupported": result.unsupported,
-    }
+    return stamp(
+        {
+            "report_draft_id": report_id,
+            "passed": result.passed,
+            "exit_code": result.exit_code,
+            "checks": [
+                {
+                    "id": c.id,
+                    "severity": c.severity,
+                    "status": c.status,
+                    "detail": c.detail,
+                    "locations": c.locations,
+                }
+                for c in result.checks
+            ],
+            "unsupported": result.unsupported,
+        }
+    )
 
 
 @router.post("/reports/{report_id}/publish-preview", summary="Publish-preview gate (D13 fail-closed)")
@@ -942,11 +964,13 @@ def publish_preview(
     if not audit_service.is_healthy_for_exposure(paths):
         raise HTTPException(status_code=503, detail="Audit log unavailable")
 
-    return {
-        "ok": True,
-        "preview_markdown": preview_md,
-        "checks": check_dicts,
-    }
+    return stamp(
+        {
+            "ok": True,
+            "preview_markdown": preview_md,
+            "checks": check_dicts,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -985,7 +1009,7 @@ def export_draft(
         md = bsvc.export_markdown(paths, report_id, identity=identity)
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
-    return {"report_draft_id": report_id, "markdown": md}
+    return stamp({"report_draft_id": report_id, "markdown": md})
 
 
 # ---------------------------------------------------------------------------
@@ -1063,12 +1087,14 @@ def create_share_link(
     if not audit_service.is_healthy_for_exposure(paths):
         raise HTTPException(status_code=503, detail="Audit log unavailable")
 
-    return _create_link(
-        paths,
-        report_draft_id=report_id,
-        sensitivity_threshold=threshold,
-        created_by=body.created_by,
-        expires_at=body.expires_at,
+    return stamp(
+        _create_link(
+            paths,
+            report_draft_id=report_id,
+            sensitivity_threshold=threshold,
+            created_by=body.created_by,
+            expires_at=body.expires_at,
+        )
     )
 
 
@@ -1098,8 +1124,8 @@ def resolve_share_link(
     - ``422`` — draft's current sensitivity exceeds the share link threshold.
     - ``200`` — ``{ok: true, report_draft_id, sensitivity_threshold, preview_markdown}``.
     """
-    from ...services.share_store import resolve_share_link as _resolve
     from ...services.export_service import SENSITIVITY_ORDER as _SO
+    from ...services.share_store import resolve_share_link as _resolve
 
     # WKSP-304 P4 (D5 share-link semantics, fail-closed): the share token is
     # the SOLE authorization boundary for this endpoint. The caller's own
@@ -1160,12 +1186,14 @@ def resolve_share_link(
     if not audit_service.is_healthy_for_exposure(paths):
         raise HTTPException(status_code=503, detail="Audit log unavailable")
 
-    return {
-        "ok": True,
-        "report_draft_id": report_id,
-        "sensitivity_threshold": threshold,
-        "preview_markdown": preview_md,
-    }
+    return stamp(
+        {
+            "ok": True,
+            "report_draft_id": report_id,
+            "sensitivity_threshold": threshold,
+            "preview_markdown": preview_md,
+        }
+    )
 
 
 __all__ = ["router"]

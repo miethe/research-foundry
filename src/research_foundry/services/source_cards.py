@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlparse
@@ -32,6 +33,22 @@ _SHORT_QUOTE = 280
 _FETCH_TIMEOUT = 8
 
 
+class ExtractionStatus(str, Enum):
+    """Tri-state extraction fidelity for a source card's content.
+
+    Explicit queryable replacement for the implicit ``degraded`` inference.
+    ``full_text``: content was fully retrieved/read. ``partial``: content was
+    partially recovered (e.g. a PDF extractor that returned some but not all
+    text — no producer sets this yet at this layer; it is a pass-through seam
+    for callers like the PDF-aware search-router path). ``locator_only``: no
+    content was retrieved; only the locator is recorded.
+    """
+
+    full_text = "full_text"
+    partial = "partial"
+    locator_only = "locator_only"
+
+
 @dataclass(frozen=True)
 class IngestResult:
     """Outcome of ingesting one source into a run."""
@@ -40,6 +57,11 @@ class IngestResult:
     path: Path
     source_type: str
     degraded: bool  # True if content could not be fetched/read
+    # Queryable tri-state fidelity signal. Cards written before this field
+    # existed have no `extraction_status` in their on-disk frontmatter;
+    # consumers should treat that absence as implicit "partial"/"locator_only"
+    # (no migration is performed for pre-existing cards).
+    extraction_status: str = ExtractionStatus.locator_only.value
 
 
 def _schema_registry(paths: FoundryPaths) -> SchemaRegistry | None:
@@ -165,6 +187,7 @@ def ingest_source(
     extra_limitations: list[str] | None = None,
     assertion_registry_workspace_id: str | None = None,
     paths: FoundryPaths | None = None,
+    extraction_status: str | None = None,
 ) -> IngestResult:
     """Ingest one source into ``runs/<run>/sources/`` as a source_card.
 
@@ -177,6 +200,15 @@ def ingest_source(
     router provider) no fetch/read is attempted: the given text is used directly
     as the source content. An empty ``content`` string degrades to a locator-only
     card. Pass extractor provenance via ``created_by_agent``.
+
+    ``extraction_status`` is an optional explicit override (one of
+    ``ExtractionStatus``'s three values) for callers that already know the real
+    tri-state fidelity of ``content`` (e.g. a PDF extractor reporting
+    ``"partial"``). When omitted, it is derived from the existing
+    ``degraded``/``content`` logic below (``"locator_only"`` when degraded,
+    ``"full_text"`` otherwise). An unrecognized override value is logged to the
+    run trace and ignored (falls back to the derived value) rather than raising
+    — this stays fail-open like the rest of the module.
     """
 
     paths = paths or FoundryPaths.discover()
@@ -215,6 +247,17 @@ def ingest_source(
         loc_file = locator
         degraded = True
 
+    derived_extraction_status = (
+        ExtractionStatus.locator_only.value if (degraded or not content) else ExtractionStatus.full_text.value
+    )
+    eff_extraction_status = derived_extraction_status
+    if extraction_status is not None:
+        try:
+            eff_extraction_status = ExtractionStatus(extraction_status).value
+        except ValueError:
+            # Fail-open: unrecognized override -> fall back to the derived value.
+            eff_extraction_status = derived_extraction_status
+
     eff_title = title or (local_path.stem if is_local_file else None) or locator
     src_id = source_card_id(eff_title, locator)
 
@@ -234,6 +277,7 @@ def ingest_source(
         "created_at": now_iso(),
         "created_by_agent": created_by_agent,
         "sensitivity": sensitivity,
+        "extraction_status": eff_extraction_status,
         "source": {
             "title": eff_title,
             "source_type": source_type,
@@ -293,11 +337,18 @@ def ingest_source(
             "source_type": source_type,
             "sensitivity": sensitivity,
             "degraded": degraded,
+            "extraction_status": eff_extraction_status,
             "path": str(out_path.relative_to(paths.root)),
         }
     )
 
-    _trace(run_paths, stage="ingest", source_card_id=src_id, degraded=degraded)
+    _trace(
+        run_paths,
+        stage="ingest",
+        source_card_id=src_id,
+        degraded=degraded,
+        extraction_status=eff_extraction_status,
+    )
 
     # Explicit opt-in seam: the default source-card flow remains run-local.
     # The registry never enables reuse or canonical-claim feature flags.
@@ -362,6 +413,7 @@ def ingest_source(
         path=out_path,
         source_type=source_type,
         degraded=degraded,
+        extraction_status=eff_extraction_status,
     )
 
 
@@ -391,6 +443,7 @@ def _trace(run_paths, **fields) -> None:
 
 
 __all__ = [
+    "ExtractionStatus",
     "IngestResult",
     "ingest_source",
     "create_source_card",

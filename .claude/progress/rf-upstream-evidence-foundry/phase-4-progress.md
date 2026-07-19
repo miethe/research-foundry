@@ -2,114 +2,160 @@
 type: progress
 schema_version: 2
 doc_type: progress
-prd: "rf-upstream-evidence-foundry"
-feature_slug: "rf-upstream-evidence-foundry"
-prd_ref: "docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md"
-plan_ref: "docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md"
-execution_model: "batch-parallel"
+prd: rf-upstream-evidence-foundry
+feature_slug: rf-upstream-evidence-foundry
+prd_ref: docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
+plan_ref: docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md
+execution_model: batch-parallel
 phase: 4
-title: "Council normalization + run lineage (RFUP-5, RFUP-7)"
-status: "not_started"
+title: Council normalization + run lineage (RFUP-5, RFUP-7)
+status: completed
 started: null
 completed: null
 commit_refs: []
 pr_refs: []
 overall_progress: 0
-completion_estimate: "on-track"
+completion_estimate: on-track
 total_tasks: 5
-completed_tasks: 0
+completed_tasks: 5
 in_progress_tasks: 0
 blocked_tasks: 0
 at_risk_tasks: 0
-owners: ["python-backend-engineer", "data-layer-expert"]
+owners:
+- python-backend-engineer
+- data-layer-expert
 contributors: []
 model_usage:
-  primary: "sonnet"
+  primary: sonnet
   external: []
-
 tasks:
-  - id: "TASK-4.1"
-    description: "Council verdict normalization enum (4a)"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: []
-    estimated_effort: "2h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-4.2"
-    description: "Seal trigger surface (4b, OQ-2)"
-    status: "pending"
-    assigned_to: ["python-backend-engineer", "data-layer-expert"]
-    dependencies: []
-    estimated_effort: "1h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-4.3"
-    description: "Content digest + append-only lineage record"
-    status: "pending"
-    assigned_to: ["data-layer-expert", "python-backend-engineer"]
-    dependencies: ["TASK-4.2"]
-    estimated_effort: "1.5h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-4.4"
-    description: "Tamper-evidence + pre-seal-unaffected regression"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["TASK-4.3"]
-    estimated_effort: "0.5h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-4.5"
-    description: "Phase 4 quality gate - task-completion-validator"
-    status: "pending"
-    assigned_to: ["task-completion-validator"]
-    dependencies: ["TASK-4.1", "TASK-4.4"]
-    estimated_effort: "0.5h"
-    priority: "critical"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-
+- id: TASK-4.1
+  description: Council verdict normalization enum (4a)
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies: []
+  estimated_effort: 2h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: 2026-07-18T00:00Z
+  completed: 2026-07-18T00:30Z
+  evidence:
+  - test: tests/test_council_verdict_normalization.py
+  verified_by:
+  - python-backend-engineer
+- id: TASK-4.2
+  description: Seal trigger surface (4b, OQ-2)
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  - data-layer-expert
+  dependencies: []
+  estimated_effort: 1h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: 2026-07-18T00:00Z
+  completed: 2026-07-18T00:45Z
+  evidence:
+  - test: tests/test_seal_cli_flag.py
+  verified_by:
+  - python-backend-engineer
+- id: TASK-4.3
+  description: Content digest + append-only lineage record
+  status: completed
+  assigned_to:
+  - data-layer-expert
+  - python-backend-engineer
+  dependencies:
+  - TASK-4.2
+  estimated_effort: 1.5h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: 2026-07-18T00:45Z
+  completed: 2026-07-18T01:30Z
+  evidence:
+  - test: tests/test_run_seal_lineage.py
+  verified_by:
+  - data-layer-expert
+- id: TASK-4.4
+  description: Tamper-evidence + pre-seal-unaffected regression
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - TASK-4.3
+  estimated_effort: 0.5h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: 2026-07-18T01:30Z
+  completed: 2026-07-18T02:15Z
+  evidence:
+  - test: tests/test_run_seal_tamper_evidence.py
+  verified_by:
+  - python-backend-engineer
+- id: TASK-4.5
+  description: Phase 4 quality gate - task-completion-validator
+  status: completed
+  assigned_to:
+  - task-completion-validator
+  dependencies:
+  - TASK-4.1
+  - TASK-4.4
+  estimated_effort: 0.5h
+  priority: critical
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: 2026-07-18T02:15Z
+  completed: 2026-07-18T02:45Z
+  evidence:
+  - verdict: APPROVED
+  verified_by:
+  - task-completion-validator
 parallelization:
-  batch_1: ["TASK-4.1", "TASK-4.2"]
-  batch_2: ["TASK-4.3"]
-  batch_3: ["TASK-4.4"]
-  batch_4: ["TASK-4.5"]
-  critical_path: ["TASK-4.2", "TASK-4.3", "TASK-4.4", "TASK-4.5"]
-  estimated_total_time: "5h"
-
+  batch_1:
+  - TASK-4.1
+  - TASK-4.2
+  batch_2:
+  - TASK-4.3
+  batch_3:
+  - TASK-4.4
+  batch_4:
+  - TASK-4.5
+  critical_path:
+  - TASK-4.2
+  - TASK-4.3
+  - TASK-4.4
+  - TASK-4.5
+  estimated_total_time: 5h
 blockers: []
-
 success_criteria:
-  - id: "SC-1"
-    description: "Council verdict enum present in machine output; raw ARC text always retained"
-    status: "pending"
-  - id: "SC-2"
-    description: "No field added to run-export.ts by this phase (OQ-4 default confirmed)"
-    status: "pending"
-  - id: "SC-3"
-    description: "Sealed-run mutation attempt detected by digest re-check"
-    status: "pending"
-  - id: "SC-4"
-    description: "Unsealed-run workflow (rf tail, report iteration) unaffected"
-    status: "pending"
-  - id: "SC-5"
-    description: "task-completion-validator sign-off recorded"
-    status: "pending"
-
+- id: SC-1
+  description: Council verdict enum present in machine output; raw ARC text always
+    retained
+  status: pending
+- id: SC-2
+  description: No field added to run-export.ts by this phase (OQ-4 default confirmed)
+  status: pending
+- id: SC-3
+  description: Sealed-run mutation attempt detected by digest re-check
+  status: pending
+- id: SC-4
+  description: Unsealed-run workflow (rf tail, report iteration) unaffected
+  status: pending
+- id: SC-5
+  description: task-completion-validator sign-off recorded
+  status: pending
 files_modified:
-  - "src/research_foundry/adapters/arc_council.py"
-  - "src/research_foundry/paths.py"
-  - "src/research_foundry/services/assertion_registry.py"
-  - "src/research_foundry/cli_commands.py"
+- src/research_foundry/adapters/arc_council.py
+- src/research_foundry/paths.py
+- src/research_foundry/services/assertion_registry.py
+- src/research_foundry/cli_commands.py
+progress: 100
+updated: '2026-07-18'
 ---
 
 # Phase 4: Council normalization + run lineage (RFUP-5, RFUP-7)

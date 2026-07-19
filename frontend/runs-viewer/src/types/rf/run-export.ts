@@ -230,6 +230,12 @@ export interface RFVerificationCheck {
   locations?: unknown[];
 }
 
+/**
+ * Derived summary of `verify_report()`'s output embedded in the run export —
+ * NOT a 1:1 mirror of `verification.yaml`. `services/verification.py`'s
+ * `rf_schema_version` top-level field (PRD FR-4.1) is therefore intentionally
+ * absent here; it is not threaded through this subset by export_service.py.
+ */
 export interface RFVerification {
   present:    boolean;
   passed:     boolean | null;
@@ -335,6 +341,15 @@ export type RFAOSNativeAliasMap = Record<string, string | number | boolean | nul
  */
 export interface RFRunExport {
   schema_version:            string;
+  /**
+   * Canonical cross-surface contract version (PRD FR-4.1 / AC-RFUP4-1;
+   * `RF_SCHEMA_VERSION` in `research_foundry/__init__.py`, currently "1.0.0").
+   * Distinct from `schema_version` above (the narrower, independently-versioned
+   * run-export document schema, "1.5") — this field is additive and stamped by
+   * the LAN API (`GET /api/runs/{run_id}` returns this exact document shape).
+   * Absent on exports produced before this field was introduced.
+   */
+  rf_schema_version?:        string;
   run_id:                    string;
   intent_id?:                string | null;
   created_at?:               string | null;

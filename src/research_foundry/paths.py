@@ -279,6 +279,18 @@ class RunPaths:
         return self.run / "evidence_bundle.yaml"
 
     @property
+    def lineage(self) -> Path:
+        """Append-only seal/lineage record for tamper-evidence (TASK-4.2/4.3).
+
+        Written by the seal trigger (``rf run export --seal``) and read by
+        verification tooling to confirm a run's evidence has not been altered
+        since sealing. TASK-4.3 owns the actual digest-computation and
+        append-only write logic; this property only resolves the on-disk
+        location.
+        """
+        return self.run / "lineage.yaml"
+
+    @property
     def writebacks(self) -> Path:
         return self.run / "writebacks"
 

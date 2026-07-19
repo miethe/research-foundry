@@ -2,138 +2,210 @@
 type: progress
 schema_version: 2
 doc_type: progress
-prd: "rf-upstream-evidence-foundry"
-feature_slug: "rf-upstream-evidence-foundry"
-prd_ref: "docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md"
-plan_ref: "docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md"
-execution_model: "batch-parallel"
+prd: rf-upstream-evidence-foundry
+feature_slug: rf-upstream-evidence-foundry
+prd_ref: docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
+plan_ref: docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md
+execution_model: batch-parallel
 phase: 3
-title: "Governed URL/PDF extraction adapter (RFUP-2)"
-status: "not_started"
-started: null
-completed: null
+title: Governed URL/PDF extraction adapter (RFUP-2)
+status: completed
+started: '2026-07-18'
+completed: '2026-07-18'
 commit_refs: []
 pr_refs: []
-overall_progress: 0
-completion_estimate: "on-track"
+overall_progress: 100
+completion_estimate: on-track
 total_tasks: 7
-completed_tasks: 0
+completed_tasks: 7
 in_progress_tasks: 0
 blocked_tasks: 0
 at_risk_tasks: 0
-owners: ["python-backend-engineer", "backend-architect"]
+owners:
+- python-backend-engineer
+- backend-architect
 contributors: []
 model_usage:
-  primary: "sonnet"
+  primary: sonnet
   external: []
-
 tasks:
-  - id: "TASK-3.1"
-    description: "PDF extraction adapter (OQ-3: pypdf)"
-    status: "pending"
-    assigned_to: ["python-backend-engineer", "backend-architect"]
-    dependencies: []
-    estimated_effort: "2h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-3.2"
-    description: "Wire adapter into rf fetch pipeline"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["TASK-3.1"]
-    estimated_effort: "2h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-3.3"
-    description: "Explicit extraction_status field"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["TASK-3.2"]
-    estimated_effort: "1.5h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-3.4"
-    description: "Governance-gate ordering + secret-scan test"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["TASK-3.2"]
-    estimated_effort: "1.5h"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-3.5"
-    description: "PDF fixture test suite"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["TASK-3.3", "TASK-3.4"]
-    estimated_effort: "1h"
-    priority: "medium"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-3.6"
-    description: "Phase 3 completion validator gate"
-    status: "pending"
-    assigned_to: ["task-completion-validator"]
-    dependencies: ["TASK-3.5"]
-    estimated_effort: "0.5h"
-    priority: "critical"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-    
-  - id: "TASK-3.7"
-    description: "karen milestone checkpoint (post-Phase 3)"
-    status: "pending"
-    assigned_to: ["karen"]
-    dependencies: ["TASK-3.6"]
-    estimated_effort: "1h"
-    priority: "critical"
-    assigned_model: "opus"
-    model_effort: "adaptive"
-
+- id: TASK-3.1
+  description: 'PDF extraction adapter (OQ-3: pypdf)'
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  - backend-architect
+  dependencies: []
+  estimated_effort: 2h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T20:37:37Z'
+  completed: '2026-07-18T20:39:58Z'
+  evidence:
+  - file: src/research_foundry/services/extractors/pdf_extractor.py
+  - test: tests/test_pdf_extractor.py
+  verified_by:
+  - TASK-3.6
+- id: TASK-3.2
+  description: Wire adapter into rf fetch pipeline
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - TASK-3.1
+  estimated_effort: 2h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T20:40:01Z'
+  completed: '2026-07-18T20:42:33Z'
+  evidence:
+  - file: src/research_foundry/services/search_router/router.py
+  - test: tests/test_search_router_pdf_wiring.py
+  verified_by:
+  - TASK-3.6
+- id: TASK-3.3
+  description: Explicit extraction_status field
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - TASK-3.2
+  estimated_effort: 1.5h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T20:42:36Z'
+  completed: '2026-07-18T20:45:42Z'
+  evidence:
+  - file: src/research_foundry/services/source_cards.py
+  - test: tests/test_source_cards_extraction_status.py
+  verified_by:
+  - TASK-3.6
+- id: TASK-3.4
+  description: Governance-gate ordering + secret-scan test
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - TASK-3.2
+  estimated_effort: 1.5h
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T20:42:36Z'
+  completed: '2026-07-18T20:46:33Z'
+  evidence:
+  - test: tests/test_pdf_secret_scan_governance.py
+  verified_by:
+  - TASK-3.6
+- id: TASK-3.5
+  description: PDF fixture test suite
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - TASK-3.3
+  - TASK-3.4
+  estimated_effort: 1h
+  priority: medium
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T20:46:36Z'
+  completed: '2026-07-18T20:48:38Z'
+  evidence:
+  - test: tests/test_pdf_fixture_suite.py
+  verified_by:
+  - TASK-3.6
+- id: TASK-3.6
+  description: Phase 3 completion validator gate
+  status: completed
+  assigned_to:
+  - task-completion-validator
+  dependencies:
+  - TASK-3.5
+  estimated_effort: 0.5h
+  priority: critical
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-18T20:48:38Z'
+  completed: '2026-07-18T20:54:19Z'
+  evidence:
+  - verdict: PASS (after 1 fix cycle)
+  verified_by:
+  - TASK-3.6
+- id: TASK-3.7
+  description: karen milestone checkpoint (post-Phase 3)
+  status: completed
+  assigned_to:
+  - karen
+  dependencies:
+  - TASK-3.6
+  estimated_effort: 1h
+  priority: critical
+  assigned_model: opus
+  model_effort: adaptive
+  started: '2026-07-18T20:54:19Z'
+  completed: '2026-07-18T20:57:43Z'
+  evidence:
+  - verdict: PASS (karen milestone checkpoint)
+  verified_by:
+  - TASK-3.7
 parallelization:
-  batch_1: ["TASK-3.1"]
-  batch_2: ["TASK-3.2"]
-  batch_3: ["TASK-3.3", "TASK-3.4"]
-  batch_4: ["TASK-3.5"]
-  batch_5: ["TASK-3.6"]
-  batch_6: ["TASK-3.7"]
-  critical_path: ["TASK-3.1", "TASK-3.2", "TASK-3.5", "TASK-3.6", "TASK-3.7"]
-  estimated_total_time: "8h"
-
+  batch_1:
+  - TASK-3.1
+  batch_2:
+  - TASK-3.2
+  batch_3:
+  - TASK-3.3
+  - TASK-3.4
+  batch_4:
+  - TASK-3.5
+  batch_5:
+  - TASK-3.6
+  batch_6:
+  - TASK-3.7
+  critical_path:
+  - TASK-3.1
+  - TASK-3.2
+  - TASK-3.5
+  - TASK-3.6
+  - TASK-3.7
+  estimated_total_time: 8h
 blockers: []
-
 success_criteria:
-  - id: "SC-1"
-    description: "PDF fixture with text layer → extraction_status: full_text"
-    status: "pending"
-  - id: "SC-2"
-    description: "PDF fixture without text layer → extraction_status: locator_only"
-    status: "pending"
-  - id: "SC-3"
-    description: "Extracted PDF text passes through governance gate (secret-scan test)"
-    status: "pending"
-  - id: "SC-4"
-    description: "Missing pdf extra falls back gracefully, no unhandled exception"
-    status: "pending"
-  - id: "SC-5"
-    description: "task-completion-validator sign-off recorded (TASK-3.6)"
-    status: "pending"
-  - id: "SC-6"
-    description: "karen milestone sign-off recorded (TASK-3.7)"
-    status: "pending"
-
+- id: SC-1
+  description: 'PDF fixture with text layer -> extraction_status: full_text'
+  status: met
+- id: SC-2
+  description: 'PDF fixture without text layer -> extraction_status: locator_only'
+  status: met
+- id: SC-3
+  description: Extracted PDF text passes through governance gate (secret-scan test)
+  status: met
+- id: SC-4
+  description: Missing pdf extra falls back gracefully, no unhandled exception
+  status: met
+- id: SC-5
+  description: task-completion-validator sign-off recorded (TASK-3.6)
+  status: met
+- id: SC-6
+  description: karen milestone sign-off recorded (TASK-3.7)
+  status: met
 files_modified:
-  - "src/research_foundry/services/search_router/router.py"
-  - "src/research_foundry/services/source_cards.py"
-  - "pyproject.toml"
+- src/research_foundry/services/search_router/router.py
+- src/research_foundry/services/source_cards.py
+- pyproject.toml
+- src/research_foundry/services/extractors/__init__.py
+- src/research_foundry/services/extractors/pdf_extractor.py
+- tests/test_pdf_extractor.py
+- tests/test_search_router_pdf_wiring.py
+- tests/test_source_cards_extraction_status.py
+- tests/test_pdf_secret_scan_governance.py
+- tests/test_pdf_fixture_suite.py
+progress: 100
+updated: '2026-07-18'
 ---
 
 # Phase 3: Governed URL/PDF extraction adapter (RFUP-2)
@@ -252,21 +324,21 @@ rf fetch https://example.com/sample.pdf --json | jq '.extraction_status'
 
 ## Completion Notes
 
-(To be filled in when phase is complete)
+See `.claude/progress/rf-upstream-evidence-foundry/phase-3-completion.md` for the full Completion Note (tasks, validator/karen verdicts, deviations, tracked follow-ups).
 
-- [ ] `pypdf` added as optional extra in `pyproject.toml`
-- [ ] PDF extraction module created in `services/extractors/pdf_extractor.py`
-- [ ] Module produces full-text output for PDFs with text layer
-- [ ] PDF adapter wired into `services/search_router/router.py` `extract_urls()` chain
-- [ ] Graceful degrade to `locator_only` when `pdf` extra absent or extraction fails
-- [ ] `extraction_status` enum added to `services/source_cards.py`
-- [ ] Tri-state field (full_text|partial|locator_only) properly serialized in JSON/YAML
-- [ ] Governance gate ordering verified: PDF extraction BEFORE sensitivity + secret scan
-- [ ] Secret-scan test added with synthetic secret pattern (TASK-3.4)
-- [ ] PDF fixture suite covers text-layer, no-text-layer, and error cases
-- [ ] All Phase 3 acceptance criteria met (SC-1 through SC-6)
-- [ ] task-completion-validator sign-off recorded (TASK-3.6)
-- [ ] karen milestone sign-off recorded (TASK-3.7)
+- [x] `pypdf` added as optional extra in `pyproject.toml`
+- [x] PDF extraction module created in `services/extractors/pdf_extractor.py`
+- [x] Module produces full-text output for PDFs with text layer
+- [x] PDF adapter wired into `services/search_router/router.py` `extract_urls()` chain
+- [x] Graceful degrade to `locator_only` when `pdf` extra absent or extraction fails
+- [x] `extraction_status` enum added to `services/source_cards.py`
+- [x] Tri-state field (full_text|partial|locator_only) properly serialized in JSON/YAML (`partial` threaded through in fix cycle 1)
+- [x] Governance gate ordering verified: PDF extraction BEFORE sensitivity + secret scan
+- [x] Secret-scan test added with synthetic secret pattern (TASK-3.4)
+- [x] PDF fixture suite covers text-layer, no-text-layer, and error cases
+- [x] All Phase 3 acceptance criteria met (SC-1 through SC-6)
+- [x] task-completion-validator sign-off recorded (TASK-3.6) — PASS after 1 fix cycle
+- [x] karen milestone sign-off recorded (TASK-3.7) — PASS, Phase 4/5 cleared to proceed
 
 ---
 
@@ -278,5 +350,5 @@ rf fetch https://example.com/sample.pdf --json | jq '.extraction_status'
 
 ---
 
-**Phase 3 Status**: Not Started
+**Phase 3 Status**: Completed — validator PASS (1 fix cycle) + karen milestone PASS (Phases 1-3, no unresolved blast-radius findings; Phase 4/5 cleared)
 **Last Updated**: 2026-07-18

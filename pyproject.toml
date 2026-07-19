@@ -31,6 +31,9 @@ llm = [
 ]
 search = ["httpx>=0.27"]
 mcp = ["mcp>=1.0"]
+# PDF text extraction is OPTIONAL. The extractor imports pypdf lazily and
+# degrades to locator-only behavior when it is not installed.
+pdf = ["pypdf>=3.0.0"]
 serve = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.29",
