@@ -63,7 +63,7 @@ from ...services.export_service import SENSITIVITY_ORDER, ExportError, resolve_t
 from ...services.verification import verify_draft
 from ..auth.rbac import require_role
 from ..response_stamp import stamp
-from .runs import get_paths
+from .runs import _sensitivity_threshold_override, get_paths
 
 router = APIRouter()
 
@@ -192,16 +192,31 @@ def _builder_error(exc: bsvc.BuilderError) -> HTTPException:
     return HTTPException(status_code=422, detail=str(exc))
 
 
-def _resolve_threshold_rank(paths: FoundryPaths, sensitivity_threshold: str | None) -> int:
+def _resolve_threshold_rank(
+    paths: FoundryPaths, sensitivity_threshold: str | None, request: Request
+) -> int:
     """Resolve the active sensitivity threshold to its rank (400 on a bogus label).
 
     Mirrors ``get_run_anchors``' existence-gate pattern in ``runs.py`` and
     ``catalog_service.get_item``'s fail-closed rank lookup, applied here to
     Report Builder draft reads (R2 fix: these previously had zero sensitivity
     gating at all).
+
+    The explicit ``?sensitivity_threshold=`` query param always takes
+    precedence; when omitted, falls back to the ``rf serve
+    --sensitivity-threshold`` override captured on ``app.state`` (see
+    ``runs._sensitivity_threshold_override`` — this router had the identical
+    gap as ``runs.py``'s GET endpoints: the CLI-flag override never reached
+    this gate, which always fell back to foundry.yaml's
+    ``viewer.sensitivity_threshold``).
     """
+    effective = (
+        sensitivity_threshold
+        if sensitivity_threshold is not None
+        else _sensitivity_threshold_override(request)
+    )
     try:
-        threshold = resolve_threshold(paths, sensitivity_threshold)
+        threshold = resolve_threshold(paths, effective)
     except ExportError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return SENSITIVITY_ORDER[threshold]
@@ -312,7 +327,7 @@ def list_drafts(
     Empty/fully-gated corpus → ``[]``.
     """
     identity = getattr(request.state, "identity", None)
-    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
+    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold, request)
     return [
         d
         for d in bsvc.list_drafts(paths, identity=identity)
@@ -338,7 +353,7 @@ def get_draft(
     zero sensitivity gating, unlike ``catalog_service.get_item``).
     """
     identity = getattr(request.state, "identity", None)
-    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
+    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold, request)
     try:
         draft = bsvc.load_draft(paths, report_id, identity=identity)
     except NotFoundError as exc:
@@ -413,7 +428,7 @@ def list_versions(
     (no-existence-leak, mirrors ``get_draft`` gating).
     """
     identity = getattr(request.state, "identity", None)
-    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
+    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold, request)
     try:
         draft = bsvc.load_draft(paths, report_id, identity=identity)
     except NotFoundError as exc:
@@ -468,7 +483,7 @@ def get_version(
     (no-existence-leak, mirrors ``get_draft`` gating).
     """
     identity = getattr(request.state, "identity", None)
-    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
+    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold, request)
     try:
         draft = bsvc.load_draft(paths, report_id, identity=identity)
     except NotFoundError as exc:
@@ -998,7 +1013,7 @@ def export_draft(
     callers can display or save the output without additional parsing.
     """
     identity = getattr(request.state, "identity", None)
-    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold)
+    threshold_rank = _resolve_threshold_rank(paths, sensitivity_threshold, request)
     try:
         draft = bsvc.load_draft(paths, report_id, identity=identity)
     except NotFoundError as exc:

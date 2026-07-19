@@ -76,6 +76,28 @@ def get_paths() -> FoundryPaths:
 # Shared sensitivity-gate helper
 # ---------------------------------------------------------------------------
 
+def _sensitivity_threshold_override(request: Request) -> str | None:
+    """Read the serve-time sensitivity-threshold override off ``app.state``.
+
+    Mirrors :func:`research_foundry.api.routers.catalog._sensitivity_threshold_override`
+    exactly. Set once at startup by :func:`research_foundry.api.app.create_app`
+    from the (already CLI-flag > foundry.yaml resolved) ``FoundryConfig`` — see
+    that function for why this router cannot resolve this itself from ``paths``
+    alone. Without this, ``rf serve --sensitivity-threshold <X>`` was silently
+    ignored by every GET endpoint below: each one only ever received a bare
+    ``FoundryPaths`` via the ``get_paths()`` dependency, so
+    ``resolve_threshold()`` always fell back to whatever foundry.yaml's
+    ``viewer.sensitivity_threshold`` said instead (``"public"`` by default),
+    even when the CLI flag requested a looser threshold.
+
+    ``None`` when no override was captured, in which case
+    ``export_service.resolve_threshold()`` falls back to its own foundry.yaml
+    / hardcoded-default resolution, unchanged from prior behavior — so this is
+    a no-op when ``rf serve`` was started without the flag.
+    """
+    return getattr(request.app.state, "catalog_sensitivity_threshold", None)
+
+
 def _enforce_existence_gate(
     paths: FoundryPaths,
     run_id: str,
@@ -135,6 +157,7 @@ def get_run_list(paths: FoundryPaths = Depends(get_paths)) -> list[dict[str, Any
 @router.get("/runs/{run_id}", summary="Get run detail")
 def get_run_detail(
     run_id: str,
+    request: Request,
     sensitivity_threshold: str | None = Query(
         None,
         description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
@@ -150,15 +173,26 @@ def get_run_detail(
     threshold returns 404, indistinguishable from a genuinely absent run
     (no-existence-leak / landmine #4).
 
+    The explicit ``?sensitivity_threshold=`` query param always takes
+    precedence; when omitted, falls back to the ``rf serve
+    --sensitivity-threshold`` override captured on ``app.state`` (see
+    :func:`_sensitivity_threshold_override`).
+
     Raises 404 when the run does not exist or is over-threshold.
     Raises 400 on invalid sensitivity_threshold.
     """
-    return stamp(_enforce_existence_gate(paths, run_id, sensitivity_threshold))
+    effective_threshold = (
+        sensitivity_threshold
+        if sensitivity_threshold is not None
+        else _sensitivity_threshold_override(request)
+    )
+    return stamp(_enforce_existence_gate(paths, run_id, effective_threshold))
 
 
 @router.get("/runs/{run_id}/claims", summary="Get claim ledger for a run")
 def get_run_claims(
     run_id: str,
+    request: Request,
     sensitivity_threshold: str | None = Query(
         None,
         description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
@@ -170,8 +204,17 @@ def get_run_claims(
     Empty ledger returns ``[]`` — never null.  Propagates 404 when the run
     does not exist or is over-threshold.  All data routed through
     export_service (R1).
+
+    The explicit ``?sensitivity_threshold=`` query param always takes
+    precedence over the ``rf serve --sensitivity-threshold`` override on
+    ``app.state`` (see :func:`_sensitivity_threshold_override`).
     """
-    data = _enforce_existence_gate(paths, run_id, sensitivity_threshold)
+    effective_threshold = (
+        sensitivity_threshold
+        if sensitivity_threshold is not None
+        else _sensitivity_threshold_override(request)
+    )
+    data = _enforce_existence_gate(paths, run_id, effective_threshold)
     # export_run always populates "claims" as a list; guard defensively
     claims = data.get("claims")
     return claims if isinstance(claims, list) else []
@@ -180,6 +223,7 @@ def get_run_claims(
 @router.get("/runs/{run_id}/context", summary="Get context block for a run")
 def get_run_context(
     run_id: str,
+    request: Request,
     sensitivity_threshold: str | None = Query(
         None,
         description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
@@ -207,7 +251,12 @@ def get_run_context(
     Raises 404 when the run does not exist or is over-threshold.
     Raises 400 on invalid sensitivity_threshold.
     """
-    data = _enforce_existence_gate(paths, run_id, sensitivity_threshold)
+    effective_threshold = (
+        sensitivity_threshold
+        if sensitivity_threshold is not None
+        else _sensitivity_threshold_override(request)
+    )
+    data = _enforce_existence_gate(paths, run_id, effective_threshold)
     return data.get("context")
 
 
@@ -218,6 +267,7 @@ def get_run_context(
 def get_source_card(
     run_id: str,
     source_card_id: str,
+    request: Request,
     sensitivity_threshold: str | None = Query(
         None,
         description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
@@ -233,7 +283,12 @@ def get_source_card(
     Raises 404 when the run is absent, over-threshold, or when no claim
     cites the requested source card.
     """
-    data = _enforce_existence_gate(paths, run_id, sensitivity_threshold)
+    effective_threshold = (
+        sensitivity_threshold
+        if sensitivity_threshold is not None
+        else _sensitivity_threshold_override(request)
+    )
+    data = _enforce_existence_gate(paths, run_id, effective_threshold)
 
     for claim in (data.get("claims") or []):
         for source in (claim.get("sources") or []):
@@ -246,6 +301,7 @@ def get_source_card(
 @router.get("/reports/{run_id}/anchors", summary="Get report anchors for a run")
 def get_run_anchors(
     run_id: str,
+    request: Request,
     sensitivity_threshold: str | None = Query(
         None,
         description="Override foundry.yaml viewer.sensitivity_threshold (default: public).",
@@ -266,7 +322,12 @@ def get_run_anchors(
     both the existence gate and export-time content filtering (which claims
     are visible, and therefore which claim links appear in the derived anchors).
     """
-    data = _enforce_existence_gate(paths, run_id, sensitivity_threshold)
+    effective_threshold = (
+        sensitivity_threshold
+        if sensitivity_threshold is not None
+        else _sensitivity_threshold_override(request)
+    )
+    data = _enforce_existence_gate(paths, run_id, effective_threshold)
     return stamp({"run_id": run_id, "report_anchors": data.get("report_anchors")})
 
 

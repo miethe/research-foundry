@@ -319,6 +319,51 @@ def test_get_run_detail_unknown_run_returns_404(tmp_path):
     assert "detail" in body
 
 
+def test_get_run_detail_honors_serve_sensitivity_threshold_override(tmp_path):
+    """``rf serve --sensitivity-threshold`` must be honored by the runs
+    router's existence gate, not just the catalog router (regression for
+    fix/runs-sensitivity-override).
+
+    ``create_app`` stores the CLI-flag-resolved threshold on
+    ``app.state.catalog_sensitivity_threshold`` (see app.py and
+    ``routers.catalog._sensitivity_threshold_override``). Before this fix,
+    ``runs.py``'s GET endpoints never consulted that state and always fell
+    back to the on-disk ``foundry.yaml`` ``viewer.sensitivity_threshold``
+    (default ``"public"``) instead — so a run whose sensitivity exceeds
+    "public" (e.g. "personal") 404d via the no-existence-leak gate even when
+    ``rf serve`` was started with a looser ``--sensitivity-threshold``.
+    """
+    # No sensitivity_threshold written to foundry.yaml's viewer block -> the
+    # on-disk default is "public", and create_app() sees no CLI-flag value
+    # either, so app.state.catalog_sensitivity_threshold starts as None (the
+    # "rf serve was started without the flag" case — must be a pure no-op).
+    cfg = _make_config(tmp_path)
+    app = create_app(cfg)
+    from research_foundry.api.routers.runs import get_paths
+    app.dependency_overrides[get_paths] = lambda: cfg.paths
+    client = TestClient(app, raise_server_exceptions=True)
+
+    run_id = "rf_run_override_personal"
+    _plant_run(cfg.paths, run_id, sensitivity="personal")
+
+    assert app.state.catalog_sensitivity_threshold is None
+
+    # WITHOUT the serve-level override: falls back to foundry.yaml's default
+    # ("public"), so the personal-sensitivity run 404s (existence gate,
+    # landmine #4) — this locks the fail-closed gate itself.
+    resp_without_override = client.get(f"/api/runs/{run_id}")
+    assert resp_without_override.status_code == 404
+
+    # Simulate `rf serve --sensitivity-threshold client_sensitive`: app.py
+    # captures the resolved CLI-flag value on app.state at startup.
+    app.state.catalog_sensitivity_threshold = "client_sensitive"
+
+    # WITH the override: the same personal-sensitivity run now resolves.
+    resp_with_override = client.get(f"/api/runs/{run_id}")
+    assert resp_with_override.status_code == 200
+    assert resp_with_override.json()["run_id"] == run_id
+
+
 # ---------------------------------------------------------------------------
 # TEST-003  GET /api/runs/{run_id}/claims and /sources/{id}
 # ---------------------------------------------------------------------------
