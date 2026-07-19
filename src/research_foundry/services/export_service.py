@@ -38,7 +38,7 @@ from ..frontmatter import split_frontmatter
 from ..paths import FoundryPaths, RunPaths
 from ..yamlio import loads_yaml
 
-EXPORT_SCHEMA_VERSION = "1.5"
+EXPORT_SCHEMA_VERSION = "1.6"
 
 AOS_CORRELATION_FIELDS = (
     "aos_run_uuid",
@@ -1099,7 +1099,13 @@ def export_run(
     # ENR-004: writebacks emitted as null (no writeback files) or RFRunWritebacksSummary object.
     # Thread approved_for_writeback from the governance block into the summary so FE can
     # render the approval state without reading the bundle separately.
-    writebacks = _collect_writebacks(rp)
+    # FR-13 (schema 1.6): redact previews/reviewer_notes/required_fix using the
+    # same run-level sensitivity vs. threshold comparison used everywhere else
+    # in this export — writeback content carries no independent sensitivity
+    # label of its own today.
+    writebacks = _collect_writebacks(
+        rp, run_id=run_id, redact=_sensitivity_rank(sensitivity) > threshold_rank
+    )
     if writebacks is not None:
         approved = governance.get("approved_for_writeback")
         writebacks["approved_for_writeback"] = bool(approved) if approved is not None else None
@@ -1142,7 +1148,10 @@ def export_run(
         "cost_usd": cost_usd,
         "model_profiles": model_profiles,
         "source_count_by_type": source_count_by_type,
-        # ENR-004: writeback artifacts; null when no writeback files present
+        # ENR-004: writeback artifacts; null when no writeback files present.
+        # Schema 1.6 (FR-13): reviewer_notes/required_fix/previews[] populated
+        # from the council review packet + writeback files; absent on pre-1.6
+        # exports (key omitted entirely, not present-but-null).
         "writebacks": writebacks,
     }
 
@@ -1239,56 +1248,143 @@ def list_runs(paths: FoundryPaths) -> list[dict[str, Any]]:
     return summaries
 
 
-def _collect_writebacks(rp: RunPaths) -> dict[str, Any] | None:
-    """Collect writeback status from the run's writebacks/ directory.
+# Map each well-known writeback filename to a target label. Single source of
+# truth for filename→target mapping — reused by both the targets/status list
+# and the previews[] rendering; do not fork or duplicate this dict (FR-13,
+# schema 1.6).
+_WRITEBACK_TARGETS: dict[str, str] = {
+    "meatywiki_writeback.md": "meatywiki",
+    "skillbom_candidate.md": "skillbom",
+    "ccdash_event.yaml": "ccdash",
+    "intenttree_update.yaml": "intenttree",
+    "arc_review_request.yaml": "arc",
+    "notebooklm_update.yaml": "notebooklm",
+}
+
+
+def _review_packet_reviewer_fields(
+    rp: RunPaths, *, run_id: str | None
+) -> tuple[str | None, str | None]:
+    """Extract ``reviewer_notes``/``required_fix`` from the council review packet.
+
+    FR-13 empirical finding (Risk Area 3): these fields do NOT live on
+    ``evidence_bundle.governance`` — that schema block declares only
+    ``sensitivity``/``approved_for_writeback``/``approved_by``/
+    ``approval_timestamp`` (schemas/evidence_bundle.schema.yaml). They are
+    written onto the separate ``review_packet`` artifact
+    (``reviews/council_review.yaml``, schema ``review_packet``) by
+    :func:`research_foundry.services.writeback.council_review`:
+    ``reviewer_notes`` is a top-level packet string; ``required_fix`` is
+    attached per-concern under ``output.concerns[].required_fix``.
+
+    Returns ``(reviewer_notes, required_fix)``, both ``None`` when the packet
+    is absent or carries no values. When multiple concerns each declare a
+    ``required_fix``, they are newline-joined (order-preserved,
+    de-duplicated) into a single display string.
+    """
+    packet = _load_yaml_dict(rp.council_review, run_id=run_id)
+
+    reviewer_notes_raw = packet.get("reviewer_notes")
+    reviewer_notes = (
+        reviewer_notes_raw
+        if isinstance(reviewer_notes_raw, str) and reviewer_notes_raw.strip()
+        else None
+    )
+
+    concerns = (packet.get("output") or {}).get("concerns") or []
+    fixes: list[str] = []
+    seen: set[str] = set()
+    for concern in concerns:
+        if not isinstance(concern, dict):
+            continue
+        fix = concern.get("required_fix")
+        if isinstance(fix, str) and fix.strip() and fix not in seen:
+            seen.add(fix)
+            fixes.append(fix)
+    required_fix = "\n".join(fixes) if fixes else None
+
+    return reviewer_notes, required_fix
+
+
+def _collect_writebacks(
+    rp: RunPaths, *, run_id: str | None, redact: bool
+) -> dict[str, Any] | None:
+    """Collect writeback status + rendered previews from the writebacks/ dir.
 
     Returns an RFRunWritebacksSummary-shaped object:
-        { targets: [{target, status, url?}], approved_for_writeback: bool|null, ... }
+        { targets, approved_for_writeback, reviewer_notes, required_fix, previews }
     when the writebacks directory has any known files, or None otherwise.
 
-    The object shape matches the TypeScript RFRunWritebacksSummary interface and
-    the JSON schema §RFRunWritebacksSummary definition. Returning a bare list
-    would silently break FE consumers that read writebacks.targets?.length.
+    The object shape matches the TypeScript RFRunWritebacksSummary interface
+    (schema 1.6, FR-13) and the JSON schema §RFRunWritebacksSummary
+    definition. Returning a bare list would silently break FE consumers that
+    read writebacks.targets?.length.
+
+    ``reviewer_notes``/``required_fix`` are sourced from the council review
+    packet — see :func:`_review_packet_reviewer_fields`.
+
+    ``previews[]`` carries one ``{target, filename, content_type, content}``
+    entry per present writeback file in ``_WRITEBACK_TARGETS``.
+    ``content_type`` is ``"markdown"`` for ``.md`` files and ``"yaml"`` for
+    ``.yaml`` files. ``content`` passes through the same ``_redact_str_values``
+    sensitivity gate as every other exported text field when ``redact`` is
+    True — writeback content is not exempt from the sensitivity gate (FR-13
+    AC1). ``redact`` is decided by the caller from the run's overall
+    sensitivity vs. the active export threshold (no writeback file carries
+    its own independent sensitivity label today).
     """
     if not rp.writebacks.is_dir():
         return None
 
-    # Map each well-known writeback filename to a target label.
-    _WRITEBACK_TARGETS: dict[str, str] = {
-        "meatywiki_writeback.md": "meatywiki",
-        "skillbom_candidate.md": "skillbom",
-        "ccdash_event.yaml": "ccdash",
-        "intenttree_update.yaml": "intenttree",
-        "arc_review_request.yaml": "arc",
-        "notebooklm_update.yaml": "notebooklm",
-    }
-
     entries: list[dict[str, Any]] = []
+    previews: list[dict[str, Any]] = []
     for filename, target in _WRITEBACK_TARGETS.items():
         path = rp.writebacks / filename
         if not path.exists():
             continue
         entry: dict[str, Any] = {"target": target, "status": "present"}
+        content_type = "yaml" if filename.endswith(".yaml") else "markdown"
         # Best-effort: try to read a "url" field from YAML writebacks.
         if filename.endswith(".yaml"):
             try:
-                data = _load_yaml_file(path, run_id=None)
+                data = _load_yaml_file(path, run_id=run_id)
                 if isinstance(data, dict) and data.get("url"):
                     entry["url"] = str(data["url"])
             except Exception:  # noqa: BLE001
                 pass
         entries.append(entry)
 
+        try:
+            raw_content = _read_text(path)
+        except Exception:  # noqa: BLE001 — unreadable file: skip its preview, keep status
+            raw_content = None
+        if raw_content is not None:
+            content = _redact_str_values(raw_content) if redact else raw_content
+            previews.append(
+                {
+                    "target": target,
+                    "filename": filename,
+                    "content_type": content_type,
+                    "content": content,
+                }
+            )
+
     if not entries:
         return None
 
-    # Derive approved_for_writeback from the evidence bundle governance block.
-    # We don't re-read the bundle here (already read by the caller); instead we
-    # keep the field as null — callers that have bundle data may override. The
-    # safe default (null/false) means the FE never auto-approves.
+    reviewer_notes, required_fix = _review_packet_reviewer_fields(rp, run_id=run_id)
+    if redact:
+        if reviewer_notes is not None:
+            reviewer_notes = _redact_str_values(reviewer_notes)
+        if required_fix is not None:
+            required_fix = _redact_str_values(required_fix)
+
     return {
         "targets": entries,
         "approved_for_writeback": None,
+        "reviewer_notes": reviewer_notes,
+        "required_fix": required_fix,
+        "previews": previews,
     }
 
 

@@ -2,7 +2,7 @@
  * RF Run Export Types — hand-written to match the frozen run.json contract.
  *
  * Source of truth: docs/dev/architecture/rf-run-export-schema.json (JSON Schema draft-07)
- * Bound to schema_version "1.5".
+ * Bound to schema_version "1.6".
  *
  * Codegen evaluated (P1/SCH-003): json-schema-to-typescript was tested against
  * rf-run-export-schema.json. Rejected because: (1) codegen inlines all
@@ -293,12 +293,31 @@ export interface RFWritebackTarget {
   [k: string]: unknown;
 }
 
+/**
+ * A single rendered writeback candidate (schema 1.6, FR-13). One entry per
+ * present file in the backend's `_WRITEBACK_TARGETS` mapping
+ * (`meatywiki_writeback.md`, `skillbom_candidate.md`, `ccdash_event.yaml`,
+ * `intenttree_update.yaml`, `arc_review_request.yaml`,
+ * `notebooklm_update.yaml`). `content` has already passed through the
+ * export's sensitivity redaction pass — the same gate applied to every
+ * other exported text field.
+ */
+export interface RFWritebackPreview {
+  target: string;
+  filename: string;
+  content_type: "markdown" | "yaml";
+  content: string;
+}
+
 export interface RFRunWritebacksSummary {
   targets?: RFWritebackTarget[] | null;
   approved_for_writeback?: boolean | null;
+  /** Schema 1.6 (FR-13). Sourced from the council review packet, not evidence_bundle.governance. */
   reviewer_notes?: string | null;
+  /** Schema 1.6 (FR-13). Newline-joined from the review packet's output.concerns[].required_fix entries. */
   required_fix?: string | null;
-  previews?: unknown[] | null;
+  /** Schema 1.6 (FR-13). Null/absent on pre-1.6 exports (key omitted, not present-but-null). */
+  previews?: RFWritebackPreview[] | null;
 }
 
 // ── AOS Correlation Metadata ─────────────────────────────────────────────────

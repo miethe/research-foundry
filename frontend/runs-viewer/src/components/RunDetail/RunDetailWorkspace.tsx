@@ -1,5 +1,7 @@
 import { useMemo } from "react";
-import type { RFRunExport } from "@/types/rf";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { RFRunExport, RFWritebackPreview } from "@/types/rf";
 import type { LineageNode } from "@/components/LineageGraph/lineageTree";
 import { ClaimAuditWorkbench } from "@/components/ClaimLedger/ClaimAuditWorkbench";
 import { ArtifactLineageGraph } from "@/components/LineageGraph/LineageGraph";
@@ -166,28 +168,7 @@ export function RunDetailWorkspace({
 
         {activeTab === "writeback" && (
           <div role="tabpanel" aria-label="Writeback" data-testid="tabpanel-writeback">
-            <section className="rv-writeback-workspace it-card">
-              <h2>Writeback Readiness</h2>
-              <p>
-                {writebackAvailable
-                  ? "Writeback summary is available in this export."
-                  : "Writeback preview is not exported for this run yet."}
-              </p>
-              <dl>
-                <div>
-                  <dt>Governance</dt>
-                  <dd>{run.governance?.approved_for_writeback ? "Approved" : "Not approved or unavailable"}</dd>
-                </div>
-                <div>
-                  <dt>Required fix</dt>
-                  <dd>{run.writebacks?.required_fix ?? "No required fix exported"}</dd>
-                </div>
-                <div>
-                  <dt>Targets</dt>
-                  <dd>{run.writebacks?.targets?.length ? `${run.writebacks.targets.length} target(s)` : "Not exported"}</dd>
-                </div>
-              </dl>
-            </section>
+            <WritebackTabPanel run={run} writebackAvailable={writebackAvailable} />
           </div>
         )}
       </div>
@@ -601,6 +582,144 @@ function writebackStatusClass(status: string | null): string {
   if (s === "draft" || s === "in_progress" || s === "processing") return "orange";
   if (s === "failed" || s === "error" || s === "blocked") return "red";
   return "";
+}
+
+// ── Writeback tab (FR-13 — governance review surface, read-only) ────────────
+//
+// This tab renders the run's existing governance verdict
+// (approved_for_writeback / reviewer_notes / required_fix) plus one card per
+// writebacks.previews[] entry. It never sets any of those fields — approval
+// stays a CLI-only operation (`rf bundle --approve`); there is no button,
+// form, or interactive control here that can mutate governance state.
+//
+// Markdown rendering deliberately does NOT reuse ReportRenderer: that
+// component is built for report_draft.md specifically (claim-chip overlays,
+// report_anchors block IDs, and a metadata-frontmatter-stripping pass that
+// would risk eating legitimate writeback content lines). It requires
+// non-optional `claims`/`onClaimSelect` props that have no meaning here.
+// This lightweight renderer reuses the same underlying libraries
+// (react-markdown + remark-gfm, already a project dependency) without any
+// of that report-specific machinery — no new dependency added.
+//
+// `.yaml` previews are shown as pre-formatted text (not parsed): the backend
+// already emits the exact YAML text, and a <pre>/<code> block satisfies the
+// "readable structured block, not raw unwrapped text" requirement without
+// requiring a YAML parser in the browser bundle.
+
+function WritebackTabPanel({
+  run,
+  writebackAvailable,
+}: {
+  run: RFRunExport;
+  writebackAvailable: boolean;
+}) {
+  if (!writebackAvailable) {
+    return (
+      <section className="rv-writeback-workspace it-card" data-testid="writeback-empty-state">
+        <h2>Writeback Readiness</h2>
+        <p>Writeback preview is not exported for this run yet.</p>
+      </section>
+    );
+  }
+
+  const writebacks = run.writebacks ?? null;
+  const previews = writebacks?.previews ?? null;
+  const hasPreviews = (previews?.length ?? 0) > 0;
+
+  return (
+    <div className="rv-writeback-tab" data-testid="writeback-tab-content">
+      <WritebackGovernancePanel
+        writebacks={writebacks}
+        approved={run.governance?.approved_for_writeback ?? null}
+      />
+      {hasPreviews ? (
+        <section className="rv-writeback-candidates it-card" data-testid="writeback-candidates">
+          <div className="rv-pane-title">
+            <h3>Writeback Candidates</h3>
+            <span>{previews!.length} candidate(s)</span>
+          </div>
+          <div className="rv-writeback-candidates__list">
+            {previews!.map((preview, idx) => (
+              <WritebackCandidateCard
+                key={`${preview.target}-${preview.filename ?? idx}`}
+                preview={preview}
+              />
+            ))}
+          </div>
+        </section>
+      ) : (
+        <p className="rv-muted" data-testid="writeback-no-previews">
+          No writeback candidate previews are exported for this run.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function WritebackGovernancePanel({
+  writebacks,
+  approved,
+}: {
+  writebacks: RFRunExport["writebacks"];
+  approved: boolean | null;
+}) {
+  return (
+    <section className="rv-writeback-governance it-card" data-testid="writeback-governance-panel">
+      <div className="rv-pane-title">
+        <h3>Governance Status</h3>
+      </div>
+      <dl className="rv-governance-dl">
+        <div>
+          <dt>Approval state</dt>
+          <dd data-testid="writeback-approval-state">
+            <span className={`it-chip ${approved ? "green" : "orange"}`}>
+              {approved == null ? "Not set" : approved ? "Approved" : "Not approved"}
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt>Reviewer notes</dt>
+          <dd data-testid="writeback-reviewer-notes">{writebacks?.reviewer_notes ?? "Not set"}</dd>
+        </div>
+        <div>
+          <dt>Required fix</dt>
+          <dd data-testid="writeback-required-fix">{writebacks?.required_fix ?? "Not set"}</dd>
+        </div>
+      </dl>
+      <p className="rv-muted rv-writeback-governance__note">
+        Read-only — approval decisions are made via <code>rf bundle --approve</code> on the CLI.
+      </p>
+    </section>
+  );
+}
+
+function WritebackCandidateCard({ preview }: { preview: RFWritebackPreview }) {
+  return (
+    <article
+      className="rv-writeback-candidate it-card"
+      data-testid={`writeback-candidate-${preview.target}`}
+    >
+      <header className="rv-writeback-candidate__header">
+        <span className="it-chip blue">{preview.target}</span>
+        <code className="rv-writeback-candidate__filename">{preview.filename}</code>
+      </header>
+      {preview.content_type === "markdown" ? (
+        <div
+          className="rv-writeback-candidate__markdown"
+          data-testid={`writeback-candidate-markdown-${preview.target}`}
+        >
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview.content}</ReactMarkdown>
+        </div>
+      ) : (
+        <pre
+          className="rv-writeback-candidate__yaml"
+          data-testid={`writeback-candidate-yaml-${preview.target}`}
+        >
+          <code>{preview.content}</code>
+        </pre>
+      )}
+    </article>
+  );
 }
 
 function topAttentionLabel(attention: ReturnType<typeof summarizeRunAttention>): string {
