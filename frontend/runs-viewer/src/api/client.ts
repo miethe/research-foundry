@@ -1,7 +1,7 @@
 /**
  * RF Runs Viewer API Client — P2-API-CLIENT
  *
- * Dual-mode, GET-only client:
+ * Dual-mode, primarily-GET client:
  *
  *   Mode A (default): Static fixture mode
  *     Imports the static run.json fixture bundled with the app.
@@ -18,9 +18,17 @@
  *   VITE_RUNS_LOOPBACK_API_TOKEN     Shared-secret token for auth_mode=token (injected at build
  *                                    time; omit header when not set). See frontend/runs-viewer/README.md.
  *
- * NO POST/PUT/DELETE methods are exported. This is a read-only viewer.
- * The R9 sensitivity gate lives in the Python export service; this client
- * never has access to governed content.
+ * Almost all exports here are GET-only, read-only bindings. The R9 sensitivity
+ * gate lives in the Python export service; this client never has access to
+ * governed content beyond what the server returns.
+ *
+ * The single exception is `approveAndDispatchWriteback()` — a loopback-only
+ * POST binding for the writeback governance gate (run approve → dispatch to
+ * meatywiki/skillmeat/ccdash). It is gated behind isLoopbackEnabled() exactly
+ * like the mutation endpoints in api/agentJobsClient.ts, and follows the same
+ * error-discrimination precedent (typed rejection body + type guard) for HTTP
+ * 422/400 governance-gate responses. See the "Writeback Approve & Dispatch"
+ * section near the bottom of this file.
  */
 
 import type { RFRunExport, RFRunSummary } from "@/types/rf";
@@ -606,4 +614,145 @@ export async function getRbacStatus(): Promise<RbacStatus | null> {
   } catch {
     return null;
   }
+}
+
+// ── Writeback Approve & Dispatch (FR-13 governance gate — first POST binding) ─
+
+/**
+ * POST /api/runs/:runId/writeback/approve — request body.
+ * Mirrors the kwargs accepted by `approve_and_dispatch()`
+ * (src/research_foundry/services/writeback.py): both fields optional.
+ */
+export interface ApproveDispatchRequest {
+  approver_identity?: string | null;
+  targets?: string[];
+}
+
+/**
+ * A single fired governance rule, mirroring `Violation` in
+ * src/research_foundry/services/governance.py.
+ */
+export interface WritebackViolation {
+  rule_id: string;
+  severity: string; // "block" | "require_approval" | "warn"
+  message: string;
+  detail?: string | null;
+}
+
+/**
+ * Aggregate governance guard outcome, mirroring `GuardResult` in
+ * src/research_foundry/services/governance.py.
+ */
+export interface WritebackGuardResult {
+  passed: boolean;
+  exit_code: number; // 0 ok, 3 block, 7 require_approval
+  violations: WritebackViolation[];
+}
+
+/**
+ * Success response shape from POST /api/runs/:runId/writeback/approve.
+ * Locked DTO mirror of `ApproveDispatchResult`
+ * (src/research_foundry/services/writeback.py, TASK-1.1 / ORC-001) — field
+ * names and nullability are frozen there; do not diverge without updating
+ * both sides of the contract.
+ */
+export interface ApproveDispatchResult {
+  bundle_id: string;
+  verified: boolean;
+  council_decision: string; // "approve" | "revise" | "required_block"
+  reviewer_notes: string;
+  required_fix: string | null;
+  guard_result: WritebackGuardResult;
+  target_status: Record<string, string>; // per target: "success" | "failed" | "skipped"
+  overall_status: string; // "success" | "partial" | "blocked"
+}
+
+/**
+ * Body shape for HTTP 422 (governance block) or HTTP 400 (require-approval)
+ * rejections from POST /api/runs/:runId/writeback/approve. Discriminated on
+ * `error: "governance_rejected"` — same discrimination precedent as
+ * `GovernanceRejection` in api/agentJobsClient.ts (AC-4.4), reproduced here
+ * (rather than imported) per this phase's file-ownership boundary.
+ */
+export interface WritebackApprovalRejection {
+  error: "governance_rejected";
+  exit_code: number; // 3 = block, 7 = require_approval
+  violations: WritebackViolation[];
+}
+
+/** Discriminates a WritebackApprovalRejection from any other error body. */
+export function isWritebackApprovalRejection(
+  body: unknown,
+): body is WritebackApprovalRejection {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    (body as Record<string, unknown>)["error"] === "governance_rejected"
+  );
+}
+
+/**
+ * Thrown by approveAndDispatchWriteback() on any non-2xx response.
+ * Mirrors AgentJobsApiError in api/agentJobsClient.ts: status + raw parsed
+ * body are both captured so callers can run isWritebackApprovalRejection(err.body).
+ */
+export class WritebackApiError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+  constructor(status: number, statusText: string, body: unknown) {
+    super(`Writeback approve/dispatch failed: ${status} ${statusText}`);
+    this.name = "WritebackApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+/**
+ * POST /api/runs/:runId/writeback/approve — approve a run's evidence bundle
+ * and dispatch it to writeback targets (meatywiki/skillmeat/ccdash).
+ *
+ * Loopback-only (mirrors api/agentJobsClient.ts's assertLoopback gate): this
+ * is a real mutation against governed state, so it throws a ClientError when
+ * !isLoopbackEnabled() rather than silently no-op'ing or falling back to a
+ * static-mode substitute (there is none — this endpoint has no read-only
+ * equivalent).
+ *
+ * On HTTP 422/400 (governance gate fired before any target dispatch was
+ * attempted), throws WritebackApiError whose `.body` should be checked with
+ * isWritebackApprovalRejection() before rendering violation detail.
+ *
+ * `req` defaults to `{}`, which the backend resolves to its own defaults
+ * (no approver identity recorded; all three targets attempted).
+ */
+export async function approveAndDispatchWriteback(
+  runId: string,
+  req: ApproveDispatchRequest = {},
+): Promise<ApproveDispatchResult> {
+  if (!isLoopbackEnabled()) {
+    throw new ClientError(
+      503,
+      "Writeback approve/dispatch requires loopback mode: start rf serve and set " +
+        "VITE_RUNS_FRONTEND_LOOPBACK_API=true to approve and dispatch runs.",
+    );
+  }
+
+  const url = `${getLoopbackBase()}/runs/${encodeURIComponent(runId)}/writeback/approve`;
+  const headers = { ...getLoopbackAuthHeaders(), "Content-Type": "application/json" };
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(req),
+  });
+
+  if (!res.ok) {
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch {
+      /* non-JSON error body — leave null */
+    }
+    throw new WritebackApiError(res.status, res.statusText, body);
+  }
+
+  return res.json() as Promise<ApproveDispatchResult>;
 }

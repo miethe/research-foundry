@@ -24,6 +24,9 @@ Endpoints registered by this factory:
   GET  /api/agent-jobs/{id}/events               — SSE event stream (redacted)
   POST /api/agent-jobs/{id}/cancel               — cancel + credential cleanup
   POST /api/agent-jobs/{id}/accept               — SOLE WRITE PATH to catalog/report
+  POST /api/runs/{run_id}/writeback/approve      — approve evidence bundle + dispatch
+                                                     to writeback targets (RBAC-gated,
+                                                     runs-writeback-approve-dispatch Phase 2)
   GET /data/governance.json    — governance config snapshot (→ fetchGovernanceConfig)
   GET  /api/catalog/stats                — catalog counts (→ fetchCatalogStats)
   GET  /api/catalog/search                — catalog search (→ fetchCatalogSearch)
@@ -72,6 +75,7 @@ from .routers.auth_identity import router as auth_identity_router
 from .routers.catalog import router as catalog_router
 from .routers.reports import router as reports_router
 from .routers.runs import router as runs_router
+from .routers.writeback import router as writeback_router
 
 _logger = logging.getLogger(__name__)
 
@@ -420,6 +424,11 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # auth-provider status, and RBAC enforcement toggle status.
     # Always registered — individual endpoints gate on require_role("owner", "admin").
     app.include_router(admin_router, prefix="/api", tags=["admin"])
+    # Writeback Approve & Dispatch API (runs-writeback-approve-dispatch Phase 2).
+    # Unconditional — unlike agent_jobs_router, this route is NOT behind the
+    # agents.enabled feature flag, since rf writeback is not an agent-job
+    # surface. Gated per-route by require_role("owner", "admin") instead.
+    app.include_router(writeback_router, prefix="/api", tags=["writeback"])
 
     return app
 

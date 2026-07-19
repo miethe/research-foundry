@@ -28,8 +28,9 @@ from ..paths import FoundryPaths
 from ..registry import REPORT_INDEX, SKILLBOM_INDEX, Registry
 from ..schemas import default_registry, validate
 from ..yamlio import append_jsonl, dump_yaml, load_yaml
-from . import audit_service, telemetry
+from . import audit_service, governance, telemetry
 from .audit_service import AuditEvent
+from .governance import GuardResult
 
 _REGISTRY = default_registry()
 
@@ -1215,6 +1216,331 @@ def council_review(
     dump_yaml(packet, rp.council_review)
     _trace(rp, "council", run_id=run_id, decision=decision)
     return rp.council_review
+
+
+# --------------------------------------------------------------------------- #
+# approve_and_dispatch — DESIGN CONTRACT (locked, TASK-1.1 / ORC-001)
+# --------------------------------------------------------------------------- #
+#
+# STATUS: This section locked the signature, return shape, and call order for
+# ``approve_and_dispatch()`` (ORC-001). The body is now fully implemented —
+# ORC-002 (call-order orchestration), ORC-003 (per-target isolated dispatch),
+# ORC-004 (``approved_by``/``approval_timestamp`` population), and ORC-005
+# (advisory dispatch lock) all landed in that dependency order, in this same
+# file. Phase 1 is complete. Phase 2 (the new ``api/routers/writeback.py``
+# route) and Phase 3 (runs-viewer "Approve & Dispatch" UI action) build
+# against this contract without further design questions — do not change this
+# signature or ``ApproveDispatchResult``'s field set without re-opening
+# ORC-001.
+#
+# WHAT THIS IS NOT (do not re-derive a different design):
+#   - It is not a new dispatch/rendering mechanism. Per D4 (locked decision,
+#     see this feature's implementation-plan frontmatter `decisions[3]`), it
+#     calls the SAME three per-target primitives the existing monolithic
+#     ``writeback()`` already calls above — ``telemetry.emit_ccdash_event``,
+#     ``_render_meatywiki``, ``_render_skillbom`` — each independently wrapped
+#     in its own try/except for per-target isolation (``writeback()`` itself
+#     has no such isolation today; that gap is exactly why this function
+#     exists instead of calling ``writeback()`` directly). Fixed order:
+#     ccdash -> meatywiki -> skillmeat, mirroring ``writeback()``'s existing
+#     target-check order above.
+#   - It does not modify, wrap, or change the signature/behavior of
+#     ``writeback()``, ``council_review()``, or ``build_bundle()``. All three
+#     remain byte-identical after this change (verify via
+#     ``git diff --stat`` against this file — only additions below the
+#     ``council_review()`` return statement, plus the new top-of-file
+#     imports of ``governance``/``GuardResult``).
+#
+# CALL ORDER (ORC-002 implements this sequence; guard_check MUST run before
+# any target dispatch — PRD acceptance row 1):
+#   1. ``build_bundle(run_id, verify=True, paths=paths)``
+#      -> gives ``bundle_id`` + ``verified``; also (re)writes
+#      ``evidence_bundle.yaml`` with ``governance.approved_by``/
+#      ``approval_timestamp`` still ``None`` at this point (see line ~237-238
+#      in ``build_bundle`` above) — step 5 below is where those two fields
+#      get populated, NOT here.
+#   2. ``council_review(run_id, roles=..., paths=paths)`` — ALWAYS run, never
+#      conditionally skipped (D1, locked: resolves PRD OQ-1). Read back
+#      ``reviews/council_review.yaml`` for ``output.decision`` (one of
+#      ``approve``/``revise``/``required_block``) and
+#      ``output.concerns[].required_fix`` for the DTO's ``reviewer_notes``/
+#      ``required_fix`` fields.
+#   3. ``governance.load_run_context(run_id, writeback_targets=targets,
+#      paths=paths)`` -> ``governance.guard_check(ctx, paths=paths)``.
+#      A council decision of ``required_block`` is treated as an additional
+#      hard stop equivalent to a failing guard, even though guard_check()
+#      does not itself read the council packet — ORC-002 decides the
+#      combined gate condition explicitly (both must clear before any
+#      dispatch).
+#   4. Per-target dispatch — ONLY if the combined gate in step 3 passes
+#      (``guard_result.passed`` and council decision != ``required_block``).
+#      If the gate does not pass: dispatch is skipped entirely (every
+#      requested target is recorded ``"skipped"`` in ``target_status``), zero
+#      files are written under ``writebacks/``, and ``overall_status`` is
+#      ``"blocked"``. This is what PRD acceptance row 2 means by "a
+#      block/require_approval result aborts before any target is attempted".
+#   5. On a successful (non-blocked) invocation, populate
+#      ``evidence_bundle.governance.approved_by`` (from
+#      ``approver_identity``) and ``approval_timestamp`` (``now_iso()``) in
+#      ``evidence_bundle.yaml`` — this is the ORC-004 population point
+#      referenced in step 1's note above; it happens AFTER dispatch, not
+#      before, so a partially-failed dispatch is still reflected accurately.
+#
+# ``overall_status`` derivation (ORC-003 fills in the target loop that
+# produces ``target_status``; this is the aggregation rule ORC-002/003 must
+# implement):
+#   - "blocked":  the combined gate in step 3 did not pass (no dispatch
+#     attempted at all).
+#   - "success":  gate passed AND every requested target's status is
+#     "success".
+#   - "partial":  gate passed AND at least one requested target is
+#     "success" and at least one is "failed".
+#   - a fully-failed dispatch (gate passed, but every target "failed") is
+#     still "partial", not "blocked" — "blocked" is reserved for the
+#     pre-dispatch governance gate specifically, so callers can distinguish
+#     "we never tried" from "we tried and it went badly".
+#
+# Concurrency (D2, locked; ORC-005 implements): a short-TTL
+# ``.dispatch.lock`` file per run is an advisory guard only — it is NOT a
+# hard 409-reject and NOT part of this function's return contract. It does
+# not appear in ``ApproveDispatchResult``.
+#
+@dataclass(frozen=True)
+class ApproveDispatchResult:
+    """Locked DTO shape for :func:`approve_and_dispatch` (TASK-1.1 / ORC-001).
+
+    Self-contained — no HTTP-layer types (no ``Request``/``Response``/status
+    codes). Phase 2's route maps this onto its own response model; Phase 3's
+    UI binding types against this shape's JSON-serializable projection.
+    """
+
+    bundle_id: str
+    verified: bool
+    council_decision: str  # "approve" | "revise" | "required_block"
+    reviewer_notes: str
+    required_fix: str | None
+    guard_result: GuardResult  # .passed / .exit_code / .violations — see governance.py
+    target_status: dict[str, str]  # per requested target: "success" | "failed" | "skipped"
+    overall_status: str  # "success" | "partial" | "blocked"
+
+
+# Advisory-only TTL (seconds) recorded in the ``.dispatch.lock`` file written
+# at the top of ``approve_and_dispatch()``. Not enforced as a hard gate in
+# this implementation (D2, locked) — it is metadata for Phase 4 tests/
+# inspection, not a mechanism this function reads back to block itself.
+_DISPATCH_LOCK_TTL_SECONDS = 60
+
+
+def approve_and_dispatch(
+    run_id: str,
+    *,
+    approver_identity: str | None = None,
+    targets: tuple[str, ...] = ("ccdash", "meatywiki", "skillmeat"),
+    paths: FoundryPaths | None = None,
+) -> ApproveDispatchResult:
+    """Approve a run's evidence bundle and dispatch it to writeback targets.
+
+    LOCKED CONTRACT (TASK-1.1 / ORC-001) — signature and return shape only.
+    Real implementation lands in ORC-002 (call-order orchestration),
+    ORC-003 (per-target isolated dispatch), ORC-004 (``approved_by``/
+    ``approval_timestamp`` population), and ORC-005 (advisory dispatch lock),
+    in that dependency order. See the design-lock comment block immediately
+    above this function for the full call-order, gating, and
+    ``overall_status`` derivation rules that those tasks must implement.
+
+    Composes (does not modify) the existing primitives: ``build_bundle()``,
+    ``council_review()``, ``governance.load_run_context()`` +
+    ``governance.guard_check()``, and the three per-target render primitives
+    already used by ``writeback()`` (``telemetry.emit_ccdash_event``,
+    ``_render_meatywiki``, ``_render_skillbom``) — per D4, not ``writeback()``
+    itself.
+
+    Parameters
+    ----------
+    run_id:
+        The run to approve and dispatch.
+    approver_identity:
+        Resolved identity string (e.g. a user id/email) supplied by the
+        caller. Phase 2's route resolves this from ``request.state.identity``
+        and threads it in; ``None`` is valid (loopback/no-auth mode) and
+        results in ``evidence_bundle.governance.approved_by`` staying
+        ``None`` even on success — callers needing a mandatory identity
+        enforce that at the route layer (RBAC), not here.
+    targets:
+        Which writeback targets to attempt, restricted to the MVP set
+        ``{"ccdash", "meatywiki", "skillmeat"}``. Order of attempt is always
+        ccdash -> meatywiki -> skillmeat regardless of tuple order, matching
+        ``writeback()``'s existing target-check order.
+    paths:
+        Optional :class:`FoundryPaths` override, threaded through unchanged
+        to every composed primitive (same convention as ``writeback()``,
+        ``council_review()``, ``build_bundle()``).
+
+    Returns
+    -------
+    ApproveDispatchResult
+        See the class docstring above for the full locked field set.
+
+    Raises
+    ------
+    NotFoundError
+        Propagated from ``build_bundle()`` (step 1) if ``run_id`` does not
+        correspond to an existing run.
+    """
+
+    paths = paths or FoundryPaths.discover()
+    rp = paths.run_paths(run_id)
+
+    # ORC-005: advisory per-run dispatch lock (D2, locked). This is
+    # informational only — it is never read back to gate/reject a concurrent
+    # invocation; it exists so an overlapping call for the same run_id is
+    # visible/inspectable after the fact (both invocations still complete and
+    # both still get audited in Phase 2). Always overwrite (last-write-wins);
+    # no branch here ever returns/raises because a lock file already exists.
+    # _DISPATCH_LOCK_TTL_SECONDS is informational metadata only — real
+    # TTL-expiry enforcement is out of scope for Phase 1 per D2.
+    try:
+        dump_yaml(
+            {
+                "acquired_at": now_iso(),
+                "approver_identity": approver_identity,
+                "ttl_seconds": _DISPATCH_LOCK_TTL_SECONDS,
+            },
+            rp.run / ".dispatch.lock",
+        )
+    except Exception:
+        # Lock-file I/O is advisory only and must never break orchestration.
+        pass
+
+    # Step 1: build + verify the evidence bundle.
+    bundle_result = build_bundle(run_id, verify=True, paths=paths)
+
+    # Step 2: council review is ALWAYS run (D1, locked — never conditionally
+    # skipped). Read back the written packet for the decision + concerns.
+    council_review(
+        run_id,
+        roles=["critic", "domain_reviewer", "governance_officer", "executive_translator"],
+        paths=paths,
+    )
+    council_packet = _safe_load(rp.council_review) or {}
+    output = council_packet.get("output") if isinstance(council_packet.get("output"), dict) else {}
+    council_decision = str(output.get("decision") or "approve")
+    concerns = output.get("concerns") if isinstance(output.get("concerns"), list) else []
+    reviewer_notes = str(council_packet.get("reviewer_notes") or "")
+    required_fix: str | None = None
+    for concern in concerns:
+        if isinstance(concern, dict) and concern.get("required_fix"):
+            required_fix = str(concern["required_fix"])
+            break
+
+    # Step 3: governance guard check.
+    ctx = governance.load_run_context(run_id, writeback_targets=targets, paths=paths)
+    guard_result = governance.guard_check(ctx, paths=paths)
+
+    # Combined gate (ORC-002): both the guard AND the council decision must
+    # clear before any target dispatch is attempted.
+    gate_passed = guard_result.passed and council_decision != "required_block"
+
+    if not gate_passed:
+        return ApproveDispatchResult(
+            bundle_id=bundle_result.bundle_id,
+            verified=bundle_result.verified,
+            council_decision=council_decision,
+            reviewer_notes=reviewer_notes,
+            required_fix=required_fix,
+            guard_result=guard_result,
+            target_status={target: "skipped" for target in targets},
+            overall_status="blocked",
+        )
+
+    # Step 4 (ORC-003): per-target isolated dispatch. Fixed order:
+    # ccdash -> meatywiki -> skillmeat, regardless of `targets` tuple order —
+    # matches writeback()'s existing target-check order. Each call is
+    # independently wrapped in its own try/except so one target's exception
+    # never prevents the other two from being attempted (PRD FR-7).
+    sensitivity = _sensitivity(rp)
+    ledger = _ledger(rp)
+    requires_review = sensitivity in _WORK_SENSITIVITIES
+
+    target_status: dict[str, str] = {}
+    ccdash_event_id_value = ""
+
+    if "ccdash" in targets:
+        try:
+            ccdash_path = telemetry.emit_ccdash_event(run_id, paths=paths)
+            event = _safe_load(ccdash_path) or {}
+            ccdash_event_id_value = str(event.get("event_id") or "")
+            target_status["ccdash"] = "success"
+        except Exception:
+            target_status["ccdash"] = "failed"
+    else:
+        target_status["ccdash"] = "skipped"
+
+    if "meatywiki" in targets:
+        try:
+            _render_meatywiki(
+                rp,
+                paths,
+                bundle_ident=bundle_result.bundle_id,
+                sensitivity=sensitivity,
+                ledger=ledger,
+                requires_review=requires_review,
+            )
+            target_status["meatywiki"] = "success"
+        except Exception:
+            target_status["meatywiki"] = "failed"
+    else:
+        target_status["meatywiki"] = "skipped"
+
+    if "skillmeat" in targets:
+        try:
+            _render_skillbom(
+                rp,
+                paths,
+                bundle_ident=bundle_result.bundle_id,
+                ccdash_event_id_value=ccdash_event_id_value,
+                requires_review=requires_review,
+                ledger=ledger,
+            )
+            target_status["skillmeat"] = "success"
+        except Exception:
+            target_status["skillmeat"] = "failed"
+    else:
+        target_status["skillmeat"] = "skipped"
+
+    # ORC-004: populate evidence_bundle.governance.approved_by/
+    # approval_timestamp now that the gate passed and dispatch was attempted.
+    # approver_identity may legitimately be None (loopback/no-auth mode) —
+    # the write still happens so approval_timestamp reflects this invocation.
+    bundle_doc = _safe_load(rp.evidence_bundle)
+    if isinstance(bundle_doc, dict):
+        governance_block = dict(bundle_doc.get("governance") or {})
+        governance_block["approved_by"] = approver_identity
+        governance_block["approval_timestamp"] = now_iso()
+        bundle_doc["governance"] = governance_block
+        dump_yaml(bundle_doc, rp.evidence_bundle)
+
+    # ORC-005's lock file was written at function entry (see top of this
+    # function) and is intentionally left in place here — on every return
+    # path (blocked/success/partial) — as an audit trail of the most recent
+    # dispatch attempt for this run, rather than adding cleanup logic to the
+    # multiple return statements in this function.
+
+    requested_statuses = [target_status[target] for target in targets]
+    overall_status = (
+        "success" if all(status == "success" for status in requested_statuses) else "partial"
+    )
+
+    return ApproveDispatchResult(
+        bundle_id=bundle_result.bundle_id,
+        verified=bundle_result.verified,
+        council_decision=council_decision,
+        reviewer_notes=reviewer_notes,
+        required_fix=required_fix,
+        guard_result=guard_result,
+        target_status=target_status,
+        overall_status=overall_status,
+    )
 
 
 # --------------------------------------------------------------------------- #

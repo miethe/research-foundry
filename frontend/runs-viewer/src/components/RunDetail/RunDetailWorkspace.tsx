@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { RFRunExport, RFWritebackPreview } from "@/types/rf";
@@ -8,6 +8,13 @@ import { ArtifactLineageGraph } from "@/components/LineageGraph/LineageGraph";
 import { ReportOverlay } from "@/components/ReportOverlay/ReportOverlay";
 import { TrustCockpit } from "@/components/TrustPanel/TrustCockpit";
 import { ContextPane } from "./ContextPane";
+import {
+  approveAndDispatchWriteback,
+  isWritebackApprovalRejection,
+  WritebackApiError,
+  type ApproveDispatchResult,
+  type WritebackViolation,
+} from "@/api/client";
 import {
   deriveRunTitle,
   formatDateTime,
@@ -625,6 +632,11 @@ function WritebackTabPanel({
   const writebacks = run.writebacks ?? null;
   const previews = writebacks?.previews ?? null;
   const hasPreviews = (previews?.length ?? 0) > 0;
+  // UI-002/UI-003: Approve & Dispatch is additive to this read-only tab — see
+  // ApproveDispatchAction below. Visible only when a report exists and writeback
+  // candidates are available for this run; does not affect anything rendered by
+  // WritebackGovernancePanel or WritebackCandidateCard above/below it.
+  const hasReport = run.report_draft != null;
 
   return (
     <div className="rv-writeback-tab" data-testid="writeback-tab-content">
@@ -632,6 +644,9 @@ function WritebackTabPanel({
         writebacks={writebacks}
         approved={run.governance?.approved_for_writeback ?? null}
       />
+      {hasReport && writebackAvailable ? (
+        <ApproveDispatchAction runId={run.run_id} />
+      ) : null}
       {hasPreviews ? (
         <section className="rv-writeback-candidates it-card" data-testid="writeback-candidates">
           <div className="rv-pane-title">
@@ -720,6 +735,233 @@ function WritebackCandidateCard({ preview }: { preview: RFWritebackPreview }) {
       )}
     </article>
   );
+}
+
+// ── Approve & Dispatch (UI-002/UI-003 — additive, scoped to this action only) ─
+//
+// A single mutation affordance in an otherwise read-only tab: it approves the
+// run's evidence bundle and dispatches it to writeback targets via
+// approveAndDispatchWriteback() (api/client.ts). It never touches
+// reviewer_notes/required_fix/approved_for_writeback rendering above — those
+// stay governed exclusively by `rf bundle --approve` on the CLI. This section
+// owns its own local state (confirm dialog + outcome) that resets per mount.
+
+const WRITEBACK_TARGET_ORDER = ["meatywiki", "skillmeat", "ccdash"] as const;
+
+type ApproveDispatchOutcome =
+  | { kind: "success"; result: ApproveDispatchResult }
+  | { kind: "rejected"; violations: WritebackViolation[]; message: string }
+  | { kind: "error"; message: string };
+
+function ApproveDispatchAction({ runId }: { runId: string }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [isDispatching, setIsDispatching] = useState(false);
+  const [outcome, setOutcome] = useState<ApproveDispatchOutcome | null>(null);
+
+  const handleConfirm = async () => {
+    setIsDispatching(true);
+    try {
+      const result = await approveAndDispatchWriteback(runId);
+      setOutcome({ kind: "success", result });
+      setConfirmOpen(false);
+    } catch (err) {
+      if (err instanceof WritebackApiError && isWritebackApprovalRejection(err.body)) {
+        setOutcome({
+          kind: "rejected",
+          violations: err.body.violations ?? [],
+          message: err.message,
+        });
+      } else if (err instanceof Error) {
+        setOutcome({ kind: "error", message: err.message });
+      } else {
+        setOutcome({ kind: "error", message: "Unknown error during approve & dispatch." });
+      }
+      setConfirmOpen(false);
+    } finally {
+      setIsDispatching(false);
+    }
+  };
+
+  return (
+    <section className="rv-writeback-approve it-card" data-testid="writeback-approve-dispatch">
+      <div className="rv-pane-title">
+        <h3>Approve &amp; Dispatch</h3>
+      </div>
+      <p className="rv-muted">
+        Approves this run&rsquo;s evidence bundle and dispatches it to writeback targets
+        (meatywiki, skillmeat, ccdash). This calls out to external workspaces and is not
+        reversible from this view.
+      </p>
+      <button
+        type="button"
+        className="it-btn primary"
+        data-testid="writeback-approve-dispatch-button"
+        disabled={isDispatching}
+        onClick={() => setConfirmOpen(true)}
+      >
+        {isDispatching ? "Dispatching…" : "Approve & Dispatch"}
+      </button>
+
+      {confirmOpen ? (
+        <div
+          className="rv-modal-overlay"
+          role="presentation"
+          data-testid="writeback-approve-confirm-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isDispatching) setConfirmOpen(false);
+          }}
+        >
+          <div
+            className="rv-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm approve and dispatch"
+            data-testid="writeback-approve-confirm-dialog"
+          >
+            <div className="rv-modal__header">
+              <div className="rv-modal__title-row">
+                <strong>Confirm Approve &amp; Dispatch</strong>
+              </div>
+            </div>
+            <div className="rv-modal__body">
+              <p>
+                This approves the current evidence bundle and dispatches it to the
+                configured writeback targets. The action reaches external workspaces
+                (meatywiki, skillmeat, ccdash) and cannot be undone from this view.
+              </p>
+              <div className="rv-writeback-approve__confirm-actions">
+                <button
+                  type="button"
+                  className="it-btn ghost sm"
+                  data-testid="writeback-approve-confirm-cancel"
+                  disabled={isDispatching}
+                  onClick={() => setConfirmOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="it-btn primary sm"
+                  data-testid="writeback-approve-confirm-submit"
+                  disabled={isDispatching}
+                  onClick={handleConfirm}
+                >
+                  {isDispatching ? "Dispatching…" : "Confirm & Dispatch"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {outcome ? <ApproveDispatchOutcomePanel outcome={outcome} /> : null}
+    </section>
+  );
+}
+
+/**
+ * Renders per-target dispatch status; degrades gracefully on missing/partial
+ * data (R-P2).
+ *
+ * UI-004: "rejected" (governance) and "error" (generic/unexpected) are kept
+ * visually and textually distinct so an operator can tell "blocked by policy"
+ * from "something broke" at a glance (FR-12) — separate chip copy, a leading
+ * glyph (⛔ vs ⚠) that survives color-blindness/greyscale, and a one-line
+ * plain-language explainer under each. Both use `it-chip red` deliberately:
+ * this mirrors writebackStatusClass()'s existing "blocked"→red convention
+ * elsewhere in this file, so red still means "did not go out" consistently
+ * across the tab — the distinction here is in copy/iconography, not color.
+ */
+function ApproveDispatchOutcomePanel({ outcome }: { outcome: ApproveDispatchOutcome }) {
+  if (outcome.kind === "error") {
+    return (
+      <div
+        className="rv-writeback-approve__outcome rv-writeback-approve__outcome--error"
+        role="alert"
+        data-testid="writeback-approve-outcome-error"
+      >
+        <span className="it-chip red" aria-hidden="true">⚠</span>
+        <span className="it-chip red">Unexpected error</span>
+        <p className="rv-muted">{outcome.message}</p>
+        <p className="rv-muted rv-writeback-approve__outcome-hint">
+          This is an unexpected failure, not a governance decision — no policy rule blocked
+          this dispatch. Check server logs or try again.
+        </p>
+      </div>
+    );
+  }
+
+  if (outcome.kind === "rejected") {
+    return (
+      <div
+        className="rv-writeback-approve__outcome rv-writeback-approve__outcome--rejected"
+        role="alert"
+        data-testid="writeback-approve-outcome-rejected"
+      >
+        <span className="it-chip red" aria-hidden="true">⛔</span>
+        <span className="it-chip red">Blocked by governance policy</span>
+        {outcome.violations.length > 0 ? (
+          <ul className="rv-writeback-approve__violations">
+            {outcome.violations.map((violation, idx) => (
+              <li key={`${violation.rule_id}-${idx}`}>
+                <code>{violation.rule_id}</code> — {violation.message}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="rv-muted">{outcome.message}</p>
+        )}
+        <p className="rv-muted rv-writeback-approve__outcome-hint">
+          No target was contacted — this run failed a governance rule, not a system error.
+          Resolve the violation(s) above (or re-review via <code>rf bundle --approve</code>)
+          before retrying.
+        </p>
+      </div>
+    );
+  }
+
+  // Defensive: target_status/guard_result may be missing or partial from the API —
+  // never throw, render "unknown" for anything absent.
+  const targetStatus = outcome.result.target_status ?? {};
+  const guardPassed = outcome.result.guard_result?.passed ?? null;
+
+  return (
+    <div className="rv-writeback-approve__outcome" data-testid="writeback-approve-outcome-success">
+      <div className="rv-writeback-approve__overall">
+        <span className={`it-chip ${overallStatusChipClass(outcome.result.overall_status)}`}>
+          {outcome.result.overall_status ?? "unknown"}
+        </span>
+        <span className="rv-muted">
+          Guard: {guardPassed == null ? "unknown" : guardPassed ? "passed" : "failed"}
+        </span>
+      </div>
+      <ul className="rv-writeback-approve__targets" data-testid="writeback-approve-target-status">
+        {WRITEBACK_TARGET_ORDER.map((target) => {
+          const status = targetStatus[target] ?? "unknown";
+          return (
+            <li key={target} data-testid={`writeback-approve-target-${target}`}>
+              <span className="rv-writeback-approve__target-name">{target}</span>
+              <span className={`it-chip ${targetStatusChipClass(status)}`}>{status}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function overallStatusChipClass(status: string | null | undefined): string {
+  if (status === "success") return "green";
+  if (status === "partial") return "orange";
+  if (status === "blocked") return "red";
+  return "";
+}
+
+function targetStatusChipClass(status: string): string {
+  if (status === "success") return "green";
+  if (status === "failed") return "red";
+  if (status === "skipped") return "orange";
+  return "";
 }
 
 function topAttentionLabel(attention: ReturnType<typeof summarizeRunAttention>): string {

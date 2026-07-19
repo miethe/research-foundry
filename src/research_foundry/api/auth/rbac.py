@@ -54,6 +54,21 @@ service functions without going through a ``require_role``-gated route
 handler.  See :func:`~research_foundry.services.catalog_service.import_all`
 and the companion ``test_cli_mutation_surface.py`` for verification.
 
+**Update (runs-writeback-approve-dispatch, Phase 2):** the classification
+above still holds for the bare ``writeback()`` function's direct CLI
+invocation (``rf writeback`` from a trusted shell remains
+single-operator-trust — no RBAC enforcement needed for that specific
+entry point). However, ``approve_and_dispatch()`` — the newer orchestration
+primitive that composes ``build_bundle()`` + ``council_review()`` +
+governance guard + per-target dispatch on top of the same underlying
+render primitives — now ALSO has a gated HTTP path:
+``POST /api/runs/{run_id}/writeback/approve`` in
+``api/routers/writeback.py``, guarded by
+``Depends(require_role("owner", "admin"))`` exactly like ``agent_jobs.py``'s
+mutation routes (see the Forward-compat note below for the pattern this
+route follows). The CLI-only classification therefore no longer describes
+the *entire* writeback-mutation surface — only the direct-CLI entry point.
+
 Forward-compat: agent_jobs.py (RBAC-FORWARD-COMPAT, RBAC-005)
 --------------------------------------------------------------
 

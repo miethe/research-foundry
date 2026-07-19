@@ -11,6 +11,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Writeback Approve & Dispatch**
+
+- **`POST /api/runs/{run_id}/writeback/approve`** — Operators can now approve a run's evidence
+  bundle and dispatch it to MeatyWiki/SkillMeat/CCDash writeback targets over HTTP, gated by
+  owner/admin RBAC, with full per-invocation audit logging (one audit row per outcome: success,
+  partial, blocked, exception). This is the first HTTP-gated write path for what was previously
+  a CLI-only (`rf writeback`) operation — the CLI path itself is unchanged.
+- **"Approve & Dispatch" action on the runs-viewer Writeback tab** — Adds a confirmation dialog
+  and per-target (MeatyWiki/SkillMeat/CCDash) outcome rendering that distinguishes governance-policy
+  rejections from generic errors.
+
 #### **Runs-Viewer Writeback Review Governance View (FR-13)**
 
 - **Export schema 1.5 → 1.6** — `_collect_writebacks()` now populates

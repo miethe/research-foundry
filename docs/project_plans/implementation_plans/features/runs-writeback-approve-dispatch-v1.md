@@ -1,38 +1,47 @@
 ---
-title: "Implementation Plan: Runs Writeback — Approve & Dispatch (v1)"
+title: "Implementation Plan: Runs Writeback \u2014 Approve & Dispatch (v1)"
 schema_version: 2
 doc_type: implementation_plan
 it_schema: 1
-status: draft
-created: 2026-07-18
-updated: 2026-07-18
-feature_slug: "runs-writeback-approve-dispatch"
-feature_version: "v1"
+status: completed
+created: '2026-07-18'
+updated: '2026-07-18'
+feature_slug: runs-writeback-approve-dispatch
+feature_version: v1
 tier: 2
 prd_ref: docs/project_plans/PRDs/features/runs-writeback-approve-dispatch-v1.md
 plan_ref: null
-scope: "Add a governed write path (new API endpoint + runs-viewer UI action) that lets an operator approve a run and dispatch it to MeatyWiki/SkillMeat/CCDash from the viewer, by orchestrating the existing build_bundle/council_review/writeback chain behind a mandatory governance gate, RBAC-ready auth, and full per-invocation audit."
-effort_estimate: "~14 pts (Tier 2)"
-architecture_summary: "One new service-layer orchestration function composing existing build_bundle/council_review/guard_check/dispatch primitives with per-target isolation; one new RBAC-gated, audited API route; one new runs-viewer UI action on the existing Writeback tab. No new tables, no schema migrations, no export-schema changes."
+scope: Add a governed write path (new API endpoint + runs-viewer UI action) that lets
+  an operator approve a run and dispatch it to MeatyWiki/SkillMeat/CCDash from the
+  viewer, by orchestrating the existing build_bundle/council_review/writeback chain
+  behind a mandatory governance gate, RBAC-ready auth, and full per-invocation audit.
+effort_estimate: ~14 pts (Tier 2)
+architecture_summary: One new service-layer orchestration function composing existing
+  build_bundle/council_review/guard_check/dispatch primitives with per-target isolation;
+  one new RBAC-gated, audited API route; one new runs-viewer UI action on the existing
+  Writeback tab. No new tables, no schema migrations, no export-schema changes.
 related_documents:
-  - docs/project_plans/feature_contracts/features/runs-writeback-review-view.md
-  - docs/project_plans/design-specs/runs-writeback-preview.md
-  - docs/project_plans/PRDs/features/runs-frontend-v1.md
-  - docs/dev/architecture/rf-run-export-schema.md
-  - docs/project_plans/human-briefs/runs-writeback-approve-dispatch.md
+- docs/project_plans/feature_contracts/features/runs-writeback-review-view.md
+- docs/project_plans/design-specs/runs-writeback-preview.md
+- docs/project_plans/PRDs/features/runs-frontend-v1.md
+- docs/dev/architecture/rf-run-export-schema.md
+- docs/project_plans/human-briefs/runs-writeback-approve-dispatch.md
 references:
   user_docs: []
   context: []
   specs:
-    - .claude/specs/changelog-spec.md
+  - .claude/specs/changelog-spec.md
   related_prds:
-    - docs/project_plans/PRDs/features/runs-writeback-approve-dispatch-v1.md
+  - docs/project_plans/PRDs/features/runs-writeback-approve-dispatch-v1.md
 spike_ref: null
 adr_refs: []
-deferred_items_spec_refs: []
+deferred_items_spec_refs:
+- docs/project_plans/design-specs/runs-writeback-opt-in-targets-ui.md
+- docs/project_plans/design-specs/writeback-dispatch-rollback.md
+- docs/project_plans/design-specs/writeback-dispatch-distributed-lock.md
 findings_doc_ref: null
 charter_ref: null
-changelog_ref: null
+changelog_ref: CHANGELOG.md
 changelog_required: true
 test_plan_ref: null
 plan_structure: unified
@@ -41,103 +50,158 @@ owner: null
 contributors: []
 priority: high
 risk_level: high
-category: "product-planning"
-tags: [implementation, planning, phases, tasks, writeback, governance, rbac, runs-viewer]
+category: product-planning
+tags:
+- implementation
+- planning
+- phases
+- tasks
+- writeback
+- governance
+- rbac
+- runs-viewer
 milestone: null
-commit_refs: []
+commit_refs:
+- d2722cb
+- a846287
+- 4fc211d
 pr_refs: []
 files_affected:
-  - src/research_foundry/services/writeback.py
-  - src/research_foundry/services/governance.py
-  - src/research_foundry/services/audit_service.py
-  - src/research_foundry/api/routers/writeback.py
-  - src/research_foundry/api/auth/rbac.py
-  - frontend/runs-viewer/src/api/client.ts
-  - frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx
-  - CHANGELOG.md
+- src/research_foundry/services/writeback.py
+- src/research_foundry/services/governance.py
+- src/research_foundry/services/audit_service.py
+- src/research_foundry/api/routers/writeback.py
+- src/research_foundry/api/auth/rbac.py
+- frontend/runs-viewer/src/api/client.ts
+- frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx
+- CHANGELOG.md
 planning_maturity: in_progress
 open_questions: []
 decisions:
-  - decision: "D1 — council_review() runs automatically on every invocation (implicit run_council=true), never conditionally skipped."
-    rationale: "Resolves PRD OQ-1. council_review() re-derives deterministically from verification and is cheap; always-run is simpler and more auditable than a stale-result-reuse path."
-    status: locked
-  - decision: "D2 — Concurrency guard is a lightweight advisory lock (a short-TTL .dispatch.lock file per run), not a hard 409-reject or a distributed lock."
-    rationale: "Resolves PRD OQ-2/FR-14. Matches Risk R2's own accepted mitigation; today's deployment is single-operator LAN, so distributed-lock infrastructure would be over-engineering. Both racing attempts still each produce an audit row, so the race stays fully visible after the fact."
-    status: locked
-  - decision: "D3 — New route lives in a new file, api/routers/writeback.py, not appended into runs.py."
-    rationale: "Follows agent_jobs.py's file-per-concern precedent explicitly named in the PRD; keeps runs.py's established GET-heavy scope from growing into a second unrelated mutation surface."
-    status: locked
-  - decision: "D4 — The orchestration function calls the per-target render primitives directly (_render_meatywiki, _render_skillbom, telemetry.emit_ccdash_event) rather than calling the monolithic writeback(), to get per-target try/except isolation without changing writeback()'s existing CLI-facing behavior."
-    rationale: "writeback()'s existing loop has no per-target isolation (PRD §2) and FR-13 already established that CLI behavior must stay byte-identical (FR-13 constraint reused here as FR-13-of-this-PRD)."
-    status: locked
+- decision: "D1 \u2014 council_review() runs automatically on every invocation (implicit\
+    \ run_council=true), never conditionally skipped."
+  rationale: Resolves PRD OQ-1. council_review() re-derives deterministically from
+    verification and is cheap; always-run is simpler and more auditable than a stale-result-reuse
+    path.
+  status: locked
+- decision: "D2 \u2014 Concurrency guard is a lightweight advisory lock (a short-TTL\
+    \ .dispatch.lock file per run), not a hard 409-reject or a distributed lock."
+  rationale: Resolves PRD OQ-2/FR-14. Matches Risk R2's own accepted mitigation; today's
+    deployment is single-operator LAN, so distributed-lock infrastructure would be
+    over-engineering. Both racing attempts still each produce an audit row, so the
+    race stays fully visible after the fact.
+  status: locked
+- decision: "D3 \u2014 New route lives in a new file, api/routers/writeback.py, not\
+    \ appended into runs.py."
+  rationale: Follows agent_jobs.py's file-per-concern precedent explicitly named in
+    the PRD; keeps runs.py's established GET-heavy scope from growing into a second
+    unrelated mutation surface.
+  status: locked
+- decision: "D4 \u2014 The orchestration function calls the per-target render primitives\
+    \ directly (_render_meatywiki, _render_skillbom, telemetry.emit_ccdash_event)\
+    \ rather than calling the monolithic writeback(), to get per-target try/except\
+    \ isolation without changing writeback()'s existing CLI-facing behavior."
+  rationale: "writeback()'s existing loop has no per-target isolation (PRD \xA72)\
+    \ and FR-13 already established that CLI behavior must stay byte-identical (FR-13\
+    \ constraint reused here as FR-13-of-this-PRD)."
+  status: locked
 decision_gates: []
 success_metrics:
-  - "An operator can approve a completed run for writeback and see per-target (MeatyWiki/SkillMeat/CCDash) dispatch outcomes without leaving the runs-viewer, in a single action."
-  - "100% of approve+dispatch invocations produce exactly one audit_event row (mutation_type=writeback), regardless of outcome (success/partial/blocked/failure)."
-  - "0 approve+dispatch invocations bypass the governance guard_check() gate — verified by test, not just code review."
+- An operator can approve a completed run for writeback and see per-target (MeatyWiki/SkillMeat/CCDash)
+  dispatch outcomes without leaving the runs-viewer, in a single action.
+- 100% of approve+dispatch invocations produce exactly one audit_event row (mutation_type=writeback),
+  regardless of outcome (success/partial/blocked/failure).
+- "0 approve+dispatch invocations bypass the governance guard_check() gate \u2014\
+  \ verified by test, not just code review."
 contributors_note: null
 scores: {}
 acceptance_criteria:
-  - "POST /api/runs/{run_id}/writeback/approve orchestrates build_bundle -> council_review -> guard_check -> per-target dispatch in that order, gated by require_role(owner, admin)."
-  - "A blocking guard_check() result aborts before any target is attempted and writes zero files under writebacks/."
-  - "Exactly one audit_event row (mutation_type=writeback) is written per invocation across all four outcome classes: success, partial, blocked, unexpected exception."
-  - "runs-viewer Writeback tab gains an Approve & Dispatch action that renders per-target outcomes without regressing FR-13's read-only preview cards."
+- POST /api/runs/{run_id}/writeback/approve orchestrates build_bundle -> council_review
+  -> guard_check -> per-target dispatch in that order, gated by require_role(owner,
+  admin).
+- A blocking guard_check() result aborts before any target is attempted and writes
+  zero files under writebacks/.
+- 'Exactly one audit_event row (mutation_type=writeback) is written per invocation
+  across all four outcome classes: success, partial, blocked, unexpected exception.'
+- runs-viewer Writeback tab gains an Approve & Dispatch action that renders per-target
+  outcomes without regressing FR-13's read-only preview cards.
 execution_mode: unassigned
-agent_title: "API + UI write path for run writeback approval and dispatch"
-agent_summary: "Wire guard_check() into a new approve_and_dispatch() orchestration function, expose it via a governed POST route with per-invocation audit + identity threading, and add the corresponding Approve & Dispatch action to the runs-viewer Writeback tab."
-agent_context: "Follow POST /agent-jobs (api/routers/agent_jobs.py) as the direct precedent for RBAC gating, governance_rejected error mapping, and audit_service wiring. Do not modify writeback(), council_review(), or build_bundle()'s existing signatures or CLI-facing behavior — this feature composes them, it does not change them."
+agent_title: API + UI write path for run writeback approval and dispatch
+agent_summary: Wire guard_check() into a new approve_and_dispatch() orchestration
+  function, expose it via a governed POST route with per-invocation audit + identity
+  threading, and add the corresponding Approve & Dispatch action to the runs-viewer
+  Writeback tab.
+agent_context: "Follow POST /agent-jobs (api/routers/agent_jobs.py) as the direct\
+  \ precedent for RBAC gating, governance_rejected error mapping, and audit_service\
+  \ wiring. Do not modify writeback(), council_review(), or build_bundle()'s existing\
+  \ signatures or CLI-facing behavior \u2014 this feature composes them, it does not\
+  \ change them."
 wave_plan:
   serialization_barriers: []
   phases:
-    - id: P1
-      depends_on: []
-      isolation: worktree
-      parallelizable: true
-      owner_skills: []
-      entry_criteria:
-        - "PRD accepted; services/writeback.py, services/governance.py, services/audit_service.py read and understood at the call-site level (paths already cited in PRD Key Code References)."
-      exit_criteria:
-        - "approve_and_dispatch() exists, is unit-testable in isolation from any HTTP layer, and its request/response DTO shape is locked for Phase 2/3 to build against."
-      files_affected:
-        - src/research_foundry/services/writeback.py
-    - id: P2
-      depends_on: [P1]
-      isolation: worktree
-      parallelizable: true
-      owner_skills: []
-      entry_criteria:
-        - "P1's approve_and_dispatch() signature and return shape are locked (TASK-1.1 design review complete)."
-      exit_criteria:
-        - "POST /api/runs/{run_id}/writeback/approve is RBAC-gated, audited for all outcome classes, and rbac.py's classification docstring is updated."
-      files_affected:
-        - src/research_foundry/api/routers/writeback.py
-        - src/research_foundry/api/auth/rbac.py
-    - id: P3
-      depends_on: [P1]
-      isolation: shared
-      parallelizable: true
-      owner_skills: [frontend-design]
-      entry_criteria:
-        - "P1's response DTO shape is locked (does not require P2's route to be live to begin UI shell + client typing)."
-      exit_criteria:
-        - "Approve & Dispatch button, confirmation dialog, and per-target outcome rendering exist on the Writeback tab; FR-13's read-only preview cards are unchanged."
-      files_affected:
-        - frontend/runs-viewer/src/api/client.ts
-        - frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx
-    - id: P4
-      depends_on: [P2, P3]
-      isolation: shared
-      parallelizable: false
-      files_affected:
-        - CHANGELOG.md
-      entry_criteria:
-        - "P2's live route and P3's UI action both exist and can be exercised end-to-end."
-      exit_criteria:
-        - "Full validation suite green; karen feature-end gate passed; CHANGELOG entry present under [Unreleased]."
+  - id: P1
+    depends_on: []
+    isolation: worktree
+    parallelizable: true
+    owner_skills: []
+    entry_criteria:
+    - PRD accepted; services/writeback.py, services/governance.py, services/audit_service.py
+      read and understood at the call-site level (paths already cited in PRD Key Code
+      References).
+    exit_criteria:
+    - approve_and_dispatch() exists, is unit-testable in isolation from any HTTP layer,
+      and its request/response DTO shape is locked for Phase 2/3 to build against.
+    files_affected:
+    - src/research_foundry/services/writeback.py
+  - id: P2
+    depends_on:
+    - P1
+    isolation: worktree
+    parallelizable: true
+    owner_skills: []
+    entry_criteria:
+    - P1's approve_and_dispatch() signature and return shape are locked (TASK-1.1
+      design review complete).
+    exit_criteria:
+    - POST /api/runs/{run_id}/writeback/approve is RBAC-gated, audited for all outcome
+      classes, and rbac.py's classification docstring is updated.
+    files_affected:
+    - src/research_foundry/api/routers/writeback.py
+    - src/research_foundry/api/auth/rbac.py
+  - id: P3
+    depends_on:
+    - P1
+    isolation: shared
+    parallelizable: true
+    owner_skills:
+    - frontend-design
+    entry_criteria:
+    - P1's response DTO shape is locked (does not require P2's route to be live to
+      begin UI shell + client typing).
+    exit_criteria:
+    - Approve & Dispatch button, confirmation dialog, and per-target outcome rendering
+      exist on the Writeback tab; FR-13's read-only preview cards are unchanged.
+    files_affected:
+    - frontend/runs-viewer/src/api/client.ts
+    - frontend/runs-viewer/src/components/RunDetail/RunDetailWorkspace.tsx
+  - id: P4
+    depends_on:
+    - P2
+    - P3
+    isolation: shared
+    parallelizable: false
+    files_affected:
+    - CHANGELOG.md
+    entry_criteria:
+    - P2's live route and P3's UI action both exist and can be exercised end-to-end.
+    exit_criteria:
+    - Full validation suite green; karen feature-end gate passed; CHANGELOG entry
+      present under [Unreleased].
   waves:
-    - [P1]
-    - [P2, P3]
-    - [P4]
+  - - P1
+  - - P2
+    - P3
+  - - P4
 ---
 
 # Implementation Plan: Runs Writeback — Approve & Dispatch (v1)
