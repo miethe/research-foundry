@@ -27,6 +27,7 @@ properties:
       - docs_crawl
       - deep_research
       - monitoring_delta
+      - free_discovery
   constraints:
     type: object
     properties:

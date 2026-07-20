@@ -17,6 +17,7 @@ from research_foundry.services.search_router.providers import (
     FirecrawlProvider,
     GitHubProvider,
     JinaProvider,
+    SearxngProvider,
 )
 from research_foundry.services.search_router.providers.base import (
     ExtractedDoc,
@@ -51,11 +52,11 @@ def no_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_registry_contains_all_five_providers():
+def test_registry_contains_all_six_providers():
     # Importing the package triggers self-registration.
     assert providers is not None
     registry = all_providers()
-    for pid in ("brave", "exa", "jina", "firecrawl", "github"):
+    for pid in ("brave", "exa", "jina", "firecrawl", "github", "searxng"):
         assert pid in registry
         assert registry[pid].id == pid
 

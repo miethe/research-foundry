@@ -1,0 +1,35 @@
+id: firecrawl_v1
+category: extraction
+provider: firecrawl
+best_for:
+  - full_page_extraction
+  - js_rendered_page_scraping
+  - bounded_site_search_plus_scrape
+avoid_for:
+  - keyless_free_budget_runs
+  - very_high_volume_cheap_extraction
+  - academic_metadata_discovery
+cost_model:
+  unit: page_scrape_or_search_request
+  current_public_price: "~2 credits per 10 search results; scrape billed per page (placeholder pricing, verify against live plan)"
+  source_url: "https://firecrawl.dev/pricing"
+  last_verified: "2026-07-20"
+  router_placeholder_usd_per_page: 0.001
+  router_placeholder_usd_per_search: 0.002
+  router_constant: "src/research_foundry/services/search_router/providers/firecrawl.py::_COST_PER_PAGE,_COST_PER_SEARCH"
+default_budget:
+  max_queries: 2
+  max_results_per_query: 5
+evaluation_metrics:
+  - extraction_failure_rate
+  - degraded_rate
+  - cost_per_useful_source
+known_failure_modes:
+  - requires an API key (not keyless) — skipped when RF_FIRECRAWL_API_KEY/FIRECRAWL_API_KEY absent
+  - cost constants are placeholders pending live-key validation (see spec deferred items)
+  - can be slower than lightweight extractors on simple static pages
+router_binding:
+  router_provider_id: firecrawl
+  roles: [extraction, discovery]
+  env_keys: [RF_FIRECRAWL_API_KEY, FIRECRAWL_API_KEY]
+  requires: [httpx]

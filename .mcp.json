@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "rf-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "research_foundry.services.search_router.mcp_server"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}

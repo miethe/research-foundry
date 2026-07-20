@@ -224,7 +224,8 @@ def test_ccdash_metrics_count_mixed_and_contradicted(tmp_foundry):
     rp.ensure_scaffold()
     dump_yaml(_ledger_with_mixed(tri), rp.claim_ledger)
 
-    event = load_yaml(telemetry.emit_ccdash_event(run, paths=paths))
+    telemetry.emit_ccdash_event(run, paths=paths)
+    event = load_yaml(rp.ccdash_event)
     m = event["metrics"]
     accounted = (
         m["claims_supported"] + m["claims_mixed"] + m["claims_contradicted"]

@@ -1,0 +1,34 @@
+id: jina_reader_v1
+category: extraction
+provider: jina
+best_for:
+  - url_to_markdown_extraction
+  - keyless_free_budget_runs
+  - quick_page_content_hydration_for_source_cards
+avoid_for:
+  - discovery_or_search
+  - sites_requiring_auth_or_paywall_bypass
+  - large_batch_high_throughput_scraping
+cost_model:
+  unit: request
+  current_public_price: "$0 (keyless; optional API key only raises rate limits)"
+  source_url: "https://jina.ai/reader/"
+  last_verified: "2026-07-20"
+  router_placeholder_usd_per_query: 0.0
+  router_constant: "src/research_foundry/services/search_router/providers/jina.py (no cost constant — free)"
+default_budget:
+  max_queries: 10
+  max_results_per_query: 1
+evaluation_metrics:
+  - extraction_failure_rate
+  - content_length_chars_mean
+  - degraded_rate
+known_failure_modes:
+  - rate limits (HTTP 429) more aggressive without an API key
+  - markdown conversion can drop tables/formatting fidelity on complex pages
+  - JS-heavy SPA pages may return thin/incomplete content
+router_binding:
+  router_provider_id: jina
+  roles: [extraction]
+  env_keys: [RF_JINA_API_KEY, JINA_API_KEY]
+  requires: [httpx]

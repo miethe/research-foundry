@@ -1007,9 +1007,8 @@ def writeback(
         ccdash_event_id_value = ""
 
         if "ccdash" in targets:
-            ccdash_path = telemetry.emit_ccdash_event(run_id, paths=paths)
-            event = _safe_load(ccdash_path) or {}
-            ccdash_event_id_value = str(event.get("event_id") or "")
+            ccdash_event_id_value = str(telemetry.emit_ccdash_event(run_id, paths=paths) or "")
+            ccdash_path = rp.ccdash_event
 
         if "meatywiki" in targets:
             meatywiki_path = _render_meatywiki(
@@ -1467,9 +1466,7 @@ def approve_and_dispatch(
 
     if "ccdash" in targets:
         try:
-            ccdash_path = telemetry.emit_ccdash_event(run_id, paths=paths)
-            event = _safe_load(ccdash_path) or {}
-            ccdash_event_id_value = str(event.get("event_id") or "")
+            ccdash_event_id_value = str(telemetry.emit_ccdash_event(run_id, paths=paths) or "")
             target_status["ccdash"] = "success"
         except Exception:
             target_status["ccdash"] = "failed"

@@ -1,0 +1,35 @@
+id: brave_search_v1
+category: web_discovery
+provider: brave
+best_for:
+  - broad_web_search
+  - news
+  - source_discovery
+avoid_for:
+  - full_page_extraction
+  - academic_metadata
+  - deep_semantic_similarity
+cost_model:
+  unit: request
+  current_public_price: "$5 per 1,000 requests"
+  source_url: "https://brave.com/search/api/"
+  last_verified: "2026-07-20"
+  router_placeholder_usd_per_query: 0.005
+  router_constant: "src/research_foundry/services/search_router/providers/brave.py::_COST_PER_QUERY"
+default_budget:
+  max_queries: 3
+  max_results_per_query: 10
+evaluation_metrics:
+  - useful_result_rate
+  - duplicate_rate
+  - authority_score_mean
+  - cost_per_useful_source
+known_failure_modes:
+  - weak for niche academic topics
+  - may miss pages indexed better by Google
+  - snippets insufficient for final claims
+router_binding:
+  router_provider_id: brave
+  roles: [discovery]
+  env_keys: [RF_BRAVE_API_KEY, BRAVE_API_KEY]
+  requires: [httpx]

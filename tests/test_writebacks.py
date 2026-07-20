@@ -148,8 +148,10 @@ def test_emit_ccdash_event_is_schema_valid_with_reuse_flags(tmp_foundry: Foundry
     run_id = _build_run(paths)
     writeback.build_bundle(run_id, verify=True, paths=paths)
 
-    event_path = telemetry.emit_ccdash_event(run_id, paths=paths)
-    event = load_yaml(event_path)
+    event_id = telemetry.emit_ccdash_event(run_id, paths=paths)
+    rp = paths.run_paths(run_id)
+    event = load_yaml(rp.ccdash_event)
+    assert event["event_id"] == event_id
 
     assert validate(event, "ccdash_event").ok
     assert event["run_id"] == run_id

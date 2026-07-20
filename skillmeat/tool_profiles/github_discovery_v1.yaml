@@ -1,0 +1,34 @@
+id: github_discovery_v1
+category: web_discovery
+provider: github
+best_for:
+  - repo_and_code_source_discovery
+  - agent_skill_and_mcp_server_scouting
+  - oss_project_landscape_scans
+avoid_for:
+  - general_web_search
+  - full_page_extraction
+  - academic_metadata
+cost_model:
+  unit: request
+  current_public_price: "$0 (GitHub REST search API; unauthenticated requests share a low shared rate limit, authenticated raises it)"
+  source_url: "https://docs.github.com/en/rest/search"
+  last_verified: "2026-07-20"
+  router_placeholder_usd_per_query: 0.0
+  router_constant: "src/research_foundry/services/search_router/providers/github.py (estimated_cost_usd=0.0)"
+default_budget:
+  max_queries: 3
+  max_results_per_query: 10
+evaluation_metrics:
+  - useful_result_rate
+  - duplicate_rate
+  - authority_score_mean
+known_failure_modes:
+  - low rate limit without RF_GITHUB_TOKEN/GITHUB_TOKEN (60 req/hr unauthenticated)
+  - search index lag on very recently pushed repos
+  - out of scope for anything outside github.com-hosted content
+router_binding:
+  router_provider_id: github
+  roles: [discovery]
+  env_keys: [RF_GITHUB_TOKEN, GITHUB_TOKEN]
+  requires: [httpx]

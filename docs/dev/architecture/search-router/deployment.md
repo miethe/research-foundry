@@ -4,9 +4,9 @@ doc_type: runbook
 status: accepted
 schema_version: 1
 created: 2026-06-21
-updated: 2026-06-21
+updated: 2026-07-20
 feature_slug: search-router
-last_verified: 2026-06-21
+last_verified: 2026-07-20
 related_docs:
   - docs/project_plans/design-specs/research_foundry_search_router_spec.md
   - docs/dev/architecture/search-router/architecture.md
@@ -140,18 +140,49 @@ uv run python -m research_foundry.services.search_router.mcp_server
 
 The module **imports cleanly without `mcp` installed**; only `build_server()`
 and `main()` try to resolve the SDK, and they raise a clear `RuntimeError`
-asking you to `uv sync --extra mcp` if it's missing. Tools registered today:
+asking you to `uv sync --extra mcp` if it's missing.
 
-- `search.run` — wraps `run_search(request)`
-- `extract.url` — wraps `extract_urls(urls)`
-- `search.source_discovery` / `search.semantic_discovery` /
-  `search.github_discovery` — thin mode-presets that call `run_search` with
-  the corresponding `mode`.
+**Tool naming.** Tool names are the underscored Python function names the
+`@server.tool()` decorator derives by default — *not* a dotted form. This
+list must stay in sync with `mcp_server.py` (the module docstring there is
+the source of truth). Tools registered today:
 
-This covers the minimum tool surface from spec §10.2 needed for an agent
-harness to drive the router. The full surface (`crawl.site`,
-`research.build_source_cards`, `research.verify_claims`,
-`research.monitor_query`, …) is deferred.
+- `search_run` — wraps `run_search(request)`
+- `extract_url` — wraps `extract_urls(urls)`
+- `search_source_discovery` — mode-preset for `mode="source_discovery"` (Brave → Exa)
+- `search_semantic_discovery` — mode-preset for `mode="semantic_discovery"` (Exa → GitHub → Brave)
+- `search_github_discovery` — mode-preset for `mode="github_discovery"` (GitHub → Exa → Brave)
+- `search_quick_lookup` — mode-preset for `mode="quick_lookup"` (Brave; fast, low-cost)
+- `search_official_sources` — mode-preset for `mode="official_source_check"` (Brave → Exa; authoritative domains)
+- `search_academic_discovery` — mode-preset for `mode="academic_discovery"` (OpenAlex / Semantic Scholar / PubMed / arXiv)
+
+Every mode-preset tool is a thin shim that fills in `mode` on the request
+before delegating to `run_search` — no new business logic. This covers the
+minimum tool surface from spec §10.2 needed for an agent harness to drive the
+router. The full surface (`crawl.site`, `research.build_source_cards`,
+`research.verify_claims`, `research.monitor_query`, …) is deferred.
+
+### Registering with an MCP-aware harness
+
+A repo-root `.mcp.json` registers the server for Claude Code (and other
+MCP-aware harnesses) to auto-discover:
+
+```json
+{
+  "mcpServers": {
+    "rf-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "research_foundry.services.search_router.mcp_server"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}
+```
+
+Requires the `mcp` extra installed in whatever interpreter `command` resolves
+to (`uv sync --extra mcp`); if you've installed the console script via
+`uv tool install --editable .`, `command: "rf-mcp"` with no `args` works too.
 
 ---
 

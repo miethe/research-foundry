@@ -1,8 +1,9 @@
 """Search mode definitions for the Research Foundry Search Router.
 
 Each :class:`SearchMode` captures the intent, default provider chain,
-budget caps, and expected outputs for one of the 11 canonical search
-modes defined in the spec §7/§12.
+budget caps, and expected outputs for one of the canonical search modes
+defined in the spec §7/§12 (11 canonical modes plus the free/keyless
+``free_discovery`` SearXNG lane).
 
 Usage::
 
@@ -196,6 +197,23 @@ MODES: dict[str, SearchMode] = {
             "max_latency_seconds": 60,
         },
         outputs=("source_cards",),
+    ),
+    "free_discovery": SearchMode(
+        name="free_discovery",
+        purpose=(
+            "Free, keyless discovery + extraction via the node-local SearXNG"
+            " metasearch (aos-web); zero API cost, breadth over authority. All"
+            " fetched content is untrusted web content."
+        ),
+        provider_chain=("searxng",),
+        budget={
+            "max_external_queries": 4,
+            "max_urls_to_extract": 8,
+            "max_crawl_pages": 0,
+            "max_provider_cost_usd": 0.0,
+            "max_latency_seconds": 120,
+        },
+        outputs=("source_cards", "summary"),
     ),
 }
 

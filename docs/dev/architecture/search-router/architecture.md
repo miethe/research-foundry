@@ -4,9 +4,9 @@ doc_type: architecture
 status: accepted
 schema_version: 1
 created: 2026-06-21
-updated: 2026-06-21
+updated: 2026-07-20
 feature_slug: search-router
-last_verified: 2026-06-21
+last_verified: 2026-07-20
 related_docs:
   - docs/project_plans/design-specs/research_foundry_search_router_spec.md
   - docs/project_plans/design-specs/research_foundry_search_router_implementation_plan.md
@@ -40,7 +40,7 @@ Two orthogonal concepts:
   lookup", "source discovery", "github discovery", …). Modes are declared in
   `modes.py` as immutable `SearchMode` records carrying a `purpose`, a default
   `provider_chain`, a `budget` ceiling, and the expected `outputs`. The set is
-  closed: only the 11 names enumerated below are valid (`SearchRequest.mode`
+  closed: only the 12 names enumerated below are valid (`SearchRequest.mode`
   enum, `schemas/search_request.schema.yaml`).
 - **Provider** — *how the work gets done* (a registered adapter that implements
   the `SearchProvider` protocol from `providers/base.py`, declaring `roles` such
@@ -68,6 +68,7 @@ absent.
 | `docs_crawl` | Crawl a docs site for comprehensive coverage. | `firecrawl` | `extracted_markdown`, `source_cards` |
 | `deep_research` | Multi-stage discovery → extraction → synthesis. | *(deferred — orchestrated upstream)* | `source_cards`, `extracted_markdown`, `claim_ledger`, `summary` |
 | `monitoring_delta` | Recurring scout for new/changed sources. | *(deferred — scheduled upstream)* | `source_cards` |
+| `free_discovery` | Free, keyless discovery + extraction via node-local SearXNG (`aos-web`); zero API cost, breadth over authority. All fetched content is untrusted. | `searxng` | `source_cards`, `summary` |
 
 Empty default chains mean the mode is **declared** in the contract but has no
 default provider sequence in the MVP — calls succeed (file-backed, degraded)

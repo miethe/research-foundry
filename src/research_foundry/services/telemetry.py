@@ -134,14 +134,21 @@ def emit_ccdash_event(
     *,
     paths: FoundryPaths | None = None,
     raw_key: str = "",
-) -> Path:
+    search_metrics: dict[str, Any] | None = None,
+) -> str:
     """Build + write the run's CCDash ``execution_event`` (spec §6.15).
 
     Writes ``runs/<run>/writebacks/ccdash_event.yaml`` and mirrors it into
     ``ccdash/events/<event_id>.yaml``. Validates against ``ccdash_event``.
+    Returns the minted ``event_id``.
 
     *raw_key* is optional: when supplied the ``governance.key_fingerprint``
     field is populated via :func:`make_key_fingerprint`.
+
+    *search_metrics* is optional: when supplied, its keys are merged into the
+    emitted event's ``metrics`` (additive, search-router-specific fields —
+    see ``schemas/ccdash_event.schema.yaml``). Non-search callers omit it and
+    the event shape is unchanged.
     """
 
     paths = paths or FoundryPaths.discover()
@@ -234,6 +241,9 @@ def emit_ccdash_event(
         },
     }
 
+    if search_metrics:
+        event["metrics"].update(search_metrics)
+
     if _REGISTRY.has("ccdash_event"):
         result = validate(event, "ccdash_event")
         if not result.ok:
@@ -245,14 +255,15 @@ def emit_ccdash_event(
     mirror = paths.ccdash / "events" / f"{event_id}.yaml"
     dump_yaml(event, mirror)
     _trace(rp, "ccdash_event", run_id=run_id, event_id=event_id)
-    return rp.ccdash_event
+    return event_id
 
 
-def emit_latest_or_noop(*, paths: FoundryPaths | None = None) -> Path | None:
+def emit_latest_or_noop(*, paths: FoundryPaths | None = None) -> str | None:
     """Stop-hook helper: emit a CCDash event for the most-recent run, else no-op.
 
     Safe to call outside a foundry workspace: if no runs exist (or the workspace
-    is absent) it returns ``None`` without raising.
+    is absent) it returns ``None`` without raising. Returns the minted
+    ``event_id`` on success (see :func:`emit_ccdash_event`).
     """
 
     try:
@@ -356,6 +367,93 @@ def summarize(period: str = "daily", *, paths: FoundryPaths | None = None) -> Pa
     summary_path = paths.ccdash / "summaries" / f"{period}_{date}.yaml"
     dump_yaml(body, summary_path)
     return summary_path
+
+
+def provider_scorecard(*, paths: FoundryPaths | None = None) -> Path:
+    """Aggregate per-provider search metrics across ``ccdash/events/*.yaml``.
+
+    Sibling to :func:`summarize` (spec §17 provider scorecard, Wave 3 TASK-3.2).
+    Reads each event's ``metrics.providers`` — the per-provider breakdown
+    populated by ``search_router.router.run_search`` (queries/cost/duplicate
+    rate per discovery provider, extraction attempts/failure-rate for the
+    run's extractor) — and rolls it up per provider across every event on
+    disk: summed ``queries_executed``/``estimated_cost_usd``/
+    ``extraction_attempts``, mean ``duplicate_rate``/``extraction_failure_rate``.
+
+    Events without a ``providers`` breakdown (non-search runs, or search runs
+    that predate this rollup) are silently skipped — this is additive and
+    never requires a schema change (``metrics`` is ``additionalProperties``).
+    Never raises; malformed entries are skipped rather than failing the whole
+    rollup.
+
+    Writes ``ccdash/summaries/provider_scorecard.yaml`` and returns its path.
+    An empty/no-provider-data input still writes a file with an empty
+    ``providers`` map (deterministic, always-succeeds contract).
+    """
+
+    paths = paths or FoundryPaths.discover()
+    events_dir = paths.ccdash / "events"
+
+    per_provider: dict[str, dict[str, Any]] = {}
+    if events_dir.exists():
+        for p in sorted(events_dir.glob("*.yaml")):
+            event = _safe_load(p)
+            if not isinstance(event, dict):
+                continue
+            providers = (event.get("metrics") or {}).get("providers")
+            if not isinstance(providers, dict):
+                continue
+            for pid, stat in providers.items():
+                if not isinstance(stat, dict):
+                    continue
+                agg = per_provider.setdefault(
+                    pid,
+                    {
+                        "runs": 0,
+                        "queries_executed": 0,
+                        "estimated_cost_usd": 0.0,
+                        "extraction_attempts": 0,
+                        "_dup_sum": 0.0,
+                        "_dup_n": 0,
+                        "_fail_sum": 0.0,
+                        "_fail_n": 0,
+                    },
+                )
+                agg["runs"] += 1
+                agg["queries_executed"] += int(stat.get("queries_executed") or 0)
+                agg["estimated_cost_usd"] += float(stat.get("estimated_cost_usd") or 0.0)
+                agg["extraction_attempts"] += int(stat.get("extraction_attempts") or 0)
+                dup = stat.get("duplicate_rate")
+                if isinstance(dup, (int, float)):
+                    agg["_dup_sum"] += float(dup)
+                    agg["_dup_n"] += 1
+                fail = stat.get("extraction_failure_rate")
+                if isinstance(fail, (int, float)):
+                    agg["_fail_sum"] += float(fail)
+                    agg["_fail_n"] += 1
+
+    providers_out: dict[str, dict[str, Any]] = {}
+    for pid, agg in per_provider.items():
+        dup_n = agg["_dup_n"]
+        fail_n = agg["_fail_n"]
+        providers_out[pid] = {
+            "runs": agg["runs"],
+            "queries_executed": agg["queries_executed"],
+            "estimated_cost_usd": round(agg["estimated_cost_usd"], 6),
+            "duplicate_rate_mean": round(agg["_dup_sum"] / dup_n, 4) if dup_n else None,
+            "extraction_attempts": agg["extraction_attempts"],
+            "extraction_failure_rate_mean": (
+                round(agg["_fail_sum"] / fail_n, 4) if fail_n else None
+            ),
+        }
+
+    body = {
+        "generated_at": now_iso(),
+        "providers": dict(sorted(providers_out.items())),
+    }
+    scorecard_path = paths.ccdash / "summaries" / "provider_scorecard.yaml"
+    dump_yaml(body, scorecard_path)
+    return scorecard_path
 
 
 # NOT FOR PRODUCTION — override via RF_KEY_PROFILE_PEPPER env var in production deployments.
@@ -468,6 +566,7 @@ __all__ = [
     "emit_latest_or_noop",
     "make_agent_job_telemetry_record",
     "make_key_fingerprint",
+    "provider_scorecard",
     "push_status",
     "summarize",
 ]

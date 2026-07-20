@@ -1,13 +1,23 @@
 """Thin MCP server wrapper around the Research Foundry Search Router.
 
 This module exposes the router's Python API (``run_search`` / ``extract_urls``)
-as a small set of MCP tools, matching the minimum surface from spec §10.2:
+as a small set of MCP tools, matching the minimum surface from spec §10.2.
 
-* ``search.run``                 → :func:`router.run_search`
-* ``extract.url``                → :func:`router.extract_urls`
-* ``search.source_discovery``    → ``run_search`` with ``mode="source_discovery"``
-* ``search.semantic_discovery``  → ``run_search`` with ``mode="semantic_discovery"``
-* ``search.github_discovery``    → ``run_search`` with ``mode="github_discovery"``
+**Tool naming convention.** Tool names are the underscored Python function
+names the ``@server.tool()`` decorator derives by default (e.g.
+``search_run``, ``search_source_discovery``) — *not* the dotted form
+(``search.run``) some early spec drafts used. This is the single source of
+truth for registered tool names; ``docs/dev/architecture/search-router/
+deployment.md`` §5 must be kept in sync with this list:
+
+* ``search_run``                  → :func:`router.run_search`
+* ``extract_url``                 → :func:`router.extract_urls`
+* ``search_source_discovery``     → ``run_search`` with ``mode="source_discovery"``
+* ``search_semantic_discovery``   → ``run_search`` with ``mode="semantic_discovery"``
+* ``search_github_discovery``     → ``run_search`` with ``mode="github_discovery"``
+* ``search_quick_lookup``         → ``run_search`` with ``mode="quick_lookup"``
+* ``search_official_sources``     → ``run_search`` with ``mode="official_source_check"``
+* ``search_academic_discovery``   → ``run_search`` with ``mode="academic_discovery"``
 
 **Offline-safe import contract.** The module itself MUST import successfully
 without the ``mcp`` SDK installed. Only :func:`build_server` (and therefore
@@ -110,6 +120,29 @@ def build_server() -> Any:
     def search_github_discovery(request: dict[str, Any]) -> dict[str, Any]:
         """Run a search with ``mode="github_discovery"`` (GitHub → Exa → Brave)."""
         return run_search(_with_mode(request, "github_discovery"))
+
+    @server.tool()
+    def search_quick_lookup(request: dict[str, Any]) -> dict[str, Any]:
+        """Run a search with ``mode="quick_lookup"`` (Brave; fast, low-cost, single fact)."""
+        return run_search(_with_mode(request, "quick_lookup"))
+
+    @server.tool()
+    def search_official_sources(request: dict[str, Any]) -> dict[str, Any]:
+        """Run a search with ``mode="official_source_check"`` (Brave → Exa).
+
+        Prefers high-authority/official domains; also produces a
+        ``claim_ledger`` output when the request asks for one.
+        """
+        return run_search(_with_mode(request, "official_source_check"))
+
+    @server.tool()
+    def search_academic_discovery(request: dict[str, Any]) -> dict[str, Any]:
+        """Run a search with ``mode="academic_discovery"``.
+
+        Searches academic databases (OpenAlex, Semantic Scholar, PubMed,
+        arXiv) for peer-reviewed sources.
+        """
+        return run_search(_with_mode(request, "academic_discovery"))
 
     return server
 

@@ -255,6 +255,150 @@ def test_run_search_writes_valid_routing_decision(
 
 
 # ---------------------------------------------------------------------------
+# Wave 2 §3 TASK-2.1: search metrics reach the CCDash event
+# ---------------------------------------------------------------------------
+
+
+def test_run_search_emits_search_metrics_to_ccdash_event(
+    tmp_foundry: FoundryPaths, fake_providers: dict[str, Any]
+) -> None:
+    request: dict[str, Any] = {
+        "query": "search metrics reach ccdash event",
+        "mode": "source_discovery",
+        "budget": {"max_urls_to_extract": 1, "max_provider_cost_usd": 0.25},
+        "output_requirements": {"source_cards": True},
+    }
+    result = run_search(request, paths=tmp_foundry, providers=fake_providers)
+    run_id = result["run_id"]
+    rp = tmp_foundry.run_paths(run_id)
+
+    # ccdash_event_id populated on both the in-memory return and the
+    # persisted search_run.yaml artifact.
+    event_id = result["writebacks"]["ccdash_event_id"]
+    assert event_id
+    on_disk_run = load_yaml(rp.run / "search_run.yaml")
+    assert on_disk_run["writebacks"]["ccdash_event_id"] == event_id
+
+    # useful_source_count / citation_coverage are computed, not hardcoded None.
+    metrics = result["metrics"]
+    assert metrics["useful_source_count"] == 1  # budget capped extraction to 1
+    assert metrics["citation_coverage"] == pytest.approx(1 / 2)  # 1 carded / 2 surviving hits
+
+    # The minted CCDash event carries the search-specific metrics.
+    event = load_yaml(rp.ccdash_event)
+    assert event["event_id"] == event_id
+    assert event["metrics"]["queries_executed"] == metrics["queries_executed"]
+    assert event["metrics"]["urls_extracted"] == metrics["urls_extracted"]
+    assert event["metrics"]["useful_source_count"] == metrics["useful_source_count"]
+    assert event["metrics"]["duplicate_rate"] == metrics["duplicate_rate"]
+    assert event["metrics"]["extraction_failure_rate"] == metrics["extraction_failure_rate"]
+    assert event["metrics"]["citation_coverage"] == metrics["citation_coverage"]
+    assert event["metrics"]["estimated_cost_usd"] == metrics["estimated_cost_usd"]
+    assert event["metrics"]["latency_ms"] == metrics["latency_ms"]
+
+    # Mirrored into ccdash/events/<event_id>.yaml, and schema-valid.
+    mirror = tmp_foundry.ccdash / "events" / f"{event_id}.yaml"
+    assert mirror.exists()
+    reg = SchemaRegistry(schemas_dir=tmp_foundry.schemas)
+    vres = reg.validate(event, "ccdash_event")
+    assert vres.ok, vres.errors
+
+    # Wave 3 §17: per-provider scorecard input rides along in metrics.providers
+    # (additive; validated above) and the run references the SkillMeat
+    # tool-profile + SkillBOM ids it actually exercised. "jina" is registered
+    # but not part of the "source_discovery" mode's provider_chain
+    # (brave, exa) — see modes.py — so it never gets invoked here and is
+    # absent from both breakdowns; see test_run_search_populates_extraction_
+    # provider_scorecard below for the extraction-role case.
+    assert metrics["providers"]["brave"]["queries_executed"] == 1
+    assert "jina" not in metrics["providers"]
+    assert event["metrics"]["providers"] == metrics["providers"]
+    assert result["writebacks"]["skillmeat_candidate_ids"] == [
+        "skill_source_discovery_v1",
+        "brave_search_v1",
+    ]
+
+
+class FakeDualRoleProvider:
+    """Mirrors the real ``firecrawl``/``searxng`` shape: one provider id serving
+    both discovery and extraction roles in the same chain (e.g. "quick_lookup"
+    is a single-provider chain), so a run can attribute both roles' stats to
+    the same ``metrics.providers`` entry."""
+
+    id = "brave"
+    roles: tuple[str, ...] = ("discovery", "extraction")
+    requires: tuple[str, ...] = ()
+    env_keys: tuple[str, ...] = ()
+
+    def available(self) -> bool:
+        return True
+
+    def search(self, query: str, *, max_results: int, constraints: dict[str, Any]) -> ProviderResult:
+        hits = [
+            SearchHit(title="One", url="https://example.com/one", provider="brave", rank=1, score=0.9),
+            SearchHit(title="Two", url="https://example.com/two", provider="brave", rank=2, score=0.8),
+        ]
+        return ProviderResult(
+            provider="brave", role="discovery", status="success",
+            hits=hits, queries_executed=1, estimated_cost_usd=0.01,
+        )
+
+    def extract(self, urls: list[str]) -> ProviderResult:
+        # Deterministic failure: no docs ever produced, for a pinned non-zero
+        # extraction_failure_rate.
+        return ProviderResult(provider="brave", role="extraction", status="failed", docs=[])
+
+
+def test_run_search_merges_discovery_and_extraction_stats_for_one_provider(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """A single dual-role provider (chain=("brave",), "quick_lookup" mode)
+    accumulates both discovery (queries/cost/duplicate_rate) and extraction
+    (attempts/failure_rate) stats under one ``metrics.providers`` entry, and
+    contributes its tool-profile id exactly once to
+    ``writebacks.skillmeat_candidate_ids`` despite serving both roles.
+    """
+
+    request: dict[str, Any] = {
+        "query": "quick lookup exercising a dual-role provider",
+        "mode": "quick_lookup",
+        "output_requirements": {"source_cards": True},
+    }
+    result = run_search(request, paths=tmp_foundry, providers={"brave": FakeDualRoleProvider()})
+
+    providers = result["metrics"]["providers"]
+    assert providers["brave"]["roles"] == ["discovery", "extraction"]
+    assert providers["brave"]["queries_executed"] == 1
+    assert providers["brave"]["extraction_attempts"] == 2
+    assert providers["brave"]["extraction_failure_rate"] == 1.0
+    assert result["writebacks"]["skillmeat_candidate_ids"] == [
+        "skill_source_discovery_v1",
+        "brave_search_v1",
+    ]
+
+
+def test_run_search_ccdash_metrics_never_break_when_telemetry_fails(
+    tmp_foundry: FoundryPaths, fake_providers: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Telemetry failure must not raise or block the run (best-effort contract)."""
+
+    import research_foundry.services.telemetry as telemetry_module
+
+    def _boom(*args: Any, **kwargs: Any) -> str:
+        raise RuntimeError("forced telemetry failure")
+
+    monkeypatch.setattr(telemetry_module, "emit_ccdash_event", _boom)
+
+    request: dict[str, Any] = {
+        "query": "telemetry failure does not break search run",
+        "mode": "source_discovery",
+        "budget": {"max_urls_to_extract": 1},
+    }
+    result = run_search(request, paths=tmp_foundry, providers=fake_providers)
+    assert result["writebacks"]["ccdash_event_id"] is None
+
+
+# ---------------------------------------------------------------------------
 # V-1: source-type authority regression
 # ---------------------------------------------------------------------------
 

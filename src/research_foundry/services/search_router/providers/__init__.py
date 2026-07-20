@@ -31,6 +31,7 @@ from .exa import ExaProvider
 from .firecrawl import FirecrawlProvider
 from .github import GitHubProvider
 from .jina import JinaProvider
+from .searxng import SearxngProvider
 
 __all__ = [
     "BaseSearchProvider",
@@ -49,4 +50,5 @@ __all__ = [
     "FirecrawlProvider",
     "GitHubProvider",
     "JinaProvider",
+    "SearxngProvider",
 ]

@@ -5,7 +5,7 @@ Covers:
 - dedupe_hits: score-wins, rank-wins, stable order
 - authority_score: source-type weights, freshness bonuses, risk penalties
 - Budget / BudgetTracker: limits, gates, exceeded() messages
-- MODES: all 11 canonical modes present
+- MODES: all canonical modes present (11 spec modes + free_discovery)
 - SchemaRegistry: validates a minimal SearchRequest, a minimal SearchRun,
   and rejects a bad mode enum value.
 """
@@ -341,10 +341,11 @@ _EXPECTED_MODES = {
     "docs_crawl",
     "deep_research",
     "monitoring_delta",
+    "free_discovery",
 }
 
 
-def test_modes_covers_all_eleven() -> None:
+def test_modes_covers_all_canonical() -> None:
     assert _EXPECTED_MODES == set(MODES.keys())
 
 
@@ -442,6 +443,22 @@ def test_search_request_missing_required_rejected(schema_reg: SchemaRegistry) ->
     instance = {"mode": "quick_lookup"}  # missing 'query'
     result = schema_reg.validate(instance, "search_request")
     assert not result.ok
+
+
+def test_search_request_schema_accepts_every_canonical_mode(
+    schema_reg: SchemaRegistry,
+) -> None:
+    """Regression guard: every MODES key must be a valid `mode` enum value.
+
+    Prevents drift between `modes.py` (the code-level source of truth for
+    canonical modes) and `search_request.schema.yaml`'s `mode` enum — a new
+    mode added to one without the other silently rejects live requests
+    (schema_errors populated) even though the run otherwise completes.
+    """
+    for mode_name in MODES:
+        instance = {"query": "regression check", "mode": mode_name}
+        result = schema_reg.validate(instance, "search_request")
+        assert result.ok, f"mode {mode_name!r} rejected by search_request schema: {result.errors}"
 
 
 def test_search_run_minimal_valid(schema_reg: SchemaRegistry) -> None:

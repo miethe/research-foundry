@@ -67,6 +67,25 @@ properties:
         type:
           - string
           - number
+      # Search-router-specific metrics (additive, optional — Wave 2 §3
+      # TASK-2.1). Non-search RF runs never populate these; existing runs
+      # validate unchanged.
+      queries_executed:
+        type: integer
+      urls_extracted:
+        type: integer
+      useful_source_count:
+        type: integer
+      duplicate_rate:
+        type: number
+      extraction_failure_rate:
+        type: number
+      citation_coverage:
+        type: number
+      estimated_cost_usd:
+        type: number
+      latency_ms:
+        type: number
     additionalProperties: true
   governance:
     type: object

@@ -1,0 +1,35 @@
+id: exa_search_v1
+category: web_discovery
+provider: exa
+best_for:
+  - semantic_similarity_search
+  - source_discovery
+  - research_paper_adjacent_web_content
+avoid_for:
+  - full_page_extraction
+  - keyless_or_free_budget_runs
+  - time_critical_breaking_news
+cost_model:
+  unit: request
+  current_public_price: "$0.007 per search request (base plan)"
+  source_url: "https://exa.ai/pricing"
+  last_verified: "2026-07-20"
+  router_placeholder_usd_per_query: 0.007
+  router_constant: "src/research_foundry/services/search_router/providers/exa.py::_COST_PER_QUERY"
+default_budget:
+  max_queries: 3
+  max_results_per_query: 10
+evaluation_metrics:
+  - useful_result_rate
+  - duplicate_rate
+  - authority_score_mean
+  - cost_per_useful_source
+known_failure_modes:
+  - requires an API key (not keyless) — skipped when RF_EXA_API_KEY/EXA_API_KEY absent
+  - semantic ranking can surface tangentially related but non-authoritative pages
+  - weaker for very recent (same-day) events than a live news index
+router_binding:
+  router_provider_id: exa
+  roles: [discovery]
+  env_keys: [RF_EXA_API_KEY, EXA_API_KEY]
+  requires: [httpx]

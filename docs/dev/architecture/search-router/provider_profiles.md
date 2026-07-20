@@ -4,9 +4,9 @@ doc_type: reference
 status: accepted
 schema_version: 1
 created: 2026-06-21
-updated: 2026-06-21
+updated: 2026-07-20
 feature_slug: search-router
-last_verified: 2026-06-21
+last_verified: 2026-07-20
 related_docs:
   - docs/project_plans/design-specs/research_foundry_search_router_spec.md
   - docs/dev/architecture/search-router/architecture.md
@@ -28,7 +28,9 @@ Key conventions used by every adapter:
   the vendor-standard `<PROVIDER>_API_KEY` (via `env_first`). Keys are read at
   call time, never embedded in config files (spec §15, §14.3).
 - **Optional `httpx`.** All HTTP work is gated behind the `search` extra
-  (`uv sync --extra search`). Without it, adapters report unavailable.
+  (`uv sync --extra search`). Without it, adapters report unavailable. (The
+  `searxng` free lane is the exception — it shells out to a local binary and
+  needs neither `httpx` nor an API key; see its profile below.)
 - **No raises from the run loop.** A provider exception becomes a
   `provider_chain[].status = "failed"` entry plus a `schema_errors` line on
   the run — the run still completes.
@@ -118,6 +120,52 @@ provider's live pricing page before depending on a cost figure. (`last_verified:
   - Returns repo metadata (name, description, stars, URL). README extraction
     is downstream (let `jina`/`firecrawl` hit the repo README URL).
   - Used as first link in `github_discovery` mode (`github → exa → brave`).
+
+## SearXNG (aos-web) — `searxng`
+
+The **free, keyless discovery + extraction lane**. Unlike every other adapter
+above, `searxng` is **not** an HTTP client and does **not** require the `search`
+extra (`httpx`) or an API key. It shells out to the node-local **`aos-web`**
+tool, which fronts a locally-hosted [SearXNG](https://docs.searxng.org)
+metasearch instance (discovery) plus a readable-text page fetcher (extraction).
+
+- **Roles:** `discovery` *and* `extraction`.
+- **Backing tool:** `aos-web` binary on `PATH`
+  (`aos-web search "<q>" --n N --json` for discovery; `aos-web fetch <url>
+  --max-chars N` for extraction). Not a Python module — the adapter overrides
+  `available()` to probe `PATH` with `shutil.which("aos-web")` instead of the
+  module-based default, so it reports unavailable (and is silently dropped from
+  the chain) on any host where `aos-web` is not installed (e.g. laptop-local
+  runs vs. the agentic node).
+- **Env keys:** **none** (`env_keys = ()`). No credentials are ever sent.
+  The upstream SearXNG endpoint is chosen by `aos-web` itself via
+  `AOS_WEB_SEARX_URL` (default `http://127.0.0.1:8888`), read from the process
+  environment and passed through untouched — Research Foundry adds no new env
+  var of its own.
+- **Pricing note:** **$0.00.** `estimated_cost_usd` is always `0.0`; the
+  `free_discovery` mode pins `max_provider_cost_usd: 0.0`. This is the lane to
+  reach for when no paid API keys are configured.
+- **Default chain:** the `free_discovery` mode (`searxng` only). Because it
+  fills both the `discovery` and `extraction` roles, a single provider covers
+  search→fetch→source-card end to end.
+- **Untrusted-content handling (load-bearing — spec §15 injection defense):**
+  everything `aos-web fetch` returns is treated as hostile input. The tool wraps
+  its output in explicit `--- BEGIN/END UNTRUSTED WEB CONTENT ---` fences; the
+  adapter (1) strips those fence lines, (2) re-scans the body with
+  `safety.scan_for_injection()` and appends any `possible_prompt_injection`
+  hits to the doc's `risk_flags`, and (3) **always** tags the extracted doc with
+  an `untrusted_web_content` risk flag so downstream synthesis agents treat the
+  text as data, never as instructions.
+- **Known limits / cautions:**
+  - Breadth over authority — SearXNG aggregates general engines; there is no
+    semantic re-rank and no source-type authority signal beyond the router's own
+    ranking pass. Pair with paid discovery when authority matters.
+  - Subprocess-bound: both calls run with a timeout and `check=True`. A missing
+    binary → `status="skipped"`; a failed search → `status="failed"`; a
+    per-URL fetch failure → the run is `degraded` (a content-empty card is still
+    created). The adapter **never raises** for operational errors.
+  - Availability is host-specific — this lane runs where `aos-web` + a reachable
+    SearXNG live (the agentic node). See `deployment.md` for the tool's setup.
 
 ---
 

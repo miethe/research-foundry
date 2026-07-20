@@ -31,6 +31,42 @@ from .ranking import rank_hits
 
 _EXTRACTION_PROVIDER_PREFERENCE = ("jina", "firecrawl")
 
+# Router provider id -> SkillMeat tool-profile id (skillmeat/tool_profiles/*.yaml,
+# §17.1). Providers without an authored profile (e.g. the keyless aos-web/searxng
+# free-discovery lane) are simply absent here and contribute no candidate id.
+_TOOL_PROFILE_BY_PROVIDER: dict[str, str] = {
+    "brave": "brave_search_v1",
+    "exa": "exa_search_v1",
+    "jina": "jina_reader_v1",
+    "firecrawl": "firecrawl_v1",
+    "github": "github_discovery_v1",
+}
+
+# The durable SkillBOM (skillmeat/skillboms/skill_source_discovery_v1.md) backing
+# this router's discovery+extraction provider chain — distinct from the generic
+# per-run ``skill_research_swarm_v0`` candidate emitted by services.writeback.
+_SOURCE_DISCOVERY_SKILLBOM_ID = "skill_source_discovery_v1"
+
+
+def _skillmeat_candidate_ids(provider_chain_log: list[dict[str, Any]]) -> list[str]:
+    """Tool-profile + SkillBOM ids referenced by this run's provider chain.
+
+    Reuses the static, authored §17.1 tool-profile ids (no new id-minting
+    subsystem) — a provider is credited once it appears in the chain log
+    (i.e. it was actually invoked this run), regardless of success/failure
+    status, since the profile documents its *known* failure modes too.
+    """
+
+    profile_ids: list[str] = []
+    for entry in provider_chain_log:
+        pid = entry.get("provider")
+        profile_id = _TOOL_PROFILE_BY_PROVIDER.get(str(pid))
+        if profile_id and profile_id not in profile_ids:
+            profile_ids.append(profile_id)
+    if profile_ids:
+        return [_SOURCE_DISCOVERY_SKILLBOM_ID, *profile_ids]
+    return []
+
 
 # ---------------------------------------------------------------------------
 # Schema helpers (best-effort; never raise)
@@ -170,6 +206,18 @@ def run_search(
     # --- discovery -------------------------------------------------------
     provider_chain_log: list[dict[str, Any]] = []
     all_hits: list[SearchHit] = []
+    # Per-provider scorecard inputs (spec §17 rollup) — aggregated below into
+    # metrics["providers"] and, via search_metrics, into the ccdash event so
+    # telemetry.provider_scorecard() can roll cost/duplicate/failure rates up
+    # across runs without re-deriving them from raw hit lists.
+    provider_stats: dict[str, dict[str, Any]] = {}
+
+    def _touch_provider(pid: str, role: str) -> dict[str, Any]:
+        entry = provider_stats.setdefault(pid, {"provider": pid, "roles": []})
+        if role not in entry["roles"]:
+            entry["roles"].append(role)
+        return entry
+
     max_search = (
         min(budget.max_urls_to_extract, 25)
         if budget.max_urls_to_extract and budget.max_urls_to_extract > 0
@@ -193,6 +241,12 @@ def run_search(
         tracker.add_query()
         tracker.add_cost(res.estimated_cost_usd)
         all_hits.extend(res.hits)
+        stat = _touch_provider(pid, "discovery")
+        stat["queries_executed"] = stat.get("queries_executed", 0) + 1
+        stat["estimated_cost_usd"] = round(
+            stat.get("estimated_cost_usd", 0.0) + res.estimated_cost_usd, 6
+        )
+        stat["raw_hits"] = stat.get("raw_hits", 0) + len(res.hits)
         if tracker.exceeded():
             break
 
@@ -200,6 +254,18 @@ def run_search(
     deduped = dedupe_hits(all_hits)
     ranked = rank_hits(deduped)
     hits = _apply_constraints(ranked, constraints)
+
+    surviving_by_provider: dict[str, int] = {}
+    for hit in hits:
+        if hit.provider:
+            surviving_by_provider[hit.provider] = surviving_by_provider.get(hit.provider, 0) + 1
+    for pid, stat in provider_stats.items():
+        raw_hits = stat.get("raw_hits", 0)
+        if raw_hits:
+            surviving = surviving_by_provider.get(pid, 0)
+            stat["duplicate_rate"] = round((raw_hits - surviving) / raw_hits, 4)
+        elif "discovery" in stat.get("roles", []):
+            stat["duplicate_rate"] = 0.0
 
     dump_yaml([h.to_dict() for h in hits], rp.source_candidates)
 
@@ -248,22 +314,40 @@ def run_search(
             source_card_ids.append(ingest.source_card_id)
             tracker.add_extract(1)
 
+    if extractor_id and extract_attempts:
+        extract_stat = _touch_provider(extractor_id, "extraction")
+        extract_stat["extraction_attempts"] = extract_attempts
+        extract_stat["extraction_failure_rate"] = round(extract_failures / extract_attempts, 4)
+
     # --- metrics ---------------------------------------------------------
     latency_ms = int((time.monotonic() - started) * 1000)
     duplicate_rate = round((raw_count - len(deduped)) / raw_count, 4) if raw_count else 0.0
     extraction_failure_rate = (
         round(extract_failures / extract_attempts, 4) if extract_attempts else 0.0
     )
+    # useful_source_count: hits that actually produced a source card (the
+    # useful subset of the discovery pipeline's output).
+    useful_source_count = len(source_card_ids)
+    # citation_coverage: source-carded hits ÷ hits surviving constraints —
+    # i.e. useful_source_count / len(hits), where `hits` is the post-dedupe,
+    # post-ranking, post-constraint candidate set this run considered for
+    # extraction. 0.0 when there were no surviving hits (avoids div-by-zero).
+    citation_coverage = round(useful_source_count / len(hits), 4) if hits else 0.0
     metrics: dict[str, Any] = {
         "queries_executed": tracker.queries,
         "urls_extracted": tracker.urls,
         "pages_crawled": 0,
-        "useful_source_count": None,
+        "useful_source_count": useful_source_count,
         "duplicate_rate": duplicate_rate,
         "extraction_failure_rate": extraction_failure_rate,
-        "citation_coverage": None,
+        "citation_coverage": citation_coverage,
         "estimated_cost_usd": round(tracker.cost, 6),
         "latency_ms": latency_ms,
+        # Per-provider scorecard rollup input (spec §17) — merged into the
+        # ccdash event's metrics via search_metrics below; consumed by
+        # telemetry.provider_scorecard(). Additive/optional; empty when the
+        # run had no discovery/extraction provider activity.
+        "providers": dict(sorted(provider_stats.items())),
     }
 
     search_run: dict[str, Any] = {
@@ -278,9 +362,20 @@ def run_search(
         "writebacks": {
             "ccdash_event_id": None,
             "meatywiki_page_ids": [],
-            "skillmeat_candidate_ids": [],
+            "skillmeat_candidate_ids": _skillmeat_candidate_ids(provider_chain_log),
         },
     }
+
+    # CCDash telemetry — best-effort; never breaks the run. Runs before the
+    # search_run.yaml dump below so the persisted artifact (not just the
+    # in-memory return value) reflects the minted ccdash_event_id.
+    try:
+        from research_foundry.services.telemetry import emit_ccdash_event
+
+        event_id = emit_ccdash_event(run_id, paths=paths, search_metrics=metrics)
+        search_run["writebacks"]["ccdash_event_id"] = event_id
+    except Exception:  # noqa: BLE001 - telemetry is best-effort
+        pass
 
     schema_errors.extend(_validate(search_run, "search_run", paths))
     dump_yaml(search_run, rp.run / "search_run.yaml")
@@ -289,14 +384,6 @@ def run_search(
     routing = build_routing_decision(run_id, request, mode, chain)
     if not _validate(routing, "routing_decision", paths):
         dump_yaml(routing, rp.run / "routing_decision.yaml")
-
-    # CCDash telemetry — best-effort; never breaks the run.
-    try:
-        from research_foundry.services.telemetry import emit_ccdash_event
-
-        emit_ccdash_event(run_id, paths=paths)
-    except Exception:  # noqa: BLE001 - telemetry is best-effort
-        pass
 
     if schema_errors:
         search_run["schema_errors"] = schema_errors
