@@ -23,21 +23,28 @@ Usage::
     nlm = get_notebooklm_client()   # CLI-wrapping; no REST API
     if nlm.available():
         nlm.create_notebook("RF — my-project")
+
+    cd = get_ccdash_client()        # config-gated: unset env -> available() False
+    if cd.available():
+        cd.post_rf_event(event)
 """
 
 from __future__ import annotations
 
 from .arc import ArcClient
 from .base import IntegrationClient
+from .ccdash import CCDashClient
 from .intenttree import IntentTreeClient
 from .notebooklm import NotebookLMClient
 
 __all__ = [
     "IntegrationClient",
     "ArcClient",
+    "CCDashClient",
     "IntentTreeClient",
     "NotebookLMClient",
     "get_arc_client",
+    "get_ccdash_client",
     "get_intenttree_client",
     "get_notebooklm_client",
 ]
@@ -47,6 +54,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 _arc_client: ArcClient | None = None
+_ccdash_client: CCDashClient | None = None
 _intenttree_client: IntentTreeClient | None = None
 _notebooklm_client: NotebookLMClient | None = None
 
@@ -58,6 +66,15 @@ def get_arc_client() -> ArcClient:
     if _arc_client is None:
         _arc_client = ArcClient.from_config()
     return _arc_client
+
+
+def get_ccdash_client() -> CCDashClient:
+    """Return the process-scoped CCDashClient (created on first call)."""
+
+    global _ccdash_client
+    if _ccdash_client is None:
+        _ccdash_client = CCDashClient.from_config()
+    return _ccdash_client
 
 
 def get_intenttree_client() -> IntentTreeClient:

@@ -255,6 +255,23 @@ def emit_ccdash_event(
     mirror = paths.ccdash / "events" / f"{event_id}.yaml"
     dump_yaml(event, mirror)
     _trace(rp, "ccdash_event", run_id=run_id, event_id=event_id)
+
+    # Best-effort, config-gated HTTP POST of the same event to CCDash's
+    # ingest endpoint (spec: docs/project_plans/design-specs/
+    # ccdash-run-telemetry-transport-handoff.md). The YAML mirror above
+    # remains RF's durable source of truth / replay log — this POST is a
+    # secondary, fail-open emit that never blocks or fails the run.
+    posted = False
+    try:
+        from ..integrations.ccdash import CCDashClient
+
+        client = CCDashClient.from_config()
+        if client.available():
+            posted = client.post_rf_event(event)
+    except Exception:  # noqa: BLE001 — CCDash emission is best-effort only
+        posted = False
+    _trace(rp, "ccdash_post", run_id=run_id, event_id=event_id, posted=posted)
+
     return event_id
 
 

@@ -8,12 +8,14 @@ the new passthrough behavior and the unchanged generic (non-search) path.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from research_foundry.paths import FoundryPaths
 from research_foundry.schemas import validate
 from research_foundry.services import telemetry
 from research_foundry.services.capture import capture_idea, triage_idea
 from research_foundry.services.planning import plan_run
-from research_foundry.yamlio import load_yaml
+from research_foundry.yamlio import load_jsonl, load_yaml
 
 _IDEA = (
     "Research how telemetry search metrics should reach the CCDash event "
@@ -119,3 +121,109 @@ def test_emit_ccdash_event_empty_search_metrics_is_noop(tmp_foundry: FoundryPath
     on_disk = load_yaml(rp.ccdash_event)
     assert on_disk["event_id"] == event_id
     assert "queries_executed" not in on_disk["metrics"]
+
+
+# ===========================================================================
+# CCDash HTTP POST wiring (best-effort, config-gated, fail-open).
+# ===========================================================================
+#
+# See docs/project_plans/design-specs/ccdash-run-telemetry-transport-handoff.md
+# — the YAML mirror written above is unaffected either way; these tests pin
+# that the POST is purely additive and never breaks the mirror or the run.
+
+
+def test_emit_ccdash_event_ccdash_post_skipped_when_unconfigured(
+    tmp_foundry: FoundryPaths, monkeypatch
+) -> None:
+    """Unset CCDash env -> YAML mirror written normally, no HTTP attempted."""
+
+    monkeypatch.delenv("CCDASH_BASE_URL", raising=False)
+    monkeypatch.delenv("CCDASH_INGEST_TOKEN", raising=False)
+
+    run_id = _planned_run(tmp_foundry)
+    rp = tmp_foundry.run_paths(run_id)
+
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        event_id = telemetry.emit_ccdash_event(run_id, paths=tmp_foundry)
+
+    mock_urlopen.assert_not_called()
+
+    on_disk = load_yaml(rp.ccdash_event)
+    assert on_disk["event_id"] == event_id
+    assert on_disk["run_id"] == run_id
+    result = validate(on_disk, "ccdash_event")
+    assert result.ok, result.errors
+
+    trace = load_jsonl(rp.run_trace)
+    post_events = [e for e in trace if e.get("stage") == "ccdash_post"]
+    assert post_events, "expected a ccdash_post trace entry"
+    assert post_events[-1]["posted"] is False
+
+
+def test_emit_ccdash_event_ccdash_post_failure_never_propagates(
+    tmp_foundry: FoundryPaths, monkeypatch
+) -> None:
+    """CCDash configured but unreachable -> emit still succeeds, mirror intact."""
+
+    import urllib.error
+
+    monkeypatch.setenv("CCDASH_BASE_URL", "http://ccdash.internal:9200")
+    monkeypatch.setenv("CCDASH_INGEST_TOKEN", "tok123")
+
+    run_id = _planned_run(tmp_foundry)
+    rp = tmp_foundry.run_paths(run_id)
+
+    with patch(
+        "urllib.request.urlopen",
+        side_effect=urllib.error.URLError("connection refused"),
+    ):
+        event_id = telemetry.emit_ccdash_event(run_id, paths=tmp_foundry)
+
+    # The run's return value and durable YAML mirror are unaffected by the
+    # failed POST — this is the core fail-open guarantee.
+    on_disk = load_yaml(rp.ccdash_event)
+    assert on_disk["event_id"] == event_id
+    assert on_disk["run_id"] == run_id
+    result = validate(on_disk, "ccdash_event")
+    assert result.ok, result.errors
+
+    mirror = tmp_foundry.ccdash / "events" / f"{event_id}.yaml"
+    assert load_yaml(mirror)["event_id"] == event_id
+
+    trace = load_jsonl(rp.run_trace)
+    post_events = [e for e in trace if e.get("stage") == "ccdash_post"]
+    assert post_events, "expected a ccdash_post trace entry"
+    assert post_events[-1]["posted"] is False
+
+
+def test_emit_ccdash_event_ccdash_post_success_traced(
+    tmp_foundry: FoundryPaths, monkeypatch
+) -> None:
+    """CCDash configured and reachable -> POST fires and is traced as posted."""
+
+    import json
+    from unittest.mock import MagicMock
+
+    monkeypatch.setenv("CCDASH_BASE_URL", "http://ccdash.internal:9200")
+    monkeypatch.setenv("CCDASH_INGEST_TOKEN", "tok123")
+
+    run_id = _planned_run(tmp_foundry)
+    rp = tmp_foundry.run_paths(run_id)
+
+    resp = MagicMock()
+    resp.read.return_value = json.dumps({"accepted": True}).encode()
+    resp.__enter__ = lambda s: s
+    resp.__exit__ = MagicMock(return_value=False)
+
+    with patch("urllib.request.urlopen", return_value=resp):
+        event_id = telemetry.emit_ccdash_event(run_id, paths=tmp_foundry)
+
+    on_disk = load_yaml(rp.ccdash_event)
+    assert on_disk["event_id"] == event_id
+    result = validate(on_disk, "ccdash_event")
+    assert result.ok, result.errors
+
+    trace = load_jsonl(rp.run_trace)
+    post_events = [e for e in trace if e.get("stage") == "ccdash_post"]
+    assert post_events, "expected a ccdash_post trace entry"
+    assert post_events[-1]["posted"] is True
