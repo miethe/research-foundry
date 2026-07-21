@@ -26,11 +26,20 @@ from .base import AdapterResult, BaseAdapter, register
 # Mapping from a profile's preferred ``provider`` to the env var that would make
 # it live. Used only to *prefer* a reachable provider when keys exist; absence
 # never fails routing (we fall back to the first preferred entry).
+#
+# ``ica`` is the IBM ICA gateway (OpenAI-compatible chat-completions), the default
+# agentic-node model lane. It carries a dedicated ``RF_LLM_API_KEY`` (never the
+# real-vendor ``ANTHROPIC_API_KEY``/``OPENAI_API_KEY`` — those are forbidden under
+# Mode-D Gate #2) and a per-entry ``api_base``. Mapping it here (rather than
+# leaving it unmapped) is a correctness requirement: an unmapped provider is
+# treated as key-free (like ``ollama``) and would be considered reachable without
+# any credential.
 _PROVIDER_KEYS = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
     "google": "GEMINI_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
+    "ica": "RF_LLM_API_KEY",  # IBM ICA gateway (OpenAI-compatible); api_base per entry
     "ollama": None,  # local; no key required
 }
 
@@ -97,6 +106,11 @@ class LiteLLMRouterAdapter(BaseAdapter):
             "model_profile": model_profile,
             "provider": selected.get("provider"),
             "model": selected.get("model"),
+            # ``api_base`` (e.g. the ICA gateway) propagates to the consumer so a
+            # downstream completion — or the out-of-band swarm reading the routing
+            # decision — targets the right OpenAI-compatible endpoint. None for
+            # direct-vendor providers that use the SDK default base.
+            "api_base": selected.get("api_base"),
             "tier": profile.get("tier"),
             "temperature": profile.get("temperature"),
             "max_tokens": profile.get("max_tokens"),

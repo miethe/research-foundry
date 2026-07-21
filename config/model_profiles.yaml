@@ -1,10 +1,50 @@
 # Research Foundry model profiles
 # See spec section 8.2. Each profile maps a research role to a cost tier and a
 # prioritized list of preferred (provider, model) pairs.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# AGENTIC-NODE / ICA LANE (rocket-fedora)  —  provider: ica
+# ─────────────────────────────────────────────────────────────────────────────
+# The default deployment routes rf's model lane through the IBM ICA gateway
+# (free / cost-shifted shared pool). Two hard rules for any NON-Claude-Code caller
+# (LiteLLM, raw HTTP, rf's in-process router):
+#
+#   1. WIRE MODEL IDS ARE PLAIN — never append the `[1m]` context suffix.
+#      `[1m]` is a Claude-Code CLIENT-side hint (CC strips it on the wire); a
+#      LiteLLM/raw call sending the literal `claude-sonnet-5[1m]` gets HTTP 401
+#      (team_model_access_denied). A plain id still gets ~1M context on ICA.
+#   2. USE THE OpenAI-COMPATIBLE CHAT PATH — api_base ends in `/ica/v1` and the
+#      provider label is `ica` (mapped to RF_LLM_API_KEY in litellm_router, NOT
+#      to ANTHROPIC_API_KEY which points at the real Anthropic API). ICA is
+#      chat-completions-only; the Responses API 404s. When the live in-process
+#      completion path lands, the LiteLLM model string is `openai/<model>` (the
+#      `openai/` prefix forces litellm's OpenAI chat client against api_base); the
+#      WIRE body id is still the plain `<model>` below.
+#
+# Cost reality (ICA): claude-haiku-4-5 / gemma / llama / granite are
+# allowance:unlimited (genuinely free); claude-sonnet-5 / opus / gemini are
+# shared_token_pool (cost-SHIFTED, not free) — so the cheap-extract lanes lead
+# with claude-haiku-4-5 (AOS constraint #5: cheap classify/extract, expensive
+# synthesize). The api_base is not a secret and lives here; only the key
+# (RF_LLM_API_KEY) lives in ~/.config/research-foundry/serve.env (0600).
+#
+# FORWARD-COMPAT (OpenRouter / direct keys): the bootstrap RF_PROVIDER toggle
+# (ica|openrouter|direct, default ica) selects the serve.env key set. To move a
+# lane off ICA, swap the entry's `provider`/`api_base` (openrouter →
+# https://openrouter.ai/api/v1 + OPENROUTER_API_KEY; direct → drop api_base and
+# use provider anthropic/openai/google with the real vendor key). See the
+# commented alternates at the foot of each lane.
+#
+# NOTE ON DRIVING: rf's litellm_router RESOLVES a profile to a decision; the
+# discovery/synthesis swarm is driven OUT-OF-BAND (Path B, Claude-Code agent /
+# Hermes, itself ICA-native). These profiles are the truthful cost/model intent
+# carried into swarm_plan.yaml; the in-process live-completion path is a gated
+# future enhancement (see docs: rf-ica-autonomous-node).
+# ─────────────────────────────────────────────────────────────────────────────
 
 model_profiles:
   rf_extract_free:
-    purpose: "Local/free extraction and formatting"
+    purpose: "Free-lane extraction and formatting (genuinely no-cost ICA models)"
     tier: cheap_free
     allowed_for:
       - source_carding
@@ -12,27 +52,34 @@ model_profiles:
       - tagging
       - dedupe
     preferred:
-      - provider: ollama
-        model: local-small-instruct
-      - provider: openrouter
-        model: free-or-low-cost-extraction-model
+      - provider: ica          # allowance:unlimited — genuinely free
+        model: claude-haiku-4-5
+        api_base: https://api.nextgen-beta.ica.ibm.com/ica/v1
+      - provider: ica          # allowance:unlimited free fallback (keep this lane truly no-cost)
+        model: gemma-4-26b-a4b-it
+        api_base: https://api.nextgen-beta.ica.ibm.com/ica/v1
+      # forward-compat alternate: {provider: openrouter, model: <free-tier id>} or
+      # {provider: ollama, model: local-small-instruct}
+      # NB: gemini-3.5-flash is shared_token_pool (cost-shifted) — use it in a cheap
+      # lane, not this genuinely-free one.
     max_tokens: 4096
     temperature: 0.1
 
   rf_extract_cheap:
-    purpose: "Cheap API extraction when local quality is insufficient"
+    purpose: "Cheap extraction / initial claim mapping when free-lane quality is insufficient"
     tier: cheap
     allowed_for:
       - source_carding
       - extraction_cards
       - initial_claim_mapping
     preferred:
-      - provider: anthropic
-        model: haiku_or_equivalent
-      - provider: openai
-        model: mini_or_equivalent
-      - provider: google
-        model: flash_or_equivalent
+      - provider: ica          # free workhorse first
+        model: claude-haiku-4-5
+        api_base: https://api.nextgen-beta.ica.ibm.com/ica/v1
+      - provider: ica          # escalate within ICA (shared pool) if haiku misses the bar
+        model: claude-sonnet-5
+        api_base: https://api.nextgen-beta.ica.ibm.com/ica/v1
+      # forward-compat: {provider: anthropic, model: claude-haiku-4-5} (direct key, no api_base)
     temperature: 0.1
 
   rf_verify_balanced:
@@ -43,10 +90,10 @@ model_profiles:
       - contradiction_review
       - council_review
     preferred:
-      - provider: anthropic
-        model: sonnet_or_equivalent
-      - provider: openai
-        model: standard_reasoning_or_equivalent
+      - provider: ica          # shared pool — cost-shifted, not free
+        model: claude-sonnet-5
+        api_base: https://api.nextgen-beta.ica.ibm.com/ica/v1
+      # forward-compat: {provider: anthropic, model: claude-sonnet-5} (direct key)
     temperature: 0.0
 
   rf_synthesize_deep:
@@ -57,10 +104,13 @@ model_profiles:
       - executive_synthesis
       - deep_literature_synthesis
     preferred:
-      - provider: anthropic
-        model: opus_or_equivalent
-      - provider: openai
-        model: high_reasoning_or_equivalent
-      - provider: google
-        model: pro_or_equivalent
+      - provider: ica          # cost-controlled default (shared pool)
+        model: claude-sonnet-5
+        api_base: https://api.nextgen-beta.ica.ibm.com/ica/v1
+      - provider: ica          # in-ICA escalation when synthesis misses the bar
+        model: claude-opus-4-8
+        api_base: https://api.nextgen-beta.ica.ibm.com/ica/v1
+      # STANDING ESCALATION (scorecard §1.5): route the synthesis leg to
+      # subscription Opus 4.8 OUT-OF-BAND when the ICA lane misses the bar.
+      # forward-compat: {provider: anthropic, model: claude-opus-4-8} (direct key)
     temperature: 0.2

@@ -96,10 +96,13 @@ def test_gpt_researcher_empty_request_returns_empty_candidates():
 def test_litellm_route_returns_preferred_entry(tmp_foundry):
     adapter = LiteLLMRouterAdapter()
     decision = adapter.route("rf_extract_cheap", paths=tmp_foundry, env={})
-    # First preferred entry of rf_extract_cheap in config/model_profiles.yaml.
-    assert decision["provider"] == "anthropic"
-    assert decision["model"] == "haiku_or_equivalent"
+    # First preferred entry of rf_extract_cheap in config/model_profiles.yaml
+    # (ICA free workhorse, OpenAI-compatible chat path — plain id, no [1m] suffix).
+    assert decision["provider"] == "ica"
+    assert decision["model"] == "claude-haiku-4-5"
+    assert decision["api_base"] == "https://api.nextgen-beta.ica.ibm.com/ica/v1"
     assert decision["model_profile"] == "rf_extract_cheap"
+    # env={} carries no RF_LLM_API_KEY, so the ica entry is not reachable → degraded fallback.
     assert decision["degraded"] is True
     assert decision["reason"] == "preferred_fallback"
     assert decision["tier"] == "cheap"
