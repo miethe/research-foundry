@@ -145,6 +145,110 @@ class IntentTreeClient(IntegrationClient):
             headers=self._auth_headers(),
         )
 
+    # ------------------------------------------------------------------
+    # HITL gate primitives (E1-P1 / GOV-001, GOV-002) — the human-in-the-loop
+    # approval surface the swarm-driver uses to escalate a sensitivity-gated run
+    # and to gate an irreversible MeatyWiki writeback. These map onto the
+    # IntentTree MCP ``request_create`` / ``request_approve`` / ``request_reject``
+    # primitives named in the swarm-driver design §5.3/§5.4.
+    #
+    # HTTP-contract assumption (confirm against a live IntentTree; noted in the
+    # handoff): the MCP request lifecycle is exposed over HTTP as
+    #   POST   /api/requests                 -> {"request_id", "status": "pending"}
+    #   GET    /api/requests/{request_id}    -> {"request_id", "status"}
+    #   POST   /api/requests/{request_id}/approve
+    #   POST   /api/requests/{request_id}/reject
+    # A ``node_id`` (the bound research node) associates the gate with its run.
+    # All four fail-soft to ``None`` (offline / auth / parse error), like the
+    # node methods above.
+    # ------------------------------------------------------------------
+
+    def request_create(
+        self,
+        *,
+        node_id: str | None,
+        kind: str,
+        title: str,
+        body: str = "",
+        artifacts: list[dict[str, Any]] | None = None,
+        sensitivity: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Open a HITL approval request (MCP ``request_create``).
+
+        POSTs to ``/api/requests`` and returns the created request record
+        (expected to carry ``request_id`` + ``status``) or ``None`` on any
+        error. Never raises.
+        """
+
+        payload: dict[str, Any] = {
+            "kind": kind,
+            "title": title,
+            "body": body,
+        }
+        if node_id:
+            payload["node_id"] = node_id
+        if artifacts:
+            payload["artifacts"] = artifacts
+        if sensitivity:
+            payload["sensitivity"] = sensitivity
+        return self._post(
+            "/api/requests",
+            payload,
+            headers=self._auth_headers(),
+        )
+
+    def request_status(self, request_id: str) -> dict[str, Any] | None:
+        """GET ``/api/requests/{request_id}`` — the current request record.
+
+        Returns the record (expected ``status`` ∈ ``pending|approved|rejected``)
+        or ``None`` on any error. Never raises.
+        """
+
+        return self._get(
+            f"/api/requests/{request_id}",
+            headers=self._auth_headers(),
+        )
+
+    def request_approve(
+        self,
+        request_id: str,
+        *,
+        approver: str | None = None,
+        note: str | None = None,
+    ) -> dict[str, Any] | None:
+        """POST ``/api/requests/{request_id}/approve`` (MCP ``request_approve``)."""
+
+        payload: dict[str, Any] = {}
+        if approver:
+            payload["approver"] = approver
+        if note:
+            payload["note"] = note
+        return self._post(
+            f"/api/requests/{request_id}/approve",
+            payload,
+            headers=self._auth_headers(),
+        )
+
+    def request_reject(
+        self,
+        request_id: str,
+        *,
+        approver: str | None = None,
+        note: str | None = None,
+    ) -> dict[str, Any] | None:
+        """POST ``/api/requests/{request_id}/reject`` (MCP ``request_reject``)."""
+
+        payload: dict[str, Any] = {}
+        if approver:
+            payload["approver"] = approver
+        if note:
+            payload["note"] = note
+        return self._post(
+            f"/api/requests/{request_id}/reject",
+            payload,
+            headers=self._auth_headers(),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Config helpers (internal)

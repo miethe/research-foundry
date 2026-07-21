@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..config import FoundryConfig
 from ..errors import RFError
 from ..frontmatter import dump_md, load_md
 from ..ids import (
@@ -960,6 +961,610 @@ def _render_notebooklm_update(
     return rp.notebooklm_update
 
 
+# --------------------------------------------------------------------------- #
+# governed_writeback (E1-P1 / GOV-002, GOV-003) — the one irreversible hop
+# --------------------------------------------------------------------------- #
+#
+# The swarm-driver's step-6 governed writeback (swarm-driver design §5.3):
+#   * personal/public + verified  -> auto POST /api/intake/note (MeatyWiki)
+#   * else / verify-failed         -> IntentTree request_create (HITL); BLOCK
+#     until request_approve/request_reject; on approve -> emit; on reject ->
+#     seal without writeback.
+#
+# Idempotency (GOV-003, design R7): the writeback key is
+# ``meatywiki_writeback_id(title)`` + the sealed ``bundle_id``. A terminal
+# receipt (emitted, or HITL-resolved) short-circuits a resumed run so it NEVER
+# re-emits. A non-terminal (pending / offline-degraded) state is NOT persisted
+# as terminal, so a later resume can retry / continue polling.
+#
+# FR-0 / doctrine: this path makes ZERO in-process model calls. Every payload
+# routes through ``governance.redact_payload`` before it leaves the process.
+
+# Sensitivities eligible for auto (un-gated) writeback (mirrors the driver's
+# _ALLOWED_SENSITIVITIES; work/client-sensitive always takes the HITL path).
+_AUTO_WRITEBACK_SENSITIVITIES = {"personal", "public"}
+
+# HITL request kind + the request statuses we treat as terminal.
+_WRITEBACK_REQUEST_KIND = "research_writeback_approval"
+_HITL_APPROVED = "approved"
+_HITL_REJECTED = "rejected"
+_HITL_TERMINAL = {_HITL_APPROVED, _HITL_REJECTED}
+
+
+@dataclass(frozen=True)
+class GovernedWritebackResult:
+    """Terminal outcome of :func:`governed_writeback`.
+
+    ``status`` is one of:
+      * ``written``               — auto path, note emitted.
+      * ``hitl_approved_written`` — HITL path, approved, note emitted.
+      * ``hitl_rejected_sealed``  — HITL path, rejected, sealed WITHOUT writeback.
+      * ``hitl_pending``          — HITL gate open, not yet resolved (no emit).
+      * ``skipped_idempotent``    — a terminal receipt already exists (no re-emit).
+      * ``skipped_unavailable``   — neither MeatyWiki nor the HITL gate reachable
+                                    (offline); nothing written, retryable later.
+    """
+
+    run_id: str
+    bundle_id: str
+    writeback_id: str
+    status: str
+    emitted: bool
+    note_id: str | None = None
+    request_id: str | None = None
+    requires_review: bool = False
+
+
+def _writeback_receipt_path(rp) -> Path:
+    return rp.writebacks / "meatywiki_intake_receipt.yaml"
+
+
+def _load_writeback_receipt(rp) -> dict[str, Any]:
+    data = _safe_load(_writeback_receipt_path(rp))
+    return data if isinstance(data, dict) else {}
+
+
+def _receipt_is_terminal(receipt: dict[str, Any], *, writeback_id: str, bundle_id: str) -> bool:
+    """True when a prior receipt matches the idempotency key AND is terminal.
+
+    Terminal = the note was emitted, OR the HITL gate was resolved (approved &
+    written, or rejected & sealed). A pending / offline-degraded prior state is
+    not terminal, so a resumed run may continue.
+    """
+
+    if not receipt:
+        return False
+    if str(receipt.get("writeback_id") or "") != writeback_id:
+        return False
+    if str(receipt.get("bundle_id") or "") != bundle_id:
+        return False
+    return str(receipt.get("status") or "") in {
+        "written",
+        "hitl_approved_written",
+        "hitl_rejected_sealed",
+    }
+
+
+def _write_receipt(rp, receipt: dict[str, Any], *, config: FoundryConfig | None = None) -> None:
+    """Persist the writeback receipt (routed through redact_payload)."""
+
+    rp.writebacks.mkdir(parents=True, exist_ok=True)
+    safe = governance.redact_payload(receipt, config=config)
+    dump_yaml(safe, _writeback_receipt_path(rp))
+
+
+def _build_intake_payload(
+    rp,
+    paths: FoundryPaths,
+    *,
+    writeback_id: str,
+    bundle_ident: str,
+    sensitivity: str,
+    config: FoundryConfig | None = None,
+) -> dict[str, Any]:
+    """Compile the MeatyWiki ``/api/intake/note`` payload from the rendered note.
+
+    Reads the materialized ``writebacks/meatywiki_writeback.md`` (front matter +
+    body) so the intake note mirrors the rendered writeback exactly. The whole
+    payload is routed through ``governance.redact_payload`` (D5) so no secret
+    ever leaves the process on the wire — the untrusted-web body it may quote is
+    already fenced upstream and is DATA only (GOV-004).
+    """
+
+    body = ""
+    if rp.meatywiki_writeback.exists():
+        _, body = load_md(rp.meatywiki_writeback)
+    report_meta, _ = _report_meta(rp)
+    title = str(report_meta.get("title") or "Research Foundry source note")
+
+    payload: dict[str, Any] = {
+        "title": title,
+        "body": body,
+        "source": "research_foundry",
+        "tags": ["research-foundry", "source-note"],
+        "metadata": {
+            "meatywiki_writeback_id": writeback_id,
+            "evidence_bundle_id": bundle_ident,
+            "run_id": rp.run.name,
+            "sensitivity": sensitivity,
+        },
+    }
+    return governance.redact_payload(payload, config=config)
+
+
+def governed_writeback(
+    run_id: str,
+    *,
+    paths: FoundryPaths | None = None,
+    intenttree_client: Any | None = None,
+    meatywiki_client: Any | None = None,
+    node_id: str | None = None,
+    approver_identity: str | None = None,
+    wait: bool = True,
+    poll_interval: float = 2.0,
+    max_polls: int = 150,
+) -> GovernedWritebackResult:
+    """Governed MeatyWiki writeback with a HITL gate (GOV-002/003).
+
+    Decision (design §5.3):
+      * ``sensitivity ∈ {personal, public}`` AND the bundle is verified →
+        auto-emit ``POST /api/intake/note``.
+      * otherwise (work/client-sensitive, or verify failed) → open an IntentTree
+        HITL ``request_create`` with the bundle attached and **block** until the
+        request resolves (``request_approve`` → emit; ``request_reject`` → seal
+        without writeback).
+
+    Idempotency (GOV-003): a terminal receipt keyed on
+    ``meatywiki_writeback_id`` + ``bundle_id`` short-circuits a resumed run so it
+    never re-emits.
+
+    All network is fail-soft and injectable for offline tests: pass
+    ``intenttree_client`` / ``meatywiki_client`` mocks. With no reachable target
+    (offline), this is a pure no-op that writes nothing and returns
+    ``skipped_unavailable`` (retryable later) — so the deterministic drive stays
+    a clean no-op in the offline suite.
+    """
+
+    paths = paths or FoundryPaths.discover()
+    rp = paths.run_paths(run_id)
+    if not rp.run.exists():
+        from ..errors import NotFoundError
+
+        raise NotFoundError(f"run not found: {run_id} ({rp.run})")
+    rp.ensure_scaffold()
+
+    config = FoundryConfig(paths=paths)
+    bundle = _load_bundle(rp)
+    if not bundle:
+        bundle = {"id": build_bundle(run_id, verify=True, paths=paths).bundle_id}
+    bundle_ident = str(bundle.get("id") or bundle_id(run_id))
+    verified = bool(
+        (bundle.get("governance") or {}).get("approved_for_writeback")
+    ) if isinstance(bundle.get("governance"), dict) else False
+
+    # Sensitivity is resolved ONLY from run/report front matter (never from any
+    # fenced untrusted web body) — GOV-004's non-influence guarantee.
+    sensitivity = _sensitivity(rp)
+
+    report_meta, _ = _report_meta(rp)
+    title = str(report_meta.get("title") or "Research Foundry source note")
+    writeback_id = meatywiki_writeback_id(title)
+
+    # --- GOV-003: idempotency short-circuit -------------------------------- #
+    receipt = _load_writeback_receipt(rp)
+    if _receipt_is_terminal(receipt, writeback_id=writeback_id, bundle_id=bundle_ident):
+        return GovernedWritebackResult(
+            run_id=run_id,
+            bundle_id=bundle_ident,
+            writeback_id=writeback_id,
+            status="skipped_idempotent",
+            emitted=bool(receipt.get("emitted")),
+            note_id=receipt.get("note_id"),
+            request_id=receipt.get("request_id"),
+            requires_review=bool(receipt.get("requires_review")),
+        )
+
+    auto = sensitivity in _AUTO_WRITEBACK_SENSITIVITIES and verified
+
+    # NOTE: the writeback markdown is rendered only inside the branch that will
+    # actually emit / open a gate (after the availability check), so a fully
+    # offline drive is a pure no-op that writes nothing to disk (keeps the
+    # deterministic-drive resume a strict no-op).
+    if auto:
+        return _auto_emit(
+            run_id,
+            rp,
+            paths,
+            writeback_id=writeback_id,
+            bundle_ident=bundle_ident,
+            sensitivity=sensitivity,
+            meatywiki_client=meatywiki_client,
+            config=config,
+        )
+
+    return _hitl_gate(
+        run_id,
+        rp,
+        paths,
+        writeback_id=writeback_id,
+        bundle_ident=bundle_ident,
+        sensitivity=sensitivity,
+        verified=verified,
+        node_id=node_id,
+        approver_identity=approver_identity,
+        intenttree_client=intenttree_client,
+        meatywiki_client=meatywiki_client,
+        wait=wait,
+        poll_interval=poll_interval,
+        max_polls=max_polls,
+        config=config,
+    )
+
+
+def _resolve_meatywiki_client(meatywiki_client: Any | None) -> Any:
+    if meatywiki_client is not None:
+        return meatywiki_client
+    from ..integrations import get_meatywiki_client
+
+    return get_meatywiki_client()
+
+
+def _resolve_intenttree_client(intenttree_client: Any | None) -> Any:
+    if intenttree_client is not None:
+        return intenttree_client
+    from ..integrations import get_intenttree_client
+
+    return get_intenttree_client()
+
+
+def _emit_note(
+    rp,
+    paths: FoundryPaths,
+    *,
+    writeback_id: str,
+    bundle_ident: str,
+    sensitivity: str,
+    client: Any,
+    config: FoundryConfig,
+) -> str | None:
+    """POST the compiled intake note; return the note_id or ``None`` on failure."""
+
+    payload = _build_intake_payload(
+        rp,
+        paths,
+        writeback_id=writeback_id,
+        bundle_ident=bundle_ident,
+        sensitivity=sensitivity,
+        config=config,
+    )
+    resp = client.post_note(payload)
+    if isinstance(resp, dict):
+        return str(resp.get("note_id") or resp.get("id") or "") or None
+    return None
+
+
+def _auto_emit(
+    run_id: str,
+    rp,
+    paths: FoundryPaths,
+    *,
+    writeback_id: str,
+    bundle_ident: str,
+    sensitivity: str,
+    meatywiki_client: Any | None,
+    config: FoundryConfig,
+) -> GovernedWritebackResult:
+    client = _resolve_meatywiki_client(meatywiki_client)
+    if not client.available():
+        # Offline: pure no-op, retryable later (no terminal receipt written).
+        return GovernedWritebackResult(
+            run_id=run_id,
+            bundle_id=bundle_ident,
+            writeback_id=writeback_id,
+            status="skipped_unavailable",
+            emitted=False,
+        )
+
+    # Materialize the rendered source note (auto-approved) for the intake body.
+    _render_meatywiki(
+        rp,
+        paths,
+        bundle_ident=bundle_ident,
+        sensitivity=sensitivity,
+        ledger=_ledger(rp),
+        requires_review=False,
+    )
+
+    note_id = _emit_note(
+        rp,
+        paths,
+        writeback_id=writeback_id,
+        bundle_ident=bundle_ident,
+        sensitivity=sensitivity,
+        client=client,
+        config=config,
+    )
+    if note_id is None:
+        return GovernedWritebackResult(
+            run_id=run_id,
+            bundle_id=bundle_ident,
+            writeback_id=writeback_id,
+            status="skipped_unavailable",
+            emitted=False,
+        )
+
+    _write_receipt(
+        rp,
+        {
+            "writeback_id": writeback_id,
+            "bundle_id": bundle_ident,
+            "status": "written",
+            "emitted": True,
+            "note_id": note_id,
+            "sensitivity": sensitivity,
+            "requires_review": False,
+            "emitted_at": now_iso(),
+        },
+        config=config,
+    )
+    audit_service.record_event(
+        paths,
+        AuditEvent(
+            mutation_type="writeback",
+            action="meatywiki_intake",
+            target_ref=run_id,
+            result="success",
+        ),
+    )
+    return GovernedWritebackResult(
+        run_id=run_id,
+        bundle_id=bundle_ident,
+        writeback_id=writeback_id,
+        status="written",
+        emitted=True,
+        note_id=note_id,
+        requires_review=False,
+    )
+
+
+def _hitl_gate(
+    run_id: str,
+    rp,
+    paths: FoundryPaths,
+    *,
+    writeback_id: str,
+    bundle_ident: str,
+    sensitivity: str,
+    verified: bool,
+    node_id: str | None,
+    approver_identity: str | None,
+    intenttree_client: Any | None,
+    meatywiki_client: Any | None,
+    wait: bool,
+    poll_interval: float,
+    max_polls: int,
+    config: FoundryConfig,
+) -> GovernedWritebackResult:
+    import time
+
+    it_client = _resolve_intenttree_client(intenttree_client)
+
+    # Resolve the bound node id when not supplied.
+    if not node_id:
+        _, _, node_id, _ = _intent_ibom_node(rp, paths)
+
+    # Reuse an already-open request if a pending receipt exists for this key.
+    receipt = _load_writeback_receipt(rp)
+    request_id: str | None = None
+    if (
+        receipt
+        and str(receipt.get("writeback_id") or "") == writeback_id
+        and str(receipt.get("bundle_id") or "") == bundle_ident
+        and receipt.get("request_id")
+    ):
+        request_id = str(receipt["request_id"])
+
+    if request_id is None:
+        # Render the proposed (requires_review) note so the reviewer sees it.
+        _render_meatywiki(
+            rp,
+            paths,
+            bundle_ident=bundle_ident,
+            sensitivity=sensitivity,
+            ledger=_ledger(rp),
+            requires_review=True,
+        )
+        title = f"Research writeback approval — run {rp.run.name}"
+        body = (
+            f"Sensitivity={sensitivity}; verified={verified}. This run requires "
+            "human review before its MeatyWiki writeback. Approve to emit the "
+            "source note; reject to seal the run without writeback."
+        )
+        artifacts = [
+            {
+                "type": "evidence_bundle",
+                "path": f"runs/{rp.run.name}/evidence_bundle.yaml",
+                "label": "Evidence Bundle",
+            },
+            {
+                "type": "meatywiki_writeback",
+                "path": f"runs/{rp.run.name}/writebacks/meatywiki_writeback.md",
+                "label": "MeatyWiki Writeback (proposed)",
+            },
+        ]
+        req = it_client.request_create(
+            node_id=node_id,
+            kind=_WRITEBACK_REQUEST_KIND,
+            title=title,
+            body=body,
+            artifacts=artifacts,
+            sensitivity=sensitivity,
+        )
+        if not isinstance(req, dict) or not (req.get("request_id") or req.get("id")):
+            # Gate could not be opened (offline) — pure no-op, retryable later.
+            return GovernedWritebackResult(
+                run_id=run_id,
+                bundle_id=bundle_ident,
+                writeback_id=writeback_id,
+                status="skipped_unavailable",
+                emitted=False,
+                requires_review=True,
+            )
+        request_id = str(req.get("request_id") or req.get("id"))
+        # Persist a NON-terminal pending receipt so a resume reuses this request.
+        _write_receipt(
+            rp,
+            {
+                "writeback_id": writeback_id,
+                "bundle_id": bundle_ident,
+                "status": "hitl_pending",
+                "emitted": False,
+                "request_id": request_id,
+                "sensitivity": sensitivity,
+                "requires_review": True,
+                "opened_at": now_iso(),
+            },
+            config=config,
+        )
+        audit_service.record_event(
+            paths,
+            AuditEvent(
+                mutation_type="writeback",
+                action="hitl_request_create",
+                target_ref=run_id,
+                result="success",
+            ),
+        )
+
+    if not wait:
+        return GovernedWritebackResult(
+            run_id=run_id,
+            bundle_id=bundle_ident,
+            writeback_id=writeback_id,
+            status="hitl_pending",
+            emitted=False,
+            request_id=request_id,
+            requires_review=True,
+        )
+
+    # Block until the request resolves (approve/reject) or polling is exhausted.
+    status = "pending"
+    for _ in range(max(1, max_polls)):
+        rec = it_client.request_status(request_id)
+        status = str(rec.get("status") or "pending") if isinstance(rec, dict) else "pending"
+        if status in _HITL_TERMINAL:
+            break
+        if poll_interval > 0:
+            time.sleep(poll_interval)
+
+    if status == _HITL_APPROVED:
+        mw_client = _resolve_meatywiki_client(meatywiki_client)
+        note_id: str | None = None
+        if mw_client.available():
+            note_id = _emit_note(
+                rp,
+                paths,
+                writeback_id=writeback_id,
+                bundle_ident=bundle_ident,
+                sensitivity=sensitivity,
+                client=mw_client,
+                config=config,
+            )
+        if note_id is None:
+            # Approved but sink unreachable — stay non-terminal so we retry.
+            return GovernedWritebackResult(
+                run_id=run_id,
+                bundle_id=bundle_ident,
+                writeback_id=writeback_id,
+                status="skipped_unavailable",
+                emitted=False,
+                request_id=request_id,
+                requires_review=True,
+            )
+        _write_receipt(
+            rp,
+            {
+                "writeback_id": writeback_id,
+                "bundle_id": bundle_ident,
+                "status": "hitl_approved_written",
+                "emitted": True,
+                "note_id": note_id,
+                "request_id": request_id,
+                "sensitivity": sensitivity,
+                "requires_review": True,
+                "approver": approver_identity,
+                "emitted_at": now_iso(),
+            },
+            config=config,
+        )
+        audit_service.record_event(
+            paths,
+            AuditEvent(
+                mutation_type="writeback",
+                action="meatywiki_intake",
+                target_ref=run_id,
+                result="success",
+            ),
+        )
+        return GovernedWritebackResult(
+            run_id=run_id,
+            bundle_id=bundle_ident,
+            writeback_id=writeback_id,
+            status="hitl_approved_written",
+            emitted=True,
+            note_id=note_id,
+            request_id=request_id,
+            requires_review=True,
+        )
+
+    if status == _HITL_REJECTED:
+        # Seal WITHOUT writeback (terminal — never re-emits).
+        _write_receipt(
+            rp,
+            {
+                "writeback_id": writeback_id,
+                "bundle_id": bundle_ident,
+                "status": "hitl_rejected_sealed",
+                "emitted": False,
+                "request_id": request_id,
+                "sensitivity": sensitivity,
+                "requires_review": True,
+                "approver": approver_identity,
+                "sealed_at": now_iso(),
+            },
+            config=config,
+        )
+        audit_service.record_event(
+            paths,
+            AuditEvent(
+                mutation_type="writeback",
+                action="hitl_request_reject",
+                target_ref=run_id,
+                result="success",
+            ),
+        )
+        return GovernedWritebackResult(
+            run_id=run_id,
+            bundle_id=bundle_ident,
+            writeback_id=writeback_id,
+            status="hitl_rejected_sealed",
+            emitted=False,
+            request_id=request_id,
+            requires_review=True,
+        )
+
+    # Polling exhausted without resolution — leave the pending receipt in place.
+    return GovernedWritebackResult(
+        run_id=run_id,
+        bundle_id=bundle_ident,
+        writeback_id=writeback_id,
+        status="hitl_pending",
+        emitted=False,
+        request_id=request_id,
+        requires_review=True,
+    )
+
+
 def writeback(
     run_id: str,
     *,
@@ -1601,6 +2206,8 @@ __all__ = [
     "build_bundle",
     "WritebackResult",
     "writeback",
+    "GovernedWritebackResult",
+    "governed_writeback",
     "council_review",
     "skillbom_propose",
     "skillbom_promote",

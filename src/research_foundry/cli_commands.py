@@ -790,6 +790,73 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         dump_yaml({"source_candidates": candidates}, rp.source_candidates)
         console.print(f"[green]source candidates[/green] {rp.source_candidates}")
 
+    @swarm_app.command("drive")
+    def swarm_drive_cmd(
+        run: str = typer.Argument(..., help="run id to drive to a sealed evidence bundle"),
+        llm_legs: str = typer.Option(
+            "none",
+            "--llm-legs",
+            help=(
+                "model-leg mode: 'none' = deterministic pipeline, zero model/network "
+                "calls; 'ica' = emit an out-of-band ICA carding/claim leg-request "
+                "bundle (E1-P0b, SD-008) — also zero model calls in rf."
+            ),
+        ),
+        as_json: bool = typer.Option(False, "--json", help="emit the DriveState as JSON"),
+    ) -> None:
+        """Drive a planned run through the deterministic swarm spine (spec §10.6).
+
+        Resolves the run, asserts sensitivity (personal/public only), reads the
+        ``swarm_plan.yaml`` roster (role + model_profile only), then walks
+        discovery -> ingest -> deterministic claim-map -> synthesis -> verify ->
+        bundle, pushing IntentTree milestones as it goes and resuming at the
+        first missing artifact.  ``--llm-legs none`` makes zero model/network
+        calls; ``--llm-legs ica`` (E1-P0b, SD-008) emits a leg-request bundle
+        (fenced untrusted bodies) for out-of-band ICA fulfillment — also zero
+        model calls in rf.
+        """
+
+        from .services import swarm_drive as svc
+
+        try:
+            state = svc.drive_run(run, llm_legs=llm_legs)
+        except RFError as e:
+            _fail(e)
+
+        if as_json:
+            import json
+
+            console.print_json(json.dumps(_stamp(state.to_dict())))
+            return
+
+        color = "green" if state.status_derived == "bundle_written" else "yellow"
+        console.print(
+            f"[{color}]swarm drive[/{color}] {state.run_id} "
+            f"status_derived={state.status_derived} "
+            f"verified={state.verified} legs={state.llm_legs}"
+        )
+        if state.steps_run:
+            console.print(f"  ran: {', '.join(state.steps_run)}")
+        if state.steps_skipped:
+            console.print(f"  resumed (skipped): {', '.join(state.steps_skipped)}")
+        if state.bundle_path:
+            console.print(f"  bundle: {state.bundle_path}")
+        if state.leg_bundle is not None:
+            legs = state.leg_bundle.get("legs", []) or []
+            console.print(
+                f"  leg-request bundle [{state.leg_bundle.get('schema_version')}]: "
+                f"{len(legs)} leg(s)"
+            )
+            for leg in legs:
+                dep = leg.get("depends_on")
+                suffix = f" depends_on={dep}" if dep else ""
+                console.print(
+                    f"    - {leg.get('id')} ({leg.get('leg_type')}) "
+                    f"model={leg.get('model')}{suffix}"
+                )
+        for note in state.notes:
+            console.print(f"  note: {note}")
+
     app.add_typer(swarm_app, name="swarm")
 
     # ----- status -----

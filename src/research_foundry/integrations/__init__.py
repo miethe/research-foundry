@@ -35,6 +35,7 @@ from .arc import ArcClient
 from .base import IntegrationClient
 from .ccdash import CCDashClient
 from .intenttree import IntentTreeClient
+from .meatywiki import MeatyWikiClient
 from .notebooklm import NotebookLMClient
 
 __all__ = [
@@ -42,10 +43,12 @@ __all__ = [
     "ArcClient",
     "CCDashClient",
     "IntentTreeClient",
+    "MeatyWikiClient",
     "NotebookLMClient",
     "get_arc_client",
     "get_ccdash_client",
     "get_intenttree_client",
+    "get_meatywiki_client",
     "get_notebooklm_client",
 ]
 
@@ -56,6 +59,7 @@ __all__ = [
 _arc_client: ArcClient | None = None
 _ccdash_client: CCDashClient | None = None
 _intenttree_client: IntentTreeClient | None = None
+_meatywiki_client: MeatyWikiClient | None = None
 _notebooklm_client: NotebookLMClient | None = None
 
 
@@ -84,6 +88,15 @@ def get_intenttree_client() -> IntentTreeClient:
     if _intenttree_client is None:
         _intenttree_client = IntentTreeClient.from_config()
     return _intenttree_client
+
+
+def get_meatywiki_client() -> MeatyWikiClient:
+    """Return the process-scoped MeatyWikiClient (created on first call)."""
+
+    global _meatywiki_client
+    if _meatywiki_client is None:
+        _meatywiki_client = MeatyWikiClient.from_config()
+    return _meatywiki_client
 
 
 def get_notebooklm_client() -> NotebookLMClient:
