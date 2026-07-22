@@ -101,18 +101,21 @@ def test_personal_sensitivity_not_gated_by_this_check(tmp_foundry) -> None:
 
 def test_public_sensitivity_not_gated_by_this_check(tmp_foundry) -> None:
     """public sensitivity is likewise ungated by no_work_sensitive_to_unapproved_provider;
-    in the real (litellm-absent) offline env it still degrades — but for the
-    dark-gate reason, never governance_blocked."""
-    adapter = LiteLLMRouterAdapter()
-    assert adapter.available() is False  # real offline env: litellm not installed
+    with the litellm import gate closed it still degrades — but for the
+    dark-gate reason, never governance_blocked.
 
-    result = adapter.complete(
-        "ping",
-        model_profile="rf_extract_cheap",
-        paths=tmp_foundry,
-        env={},
-        sensitivity="public",
-    )
+    FU-5: mock the import gate instead of asserting litellm's absence, so the
+    test holds whether or not the ``[llm]`` extra is installed."""
+    adapter = LiteLLMRouterAdapter()
+    with mock.patch.object(adapter, "available", return_value=False):
+        assert adapter.available() is False
+        result = adapter.complete(
+            "ping",
+            model_profile="rf_extract_cheap",
+            paths=tmp_foundry,
+            env={},
+            sensitivity="public",
+        )
 
     assert result["degraded"] is True
     assert result["reason"] in {"litellm_unavailable", "no_ica_key"}

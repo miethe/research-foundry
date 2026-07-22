@@ -49,13 +49,19 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from research_foundry.api.auth.provider import AuthIdentity
-from research_foundry.api.auth.scope import (
-    require_workspace_scope,
-    resolve_workspace_isolation_active,
-)
+# NOTE (serve-extra decoupling): ``api.auth.provider`` module-imports
+# ``starlette`` (a ``[serve]``-tier dependency), so importing it here at module
+# scope would make the deterministic, zero-network ``rf swarm drive`` spine
+# hard-require the serve extras just to import this module. ``AuthIdentity`` is
+# used only in annotations (``from __future__ import annotations`` makes them
+# lazy), so it lives under ``TYPE_CHECKING``; the two runtime scope helpers are
+# imported lazily inside the methods that use them — those paths run only in the
+# serve context, where ``starlette`` is present.
+if TYPE_CHECKING:
+    from research_foundry.api.auth.provider import AuthIdentity
+
 from research_foundry.config import FoundryConfig
 from research_foundry.paths import FoundryPaths
 from research_foundry.services.agent_job_schemas import (
@@ -306,6 +312,10 @@ class AgentJobService:
         cached ``self._config`` — functionally equivalent (both resolve the
         same on-disk config), pure refactor, no observable behaviour change.
         """
+
+        # Lazy import: keeps the serve-tier ``api.auth`` (→ starlette) off the
+        # deterministic spine's import path (serve-extra decoupling, FU-1).
+        from research_foundry.api.auth.scope import resolve_workspace_isolation_active
 
         return resolve_workspace_isolation_active(self._paths)
 
@@ -889,6 +899,10 @@ class AgentJobService:
         with job_file.open(encoding="utf-8") as fh:
             data = json.load(fh)
         job = AgentJob.from_dict(data)
+
+        # Lazy import: keeps the serve-tier ``api.auth`` (→ starlette) off the
+        # deterministic spine's import path (serve-extra decoupling, FU-1).
+        from research_foundry.api.auth.scope import require_workspace_scope
 
         scope_result = require_workspace_scope(
             identity,

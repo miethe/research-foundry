@@ -99,6 +99,16 @@ class MeatyWikiClient(IntegrationClient):
 
         Returns the intake response (expected ``note_id`` + ``status``) or
         ``None`` on any error. Never raises — fail-soft contract.
+
+        Idempotency contract (A1): the payload carries
+        ``metadata.meatywiki_writeback_id`` (a deterministic hash of the note
+        title) precisely so the Portal can dedup a re-POST of the *same*
+        writeback. The RF side is now hardened (per-run advisory lock + a
+        pre-POST intent receipt in ``services.writeback``), but a crash between
+        a successful POST and its terminal receipt can still trigger one re-POST
+        on resume — which is only fully idempotent if the Portal dedups on
+        ``meatywiki_writeback_id`` server-side. That server-side dedup is the
+        one remaining cross-repo obligation for end-to-end exactly-once.
         """
 
         return self._post(_INTAKE_PATH, payload, headers=self._auth_headers())

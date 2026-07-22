@@ -1003,6 +1003,9 @@ class GovernedWritebackResult:
       * ``skipped_idempotent``    — a terminal receipt already exists (no re-emit).
       * ``skipped_unavailable``   — neither MeatyWiki nor the HITL gate reachable
                                     (offline); nothing written, retryable later.
+      * ``skipped_locked``        — another wake holds the per-run writeback lock
+                                    (A1); nothing written, retryable on the next
+                                    drive.
     """
 
     run_id: str
@@ -1051,6 +1054,110 @@ def _write_receipt(rp, receipt: dict[str, Any], *, config: FoundryConfig | None 
     rp.writebacks.mkdir(parents=True, exist_ok=True)
     safe = governance.redact_payload(receipt, config=config)
     dump_yaml(safe, _writeback_receipt_path(rp))
+
+
+# A1 (governance review): the one irreversible hop (POST /api/intake/note) and the
+# HITL request_create must not be raced by two concurrent wakes, nor re-fired on a
+# crash between the network call and its receipt. This per-run advisory lock closes
+# the concurrent-wake window. A holder whose pid is provably dead is reclaimed
+# immediately (same-host liveness check); the wall-clock TTL is only a cross-host /
+# lost-pid backstop, set well above a blocking HITL poll wait (max_polls *
+# poll_interval, default 300s) so a legitimately-slow holder is never stolen.
+# Release is pid-ownership-checked so a wake whose lock WAS reclaimed can never
+# delete the reclaiming wake's fresh lock.
+_WRITEBACK_LOCK_TTL_SECONDS = 1800
+
+
+def _writeback_lock_path(rp) -> Path:
+    return rp.run / ".writeback.lock"
+
+
+def _read_lock_pid(path: Path) -> int | None:
+    """Parse the ``pid:`` line from a lock file; ``None`` if absent/corrupt."""
+
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("pid:"):
+                return int(line.split(":", 1)[1].strip())
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def _pid_alive(pid: int) -> bool:
+    """Best-effort same-host liveness probe (conservative: unknown -> alive)."""
+
+    import os
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True  # exists but not ours (PermissionError) / unknown -> assume alive
+    return True
+
+
+def _acquire_writeback_lock(rp) -> bool:
+    """Best-effort exclusive per-run writeback lock (A1).
+
+    Returns ``True`` if acquired, ``False`` on live contention. A lock is reclaimed
+    only when its holder is provably gone — the recorded pid is dead, OR the lock
+    has aged past :data:`_WRITEBACK_LOCK_TTL_SECONDS` (the lost-pid / cross-host
+    backstop). Fail-soft: any unexpected I/O error yields ``True`` (degrade to the
+    prior no-lock behaviour) rather than wedging the writeback.
+    """
+
+    import os
+    import time
+
+    path = _writeback_lock_path(rp)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for _ in range(2):  # at most one reclaim retry after removing a stale lock
+            try:
+                fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError:
+                pid = _read_lock_pid(path)
+                try:
+                    age = time.time() - path.stat().st_mtime
+                except OSError:
+                    return True  # cannot stat -> don't block the writeback
+                # Only a provably-gone holder is reclaimable: a live pid within the
+                # TTL owns the lock. (Dead pid OR aged-out -> reclaim.)
+                if pid is not None and _pid_alive(pid) and age <= _WRITEBACK_LOCK_TTL_SECONDS:
+                    return False
+                try:
+                    path.unlink()  # holder gone -> reclaim, then retry the create once
+                except OSError:
+                    return False
+                continue
+            else:
+                with os.fdopen(fd, "w") as fh:
+                    fh.write(f"acquired_at: {now_iso()}\npid: {os.getpid()}\n")
+                return True
+    except OSError:
+        return True  # lock I/O is advisory only; never block on it
+    return False
+
+
+def _release_writeback_lock(rp) -> None:
+    """Release the lock ONLY if this process still owns it (pid match).
+
+    If our lock was reclaimed as stale and re-created by another wake, the file's
+    pid is no longer ours, so we must NOT delete it — that would drop the new
+    holder's lock and reopen the race. A leaked lock from a corrupt/lost pid line
+    self-heals via the dead-pid / TTL reclaim in :func:`_acquire_writeback_lock`.
+    """
+
+    import os
+
+    path = _writeback_lock_path(rp)
+    try:
+        if _read_lock_pid(path) == os.getpid():
+            path.unlink()
+    except OSError:
+        pass
 
 
 def _build_intake_payload(
@@ -1166,39 +1273,71 @@ def governed_writeback(
 
     auto = sensitivity in _AUTO_WRITEBACK_SENSITIVITIES and verified
 
-    # NOTE: the writeback markdown is rendered only inside the branch that will
-    # actually emit / open a gate (after the availability check), so a fully
-    # offline drive is a pure no-op that writes nothing to disk (keeps the
-    # deterministic-drive resume a strict no-op).
-    if auto:
-        return _auto_emit(
+    # --- A1: serialize the irreversible hop under a per-run advisory lock ---- #
+    # Two concurrent wakes for the same run must not each emit / open a gate. On
+    # live contention we return a non-terminal ``skipped_locked`` (retryable on
+    # the next drive), never a duplicate write.
+    if not _acquire_writeback_lock(rp):
+        return GovernedWritebackResult(
+            run_id=run_id,
+            bundle_id=bundle_ident,
+            writeback_id=writeback_id,
+            status="skipped_locked",
+            emitted=False,
+            requires_review=not auto,
+        )
+
+    try:
+        # Re-check terminality inside the lock — a wake that finalized while we
+        # were acquiring must not be re-emitted (closes the short-circuit TOCTOU).
+        receipt = _load_writeback_receipt(rp)
+        if _receipt_is_terminal(receipt, writeback_id=writeback_id, bundle_id=bundle_ident):
+            return GovernedWritebackResult(
+                run_id=run_id,
+                bundle_id=bundle_ident,
+                writeback_id=writeback_id,
+                status="skipped_idempotent",
+                emitted=bool(receipt.get("emitted")),
+                note_id=receipt.get("note_id"),
+                request_id=receipt.get("request_id"),
+                requires_review=bool(receipt.get("requires_review")),
+            )
+
+        # NOTE: the writeback markdown is rendered only inside the branch that
+        # will actually emit / open a gate (after the availability check), so a
+        # fully offline drive is a pure no-op that writes nothing to disk (keeps
+        # the deterministic-drive resume a strict no-op).
+        if auto:
+            return _auto_emit(
+                run_id,
+                rp,
+                paths,
+                writeback_id=writeback_id,
+                bundle_ident=bundle_ident,
+                sensitivity=sensitivity,
+                meatywiki_client=meatywiki_client,
+                config=config,
+            )
+
+        return _hitl_gate(
             run_id,
             rp,
             paths,
             writeback_id=writeback_id,
             bundle_ident=bundle_ident,
             sensitivity=sensitivity,
+            verified=verified,
+            node_id=node_id,
+            approver_identity=approver_identity,
+            intenttree_client=intenttree_client,
             meatywiki_client=meatywiki_client,
+            wait=wait,
+            poll_interval=poll_interval,
+            max_polls=max_polls,
             config=config,
         )
-
-    return _hitl_gate(
-        run_id,
-        rp,
-        paths,
-        writeback_id=writeback_id,
-        bundle_ident=bundle_ident,
-        sensitivity=sensitivity,
-        verified=verified,
-        node_id=node_id,
-        approver_identity=approver_identity,
-        intenttree_client=intenttree_client,
-        meatywiki_client=meatywiki_client,
-        wait=wait,
-        poll_interval=poll_interval,
-        max_polls=max_polls,
-        config=config,
-    )
+    finally:
+        _release_writeback_lock(rp)
 
 
 def _resolve_meatywiki_client(meatywiki_client: Any | None) -> Any:
@@ -1275,6 +1414,29 @@ def _auto_emit(
         requires_review=False,
     )
 
+    # A1: persist a NON-terminal intent receipt BEFORE the irreversible POST, so a
+    # crash between the POST and the terminal receipt leaves a durable marker. A
+    # resumed run then knows an emit may already have landed; re-POST idempotency
+    # ultimately rests on Portal-side dedup of ``metadata.meatywiki_writeback_id``
+    # (RF always sends it — see ``_build_intake_payload`` / ``integrations/meatywiki``).
+    prior = _load_writeback_receipt(rp)
+    reconciling = str(prior.get("status") or "") == "emit_pending" and (
+        str(prior.get("writeback_id") or "") == writeback_id
+    )
+    _write_receipt(
+        rp,
+        {
+            "writeback_id": writeback_id,
+            "bundle_id": bundle_ident,
+            "status": "emit_pending",
+            "emitted": False,
+            "sensitivity": sensitivity,
+            "requires_review": False,
+            "intent_at": now_iso(),
+        },
+        config=config,
+    )
+
     note_id = _emit_note(
         rp,
         paths,
@@ -1304,6 +1466,9 @@ def _auto_emit(
             "sensitivity": sensitivity,
             "requires_review": False,
             "emitted_at": now_iso(),
+            # True when this terminal write followed a prior in-flight intent
+            # receipt (a crash-resumed emit) — surfaced for audit/reconcile.
+            "reconciled_from_pending": reconciling,
         },
         config=config,
     )
@@ -1392,6 +1557,29 @@ def _hitl_gate(
                 "label": "MeatyWiki Writeback (proposed)",
             },
         ]
+        # A1: persist a NON-terminal intent receipt BEFORE opening the gate as an
+        # AUDIT marker that a HITL request may already be open for this key.
+        # NOTE (residual gap): unlike the auto-emit path — which leans on Portal
+        # dedup of meatywiki_writeback_id — request_create carries no client-side
+        # idempotency key, so this receipt does NOT by itself prevent a duplicate
+        # request if a crash lands between request_create succeeding server-side
+        # and the hitl_pending write below (the reuse-check keys off request_id,
+        # which only that later write persists). Closing that fully needs an
+        # IntentTree-side idempotency key or a node request lookup (out of scope
+        # here); the per-run lock still prevents the *concurrent-wake* duplicate.
+        _write_receipt(
+            rp,
+            {
+                "writeback_id": writeback_id,
+                "bundle_id": bundle_ident,
+                "status": "hitl_intent",
+                "emitted": False,
+                "sensitivity": sensitivity,
+                "requires_review": True,
+                "intent_at": now_iso(),
+            },
+            config=config,
+        )
         req = it_client.request_create(
             node_id=node_id,
             kind=_WRITEBACK_REQUEST_KIND,

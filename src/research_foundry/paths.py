@@ -8,15 +8,36 @@ from a starting directory until it finds ``foundry.yaml`` (falling back to a
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 _ROOT_MARKERS = ("foundry.yaml",)
 _FALLBACK_MARKERS = (".skillmeat", ".git")
 
+# Explicit workspace-root override (FU-2). An embedding process that must run
+# from a *different* working directory for unrelated reasons — e.g. Hermes cd's
+# into the launchpad checkout so its skill/rules resolve — would otherwise make
+# rf adopt that checkout's ``.git`` ancestor as its workspace and dump ``runs/``,
+# ``inbox/`` etc. into it. Setting ``RESEARCH_FOUNDRY_HOME`` pins rf's workspace
+# to a dedicated directory regardless of cwd. It only applies to the default
+# (cwd-based) discovery; an explicit ``start=`` argument still wins.
+_ROOT_ENV = "RESEARCH_FOUNDRY_HOME"
+
 
 def find_workspace_root(start: str | Path | None = None) -> Path:
-    """Walk up from ``start`` (default cwd) to find the foundry workspace root."""
+    """Walk up from ``start`` (default cwd) to find the foundry workspace root.
+
+    When ``start`` is omitted, an explicit ``RESEARCH_FOUNDRY_HOME`` pointing at
+    an existing directory takes precedence over the cwd walk (FU-2).
+    """
+
+    if start is None:
+        env_root = os.environ.get(_ROOT_ENV)
+        if env_root:
+            pinned = Path(env_root).expanduser()
+            if pinned.is_dir():
+                return pinned.resolve()
 
     cur = Path(start or Path.cwd()).resolve()
     candidates = [cur, *cur.parents]

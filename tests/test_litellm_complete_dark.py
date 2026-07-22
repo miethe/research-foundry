@@ -30,11 +30,20 @@ def _fake_litellm() -> types.ModuleType:
 
 
 def test_default_env_is_dark_and_degraded(tmp_foundry) -> None:
-    """Core DoD: in the real offline env available()==False → degraded, no fire."""
-    adapter = LiteLLMRouterAdapter()
-    assert adapter.available() is False  # litellm not installed in the suite venv
+    """Core DoD: with the litellm import gate closed → degraded, no fire.
 
-    result = adapter.complete("ping", model_profile="rf_extract_cheap", paths=tmp_foundry, env={})
+    FU-5: mock the import gate rather than asserting the suite venv lacks
+    ``litellm``. The ``[llm]`` extra installs litellm, which would flip
+    ``available()`` to True and make the old absence-assertion fail. The
+    invariant under test is the behavior when the gate is closed, not the
+    dependency's physical absence.
+    """
+    adapter = LiteLLMRouterAdapter()
+    with mock.patch.object(adapter, "available", return_value=False):
+        assert adapter.available() is False
+        result = adapter.complete(
+            "ping", model_profile="rf_extract_cheap", paths=tmp_foundry, env={}
+        )
 
     assert result["degraded"] is True
     assert result["text"] is None
@@ -45,10 +54,13 @@ def test_no_live_call_when_litellm_unavailable(tmp_foundry) -> None:
     """available()==False → litellm.completion is never called, even with a key present."""
     adapter = LiteLLMRouterAdapter()
     fake = _fake_litellm()
-    # Inject a fake litellm so that IF the (wrongly) gate opened, we'd observe a call.
-    with mock.patch.dict(sys.modules, {"litellm": fake}):
-        # available() still resolves via find_spec → False (module not truly installed);
-        # provide a key so the ONLY closed gate is available().
+    # FU-5: force the import gate closed rather than relying on litellm being
+    # absent from the venv (the [llm] extra installs it). Inject a fake litellm
+    # so that IF the gate wrongly opened we'd observe a call; provide a key so
+    # the ONLY closed gate is available().
+    with mock.patch.object(adapter, "available", return_value=False), mock.patch.dict(
+        sys.modules, {"litellm": fake}
+    ):
         result = adapter.complete(
             "ping",
             model_profile="rf_extract_cheap",
