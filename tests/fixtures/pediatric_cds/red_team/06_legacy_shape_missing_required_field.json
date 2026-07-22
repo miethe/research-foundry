@@ -1,0 +1,15 @@
+{
+  "violation_class": "missing required top-level field (legacy shape) -- confirms the oneOf's legacy branch is itself hard-gated, not a permissive escape hatch",
+  "expect_error_substring": "classification",
+  "block": {
+    "population": "not applicable (population-agnostic federal device-definition statute)",
+    "assay_method": "not applicable",
+    "threshold": { "value": null, "units_ucum": null, "passage_locator": null },
+    "lifecycle": {
+      "effective": "2016-12-13",
+      "retire": null,
+      "guideline_version": "21 U.S.C. 360j(o)(1)(E)",
+      "supersedes": null
+    }
+  }
+}

@@ -94,9 +94,9 @@ P3 and P4 touch **disjoint functions** within `verification.py` (P3 extends the 
 **Estimate**: 2 pts · **Dependencies**: P2
 
 **Acceptance Criteria**:
-- [ ] AC-P3-1: Eligibility trigger is `assertion_kind == "threshold"` AND (a `pediatric_cds` block is present on ≥1 cited source card OR the claim/card carries an existing sensitivity tag) — resolved per parent plan decisions list, overriding a threshold-alone trigger.
-- [ ] AC-P3-2: When eligible, `exact_passage_mode` is forced to `strict` for that specific claim's `exact_passage_present` evaluation, independent of the run's configured/CLI `--exact-passage` value (i.e., this is a per-claim override, not a global mode flip).
-- [ ] AC-P3-3 (**R-P2 implicit AC** — new field: the clinical-eligibility signal): When the signal itself cannot be determined (e.g. the cited card has no `pediatric_cds` block AND no sensitivity-tag field present at all, vs. explicitly `false`/absent-but-checked), the claim defaults to **non-eligible** (fails safe toward the existing warn-only behavior, not toward strict) — this is the direction PRD Risk 1 requires (avoid over-broad hard-gating), not the fidelity-check direction (P4, which fails toward visibility). Document this asymmetry inline in the code comment.
+- [x] AC-P3-1: Eligibility trigger is `assertion_kind == "threshold"` AND (a `pediatric_cds` block is present on ≥1 cited source card OR the claim/card carries an existing sensitivity tag) — resolved per parent plan decisions list, overriding a threshold-alone trigger.
+- [x] AC-P3-2: When eligible, `exact_passage_mode` is forced to `strict` for that specific claim's `exact_passage_present` evaluation, independent of the run's configured/CLI `--exact-passage` value (i.e., this is a per-claim override, not a global mode flip).
+- [x] AC-P3-3 (**R-P2 implicit AC** — new field: the clinical-eligibility signal): When the signal itself cannot be determined (e.g. the cited card has no `pediatric_cds` block AND no sensitivity-tag field present at all, vs. explicitly `false`/absent-but-checked), the claim defaults to **non-eligible** (fails safe toward the existing warn-only behavior, not toward strict) — this is the direction PRD Risk 1 requires (avoid over-broad hard-gating), not the fidelity-check direction (P4, which fails toward visibility). Document this asymmetry inline in the code comment.
 
 **Files Involved**:
 - `src/research_foundry/services/verification.py` — new eligibility-check function feeding into the existing `exact_passage_present` check (lines 712-753).
@@ -106,8 +106,8 @@ P3 and P4 touch **disjoint functions** within `verification.py` (P3 extends the 
 **Estimate**: 1 pt · **Dependencies**: P3-001
 
 **Acceptance Criteria**:
-- [ ] AC-P3-4: `config/claim_policy.yaml` documents the default policy such that pediatric/CDS runs get P3-001's auto-strict behavior without requiring `--exact-passage strict` on every invocation.
-- [ ] AC-P3-5: Non-pediatric/non-clinical runs relying on default settings retain today's warn-only behavior (no global default flip to `strict`).
+- [x] AC-P3-4: `config/claim_policy.yaml` documents the default policy such that pediatric/CDS runs get P3-001's auto-strict behavior without requiring `--exact-passage strict` on every invocation.
+- [x] AC-P3-5: Non-pediatric/non-clinical runs relying on default settings retain today's warn-only behavior (no global default flip to `strict`).
 
 **Files Involved**:
 - `config/claim_policy.yaml` — new default-policy entry.
@@ -117,8 +117,8 @@ P3 and P4 touch **disjoint functions** within `verification.py` (P3 extends the 
 **Estimate**: 1 pt · **Dependencies**: P3-002
 
 **Acceptance Criteria**:
-- [ ] AC-P3-6: 0 false-positive hard-gates against existing non-clinical warn-mode regression runs.
-- [ ] AC-P3-7: A threshold+clinical-eligible claim lacking a locator fails closed (non-zero exit / `unsupported[]` append) as a positive-path assertion.
+- [x] AC-P3-6: 0 false-positive hard-gates against existing non-clinical warn-mode regression runs.
+- [x] AC-P3-7: A threshold+clinical-eligible claim lacking a locator fails closed (non-zero exit / `unsupported[]` append) as a positive-path assertion.
 
 **Files Involved**:
 - Test suite exercising `verification.py`'s eligibility path; `./.venv/bin/python -m pytest`.

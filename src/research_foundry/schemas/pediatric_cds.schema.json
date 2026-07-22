@@ -1,0 +1,297 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-foundry.dev/schemas/pediatric_cds.schema.json",
+  "$comment": "SEAM-BOUNDARY SCOPE (RFUP item 1 / phase-2-pediatric-schema-gate, P2-001/P2-003): this schema enforces STRUCTURAL COMPLETENESS ONLY for the pediatric_cds evidence-card extension block -- required-field presence and JSON type. It does NOT encode clinical business rules or semantics owned by pediatric-anemia-site: no enum constraints on portability/assertion_kind/evidence_role/classification vocab, no age-partition or lab-method-analyzer validity rules, no threshold-value interpretation, no numeric clinical bounds (e.g. sensitivity/specificity ranges). rf validates that whatever pediatric_cds block is supplied is structurally well-formed; it never originates or interprets the block's clinical content. A source card entirely lacking a pediatric_cds block is not itself a violation of this schema -- callers of this schema (rf verify, P2-002) decide whether/when to invoke it, and only invoke it against blocks that ARE present. TWO VARIANTS (P2-003 finding): the 7 existing verified pediatric-CDS bundles (committed aaa9d92, produced by .claude/workflows/rf-pediatric-cds-run-execute.js's CARD_TEMPLATE) use a flat population/assay_method/threshold/lifecycle/classification shape that predates and diverges entirely from the richer 9-section shape named in the pediatric-anemia-site scope-brief (.claude/worknotes/rfup-external-routing/scope-brief.md) and design spec (pediatric-anemia-site docs/project_plans/expansion/02-evidence-foundry-on-research-foundry.md §3.6-3.7). AC-P2-10 requires 0 false positives against those 7 bundles, so this schema accepts EITHER shape via `oneOf` rather than breaking the shape already on disk -- see PediatricCdsBlockLegacy vs PediatricCdsBlockRich below.",
+  "title": "PediatricCdsBlock",
+  "description": "JSON Schema for the `pediatric_cds` evidence-card extension block attached to `extracted_points[]` entries on an rf source card. Replaces the prior `additionalProperties: true` permissiveness for this namespace (see PRD FR-3, docs/project_plans/PRDs/enhancements/rfup-external-routing-v1.md) with required-field/type enforcement, accepting either the legacy flat shape already in production (PediatricCdsBlockLegacy) or the richer 9-section target shape from the pediatric-anemia-site design spec (PediatricCdsBlockRich).",
+  "rf_schema_version": "1.1.0",
+  "x-rf-schema-version-note": "This schema artifact's own version stamp reuses the RFUP-4 machine-contract versioning convention verbatim (RF_SCHEMA_VERSION, src/research_foundry/__init__.py:23; see docs/dev/architecture/machine-surface-inventory.md) -- bump alongside RF_SCHEMA_VERSION if this schema's shape changes in a breaking way. Bumped 1.0.0 -> 1.1.0 (P2-003): additive only (the rich variant is unchanged; a legacy variant was added alongside it), so no existing valid rich block stops validating. Distinct from the `schema_version` property inside PediatricCdsBlockRich, which is the pediatric_cds block's OWN shape-version field, authored and owned by pediatric-anemia-site (docs/project_plans/expansion/02-evidence-foundry-on-research-foundry.md §3.6 example: schema_version: \"1.0\").",
+  "oneOf": [
+    { "$ref": "#/$defs/PediatricCdsBlockLegacy" },
+    { "$ref": "#/$defs/PediatricCdsBlockRich" }
+  ],
+  "$defs": {
+    "PediatricCdsBlockLegacy": {
+      "type": "object",
+      "title": "PediatricCdsBlockLegacy",
+      "description": "The flat pediatric_cds shape actually produced today by .claude/workflows/rf-pediatric-cds-run-execute.js's CARD_TEMPLATE and present on every extracted_points[].pediatric_cds block in the 7 existing verified pediatric-CDS bundles (aaa9d92). Grandfathered by AC-P2-10 -- this is NOT the aspirational scope-brief shape (that's PediatricCdsBlockRich below); it is the shape that already exists on disk and must keep validating.",
+      "required": ["population", "assay_method", "threshold", "lifecycle", "classification"],
+      "additionalProperties": false,
+      "properties": {
+        "population": {
+          "type": "string",
+          "description": "Age band + sex + gestational/postnatal age + clinical context, or 'not applicable'. Free-form; owned by pediatric-anemia-site."
+        },
+        "assay_method": {
+          "type": "string",
+          "description": "Analyzer/method dependence for a numeric threshold, or 'not method-dependent' / 'not applicable'. Free-form."
+        },
+        "threshold": {
+          "type": "object",
+          "description": "Numeric threshold value + units + exact-passage locator, when applicable.",
+          "required": ["value", "units_ucum", "passage_locator"],
+          "additionalProperties": false,
+          "properties": {
+            "value": {
+              "type": ["string", "number", "null"],
+              "description": "Verbatim numeric value + comparator (e.g. \"< 11.0\"), or null when not applicable."
+            },
+            "units_ucum": {
+              "type": ["string", "null"],
+              "description": "UCUM units (e.g. g/dL, 10*9/L), or null."
+            },
+            "passage_locator": {
+              "type": ["string", "null"],
+              "description": "Page/section + the verbatim quote fragment carrying the number, or null."
+            }
+          }
+        },
+        "lifecycle": {
+          "type": "object",
+          "description": "Effective/retire/guideline-version/supersession tracking for this evidence point.",
+          "required": ["effective", "retire", "guideline_version", "supersedes"],
+          "additionalProperties": false,
+          "properties": {
+            "effective": { "type": ["string", "null"] },
+            "retire": { "type": ["string", "null"] },
+            "guideline_version": { "type": ["string", "null"] },
+            "supersedes": { "type": ["string", "null"] }
+          }
+        },
+        "classification": {
+          "type": "string",
+          "description": "Free-form classification label (e.g. source_supported_fact / implementation_proposal). Vocabulary owned by pediatric-anemia-site; rf enforces type only, not an enum."
+        }
+      }
+    },
+    "PediatricCdsBlockRich": {
+      "type": "object",
+      "title": "PediatricCdsBlockRich",
+      "description": "The richer 9-section target shape named in the pediatric-anemia-site scope-brief and design spec (§3.6-3.7) -- required-field/type enforcement across source_status, study, applicability, laboratory, implementable_statement, diagnostic_accuracy, safety, conflict, and lifecycle.",
+  "required": [
+    "source_status",
+    "study",
+    "applicability",
+    "laboratory",
+    "implementable_statement",
+    "diagnostic_accuracy",
+    "safety",
+    "conflict",
+    "lifecycle"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "pediatric_cds block's own shape-version, authored/owned by pediatric-anemia-site (e.g. \"1.0\"). Not RF_SCHEMA_VERSION -- see the x-rf-schema-version-note above."
+    },
+    "module_id": {
+      "type": "string",
+      "description": "Identifier of the pediatric-anemia-site CDS module this evidence point belongs to (e.g. \"cbc_suite_v1\"). Opaque to rf."
+    },
+    "evidence_role": {
+      "type": "string",
+      "description": "Free-form role label for this evidence point (e.g. \"threshold\"). Vocabulary is owned by pediatric-anemia-site; rf enforces type only, not an enum."
+    },
+    "source_status": { "$ref": "#/$defs/SourceStatus" },
+    "study": { "$ref": "#/$defs/Study" },
+    "applicability": { "$ref": "#/$defs/Applicability" },
+    "laboratory": { "$ref": "#/$defs/Laboratory" },
+    "implementable_statement": { "$ref": "#/$defs/ImplementableStatement" },
+    "diagnostic_accuracy": { "$ref": "#/$defs/DiagnosticAccuracy" },
+    "safety": { "$ref": "#/$defs/Safety" },
+    "conflict": { "$ref": "#/$defs/Conflict" },
+    "lifecycle": { "$ref": "#/$defs/Lifecycle" }
+  }
+    },
+    "SourceStatus": {
+      "type": "object",
+      "description": "Update/correction/retraction/withdrawal/supersession tracking for the cited source (design doc §3.6, §3.7 'source status' row).",
+      "required": [
+        "update_checked_at",
+        "correction_checked",
+        "retraction_checked",
+        "withdrawal_checked",
+        "supersession_checked",
+        "superseded_by",
+        "foundational_exception_reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "update_checked_at": { "type": "string", "format": "date" },
+        "correction_checked": { "type": "boolean" },
+        "retraction_checked": { "type": "boolean" },
+        "withdrawal_checked": { "type": "boolean" },
+        "supersession_checked": { "type": "boolean" },
+        "superseded_by": { "type": ["string", "null"] },
+        "foundational_exception_reason": { "type": ["string", "null"] }
+      }
+    },
+    "Study": {
+      "type": "object",
+      "description": "Study/guideline design metadata backing this evidence point (design doc §3.6).",
+      "required": [
+        "design",
+        "population",
+        "setting",
+        "sample_size",
+        "inclusion",
+        "exclusion",
+        "comparator",
+        "outcome",
+        "evidence_grade"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "design": { "type": "string" },
+        "population": { "type": "string" },
+        "setting": { "type": "string" },
+        "sample_size": { "type": ["integer", "null"] },
+        "inclusion": { "type": "array", "items": { "type": "string" } },
+        "exclusion": { "type": "array", "items": { "type": "string" } },
+        "comparator": { "type": ["string", "null"] },
+        "outcome": { "type": ["string", "null"] },
+        "evidence_grade": { "type": ["string", "null"] }
+      }
+    },
+    "Applicability": {
+      "type": "object",
+      "description": "Age/sex/physiology/comorbidity/jurisdiction qualifiers (design doc §3.7: 'population/applicability ... MUST not be dropped').",
+      "required": [
+        "age_min_months",
+        "age_max_months_exclusive",
+        "sex_or_physiology",
+        "gestational",
+        "ancestry_or_population",
+        "comorbidities",
+        "jurisdictions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "age_min_months": { "type": ["integer", "null"] },
+        "age_max_months_exclusive": { "type": ["integer", "null"] },
+        "sex_or_physiology": { "type": "string" },
+        "gestational": { "type": "string" },
+        "ancestry_or_population": { "type": "string" },
+        "comorbidities": { "type": "array", "items": { "type": "string" } },
+        "jurisdictions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "Laboratory": {
+      "type": "object",
+      "description": "Test/specimen/method/analyzer/unit/reference-interval/timing context (design doc §3.7: 'laboratory context ... MUST be explicit when relevant'). rf does not validate method/analyzer clinical validity, only field presence and type.",
+      "required": [
+        "test",
+        "specimen",
+        "method",
+        "analyzer",
+        "unit",
+        "ucum",
+        "reference_interval",
+        "timing",
+        "preanalytic_requirements"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "test": { "type": "string" },
+        "specimen": { "type": "string" },
+        "method": { "type": "string" },
+        "analyzer": { "type": "string" },
+        "unit": { "type": "string" },
+        "ucum": { "type": "string" },
+        "reference_interval": { "type": "string" },
+        "timing": { "type": "string" },
+        "preanalytic_requirements": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "ImplementableStatement": {
+      "type": "object",
+      "description": "The executable-rule-candidate statement itself (design doc §3.6). `portability` and `assertion_kind` are typed as free-form strings, not enums, per the seam boundary -- their controlled-vocabulary values (e.g. universal/local_lab_dependent/implementation_proposed) are clinical/business semantics owned by pediatric-anemia-site, not encoded here.",
+      "required": [
+        "kind",
+        "value_or_formula",
+        "portability",
+        "assertion_kind",
+        "exact_passage_required"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string" },
+        "value_or_formula": { "type": ["string", "number", "null"] },
+        "portability": { "type": "string" },
+        "assertion_kind": { "type": "string" },
+        "exact_passage_required": { "type": "boolean" }
+      }
+    },
+    "DiagnosticAccuracy": {
+      "type": "object",
+      "description": "Diagnostic-accuracy statistics for this evidence point, when applicable (design doc §3.6). All fields nullable -- not every evidence point carries diagnostic-accuracy data. No numeric bounds enforced (structural type-check only).",
+      "required": [
+        "sensitivity",
+        "specificity",
+        "likelihood_ratio_positive",
+        "likelihood_ratio_negative",
+        "predictive_value_positive",
+        "predictive_value_negative",
+        "confidence_interval",
+        "prevalence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sensitivity": { "type": ["number", "null"] },
+        "specificity": { "type": ["number", "null"] },
+        "likelihood_ratio_positive": { "type": ["number", "null"] },
+        "likelihood_ratio_negative": { "type": ["number", "null"] },
+        "predictive_value_positive": { "type": ["number", "null"] },
+        "predictive_value_negative": { "type": ["number", "null"] },
+        "confidence_interval": { "type": ["string", "null"] },
+        "prevalence": { "type": ["number", "null"] }
+      }
+    },
+    "Safety": {
+      "type": "object",
+      "description": "Contraindications, confounders, and false-positive/negative/dangerous-exception contexts (design doc §3.6).",
+      "required": [
+        "contraindications",
+        "confounders",
+        "false_positive_contexts",
+        "false_negative_contexts",
+        "dangerous_exceptions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "contraindications": { "type": "array", "items": { "type": "string" } },
+        "confounders": { "type": "array", "items": { "type": "string" } },
+        "false_positive_contexts": { "type": "array", "items": { "type": "string" } },
+        "false_negative_contexts": { "type": "array", "items": { "type": "string" } },
+        "dangerous_exceptions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "Conflict": {
+      "type": "object",
+      "description": "Cross-claim conflict tracking (design doc §3.7: 'conflicts ... MUST be visible'). `safe_representation` is a free-form string, not an enum -- its controlled vocabulary is owned by pediatric-anemia-site.",
+      "required": [
+        "conflicts_with_claim_ids",
+        "conflict_summary",
+        "safe_representation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "conflicts_with_claim_ids": { "type": "array", "items": { "type": "string" } },
+        "conflict_summary": { "type": ["string", "null"] },
+        "safe_representation": { "type": "string" }
+      }
+    },
+    "Lifecycle": {
+      "type": "object",
+      "description": "Review/surveillance metadata (design doc §3.7: 'lifecycle ... MUST be present for implementable clinical content').",
+      "required": ["review_by", "surveillance_query", "owner_role"],
+      "additionalProperties": false,
+      "properties": {
+        "review_by": { "type": "string", "format": "date" },
+        "surveillance_query": { "type": "string" },
+        "owner_role": { "type": "string" }
+      }
+    }
+  }
+}

@@ -355,6 +355,7 @@ All Python code should include type hints throughout for IDE support and runtime
 
 ## Important Notes
 
+- **`rf verify` gates (rfup-external-routing P2-P4)**: `pediatric_cds` blocks are schema-validated (hard-gate), threshold/clinical claims default to strict exact-passage mode, and quote-vs-source fidelity is checked post-normalization — detail in `docs/project_plans/implementation_plans/enhancements/rfup-external-routing-v1.md`.
 - **Symbol graphs** (`ai/symbols-*.json`) are project-specific. Regenerate after deployment via `/analyze:symbols:symbols-update`.
 - **Rich Output**: Use Rich library for CLI output (ASCII-compatible, no Unicode box-drawing in tests).
 - **CI/CD**: Configure tests to run on your supported Python/Node.js version matrix.

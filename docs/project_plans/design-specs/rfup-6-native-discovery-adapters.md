@@ -5,7 +5,7 @@ schema_version: 2
 status: draft
 maturity: idea
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-07-22
 feature_slug: rf-upstream-evidence-foundry
 prd_ref: docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
 owner: nick
@@ -20,7 +20,10 @@ open_questions:
 explored_alternatives: []
 related_documents:
   - docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md
-related_prds: []
+  - docs/project_plans/implementation_plans/enhancements/rfup-external-routing-v1.md
+  - docs/project_plans/design-specs/rfup-external-routing-adr-0008-verdict.md
+related_prds:
+  - docs/project_plans/PRDs/enhancements/rfup-external-routing-v1.md
 ---
 
 # Design Spec: RFUP-6 — Native Discovery Adapter Install/Eval (Deferred)
@@ -35,6 +38,17 @@ related_prds: []
 RFUP-6 (installing and evaluating any native, non-`arc_council` discovery adapter) is deferred until
 **one of two conditions** becomes true. Both conditions require *evidence*, not intuition — a hunch
 that "gpt_researcher would probably help" does not clear the bar.
+
+> **Update (2026-07-22, `rfup-external-routing-v1` P5/P6)**: `litellm_router` has since been
+> **separately evaluated** (eval-only — no install, no live calls, no credentials) under the
+> `rfup-external-routing-v1` plan; see §2's updated row below and the durable verdict artifact at
+> `docs/project_plans/design-specs/rfup-external-routing-adr-0008-verdict.md`. That evaluation
+> produced a `conditional` verdict, not a promotion out of deferral — `litellm_router` stays
+> deferred/degraded pending its own separately-gated conditions (see the verdict doc). **This
+> defer-until trigger is otherwise unchanged and continues to govern the remaining five adapters**
+> (`gpt_researcher`, `notebooklm`, `openai_agents`, `paperqa2`, `opencode`) exactly as written below —
+> none of them were evaluated by that plan, and this spec's `maturity: idea` for those five is
+> explicitly reaffirmed, not promoted.
 
 ### Condition 1 — Measured value gap
 
@@ -86,10 +100,11 @@ mode only, producing deterministic labeled placeholders instead of live network 
 | `openai_agents` | Orchestration via the OpenAI Agents SDK. Promoted to a real-mode-capable implementation in a prior phase, but real-mode execution is currently blocked by an explicit Mode-D gate (no live API keys / live provider calls approved) — only test-double/mock-client paths are reachable today. |
 | `paperqa2` | Scientific RAG over a local PDF corpus. In real mode, runs citation-grounded question-answering against a local PDF/text directory; degraded mode just lists local PDFs as labeled candidates. Niche fit: literature-heavy research briefs with a curated local corpus. |
 | `opencode` | Local/open-source code agent, invoked as a CLI binary (`opencode`) rather than a Python dependency. Intended for local codebase edits/discovery; degrades to a deterministic no-op note when the binary is absent. |
-| `litellm_router` | Not a discovery adapter — a model-profile routing layer. Maps a named model profile (e.g. `rf_extract_cheap`) to a concrete provider/model decision by reading `config/model_profiles.yaml`. Currently deterministic/degraded (no `litellm` package, no provider keys), so it always returns the first preferred profile entry rather than picking a live-reachable provider. |
+| `litellm_router` | Not a discovery adapter — a model-profile routing layer. Maps a named model profile (e.g. `rf_extract_cheap`) to a concrete provider/model decision by reading `config/model_profiles.yaml`. Currently deterministic/degraded (no `litellm` package, no provider keys), so it always returns the first preferred profile entry rather than picking a live-reachable provider. **Evaluated 2026-07-22** (`rfup-external-routing-v1` P5, eval-only — static PyPI/GitHub/OSV metadata review + `pip download --no-deps` inspection; no install, no import, no live call, no credentials): **verdict `conditional`** — keep the adapter as-is (well-built, dormant, correct); pre-approve the native-adapter *direction*; **do not install** `litellm` until a separately-gated, Mode-D live-completion consumer of the routing decision is scoped and four stated conditions hold (isolated/optional dependency, Python-floor `3.9→3.10` sign-off, hash-pin excluding the confirmed-malicious `1.82.7`–`1.82.8` release range, pin-and-track posture for the package's ~34-releases/month cadence). Full rationale and the unexecuted install/wiring plan: `docs/project_plans/design-specs/rfup-external-routing-adr-0008-verdict.md`. `litellm_router` therefore remains **not installed and not credentialed today** — this evaluation is a verdict, not an activation. |
 
-None of these six should be installed, credentialed, or exercised in real mode until the defer-until
-trigger in §1 is met.
+None of the six adapters in this table should be installed, credentialed, or exercised in real mode
+until the applicable trigger is met: `litellm_router` per the conditions in its verdict document
+above, and the remaining five per the defer-until trigger in §1 (unchanged, reaffirmed).
 
 ## 3. Why deferred
 

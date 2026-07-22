@@ -20,8 +20,10 @@ precedence (first that applies wins):
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -34,6 +36,7 @@ from ..paths import FoundryPaths
 from ..yamlio import append_jsonl, dump_yaml, load_yaml
 from .export_service import DEFAULT_THRESHOLD, SENSITIVITY_ORDER, discover_run_yamls
 from .governance import release_gate_blocked_by_unassessed_judgment
+from .quote_fidelity import check_quote_fidelity
 
 # Reverse map: rank → label, used by build_global_source_index to store the
 # effective-sensitivity label rather than just the raw card-level field.
@@ -58,6 +61,11 @@ _DEFAULT_VERIFIER_CHECKS = [
     {"id": "supported_claims_have_source_cards", "severity": "error"},
     {"id": "source_cards_have_locators", "severity": "warning"},
     {"id": "exact_passage_present", "severity": "warning"},
+    {"id": "pediatric_cds_schema_invalid", "severity": "error"},
+    # RFUP-1 P4-001: kept as "warning" so this new check's wiring cannot, by
+    # itself, regress any existing run's exit code — see the call-site
+    # comment (6d, below) and quote_fidelity.py's module docstring.
+    {"id": "quote_fidelity", "severity": "warning"},
     {"id": "inferences_have_basis", "severity": "error"},
     {"id": "speculation_is_labeled", "severity": "error"},
     {"id": "unsupported_claims_block_publish", "severity": "error"},
@@ -272,11 +280,24 @@ def _is_material(sentence: _Sentence, material_types: list[str]) -> bool:
 
 
 def _index_source_cards(rp) -> dict[str, dict[str, Any]]:
-    """Map source_card_id -> {sensitivity, has_locator, has_quote, path} for the run.
+    """Map source_card_id -> {sensitivity, has_locator, has_quote, path, points} for the run.
 
     ``has_quote`` (PRD FR-3.1) is ``True`` when the card has at least one
     ``extracted_points[]`` entry with a non-empty ``quote`` — i.e. the card
     can serve as an exact-passage anchor, not merely a locator-only citation.
+
+    ``points`` is the card's raw (dict-filtered) ``extracted_points[]`` list —
+    exposed so :func:`verify_report`'s ``pediatric_cds_schema_invalid`` check
+    (RFUP-1 P2-002) can inspect each point's optional ``pediatric_cds`` block
+    without a second read of the card's markdown file (AC-P2-6: zero new I/O).
+
+    ``extraction_status`` is the card's raw front-matter field (RFUP-1
+    P4-003) -- exposed so :func:`~.quote_fidelity.check_quote_fidelity` can
+    distinguish an ``extraction_status: locator_only`` card (nothing stored
+    to diff against, but genuinely unverifiable -> warn, AC-P4-7) from any
+    other card that happens to have no stored quote for some other reason
+    (unchanged silent skip). ``None`` when absent from front matter. Zero
+    new I/O -- read from the same already-loaded ``meta``.
     """
 
     index: dict[str, dict[str, Any]] = {}
@@ -303,6 +324,8 @@ def _index_source_cards(rp) -> dict[str, dict[str, Any]]:
             "has_locator": has_locator,
             "has_quote": has_quote,
             "path": str(p),
+            "points": points,
+            "extraction_status": meta.get("extraction_status"),
         }
     return index
 
@@ -410,6 +433,133 @@ def _severity_for(check_id: str, checks: list[dict[str, Any]]) -> str:
     return "error"
 
 
+# --- pediatric_cds schema hard-gate (RFUP-1 P2-002, AC-P2-5/6/7) -----------
+#
+# Structural-completeness gate for the `pediatric_cds` evidence-card
+# extension block (schemas/pediatric_cds.schema.json, P2-001). Mirrors
+# resolve_exact_passage_mode's fail-closed convention: a broken *schema
+# config* (missing file / bad JSON) raises RFError immediately, distinct
+# from a card's *block content* failing validation against a good schema
+# (which is a normal "fail" + unsupported[] outcome, not an RFError).
+
+# services/verification.py -> parents[0]=services, [1]=research_foundry ->
+# .../src/research_foundry/schemas/pediatric_cds.schema.json (package-bundled
+# artifact; distinct from FoundryPaths.schemas, which resolves a *workspace's*
+# schemas/ dir and is not where this file lives).
+_PEDIATRIC_CDS_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[1] / "schemas" / "pediatric_cds.schema.json"
+)
+
+
+@lru_cache(maxsize=1)
+def _load_pediatric_cds_schema() -> dict[str, Any]:
+    """Load+cache the pediatric_cds JSON Schema.
+
+    Raises
+    ------
+    RFError
+        If the schema file is missing, is not valid JSON, or its top level is
+        not a JSON object — a schema *configuration* problem that must fail
+        closed rather than silently disabling the hard-gate (AC-P2-5).
+        ``lru_cache`` does not memoize raised exceptions, so a transient
+        misconfiguration is re-checked (and can succeed) on the next call.
+    """
+
+    try:
+        raw = _PEDIATRIC_CDS_SCHEMA_PATH.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RFError(
+            "pediatric_cds schema config invalid: cannot read "
+            f"{_PEDIATRIC_CDS_SCHEMA_PATH}: {exc}"
+        ) from exc
+    try:
+        schema = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RFError(
+            "pediatric_cds schema config invalid: "
+            f"{_PEDIATRIC_CDS_SCHEMA_PATH} is not valid JSON: {exc}"
+        ) from exc
+    if not isinstance(schema, dict):
+        raise RFError(
+            "pediatric_cds schema config invalid: "
+            f"{_PEDIATRIC_CDS_SCHEMA_PATH} top level must be a JSON object"
+        )
+    return schema
+
+
+def _json_safe(obj: Any) -> Any:
+    """Round-trip *obj* through JSON so YAML-native types match JSON Schema's.
+
+    Source cards are loaded via ``yaml.safe_load`` (frontmatter.py ->
+    yamlio.py), which auto-parses unquoted ISO date-like scalars (e.g.
+    ``2026-07-22``) into ``datetime.date`` objects. The pediatric_cds schema
+    declares those same fields as JSON Schema ``"type": "string"`` (with
+    ``"format": "date"``), so validating the raw YAML-parsed value would
+    produce a false-positive type failure unrelated to the block's actual
+    content. ``default=str`` on the dump side stringifies any such object
+    (``str(date(...))`` == ``date(...).isoformat()``) before jsonschema ever
+    sees it — this is a type-normalization step, not a content change.
+    """
+
+    return json.loads(json.dumps(obj, default=str))
+
+
+# The two mutually-exclusive `oneOf` branches the pediatric_cds schema
+# accepts (P2-003 finding): the flat shape already produced by the 7
+# existing verified bundles (aaa9d92) vs. the richer 9-section target shape
+# from the pediatric-anemia-site design spec. See the schema's own
+# ``$comment`` for the full rationale.
+_PEDIATRIC_CDS_SCHEMA_VARIANTS = ("PediatricCdsBlockLegacy", "PediatricCdsBlockRich")
+
+
+def _pediatric_cds_block_errors(block: Any) -> list[str]:
+    """Validate one ``pediatric_cds`` block; sorted ``path: message`` strings.
+
+    Empty list == valid. Error formatting mirrors
+    :meth:`research_foundry.schemas.SchemaRegistry.validate` so `rf verify`
+    output stays consistent with the rest of the codebase's schema-error
+    reporting conventions.
+
+    The schema's top level is a ``oneOf`` of two mutually-exclusive shapes
+    (legacy flat vs. rich 9-section — P2-003). jsonschema's ``oneOf`` keyword
+    only ever raises one generic "is not valid under any of the given
+    schemas" error at the top level; the field-specific failures live in
+    that error's ``.context`` and ``jsonschema.exceptions.best_match()`` is
+    not reliable here because the two branches have entirely disjoint
+    required-field sets, so a block failing both loses against each roughly
+    equally. Instead: on failure, validate the block against each named
+    branch *directly* and report whichever branch's own errors are fewest —
+    i.e. the shape the block was clearly attempting — so the failure detail
+    keeps naming the actual missing/mistyped field (AC-P2-7).
+    """
+
+    from jsonschema import Draft202012Validator
+
+    schema = _load_pediatric_cds_schema()
+    safe_block = _json_safe(block)
+    validator = Draft202012Validator(schema)
+    if validator.is_valid(safe_block):
+        return []
+
+    defs = schema.get("$defs", {})
+    branch_error_sets: list[list[Any]] = []
+    for variant in _PEDIATRIC_CDS_SCHEMA_VARIANTS:
+        branch_schema = {**defs[variant], "$defs": defs}
+        branch_validator = Draft202012Validator(branch_schema)
+        branch_error_sets.append(
+            sorted(branch_validator.iter_errors(safe_block), key=lambda e: list(e.path))
+        )
+
+    # min(..., key=len) picks the branch closest to valid (fewest errors);
+    # a tie is resolved by list order (legacy first) — arbitrary but stable.
+    errors_to_report = min(branch_error_sets, key=len)
+    errors: list[str] = []
+    for err in errors_to_report:
+        loc = "/".join(str(p) for p in err.path) or "<root>"
+        errors.append(f"{loc}: {err.message}")
+    return errors
+
+
 # Valid values for verify.exact_passage (PRD FR-3.2, decisions-block OQ-1).
 _VALID_EXACT_PASSAGE_MODES = frozenset({"warn", "strict"})
 
@@ -462,6 +612,125 @@ def resolve_exact_passage_mode(paths: FoundryPaths, override: str | None = None)
     raw = verify_block.get("exact_passage", "warn")
     normalized = str(raw).strip().lower() if raw else "warn"
     return normalized if normalized in _VALID_EXACT_PASSAGE_MODES else "warn"
+
+
+# --- P3-001 clinical-eligibility filter (RFUP-1, PRD FR-5 / OQ-1) ----------
+#
+# Resolves the per-claim auto-strict override for exact_passage_present: a
+# claim whose evidence is both a "threshold" assertion AND carries an
+# explicit clinical-sensitivity signal is forced to strict mode for ITS OWN
+# evaluation, independent of the run's configured/CLI exact_passage_mode
+# (AC-P3-2). See ``claim_clinical_eligibility`` below for the full trigger
+# definition and the fail-safe-to-non-eligible resolution (AC-P3-3).
+
+
+def _pediatric_cds_assertion_kind(point: dict[str, Any]) -> str | None:
+    """The point's ``pediatric_cds.implementable_statement.assertion_kind``,
+    lowercased, or ``None`` when absent/indeterminate.
+
+    Only the rich pediatric_cds shape (schemas/pediatric_cds.schema.json's
+    ``PediatricCdsBlockRich``) carries ``implementable_statement`` at all —
+    the legacy flat shape (the ONLY shape present on the 7 currently-verified
+    pediatric-CDS bundles, commit aaa9d92) has no ``assertion_kind`` field
+    anywhere. This function deliberately does not infer an assertion_kind
+    from the legacy shape's ``classification``/``threshold`` fields: per the
+    schema's own seam-boundary comment, interpreting those fields' clinical
+    semantics is owned by pediatric-anemia-site, not rf. A legacy block (or
+    any block missing this field) therefore always yields ``None`` here,
+    which ``claim_clinical_eligibility`` resolves to "not eligible" rather
+    than "eligible" (AC-P3-3) — this is also what keeps the 7 existing
+    verified bundles from newly tripping into strict mode under this filter.
+    """
+    block = point.get("pediatric_cds") if isinstance(point, dict) else None
+    if not isinstance(block, dict):
+        return None
+    stmt = block.get("implementable_statement")
+    if not isinstance(stmt, dict):
+        return None
+    kind = stmt.get("assertion_kind")
+    return str(kind).strip().lower() if kind else None
+
+
+def _cited_card_has_elevated_sensitivity(card_entry: dict[str, Any]) -> bool:
+    """True when a cited card (or one of its points) carries an explicit
+    sensitivity classification above the default ``public`` baseline.
+
+    Mirrors the card/point "effective sensitivity" convention already used
+    by :func:`check_report_body_sensitivity` (card-level rank maxed with any
+    point-level override) rather than introducing a second sensitivity
+    model. A bare ``sensitivity: public`` — the default governance baseline
+    present on nearly every card — deliberately does NOT count as "an
+    existing sensitivity tag" here; only an elevated (non-public) rank is
+    treated as an explicit clinical-sensitivity signal (PRD OQ-1). Counting
+    "public" too would make this branch true for virtually every card and
+    defeat the narrow-trigger intent behind PRD Risk 1 (over-broad
+    hard-gating of runs that never asked for strict mode).
+    """
+    card_rank = SENSITIVITY_ORDER.get(str(card_entry.get("sensitivity") or ""), -1)
+    if card_rank > 0:
+        return True
+    for pt in card_entry.get("points") or []:
+        if isinstance(pt, dict) and pt.get("sensitivity"):
+            if SENSITIVITY_ORDER.get(str(pt["sensitivity"]), -1) > 0:
+                return True
+    return False
+
+
+def claim_clinical_eligibility(
+    claim: dict[str, Any], source_index: dict[str, dict[str, Any]]
+) -> bool:
+    """Is *claim* eligible for the P3 auto-strict exact-passage override?
+
+    Eligible == ``assertion_kind == "threshold"`` on >=1 of the claim's
+    cited, resolvable source cards' pediatric_cds blocks, AND (a
+    pediatric_cds block is present on >=1 cited card OR >=1 cited card
+    carries an existing elevated-sensitivity tag) — the trigger resolved in
+    the parent plan's decisions block, deliberately **not** "threshold
+    alone" (PRD Risk 1: an over-broad trigger would hard-gate runs that
+    never asked for strict mode).
+
+    In today's schema the assertion_kind signal can only originate from a
+    pediatric_cds block (see :func:`_pediatric_cds_assertion_kind`), so the
+    first OR-branch is already implied whenever assertion_kind resolves to
+    "threshold". This function still evaluates both branches independently
+    — rather than collapsing the whole trigger to just the assertion_kind
+    check — so the AND/OR shape stays correct if a future assertion_kind
+    source is ever added outside the pediatric_cds namespace.
+
+    AC-P3-3 — fail-safe direction (the deliberate asymmetry vs. P4's
+    fidelity check, a separate task): when the assertion_kind signal cannot
+    be determined at all for this claim (no cited card has ANY pediatric_cds
+    block, or every present block lacks a recognizable assertion_kind), the
+    claim defaults to **non-eligible** — today's warn-only behavior — rather
+    than strict. P3 fails safe toward *under*-gating (avoid an unwanted hard
+    gate on a non-clinical run) because its failure mode is a false-block;
+    P4 fails safe toward *over*-visibility (never silently report "pass" on
+    an indeterminate signal) because its failure mode is a missed
+    corruption. Same "signal is indeterminate" shape, opposite resolution,
+    because the two checks sit on opposite sides of the risk (PRD Risk 1).
+    """
+    cited_ids = [
+        s.get("source_card_id") for s in (claim.get("sources") or []) if s.get("source_card_id")
+    ]
+    cited_cards = [source_index[sid] for sid in cited_ids if sid in source_index]
+    if not cited_cards:
+        return False
+
+    assertion_kind_is_threshold = False
+    pediatric_cds_present = False
+    elevated_sensitivity_present = False
+    for card in cited_cards:
+        for pt in card.get("points") or []:
+            if not isinstance(pt, dict):
+                continue
+            if isinstance(pt.get("pediatric_cds"), dict):
+                pediatric_cds_present = True
+            if _pediatric_cds_assertion_kind(pt) == "threshold":
+                assertion_kind_is_threshold = True
+        if _cited_card_has_elevated_sensitivity(card):
+            elevated_sensitivity_present = True
+
+    return assertion_kind_is_threshold and (pediatric_cds_present or elevated_sensitivity_present)
 
 
 def _resolve_explicit_path(rp, given: Path | None, label: str) -> Path | None:
@@ -731,13 +1000,27 @@ def verify_report(
     # sources is already caught by supported_claims_have_source_cards above
     # and is out of scope here.
     #
-    # Gating is mode-dependent (resolve_exact_passage_mode, TASK-2.1):
-    #   warn (default)  -> CheckResult.status == "warn"; never added to
-    #                       unsupported[]; passed/exit_code unchanged.
-    #   strict          -> CheckResult.status == "fail"; claim_ids added to
-    #                       unsupported[] so they block publish exactly like
-    #                       material_claims_have_claim_ids does above.
-    missing_anchor: list[str] = []
+    # Gating is mode-dependent (resolve_exact_passage_mode, TASK-2.1), with a
+    # per-claim override layered on top (RFUP-1 P3-001, PRD FR-5/OQ-1):
+    #   run's exact_passage_mode == "strict" -> every missing-anchor claim is
+    #     strict, exactly as before this task.
+    #   run's exact_passage_mode == "warn" (default) -> a claim is STILL
+    #     bucketed as strict when claim_clinical_eligibility() (module-level,
+    #     see its docstring for the full trigger and the fail-safe-to-
+    #     non-eligible resolution) returns True for it. This is a per-claim
+    #     override, not a global mode flip (AC-P3-2): the run's own
+    #     exact_passage_mode value / result.exact_passage_mode is unchanged —
+    #     only which bucket THIS claim's missing anchor lands in changes.
+    #     Every other missing-anchor claim keeps today's warn behavior, so
+    #     non-clinical warn-mode runs see zero regressions.
+    #
+    #   strict bucket -> CheckResult.status == "fail"; claim_ids added to
+    #                     unsupported[] so they block publish exactly like
+    #                     material_claims_have_claim_ids does above.
+    #   warn bucket   -> CheckResult.status == "warn"; never added to
+    #                     unsupported[]; passed/exit_code unchanged.
+    missing_anchor_strict: list[str] = []
+    missing_anchor_warn: list[str] = []
     for c in claims:
         if c.get("status") != "supported":
             continue
@@ -745,19 +1028,37 @@ def verify_report(
         if not cited:
             continue
         has_anchor = any(source_index.get(sid, {}).get("has_quote") for sid in cited)
-        if not has_anchor:
-            missing_anchor.append(c.get("claim_id") or "<no-id>")
-    missing_anchor = sorted(set(missing_anchor))
-    if missing_anchor:
+        if has_anchor:
+            continue
+        cid = c.get("claim_id") or "<no-id>"
+        if exact_passage_mode == "strict" or claim_clinical_eligibility(c, source_index):
+            missing_anchor_strict.append(cid)
+        else:
+            missing_anchor_warn.append(cid)
+    missing_anchor_strict = sorted(set(missing_anchor_strict))
+    missing_anchor_warn = sorted(set(missing_anchor_warn) - set(missing_anchor_strict))
+    # Dedicated, mode-independent violation list (AC-RFUP3-4/3-5, unchanged by
+    # this task) — the union of both buckets, regardless of which bucket a
+    # claim landed in.
+    missing_anchor = sorted(set(missing_anchor_strict) | set(missing_anchor_warn))
+    if missing_anchor_strict:
         detail = (
             "supported claims cite a source card but no exact-passage quote anchor "
-            "resolves: " + ", ".join(missing_anchor)
+            "resolves (strict — run default and/or per-claim clinical-eligibility "
+            "override, RFUP-1 P3-001): " + ", ".join(missing_anchor_strict)
         )
-        if exact_passage_mode == "strict":
-            add("exact_passage_present", "fail", detail, missing_anchor)
-            unsupported.extend(f"[exact_passage] {cid}" for cid in missing_anchor)
-        else:
-            add("exact_passage_present", "warn", detail, missing_anchor)
+        if missing_anchor_warn:
+            detail += "; additional warn-only claim(s): " + ", ".join(missing_anchor_warn)
+        add("exact_passage_present", "fail", detail, missing_anchor)
+        unsupported.extend(f"[exact_passage] {cid}" for cid in missing_anchor_strict)
+    elif missing_anchor_warn:
+        add(
+            "exact_passage_present",
+            "warn",
+            "supported claims cite a source card but no exact-passage quote anchor "
+            "resolves: " + ", ".join(missing_anchor_warn),
+            missing_anchor_warn,
+        )
     else:
         add(
             "exact_passage_present",
@@ -798,6 +1099,95 @@ def verify_report(
             "skip",
             "skipped: no evidence_judgment_bases supplied to this verify_report call",
         )
+
+    # 6d) pediatric_cds_schema_invalid (RFUP-1 P2-002, AC-P2-5/6/7) ----------
+    # Structural-completeness hard-gate for the pediatric_cds evidence-card
+    # extension block (schemas/pediatric_cds.schema.json, P2-001). Unlike
+    # exact_passage_present above, this check is NOT scoped to claim-cited
+    # cards — it scans every source card in the run's sources/ dir (already
+    # loaded by _index_source_cards; AC-P2-6: zero new I/O) and validates any
+    # extracted_points[].pediatric_cds entry that IS present. A point with no
+    # pediatric_cds key (or an explicit null) is out of scope — absence of
+    # the block is not itself a violation (AC-P2-4, enforced by P2-001's
+    # schema-loader/validator boundary: only present blocks are ever passed
+    # to _pediatric_cds_block_errors).
+    #
+    # _load_pediatric_cds_schema() is resolved unconditionally, before the
+    # scan, so a broken schema artifact raises RFError on every `rf verify`
+    # invocation (fail-closed) rather than being masked by a run with zero
+    # pediatric_cds blocks.
+    _load_pediatric_cds_schema()
+    pediatric_cds_errors: list[str] = []
+    for sid, entry in sorted(source_index.items()):
+        for i, pt in enumerate(entry.get("points") or []):
+            block = pt.get("pediatric_cds") if isinstance(pt, dict) else None
+            if block is None:
+                continue
+            for err in _pediatric_cds_block_errors(block):
+                pediatric_cds_errors.append(f"{sid}#extracted_points[{i}].pediatric_cds/{err}")
+    if pediatric_cds_errors:
+        add(
+            "pediatric_cds_schema_invalid",
+            "fail",
+            f"{len(pediatric_cds_errors)} pediatric_cds block(s) failed schema validation: "
+            + "; ".join(pediatric_cds_errors),
+            pediatric_cds_errors,
+        )
+        unsupported.extend(f"[pediatric_cds_schema_invalid] {e}" for e in pediatric_cds_errors)
+    else:
+        add(
+            "pediatric_cds_schema_invalid",
+            "pass",
+            "no pediatric_cds blocks present, or all present blocks are schema-valid",
+        )
+
+    # 6e) quote_fidelity (RFUP-1 P4-001/P4-002/P4-003, AC-P4-1..AC-P4-8) -----
+    # New, dedicated check (services/quote_fidelity.py) comparing a claim's
+    # cited-source extracted quote against that SAME source card's own
+    # stored extracted_points[].quote text -- detecting extraction-time
+    # corruption (e.g. a PMC fetch that silently strips a superscript,
+    # ×10⁹/L -> ×10/L, before the quote was ever recorded) -- through the
+    # module's two-stage normalization policy (P4-002): Stage 1 (NFKC,
+    # whitespace collapsing, quote-mark style) is applied before diffing and
+    # never itself triggers a flag; any residual difference after Stage 1 is
+    # always material (flag/fail), never silently auto-corrected.
+    #
+    # Explicitly NOT check_anchor_hash_match (below, verify_draft's D13 #3
+    # check): that check hashes a report-BUILDER-DRAFT block's OWN text
+    # against a quote_text_hash recorded when a claim was linked, so it
+    # detects *drift* -- the draft body edited after the quote was linked
+    # (post-hoc tampering of an already-extracted quote, within one document,
+    # over time). check_quote_fidelity instead compares two already-stored,
+    # independently authored documents (the claim ledger and the cited
+    # source card) exactly once, with nothing to "drift" -- either they agree
+    # character-for-character (post Stage-1 normalization) or they never
+    # did. No new fetch, no re-crawl, no I/O beyond source_index (already
+    # loaded above); bounded by the cited card's already-bounded stored text
+    # (AC-P4-3).
+    #
+    # qf_result.status is "pass" | "fail" | "error" | "warn" -- "error"
+    # (AC-P4-4) means Stage-1 normalization itself raised for >=1 pair, so
+    # fidelity could not be determined for it; "warn" (RFUP-1 P4-003,
+    # AC-P4-7) means >=1 pair's cited card is extraction_status: locator_only
+    # (nothing stored to diff against, but genuinely unverifiable rather
+    # than confirmed pass/fail). All four are mutually distinguishable so a
+    # caller can't misread "undetermined"/"unverifiable" as "verified". A
+    # (claim, source) pair with nothing stored for any OTHER reason (not
+    # locator_only) is still silently skipped here, unchanged from P4-001.
+    #
+    # Registered severity is "warning" (see _DEFAULT_VERIFIER_CHECKS above
+    # and config/claim_policy.yaml's verifier_checks entry) so this check's
+    # wiring cannot, on its own, regress any existing run's exit code
+    # regardless of status -- error_fail (below) only triggers on
+    # severity == "error", so an "error"- or "warn"-status quote_fidelity
+    # finding is still surfaced (visible in checks[]/detail) without
+    # flipping passed/exit_code. This module (verify_report) never calls
+    # unsupported.extend(...) for quote_fidelity's findings of any status,
+    # which is what keeps the locator_only warn (AC-P4-8) -- and every other
+    # quote_fidelity status -- non-blocking; that is a property of this
+    # call site never adding such a call, not of the check's severity alone.
+    qf_result = check_quote_fidelity(claims, source_index)
+    add("quote_fidelity", qf_result.status, qf_result.detail, qf_result.locations)
 
     # 7) inferences_have_basis ----------------------------------------------
     no_basis = []

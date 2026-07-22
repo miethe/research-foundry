@@ -1,0 +1,83 @@
+{
+  "violation_class": "wrong type on a required field (rich shape)",
+  "expect_error_substring": "not-an-array",
+  "block": {
+    "schema_version": "1.0",
+    "module_id": "cbc_suite_v1",
+    "evidence_role": "threshold",
+    "source_status": {
+      "update_checked_at": "2026-07-01",
+      "correction_checked": true,
+      "retraction_checked": true,
+      "withdrawal_checked": true,
+      "supersession_checked": true,
+      "superseded_by": null,
+      "foundational_exception_reason": null
+    },
+    "study": {
+      "design": "retrospective_cohort",
+      "population": "pediatric",
+      "setting": "outpatient",
+      "sample_size": 512,
+      "inclusion": ["age < 18"],
+      "exclusion": ["known hemoglobinopathy"],
+      "comparator": null,
+      "outcome": "anemia detection",
+      "evidence_grade": "B"
+    },
+    "applicability": {
+      "age_min_months": 6,
+      "age_max_months_exclusive": 216,
+      "sex_or_physiology": "any",
+      "gestational": "term",
+      "ancestry_or_population": "general",
+      "comorbidities": [],
+      "jurisdictions": ["US"]
+    },
+    "laboratory": {
+      "test": "CBC",
+      "specimen": "whole_blood",
+      "method": "automated_hematology_analyzer",
+      "analyzer": "Sysmex XN-1000",
+      "unit": "g/dL",
+      "ucum": "g/dL",
+      "reference_interval": "11.0-14.0",
+      "timing": "any",
+      "preanalytic_requirements": []
+    },
+    "implementable_statement": {
+      "kind": "threshold",
+      "value_or_formula": 11.0,
+      "portability": "local_lab_dependent",
+      "assertion_kind": "implementation_proposed",
+      "exact_passage_required": true
+    },
+    "diagnostic_accuracy": {
+      "sensitivity": 0.85,
+      "specificity": 0.9,
+      "likelihood_ratio_positive": 8.5,
+      "likelihood_ratio_negative": 0.17,
+      "predictive_value_positive": null,
+      "predictive_value_negative": null,
+      "confidence_interval": "0.80-0.90",
+      "prevalence": null
+    },
+    "safety": {
+      "contraindications": "not-an-array",
+      "confounders": ["iron deficiency"],
+      "false_positive_contexts": [],
+      "false_negative_contexts": [],
+      "dangerous_exceptions": []
+    },
+    "conflict": {
+      "conflicts_with_claim_ids": [],
+      "conflict_summary": null,
+      "safe_representation": "no_conflict"
+    },
+    "lifecycle": {
+      "review_by": "2028-07-01",
+      "surveillance_query": "pediatric anemia CBC threshold",
+      "owner_role": "clinical_lead"
+    }
+  }
+}

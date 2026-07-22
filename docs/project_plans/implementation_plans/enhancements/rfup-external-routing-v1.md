@@ -3,7 +3,7 @@ title: 'Implementation Plan: RFUP External-Routing Gap Closure'
 schema_version: 2
 doc_type: implementation_plan
 it_schema: 1
-status: draft
+status: completed
 created: '2026-07-22'
 updated: '2026-07-22'
 feature_slug: rfup-external-routing
@@ -39,10 +39,12 @@ references:
 spike_ref: null
 adr_refs:
 - /Users/miethe/dev/homelab/development/pediatric-anemia-site/docs/adr/0008-pathb-hardening-vs-native-adapter.md
-deferred_items_spec_refs: []
+deferred_items_spec_refs:
+- docs/project_plans/design-specs/rfup-6-native-discovery-adapters.md
+- docs/project_plans/design-specs/rfup-external-routing-adr-0008-verdict.md
 findings_doc_ref: null
 charter_ref: null
-changelog_ref: null
+changelog_ref: CHANGELOG.md
 test_plan_ref: null
 plan_structure: independent
 progress_init: auto
@@ -60,23 +62,51 @@ tags:
 - quote-fidelity
 - adapters
 milestone: null
-commit_refs: []
+commit_refs:
+- 51e3aae
+- 925f42a
+- 8a2a2eb
+- 702ae95
+- 987a37b
+- c18cc18
+- 97181d6
+- 3045f47
+- 9033718
+- 8a0b014
+- 8880a0b
+- 2d2a3f1
+- e86dc0c
+- 5d8a37f
+- 4cf320d
+- 0a64478
+- 7e1a4e9
+- 7375d39
+- 2137bd5
 pr_refs: []
 files_affected:
 - src/research_foundry/services/verification.py
-- src/research_foundry/services/source_cards.py
 - src/research_foundry/schemas/pediatric_cds.schema.json
 - src/research_foundry/services/quote_fidelity.py
 - config/claim_policy.yaml
-- .claude/workflows/rf-run-execute.js
-- .claude/workflows/rf-pediatric-cds-run-execute.js
 - .claude/workflows/__tests__/rf-run-execute.test.js
 - .claude/workflows/__tests__/rf-pediatric-cds-run-execute.test.js
-- src/research_foundry/adapters/litellm_router.py
+- tests/test_pediatric_cds_redteam_fixtures.py
+- tests/test_quote_fidelity.py
+- tests/test_verification_clinical_eligibility.py
+- tests/test_verification_clinical_eligibility_regression.py
+- tests/test_verification_pediatric_cds.py
+- tests/test_verification_seam001_gate_composition.py
+- tests/fixtures/pediatric_cds/red_team/01_missing_top_level_section.json
+- tests/fixtures/pediatric_cds/red_team/02_wrong_type_required_field.json
+- tests/fixtures/pediatric_cds/red_team/03_empty_required_object.json
+- tests/fixtures/pediatric_cds/red_team/04_unexpected_additional_property.json
+- tests/fixtures/pediatric_cds/red_team/05_nested_field_required_violation.json
+- tests/fixtures/pediatric_cds/red_team/06_legacy_shape_missing_required_field.json
 - docs/project_plans/design-specs/rfup-6-native-discovery-adapters.md
 - docs/project_plans/design-specs/rfup-external-routing-adr-0008-verdict.md
 - CHANGELOG.md
-planning_maturity: in_progress
+- CLAUDE.md
+planning_maturity: shipped
 open_questions: []
 decisions:
 - decision: 'P1 JS test harness: use Node''s built-in node:test + `node --test` (no
@@ -343,8 +373,8 @@ graph LR
 
 | Item ID | Category | Reason Deferred | Trigger for Promotion | Target Spec Path |
 |---------|----------|-----------------|------------------------|-------------------|
-| DF-RFUP-EXT-01 | research-needed | The 5 native adapters NOT evaluated by P5 (`gpt_researcher`, `notebooklm`, `openai_agents`, `paperqa2`, `opencode`) remain scaffold-only per the RFUP-6 design-spec's existing defer-until gate. P5 evaluates only `litellm_router`. | The RFUP-6 design-spec's own existing defer-until trigger: a measured Path-B value gap (documented comparison run) OR a governance/DI-1-cleared requirement — per `docs/project_plans/design-specs/rfup-6-native-discovery-adapters.md` §1. | docs/project_plans/design-specs/rfup-6-native-discovery-adapters.md (updated in place by P6/DOC-006, not replaced) |
-| DF-RFUP-EXT-02 | dependency-blocked | PRD OQ-5: ADR-0008 lives in `pediatric-anemia-site` and is `proposed`, not `accepted`. This plan's seam boundary forbids writing to that repo, so the actual ADR-0008 status transition cannot happen here. | The pediatric-anemia-site maintainer accepts/rejects ADR-0008 based on this plan's P5 verdict artifact. | docs/project_plans/design-specs/rfup-external-routing-adr-0008-verdict.md (new, authored by P6/DOC-006) |
+| DF-RFUP-EXT-01 | research-needed | The 5 native adapters NOT evaluated by P5 (`gpt_researcher`, `notebooklm`, `openai_agents`, `paperqa2`, `opencode`) remain scaffold-only per the RFUP-6 design-spec's existing defer-until gate. P5 evaluates only `litellm_router`. | The RFUP-6 design-spec's own existing defer-until trigger: a measured Path-B value gap (documented comparison run) OR a governance/DI-1-cleared requirement — per `docs/project_plans/design-specs/rfup-6-native-discovery-adapters.md` §1. | docs/project_plans/design-specs/rfup-6-native-discovery-adapters.md — **updated in place by P6/DOC-006a** (litellm_router row reflects the P5 conditional verdict; the other 5 remain `maturity: idea`, defer-until trigger reaffirmed unchanged). |
+| DF-RFUP-EXT-02 | dependency-blocked | PRD OQ-5: ADR-0008 lives in `pediatric-anemia-site` and is `proposed`, not `accepted`. This plan's seam boundary forbids writing to that repo, so the actual ADR-0008 status transition cannot happen here. | The pediatric-anemia-site maintainer accepts/rejects ADR-0008 based on this plan's P5 verdict artifact. | docs/project_plans/design-specs/rfup-external-routing-adr-0008-verdict.md — **authored by P6/DOC-006b** (`maturity: shaping`; documents the `conditional` verdict + unexecuted install/wiring plan; the actual ADR-0008 status transition remains out of scope, tracked here). |
 
 `litellm_router` itself is P5's own eval subject, not a deferred item — it is intentionally excluded from this table.
 

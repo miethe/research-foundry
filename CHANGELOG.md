@@ -34,6 +34,27 @@ Versions follow [Semantic Versioning](https://semver.org/).
   `judgment_basis`, preventing rights-unreviewed content from clearing a
   commercial-release gate.
 
+#### **RFUP External-Routing Gap Closure — `rf verify` Gates**
+
+- **`pediatric_cds` evidence-card schema hard-gate** — `rf verify` now validates any evidence
+  card carrying a `pediatric_cds` block against a formal JSON Schema
+  (`src/research_foundry/schemas/pediatric_cds.schema.json`) and fails closed
+  (`pediatric_cds_schema_invalid`) when the block is structurally incomplete or malformed. Cards
+  without a `pediatric_cds` block are unaffected.
+- **Quote-vs-source fidelity check** — `rf verify` now runs a new character-level fidelity check
+  (`services/quote_fidelity.py`) comparing each cited quote against its source text, after a
+  normalization allowlist (NFKC, whitespace collapsing, quote-mark style). Residual differences
+  after normalization are flagged as a `warning`-severity finding, never silently
+  auto-corrected — catching corruption such as PMC's superscript-digit stripping
+  (`×10⁹/L` → `×10/L`). Cards with `extraction_status: locator_only` (no stored source text to
+  diff against) emit a distinguishable non-blocking `quote_fidelity_unverifiable_locator_only`
+  warning instead of being skipped or failed.
+- **Eligibility-driven strict exact-passage mode (auto-strict default)** — Threshold/clinical
+  claims now default to strict exact-passage verification automatically when the cited card
+  carries a `pediatric_cds` block or an elevated-sensitivity tag, per the new default policy in
+  `config/claim_policy.yaml`. Non-clinical, non-elevated-sensitivity claims and runs are
+  unaffected and continue to use warn-only exact-passage checking.
+
 #### **Writeback Approve & Dispatch**
 
 - **`POST /api/runs/{run_id}/writeback/approve`** — Operators can now approve a run's evidence

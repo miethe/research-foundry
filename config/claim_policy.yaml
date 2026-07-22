@@ -73,6 +73,17 @@ verifier_checks:
   - id: exact_passage_present
     severity: warning
 
+  # RFUP-1 P4-001: compares a claim's cited-source extracted quote against
+  # that source card's own stored extracted_points[].quote text (extraction-
+  # time corruption, e.g. a PMC fetch stripping a superscript). Kept
+  # "warning" so this check's wiring cannot regress any existing run on its
+  # own -- see quote_fidelity.py's module docstring and the 6d call-site
+  # comment in verification.py for the full contract, and the explicit
+  # distinction from check_anchor_hash_match (a different, drift-detection
+  # check over report-builder-draft text, not source-card text).
+  - id: quote_fidelity
+    severity: warning
+
   - id: inferences_have_basis
     severity: error
 
@@ -105,5 +116,30 @@ verifier_checks:
 #   A run-level CLI override (`rf verify --exact-passage warn|strict`) always
 #   wins over this config value; an invalid override fails closed (RFError)
 #   rather than silently falling back to this default.
+#
+# THIS KEY IS GLOBAL AND STAYS `warn` BY DEFAULT (RFUP-1 AC-P3-5) — do not
+# flip it to `strict` to get pediatric/CDS runs covered. A global flip would
+# hard-gate every non-clinical warn-mode run in this workspace on every
+# missing-anchor claim, which PRD Risk 1 explicitly calls out as the failure
+# mode to avoid.
+#
+# Pediatric/CDS coverage is handled by a separate, narrower mechanism that
+# needs NO config change and NO `--exact-passage strict` flag (RFUP-1
+# P3-001/P3-002, PRD FR-5/OQ-1, AC-P3-4): `exact_passage_present` in
+# `src/research_foundry/services/verification.py` evaluates
+# `claim_clinical_eligibility()` for every claim REGARDLESS of this key's
+# value. A claim is auto-strict — bucketed as a hard failure and appended to
+# `unsupported[]` — the moment it is BOTH an `assertion_kind: threshold`
+# clinical assertion AND carries an explicit clinical-sensitivity signal (a
+# `pediatric_cds` block on a cited source card, or an elevated/non-public
+# sensitivity tag). This is a per-claim override layered on top of the
+# `warn` default below, not an alternate value for this key — there is
+# nothing to set here to "turn on" pediatric/CDS strictness; it is always on
+# for eligible claims, on every run, independent of `verify.exact_passage`.
+# Every other claim (the vast majority of claims on non-clinical runs) is
+# unaffected and keeps today's warn-only behavior under the `warn` default
+# below. See `claim_clinical_eligibility()`'s docstring for the full trigger
+# definition and its fail-safe-to-non-eligible resolution when the signal is
+# indeterminate (AC-P3-3).
 verify:
   exact_passage: warn

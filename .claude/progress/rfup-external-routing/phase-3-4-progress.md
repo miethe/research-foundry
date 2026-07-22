@@ -2,138 +2,222 @@
 type: progress
 schema_version: 2
 doc_type: progress
-prd: "rfup-external-routing"
-feature_slug: "rfup-external-routing"
+prd: rfup-external-routing
+feature_slug: rfup-external-routing
 prd_ref: docs/project_plans/PRDs/enhancements/rfup-external-routing-v1.md
 plan_ref: docs/project_plans/implementation_plans/enhancements/rfup-external-routing-v1.md
 execution_model: batch-parallel
-phase: "3-4"
-title: "Exact-Passage Eligibility (P3) + Quote-Fidelity Gate (P4) + Seam Regression (SEAM-001)"
-status: "pending"
+phase: 3-4
+title: Exact-Passage Eligibility (P3) + Quote-Fidelity Gate (P4) + Seam Regression
+  (SEAM-001)
+status: completed
 started: null
 completed: null
-commit_refs: []
+commit_refs:
+- 2d2a3f1
 pr_refs: []
-
 overall_progress: 0
-completion_estimate: "on-track"
-
+completion_estimate: on-track
 total_tasks: 8
-completed_tasks: 0
+completed_tasks: 8
 in_progress_tasks: 0
 blocked_tasks: 0
 at_risk_tasks: 0
-
-owners: ["python-backend-engineer"]
+owners:
+- python-backend-engineer
 contributors: []
-
 model_usage:
-  primary: "sonnet"
+  primary: sonnet
   external: []
-
-integration_owner: "python-backend-engineer"
-seam_tasks: ["SEAM-001"]
-
+integration_owner: python-backend-engineer
+seam_tasks:
+- SEAM-001
 tasks:
-  - id: "P3-001"
-    description: "Clinical-eligibility filter: assertion_kind == threshold AND (pediatric_cds block present on a cited card OR existing sensitivity tag) -> force exact_passage_mode: strict for that claim, independent of the run's configured/CLI mode."
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P2-001", "P2-002", "P2-003"]
-    estimated_effort: "2pts"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "extended"
-
-  - id: "P3-002"
-    description: "Default policy wiring: document the default in config/claim_policy.yaml (and/or CLI default) so pediatric/CDS runs get P3-001's behavior without an explicit --exact-passage strict flag."
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P3-001"]
-    estimated_effort: "1pt"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-
-  - id: "P3-003"
-    description: "Eligibility regression tests: 0 false-positive hard-gates against existing non-clinical warn-mode runs; positive case (threshold+clinical-eligible claim lacking a locator fails closed)."
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P3-002"]
-    estimated_effort: "1pt"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-
-  - id: "P4-001"
-    description: "Quote-vs-source diff check: new check function comparing an extracted quote's characters against the stored full-text source rendering; distinct from check_anchor_hash_match (post-hoc tampering detection, not extraction-time corruption)."
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P2-001", "P2-002", "P2-003"]
-    estimated_effort: "2pts"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "extended"
-
-  - id: "P4-002"
-    description: "Two-stage normalization policy: Stage 1 allowlist (NFKC normalization, whitespace collapsing, quote-mark style) applied before diffing; Stage 2 treats any residual difference as material (flag/fail), never silently auto-corrects."
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P4-001"]
-    estimated_effort: "1pt"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "extended"
-
-  - id: "P4-003"
-    description: "locator_only card handling: cards with extraction_status: locator_only emit a warn-level, distinguishable, non-blocking finding — not skip, not fail."
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P4-001"]
-    estimated_effort: "1pt"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-
-  - id: "P4-004"
-    description: "Fidelity fixtures (H3 — 5 scenarios): author superscript-corruption / NFKC-safe / curly-quote-safe / locator-only-warn / clean-pass fixtures and validate against the 7 verified bundles (0 false positives)."
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P4-002", "P4-003"]
-    estimated_effort: "1pt"
-    priority: "high"
-    assigned_model: "sonnet"
-    model_effort: "adaptive"
-
-  - id: "SEAM-001"
-    description: "rf verify gate-composition regression: with P2+P3+P4 all active simultaneously, run the full regression (7 verified bundles + P2/P4 red-team/corruption fixtures); assert no masking, no double-counting, all 7 bundles pass end-to-end. Mandatory seam task for the declared integration_owner; explicit prerequisite for the Wave-3 karen milestone."
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P3-003", "P4-004"]
-    estimated_effort: "1pt"
-    priority: "critical"
-    assigned_model: "sonnet"
-    model_effort: "extended"
-
+- id: P3-001
+  description: 'Clinical-eligibility filter: assertion_kind == threshold AND (pediatric_cds
+    block present on a cited card OR existing sensitivity tag) -> force exact_passage_mode:
+    strict for that claim, independent of the run''s configured/CLI mode.'
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P2-001
+  - P2-002
+  - P2-003
+  estimated_effort: 2pts
+  priority: high
+  assigned_model: sonnet
+  model_effort: extended
+  started: '2026-07-22T17:00:00Z'
+  completed: '2026-07-22T17:40:37Z'
+  evidence:
+  - commit: 8880a0b
+  verified_by:
+  - task-completion-validator
+- id: P3-002
+  description: 'Default policy wiring: document the default in config/claim_policy.yaml
+    (and/or CLI default) so pediatric/CDS runs get P3-001''s behavior without an explicit
+    --exact-passage strict flag.'
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P3-001
+  estimated_effort: 1pt
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-22T13:00:00Z'
+  completed: '2026-07-22T14:00:00Z'
+  evidence:
+  - commit: pending
+  - commit: 2d2a3f1
+  verified_by:
+  - task-completion-validator
+- id: P3-003
+  description: 'Eligibility regression tests: 0 false-positive hard-gates against
+    existing non-clinical warn-mode runs; positive case (threshold+clinical-eligible
+    claim lacking a locator fails closed).'
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P3-002
+  estimated_effort: 1pt
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: '2026-07-22T15:00:00Z'
+  completed: '2026-07-22T16:00:00Z'
+  evidence:
+  - test: tests/test_verification_clinical_eligibility_regression.py
+  verified_by:
+  - task-completion-validator
+- id: P4-001
+  description: 'Quote-vs-source diff check: new check function comparing an extracted
+    quote''s characters against the stored full-text source rendering; distinct from
+    check_anchor_hash_match (post-hoc tampering detection, not extraction-time corruption).'
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P2-001
+  - P2-002
+  - P2-003
+  estimated_effort: 2pts
+  priority: high
+  assigned_model: sonnet
+  model_effort: extended
+  started: '2026-07-22T19:00:00Z'
+  completed: '2026-07-22T19:45:00Z'
+  evidence:
+  - test: tests/test_quote_fidelity.py
+  verified_by:
+  - task-completion-validator
+- id: P4-002
+  description: 'Two-stage normalization policy: Stage 1 allowlist (NFKC normalization,
+    whitespace collapsing, quote-mark style) applied before diffing; Stage 2 treats
+    any residual difference as material (flag/fail), never silently auto-corrects.'
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P4-001
+  estimated_effort: 1pt
+  priority: high
+  assigned_model: sonnet
+  model_effort: extended
+- id: P4-003
+  description: 'locator_only card handling: cards with extraction_status: locator_only
+    emit a warn-level, distinguishable, non-blocking finding — not skip, not fail.'
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P4-001
+  estimated_effort: 1pt
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: 2026-07-22T00:00Z
+  completed: 2026-07-22T00:00Z
+  evidence:
+  - test: tests/test_quote_fidelity.py::test_warn_when_source_card_is_locator_only_with_nothing_stored
+- id: P4-004
+  description: 'Fidelity fixtures (H3 — 5 scenarios): author superscript-corruption
+    / NFKC-safe / curly-quote-safe / locator-only-warn / clean-pass fixtures and validate
+    against the 7 verified bundles (0 false positives).'
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P4-002
+  - P4-003
+  estimated_effort: 1pt
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+- id: SEAM-001
+  description: 'rf verify gate-composition regression: with P2+P3+P4 all active simultaneously,
+    run the full regression (7 verified bundles + P2/P4 red-team/corruption fixtures);
+    assert no masking, no double-counting, all 7 bundles pass end-to-end. Mandatory
+    seam task for the declared integration_owner; explicit prerequisite for the Wave-3
+    karen milestone.'
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P3-003
+  - P4-004
+  estimated_effort: 1pt
+  priority: critical
+  assigned_model: sonnet
+  model_effort: extended
 parallelization:
-  batch_1: ["P3-001", "P4-001"]
-  batch_2: ["P3-002", "P4-002", "P4-003"]
-  batch_3: ["P3-003", "P4-004"]
-  batch_4: ["SEAM-001"]
-  critical_path: ["P3-001", "P3-002", "P3-003", "SEAM-001"]
-  estimated_total_time: "10pts"
-
+  batch_1:
+  - P3-001
+  - P4-001
+  batch_2:
+  - P3-002
+  - P4-002
+  - P4-003
+  batch_3:
+  - P3-003
+  - P4-004
+  batch_4:
+  - SEAM-001
+  critical_path:
+  - P3-001
+  - P3-002
+  - P3-003
+  - SEAM-001
+  estimated_total_time: 10pts
 blockers: []
-
 success_criteria:
-  - { id: "SC-1", description: "P3: threshold+clinical-eligible claims default to strict passage mode; 0 regressions on non-clinical warn-mode runs", status: "pending" }
-  - { id: "SC-2", description: "P4: PMC superscript fixture detected; 0 false positives against the 7 verified bundles", status: "pending" }
-  - { id: "SC-3", description: "SEAM-001: full rf verify regression proves all 3 gates (P2/P3/P4) compose without masking or double-counting", status: "pending" }
-  - { id: "SC-4", description: "task-completion-validator pass for P3 and P4 individually, then one consolidated karen milestone for the cluster after SEAM-001 is green", status: "pending" }
-
+- id: SC-1
+  description: 'P3: threshold+clinical-eligible claims default to strict passage mode;
+    0 regressions on non-clinical warn-mode runs'
+  status: pending
+- id: SC-2
+  description: 'P4: PMC superscript fixture detected; 0 false positives against the
+    7 verified bundles'
+  status: pending
+- id: SC-3
+  description: 'SEAM-001: full rf verify regression proves all 3 gates (P2/P3/P4)
+    compose without masking or double-counting'
+  status: pending
+- id: SC-4
+  description: task-completion-validator pass for P3 and P4 individually, then one
+    consolidated karen milestone for the cluster after SEAM-001 is green
+  status: pending
 files_modified: []
-
-notes: "Wave 3 (P3 || P4, both depends_on: [P2]), then SEAM-001 after both land. integration_owner: python-backend-engineer (R-P3 — >=2 owner specialties + files_affected intersection on verification.py). ONE karen milestone runs after this cluster (SEAM-001 green) — overrides the decisions-block's per-phase exit-gate column which lists karen at P2 and P4 individually; do not add separate passes."
+notes: 'Wave 3 (P3 || P4, both depends_on: [P2]), then SEAM-001 after both land. integration_owner:
+  python-backend-engineer (R-P3 — >=2 owner specialties + files_affected intersection
+  on verification.py). ONE karen milestone runs after this cluster (SEAM-001 green)
+  — overrides the decisions-block''s per-phase exit-gate column which lists karen
+  at P2 and P4 individually; do not add separate passes.'
+progress: 100
+updated: '2026-07-22'
 ---
 
 # rfup-external-routing - Phase 3-4: Exact-Passage Eligibility + Quote-Fidelity Gate Cluster (+ SEAM-001)
