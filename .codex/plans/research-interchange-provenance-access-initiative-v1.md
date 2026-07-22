@@ -8,7 +8,7 @@ description: >-
 status: draft
 scope: workflow
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-07-22
 feature_slug: research-interchange-provenance-access-initiative
 feature_version: v1
 prd_ref: docs/project_plans/PRDs/enhancements/research-interchange-provenance-access-epic-v1.md
@@ -353,9 +353,80 @@ different tree.
 
 ## 12. Running Log
 
+- 2026-07-22: Added §13 Execution Table (child × wave grid, entry commands, reviewer
+  gates) and wired the initiative into IntentTree (tree `aos-research-foundry`): Epic
+  work-area `node_01KY5SGQKGHCPRE0GVA6BB1C6W` + five child work_packages with
+  `depends_on` edges. Reconciled cross-references between the epic PRD, the meta-plan,
+  and the provenance-continuity child. Still Draft; no implementation authorized.
 - 2026-07-18: Reviewer reconciliation locked the child rollup at 169 points
   (40 + 38 + 28 + 34 + 29), H6 at 24/145 = 16.6%, expanded external hostile-input
   gates, and separated Knowledge MCP at the process/registry/settings/credential/
   inventory layers. No implementation or remote compatibility is authorized.
 
 **Status:** Draft. Next action: Wave-0 packet validation and human approval, not implementation.
+
+## 13. Execution Table (child × wave)
+
+> Added 2026-07-22. Authoritative per-child execution grid over §6 waves and §7 gates.
+> Nothing here authorizes implementation: each child still requires Wave-0 packet
+> validation + human approval, and progress trackers initialize only for the approved
+> child (Epic §4 / Wave 0). IntentTree work-area `node_01KY5SGQKGHCPRE0GVA6BB1C6W`
+> (tree `aos-research-foundry`); all five children are captured as child work_packages
+> with `depends_on` edges mirroring the waves.
+
+### A. Master grid
+
+| Wave | Child (pts, phases) | ITT node | Planning artifacts (all present on disk) | Blocked by → Gate |
+|---|---|---|---|---|
+| 1 | **C1 Research Provenance Continuity** (40, 7) | `node_01KY5SH3AD7DX28NPBAFSSP41D` | PRD `docs/project_plans/PRDs/enhancements/research-provenance-continuity-v1.md` · IMPL `docs/project_plans/implementation_plans/enhancements/research-provenance-continuity-v1.md` · BRIEF `docs/project_plans/human-briefs/research-provenance-continuity.md` | — → **DG-1**; emits **RPC-1.G** |
+| 2 | **C2 External Research Report Interchange** (38, 6) | `node_01KY5SH87EXBGE3A4GHX0Y49E9` | PRD `docs/project_plans/PRDs/enhancements/external-research-report-interchange-v1.md` · IMPL `docs/project_plans/implementation_plans/enhancements/external-research-report-interchange-v1.md` · BRIEF `docs/project_plans/human-briefs/external-research-report-interchange.md` | RPC-1.G → **DG-2**; emits ERI-5.G |
+| 2 | **C3 Catalog-Assisted Research Planning** (28, 4) | `node_01KY5SHD2K1G9KT40E26XMVR43` | PRD `docs/project_plans/PRDs/enhancements/catalog-assisted-research-planning-v1.md` · IMPL `docs/project_plans/implementation_plans/enhancements/catalog-assisted-research-planning-v1.md` · BRIEF `docs/project_plans/human-briefs/catalog-assisted-research-planning.md` | RPC-1.G → **DG-3** |
+| 3 | **C4 Knowledge MCP (read-only)** (34, 5) | `node_01KY5SJ193R3M3ANQAXKWX9C93` | PRD `docs/project_plans/PRDs/enhancements/research-foundry-knowledge-mcp-v1.md` · IMPL `docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md` · BRIEF `docs/project_plans/human-briefs/research-foundry-knowledge-mcp.md` | C1 + C3 (DG-3) → **DG-4** |
+| 4 | **C5 Operator MCP (governed)** (29, 4) | `node_01KY5SHNM6JVMCCKYXP44GRSDR` | PRD `docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md` · IMPL `docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md` · BRIEF `docs/project_plans/human-briefs/research-foundry-operator-mcp.md` | C4 (DG-4) → **DG-5** |
+| 5 | **Initiative integration & qualification** (within H6 24-pt reserve) | `node_01KY5SGQKGHCPRE0GVA6BB1C6W` (work-area) | Epic PRD + this meta-plan §5 Wave 5 / §9 Completion Rules | all children → **DG-6** |
+
+ITT `depends_on` edges: C2→C1, C3→C1, C4→C1, C4→C3, C5→C4.
+
+### B. Entry commands
+
+**Wave 0 (once, before any child)** — strict validation + AC dry coverage:
+
+```bash
+.venv/bin/python .claude/skills/artifact-tracking/scripts/validate_artifact.py \
+  -f docs/project_plans/PRDs/enhancements/research-interchange-provenance-access-epic-v1.md --strict
+for s in research-provenance-continuity external-research-report-interchange \
+         catalog-assisted-research-planning research-foundry-knowledge-mcp \
+         research-foundry-operator-mcp; do
+  .venv/bin/python .claude/skills/artifact-tracking/scripts/validate_artifact.py \
+    -f docs/project_plans/implementation_plans/enhancements/$s-v1.md --strict
+  .venv/bin/python .claude/skills/artifact-tracking/scripts/ac-coverage-report.py \
+    --plan docs/project_plans/implementation_plans/enhancements/$s-v1.md --dry
+done
+git diff --check
+```
+
+**Per child, after its human approval** (honor wave order; each impl plan carries `wave_plan` frontmatter so `/dev:execute-plan` drives it). Mark the child's ITT node `in_progress` on start and `completed` on its gate exit:
+
+```text
+# C1 — Wave 1 (P1 / RPC-1.G must land before C2 or C3 start)
+Skill("dev-execution"); Skill("artifact-tracking")
+/dev:execute-plan docs/project_plans/implementation_plans/enhancements/research-provenance-continuity-v1.md
+
+# C2 — Wave 2 (after RPC-1.G)
+/dev:execute-plan docs/project_plans/implementation_plans/enhancements/external-research-report-interchange-v1.md
+
+# C3 — Wave 2 (parallel with C2; serialize shared source-card/assertion/run-launch/CLI files)
+/dev:execute-plan docs/project_plans/implementation_plans/enhancements/catalog-assisted-research-planning-v1.md
+
+# C4 — Wave 3 (after C1 + C3)
+/dev:execute-plan docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
+
+# C5 — Wave 4 (after C4)
+/dev:execute-plan docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
+```
+
+Reviewer gates (§7): `task-completion-validator` at every phase exit; `karen` at each child's contract, integration, and final exact-tree milestone. A material fix invalidates prior approval until the same reviewer re-checks the tree.
+
+### C. What this accomplishes
+
+The grid turns the §6 wave narrative and §7 decision gates into an ordered, IntentTree-tracked runbook: one contract-first child (C1) whose gate RPC-1.G unblocks a parallel Wave-2 pair (C2 interchange ∥ C3 catalog), then read-only Knowledge MCP (C4), governed Operator MCP (C5), and finally cross-child integration qualification (Wave 5 / DG-6). Structured provenance stays authoritative, external prose stays candidate until exact verification, and read access (C4) stays separated from privileged mutation (C5). No progress trackers exist until a child is approved.

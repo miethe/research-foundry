@@ -23,6 +23,8 @@ related_documents:
   - docs/project_plans/PRDs/enhancements/catalog-assisted-research-planning-v1.md
   - docs/project_plans/implementation_plans/enhancements/catalog-assisted-research-planning-v1.md
   - .codex/worknotes/research-provenance-continuity/decisions-block.md
+  - docs/project_plans/PRDs/enhancements/external-research-report-interchange-v1.md
+  - docs/project_plans/implementation_plans/enhancements/external-research-report-interchange-v1.md
 references:
   user_docs: []
   context: []

@@ -14,7 +14,7 @@ feature_version: v1
 tier: epic
 effort_estimate: "169 pts across five independently estimated child packages; no package discount"
 prd_ref: null
-plan_ref: null
+plan_ref: .codex/plans/research-interchange-provenance-access-initiative-v1.md
 related_documents:
   - docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
   - docs/project_plans/implementation_plans/features/reusable-assertion-ledger-v1.md
@@ -39,6 +39,7 @@ related_documents:
   - docs/project_plans/design-specs/research-foundry-knowledge-mcp-canonical-resource-urls.md
   - docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-cache-isolation.md
   - docs/project_plans/design-specs/reusable-assertion-ledger-shared-indexes.md
+  - .codex/plans/research-interchange-provenance-access-initiative-v1.md
 references:
   user_docs: []
   context: []
