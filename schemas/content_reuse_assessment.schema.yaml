@@ -1,0 +1,337 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/content_reuse_assessment.schema.yaml"
+title: Content Reuse Assessment
+description: >-
+  Component-level reuse decision for a specific intended use of a source's
+  content. Ported from the v1.0 pediatric-anemia-site rights governance spec
+  (Research_Foundry_Source_Reuse_and_Rights_Governance_Spec_v1.0.md §10-11).
+  Distinct from `rights_record` (source-level baseline, one per source/access
+  context) and `permission_record` (evidence of an affirmative grant) — this
+  document assesses ONE component for ONE intended use and carries the
+  release-gate decision consumed downstream.
+
+  §9-adjudication notes (handoff-v1):
+  - `component.component_type` (§9.2/§9.8): unified singular vocabulary shared
+    textually with `rights_record.component_decisions[].component_type` —
+    byte-identical literal lists on both schemas (no `$ref`; SchemaRegistry has
+    no resolver support). Includes `abstract` and `supplementary_material`.
+  - `review.review_status` (§9.7): shared textually with
+    `rights_record.review.review_status`'s 6-member enum — byte-identical.
+  - `decision.status` (§9.10, partial): enum values match
+    `rights_record.overall_status`'s value set (including the §9.5 `OWNED`
+    member for first-party/synthesis content). This schema only defines the
+    enum values — the fail-closed authorization guard preventing any agent
+    path from writing a `CLEARED_*`/counsel-only value is deferred to P5-2.
+  - `decision.release_gate` is an independent 3-value gate outcome
+    (PASS/PASS_WITH_CONDITIONS/BLOCK), unchanged from v1.0 — not part of the
+    §9.10 value-set match (that applies to `decision.status` only).
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: content_reuse_assessment
+  reuse_assessment_id:
+    type: string
+    minLength: 5
+  source_id:
+    type: string
+    minLength: 3
+  rights_record_ids:
+    type: array
+    minItems: 1
+    items:
+      type: string
+  evidence_atom_ids:
+    type: array
+    items:
+      type: string
+  candidate_rule_ids:
+    type: array
+    items:
+      type: string
+  component:
+    type: object
+    additionalProperties: false
+    required:
+      - component_type
+      - description
+    properties:
+      component_type:
+        # Unified singular vocabulary (§9.2/§9.8) — MUST stay byte-identical
+        # to rights_record.component_decisions[].component_type (P0-1).
+        enum:
+          - bibliographic_metadata
+          - atomic_fact
+          - method
+          - equation
+          - guideline_recommendation
+          - reference_interval_value
+          - prose
+          - abstract
+          - table
+          - figure
+          - chart
+          - nomogram
+          - decision_tree_or_flowchart
+          - questionnaire_or_instrument
+          - patient_handout
+          - dataset
+          - software_or_code
+          - image_or_media
+          - trademark_or_logo
+          - supplementary_material
+          - other
+      description:
+        type: string
+      source_locator:
+        type:
+          - string
+          - "null"
+      quantity_or_scope:
+        type:
+          - string
+          - "null"
+  intended_use:
+    type: object
+    additionalProperties: false
+    required:
+      - product
+      - use_type
+      - commercial
+      - audience
+      - channels
+      - territories
+    properties:
+      product:
+        type: string
+      product_version:
+        type:
+          - string
+          - "null"
+      use_type:
+        enum:
+          - internal_research
+          - controlled_archive
+          - evidence_registry
+          - rule_authoring
+          - commercial_runtime_logic
+          - commercial_user_facing_explanation
+          - clinician_source_preview
+          - patient_facing_content
+          - documentation
+          - marketing
+          - training
+          - bulk_retrieval
+          - text_and_data_mining
+          - model_training
+          - partner_distribution
+      commercial:
+        type: boolean
+      audience:
+        type: array
+        items:
+          type: string
+      channels:
+        type: array
+        items:
+          type: string
+      territories:
+        type: array
+        items:
+          type: string
+      term_start:
+        type:
+          - string
+          - "null"
+        format: date
+      term_end:
+        type:
+          - string
+          - "null"
+        format: date
+  analysis:
+    type: object
+    additionalProperties: false
+    required:
+      - independently_authored
+      - copies_source_wording
+      - copies_source_arrangement
+      - compilation_similarity
+      - market_substitution_risk
+      - alternative_sources_available
+    properties:
+      independently_authored:
+        type: boolean
+      copies_source_wording:
+        type: boolean
+      copies_source_arrangement:
+        type: boolean
+      amount_and_substantiality:
+        enum:
+          - minimal
+          - limited
+          - substantial
+          - complete
+          - unknown
+      compilation_similarity:
+        enum:
+          - none
+          - low
+          - moderate
+          - high
+          - near_identical
+          - unknown
+      market_substitution_risk:
+        enum:
+          - none
+          - low
+          - moderate
+          - high
+          - unknown
+      alternative_sources_available:
+        type: boolean
+      alternative_source_ids:
+        type: array
+        items:
+          type: string
+      facts_methods_basis:
+        type:
+          - string
+          - "null"
+      contract_impact:
+        type:
+          - string
+          - "null"
+      patent_impact:
+        type:
+          - string
+          - "null"
+      trademark_impact:
+        type:
+          - string
+          - "null"
+      database_right_impact:
+        type:
+          - string
+          - "null"
+      privacy_confidentiality_impact:
+        type:
+          - string
+          - "null"
+      regulatory_transparency_need:
+        type:
+          - string
+          - "null"
+      attribution_plan:
+        type:
+          - string
+          - "null"
+      license_notice_plan:
+        type:
+          - string
+          - "null"
+  decision:
+    type: object
+    additionalProperties: false
+    required:
+      - status
+      - release_gate
+      - rationale
+    properties:
+      status:
+        # §9.10 (partial): value set matches rights_record.overall_status,
+        # including the §9.5 OWNED member. Enum VALUES only — no
+        # authorization enforcement here (deferred to P5-2).
+        enum:
+          - CLEARED_OPEN_LICENSE
+          - CLEARED_PUBLIC_DOMAIN
+          - CLEARED_FACTS_ONLY
+          - CLEARED_PERMISSION
+          - INTERNAL_ONLY
+          - LOCAL_VALIDATION_ONLY
+          - LEGAL_REVIEW_REQUIRED
+          - PERMISSION_REQUIRED
+          - CONTRACT_RESTRICTED
+          - PROHIBITED
+          - UNKNOWN
+          - OWNED
+      release_gate:
+        enum:
+          - PASS
+          - PASS_WITH_CONDITIONS
+          - BLOCK
+      rationale:
+        type: string
+      conditions:
+        type: array
+        items:
+          type: string
+      required_permission_record_ids:
+        type: array
+        items:
+          type: string
+      rights_failure_ids:
+        type: array
+        items:
+          type: string
+      expires_at:
+        type:
+          - string
+          - "null"
+        format: date-time
+  review:
+    type: object
+    additionalProperties: false
+    required:
+      - reviewed_at
+      - review_status
+    properties:
+      agent_assessor:
+        type:
+          - string
+          - "null"
+      human_rights_reviewer:
+        type:
+          - string
+          - "null"
+      clinical_reviewer:
+        type:
+          - string
+          - "null"
+      counsel_reviewer:
+        type:
+          - string
+          - "null"
+      reviewed_at:
+        type: string
+        format: date-time
+      review_status:
+        # Canonical 6-member enum (§9.7) — MUST stay byte-identical to
+        # rights_record.review.review_status (P0-1).
+        enum:
+          - agent_triage_only
+          - human_reviewed
+          - legal_review_required_before_commercial_use
+          - counsel_approved
+          - counsel_rejected
+          - expired
+      next_review_at:
+        type:
+          - string
+          - "null"
+        format: date-time
+  extensions:
+    type: object
+required:
+  - schema_version
+  - type
+  - reuse_assessment_id
+  - source_id
+  - rights_record_ids
+  - component
+  - intended_use
+  - analysis
+  - decision
+  - review

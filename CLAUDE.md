@@ -318,6 +318,7 @@ All Python code should include type hints throughout for IDE support and runtime
 - **Atomic Operations**: Use temp directories → atomic move for file writes
 - **Validation**: All external inputs validated before use
 - **Permissions**: Warn before destructive operations
+- **Rights Governance**: agent-writable paths can never mint a `CLEARED_*`/`counsel_approved`/`attested` rights-clearance value (guard rule `no_agent_cleared_rights_value`) — see `docs/dev/architecture/adr-rights-entity-model.md`.
 
 ---
 

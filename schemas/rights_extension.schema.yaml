@@ -1,0 +1,87 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/rights_extension.schema.yaml/v1"
+title: Rights Extension
+description: >-
+  Entity-level rights container. Embed under `extensions.rights` on source
+  records, evidence atoms, candidate rules, questionnaires, or roadmap
+  objects to link them to the authoritative rights_record/
+  content_reuse_assessment/permission_record documents and carry the
+  clearance decision that gates release. Ported field-for-field from the
+  v1.0 Source Reuse & Rights Governance Spec (rights_extension.schema.json).
+  Rights container ONLY: it MUST NOT define `evidence_item_type`,
+  `judgment_basis`, or any other evidence-quality/taxonomy field — the
+  measured-vs-judged axis is domain-general evidence metadata that lives in
+  a sibling `extensions.evidence_taxonomy` block (added on `source_assertion`
+  in a later phase), never nested under rights. See decisions-block §9.1.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: rights_extension
+  rights_extension_id:
+    type: string
+  rights_record_ids:
+    type: array
+    minItems: 1
+    items:
+      type: string
+  reuse_assessment_ids:
+    type: array
+    items:
+      type: string
+  permission_record_ids:
+    type: array
+    items:
+      type: string
+  rights_failure_ids:
+    type: array
+    items:
+      type: string
+  clearance_status:
+    enum:
+      - CLEARED_OPEN_LICENSE
+      - CLEARED_PUBLIC_DOMAIN
+      - CLEARED_FACTS_ONLY
+      - CLEARED_PERMISSION
+      - INTERNAL_ONLY
+      - LOCAL_VALIDATION_ONLY
+      - LEGAL_REVIEW_REQUIRED
+      - PERMISSION_REQUIRED
+      - CONTRACT_RESTRICTED
+      - PROHIBITED
+      - UNKNOWN
+  release_gate:
+    enum:
+      - PASS
+      - PASS_WITH_CONDITIONS
+      - BLOCK
+  shippable_claim_text_allowed:
+    type: [boolean, "null"]
+  verbatim_excerpt_allowed:
+    type: [boolean, "null"]
+  source_locator_display_allowed:
+    type: [boolean, "null"]
+  publisher_content_dependency:
+    enum: [none, low, moderate, high, unknown]
+  compilation_similarity:
+    enum: [none, low, moderate, high, near_identical, unknown]
+  permission_required_before_release:
+    type: [boolean, "null"]
+  last_reviewed_at:
+    type: string
+    format: date-time
+  expires_at:
+    type: [string, "null"]
+    format: date-time
+  notes:
+    type: [string, "null"]
+required:
+  - schema_version
+  - type
+  - rights_extension_id
+  - rights_record_ids
+  - clearance_status
+  - release_gate
+  - last_reviewed_at

@@ -37,6 +37,7 @@ from .claim_mapping import (
     ExtractionFactClaimMapping,
     validate_extraction_fact_claim_mappings,
 )
+from .rights_triage import compute_capture_rights_summary, maybe_assess_substitutability
 
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 _ASSERTION_ID_RE = re.compile(r"^ast_[a-f0-9]{64}$")
@@ -378,6 +379,27 @@ class AssertionMaterializer:
             raise _Abstain("source_rights_scope_mismatch")
 
         qualifiers, qualifier_extensions = self._qualifiers(fact)
+
+        # P4-1 (AC P4-A): computed once, before the assertion dict is
+        # assembled, so both the rights_summary mirror and the P4-4
+        # substitutability search (which reads the mirror's clearance_status)
+        # are available for the SAME materialization pass that creates this
+        # source_assertion -- no separate backfill sweep needed for either.
+        rights_summary = compute_capture_rights_summary()
+        # P4-4 fix-cycle 1 (karen review): wire the substitutability search
+        # into the real materialization path. `query_terms` uses the bound
+        # source_card's own title (the topic/domain signal already resolved
+        # above as `source["title"]`) and the corpus is every other
+        # source_card already ingested into this same run -- the same corpus
+        # convention ingest_source uses.
+        source_title = source.get("title") if isinstance(source, Mapping) else None
+        substitutability = maybe_assess_substitutability(
+            rights_summary,
+            query_terms=[source_title] if source_title else [],
+            corpus_paths=sorted(self.paths.run_paths(run_id).sources.glob("*.md")),
+            exclude_source_id=mapping.source_card_id,
+        )
+
         extraction_provenance = {
             "extractor": extractor,
             "provider": None,
@@ -406,6 +428,45 @@ class AssertionMaterializer:
                 "fingerprint": "",
                 "material_fields": list(SOURCE_ASSERTION_MATERIAL_FIELDS),
             },
+            # P3-3: this materializer performs single-passage direct extraction
+            # from one exact source-card quote -- it never synthesizes a value
+            # from multiple prior assertions -- so `evidence_item_type: "other"`
+            # and `judgment_basis: "unassessed"` are the accurate, honest
+            # fail-closed defaults for every assertion this function produces,
+            # not a guess dressed up as certainty. `extensions` is deliberately
+            # excluded from SOURCE_ASSERTION_MATERIAL_FIELDS (assertion_identity.py)
+            # so adding it here does not perturb the assertion_id/fingerprint of
+            # any assertion materialized before this field existed. No
+            # `synthesis` block is set here: this function's outputs are never
+            # `derived_synthesis`.
+            "extensions": {
+                "evidence_taxonomy": {
+                    "evidence_item_type": "other",
+                    "judgment_basis": "unassessed",
+                }
+            },
+            # P4-1 (AC P4-A): a fail-closed rights_summary mirror, computed in
+            # THIS same materialization pass -- no separate backfill sweep
+            # for newly-materialized source assertions. Sibling of
+            # `extensions`, never nested under it (schema comment). See
+            # services/rights_triage.py for why the mirror lands
+            # all-"unknown" rather than the PRD's literal
+            # "agent_triage_only" (link-before-assert requires a linked
+            # rights_record, which does not exist at materialization time).
+            # Deliberately excluded from SOURCE_ASSERTION_MATERIAL_FIELDS
+            # (assertion_identity.py), same treatment as `extensions` above,
+            # so it does not perturb this assertion's identity/fingerprint.
+            "rights_summary": rights_summary,
+            # P4-4 fix-cycle 1 (karen review): the substitutability search
+            # result (never null -- maybe_assess_substitutability always
+            # returns a well-formed not_searched/substitute_found/
+            # no_substitute_found block), computed above in the SAME
+            # materialization pass. Sibling of rights_summary/extensions/
+            # synthesis, same top-level nesting depth -- the exact key
+            # `rf rights inspect` reads first (cli_commands.py). Also
+            # excluded from SOURCE_ASSERTION_MATERIAL_FIELDS, same treatment
+            # as rights_summary above.
+            "substitutability": substitutability,
         }
         assertion["identity"]["fingerprint"] = source_assertion_fingerprint(assertion)
         assertion["assertion_id"] = source_assertion_id(assertion)
@@ -592,7 +653,37 @@ class AssertionMaterializer:
         path = self._assertion_path(assertion["assertion_id"])
         if path.exists():
             return
-        _atomic_dump(assertion, path)
+        _atomic_dump(self._enforce_synthesis_attestation_ceiling(assertion), path)
+
+    @staticmethod
+    def _enforce_synthesis_attestation_ceiling(assertion: Mapping[str, Any]) -> dict[str, Any]:
+        """Defense-in-depth write ceiling: this is the LAST gate before a
+        source_assertion is persisted to the immutable ledger, and it is the
+        only place in this module that governs ``synthesis.attestation.status``.
+
+        No write path in this repository is authorized to mint
+        ``attestation.status == "attested"`` today -- ``_prepare_one`` above
+        never emits a ``synthesis`` block at all (this materializer performs
+        single-passage direct extraction, never synthesis), so this function
+        is a no-op for every assertion this module currently produces. It
+        exists so that if a *future* write path is added (here or in a
+        subclass/caller) that does construct a ``synthesis`` block without
+        updating this ceiling, that future code still cannot silently produce
+        an "attested" record: any ``synthesis.attestation.status`` present is
+        forcibly reset to ``"candidate"`` immediately before the bytes hit
+        disk, regardless of what upstream code set it to.
+        """
+
+        result = copy.deepcopy(dict(assertion))
+        synthesis = result.get("synthesis")
+        if isinstance(synthesis, Mapping):
+            synthesis = dict(synthesis)
+            attestation = synthesis.get("attestation")
+            attestation = dict(attestation) if isinstance(attestation, Mapping) else {}
+            attestation["status"] = "candidate"
+            synthesis["attestation"] = attestation
+            result["synthesis"] = synthesis
+        return result
 
     @staticmethod
     def _write_immutable(record: Mapping[str, Any], path: Path) -> None:

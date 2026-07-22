@@ -4,7 +4,7 @@ type: build_contract
 title: "Research Foundry — Service API & Artifact Contract"
 status: authoritative
 created_at: "2026-06-13"
-updated_at: "2026-07-10"
+updated_at: "2026-07-21"
 prior_version: "2026-06-13 — covered only the original 12 MVP service modules (§1-12 below)"
 ---
 
@@ -767,3 +767,84 @@ mutation paths above (Report Builder, catalog import, workspace migration,
 agent jobs) as a side effect — it is never itself the primary write path, and
 its fail-open contract means a broken audit sink must never block the
 governed action it is auditing.
+
+---
+
+## 20. `services/rights_*.py` — Rights & Evidence-Item Entity Model (`rf rights *`)
+
+**Maturity: shipped-enforced** (`rights-entity-model-v1`, Phases P0-P6). Ports
+the pediatric-anemia-site "Source Reuse & Rights Governance Spec v1.0" entity
+model into RF's own schema registry (`rights_record`, `rights_extension`,
+`content_reuse_assessment`, `permission_record`, `rights_failure`) and layers
+a denormalized `rights_summary` mirror onto `source_card`/`source_assertion`.
+Full design record, including the ten §9 schema-conflict adjudications applied
+at port time: `docs/dev/architecture/adr-rights-entity-model.md`.
+
+```python
+# services/rights_validation.py
+def check_rights_divergence(
+    paths: list[Path], *, as_of: str | date, rights_records_dir: Path | None = None,
+) -> list[RightsCheckResult]: ...
+# Time-parameterized divergence check between a source_card/source_assertion's
+# rights_summary mirror and its authoritative rights_record. NEVER reads the
+# wall clock -- as_of is required, so two invocations with the same as_of and
+# unchanged inputs produce byte-identical output (a correctness invariant).
+
+# services/rights_backfill.py
+def backfill_rights_summary(paths: list[Path], *, dry_run: bool = False) -> list[BackfillResult]: ...
+# Writes an all-"unknown" fail-closed rights_summary onto legacy instances
+# missing one. Idempotent -- an instance already carrying a rights_summary
+# (real data or a prior backfill) is left untouched.
+
+# services/rights_triage.py
+def compute_capture_rights_summary() -> dict[str, Any]: ...
+def maybe_assess_substitutability(...) -> dict[str, Any] | None: ...
+# Called from capture.py at capture time (not backfilled) to emit the initial
+# fail-closed rights_summary and, when warranted, a substitutability
+# assessment for the newly captured source.
+
+# services/rights_substitutability.py
+def find_substitute_candidates(...) -> list[SubstituteCandidate]: ...
+def assess_substitutability(...) -> dict[str, Any]: ...
+def is_blocking_clearance_status(clearance_status: str | None) -> bool: ...
+```
+
+`rights_summary.mirror_is_authoritative` is a schema `const: false` —
+`rights_record` remains the single authoritative record for a rights
+decision; the mirror only makes rights machine-checkable at the recall path
+without a join (RF's files-canonical, no-service-on-recall-path constraint).
+
+`governance.py` gained a guard rule, `no_agent_cleared_rights_value`
+(rule_id), blocking any agent-writable code path from setting
+`rights_record.overall_status` / `content_reuse_assessment.decision.status` /
+`rights_extension.clearance_status` / `synthesis.attestation.status` to a
+`CLEARED_*`/`counsel_approved`/`attested` value — human/counsel-only,
+fail-closed, proven unreachable by a dedicated negative test.
+`verification.py::verify_report` calls a companion release-gate predicate,
+`release_gate_blocked_by_unassessed_judgment()` (owned by `governance.py`),
+at verify time: a `judgment_basis: unassessed` evidence item blocks a
+`commercial_release` disposition check but never blocks an
+`internal_capture` write (bidirectional per the release-gate asymmetry).
+`judgment_basis`/`evidence_item_type` live on `source_assertion`'s sibling
+`extensions.evidence_taxonomy` block — an independent axis, never nested
+under `extensions.rights`.
+
+CLI (`cli_commands.py:2532+`): `rf rights inspect|list|validate|backfill`.
+`inspect <entity_id>` shows one entity's `rights_summary`, substitutability
+assessment, and linked `rights_record` synthesis state; `list [--status]`
+enumerates entities by `rights_summary.review_status`; `validate --as-of
+YYYY-MM-DD` is the CLI entry point for `check_rights_divergence` (a
+non-fatal `needs_backfill`/`stale` result never exits non-zero on its own,
+only an actual divergence finding does); `backfill [--dry-run]` is the CLI
+entry point for `backfill_rights_summary`.
+
+**Coordination boundary**: authoritative `rights_record` instances live at
+`<workspace root>/rights_records/<rights_record_id>.yaml` (default;
+overridable via `--rights-records-dir` on `inspect`/`validate`).
+`content_reuse_assessment`/`permission_record`/`rights_failure` are
+schema-validated documents referenced by id today, with no fixed on-disk
+directory convention shipped yet — authoring them remains human/counsel-only
+(Known Gap OQ-RF-6 in the ADR). Surveillance re-checks against
+`rights_record.review.next_review_at` are explicitly out of scope for this
+feature (Known Gap OQ-RF-5; design venue:
+`docs/project_plans/design-specs/rights-surveillance-loop.md`).

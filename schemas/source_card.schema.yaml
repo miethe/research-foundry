@@ -136,6 +136,274 @@ properties:
           items:
             type: string
       additionalProperties: true
+  # rights-entity-model-v1 P2-1 (AC P2-A, attach point 1 of 2 — P2-2 applies
+  # the identical shape to source_assertion.schema.yaml, byte-identical
+  # per P6-1). Denormalized, NON-AUTHORITATIVE mirror of
+  # schemas/rights_record.schema.yaml (+ rights_extension.clearance_status).
+  # Internally follows the rights-substrate strict-family conventions
+  # (additionalProperties: false, nullable via `type: [T, "null"]`) even
+  # though source_card.schema.yaml itself stays additionalProperties: true
+  # — a fail-closed mirror should not silently absorb an unmodeled field
+  # just because its parent document is permissive. `rights_summary` itself
+  # is NOT required at the top level: a pre-existing source_card authored
+  # before this phase and missing `rights_summary` entirely is not a
+  # validation failure at read time (decisions-block resilience note) — the
+  # P2-5 backfill migration is what brings it into an explicit
+  # all-"unknown" compliant shape.
+  rights_summary:
+    type: object
+    additionalProperties: false
+    properties:
+      mirror_of_record_id:
+        type:
+          - string
+          - "null"
+      mirror_derived_at:
+        type:
+          - string
+          - "null"
+        format: date-time
+      # Hard governance invariant: this mirror can NEVER be treated as an
+      # authoritative rights determination. Only rights_record /
+      # content_reuse_assessment / permission_record are authoritative.
+      mirror_is_authoritative:
+        const: false
+      # Link-before-assert invariant (enforced by the `allOf`/`if`/`then`
+      # below): non-empty whenever ANY status/restriction field below is set
+      # to something other than its "unknown" sentinel.
+      rights_record_ids:
+        type: array
+        default: []
+        items:
+          type: string
+      reuse_assessment_ids:
+        type: array
+        default: []
+        items:
+          type: string
+      permission_record_ids:
+        type: array
+        default: []
+        items:
+          type: string
+      copyright_status:
+        # Mirror of rights_record.copyright.status (byte-identical enum).
+        enum:
+          - copyrighted
+          - open_license
+          - public_domain
+          - us_federal_government_work
+          - mixed_or_third_party
+          - unknown
+        default: unknown
+      access_basis:
+        # Mirror of rights_record.access.basis (byte-identical enum).
+        enum:
+          - public_web
+          - open_repository
+          - personal_subscription
+          - institutional_subscription
+          - purchased_copy
+          - licensed_api
+          - direct_permission
+          - author_provided_copy
+          - government_source
+          - partner_confidential
+          - data_use_agreement
+          - other
+          - unknown
+        default: unknown
+      # Mirrors 6 of rights_record.contract's 7 restriction sub-fields
+      # (`sublicensing` omitted from this summary — see rights_record for
+      # the full authoritative set) under ONE shared
+      # allowed/allowed_with_conditions/prohibited/not_addressed/unknown
+      # enum (§9.4's unified restriction-family enum) rather than each
+      # field's wider per-field enum on rights_record.contract, since this
+      # is a simplified denormalized summary, not the authoritative record.
+      restrictions:
+        type: object
+        additionalProperties: false
+        properties:
+          incorporation_into_other_products:
+            enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown]
+            default: unknown
+          adaptation:
+            enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown]
+            default: unknown
+          commercial_use:
+            enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown]
+            default: unknown
+          redistribution:
+            enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown]
+            default: unknown
+          bulk_retrieval:
+            enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown]
+            default: unknown
+          model_training:
+            enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown]
+            default: unknown
+      clearance_status:
+        # Mirror of rights_extension.clearance_status (byte-identical enum,
+        # including its existing UPPERCASE "UNKNOWN" convention — casing
+        # must match the mirrored field exactly so the P2-3 divergence
+        # validator can compare mirror vs. authoritative values directly).
+        enum:
+          - CLEARED_OPEN_LICENSE
+          - CLEARED_PUBLIC_DOMAIN
+          - CLEARED_FACTS_ONLY
+          - CLEARED_PERMISSION
+          - INTERNAL_ONLY
+          - LOCAL_VALIDATION_ONLY
+          - LEGAL_REVIEW_REQUIRED
+          - PERMISSION_REQUIRED
+          - CONTRACT_RESTRICTED
+          - PROHIBITED
+          - UNKNOWN
+        default: UNKNOWN
+      review_status:
+        # Mirror of rights_record.review.review_status's canonical 6-member
+        # enum (§9.7), PLUS "unknown" — the mirror needs an explicit
+        # not-yet-computed sentinel that the authoritative record itself
+        # does not carry (a rights_record's `review` is always required and
+        # always one of the 6 substantive states).
+        enum:
+          - agent_triage_only
+          - human_reviewed
+          - legal_review_required_before_commercial_use
+          - counsel_approved
+          - counsel_rejected
+          - expired
+          - unknown
+        default: unknown
+      # P4 fix-cycle 1 (karen review, AC P4-A resilience NFR): a capture-time
+      # rights-triage classification failure (`_classify_capture_rights()`
+      # raising inside `services/rights_triage.py`) is recorded here as a
+      # typed, queryable structural failure -- never left as a silent
+      # absence. Mirrors the fail-closed intent of
+      # `services/terms_snapshot.py`'s `TermsSnapshotFailure` /
+      # `rights_record.access.terms_snapshot_failure` convention (P4-3),
+      # scoped to this mirror's own classification step rather than a
+      # terms-of-service fetch. Populated ONLY when the classification step
+      # raised and capture degraded to the all-"unknown" default; a
+      # successful classification leaves this `null`. Deliberately excluded
+      # from the link-before-assert `allOf` below -- a failure record never
+      # asserts a substantive rights posture, so it can never trigger the
+      # `rights_record_ids` requirement.
+      rights_triage_failure:
+        type:
+          - object
+          - "null"
+        additionalProperties: false
+        required:
+          - reason
+          - detail
+          - attempted_at
+        properties:
+          reason:
+            enum:
+              - classification_error
+          detail:
+            type: string
+          attempted_at:
+            type: string
+            format: date-time
+    allOf:
+      # Link-before-assert invariant: whenever any status/restriction field
+      # is non-"unknown" (or non-"UNKNOWN" for clearance_status), the mirror
+      # must be able to point back to the rights_record(s) it was derived
+      # from — a mirror asserting a specific rights posture with no linked
+      # record is a fail-open bug, not a legitimate "not yet assessed" state.
+      - if:
+          anyOf:
+            - required: [copyright_status]
+              properties:
+                copyright_status:
+                  not:
+                    const: unknown
+            - required: [access_basis]
+              properties:
+                access_basis:
+                  not:
+                    const: unknown
+            - required: [clearance_status]
+              properties:
+                clearance_status:
+                  not:
+                    const: UNKNOWN
+            - required: [review_status]
+              properties:
+                review_status:
+                  not:
+                    const: unknown
+            - required: [restrictions]
+              properties:
+                restrictions:
+                  anyOf:
+                    - required: [incorporation_into_other_products]
+                      properties:
+                        incorporation_into_other_products:
+                          not: {const: unknown}
+                    - required: [adaptation]
+                      properties:
+                        adaptation:
+                          not: {const: unknown}
+                    - required: [commercial_use]
+                      properties:
+                        commercial_use:
+                          not: {const: unknown}
+                    - required: [redistribution]
+                      properties:
+                        redistribution:
+                          not: {const: unknown}
+                    - required: [bulk_retrieval]
+                      properties:
+                        bulk_retrieval:
+                          not: {const: unknown}
+                    - required: [model_training]
+                      properties:
+                        model_training:
+                          not: {const: unknown}
+        then:
+          required:
+            - rights_record_ids
+          properties:
+            rights_record_ids:
+              minItems: 1
+  # P4-4 fix-cycle 1 (karen review): the `substitutability` search result
+  # (services/rights_substitutability.py::assess_substitutability), wired into
+  # the real capture path (services/rights_triage.py::maybe_assess_
+  # substitutability, invoked from services/source_cards.py::ingest_source).
+  # Top-level sibling of `rights_summary`, never nested under it -- `rf rights
+  # inspect` (cli_commands.py) reads this exact top-level key first before
+  # falling back to a legacy `rights_summary.substitutability` nesting. `null`
+  # (or absent) means no assessment has been recorded for this entity yet.
+  substitutability:
+    type:
+      - object
+      - "null"
+    additionalProperties: false
+    required:
+      - searched_at
+      - status
+      - candidate_source_ids
+      - coverage_notes
+    properties:
+      searched_at:
+        type:
+          - string
+          - "null"
+        format: date-time
+      status:
+        enum:
+          - substitute_found
+          - no_substitute_found
+          - not_searched
+      candidate_source_ids:
+        type: array
+        items:
+          type: string
+      coverage_notes:
+        type: string
 required:
   - source_card_id
   - type

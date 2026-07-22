@@ -1,37 +1,50 @@
 ---
-title: "Implementation Plan: Rights & Evidence-Item Entity Model"
+title: 'Implementation Plan: Rights & Evidence-Item Entity Model'
 schema_version: 2
 doc_type: implementation_plan
 it_schema: 1
-status: draft
-created: 2026-07-21
-updated: 2026-07-21
-feature_slug: "rights-entity-model"
-feature_version: "v1"
+status: completed
+created: '2026-07-21'
+updated: '2026-07-21'
+feature_slug: rights-entity-model
+feature_version: v1
 tier: 3
 prd_ref: docs/project_plans/PRDs/infrastructure/rights-entity-model-v1.md
 plan_ref: null
-scope: "Port the v1.0 pediatric-anemia-site rights substrate into RF's own schemas/*.schema.yaml with the ten §9 adjudications applied, then layer a rights_summary mirror (C1), evidence_item_type/judgment_basis taxonomy (C2), derived_synthesis provenance (C3), and capture-time emission + substitutability search (C4) — all fail-closed by construction, with a governance gate proving no agent path reaches CLEARED_*/counsel_approved/attested."
-effort_estimate: "53 pts (bottom-up reconciled; see Estimation Sanity Check — decisions block anchored 41, PRD estimated 45-55)"
-architecture_summary: "Schema-first: 5 new RF-canonical schemas + 2 extended existing schemas (source_card, source_assertion), one new service (rights_validation.py), one new governance.py guard rule, one new verification.py release-gate check, one new rf rights CLI group. No new tables/services outside RF's existing file-backed control-plane pattern."
+scope: "Port the v1.0 pediatric-anemia-site rights substrate into RF's own schemas/*.schema.yaml\
+  \ with the ten \xA79 adjudications applied, then layer a rights_summary mirror (C1),\
+  \ evidence_item_type/judgment_basis taxonomy (C2), derived_synthesis provenance\
+  \ (C3), and capture-time emission + substitutability search (C4) \u2014 all fail-closed\
+  \ by construction, with a governance gate proving no agent path reaches CLEARED_*/counsel_approved/attested."
+effort_estimate: "53 pts (bottom-up reconciled; see Estimation Sanity Check \u2014\
+  \ decisions block anchored 41, PRD estimated 45-55)"
+architecture_summary: 'Schema-first: 5 new RF-canonical schemas + 2 extended existing
+  schemas (source_card, source_assertion), one new service (rights_validation.py),
+  one new governance.py guard rule, one new verification.py release-gate check, one
+  new rf rights CLI group. No new tables/services outside RF''s existing file-backed
+  control-plane pattern.'
 related_documents:
-  - .claude/worknotes/rights-entity-model/decisions-block.md
-  - /Users/miethe/dev/homelab/development/pediatric-anemia-site/docs/project_plans/research/research-foundry-rights-entity-model-handoff-v1.md
-  - /Users/miethe/dev/homelab/development/pediatric-anemia-site/docs/project_plans/research/research_foundry_rights_governance_spec_v1.0/Research_Foundry_Source_Reuse_and_Rights_Governance_Spec_v1.0.md
-  - docs/project_plans/design-specs/reusable-assertion-ledger-public-rights-promotion.md
-  - docs/project_plans/implementation_plans/features/reusable-assertion-ledger-v1.md
+- .claude/worknotes/rights-entity-model/decisions-block.md
+- /Users/miethe/dev/homelab/development/pediatric-anemia-site/docs/project_plans/research/research-foundry-rights-entity-model-handoff-v1.md
+- /Users/miethe/dev/homelab/development/pediatric-anemia-site/docs/project_plans/research/research_foundry_rights_governance_spec_v1.0/Research_Foundry_Source_Reuse_and_Rights_Governance_Spec_v1.0.md
+- docs/project_plans/design-specs/reusable-assertion-ledger-public-rights-promotion.md
+- docs/project_plans/implementation_plans/features/reusable-assertion-ledger-v1.md
 references:
   user_docs: []
   context: []
   specs:
-    - docs/project_plans/design-specs/reusable-assertion-ledger-public-rights-promotion.md
+  - docs/project_plans/design-specs/reusable-assertion-ledger-public-rights-promotion.md
   related_prds: []
 spike_ref: null
-adr_refs: []
-deferred_items_spec_refs: []
+adr_refs:
+- docs/dev/architecture/adr-rights-entity-model.md
+deferred_items_spec_refs:
+- docs/project_plans/design-specs/rights-runtime-resolution-api.md
+- docs/project_plans/design-specs/rights-counsel-workflow.md
+- docs/project_plans/design-specs/rights-surveillance-loop.md
 findings_doc_ref: null
 charter_ref: null
-changelog_ref: null
+changelog_ref: CHANGELOG.md
 changelog_required: true
 test_plan_ref: null
 plan_structure: independent
@@ -40,135 +53,198 @@ owner: null
 contributors: []
 priority: high
 risk_level: medium
-category: "product-planning"
-tags: [rights, governance, evidence-model, rf, infrastructure, schema, implementation-plan]
+category: product-planning
+tags:
+- rights
+- governance
+- evidence-model
+- rf
+- infrastructure
+- schema
+- implementation-plan
 milestone: null
-commit_refs: []
+commit_refs:
+- d9064c9
 pr_refs: []
 files_affected:
-  - schemas/rights_record.schema.yaml
-  - schemas/rights_extension.schema.yaml
-  - schemas/content_reuse_assessment.schema.yaml
-  - schemas/permission_record.schema.yaml
-  - schemas/rights_failure.schema.yaml
-  - schemas/source_assertion.schema.yaml
-  - schemas/source_card.schema.yaml
-  - src/research_foundry/schemas.py
-  - src/research_foundry/services/source_cards.py
-  - src/research_foundry/services/capture.py
-  - src/research_foundry/services/governance.py
-  - src/research_foundry/services/verification.py
-  - src/research_foundry/services/rights_validation.py
-  - src/research_foundry/cli_commands.py
-  - docs/dev/architecture/adr-rights-entity-model.md
-  - tests/test_schema_validation.py
+- schemas/rights_record.schema.yaml
+- schemas/rights_extension.schema.yaml
+- schemas/content_reuse_assessment.schema.yaml
+- schemas/permission_record.schema.yaml
+- schemas/rights_failure.schema.yaml
+- schemas/source_assertion.schema.yaml
+- schemas/source_card.schema.yaml
+- src/research_foundry/schemas.py
+- src/research_foundry/services/source_cards.py
+- src/research_foundry/services/capture.py
+- src/research_foundry/services/governance.py
+- src/research_foundry/services/verification.py
+- src/research_foundry/services/rights_validation.py
+- src/research_foundry/cli_commands.py
+- docs/dev/architecture/adr-rights-entity-model.md
+- tests/test_schema_validation.py
 planning_maturity: in_progress
 open_questions:
-  - q: "OQ-RF-5: Does RF own rights-terms surveillance as a service?"
-    owner: rf
-    status: "record-the-debt — schema carries next_review_at; DOC-006 design spec authored in P6; execution loop not built"
-  - q: "OQ-RF-6: Is there an RF rights-owner/counsel role to gate CLEARED_*/counsel_approved writes?"
-    owner: rf
-    status: "record-the-debt — no role exists upstream; DOC-006 design spec authored in P6; shipped human-only-by-exclusion"
-  - q: "OQ-3 (decisions block): Should a runtime resolution API replace the mirror?"
-    owner: rf
-    status: "deferred to DOC-006 design spec in P6; mirror is MVP for this plan"
-  - q: "OQ-6 (decisions block, resolved by this plan): Does the release-gate rule live in governance.py or verification.py?"
-    owner: implementation-planner
-    status: "resolved — governance.py owns the judgment_basis:unassessed predicate (P5-3); verification.py calls it at verify time"
+- q: 'OQ-RF-5: Does RF own rights-terms surveillance as a service?'
+  owner: rf
+  status: "record-the-debt \u2014 schema carries next_review_at; DOC-006 design spec\
+    \ authored in P6; execution loop not built"
+- q: 'OQ-RF-6: Is there an RF rights-owner/counsel role to gate CLEARED_*/counsel_approved
+    writes?'
+  owner: rf
+  status: "record-the-debt \u2014 no role exists upstream; DOC-006 design spec authored\
+    \ in P6; shipped human-only-by-exclusion"
+- q: 'OQ-3 (decisions block): Should a runtime resolution API replace the mirror?'
+  owner: rf
+  status: deferred to DOC-006 design spec in P6; mirror is MVP for this plan
+- q: 'OQ-6 (decisions block, resolved by this plan): Does the release-gate rule live
+    in governance.py or verification.py?'
+  owner: implementation-planner
+  status: "resolved \u2014 governance.py owns the judgment_basis:unassessed predicate\
+    \ (P5-3); verification.py calls it at verify time"
 decisions:
-  - {decision: "Port v1.0 rights substrate into RF schemas/*.yaml as a Phase 0 prerequisite before any capability work", rationale: "C1 rights_summary mirrors rights_record, which does not exist in RF today", status: locked}
-  - {decision: "Denormalized entity-level rights_summary mirror (mirror_is_authoritative const false), not a runtime resolution API", rationale: "Files-canonical + no-service-on-recall-path constraint; a run must be readable offline", status: locked}
-  - {decision: "RF authors its own canonical rights ADR; does not edit the pediatric-repo v1.0 spec", rationale: "Repo boundaries — canonical model assigned to RF", status: locked}
-  - {decision: "evidence_item_type + judgment_basis live in extensions.evidence_taxonomy, a sibling block, not inside rights_extension", rationale: "§9.1 — rights and evidence-quality are independent axes", status: locked}
-  - {decision: "CLEARED_*/counsel_approved/attestation.status=attested are human-only, fail-closed, proven by negative tests over BOTH write paths in BOTH P3 and P5", rationale: "§9.10 flagged one of two write paths unguarded in the baseline; Mode-D-adjacent boundary", status: locked}
-  - {decision: "Record-the-debt for surveillance execution (OQ-RF-5) and counsel/rights-owner role (OQ-RF-6) via DOC-006 design specs", rationale: "Ship the schema field that records the debt; name the gap rather than build the loop/role now", status: locked}
-  - {decision: "governance.py owns the judgment_basis release-gate predicate; verification.py calls it at verify time", rationale: "Resolves decisions-block OQ-6 — gate is policy (governance), fires at verify-time (verification)", status: accepted}
-  - {decision: "Bottom-up estimate reconciled to 53 pts (up from the decisions block's 41-pt anchor, within the PRD's 45-55 pt range)", rationale: "H3/H6 heuristics under-counted P0's 6-adjudication schema-diff work and P3/P5's dual mandatory negative-test tasks in the original decisions-block anchor; see Estimation Sanity Check", status: accepted}
+- decision: Port v1.0 rights substrate into RF schemas/*.yaml as a Phase 0 prerequisite
+    before any capability work
+  rationale: C1 rights_summary mirrors rights_record, which does not exist in RF today
+  status: locked
+- decision: Denormalized entity-level rights_summary mirror (mirror_is_authoritative
+    const false), not a runtime resolution API
+  rationale: Files-canonical + no-service-on-recall-path constraint; a run must be
+    readable offline
+  status: locked
+- decision: RF authors its own canonical rights ADR; does not edit the pediatric-repo
+    v1.0 spec
+  rationale: "Repo boundaries \u2014 canonical model assigned to RF"
+  status: locked
+- decision: evidence_item_type + judgment_basis live in extensions.evidence_taxonomy,
+    a sibling block, not inside rights_extension
+  rationale: "\xA79.1 \u2014 rights and evidence-quality are independent axes"
+  status: locked
+- decision: CLEARED_*/counsel_approved/attestation.status=attested are human-only,
+    fail-closed, proven by negative tests over BOTH write paths in BOTH P3 and P5
+  rationale: "\xA79.10 flagged one of two write paths unguarded in the baseline; Mode-D-adjacent\
+    \ boundary"
+  status: locked
+- decision: Record-the-debt for surveillance execution (OQ-RF-5) and counsel/rights-owner
+    role (OQ-RF-6) via DOC-006 design specs
+  rationale: Ship the schema field that records the debt; name the gap rather than
+    build the loop/role now
+  status: locked
+- decision: governance.py owns the judgment_basis release-gate predicate; verification.py
+    calls it at verify time
+  rationale: "Resolves decisions-block OQ-6 \u2014 gate is policy (governance), fires\
+    \ at verify-time (verification)"
+  status: accepted
+- decision: Bottom-up estimate reconciled to 53 pts (up from the decisions block's
+    41-pt anchor, within the PRD's 45-55 pt range)
+  rationale: H3/H6 heuristics under-counted P0's 6-adjudication schema-diff work and
+    P3/P5's dual mandatory negative-test tasks in the original decisions-block anchor;
+    see Estimation Sanity Check
+  status: accepted
 success_metrics:
-  - "100% of newly ingested source_card and source_assertion instances carry a non-null rights_summary at review_status=agent_triage_only within the same capture pass (no backfill sweep)"
-  - "Zero agent-writable code paths can produce CLEARED_* / counsel_approved / attestation.status=attested — proven by negative tests over both enum write paths (P3 + P5)"
-  - "rights-divergence validator run is byte-reproducible across two invocations with the same --as-of value and unchanged inputs"
-  - "judgment_basis: unassessed blocks 100% of commercial-release gate evaluations and blocks 0% of internal-capture writes, in automated tests exercising both directions"
+- 100% of newly ingested source_card and source_assertion instances carry a non-null
+  rights_summary at review_status=agent_triage_only within the same capture pass (no
+  backfill sweep)
+- "Zero agent-writable code paths can produce CLEARED_* / counsel_approved / attestation.status=attested\
+  \ \u2014 proven by negative tests over both enum write paths (P3 + P5)"
+- rights-divergence validator run is byte-reproducible across two invocations with
+  the same --as-of value and unchanged inputs
+- 'judgment_basis: unassessed blocks 100% of commercial-release gate evaluations and
+  blocks 0% of internal-capture writes, in automated tests exercising both directions'
 execution_mode: agent
-agent_title: "Port + extend RF's rights and evidence-taxonomy entity model"
-agent_summary: "Add rights_record/rights_extension/content_reuse_assessment/permission_record/rights_failure schemas with §9 adjudication fixes, then extend source_card/source_assertion with a rights_summary mirror, evidence_item_type/judgment_basis taxonomy, derived_synthesis provenance, and capture-time emission — all fail-closed, all human-only for CLEARED_* writes, proven by negative tests over both write paths."
+agent_title: Port + extend RF's rights and evidence-taxonomy entity model
+agent_summary: "Add rights_record/rights_extension/content_reuse_assessment/permission_record/rights_failure\
+  \ schemas with \xA79 adjudication fixes, then extend source_card/source_assertion\
+  \ with a rights_summary mirror, evidence_item_type/judgment_basis taxonomy, derived_synthesis\
+  \ provenance, and capture-time emission \u2014 all fail-closed, all human-only for\
+  \ CLEARED_* writes, proven by negative tests over both write paths."
 wave_plan:
   serialization_barriers:
-    - src/research_foundry/cli_commands.py
-    - src/research_foundry/schemas.py
+  - src/research_foundry/cli_commands.py
+  - src/research_foundry/schemas.py
   phases:
-    - id: P0
-      depends_on: []
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - schemas/rights_record.schema.yaml
-        - schemas/rights_extension.schema.yaml
-        - schemas/content_reuse_assessment.schema.yaml
-        - schemas/permission_record.schema.yaml
-        - schemas/rights_failure.schema.yaml
-        - src/research_foundry/schemas.py
-        - tests/test_schema_validation.py
-    - id: P1
-      depends_on: [P0]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - schemas/source_assertion.schema.yaml
-    - id: P2
-      depends_on: [P1]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - schemas/source_card.schema.yaml
-        - schemas/source_assertion.schema.yaml
-        - src/research_foundry/services/rights_validation.py
-        - src/research_foundry/cli_commands.py
-    - id: P3
-      depends_on: [P2]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - schemas/source_assertion.schema.yaml
-        - src/research_foundry/services/source_cards.py
-    - id: P4
-      depends_on: [P3]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/services/source_cards.py
-        - src/research_foundry/services/capture.py
-        - src/research_foundry/cli_commands.py
-    - id: P5
-      depends_on: [P3]
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      files_affected:
-        - src/research_foundry/services/governance.py
-        - src/research_foundry/services/verification.py
-        - docs/dev/architecture/adr-rights-entity-model.md
-    - id: P6
-      depends_on: [P4, P5]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      files_affected:
-        - tests/test_schema_validation.py
-        - CHANGELOG.md
-        - docs/project_plans/design-specs/rights-runtime-resolution-api.md
-        - docs/project_plans/design-specs/rights-surveillance-loop.md
-        - docs/project_plans/design-specs/rights-counsel-workflow.md
+  - id: P0
+    depends_on: []
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - schemas/rights_record.schema.yaml
+    - schemas/rights_extension.schema.yaml
+    - schemas/content_reuse_assessment.schema.yaml
+    - schemas/permission_record.schema.yaml
+    - schemas/rights_failure.schema.yaml
+    - src/research_foundry/schemas.py
+    - tests/test_schema_validation.py
+  - id: P1
+    depends_on:
+    - P0
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - schemas/source_assertion.schema.yaml
+  - id: P2
+    depends_on:
+    - P1
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - schemas/source_card.schema.yaml
+    - schemas/source_assertion.schema.yaml
+    - src/research_foundry/services/rights_validation.py
+    - src/research_foundry/cli_commands.py
+  - id: P3
+    depends_on:
+    - P2
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - schemas/source_assertion.schema.yaml
+    - src/research_foundry/services/source_cards.py
+  - id: P4
+    depends_on:
+    - P3
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/services/source_cards.py
+    - src/research_foundry/services/capture.py
+    - src/research_foundry/cli_commands.py
+  - id: P5
+    depends_on:
+    - P3
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    files_affected:
+    - src/research_foundry/services/governance.py
+    - src/research_foundry/services/verification.py
+    - docs/dev/architecture/adr-rights-entity-model.md
+  - id: P6
+    depends_on:
+    - P4
+    - P5
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    files_affected:
+    - tests/test_schema_validation.py
+    - CHANGELOG.md
+    - docs/project_plans/design-specs/rights-runtime-resolution-api.md
+    - docs/project_plans/design-specs/rights-surveillance-loop.md
+    - docs/project_plans/design-specs/rights-counsel-workflow.md
   waves:
-    - [P0]
-    - [P1, P2, P3, P4]
-    - [P5, P6]
+  - - P0
+  - - P1
+    - P2
+    - P3
+    - P4
+  - - P5
+    - P6
 ---
 
 # Implementation Plan: Rights & Evidence-Item Entity Model

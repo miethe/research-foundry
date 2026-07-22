@@ -1,0 +1,114 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/rights_failure.schema.yaml"
+title: Rights Failure
+description: >-
+  A recorded rights/reuse blocker for a source, its intended use, the finding
+  that blocks it, and the release-gate consequence. Ported structurally from
+  the v1.0 Research Foundry Source Reuse & Rights Governance Spec — no §9
+  adjudication conflicts were named against this schema.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  rights_failure_id:
+    type: string
+    minLength: 5
+  source_id:
+    type: string
+    minLength: 3
+  rights_record_id:
+    type: [string, "null"]
+  reuse_assessment_id:
+    type: [string, "null"]
+  failure_type:
+    enum:
+      - LICENSE_UNKNOWN
+      - ARTICLE_LEVEL_LICENSE_UNVERIFIED
+      - CONTRACT_PROHIBITS_INCORPORATION
+      - COMMERCIAL_USE_NOT_GRANTED
+      - NO_DERIVATIVES_RESTRICTION
+      - PERMISSION_REQUIRED_NOT_OBTAINED
+      - PERMISSION_EXPIRED
+      - THIRD_PARTY_COMPONENT_RIGHTS_UNKNOWN
+      - SUBSTANTIAL_COMPILATION_RISK
+      - DATABASE_RIGHT_RISK
+      - PATENT_REVIEW_REQUIRED
+      - TRADEMARK_OR_ENDORSEMENT_RISK
+      - QUESTIONNAIRE_LICENSE_REQUIRED
+      - CONFIDENTIAL_OR_DUA_RESTRICTED
+      - AUTOMATED_RETRIEVAL_NOT_AUTHORIZED
+      - MODEL_TRAINING_RIGHTS_UNCLEAR
+      - FAIR_USE_COUNSEL_REVIEW_REQUIRED
+      - NO_SHIPPABLE_SOURCE_PATH
+      - OTHER
+  component:
+    type: [string, "null"]
+  intended_use:
+    type: string
+  finding:
+    type: string
+  source_terms_locator:
+    type: [string, "null"]
+  safe_residual_use:
+    type: array
+    items:
+      type: string
+  product_impact:
+    type: string
+  alternative_source_ids:
+    type: array
+    items:
+      type: string
+  permission_strategy:
+    type: [string, "null"]
+  next_action:
+    type: [string, "null"]
+  owner:
+    type: [string, "null"]
+  retry_trigger:
+    type: [string, "null"]
+  severity:
+    enum: [low, moderate, high, critical]
+  release_gate:
+    enum: [PASS, PASS_WITH_CONDITIONS, BLOCK]
+  status:
+    enum:
+      - open
+      - legal_review
+      - permission_requested
+      - resolved_with_alternative_source
+      - resolved_with_permission
+      - resolved_with_scope_restriction
+      - resolved_internal_only
+      - resolved_no_use
+      - superseded
+  review:
+    type: object
+    additionalProperties: false
+    required:
+      - reviewed_at
+    properties:
+      reviewed_at:
+        type: string
+        format: date-time
+      reviewed_by:
+        type: array
+        items:
+          type: string
+      notes:
+        type: [string, "null"]
+  extensions:
+    type: object
+required:
+  - schema_version
+  - rights_failure_id
+  - source_id
+  - failure_type
+  - intended_use
+  - finding
+  - safe_residual_use
+  - product_impact
+  - release_gate
+  - status
+  - review

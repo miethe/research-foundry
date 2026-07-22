@@ -387,6 +387,30 @@ Live integrations (degrade to file candidates when servers offline):
 - `rf swarm run --adapters arc_council` — use ARC reviewers to critique discovery/synthesis; degrades to stub when ARC offline.
 - `rf doctor` — reports ARC and IntentTree reachability alongside adapter status.
 
+### Rights & Evidence Provenance
+
+Every captured `source_card`/`source_assertion` carries a denormalized,
+non-authoritative `rights_summary` mirror (`mirror_is_authoritative: false`)
+so rights posture is machine-checkable at the recall path without a live
+service. The authoritative record is a separate `rights_record` (plus
+`content_reuse_assessment`, `permission_record`, and `rights_failure` when
+applicable) — full model and the ten schema-conflict adjudications applied at
+port time: `docs/dev/architecture/adr-rights-entity-model.md`.
+
+- `rf rights inspect <entity_id>` — show one entity's `rights_summary`,
+  substitutability assessment, and linked `rights_record` synthesis state.
+- `rf rights list [--status STATUS]` — enumerate entities by
+  `rights_summary.review_status`.
+- `rf rights validate [PATHS...] --as-of YYYY-MM-DD` — check `rights_summary`
+  mirrors for divergence from their authoritative `rights_record`
+  (deterministic; never reads the wall clock).
+- `rf rights backfill [PATHS...] [--dry-run]` — write an all-"unknown"
+  fail-closed `rights_summary` onto legacy instances missing one (idempotent).
+
+`CLEARED_*`/`counsel_approved`/`attested` rights-clearance values are
+human/counsel-only — no agent-writable code path can mint one (governance
+guard `no_agent_cleared_rights_value`).
+
 ### NotebookLM (NLM)
 
 NLM integrates across four use cases via the `notebooklm` CLI (no REST API). All paths are

@@ -27,6 +27,7 @@ from ..yamlio import append_jsonl
 from . import audit_service
 from .assertion_workspace import resolve_or_deny
 from .audit_service import AuditEvent
+from .rights_triage import compute_capture_rights_summary, maybe_assess_substitutability
 
 _MAX_POINTS = 8
 _SHORT_QUOTE = 280
@@ -263,6 +264,26 @@ def ingest_source(
 
     points = _build_points(content, degraded=degraded)
 
+    # P4-1 (AC P4-A): computed once, before front_matter is assembled, so
+    # both the rights_summary mirror and the P4-4 substitutability search
+    # (which reads the mirror's clearance_status) are available for the SAME
+    # call that creates this entity -- no separate backfill sweep needed for
+    # either. See services/rights_triage.py.
+    rights_summary = compute_capture_rights_summary()
+    # P4-4 fix-cycle 1 (karen review): wire the substitutability search into
+    # the real capture path. `query_terms` uses this source's own title --
+    # the only topic/domain signal available at bare-ingest time (no raw
+    # research-idea title is threaded through this call) -- and the corpus is
+    # every other source_card already ingested into this same run.
+    # `exclude_source_id=src_id` guards against a re-ingest of the same
+    # locator matching itself once its own file exists in the corpus glob.
+    substitutability = maybe_assess_substitutability(
+        rights_summary,
+        query_terms=[eff_title] if eff_title else [],
+        corpus_paths=sorted(run_paths.sources.glob("*.md")),
+        exclude_source_id=src_id,
+    )
+
     # known_limitations: base (degraded marker) + any caller-supplied flags
     # (e.g. prompt-injection risk from extraction), deduped, existing first.
     known_limitations: list[str] = ["content_not_retrieved"] if degraded else []
@@ -311,6 +332,20 @@ def ingest_source(
             "quote_limit_notes": "Quote short excerpts only; cite the source.",
         },
         "extracted_points": points,
+        # P4-1 (AC P4-A): a fail-closed rights_summary mirror is computed in
+        # THIS same call -- no separate backfill sweep for newly-ingested
+        # source cards. See services/rights_triage.py for why the mirror
+        # lands all-"unknown" rather than the PRD's literal
+        # "agent_triage_only" (link-before-assert requires a linked
+        # rights_record, which does not exist at capture time).
+        "rights_summary": rights_summary,
+        # P4-4 fix-cycle 1 (karen review): the substitutability search result
+        # (never null -- maybe_assess_substitutability always returns a
+        # well-formed not_searched/substitute_found/no_substitute_found
+        # block), computed above in the SAME call. Sibling of rights_summary,
+        # the exact top-level key `rf rights inspect` reads first
+        # (cli_commands.py).
+        "substitutability": substitutability,
     }
 
     body = (

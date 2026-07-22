@@ -11,6 +11,29 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Rights & Evidence-Item Entity Model**
+
+- **`rf rights` CLI command group** — New commands for creating and inspecting rights
+  records against source cards and evidence items, including a deterministic
+  `rf rights validate --as-of` check that flags rights that have lapsed, expired, or
+  diverged from their declared extensions as of a given point in time.
+- **Five new canonical schemas** — `rights_record`, `rights_extension`,
+  `content_reuse_assessment`, `permission_record`, and `rights_failure` capture the
+  full lifecycle of a source's usage rights, from initial grant through extension,
+  reuse assessment, and permission failure.
+- **Taxonomy and `judgment_basis` capture** — Evidence items now record an explicit
+  taxonomy classification and the judgment basis behind any reuse/rights
+  determination, closing a prior gap where rights status could be inferred without
+  a recorded rationale.
+- **Governance write-ceiling guard on rights-status fields** — Rights-status fields
+  (e.g. `CLEARED_*`, `counsel_approved`, `attested`) are now fail-closed by
+  construction: no agent-driven write path can set these statuses without passing
+  through the governance guard.
+- **Release-gate predicate for unassessed `judgment_basis`** — Commercial-release
+  evaluation is now blocked when any evidence item in scope carries an unassessed
+  `judgment_basis`, preventing rights-unreviewed content from clearing a
+  commercial-release gate.
+
 #### **Writeback Approve & Dispatch**
 
 - **`POST /api/runs/{run_id}/writeback/approve`** — Operators can now approve a run's evidence

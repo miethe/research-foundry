@@ -6,99 +6,162 @@ prd: rights-entity-model
 feature_slug: rights-entity-model
 phase: 3
 phase_id: P3
-title: "Phase 3: Derived Synthesis (C3) — Progress"
-status: pending
+title: "Phase 3: Derived Synthesis (C3) \u2014 Progress"
+status: completed
 created: '2026-07-21'
 updated: '2026-07-21'
 prd_ref: docs/project_plans/PRDs/infrastructure/rights-entity-model-v1.md
 plan_ref: docs/project_plans/implementation_plans/infrastructure/rights-entity-model-v1.md
 phase_plan_ref: docs/project_plans/implementation_plans/infrastructure/rights-entity-model-v1/phase-3-4-capture.md
-commit_refs: []
+commit_refs:
+- '1087982'
 pr_refs: []
 execution_model: batch-parallel
 reviewer_gate: karen
-
 overall_progress: 0
 completion_estimate: on-track
-
 total_tasks: 4
-completed_tasks: 0
+completed_tasks: 4
 in_progress_tasks: 0
 blocked_tasks: 0
-
-owners: ["python-backend-engineer"]
-contributors: ["data-layer-expert"]
-
+owners:
+- python-backend-engineer
+contributors:
+- data-layer-expert
 model_usage:
   primary: sonnet
   external: []
-
 tasks:
-  - id: P3-1
-    title: "Add conditional synthesis object"
-    description: "Add to source_assertion.schema.yaml via JSON Schema if/then, required iff evidence_item_type == derived_synthesis: input_refs[] (minItems:2), method, divergence_notes[], reproduces_source_arrangement, first_party_rights_holder. Test both positive and negative conditional branches explicitly (PRD Risk 3)."
-    status: pending
-    assigned_to: ["data-layer-expert"]
-    dependencies: ["P2-5"]
-    estimated_effort: "2 pts"
-    priority: "critical"
-    assigned_model: sonnet
-    model_effort: extended
-  - id: P3-2
-    title: "Nullable source_edition_id/passage_id conditional"
-    description: "Make source_edition_id/passage_id nullable ONLY when evidence_item_type == derived_synthesis; every other evidence_item_type still requires them non-null (regression guard)."
-    status: pending
-    assigned_to: ["data-layer-expert"]
-    dependencies: ["P3-1"]
-    estimated_effort: "1 pt"
-    priority: "high"
-    assigned_model: sonnet
-    model_effort: extended
-  - id: P3-3
-    title: "synthesis.attestation object + schema-level write ceiling"
-    description: "Add attestation{attested_by, attested_at, attestation_ref, status:enum[candidate,attested]}. Pair schema enum with a service-layer check in every services/source_cards.py code path constructing a synthesis block, asserting attestation.status is always candidate for agent identities."
-    status: pending
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P3-1", "P3-2"]
-    estimated_effort: "2 pts"
-    priority: "critical"
-    assigned_model: sonnet
-    model_effort: extended
-  - id: P3-4
-    title: "Negative test: agent path -> attestation.status=attested unreachable (MANDATORY)"
-    description: "Enumerate every code path in services/source_cards.py and services/capture.py that can write a synthesis block; assert none can produce attestation.status:attested under any input. Closes ONE of the two §9.10 write-path halves (P5-2 closes the other, independently — this test alone is not sufficient). Allow-list style: fails loudly on new unenumerated write paths."
-    status: pending
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P3-3"]
-    estimated_effort: "2 pts"
-    priority: "critical"
-    assigned_model: sonnet
-    model_effort: extended
-
+- id: P3-1
+  title: Add conditional synthesis object
+  description: 'Add to source_assertion.schema.yaml via JSON Schema if/then, required
+    iff evidence_item_type == derived_synthesis: input_refs[] (minItems:2), method,
+    divergence_notes[], reproduces_source_arrangement, first_party_rights_holder.
+    Test both positive and negative conditional branches explicitly (PRD Risk 3).'
+  status: completed
+  assigned_to:
+  - data-layer-expert
+  dependencies:
+  - P2-5
+  estimated_effort: 2 pts
+  priority: critical
+  assigned_model: sonnet
+  model_effort: extended
+  evidence:
+  - test: tests/test_schema_validation.py
+  - test: tests/test_schema_validation.py
+  verified_by:
+  - phase-owner
+  started: 2026-07-21T00:00Z
+  completed: 2026-07-21T01:00Z
+- id: P3-2
+  title: Nullable source_edition_id/passage_id conditional
+  description: Make source_edition_id/passage_id nullable ONLY when evidence_item_type
+    == derived_synthesis; every other evidence_item_type still requires them non-null
+    (regression guard).
+  status: completed
+  assigned_to:
+  - data-layer-expert
+  dependencies:
+  - P3-1
+  estimated_effort: 1 pt
+  priority: high
+  assigned_model: sonnet
+  model_effort: extended
+  evidence:
+  - test: tests/test_schema_validation.py
+  - test: tests/test_schema_validation.py
+  verified_by:
+  - phase-owner
+  started: 2026-07-21T01:00Z
+  completed: 2026-07-21T01:30Z
+- id: P3-3
+  title: synthesis.attestation object + schema-level write ceiling
+  description: Add attestation{attested_by, attested_at, attestation_ref, status:enum[candidate,attested]}.
+    Pair schema enum with a service-layer check in every services/source_cards.py
+    code path constructing a synthesis block, asserting attestation.status is always
+    candidate for agent identities.
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P3-1
+  - P3-2
+  estimated_effort: 2 pts
+  priority: critical
+  assigned_model: sonnet
+  model_effort: extended
+  evidence:
+  - test: tests/unit/test_synthesis_attestation_write_ceiling.py
+  - test: tests/unit/test_synthesis_attestation_write_ceiling.py
+  verified_by:
+  - phase-owner
+  started: 2026-07-21T01:30Z
+  completed: 2026-07-21T02:30Z
+- id: P3-4
+  title: 'Negative test: agent path -> attestation.status=attested unreachable (MANDATORY)'
+  description: "Enumerate every code path in services/source_cards.py and services/capture.py\
+    \ that can write a synthesis block; assert none can produce attestation.status:attested\
+    \ under any input. Closes ONE of the two \xA79.10 write-path halves (P5-2 closes\
+    \ the other, independently \u2014 this test alone is not sufficient). Allow-list\
+    \ style: fails loudly on new unenumerated write paths."
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P3-3
+  estimated_effort: 2 pts
+  priority: critical
+  assigned_model: sonnet
+  model_effort: extended
+  evidence:
+  - test: tests/unit/test_synthesis_attestation_write_ceiling.py
+  - test: tests/unit/test_synthesis_attestation_write_ceiling.py
+  verified_by:
+  - phase-owner
+  - karen
+  started: 2026-07-21T02:30Z
+  completed: 2026-07-21T03:00Z
 parallelization:
-  batch_1: ["P3-1"]
-  batch_2: ["P3-2"]
-  batch_3: ["P3-3"]
-  batch_4: ["P3-4"]
-  critical_path: ["P3-1", "P3-2", "P3-3", "P3-4"]
-  estimated_total_time: "7 pts (plan bottom-up estimate; fully serial phase)"
-
+  batch_1:
+  - P3-1
+  batch_2:
+  - P3-2
+  batch_3:
+  - P3-3
+  batch_4:
+  - P3-4
+  critical_path:
+  - P3-1
+  - P3-2
+  - P3-3
+  - P3-4
+  estimated_total_time: 7 pts (plan bottom-up estimate; fully serial phase)
 blockers: []
-
 success_criteria:
-  - {id: "P3-SC1", description: "synthesis object's if/then conditional validates both the positive (derived_synthesis) and negative (non-synthesis) branch correctly", status: pending}
-  - {id: "P3-SC2", description: "derived_synthesis assertions can exist without a third-party source_id/source_edition_id/passage_id", status: pending}
-  - {id: "P3-SC3", description: "P3-4's negative test passes and is written as an allow-list (fails loudly on new unenumerated write paths)", status: pending}
-  - {id: "P3-SC4", description: "Reviewer gate: karen milestone — Mode-D-adjacent, explicit verdict required, silence is never a pass", status: pending}
-
-notes: |
-  Mode-D-adjacent: this phase touches the authorization boundary the entire feature exists
-  to protect. Reviewer gate is karen, NOT task-completion-validator — per the project's
-  silent-reviewer rule, karen's silence must never be treated as a pass; the phase owner
-  must receive an explicit verdict before proceeding to P4/P5.
-  §9.10 note: P3-4 closes only ONE of the two enum write-path halves. The boundary is only
-  proven once P3-4 AND P5-2 (Phase 5) both pass — do not report this phase as closing the
-  full §9.10 gap on its own.
+- id: P3-SC1
+  description: synthesis object's if/then conditional validates both the positive
+    (derived_synthesis) and negative (non-synthesis) branch correctly
+  status: pending
+- id: P3-SC2
+  description: derived_synthesis assertions can exist without a third-party source_id/source_edition_id/passage_id
+  status: pending
+- id: P3-SC3
+  description: P3-4's negative test passes and is written as an allow-list (fails
+    loudly on new unenumerated write paths)
+  status: pending
+- id: P3-SC4
+  description: "Reviewer gate: karen milestone \u2014 Mode-D-adjacent, explicit verdict\
+    \ required, silence is never a pass"
+  status: pending
+notes: "Mode-D-adjacent: this phase touches the authorization boundary the entire\
+  \ feature exists\nto protect. Reviewer gate is karen, NOT task-completion-validator\
+  \ \u2014 per the project's\nsilent-reviewer rule, karen's silence must never be\
+  \ treated as a pass; the phase owner\nmust receive an explicit verdict before proceeding\
+  \ to P4/P5.\n\xA79.10 note: P3-4 closes only ONE of the two enum write-path halves.\
+  \ The boundary is only\nproven once P3-4 AND P5-2 (Phase 5) both pass \u2014 do\
+  \ not report this phase as closing the\nfull \xA79.10 gap on its own.\n"
+progress: 100
 ---
 
 # rights-entity-model — Phase 3: Derived Synthesis (C3)

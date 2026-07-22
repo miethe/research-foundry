@@ -6,8 +6,8 @@ prd: rights-entity-model
 feature_slug: rights-entity-model
 phase: 0
 phase_id: P0
-title: "Phase 0: Rights Substrate — Progress"
-status: pending
+title: 'Phase 0: Rights Substrate — Progress'
+status: completed
 created: '2026-07-21'
 updated: '2026-07-21'
 prd_ref: docs/project_plans/PRDs/infrastructure/rights-entity-model-v1.md
@@ -17,94 +17,165 @@ commit_refs: []
 pr_refs: []
 execution_model: batch-parallel
 reviewer_gate: task-completion-validator
-
 overall_progress: 0
 completion_estimate: on-track
-
 total_tasks: 5
-completed_tasks: 0
+completed_tasks: 5
 in_progress_tasks: 0
 blocked_tasks: 0
-
-owners: ["data-layer-expert"]
-contributors: ["python-backend-engineer"]
-
+owners:
+- data-layer-expert
+contributors:
+- python-backend-engineer
 model_usage:
   primary: sonnet
   external: []
-
 tasks:
-  - id: P0-1
-    title: "Port rights_record.schema.yaml"
-    description: "Port v1.0 baseline; apply §9.3, §9.4, §9.5, §9.6a, §9.6b, §9.7, §9.8 adjudications (Draft 2020-12, additionalProperties:false, nullable via type:[T,\"null\"])."
-    status: pending
-    assigned_to: ["data-layer-expert"]
-    dependencies: []
-    estimated_effort: "2 pts"
-    priority: "critical"
-    assigned_model: sonnet
-    model_effort: extended
-  - id: P0-2
-    title: "Port rights_extension.schema.yaml"
-    description: "Port fuller entity-level extension record; §9.1 negative-space guard — must NOT define evidence_item_type/judgment_basis/any taxonomy field."
-    status: pending
-    assigned_to: ["data-layer-expert"]
-    dependencies: []
-    estimated_effort: "1 pt"
-    priority: "high"
-    assigned_model: sonnet
-    model_effort: extended
-  - id: P0-3
-    title: "Port content_reuse_assessment.schema.yaml"
-    description: "Port with unified component_type vocabulary (§9.2/§9.8) and shared review_status/decision.status enums (§9.7/§9.10 — enum values only, enforcement deferred to P5-2)."
-    status: pending
-    assigned_to: ["data-layer-expert"]
-    dependencies: []
-    estimated_effort: "2 pts"
-    priority: "critical"
-    assigned_model: sonnet
-    model_effort: extended
-  - id: P0-4
-    title: "Port permission_record.schema.yaml + rights_failure.schema.yaml"
-    description: "Port both as-is structurally — no §9 conflicts named against either in the handoff review."
-    status: pending
-    assigned_to: ["data-layer-expert"]
-    dependencies: []
-    estimated_effort: "1 pt"
-    priority: "medium"
-    assigned_model: sonnet
-    model_effort: adaptive
-  - id: P0-5
-    title: "Registry wiring + test builders"
-    description: "Extend SchemaRegistry/EXPECTED_SCHEMA_NAMES in src/research_foundry/schemas.py and tests/test_schema_validation.py builders to cover all 5 new schemas."
-    status: pending
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P0-1", "P0-2", "P0-3", "P0-4"]
-    estimated_effort: "2 pts"
-    priority: "critical"
-    assigned_model: sonnet
-    model_effort: extended
-
+- id: P0-1
+  title: Port rights_record.schema.yaml
+  description: Port v1.0 baseline; apply §9.3, §9.4, §9.5, §9.6a, §9.6b, §9.7, §9.8
+    adjudications (Draft 2020-12, additionalProperties:false, nullable via type:[T,"null"]).
+  status: completed
+  assigned_to:
+  - data-layer-expert
+  dependencies: []
+  estimated_effort: 2 pts
+  priority: critical
+  assigned_model: sonnet
+  model_effort: extended
+  evidence:
+  - file: schemas/rights_record.schema.yaml
+  - test: tests/test_rights_record_schema_fixtures.py
+  started: '2026-07-21T00:00:00Z'
+  completed: '2026-07-21T01:00:00Z'
+  verified_by:
+  - task-completion-validator
+- id: P0-2
+  title: Port rights_extension.schema.yaml
+  description: Port fuller entity-level extension record; §9.1 negative-space guard
+    — must NOT define evidence_item_type/judgment_basis/any taxonomy field.
+  status: completed
+  assigned_to:
+  - data-layer-expert
+  dependencies: []
+  estimated_effort: 1 pt
+  priority: high
+  assigned_model: sonnet
+  model_effort: extended
+  evidence:
+  - test: tests/test_schema_validation.py::test_rights_extension_schema_is_a_rights_container_only
+  - test: tests/test_schema_validation.py::test_rights_extension_minimal_valid_instance_passes
+  - test: tests/test_schema_validation.py::test_rights_extension_invalid_instance_fails
+  started: '2026-07-21T00:00:00Z'
+  completed: '2026-07-21T00:30:00Z'
+  verified_by:
+  - task-completion-validator
+- id: P0-3
+  title: Port content_reuse_assessment.schema.yaml
+  description: Port with unified component_type vocabulary (§9.2/§9.8) and shared
+    review_status/decision.status enums (§9.7/§9.10 — enum values only, enforcement
+    deferred to P5-2).
+  status: completed
+  assigned_to:
+  - data-layer-expert
+  dependencies: []
+  estimated_effort: 2 pts
+  priority: critical
+  assigned_model: sonnet
+  model_effort: extended
+  evidence:
+  - test: tests/test_schema_validation.py::test_content_reuse_assessment_enums_match_rights_record
+  - file: schemas/content_reuse_assessment.schema.yaml
+  started: '2026-07-21T00:00:00Z'
+  completed: '2026-07-21T00:45:00Z'
+  verified_by:
+  - task-completion-validator
+- id: P0-4
+  title: Port permission_record.schema.yaml + rights_failure.schema.yaml
+  description: Port both as-is structurally — no §9 conflicts named against either
+    in the handoff review.
+  status: completed
+  assigned_to:
+  - data-layer-expert
+  dependencies: []
+  estimated_effort: 1 pt
+  priority: medium
+  assigned_model: sonnet
+  model_effort: adaptive
+  evidence:
+  - test: tests/test_schema_validation.py::permission_record
+  - test: tests/test_schema_validation.py::rights_failure
+  - file: schemas/permission_record.schema.yaml
+  - file: schemas/rights_failure.schema.yaml
+  started: '2026-07-21T00:00:00Z'
+  completed: '2026-07-21T00:40:00Z'
+  verified_by:
+  - task-completion-validator
+- id: P0-5
+  title: Registry wiring + test builders
+  description: Extend SchemaRegistry/EXPECTED_SCHEMA_NAMES in src/research_foundry/schemas.py
+    and tests/test_schema_validation.py builders to cover all 5 new schemas.
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P0-1
+  - P0-2
+  - P0-3
+  - P0-4
+  estimated_effort: 2 pts
+  priority: critical
+  assigned_model: sonnet
+  model_effort: extended
+  evidence:
+  - test: tests/test_schema_validation.py (105 passed)
+  - test: tests/test_rights_record_schema_fixtures.py
+  started: '2026-07-21T01:00:00Z'
+  completed: '2026-07-21T02:00:00Z'
+  verified_by:
+  - task-completion-validator
 parallelization:
-  batch_1: ["P0-1", "P0-2", "P0-3", "P0-4"]
-  batch_2: ["P0-5"]
-  critical_path: ["P0-1", "P0-5"]
-  estimated_total_time: "8 pts (plan bottom-up estimate; no hour estimates in plan)"
-
+  batch_1:
+  - P0-1
+  - P0-2
+  - P0-3
+  - P0-4
+  batch_2:
+  - P0-5
+  critical_path:
+  - P0-1
+  - P0-5
+  estimated_total_time: 8 pts (plan bottom-up estimate; no hour estimates in plan)
 blockers: []
-
 success_criteria:
-  - {id: "P0-SC1", description: "All 5 schemas register in SchemaRegistry and pass test_registry_lists_all_schemas", status: pending}
-  - {id: "P0-SC2", description: "All 7 owned §9 adjudication rows (§9.2 owned by P1) have a passing fixture demonstrating the fix and a failing fixture demonstrating the pre-fix defect would be caught", status: pending}
-  - {id: "P0-SC3", description: "./.venv/bin/python -m pytest tests/test_schema_validation.py green", status: pending}
-  - {id: "P0-SC4", description: "Reviewer gate: task-completion-validator sign-off (explicit verdict required)", status: pending}
+- id: P0-SC1
+  description: All 5 schemas register in SchemaRegistry and pass test_registry_lists_all_schemas
+  status: pending
+- id: P0-SC2
+  description: All 7 owned §9 adjudication rows (§9.2 owned by P1) have a passing
+    fixture demonstrating the fix and a failing fixture demonstrating the pre-fix
+    defect would be caught
+  status: pending
+- id: P0-SC3
+  description: ./.venv/bin/python -m pytest tests/test_schema_validation.py green
+  status: pending
+- id: P0-SC4
+  description: 'Reviewer gate: task-completion-validator sign-off (explicit verdict
+    required)'
+  status: pending
+notes: 'Root of the critical path — gates every other phase (P1-P6). Owns 6 of the
+  10 §9
 
-notes: |
-  Root of the critical path — gates every other phase (P1-P6). Owns 6 of the 10 §9
   schema-conflict adjudications; do not re-litigate resolutions (locked in the decisions
+
   block: .claude/worknotes/rights-entity-model/decisions-block.md).
+
   Reviewer gate is task-completion-validator (not karen) — this phase is schema-only,
+
   not Mode-D-adjacent.
+
+  '
+progress: 100
 ---
 
 # rights-entity-model — Phase 0: Rights Substrate

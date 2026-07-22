@@ -354,7 +354,7 @@ def _classify_cli_json_dumps_sites(source: str) -> dict[str, list[int]]:
         ident_match = re.match(r"(\w+)", after)
         ident = ident_match.group(1) if ident_match else None
         preceding = "\n".join(lines[max(0, line_no - 6) : line_no - 1])
-        if ident in {"summaries", "drafts"} and "bare JSON array" in preceding:
+        if ident in {"summaries", "drafts", "rows", "records"} and "bare JSON array" in preceding:
             array_excluded.append(line_no)
         elif ident in {"val", "value"} and "isinstance" in after:
             field_echo.append(line_no)
@@ -388,17 +388,27 @@ def test_cli_json_dumps_sites_fully_accounted_for():
 
 
 def test_cli_json_dumps_site_counts_match_pinned_baseline():
-    """Pinned to the current machine-surface-inventory.md count (26 stamped
-    dict-root sites, 2 documented array-root exclusions, 2 unrelated
-    single-field echo helpers = 30 total). Update this test's numbers
+    """Pinned to the current machine-surface-inventory.md count (27 stamped
+    dict-root sites, 5 documented array-root exclusions, 4 unrelated
+    single-field echo helpers = 36 total). Update this test's numbers
     alongside the inventory doc when CLI --json surfaces are deliberately
-    added/removed — a silent count change here is itself a drift signal."""
+    added/removed — a silent count change here is itself a drift signal.
+
+    rights-entity-model-v1 fix-cycle (karen end-of-feature review): the `rf
+    rights` command group added 4 new --json sites (`inspect`/`list`/
+    `validate`/`backfill`) plus 2 incidental field-echo matches inside
+    `inspect`'s rich-table rendering loop (`value`/`isinstance` shape,
+    unrelated to --json output) that the structural scan also picks up.
+    `inspect` is dict-rooted -> stamped (26 -> 27); `list`/`validate`/
+    `backfill` are bare-array-rooted, following the same documented
+    array-root-exclusion convention as `rf run list`/`rf report draft list`
+    (2 -> 5); the 2 incidental field-echo matches bring that count to 4."""
 
     source = CLI_COMMANDS_PATH.read_text()
     result = _classify_cli_json_dumps_sites(source)
-    assert len(result["stamped"]) == 26
-    assert len(result["array_excluded"]) == 2
-    assert len(result["field_echo"]) == 2
+    assert len(result["stamped"]) == 27
+    assert len(result["array_excluded"]) == 5
+    assert len(result["field_echo"]) == 4
 
 
 # ===========================================================================

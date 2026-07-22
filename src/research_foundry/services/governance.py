@@ -27,6 +27,88 @@ from ..yamlio import append_jsonl
 _PERSONAL_SENSITIVITIES = {"public", "personal"}
 _WORK_SENSITIVITIES = {"work_sensitive", "client_sensitive"}
 
+# --- Rights-clearance write ceiling (FR-23) ---------------------------------
+#
+# The 4 fields no agent-writable code path may ever set to a "cleared"/
+# "approved"/"attested" value. Enumerated BY NAME — do not infer or wildcard
+# this list; future governed fields must be added here explicitly.
+_RIGHTS_GOVERNED_FIELDS: tuple[str, ...] = (
+    "rights_record.overall_status",
+    "content_reuse_assessment.decision.status",
+    "rights_extension.clearance_status",
+    "synthesis.attestation.status",
+)
+
+_CLEARED_VALUE_PREFIX = "CLEARED_"
+_RIGHTS_DISALLOWED_EXACT_VALUES = {"counsel_approved", "attested"}
+
+
+def _is_disallowed_rights_value(value: Any) -> bool:
+    """True when *value* is a cleared/approved/attested value an agent may not mint."""
+
+    if not isinstance(value, str):
+        return False
+    if value.startswith(_CLEARED_VALUE_PREFIX):
+        return True
+    return value in _RIGHTS_DISALLOWED_EXACT_VALUES
+
+
+# --- Release-gate: judgment_basis: unassessed (decisions-block OQ-6) -------
+#
+# ``judgment_basis`` (P1) lives on ``source_assertion.extensions.evidence_taxonomy``
+# and is an INDEPENDENT axis from ``evidence_item_type`` — see
+# tests/test_schema_validation.py. This predicate is the boolean logic behind
+# the *bidirectional* release gate the plan's NFR "Release-gate asymmetry"
+# calls out: an ``unassessed`` evidence item must BLOCK a release/disposition
+# evaluation (e.g. commercial licensing) but must NEVER block an
+# internal-capture write — an agent must still be able to honestly record
+# "I haven't judged this yet" without being punished for saying so.
+#
+# ``verification.py::verify_report`` is the CALLER (verify-time check in its
+# existing check sequence) — this module owns the logic, verify_report does
+# not reimplement it.
+_UNASSESSED_JUDGMENT_BASIS = "unassessed"
+
+# Dispositions this predicate gates. Enumerated BY NAME (mirrors
+# _RIGHTS_GOVERNED_FIELDS's convention above) — any disposition NOT in this
+# set (most notably "internal_capture") always returns False from
+# release_gate_blocked_by_unassessed_judgment, regardless of judgment_basis.
+_RELEASE_GATED_DISPOSITIONS: frozenset[str] = frozenset({"commercial_release"})
+
+
+def release_gate_blocked_by_unassessed_judgment(
+    judgment_bases: Any, *, disposition: str
+) -> bool:
+    """True when *disposition* must be blocked by an unassessed evidence item.
+
+    Bidirectional per decisions-block OQ-6:
+
+    - ``disposition == "commercial_release"`` (or any future member of
+      :data:`_RELEASE_GATED_DISPOSITIONS`) AND at least one entry in
+      *judgment_bases* equals ``"unassessed"`` -> ``True`` (blocked).
+    - Any other disposition — in particular ``"internal_capture"`` — always
+      returns ``False``: the release-gate asymmetry means writing an honest
+      ``judgment_basis: unassessed`` evidence item during capture must never
+      be blocked by this rule.
+
+    Parameters
+    ----------
+    judgment_bases:
+        An iterable of ``judgment_basis`` string values (or ``None`` entries,
+        which are ignored) drawn from the evidence items involved in the
+        operation being gated.
+    disposition:
+        The kind of operation being evaluated, e.g. ``"commercial_release"``
+        or ``"internal_capture"``. Not validated against an enum here —
+        callers own their own disposition vocabulary; this predicate only
+        checks set membership against :data:`_RELEASE_GATED_DISPOSITIONS`.
+    """
+
+    if disposition not in _RELEASE_GATED_DISPOSITIONS:
+        return False
+    return any(jb == _UNASSESSED_JUDGMENT_BASIS for jb in judgment_bases or ())
+
+
 # --- Built-in fallbacks (mirror config/governance.yaml) --------------------
 
 _BUILTIN_SECRET_PATTERNS: tuple[str, ...] = (
@@ -97,6 +179,10 @@ class GuardContext:
     artifact_paths: tuple[Path, ...] = ()  # files to secret-scan
     unmapped_material_claims: int = 0  # >0 -> material_claims_must_be_mapped fires
     unsupported_claims: int = 0
+    # (field_name, value) pairs an agent-authored code path is attempting to
+    # write, e.g. ("rights_record.overall_status", "CLEARED_FAIR_USE").
+    # See _RIGHTS_GOVERNED_FIELDS / FR-23.
+    proposed_field_writes: tuple[tuple[str, str], ...] = ()
 
 
 # --- Config loading helpers ------------------------------------------------
@@ -393,6 +479,28 @@ def guard_check(
                 ),
             )
         )
+
+    # 7. no_agent_cleared_rights_value (block) — FR-23 write ceiling. Enumerates
+    # all 4 governed fields BY NAME; synthesis.attestation.status already has a
+    # service-layer guard (assertion_materialization._enforce_synthesis_attestation_ceiling)
+    # — this rule is the governance-layer backstop covering it uniformly with
+    # the other 3 fields.
+    for field_name, value in ctx.proposed_field_writes or ():
+        if field_name in _RIGHTS_GOVERNED_FIELDS and _is_disallowed_rights_value(value):
+            violations.append(
+                Violation(
+                    rule_id="no_agent_cleared_rights_value",
+                    severity=_BLOCK,
+                    message=_rule_message(
+                        cfg,
+                        "no_agent_cleared_rights_value",
+                        "Agent-writable code paths cannot set a rights-clearance "
+                        "field to a CLEARED_*, counsel_approved, or attested value "
+                        "— that requires human/counsel authorship.",
+                    ),
+                    detail=f"field={field_name!r}, value={value!r}",
+                )
+            )
 
     result = _resolve(violations)
     _trace(paths, ctx, result)

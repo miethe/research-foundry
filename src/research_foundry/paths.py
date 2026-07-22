@@ -291,6 +291,25 @@ class RunPaths:
         return self.run / "lineage.yaml"
 
     @property
+    def rights(self) -> Path:
+        """Run-local rights-substrate artifacts (rights-entity-model-v1, P4-2+).
+
+        Deliberately NOT part of :meth:`ensure_scaffold` -- unlike the
+        always-present pipeline dirs, this subtree is created lazily by the
+        first caller that needs it (e.g. ``services.terms_snapshot``), and it
+        is never read by ``services/export_service.py`` (FR-19: excluded from
+        exported/shipped bundles by construction -- the export path only ever
+        reads a fixed, explicitly-named artifact set, never a glob of
+        ``self.run``).
+        """
+        return self.run / "rights"
+
+    @property
+    def rights_terms_snapshots(self) -> Path:
+        """Content-addressed terms-of-service/license snapshot store (P4-2)."""
+        return self.rights / "terms_snapshots"
+
+    @property
     def writebacks(self) -> Path:
         return self.run / "writebacks"
 

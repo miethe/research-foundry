@@ -112,6 +112,18 @@ def _schema_assertion() -> dict[str, object]:
             "code_version": None,
             "observed_at": "2026-07-14T16:00:00Z",
         },
+        # rights-entity-model-v1 P1-1/P1-2: `extensions.evidence_taxonomy`
+        # (evidence_item_type + judgment_basis) became a required top-level
+        # sibling of `identity`/`rights_summary`/`synthesis` on
+        # source_assertion.schema.yaml. Non-material (not in
+        # SOURCE_ASSERTION_MATERIAL_FIELDS), so its presence does not affect
+        # the fingerprint/identity below.
+        "extensions": {
+            "evidence_taxonomy": {
+                "evidence_item_type": "observed_finding",
+                "judgment_basis": "measured",
+            }
+        },
         "lifecycle_state": "eligible",
         "identity": {
             "algorithm": "sha256-canonical-json-v1",

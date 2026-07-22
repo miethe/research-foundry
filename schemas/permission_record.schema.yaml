@@ -1,0 +1,191 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/permission_record.schema.yaml"
+title: Permission Record
+description: >-
+  Evidence of an affirmative license or permission grant from a rights holder,
+  covering one or more source records. Ported structurally from the v1.0
+  Research Foundry Source Reuse & Rights Governance Spec — no §9 adjudication
+  conflicts were named against this schema.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  permission_record_id:
+    type: string
+    minLength: 5
+  rights_holder:
+    type: string
+  rights_holder_contact:
+    type: [string, "null"]
+  license_or_permission_identifier:
+    type: [string, "null"]
+  covered_source_ids:
+    type: array
+    minItems: 1
+    items:
+      type: string
+  covered_components:
+    type: array
+    items:
+      type: string
+  covered_products:
+    type: array
+    items:
+      type: string
+  covered_affiliates:
+    type: array
+    items:
+      type: string
+  grant:
+    type: object
+    additionalProperties: false
+    required:
+      - commercial_use
+      - adaptation
+      - redistribution
+      - channels
+      - audiences
+      - territories
+    properties:
+      commercial_use:
+        type: boolean
+      adaptation:
+        type: boolean
+      redistribution:
+        type: boolean
+      sublicensing:
+        type: boolean
+      hosting:
+        type: boolean
+      api_use:
+        type: boolean
+      updates_included:
+        type: boolean
+      text_and_data_mining:
+        type: boolean
+      model_training:
+        type: boolean
+      channels:
+        type: array
+        items:
+          type: string
+      audiences:
+        type: array
+        items:
+          type: string
+      territories:
+        type: array
+        items:
+          type: string
+      user_or_volume_limits:
+        type: array
+        items:
+          type: string
+  obligations:
+    type: object
+    additionalProperties: false
+    properties:
+      attribution:
+        type: array
+        items:
+          type: string
+      notices:
+        type: array
+        items:
+          type: string
+      change_indication:
+        type: [boolean, "null"]
+      fees:
+        type: array
+        items:
+          type: string
+      reporting:
+        type: array
+        items:
+          type: string
+      audit:
+        type: array
+        items:
+          type: string
+      deletion_or_return:
+        type: array
+        items:
+          type: string
+      other:
+        type: array
+        items:
+          type: string
+  term:
+    type: object
+    additionalProperties: false
+    required:
+      - start_date
+      - end_date
+      - renewal
+    properties:
+      start_date:
+        type: string
+        format: date
+      end_date:
+        type: [string, "null"]
+        format: date
+      renewal:
+        enum: [automatic, manual, perpetual, none, unknown]
+      termination_conditions:
+        type: array
+        items:
+          type: string
+  agreement_evidence:
+    type: object
+    additionalProperties: false
+    required:
+      - document_uri
+      - checksum_sha256
+      - executed_at
+    properties:
+      document_uri:
+        type: string
+      checksum_sha256:
+        type: string
+      executed_at:
+        type: string
+        format: date-time
+      signatories:
+        type: array
+        items:
+          type: string
+  status:
+    enum: [draft, active, expired, terminated, superseded, revoked]
+  review:
+    type: object
+    additionalProperties: false
+    required:
+      - reviewed_at
+      - approved_by
+    properties:
+      reviewed_at:
+        type: string
+        format: date-time
+      approved_by:
+        type: array
+        minItems: 1
+        items:
+          type: string
+      next_review_at:
+        type: [string, "null"]
+        format: date-time
+      notes:
+        type: [string, "null"]
+  extensions:
+    type: object
+required:
+  - schema_version
+  - permission_record_id
+  - rights_holder
+  - covered_source_ids
+  - grant
+  - term
+  - agreement_evidence
+  - status
+  - review

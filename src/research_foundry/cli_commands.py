@@ -2596,6 +2596,311 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(assertion_app, name="assertion")
 
+    # ----- rights (rights_summary mirror inspection/validation — Phase 2) -----
+    rights_app = typer.Typer(
+        help="Rights-summary mirror inspection and divergence validation (rights-entity-model-v1)."
+    )
+
+    @rights_app.command("inspect")
+    def rights_inspect(
+        entity_id: str = typer.Argument(
+            ..., help="source_card_id or assertion_id of the entity to inspect."
+        ),
+        rights_records_dir: str = typer.Option(
+            None,
+            "--rights-records-dir",
+            help="Directory of <rights_record_id>.yaml authoritative records "
+            "(default: <workspace root>/rights_records).",
+        ),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output (default: rich table)"),
+    ) -> None:
+        """Show the full rights posture for one source_card/source_assertion entity.
+
+        Prints the entity's ``rights_summary`` mirror, its ``substitutability``
+        assessment (if one has been recorded), and — when the mirror links a
+        ``rights_record_ids`` entry that resolves under ``--rights-records-dir``
+        — the authoritative record's ``record_scope``/``overall_status`` as a
+        proxy for synthesis state. Looks the entity up by id across the
+        default corpus (``runs/*/source_cards/*.md`` and
+        ``runs/*/assertions/*.yaml``), reusing P2-3's instance loader.
+        """
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services.rights_validation import _load_instance
+        from .yamlio import load_yaml
+
+        fp = FoundryPaths.discover()
+        records_dir = Path(rights_records_dir) if rights_records_dir else (fp.root / "rights_records")
+
+        candidates = [
+            *sorted(fp.runs.glob("*/source_cards/*.md")),
+            *sorted(fp.runs.glob("*/assertions/*.yaml")),
+        ]
+
+        match_path: Path | None = None
+        metadata: dict[str, Any] = {}
+        for candidate in candidates:
+            loaded = _load_instance(candidate)
+            if (loaded.get("source_card_id") or loaded.get("assertion_id")) == entity_id:
+                match_path, metadata = candidate, loaded
+                break
+
+        if match_path is None:
+            typer.echo(f"rf rights inspect: no source_card/source_assertion found with id {entity_id!r}.")
+            raise typer.Exit(1)
+
+        rights_summary = metadata.get("rights_summary") or {}
+        substitutability = metadata.get("substitutability") or rights_summary.get("substitutability")
+
+        linked_record: dict[str, Any] | None = None
+        record_ids = rights_summary.get("rights_record_ids") or []
+        if record_ids and records_dir.exists():
+            record_path = records_dir / f"{record_ids[0]}.yaml"
+            if record_path.exists():
+                loaded_record = load_yaml(record_path)
+                linked_record = loaded_record if isinstance(loaded_record, dict) else None
+
+        if json_out:
+            typer.echo(
+                _json.dumps(
+                    _stamp(
+                        {
+                            "id": entity_id,
+                            "path": str(match_path),
+                            "rights_summary": rights_summary,
+                            "substitutability": substitutability,
+                            "linked_rights_record": linked_record,
+                        }
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+
+        table = Table(title=f"rf rights inspect {entity_id}", show_header=False)
+        table.add_column("Field", style="bold")
+        table.add_column("Value")
+        table.add_row("path", str(match_path))
+        for key, value in rights_summary.items():
+            display = _json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+            table.add_row(f"rights_summary.{key}", display)
+        if substitutability:
+            for key, value in substitutability.items():
+                display = (
+                    _json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+                )
+                table.add_row(f"substitutability.{key}", display)
+        else:
+            table.add_row("substitutability", "not assessed")
+        if linked_record is not None:
+            table.add_row("synthesis.record_scope", str(linked_record.get("record_scope")))
+            table.add_row("synthesis.overall_status", str(linked_record.get("overall_status")))
+        console.print(table)
+
+    @rights_app.command("list")
+    def rights_list(
+        status: str = typer.Option(
+            None,
+            "--status",
+            help="Filter to entities whose rights_summary.review_status equals this value "
+            "(e.g. agent_triage_only). Default: list every entity in the corpus.",
+        ),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output (default: rich table)"),
+    ) -> None:
+        """Enumerate source_card/source_assertion entities by rights_summary.review_status.
+
+        ``review_status`` (not ``clearance_status``) is the triage-status field:
+        it carries values like ``"unknown"``/``"agent_triage_only"`` per
+        :mod:`research_foundry.services.rights_triage`, whereas
+        ``clearance_status`` is the (currently capture-time-fixed) legal
+        clearance enum. Scans the same default corpus as ``rights validate``.
+        """
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services.rights_validation import _load_instance
+
+        fp = FoundryPaths.discover()
+        candidates = [
+            *sorted(fp.runs.glob("*/source_cards/*.md")),
+            *sorted(fp.runs.glob("*/assertions/*.yaml")),
+        ]
+
+        rows: list[dict[str, Any]] = []
+        for path in candidates:
+            metadata = _load_instance(path)
+            rights_summary = metadata.get("rights_summary") or {}
+            review_status = rights_summary.get("review_status", "unknown")
+            if status is not None and review_status != status:
+                continue
+            rows.append(
+                {
+                    "id": metadata.get("source_card_id") or metadata.get("assertion_id"),
+                    "path": str(path),
+                    "review_status": review_status,
+                    "clearance_status": rights_summary.get("clearance_status", "UNKNOWN"),
+                }
+            )
+
+        if json_out:
+            # NOTE: root is a bare JSON array (list[dict]) — no top-level key to
+            # stamp without changing the response shape from array to object,
+            # which would not be additive-only (FR-4.4). Left unstamped; see
+            # docs/dev/architecture/machine-surface-inventory.md.
+            typer.echo(_json.dumps(rows, ensure_ascii=False, indent=2))
+            return
+
+        table = Table(
+            title="rf rights list" + (f" --status {status}" if status else ""), show_header=True
+        )
+        table.add_column("id")
+        table.add_column("review_status")
+        table.add_column("clearance_status")
+        table.add_column("path")
+        for row in rows:
+            table.add_row(str(row["id"]), str(row["review_status"]), str(row["clearance_status"]), row["path"])
+        console.print(table)
+
+    @rights_app.command("validate")
+    def rights_validate(
+        paths: list[str] = typer.Argument(
+            None,
+            help="source_card/source_assertion instance files to check. Default: every "
+            "runs/*/source_cards/*.md and runs/*/assertions/*.yaml in the workspace.",
+        ),
+        as_of: str = typer.Option(
+            ...,
+            "--as-of",
+            help="Point in time (YYYY-MM-DD) to evaluate staleness against. Required — "
+            "this command never computes a default date from the wall clock.",
+        ),
+        rights_records_dir: str = typer.Option(
+            None,
+            "--rights-records-dir",
+            help="Directory of <rights_record_id>.yaml authoritative records "
+            "(default: <workspace root>/rights_records).",
+        ),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output (default: rich table)"),
+    ) -> None:
+        """Check rights_summary mirrors for divergence from their authoritative rights_record.
+
+        Non-fatal ``needs_backfill``/``stale`` results never cause a non-zero
+        exit on their own; only an actual divergence finding (a result whose
+        ``.ok`` is ``False``) does.
+        """
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services.rights_validation import check_rights_divergence
+
+        fp = FoundryPaths.discover()
+        records_dir = Path(rights_records_dir) if rights_records_dir else (fp.root / "rights_records")
+
+        if paths:
+            target_paths: list[Path] = [Path(p) for p in paths]
+        else:
+            target_paths = [
+                *sorted(fp.runs.glob("*/source_cards/*.md")),
+                *sorted(fp.runs.glob("*/assertions/*.yaml")),
+            ]
+
+        results = check_rights_divergence(target_paths, as_of=as_of, rights_records_dir=records_dir)
+
+        ok_count = sum(1 for r in results if r.ok)
+        backfill_count = sum(1 for r in results if r.needs_backfill)
+        stale_count = sum(1 for r in results if r.stale)
+        failed = [r for r in results if not r.ok]
+
+        if json_out:
+            records = [r.as_dict() for r in results]
+            # NOTE: root is a bare JSON array (list[dict]) — no top-level key to
+            # stamp without changing the response shape from array to object,
+            # which would not be additive-only (FR-4.4). Left unstamped; see
+            # docs/dev/architecture/machine-surface-inventory.md.
+            typer.echo(_json.dumps(records, ensure_ascii=False, indent=2))
+        else:
+            table = Table(title=f"rf rights validate --as-of {as_of}", show_header=True)
+            table.add_column("checked", justify="right")
+            table.add_column("ok", justify="right")
+            table.add_column("needs_backfill", justify="right")
+            table.add_column("stale", justify="right")
+            table.add_column("failed", justify="right")
+            table.add_row(str(len(results)), str(ok_count), str(backfill_count), str(stale_count), str(len(failed)))
+            console.print(table)
+            for r in failed:
+                bad_fields = [f.field for f in r.findings]
+                console.print(f"  [red]FAIL[/red] {r.path}: {bad_fields}")
+
+        if failed:
+            raise typer.Exit(1)
+
+    @rights_app.command("backfill")
+    def rights_backfill(
+        paths: list[str] = typer.Argument(
+            None,
+            help="source_card/source_assertion instance files to backfill. Default: every "
+            "runs/*/source_cards/*.md and runs/*/assertions/*.yaml in the workspace.",
+        ),
+        dry_run: bool = typer.Option(
+            False, "--dry-run", help="Report what would change without writing anything."
+        ),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output (default: rich table)"),
+    ) -> None:
+        """Write an all-"unknown" fail-closed rights_summary onto legacy instances missing one.
+
+        Idempotent and non-clobbering: an instance that already carries a
+        ``rights_summary`` (real data or a prior backfill) is left
+        untouched. Exits 0 unconditionally — a legacy instance needing
+        backfill is the expected, non-error case this command exists to fix.
+        """
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services.rights_backfill import ACTION_BACKFILLED, backfill_rights_summary
+
+        fp = FoundryPaths.discover()
+
+        if paths:
+            target_paths: list[Path] = [Path(p) for p in paths]
+        else:
+            target_paths = [
+                *sorted(fp.runs.glob("*/source_cards/*.md")),
+                *sorted(fp.runs.glob("*/assertions/*.yaml")),
+            ]
+
+        results = backfill_rights_summary(target_paths, dry_run=dry_run)
+        backfilled = [r for r in results if r.action == ACTION_BACKFILLED]
+        skipped_count = len(results) - len(backfilled)
+
+        if json_out:
+            records = [r.as_dict() for r in results]
+            # NOTE: root is a bare JSON array (list[dict]) — no top-level key to
+            # stamp without changing the response shape from array to object,
+            # which would not be additive-only (FR-4.4). Left unstamped; see
+            # docs/dev/architecture/machine-surface-inventory.md.
+            typer.echo(_json.dumps(records, ensure_ascii=False, indent=2))
+        else:
+            table = Table(
+                title="rf rights backfill" + (" (--dry-run)" if dry_run else ""),
+                show_header=True,
+            )
+            table.add_column("checked", justify="right")
+            table.add_column("backfilled", justify="right")
+            table.add_column("already_present", justify="right")
+            table.add_row(str(len(results)), str(len(backfilled)), str(skipped_count))
+            console.print(table)
+            for r in backfilled:
+                verb = "[yellow]WOULD BACKFILL[/yellow]" if dry_run else "[green]BACKFILLED[/green]"
+                console.print(f"  {verb} {r.path}")
+
+    app.add_typer(rights_app, name="rights")
+
     # ----- serve (loopback API) -----
     @app.command()
     def serve(

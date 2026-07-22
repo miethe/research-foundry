@@ -6,95 +6,146 @@ prd: rights-entity-model
 feature_slug: rights-entity-model
 phase: 1
 phase_id: P1
-title: "Phase 1: Evidence Taxonomy (C2) — Progress"
-status: pending
+title: "Phase 1: Evidence Taxonomy (C2) \u2014 Progress"
+status: completed
 created: '2026-07-21'
 updated: '2026-07-21'
 prd_ref: docs/project_plans/PRDs/infrastructure/rights-entity-model-v1.md
 plan_ref: docs/project_plans/implementation_plans/infrastructure/rights-entity-model-v1.md
 phase_plan_ref: docs/project_plans/implementation_plans/infrastructure/rights-entity-model-v1/phase-0-2-schema.md
-commit_refs: []
+commit_refs:
+- e32f554
+- d9064c9
 pr_refs: []
 execution_model: batch-parallel
 reviewer_gate: task-completion-validator
-
 overall_progress: 0
 completion_estimate: on-track
-
 total_tasks: 4
-completed_tasks: 0
+completed_tasks: 4
 in_progress_tasks: 0
 blocked_tasks: 0
-
-owners: ["data-layer-expert"]
-contributors: ["python-backend-engineer"]
-
+owners:
+- data-layer-expert
+contributors:
+- python-backend-engineer
 model_usage:
   primary: sonnet
   external: []
-
 tasks:
-  - id: P1-1
-    title: "Add evidence_item_type to source_assertion.schema.yaml"
-    description: "Required enum (observed_finding|reference_interval_value|equation_or_method|guideline_recommendation|instrument_or_questionnaire|bibliographic_metadata|derived_synthesis|other) inside a new extensions.evidence_taxonomy sibling block — never nested under rights_extension (§9.1)."
-    status: pending
-    assigned_to: ["data-layer-expert"]
-    dependencies: ["P0-5"]
-    estimated_effort: "2 pts"
-    priority: "critical"
-    assigned_model: sonnet
-    model_effort: adaptive
-  - id: P1-2
-    title: "Add judgment_basis to extensions.evidence_taxonomy"
-    description: "Required enum (measured|derived_from_measured|expert_judgment|mixed|unassessed), independent axis, default unassessed. Domain-general naming per OQ-RF-2."
-    status: pending
-    assigned_to: ["data-layer-expert"]
-    dependencies: ["P1-1"]
-    estimated_effort: "1.5 pts"
-    priority: "critical"
-    assigned_model: sonnet
-    model_effort: adaptive
-  - id: P1-3
-    title: "No-derivation static guard"
-    description: "Automated static test (AST/grep-based) asserting no function derives evidence_item_type from judgment_basis or vice versa, or from any component_type-shaped field. Three-axes invariant (FR-8)."
-    status: pending
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P1-1", "P1-2"]
-    estimated_effort: "1.5 pts"
-    priority: "high"
-    assigned_model: sonnet
-    model_effort: adaptive
-  - id: P1-4
-    title: "other-extensibility test (OQ-RF-2)"
-    description: "Test proving evidence_item_type: other validates; schema doc-comment states the extensibility contract (domain-extensible, not a closed clinical list)."
-    status: pending
-    assigned_to: ["data-layer-expert"]
-    dependencies: ["P1-1"]
-    estimated_effort: "1 pt"
-    priority: "medium"
-    assigned_model: sonnet
-    model_effort: adaptive
-
+- id: P1-1
+  title: Add evidence_item_type to source_assertion.schema.yaml
+  description: "Required enum (observed_finding|reference_interval_value|equation_or_method|guideline_recommendation|instrument_or_questionnaire|bibliographic_metadata|derived_synthesis|other)\
+    \ inside a new extensions.evidence_taxonomy sibling block \u2014 never nested\
+    \ under rights_extension (\xA79.1)."
+  status: completed
+  assigned_to:
+  - data-layer-expert
+  dependencies:
+  - P0-5
+  estimated_effort: 2 pts
+  priority: critical
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: 2026-07-21T00:00Z
+  completed: 2026-07-21T00:30Z
+  evidence:
+  - test: tests/test_schema_validation.py
+  verified_by:
+  - P1-3
+- id: P1-2
+  title: Add judgment_basis to extensions.evidence_taxonomy
+  description: Required enum (measured|derived_from_measured|expert_judgment|mixed|unassessed),
+    independent axis, default unassessed. Domain-general naming per OQ-RF-2.
+  status: completed
+  assigned_to:
+  - data-layer-expert
+  dependencies:
+  - P1-1
+  estimated_effort: 1.5 pts
+  priority: critical
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: 2026-07-21T00:30Z
+  completed: 2026-07-21T01:00Z
+  evidence:
+  - test: tests/test_schema_validation.py
+  verified_by:
+  - P1-3
+- id: P1-3
+  title: No-derivation static guard
+  description: Automated static test (AST/grep-based) asserting no function derives
+    evidence_item_type from judgment_basis or vice versa, or from any component_type-shaped
+    field. Three-axes invariant (FR-8).
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P1-1
+  - P1-2
+  estimated_effort: 1.5 pts
+  priority: high
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: 2026-07-21T01:00Z
+  completed: 2026-07-21T01:30Z
+  evidence:
+  - test: tests/test_no_derivation_guard.py
+  verified_by:
+  - karen-eof-review
+- id: P1-4
+  title: other-extensibility test (OQ-RF-2)
+  description: 'Test proving evidence_item_type: other validates; schema doc-comment
+    states the extensibility contract (domain-extensible, not a closed clinical list).'
+  status: completed
+  assigned_to:
+  - data-layer-expert
+  dependencies:
+  - P1-1
+  estimated_effort: 1 pt
+  priority: medium
+  assigned_model: sonnet
+  model_effort: adaptive
+  started: 2026-07-21T00:30Z
+  completed: 2026-07-21T01:00Z
+  evidence:
+  - test: tests/test_schema_validation.py
+  verified_by:
+  - P1-3
 parallelization:
-  batch_1: ["P1-1"]
-  batch_2: ["P1-2", "P1-4"]
-  batch_3: ["P1-3"]
-  critical_path: ["P1-1", "P1-2", "P1-3"]
-  estimated_total_time: "6 pts (plan bottom-up estimate)"
-
+  batch_1:
+  - P1-1
+  batch_2:
+  - P1-2
+  - P1-4
+  batch_3:
+  - P1-3
+  critical_path:
+  - P1-1
+  - P1-2
+  - P1-3
+  estimated_total_time: 6 pts (plan bottom-up estimate)
 blockers: []
-
 success_criteria:
-  - {id: "P1-SC1", description: "evidence_item_type and judgment_basis are independent, required fields with correct defaults", status: pending}
-  - {id: "P1-SC2", description: "No-derivation static test passes", status: pending}
-  - {id: "P1-SC3", description: "other-extensibility test passes", status: pending}
-  - {id: "P1-SC4", description: "Reviewer gate: task-completion-validator sign-off (explicit verdict required)", status: pending}
-
-notes: |
-  Sequenced after P0 per decisions-block risk conservatism (shared evidence-entity file),
-  not a direct field dependency. evidence_item_type + judgment_basis live in
-  extensions.evidence_taxonomy — a sibling block, NOT inside rights_extension (§9.1,
-  locked). Reviewer gate is task-completion-validator, not karen.
+- id: P1-SC1
+  description: evidence_item_type and judgment_basis are independent, required fields
+    with correct defaults
+  status: pending
+- id: P1-SC2
+  description: No-derivation static test passes
+  status: pending
+- id: P1-SC3
+  description: other-extensibility test passes
+  status: pending
+- id: P1-SC4
+  description: 'Reviewer gate: task-completion-validator sign-off (explicit verdict
+    required)'
+  status: pending
+notes: "Sequenced after P0 per decisions-block risk conservatism (shared evidence-entity\
+  \ file),\nnot a direct field dependency. evidence_item_type + judgment_basis live\
+  \ in\nextensions.evidence_taxonomy \u2014 a sibling block, NOT inside rights_extension\
+  \ (\xA79.1,\nlocked). Reviewer gate is task-completion-validator, not karen.\n"
+progress: 100
 ---
 
 # rights-entity-model — Phase 1: Evidence Taxonomy (C2)

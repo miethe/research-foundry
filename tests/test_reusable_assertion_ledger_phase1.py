@@ -44,6 +44,37 @@ def _source_assertion() -> dict[str, Any]:
             "fingerprint": "",
             "material_fields": list(SOURCE_ASSERTION_MATERIAL_FIELDS),
         },
+        "extensions": {
+            "evidence_taxonomy": {
+                "evidence_item_type": "observed_finding",
+                "judgment_basis": "measured",
+            }
+        },
+        # rights-entity-model-v1 P2-2: `rights_summary` (byte-identical
+        # denormalized mirror shape to source_card.schema.yaml's P2-1
+        # field) — non-material, all-"unknown" default so this canonical
+        # P1 identity/lifecycle fixture reflects the current schema shape
+        # without asserting any rights posture.
+        "rights_summary": {
+            "mirror_of_record_id": None,
+            "mirror_derived_at": None,
+            "mirror_is_authoritative": False,
+            "rights_record_ids": [],
+            "reuse_assessment_ids": [],
+            "permission_record_ids": [],
+            "copyright_status": "unknown",
+            "access_basis": "unknown",
+            "restrictions": {
+                "incorporation_into_other_products": "unknown",
+                "adaptation": "unknown",
+                "commercial_use": "unknown",
+                "redistribution": "unknown",
+                "bulk_retrieval": "unknown",
+                "model_training": "unknown",
+            },
+            "clearance_status": "UNKNOWN",
+            "review_status": "unknown",
+        },
     }
     assertion["identity"]["fingerprint"] = source_assertion_fingerprint(assertion)
     assertion["assertion_id"] = source_assertion_id(assertion)

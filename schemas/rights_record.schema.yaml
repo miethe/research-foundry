@@ -1,0 +1,655 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/rights_record.schema.yaml"
+title: Rights Record
+description: >-
+  Source-level and access-context rights baseline. Ported from the v1.0
+  "Research Foundry and Evidence Foundry Source Reuse & Rights Governance
+  Specification" (pediatric-anemia-site repo, verified 2026-07-21). RF is
+  greenfield for this schema — see the rights-entity-model decisions block
+  (.claude/worknotes/rights-entity-model/decisions-block.md) for the locked
+  §9 adjudications applied below. A separate content_reuse_assessment record
+  (P0-3) is required for each externally shipped use; a permission_record
+  (P0-4) is required when an affirmative license/permission is obtained.
+
+  Family convention for this rights substrate (rights_record,
+  rights_extension, content_reuse_assessment, permission_record,
+  rights_failure): additionalProperties: false everywhere, nullable fields
+  via `type: [T, "null"]` (never `format`), and a `schema_version` const.
+  This is stricter than some earlier RF schemas (e.g. source_card.schema.yaml,
+  which is additionalProperties: true) — deliberately, so a fail-closed
+  rights record cannot silently absorb an unmodeled field.
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - rights_record_id
+  - record_scope
+  - jurisdictions
+  - access
+  - copyright
+  - component_decisions
+  - overall_status
+  - review
+properties:
+  schema_version:
+    const: "1.0"
+  rights_record_id:
+    type: string
+    minLength: 5
+  # §9.5 (locked): source_id is required UNLESS record_scope == "first_party"
+  # (a first-party/owned record — e.g. a derived_synthesis authored by this
+  # Foundry — has no third-party source to link). Enforced below via `allOf`.
+  source_id:
+    type: string
+    minLength: 3
+  source_version:
+    type:
+      - string
+      - "null"
+  record_scope:
+    # §9.5 (locked): "first_party" added so first-party/owned content (no
+    # third-party source_id) can validate.
+    enum:
+      - source
+      - source_and_access_context
+      - edition
+      - dataset_release
+      - software_release
+      - source_component
+      - first_party
+  component_scope:
+    type: array
+    items:
+      type: string
+  jurisdictions:
+    type: array
+    minItems: 1
+    items:
+      type: string
+  access:
+    type: object
+    additionalProperties: false
+    required:
+      - basis
+      - terms_verified_at
+    properties:
+      basis:
+        # §9.3 (locked): "unknown" added — an agent that does not know the
+        # access basis must be able to record ignorance rather than guess or
+        # fall back to "other" (both record false certainty).
+        enum:
+          - public_web
+          - open_repository
+          - personal_subscription
+          - institutional_subscription
+          - purchased_copy
+          - licensed_api
+          - direct_permission
+          - author_provided_copy
+          - government_source
+          - partner_confidential
+          - data_use_agreement
+          - other
+          - unknown
+      platform:
+        type:
+          - string
+          - "null"
+      account_or_agreement_id:
+        type:
+          - string
+          - "null"
+      terms_url:
+        # §9.6a (locked): `pattern` replaces `format: uri` — `format` is not
+        # enforced by every validator in the wild (fail-open on garbage URLs).
+        type:
+          - string
+          - "null"
+        pattern: "^https?://"
+      terms_snapshot_uri:
+        type:
+          - string
+          - "null"
+      terms_snapshot_sha256:
+        type:
+          - string
+          - "null"
+      # P4-3 (locked): a snapshot fetch failure (timeout, 4xx/5xx, malformed
+      # content) is recorded here as a typed, queryable structural failure —
+      # never left as a silent absence. Mirrors the fail-closed intent of
+      # ``verification.py``'s ``_IO_ERROR_SENTINEL_PREFIX`` pattern, applied
+      # at this per-access-record scope (this is NOT the ``rights_failure``
+      # entity — that's a human-facing legal/reuse blocker; this is a
+      # transient operational fetch failure).
+      # R-P2 (implicit AC): any consumer reading `terms_snapshot_uri` /
+      # `terms_snapshot_sha256` MUST check this field first before treating a
+      # null value as "not applicable" — null is ambiguous between "never
+      # attempted" and "attempted and failed"; only this field disambiguates
+      # the two. See `services/terms_snapshot.access_terms_snapshot_status()`
+      # for the canonical consumer-side check.
+      terms_snapshot_failure:
+        type:
+          - object
+          - "null"
+        additionalProperties: false
+        required:
+          - reason
+          - detail
+          - attempted_at
+        properties:
+          reason:
+            enum:
+              - fetch_error
+              - empty_content
+          detail:
+            type: string
+          attempted_at:
+            type: string
+            format: date-time
+      terms_verified_at:
+        type: string
+        format: date-time
+      authorized_users:
+        type:
+          - string
+          - "null"
+      # §9.4 (locked): the following three fields share ONE enum with
+      # contract.bulk_retrieval / contract.model_training below —
+      # `allowed | allowed_with_conditions | prohibited | not_addressed | unknown`.
+      # v1.0 modelled this restriction family twice with incompatible enums
+      # (`yes/yes_with_conditions/no/unknown[/not_assessed]` here vs.
+      # `allowed/allowed_with_conditions/prohibited/not_addressed/unknown` on
+      # `contract.*`) — a translation bug waiting to happen. This is the ONE
+      # shared enum for that whole restriction family (5 fields total: these
+      # 3 + contract.bulk_retrieval + contract.model_training).
+      automated_retrieval_allowed:
+        enum:
+          - allowed
+          - allowed_with_conditions
+          - prohibited
+          - not_addressed
+          - unknown
+      text_and_data_mining_allowed:
+        enum:
+          - allowed
+          - allowed_with_conditions
+          - prohibited
+          - not_addressed
+          - unknown
+      model_training_allowed:
+        enum:
+          - allowed
+          - allowed_with_conditions
+          - prohibited
+          - not_addressed
+          - unknown
+      termination_or_deletion_duties:
+        type: array
+        items:
+          type: string
+  copyright:
+    type: object
+    additionalProperties: false
+    required:
+      - status
+    properties:
+      status:
+        enum:
+          - copyrighted
+          - open_license
+          - public_domain
+          - us_federal_government_work
+          - mixed_or_third_party
+          - unknown
+      rights_holder:
+        type:
+          - string
+          - "null"
+      publication_license:
+        type:
+          - string
+          - "null"
+      license_version:
+        type:
+          - string
+          - "null"
+      license_url:
+        # §9.6a (locked): `pattern` replaces `format: uri` (see access.terms_url).
+        type:
+          - string
+          - "null"
+        pattern: "^https?://"
+      license_applies_to:
+        type: array
+        items:
+          enum:
+            - text
+            - abstract
+            - figures
+            - tables
+            - supplements
+            - data
+            - code
+            - questionnaires
+            - all_content
+            - unknown
+      third_party_components:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - component
+            - rights_status
+          properties:
+            component:
+              type: string
+            rights_status:
+              enum:
+                - cleared
+                - permission_required
+                - excluded
+                - unknown
+            notes:
+              type:
+                - string
+                - "null"
+      attribution_requirements:
+        type: array
+        items:
+          type: string
+      notice_requirements:
+        type: array
+        items:
+          type: string
+      change_indication_required:
+        type:
+          - boolean
+          - "null"
+      share_alike_required:
+        type:
+          - boolean
+          - "null"
+      noncommercial_only:
+        type:
+          - boolean
+          - "null"
+      no_derivatives:
+        type:
+          - boolean
+          - "null"
+  contract:
+    # §9.6b (locked, fail-open regression guard): v1.0 made `contract`
+    # nullable with NO required members, so `{"contract": {}}` validated
+    # identically to `contract: null` — "no restrictions assessed" and "no
+    # restrictions exist" became indistinguishable. Fixed here: when
+    # `contract` is an object, ALL 7 restriction sub-fields below are
+    # required (each still accepts "unknown" as a value — this requires the
+    # *question be recorded*, not that the answer be known). `contract: null`
+    # remains the only way to express "not assessed at all"; `required` does
+    # not apply to a null instance, so that path is unaffected. An empty
+    # `contract: {}` now FAILS validation (missing all 7 required fields) —
+    # see tests/test_rights_record_schema_fixtures.py for the dedicated
+    # invalid fixture proving this.
+    type:
+      - object
+      - "null"
+    additionalProperties: false
+    required:
+      - incorporation_into_other_products
+      - adaptation
+      - commercial_use
+      - redistribution
+      - sublicensing
+      - bulk_retrieval
+      - model_training
+    properties:
+      incorporation_into_other_products:
+        enum:
+          - allowed
+          - allowed_with_conditions
+          - restricted_without_written_approval
+          - prohibited
+          - not_addressed
+          - unknown
+      adaptation:
+        enum:
+          - allowed
+          - allowed_with_conditions
+          - restricted_without_written_approval
+          - prohibited
+          - not_addressed
+          - unknown
+      commercial_use:
+        enum:
+          - allowed
+          - allowed_with_conditions
+          - not_granted
+          - prohibited
+          - not_addressed
+          - unknown
+      redistribution:
+        enum:
+          - allowed
+          - allowed_with_conditions
+          - restricted
+          - prohibited
+          - not_addressed
+          - unknown
+      sublicensing:
+        enum:
+          - allowed
+          - allowed_with_conditions
+          - not_granted
+          - prohibited
+          - not_addressed
+          - unknown
+      # §9.4 (locked): shared enum with access.automated_retrieval_allowed /
+      # text_and_data_mining_allowed / model_training_allowed above.
+      bulk_retrieval:
+        enum:
+          - allowed
+          - allowed_with_conditions
+          - prohibited
+          - not_addressed
+          - unknown
+      model_training:
+        enum:
+          - allowed
+          - allowed_with_conditions
+          - prohibited
+          - not_addressed
+          - unknown
+      territory_limits:
+        type: array
+        items:
+          type: string
+      user_or_volume_limits:
+        type: array
+        items:
+          type: string
+      term_start:
+        type:
+          - string
+          - "null"
+        format: date
+      term_end:
+        type:
+          - string
+          - "null"
+        format: date
+      clause_locators:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - topic
+            - locator
+            - summary
+          properties:
+            topic:
+              type: string
+            locator:
+              type: string
+            summary:
+              type: string
+  component_decisions:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - component_type
+        - decision
+      properties:
+        component_type:
+          # §9.8 (locked): UNIFIED SINGULAR component_type vocabulary — this
+          # exact 21-member literal list is byte-identical-required by P0-3's
+          # content_reuse_assessment.schema.yaml (`component.component_type`)
+          # and MUST be copied verbatim there, not re-derived.
+          #
+          # v1.0 modelled this enum twice with incompatible shapes: this
+          # schema used plurals/aggregates (`atomic_facts_and_methods`,
+          # `reference_interval_values`, `trademarks_and_logos`), while the
+          # (then-unported) content_reuse_assessment used singulars
+          # (`atomic_fact`, `method`, `reference_interval_value`,
+          # `trademark_or_logo`) and was missing `abstract` and
+          # `supplementary_material` entirely. The aggregate->singular
+          # direction is one-to-many and not mechanically reversible
+          # (`atomic_facts_and_methods` splits into TWO members), so one
+          # vocabulary had to be chosen. Resolution: adopt the singular
+          # shape (clearer 1:1 mapping to a single component instance) and
+          # carry forward `abstract` + `supplementary_material` from this
+          # schema's original list, per the locked adjudication.
+          #
+          # CANONICAL LIST (copy verbatim into P0-3):
+          #   bibliographic_metadata, atomic_fact, method, equation,
+          #   guideline_recommendation, reference_interval_value, prose,
+          #   abstract, table, figure, chart, nomogram,
+          #   decision_tree_or_flowchart, questionnaire_or_instrument,
+          #   patient_handout, dataset, software_or_code, image_or_media,
+          #   trademark_or_logo, supplementary_material, other
+          enum:
+            - bibliographic_metadata
+            - atomic_fact
+            - method
+            - equation
+            - guideline_recommendation
+            - reference_interval_value
+            - prose
+            - abstract
+            - table
+            - figure
+            - chart
+            - nomogram
+            - decision_tree_or_flowchart
+            - questionnaire_or_instrument
+            - patient_handout
+            - dataset
+            - software_or_code
+            - image_or_media
+            - trademark_or_logo
+            - supplementary_material
+            - other
+        component_locator:
+          type:
+            - string
+            - "null"
+        decision:
+          enum:
+            - permitted
+            - permitted_with_conditions
+            - facts_only_subject_to_access_contract_and_legal_review
+            - permission_required
+            - prohibited_without_authorization
+            - prohibited
+            - unknown
+        conditions:
+          type: array
+          items:
+            type: string
+        notes:
+          type:
+            - string
+            - "null"
+  other_rights:
+    type: object
+    additionalProperties: false
+    properties:
+      patent:
+        enum:
+          - none_identified
+          - review_required
+          - licensed
+          - blocked
+          - unknown
+      trademark_or_endorsement:
+        enum:
+          - none_identified
+          - descriptive_use_only
+          - permission_required
+          - blocked
+          - unknown
+      database_right:
+        enum:
+          - not_applicable
+          - none_identified
+          - review_required
+          - licensed
+          - blocked
+          - unknown
+      privacy_or_confidentiality:
+        enum:
+          - not_applicable
+          - cleared
+          - restricted
+          - blocked
+          - unknown
+      data_use_agreement:
+        enum:
+          - not_applicable
+          - active
+          - expired
+          - restricted
+          - unknown
+      trade_secret:
+        enum:
+          - not_applicable
+          - none_identified
+          - restricted
+          - blocked
+          - unknown
+      notes:
+        type: array
+        items:
+          type: string
+  permitted_uses:
+    type: array
+    items:
+      enum:
+        - internal_reading
+        - internal_research_notes
+        - controlled_source_vault
+        - metadata_storage
+        - evidence_atom_extraction
+        - independent_rule_implementation
+        - internal_validation
+        - commercial_runtime_logic
+        - commercial_user_facing_explanation
+        - clinician_citation
+        - patient_facing_content
+        - documentation
+        - marketing
+        - training
+        - bulk_retrieval
+        - text_and_data_mining
+        - model_training
+        - partner_distribution
+  prohibited_uses:
+    type: array
+    items:
+      type: string
+  safe_residual_uses:
+    type: array
+    items:
+      type: string
+  overall_status:
+    # §9.5 (locked): "OWNED" added so first-party/synthesis records (no
+    # third-party rights to clear) have a representable terminal status.
+    enum:
+      - CLEARED_OPEN_LICENSE
+      - CLEARED_PUBLIC_DOMAIN
+      - CLEARED_FACTS_ONLY
+      - CLEARED_PERMISSION
+      - INTERNAL_ONLY
+      - LOCAL_VALIDATION_ONLY
+      - LEGAL_REVIEW_REQUIRED
+      - PERMISSION_REQUIRED
+      - CONTRACT_RESTRICTED
+      - PROHIBITED
+      - UNKNOWN
+      - OWNED
+  recommended_action:
+    type:
+      - string
+      - "null"
+  permission_record_ids:
+    type: array
+    items:
+      type: string
+  rights_failure_ids:
+    type: array
+    items:
+      type: string
+  review:
+    type: object
+    additionalProperties: false
+    required:
+      - reviewed_at
+      - review_status
+    properties:
+      assessed_by_agent:
+        type:
+          - string
+          - "null"
+      human_reviewer:
+        type:
+          - string
+          - "null"
+      counsel_reviewer:
+        type:
+          - string
+          - "null"
+      reviewed_at:
+        type: string
+        format: date-time
+      review_status:
+        # §9.7 (locked): CANONICAL 6-member review_status enum — this exact
+        # literal list is byte-identical-required by P0-3's
+        # content_reuse_assessment.schema.yaml (`review.review_status`) and
+        # MUST be copied verbatim there, not re-derived. v1.0's two schemas
+        # diverged here (rights_record had all 6; content_reuse_assessment
+        # had only 5, missing `legal_review_required_before_commercial_use`)
+        # — a record legitimately at that status had no way to carry the
+        # constraint forward onto a derived reuse assessment without either
+        # downgrading it (a fail-open) or failing validation. Resolution:
+        # one 6-member enum, defined once here, copied verbatim there.
+        #
+        # CANONICAL LIST (copy verbatim into P0-3):
+        #   agent_triage_only, human_reviewed,
+        #   legal_review_required_before_commercial_use, counsel_approved,
+        #   counsel_rejected, expired
+        enum:
+          - agent_triage_only
+          - human_reviewed
+          - legal_review_required_before_commercial_use
+          - counsel_approved
+          - counsel_rejected
+          - expired
+      next_review_at:
+        type:
+          - string
+          - "null"
+        format: date-time
+      change_triggers:
+        type: array
+        items:
+          type: string
+      notes:
+        type:
+          - string
+          - "null"
+allOf:
+  # §9.5 (locked): source_id is required unless record_scope == "first_party".
+  - if:
+      properties:
+        record_scope:
+          const: first_party
+      required:
+        - record_scope
+    then: {}
+    else:
+      required:
+        - source_id

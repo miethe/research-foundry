@@ -76,3 +76,43 @@ this session after a mid-run API error interrupted the original authoring pass.
 53 pts bottom-up reconciled (decisions-block anchored 41; PRD range 45–55). All tasks route to
 `sonnet` — `haiku` hard-errors in this environment, including for agents that default to it
 (`changelog-generator`, `documentation-writer`); always pass `model="sonnet"` explicitly.
+
+## Task Log — P0-3 (`content_reuse_assessment.schema.yaml`)
+
+**2026-07-21**: P0-3 ran concurrently with P0-1 (`rights_record.schema.yaml`). At the time P0-3
+needed the shared `component_type`/`review_status` vocabularies, `schemas/rights_record.schema.yaml`
+had **not yet landed** on disk (only `rights_extension`, `permission_record`, `rights_failure` had).
+P0-3 therefore **originated both enums independently**, reading the authoritative v1.0 source
+schemas directly (`.../research_foundry_rights_governance_spec_v1.0/schemas/{rights_record,content_reuse_assessment}.schema.json`)
+rather than the handoff doc's prose, and applying the §9.2/§9.7/§9.8 adjudications:
+
+- `component_type` (21 members, unified singular vocabulary incl. `abstract` + `supplementary_material`):
+  `bibliographic_metadata, atomic_fact, method, equation, guideline_recommendation,
+  reference_interval_value, prose, abstract, table, figure, chart, nomogram,
+  decision_tree_or_flowchart, questionnaire_or_instrument, patient_handout, dataset,
+  software_or_code, image_or_media, trademark_or_logo, supplementary_material, other`
+- `review_status` (6 members, canonical): `agent_triage_only, human_reviewed,
+  legal_review_required_before_commercial_use, counsel_approved, counsel_rejected, expired`
+- `decision.status` (§9.10 partial — values only, no enforcement): 12 members = the 11-member
+  `overall_status` set + `OWNED` (§9.5 first-party member): `CLEARED_OPEN_LICENSE,
+  CLEARED_PUBLIC_DOMAIN, CLEARED_FACTS_ONLY, CLEARED_PERMISSION, INTERNAL_ONLY,
+  LOCAL_VALIDATION_ONLY, LEGAL_REVIEW_REQUIRED, PERMISSION_REQUIRED, CONTRACT_RESTRICTED,
+  PROHIBITED, UNKNOWN, OWNED`. `decision.release_gate` kept as v1.0's independent
+  `PASS/PASS_WITH_CONDITIONS/BLOCK` (not part of the value-set match).
+
+**ACTION REQUIRED before Phase 0 closes**: verify P0-1's landed `rights_record.schema.yaml` uses
+these exact literal lists for `component_decisions[].component_type` and `review.review_status`
+(and that `overall_status` ends up as the 12-member set above, including `OWNED`). A new test,
+`test_content_reuse_assessment_enums_match_rights_record` in `tests/test_schema_validation.py`
+(append-only, added by P0-3), asserts this identity automatically — it currently **skips** (not
+fails) because `rights_record.schema.yaml` was absent at P0-3 authoring time. Re-run
+`./.venv/bin/python -m pytest tests/test_schema_validation.py -k content_reuse_assessment -v`
+once P0-1 lands: if it fails, the phase-owner or P0-5 must reconcile one of the two schemas to
+match the other before Phase 0's exit gate.
+
+**RESOLVED same session**: P0-1 landed `rights_record.schema.yaml` before this task finished.
+Re-ran `test_content_reuse_assessment_enums_match_rights_record` — **PASSES**. P0-1's
+`overall_status` (12 members, incl. `OWNED`), `review.review_status` (6 members), and
+`component_decisions[].component_type` (21 members) are byte-identical to what P0-3 originated
+above. No reconciliation needed. Verify this still holds at P6-1's full sweep (in case either
+schema is edited later).

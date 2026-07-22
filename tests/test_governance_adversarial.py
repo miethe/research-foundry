@@ -238,6 +238,63 @@ def test_r6_clean_when_zero():
 
 
 # ---------------------------------------------------------------------------
+# Rule 7: no_agent_cleared_rights_value (FR-23 write ceiling)
+# ---------------------------------------------------------------------------
+
+
+def test_r7_blocks_cleared_prefix_on_each_of_the_4_named_fields():
+    for field_name in (
+        "rights_record.overall_status",
+        "content_reuse_assessment.decision.status",
+        "rights_extension.clearance_status",
+        "synthesis.attestation.status",
+    ):
+        r = guard_check(
+            GuardContext(proposed_field_writes=((field_name, "CLEARED_FAIR_USE"),))
+        )
+        assert r.exit_code == 3, field_name
+        assert "no_agent_cleared_rights_value" in _ids(r), field_name
+
+
+def test_r7_blocks_counsel_approved_and_attested_values():
+    r = guard_check(
+        GuardContext(
+            proposed_field_writes=(
+                ("rights_extension.clearance_status", "counsel_approved"),
+                ("synthesis.attestation.status", "attested"),
+            )
+        )
+    )
+    assert r.exit_code == 3
+    assert "no_agent_cleared_rights_value" in _ids(r)
+    assert len(r.violations) == 2  # one violation per offending field write
+
+
+def test_r7_ignores_unnamed_fields_gap():
+    # The rule enumerates the 4 named fields explicitly (FR-23) and does NOT
+    # wildcard-match — a future 5th rights-status field would slip through
+    # until added here by name.
+    r = guard_check(
+        GuardContext(proposed_field_writes=(("some_future_field.status", "CLEARED_X"),))
+    )
+    assert r.exit_code == 0
+    assert "no_agent_cleared_rights_value" not in _ids(r)
+
+
+def test_r7_allows_non_cleared_values_on_named_fields():
+    r = guard_check(
+        GuardContext(
+            proposed_field_writes=(
+                ("rights_record.overall_status", "UNKNOWN"),
+                ("rights_extension.clearance_status", "candidate"),
+            )
+        )
+    )
+    assert r.exit_code == 0
+    assert "no_agent_cleared_rights_value" not in _ids(r)
+
+
+# ---------------------------------------------------------------------------
 # Severity precedence: block beats require_approval
 # ---------------------------------------------------------------------------
 

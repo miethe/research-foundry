@@ -12,6 +12,7 @@ related_documents:
   - docs/project_plans/exploration/web-app-platform-evolution/discovery/01-cli-core.md
   - .claude/skills/artifact-tracking/schemas/SCHEMAS-INDEX.md
   - .claude/skills/artifact-tracking/schemas/field-reference.md
+  - docs/dev/architecture/adr-rights-entity-model.md
 ---
 
 # Research Foundry — Artifact Type Reference
@@ -53,6 +54,33 @@ lets you check any instance by hand). Paths are relative to a run directory
 | **report / report-draft** | The synthesized research report — deterministic body by default (Findings/Inferences/Speculation/Open questions/Sources, each material sentence tagged `[claim:<id>]`). | `runs/<run>/reports/report_draft.md` (or `report_final.md`); frontmatter validated against `schemas/report_frontmatter.schema.yaml`. **Report Builder** drafts are a distinct, DB-adjacent variant — `<workspace>/reports/drafts/<report_draft_id>/draft.yaml`, schema `schemas/report_draft.schema.yaml`. | Markdown frontmatter `type: research_report`; Builder drafts: frontmatter `type: report_draft` + `report_draft_id`. | Produced by `rf synthesize` (deterministic; `--llm` only appends a note, never changes the body — `services/synthesis.py:210-220`) or authored incrementally via `rf report draft create/add-block/...` (Report Builder, `SERVICE_CONTRACT.md` §16). `rf verify` / `rf report draft verify` are the gate before either variant may publish. |
 | **run trace / telemetry** | Best-effort append-only event log for every pipeline stage, plus token-cost and tool-call rollups. | `runs/<run>/telemetry/run_trace.jsonl`, `telemetry/token_costs.yaml`, `telemetry/tool_calls.yaml`. | JSONL lines with a `stage` key; schema-free (never blocks the pipeline on a trace-write error). | Appended by every service stage via `append_jsonl`. Aggregated by `rf ccdash summarize` into `ccdash/daily/<date>.yaml` + summary rollups — the only consumer that turns raw trace lines into a report. |
 | **writeback event** (meatywiki / skillmeat / ccdash / intenttree / arc / notebooklm) | A rendered candidate (or, for live targets, an actually-pushed record) for one downstream system. | `runs/<run>/writebacks/<target>_writeback.{md,yaml}` + a workspace-level mirror: `meatywiki/sources/<slug>.md`, `skillmeat/skillboms/<id>.md`, `ccdash/events/<event_id>.yaml`, plus opt-in `intenttree_update.yaml` / `arc_review_request.yaml` / `notebooklm_update.yaml`. | Filename pattern `<target>_writeback.*`/`<target>_update.yaml`; each has its own schema (`ccdash_event.schema.yaml`, `meatywiki_writeback.schema.yaml`, `skillbom_candidate.schema.yaml`, `intenttree_update.schema.yaml`, `arc_review_request.schema.yaml`, `notebooklm_update.schema.yaml`). | Produced by `rf writeback --targets ...`. MeatyWiki/SkillMeat/CCDash are **file-mirror, always-write, proven live**; IntentTree/ARC/NotebookLM are **opt-in, always write the candidate, but the live push has never been exercised from this repo** (verified via disk search across 41 run dirs — see `current-state-and-direction.md` §4). |
+
+### Rights & evidence-governance substrate (workspace-scoped, not run-scoped)
+
+Ported from the pediatric-anemia-site "Source Reuse & Rights Governance Spec v1.0"
+(`rights-entity-model-v1`; full design record:
+`docs/dev/architecture/adr-rights-entity-model.md`). Unlike the rest of this
+section, these five schemas describe a workspace-level rights substrate, not
+run-scoped pipeline artifacts — `rights_record` is the only member with an
+established on-disk directory convention today; the other four are
+schema-validated documents referenced by id, authored by hand or by a future
+tool (human/counsel-authored, per the ADR's Known Gap OQ-RF-6).
+
+| Artifact | What it is | Where it lives | Detection signal | Usage pattern |
+|---|---|---|---|---|
+| **rights_record** | Source-level and access-context rights baseline (jurisdictions, access basis, copyright, contract restrictions, component-level decisions, `overall_status`). One per source/access-context, or `record_scope: first_party` for RF-authored content with no third-party source. | `<workspace root>/rights_records/<rights_record_id>.yaml` (default; overridable via `rf rights --rights-records-dir`). | `rights_record_id` present (no `type` const); schema `schemas/rights_record.schema.yaml`. | The single authoritative rights record. `rights_summary` mirrors on `source_card`/`source_assertion` link to it via `rights_record_ids`. `rf rights validate --as-of` checks mirror-vs-record divergence; `overall_status` may only reach a `CLEARED_*` value through human/counsel authorship (guard rule `no_agent_cleared_rights_value` in `governance.py`) — `OWNED` is exempt from that guard (it marks first-party content, not a third-party clearance). |
+| **rights_extension** | Rights container embedded under `extensions.rights` on a source record, evidence atom, candidate rule, or roadmap object; carries the clearance decision that gates release. | Nested under a host entity's `extensions.rights` (no standalone file). | `type: rights_extension`; schema `schemas/rights_extension.schema.yaml`. | Links to the authoritative `rights_record`/`content_reuse_assessment`/`permission_record` documents by id. `clearance_status`/`release_gate` share the same human-only write ceiling as `rights_record.overall_status`. |
+| **content_reuse_assessment** | Component-level reuse decision for ONE intended use of ONE source component (e.g. "figure X in a commercial user-facing explanation"). | Schema-validated document, referenced by `reuse_assessment_id`; no fixed on-disk directory convention shipped yet. | `type: content_reuse_assessment`; schema `schemas/content_reuse_assessment.schema.yaml`. | `decision.status`/`decision.release_gate` gate whether a specific reuse may ship, under the same fail-closed write ceiling as `rights_record.overall_status`. Distinct from `rights_record` (source-level baseline) and `permission_record` (evidence of a grant). |
+| **permission_record** | Evidence of an affirmative license/permission grant from a rights holder, covering one or more sources. | Schema-validated document, referenced by `permission_record_id`; no fixed on-disk directory convention shipped yet. | `permission_record_id` present (no `type` const); schema `schemas/permission_record.schema.yaml`. | Linked from `rights_record.permission_record_ids` / `rights_extension.permission_record_ids` as proof a `CLEARED_PERMISSION` status is backed by a real grant. |
+| **rights_failure** | A recorded rights/reuse blocker: the source, intended use, the finding that blocks it, and the release-gate consequence. | Schema-validated document, referenced by `rights_failure_id`; no fixed on-disk directory convention shipped yet. | `failure_type` enum (e.g. `PERMISSION_REQUIRED_NOT_OBTAINED`, `NO_DERIVATIVES_RESTRICTION`); schema `schemas/rights_failure.schema.yaml`. | Linked from `rights_record.rights_failure_ids` / `content_reuse_assessment.decision.rights_failure_ids`; `status` tracks remediation (`open` → `resolved_with_permission`/`resolved_no_use`/etc.). |
+
+`source_card`/`source_assertion` (§1 above) carry a denormalized,
+non-authoritative `rights_summary` mirror (`mirror_is_authoritative` const
+`false`) plus — `source_assertion` only — a sibling `extensions.evidence_taxonomy`
+block (`evidence_item_type`, `judgment_basis`; an independent axis, never nested
+under rights). CLI: `rf rights inspect|list|validate|backfill`
+(`cli_commands.py:2532+`); full service contract:
+`docs/projects/research-foundry/SERVICE_CONTRACT.md` §20.
 
 ## 2. Research artifacts — supporting / routing types
 

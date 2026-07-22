@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from .. import RF_SCHEMA_VERSION
 from ..config import FoundryConfig
@@ -33,6 +33,7 @@ from ..ids import now_iso
 from ..paths import FoundryPaths
 from ..yamlio import append_jsonl, dump_yaml, load_yaml
 from .export_service import DEFAULT_THRESHOLD, SENSITIVITY_ORDER, discover_run_yamls
+from .governance import release_gate_blocked_by_unassessed_judgment
 
 # Reverse map: rank → label, used by build_global_source_index to store the
 # effective-sensitivity label rather than just the raw card-level field.
@@ -514,6 +515,8 @@ def verify_report(
     fail_on_unsupported: bool = True,
     exact_passage_override: str | None = None,
     paths: FoundryPaths | None = None,
+    disposition: str = "internal_capture",
+    evidence_judgment_bases: Sequence[str] | None = None,
 ) -> VerificationResult:
     """Verify a run's report against its claim ledger (spec §12.3).
 
@@ -521,6 +524,15 @@ def verify_report(
     stable :class:`~research_foundry.errors.ExitCode` integers, following the
     documented precedence. Writes ``reviews/verification.yaml`` and updates the
     ledger's ``verification_status``.
+
+    ``disposition``/``evidence_judgment_bases`` wire the decisions-block OQ-6
+    release gate (governance.py owns the boolean logic; this function is the
+    CALLER, not a reimplementation — see
+    :func:`research_foundry.services.governance.release_gate_blocked_by_unassessed_judgment`).
+    Defaults (``"internal_capture"``, no evidence items) are fully
+    non-blocking and backward compatible with every existing caller: pass
+    ``disposition="commercial_release"`` plus the ``judgment_basis`` values of
+    the evidence items involved to gate a release/disposition evaluation.
     """
 
     paths = paths or FoundryPaths.discover()
@@ -751,6 +763,40 @@ def verify_report(
             "exact_passage_present",
             "pass",
             "every supported claim citing a source card has a matching exact-passage quote anchor",
+        )
+
+    # 6c) release_gate_judgment_basis_assessed (decisions-block OQ-6) -------
+    # Bidirectional release gate: governance.py owns the boolean logic, this
+    # is the verify-time CALLER (per the plan's resolution of OQ-6). Only
+    # fires when the caller actually supplies evidence_judgment_bases — with
+    # no evidence items passed (the default for every pre-existing caller),
+    # this check is a no-op "skip" so behavior is unchanged. Blocks
+    # disposition="commercial_release" when any evidence item's
+    # judgment_basis is "unassessed"; the SAME unassessed item must never
+    # block disposition="internal_capture" (release-gate asymmetry NFR).
+    judgment_bases = tuple(evidence_judgment_bases or ())
+    if judgment_bases:
+        if release_gate_blocked_by_unassessed_judgment(
+            judgment_bases, disposition=disposition
+        ):
+            add(
+                "release_gate_judgment_basis_assessed",
+                "fail",
+                f"disposition={disposition!r} is blocked: at least one evidence "
+                "item has judgment_basis: unassessed and release dispositions "
+                "require every evidence item to be assessed first",
+            )
+        else:
+            add(
+                "release_gate_judgment_basis_assessed",
+                "pass",
+                f"no unassessed evidence item blocks disposition={disposition!r}",
+            )
+    else:
+        add(
+            "release_gate_judgment_basis_assessed",
+            "skip",
+            "skipped: no evidence_judgment_bases supplied to this verify_report call",
         )
 
     # 7) inferences_have_basis ----------------------------------------------

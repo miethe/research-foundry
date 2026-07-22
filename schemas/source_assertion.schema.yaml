@@ -17,11 +17,18 @@ properties:
   assertion_version:
     type: integer
     minimum: 1
+  # P3-2: nullable ONLY for a `derived_synthesis` instance (see the top-level
+  # `allOf` below) — a synthesis assertion is computed FROM other
+  # source_assertion instances (`synthesis.input_refs`), not read from a
+  # single passage, so it may have no single source_edition/passage of its
+  # own. For every other `evidence_item_type` (or when `extensions` is
+  # absent) both fields stay required AND non-null; the conditional enforces
+  # that regression guard.
   source_edition_id:
-    type: string
+    type: [string, "null"]
     pattern: "^sed_[a-f0-9]{64}$"
   passage_id:
-    type: string
+    type: [string, "null"]
     pattern: "^psg_[a-f0-9]{64}$"
   assertion_text:
     type: string
@@ -96,13 +103,452 @@ properties:
           - assertion_text_sha256
           - qualifiers
           - qualifier_extensions
+  extensions:
+    type: object
+    additionalProperties: false
+    required: [evidence_taxonomy]
+    properties:
+      evidence_taxonomy:
+        type: object
+        additionalProperties: false
+        required: [evidence_item_type, judgment_basis]
+        properties:
+          evidence_item_type:
+            description: >-
+              Domain-extensible evidence-quality taxonomy axis, independent
+              from the rights axis (see rights_extension.schema.yaml, which
+              must never define or reference this field). Classifies the kind
+              of evidence this source_assertion instance represents. `other`
+              exists as an extension point, not as a closed clinical list — a
+              future domain-specific schema (e.g. an Evidence-Foundry) is
+              expected to specialize this taxonomy rather than replace it.
+              `judgment_basis` (below) is a sibling, INDEPENDENT axis in this
+              same `evidence_taxonomy` block — never derive one from the
+              other.
+            enum:
+              - observed_finding
+              - reference_interval_value
+              - equation_or_method
+              - guideline_recommendation
+              - instrument_or_questionnaire
+              - bibliographic_metadata
+              - derived_synthesis
+              - other
+          judgment_basis:
+            description: >-
+              Domain-general axis (per OQ-RF-2 — not clinical-only naming)
+              classifying how this source_assertion's value was arrived at.
+              INDEPENDENT from `evidence_item_type` above — do not derive
+              either field from the other anywhere in this codebase. This
+              repo's schemas do not use a JSON Schema `default:` keyword
+              elsewhere, so the default is documented here instead: the
+              conceptual default is `unassessed`. Fail-closed contract: any
+              consumer that encounters a source_assertion instance predating
+              this field's introduction (i.e. `judgment_basis` absent) MUST
+              treat it as `unassessed`, never as `measured` — this backstops
+              later commercial-release gates that key off `judgment_basis`.
+            enum:
+              - measured
+              - derived_from_measured
+              - expert_judgment
+              - mixed
+              - unassessed
+  # P2-2 (AC P2-A attach point 2 of 2): `rights_summary` — byte-identical
+  # field shape to source_card.schema.yaml's `rights_summary` (P2-1),
+  # replicated per P6-1's full-consistency requirement. Denormalized,
+  # NON-AUTHORITATIVE mirror of schemas/rights_record.schema.yaml (+
+  # rights_extension.clearance_status). Attached at the SAME top-level
+  # nesting depth as `extensions` above — rights and evidence-quality
+  # (`extensions.evidence_taxonomy`) are independent axes per §9.1, and
+  # `rights_summary` is itself a third, separate top-level concern; it must
+  # never be nested under `extensions`. Internally follows the
+  # rights-substrate strict-family conventions (additionalProperties: false,
+  # nullable via `type: [T, "null"]`) even though this property sits inside
+  # a parent object that is additionalProperties: false overall.
+  # `rights_summary` itself is NOT required at the top level: a pre-existing
+  # source_assertion authored before this phase and missing `rights_summary`
+  # entirely is not a validation failure at read time (decisions-block
+  # resilience note) — the P2-5 backfill migration is what brings it into an
+  # explicit all-"unknown" compliant shape.
+  rights_summary:
+    type: object
+    additionalProperties: false
+    properties:
+      mirror_of_record_id:
+        type:
+          - string
+          - "null"
+      mirror_derived_at:
+        type:
+          - string
+          - "null"
+        format: date-time
+      # Hard governance invariant: this mirror can NEVER be treated as an
+      # authoritative rights determination. Only rights_record /
+      # content_reuse_assessment / permission_record are authoritative.
+      mirror_is_authoritative:
+        const: false
+      # Link-before-assert invariant (enforced by the `allOf`/`if`/`then`
+      # below): non-empty whenever ANY status/restriction field below is set
+      # to something other than its "unknown" sentinel.
+      rights_record_ids:
+        type: array
+        default: []
+        items:
+          type: string
+      reuse_assessment_ids:
+        type: array
+        default: []
+        items:
+          type: string
+      permission_record_ids:
+        type: array
+        default: []
+        items:
+          type: string
+      copyright_status:
+        # Mirror of rights_record.copyright.status (byte-identical enum).
+        enum:
+          - copyrighted
+          - open_license
+          - public_domain
+          - us_federal_government_work
+          - mixed_or_third_party
+          - unknown
+        default: unknown
+      access_basis:
+        # Mirror of rights_record.access.basis (byte-identical enum).
+        enum:
+          - public_web
+          - open_repository
+          - personal_subscription
+          - institutional_subscription
+          - purchased_copy
+          - licensed_api
+          - direct_permission
+          - author_provided_copy
+          - government_source
+          - partner_confidential
+          - data_use_agreement
+          - other
+          - unknown
+        default: unknown
+      # Mirrors 6 of rights_record.contract's 7 restriction sub-fields
+      # (`sublicensing` omitted from this summary — see rights_record for
+      # the full authoritative set) under ONE shared
+      # allowed/allowed_with_conditions/prohibited/not_addressed/unknown
+      # enum (§9.4's unified restriction-family enum) rather than each
+      # field's wider per-field enum on rights_record.contract, since this
+      # is a simplified denormalized summary, not the authoritative record.
+      restrictions:
+        type: object
+        additionalProperties: false
+        properties:
+          incorporation_into_other_products:
+            enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown]
+            default: unknown
+          adaptation:
+            enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown]
+            default: unknown
+          commercial_use:
+            enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown]
+            default: unknown
+          redistribution:
+            enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown]
+            default: unknown
+          bulk_retrieval:
+            enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown]
+            default: unknown
+          model_training:
+            enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown]
+            default: unknown
+      clearance_status:
+        # Mirror of rights_extension.clearance_status (byte-identical enum,
+        # including its existing UPPERCASE "UNKNOWN" convention — casing
+        # must match the mirrored field exactly so the P2-3 divergence
+        # validator can compare mirror vs. authoritative values directly).
+        enum:
+          - CLEARED_OPEN_LICENSE
+          - CLEARED_PUBLIC_DOMAIN
+          - CLEARED_FACTS_ONLY
+          - CLEARED_PERMISSION
+          - INTERNAL_ONLY
+          - LOCAL_VALIDATION_ONLY
+          - LEGAL_REVIEW_REQUIRED
+          - PERMISSION_REQUIRED
+          - CONTRACT_RESTRICTED
+          - PROHIBITED
+          - UNKNOWN
+        default: UNKNOWN
+      review_status:
+        # Mirror of rights_record.review.review_status's canonical 6-member
+        # enum (§9.7), PLUS "unknown" — the mirror needs an explicit
+        # not-yet-computed sentinel that the authoritative record itself
+        # does not carry (a rights_record's `review` is always required and
+        # always one of the 6 substantive states).
+        enum:
+          - agent_triage_only
+          - human_reviewed
+          - legal_review_required_before_commercial_use
+          - counsel_approved
+          - counsel_rejected
+          - expired
+          - unknown
+        default: unknown
+      # P4 fix-cycle 1 (karen review, AC P4-A resilience NFR): a capture-time
+      # rights-triage classification failure (`_classify_capture_rights()`
+      # raising inside `services/rights_triage.py`) is recorded here as a
+      # typed, queryable structural failure -- never left as a silent
+      # absence. Mirrors the fail-closed intent of
+      # `services/terms_snapshot.py`'s `TermsSnapshotFailure` /
+      # `rights_record.access.terms_snapshot_failure` convention (P4-3),
+      # scoped to this mirror's own classification step rather than a
+      # terms-of-service fetch. Populated ONLY when the classification step
+      # raised and capture degraded to the all-"unknown" default; a
+      # successful classification leaves this `null`. Deliberately excluded
+      # from the link-before-assert `allOf` below -- a failure record never
+      # asserts a substantive rights posture, so it can never trigger the
+      # `rights_record_ids` requirement.
+      rights_triage_failure:
+        type:
+          - object
+          - "null"
+        additionalProperties: false
+        required:
+          - reason
+          - detail
+          - attempted_at
+        properties:
+          reason:
+            enum:
+              - classification_error
+          detail:
+            type: string
+          attempted_at:
+            type: string
+            format: date-time
+    allOf:
+      # Link-before-assert invariant: whenever any status/restriction field
+      # is non-"unknown" (or non-"UNKNOWN" for clearance_status), the mirror
+      # must be able to point back to the rights_record(s) it was derived
+      # from — a mirror asserting a specific rights posture with no linked
+      # record is a fail-open bug, not a legitimate "not yet assessed" state.
+      - if:
+          anyOf:
+            - required: [copyright_status]
+              properties:
+                copyright_status:
+                  not:
+                    const: unknown
+            - required: [access_basis]
+              properties:
+                access_basis:
+                  not:
+                    const: unknown
+            - required: [clearance_status]
+              properties:
+                clearance_status:
+                  not:
+                    const: UNKNOWN
+            - required: [review_status]
+              properties:
+                review_status:
+                  not:
+                    const: unknown
+            - required: [restrictions]
+              properties:
+                restrictions:
+                  anyOf:
+                    - required: [incorporation_into_other_products]
+                      properties:
+                        incorporation_into_other_products:
+                          not: {const: unknown}
+                    - required: [adaptation]
+                      properties:
+                        adaptation:
+                          not: {const: unknown}
+                    - required: [commercial_use]
+                      properties:
+                        commercial_use:
+                          not: {const: unknown}
+                    - required: [redistribution]
+                      properties:
+                        redistribution:
+                          not: {const: unknown}
+                    - required: [bulk_retrieval]
+                      properties:
+                        bulk_retrieval:
+                          not: {const: unknown}
+                    - required: [model_training]
+                      properties:
+                        model_training:
+                          not: {const: unknown}
+        then:
+          required:
+            - rights_record_ids
+          properties:
+            rights_record_ids:
+              minItems: 1
+  # P3-1 (AC Risk 3): populated ONLY when this source_assertion IS a
+  # `derived_synthesis` (see `extensions.evidence_taxonomy.evidence_item_type`
+  # above and the top-level `allOf` below, which is the sole enforcement
+  # point). A synthesis assertion's value is computed FROM two or more other
+  # source_assertion instances rather than read directly from one passage —
+  # `input_refs` records which prior assertions fed the synthesis and how
+  # each one contributed. Sibling of `extensions`/`rights_summary`, same
+  # top-level nesting depth; never nested under `extensions`.
+  synthesis:
+    type: object
+    additionalProperties: false
+    properties:
+      input_refs:
+        type: array
+        minItems: 2
+        items:
+          type: object
+          additionalProperties: false
+          required: [source_assertion_id, contribution]
+          properties:
+            source_assertion_id:
+              type: string
+            rights_record_id:
+              type: [string, "null"]
+            contribution:
+              enum:
+                - anchor
+                - corroborating
+                - contradicting
+                - scope_limiting
+      method:
+        type: string
+      divergence_notes:
+        type: array
+        items:
+          type: string
+      reproduces_source_arrangement:
+        type: boolean
+      first_party_rights_holder:
+        type: [string, "null"]
+      # P3-3: write-ceiling attestation for a `derived_synthesis` assertion.
+      # `status` MUST default to (and, per the service-layer ceiling in
+      # AssertionMaterializer._enforce_synthesis_attestation_ceiling, can only
+      # ever be persisted as) "candidate" -- no write path in this repo is
+      # authorized to mint "attested" today. "attested" is a placeholder for a
+      # future explicit human/governance attestation workflow that does not
+      # exist yet; its mere presence in this enum is not itself an
+      # authorization to set it.
+      attestation:
+        type: object
+        additionalProperties: false
+        properties:
+          attested_by:
+            type: [string, "null"]
+          attested_at:
+            type: [string, "null"]
+            format: date-time
+          attestation_ref:
+            type: [string, "null"]
+          status:
+            enum:
+              - candidate
+              - attested
+  # P4-4 fix-cycle 1 (karen review): the `substitutability` search result
+  # (services/rights_substitutability.py::assess_substitutability), wired
+  # into the real materialization path (services/rights_triage.py::maybe_
+  # assess_substitutability, invoked from services/assertion_materialization
+  # .py::_prepare_one). Sibling of `extensions`/`rights_summary`/`synthesis`,
+  # same top-level nesting depth, byte-identical shape to source_card.schema
+  # .yaml's `substitutability` (P6-1 mirroring convention). `null` (or
+  # absent) means no assessment has been recorded for this instance yet.
+  substitutability:
+    type:
+      - object
+      - "null"
+    additionalProperties: false
+    required:
+      - searched_at
+      - status
+      - candidate_source_ids
+      - coverage_notes
+    properties:
+      searched_at:
+        type:
+          - string
+          - "null"
+        format: date-time
+      status:
+        enum:
+          - substitute_found
+          - no_substitute_found
+          - not_searched
+      candidate_source_ids:
+        type: array
+        items:
+          type: string
+      coverage_notes:
+        type: string
+allOf:
+  # P3-1: when this assertion IS a `derived_synthesis`, `synthesis` (with its
+  # own `input_refs`/`method`/`reproduces_source_arrangement`) becomes
+  # required. The nested `required: [extensions]` / `required:
+  # [evidence_taxonomy]` / `required: [evidence_item_type]` chain makes the
+  # `const` match non-vacuous — this `if` is true only when the full path to
+  # `evidence_item_type` exists AND equals `derived_synthesis`, never merely
+  # because the leaf is absent.
+  - if:
+      required: [extensions]
+      properties:
+        extensions:
+          required: [evidence_taxonomy]
+          properties:
+            evidence_taxonomy:
+              required: [evidence_item_type]
+              properties:
+                evidence_item_type:
+                  const: derived_synthesis
+    then:
+      required:
+        - synthesis
+      properties:
+        synthesis:
+          required:
+            - input_refs
+            - method
+            - reproduces_source_arrangement
+  # P3-2 (regression guard): for every instance that is NOT a
+  # `derived_synthesis` — including one where `extensions` or
+  # `evidence_item_type` is entirely absent — `source_edition_id` and
+  # `passage_id` stay required AND non-null. This is the exact negation of
+  # the `if` above, so the two branches partition all instances with no gap
+  # and no overlap.
+  - if:
+      not:
+        required: [extensions]
+        properties:
+          extensions:
+            required: [evidence_taxonomy]
+            properties:
+              evidence_taxonomy:
+                required: [evidence_item_type]
+                properties:
+                  evidence_item_type:
+                    const: derived_synthesis
+    then:
+      required:
+        - source_edition_id
+        - passage_id
+      properties:
+        source_edition_id:
+          not:
+            const: null
+        passage_id:
+          not:
+            const: null
 required:
   - schema_version
   - type
   - assertion_id
   - assertion_version
-  - source_edition_id
-  - passage_id
   - assertion_text
   - assertion_text_sha256
   - qualifiers
@@ -110,3 +556,4 @@ required:
   - extraction_provenance
   - lifecycle_state
   - identity
+  - extensions
