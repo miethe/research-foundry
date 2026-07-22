@@ -90,8 +90,8 @@ _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
     sys.path.insert(0, str(_THIS_DIR))
 
-import test_rights_status_write_ceiling as p5_2  # noqa: E402  (sibling suite, P5-2)
-import test_synthesis_attestation_write_ceiling as p3_4  # noqa: E402  (sibling suite, P3-4)
+import tests.unit.test_rights_status_write_ceiling as p5_2  # noqa: E402  (sibling suite, P5-2; package-relative for the packaged tests/ layout)
+import tests.unit.test_synthesis_attestation_write_ceiling as p3_4  # noqa: E402  (sibling suite, P3-4; package-relative for the packaged tests/ layout)
 
 
 # ---------------------------------------------------------------------------

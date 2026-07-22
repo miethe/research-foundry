@@ -390,7 +390,7 @@ def test_exact_passage_violations_field_is_absent_safe_for_downstream_consumers(
 # asserts the verify_report outcome is byte-for-byte identical to what
 # test_claim_verifier.test_synthesize_then_verify_passes already asserts for
 # this exact fixture pre-feature: passed=True, exit_code=OK.
-import test_claim_verifier as _tcv  # noqa: E402 - deliberate cross-fixture reuse
+import tests.test_claim_verifier as _tcv  # noqa: E402 - deliberate cross-fixture reuse (package-relative for the packaged tests/ layout)
 
 
 def test_exact_passage_default_mode_zero_regression_on_existing_fixtures(tmp_foundry):

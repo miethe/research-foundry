@@ -27,7 +27,13 @@ from pathlib import Path
 import pytest
 
 from research_foundry.paths import FoundryPaths
-from research_foundry.services import extraction, planning, source_cards, swarm_drive
+from research_foundry.services import (
+    extraction,
+    planning,
+    source_cards,
+    swarm_drive,
+    writeback,
+)
 from research_foundry.services.claim_mapping import build_claim_ledger
 from research_foundry.services.search_router.providers.base import (
     ProviderResult,
@@ -496,3 +502,112 @@ def test_fenced_body_claiming_personal_does_not_flip_work_run_to_auto(tmp_foundr
     assert len(it.created) == 1
     assert res.status == "hitl_pending"
     assert mw.posts == []
+
+
+# ---------------------------------------------------------------------------
+# A1 — writeback atomicity: per-run advisory lock + pre-network intent receipt
+# ---------------------------------------------------------------------------
+
+
+def test_writeback_lock_blocks_concurrent_wake(tmp_foundry, tmp_path):
+    """A concurrent wake holding the per-run lock never double-emits."""
+
+    run_id = _planned_run(tmp_foundry, sensitivity="personal")
+    _seed_evidence(tmp_foundry, run_id, tmp_path)
+    _drive_to_bundle(tmp_foundry, run_id)
+    rp = tmp_foundry.run_paths(run_id)
+
+    # Simulate another wake already inside governed_writeback for this run.
+    assert writeback._acquire_writeback_lock(rp) is True
+    try:
+        mw = _MockMeatyWiki(available=True)
+        res = governed_writeback(
+            run_id, paths=tmp_foundry, meatywiki_client=mw, poll_interval=0
+        )
+        assert res.status == "skipped_locked"
+        assert res.emitted is False
+        assert mw.posts == []  # the irreversible POST never fired under contention
+    finally:
+        writeback._release_writeback_lock(rp)
+
+    # Once the lock is released, a fresh drive proceeds and emits exactly once.
+    mw2 = _MockMeatyWiki(available=True)
+    res2 = governed_writeback(
+        run_id, paths=tmp_foundry, meatywiki_client=mw2, poll_interval=0
+    )
+    assert res2.status == "written"
+    assert len(mw2.posts) == 1
+
+
+def test_intent_receipt_written_before_post(tmp_foundry, tmp_path):
+    """A NON-terminal intent receipt exists at POST time, so a crash between the
+    POST and the terminal receipt is recoverable (A1)."""
+
+    run_id = _planned_run(tmp_foundry, sensitivity="personal")
+    _seed_evidence(tmp_foundry, run_id, tmp_path)
+    _drive_to_bundle(tmp_foundry, run_id)
+    rp = tmp_foundry.run_paths(run_id)
+
+    seen_status: list[str] = []
+
+    class _InspectingMeatyWiki(_MockMeatyWiki):
+        def post_note(self, payload):
+            rec = writeback._load_writeback_receipt(rp)
+            seen_status.append(str(rec.get("status") or ""))
+            return super().post_note(payload)
+
+    mw = _InspectingMeatyWiki(available=True)
+    res = governed_writeback(
+        run_id, paths=tmp_foundry, meatywiki_client=mw, poll_interval=0
+    )
+    assert res.status == "written"
+    assert seen_status == ["emit_pending"]  # intent receipt preceded the POST
+
+
+def test_stale_writeback_lock_is_reclaimed(tmp_foundry, tmp_path):
+    """A lock left by a crashed holder (older than the TTL) is reclaimed, so the
+    lane can never wedge permanently on a stale lock file (A1)."""
+
+    import os
+    import time
+
+    run_id = _planned_run(tmp_foundry, sensitivity="personal")
+    _seed_evidence(tmp_foundry, run_id, tmp_path)
+    _drive_to_bundle(tmp_foundry, run_id)
+    rp = tmp_foundry.run_paths(run_id)
+
+    lock = writeback._writeback_lock_path(rp)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("acquired_at: crashed-holder\n", encoding="utf-8")
+    stale = time.time() - writeback._WRITEBACK_LOCK_TTL_SECONDS - 60
+    os.utime(lock, (stale, stale))
+
+    mw = _MockMeatyWiki(available=True)
+    res = governed_writeback(
+        run_id, paths=tmp_foundry, meatywiki_client=mw, poll_interval=0
+    )
+    assert res.status == "written"  # stale lock reclaimed, not wedged
+    assert len(mw.posts) == 1
+
+
+def test_release_only_deletes_own_lock(tmp_foundry, tmp_path):
+    """Ownership-checked release: a wake whose lock was reclaimed + re-created by
+    another wake must NOT delete the new holder's lock (would reopen the race)."""
+
+    import os
+
+    run_id = _planned_run(tmp_foundry, sensitivity="personal")
+    rp = tmp_foundry.run_paths(run_id)
+
+    assert writeback._acquire_writeback_lock(rp) is True
+    lock = writeback._writeback_lock_path(rp)
+    # Simulate another wake having reclaimed + re-created the lock under ITS pid.
+    lock.write_text(f"acquired_at: later\npid: {os.getpid() + 1}\n", encoding="utf-8")
+
+    writeback._release_writeback_lock(rp)  # our pid != file's pid -> must be a no-op
+    assert lock.exists(), "release deleted a lock owned by another wake"
+
+    # A release by the true owner does remove it.
+    lock.write_text(f"acquired_at: now\npid: {os.getpid()}\n", encoding="utf-8")
+    writeback._release_writeback_lock(rp)
+    assert not lock.exists()
