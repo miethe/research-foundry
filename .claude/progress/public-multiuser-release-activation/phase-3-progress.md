@@ -4,38 +4,74 @@ schema_version: 2
 doc_type: progress
 prd: public-multiuser-release-activation
 feature_slug: public-multiuser-release-activation
-title: "Phase 3: Admin API"
+title: 'Phase 3: Admin API'
 phase: 3
-status: pending
-created: 2026-07-22
-updated: 2026-07-22
+status: completed
+created: '2026-07-22'
+updated: '2026-07-22'
 prd_ref: docs/project_plans/implementation_plans/features/public-multiuser-release-activation-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/public-multiuser-release-activation-v1.md
 commit_refs: []
 pr_refs: []
-
-owners: ["python-backend-engineer"]
+owners:
+- python-backend-engineer
 contributors: []
-
 tasks:
-  - id: "ACT-301"
-    description: "Admin API — service accounts (issue/list/revoke/rotate routes, require_role gated)"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P2 sealed"]
-  - id: "ACT-302"
-    description: "Admin API — PATs (self-issue/list/revoke, self-vs-admin scoping)"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P2 sealed"]
-  - id: "ACT-303"
-    description: "Admin API — deployment-mode-status endpoint + audit_event wiring on every mutation"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["ACT-301", "ACT-302"]
-
+- id: ACT-301
+  description: "Admin API \u2014 service accounts (issue/list/revoke/rotate routes,\
+    \ require_role gated)"
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P2 sealed
+  started: '2026-07-22T20:00:00Z'
+  completed: '2026-07-22T20:14:00Z'
+  evidence:
+  - test: tests/unit/test_admin_tokens_api.py
+  - test: tests/unit/test_rbac_route_sweep.py
+  verified_by:
+  - REV-P3-001
+- id: ACT-302
+  description: "Admin API \u2014 PATs (self-issue/list/revoke, self-vs-admin scoping)"
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P2 sealed
+  started: '2026-07-22T20:00:00Z'
+  completed: '2026-07-22T20:14:00Z'
+  evidence:
+  - test: tests/unit/test_admin_tokens_api.py::TestPatSelfServiceManualGating
+  - test: tests/unit/test_admin_tokens_api.py::TestPatRevokeScoping
+  verified_by:
+  - REV-P3-001
+- id: ACT-303
+  description: "Admin API \u2014 deployment-mode-status endpoint + audit_event wiring\
+    \ on every mutation"
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - ACT-301
+  - ACT-302
+  started: '2026-07-22T20:00:00Z'
+  completed: '2026-07-22T20:14:00Z'
+  evidence:
+  - test: tests/unit/test_admin_tokens_api.py::TestDeploymentModeStatusEndpoint
+  - test: tests/unit/test_admin_tokens_api.py::TestNoSecretLeakAcrossTokenSurface
+  verified_by:
+  - REV-P3-001
 parallelization:
-  batch_3: ["ACT-301", "ACT-302", "ACT-303"]
+  batch_3:
+  - ACT-301
+  - ACT-302
+  - ACT-303
+total_tasks: 3
+completed_tasks: 3
+in_progress_tasks: 0
+blocked_tasks: 0
+progress: 100
 ---
 
 # Phase 3: Admin API

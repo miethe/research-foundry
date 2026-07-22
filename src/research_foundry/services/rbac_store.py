@@ -30,7 +30,7 @@ from research_foundry.paths import FoundryPaths
 # new table).  The _ensure_schema logic checks this and runs the pending
 # migration block before bumping.  NEVER use a version mismatch to trigger a
 # drop-and-recreate.
-RBAC_SCHEMA_VERSION: int = 2
+RBAC_SCHEMA_VERSION: int = 3
 
 # ---------------------------------------------------------------------------
 # Canonical role definitions
@@ -89,7 +89,7 @@ _DDL: list[str] = [
     # audit_event: append-only audit log (P5.5, schema version 2).
     # No UPDATE/DELETE paths exist on this table — rows are immutable by design.
     # mutation_type values (all 6 reserved now, 5 wired in P5.5):
-    #   catalog_mutation | report_edit | agent_job_launched (N/A pending P4) |
+    #   catalog_mutation | report_edit | agent_job_launched (wired: ACT-204, multi_user only) |
     #   artifact_accepted | publish_preview | writeback
     """
     CREATE TABLE IF NOT EXISTS audit_event (
@@ -118,6 +118,62 @@ _DDL: list[str] = [
         last_success_at TEXT,
         error_detail    TEXT
     )
+    """,
+    # service_accounts: non-interactive named principals (public-multiuser
+    # Phase 2, ACT-201, FR-8).  Each service account has exactly one role and
+    # is workspace-scoped; there is no login/session for a service account --
+    # it only ever acts via an issued access_tokens row.
+    """
+    CREATE TABLE IF NOT EXISTS service_accounts (
+        id           TEXT PRIMARY KEY,
+        name         TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        role         TEXT NOT NULL REFERENCES roles(name),
+        description  TEXT,
+        created_by   TEXT,
+        created_at   TEXT NOT NULL,
+        disabled_at  TEXT
+    )
+    """,
+    # access_tokens: opaque-secret machine/PAT credentials (ACT-201, FR-6..FR-10).
+    #
+    # OQ-2 resolution: `principal_id` is a single polymorphic column whose
+    # target table is selected by the `principal_type` discriminator
+    # (`service` -> service_accounts.id, `user_pat` -> users.id).  SQLite has
+    # no "conditional"/partial FOREIGN KEY that can point at one of two tables
+    # depending on a sibling column's value, so this is app-level referential
+    # integrity: every write path (token_service.py) resolves and validates
+    # the target row itself *before* inserting here -- see
+    # token_service.issue_service_account_token/issue_user_pat.  Do not add a
+    # `REFERENCES` clause to `principal_id`; it would only ever cover one of
+    # the two principal types and silently omit FK enforcement for the other.
+    #
+    # `token_hash` and `token_prefix` are the ONLY persisted representation of
+    # the secret -- the plaintext token is returned to the caller exactly once
+    # at issuance (token_service.IssuedToken.plaintext) and is never written
+    # here or anywhere else.  `token_prefix` is intentionally non-secret (see
+    # token_service._hash_token) and exists purely for the indexed lookup FR-11
+    # requires -- it must never be treated as sufficient to authenticate.
+    """
+    CREATE TABLE IF NOT EXISTS access_tokens (
+        id             TEXT PRIMARY KEY,
+        principal_type TEXT NOT NULL CHECK (principal_type IN ('service', 'user_pat')),
+        principal_id   TEXT NOT NULL,
+        workspace_id   TEXT NOT NULL,
+        role           TEXT NOT NULL REFERENCES roles(name),
+        token_hash     TEXT NOT NULL,
+        token_prefix   TEXT NOT NULL,
+        created_by     TEXT,
+        created_at     TEXT NOT NULL,
+        expires_at     TEXT,
+        revoked_at     TEXT,
+        last_used_at   TEXT
+    )
+    """,
+    # Indexed prefix lookup (FR-11: "indexed prefix lookup + hash compare").
+    """
+    CREATE INDEX IF NOT EXISTS idx_access_tokens_token_prefix
+        ON access_tokens (token_prefix)
     """,
 ]
 
@@ -181,6 +237,15 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             # Both use IF NOT EXISTS — idempotent against a fresh or v1 store.
             conn.execute(_DDL[4])  # audit_event
             conn.execute(_DDL[5])  # audit_health
+
+        if version < 3:
+            # version 2 → 3: add service_accounts, access_tokens, and the
+            # access_tokens prefix index (public-multiuser Phase 2, ACT-201).
+            # All three use IF NOT EXISTS — idempotent against a fresh, v1, or
+            # v2 store, and safe to re-run on an already-v3 store.
+            conn.execute(_DDL[6])  # service_accounts
+            conn.execute(_DDL[7])  # access_tokens
+            conn.execute(_DDL[8])  # idx_access_tokens_token_prefix
 
         conn.execute(f"PRAGMA user_version = {RBAC_SCHEMA_VERSION}")
     else:
@@ -380,6 +445,268 @@ def update_member_role(
             f"Member {user_id!r} not found in workspace {workspace_id!r}. "
             "Use upsert_membership() to create the membership first."
         )
+
+
+def get_member_role(
+    conn: sqlite3.Connection,
+    user_id: str,
+    workspace_id: str,
+) -> Optional[str]:
+    """Return *user_id*'s CURRENT role in *workspace_id*, or ``None`` if absent.
+
+    Consumed by ``token_service`` for FR-9's PAT role-ceiling check, both at
+    issuance AND at every resolution (never cached) — a role downgrade for
+    the issuing user takes effect on the very next request that resolves a
+    PAT they previously issued.
+    """
+    row = conn.execute(
+        "SELECT role FROM memberships WHERE user_id = ? AND workspace_id = ?",
+        (user_id, workspace_id),
+    ).fetchone()
+    return row["role"] if row is not None else None
+
+
+# ---------------------------------------------------------------------------
+# Service-account + access-token helpers (public-multiuser Phase 2, ACT-201)
+# ---------------------------------------------------------------------------
+
+
+def create_service_account(
+    conn: sqlite3.Connection,
+    *,
+    service_account_id: str,
+    name: str,
+    workspace_id: str,
+    role: str,
+    description: Optional[str] = None,
+    created_by: Optional[str] = None,
+) -> None:
+    """Insert a new service account row (FR-8).
+
+    ``role`` must be one of the 5 canonical role names; the FK constraint on
+    ``roles(name)`` rejects unknown values.  Raises ``sqlite3.IntegrityError``
+    if ``service_account_id`` already exists — callers should generate a
+    fresh id (e.g. ``uuid4``) rather than relying on upsert semantics here,
+    unlike the ``upsert_*`` helpers above.
+    """
+    now = _utcnow()
+    conn.execute(
+        "INSERT INTO service_accounts"
+        " (id, name, workspace_id, role, description, created_by, created_at, disabled_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+        (service_account_id, name, workspace_id, role, description, created_by, now),
+    )
+
+
+def get_service_account(
+    conn: sqlite3.Connection,
+    service_account_id: str,
+) -> Optional[dict]:
+    """Return the service account row for *service_account_id*, or ``None``."""
+    row = conn.execute(
+        "SELECT id, name, workspace_id, role, description, created_by, created_at, disabled_at"
+        " FROM service_accounts WHERE id = ?",
+        (service_account_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def list_service_accounts(
+    conn: sqlite3.Connection,
+    workspace_id: Optional[str] = None,
+) -> list[dict]:
+    """List service accounts, optionally filtered to *workspace_id*."""
+    if workspace_id is not None:
+        rows = conn.execute(
+            "SELECT id, name, workspace_id, role, description, created_by, created_at, disabled_at"
+            " FROM service_accounts WHERE workspace_id = ? ORDER BY created_at",
+            (workspace_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT id, name, workspace_id, role, description, created_by, created_at, disabled_at"
+            " FROM service_accounts ORDER BY created_at"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def disable_service_account(conn: sqlite3.Connection, service_account_id: str) -> None:
+    """Set ``disabled_at`` on *service_account_id* (idempotent — safe to call twice).
+
+    Disabling a service account does NOT revoke its previously-issued
+    tokens by itself — ``token_service.verify_token`` independently checks
+    ``disabled_at`` at resolution time (never cached), so the effect is the
+    same as an immediate revocation without a separate token-by-token sweep.
+    """
+    conn.execute(
+        "UPDATE service_accounts SET disabled_at = ? WHERE id = ? AND disabled_at IS NULL",
+        (_utcnow(), service_account_id),
+    )
+
+
+def create_access_token(
+    conn: sqlite3.Connection,
+    *,
+    token_id: str,
+    principal_type: str,
+    principal_id: str,
+    workspace_id: str,
+    role: str,
+    token_hash: str,
+    token_prefix: str,
+    created_by: Optional[str] = None,
+    expires_at: Optional[str] = None,
+) -> None:
+    """Insert a new access-token row.  Never called with plaintext secret material —
+
+    ``token_hash`` must already be the hashed representation (see
+    ``token_service._hash_token``); this function has no crypto logic of its
+    own and stores whatever ``token_hash``/``token_prefix`` it is given
+    verbatim.  ``principal_type`` must be ``"service"`` or ``"user_pat"`` —
+    the table's ``CHECK`` constraint rejects any other value.
+    """
+    now = _utcnow()
+    conn.execute(
+        "INSERT INTO access_tokens"
+        " (id, principal_type, principal_id, workspace_id, role, token_hash,"
+        "  token_prefix, created_by, created_at, expires_at, revoked_at, last_used_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)",
+        (
+            token_id,
+            principal_type,
+            principal_id,
+            workspace_id,
+            role,
+            token_hash,
+            token_prefix,
+            created_by,
+            now,
+            expires_at,
+        ),
+    )
+
+
+def verify_access_token(
+    conn: sqlite3.Connection,
+    token_prefix: str,
+) -> Optional[dict]:
+    """Look up an access-token row by its non-secret ``token_prefix`` (FR-11).
+
+    This is a pure indexed data-layer lookup — it performs NO hash
+    comparison, expiry check, or revocation check.  Those are
+    ``token_service.verify_token``'s responsibility (including the
+    dummy-hash compare it runs on a prefix miss to close the timing side
+    channel).  Returns the full row — including ``token_hash`` — as a dict,
+    or ``None`` if no row has this prefix.
+
+    Multiple rows could theoretically share a prefix (birthday collision on
+    a short, non-secret slice of a high-entropy token); this returns the
+    first match only.  ``token_service`` still performs the real
+    constant-time hash comparison against the candidate's ``token_hash``
+    before trusting it, so a prefix collision alone can never authenticate.
+    """
+    row = conn.execute(
+        "SELECT id, principal_type, principal_id, workspace_id, role, token_hash,"
+        " token_prefix, created_by, created_at, expires_at, revoked_at, last_used_at"
+        " FROM access_tokens WHERE token_prefix = ? LIMIT 1",
+        (token_prefix,),
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def revoke_access_token(conn: sqlite3.Connection, token_id: str) -> None:
+    """Set ``revoked_at`` on *token_id* (idempotent — safe to call twice).
+
+    FR-10: revocation takes effect at the next resolution, no restart
+    required — ``token_service.verify_token`` checks ``revoked_at`` fresh on
+    every call rather than caching it.
+    """
+    conn.execute(
+        "UPDATE access_tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+        (_utcnow(), token_id),
+    )
+
+
+def list_access_tokens(
+    conn: sqlite3.Connection,
+    *,
+    workspace_id: Optional[str] = None,
+    principal_id: Optional[str] = None,
+    principal_type: Optional[str] = None,
+) -> list[dict]:
+    """List access tokens for admin display — NEVER includes ``token_hash``.
+
+    Optionally filtered to *workspace_id*, *principal_id*, and/or
+    *principal_type* (``"service"`` / ``"user_pat"`` — public-multiuser-release
+    Phase 3, ACT-302: lets callers list only PATs or only service-account
+    tokens without post-filtering in Python).  Callers that need the hash
+    for verification must use :func:`verify_access_token` instead; this
+    listing helper intentionally omits it so no code path that only needs a
+    display/audit projection can accidentally leak or log it.
+    """
+    clauses: list[str] = []
+    params: list[str] = []
+    if workspace_id is not None:
+        clauses.append("workspace_id = ?")
+        params.append(workspace_id)
+    if principal_id is not None:
+        clauses.append("principal_id = ?")
+        params.append(principal_id)
+    if principal_type is not None:
+        clauses.append("principal_type = ?")
+        params.append(principal_type)
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    rows = conn.execute(
+        "SELECT id, principal_type, principal_id, workspace_id, role, token_prefix,"
+        " created_by, created_at, expires_at, revoked_at, last_used_at"
+        f" FROM access_tokens{where} ORDER BY created_at",
+        params,
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_access_token(conn: sqlite3.Connection, token_id: str) -> Optional[dict]:
+    """Return a single access-token row by id — NEVER includes ``token_hash``.
+
+    Public-multiuser-release Phase 3 (ACT-301/ACT-302): used for
+    ownership/existence checks on the revoke routes (PAT self-vs-admin
+    scoping, service-account token revoke) — never for verification, which
+    stays exclusively on :func:`verify_access_token`'s prefix-keyed lookup.
+    Returns ``None`` if *token_id* is unknown.
+    """
+    row = conn.execute(
+        "SELECT id, principal_type, principal_id, workspace_id, role, token_prefix,"
+        " created_by, created_at, expires_at, revoked_at, last_used_at"
+        " FROM access_tokens WHERE id = ?",
+        (token_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def touch_access_token_last_used(
+    conn: sqlite3.Connection,
+    token_id: str,
+    ts: str,
+) -> None:
+    """Best-effort ``last_used_at`` write (OQ-4).  Callers must treat this as
+
+    fail-open: ``token_service.verify_token`` wraps this call in its own
+    try/except so a write error here (e.g. a locked/full disk) can never
+    block or fail an otherwise-successful token resolution — mirroring
+    ``audit_service.record_event``'s fail-open contract, just without a
+    dedicated health-probe table since this is advisory metadata, not an
+    audit trail.
+    """
+    conn.execute(
+        "UPDATE access_tokens SET last_used_at = ? WHERE id = ?",
+        (ts, token_id),
+    )
 
 
 # ---------------------------------------------------------------------------

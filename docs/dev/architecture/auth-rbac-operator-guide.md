@@ -2,14 +2,17 @@
 title: "Auth/RBAC Operator & Admin Guide"
 description: "Configuring authentication providers, role-based access control (RBAC), and admin settings for Research Foundry deployments"
 audience: ["operators", "admins", "DevOps"]
-tags: ["auth", "rbac", "deployment", "configuration", "security"]
+tags: ["auth", "rbac", "deployment", "configuration", "security", "deployment-mode", "service-accounts", "pat"]
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-07-22
 category: "operations"
 status: "published"
 related_documents:
   - "docs/project_plans/PRDs/features/public-multiuser-p5-auth-rbac-v1.md"
   - "docs/project_plans/SPIKEs/public-multiuser-p4p5-foundations-spike.md"
+  - "docs/project_plans/implementation_plans/features/public-multiuser-release-activation-v1.md"
+  - "docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md"
+  - "docs/projects/research-foundry/SERVICE_CONTRACT.md"
 ---
 
 # Auth/RBAC Operator & Admin Guide
@@ -22,8 +25,10 @@ Research Foundry's authentication and role-based access control (RBAC) system al
 2. [Role Model & Capability Matrix](#role-model--capability-matrix)
 3. [Enabling local_static (Air-Gapped Multi-User)](#enabling-local_static-air-gapped-multi-user)
 4. [Enabling Clerk (Cloud-Hosted)](#enabling-clerk-cloud-hosted)
-5. [Admin Configuration](#admin-configuration)
-6. [Security Model](#security-model)
+5. [Deployment Modes (`single_user` / `multi_user`)](#deployment-modes-single_user--multi_user)
+6. [Service Accounts & Personal Access Tokens](#service-accounts--personal-access-tokens)
+7. [Admin Configuration](#admin-configuration)
+8. [Security Model](#security-model)
 
 ---
 
@@ -236,6 +241,113 @@ If Clerk is unreachable:
 
 ---
 
+## Deployment Modes (`single_user` / `multi_user`)
+
+Rather than tuning `auth.provider`, `auth.rbac_enforcement`, `workspace_isolation_enforcement`, and `auth.rate_limit` independently, set one `deployment_mode` config key (or pass `--mode` to `rf serve`) and RF composes sensible preset defaults for you.
+
+```yaml
+foundry:
+  deployment_mode: single_user   # default; or multi_user
+```
+
+```bash
+rf serve --mode multi_user       # CLI flag overrides foundry.yaml for this invocation
+```
+
+| Value | Effect |
+|-------|--------|
+| `single_user` (default) | No-op. Every knob resolves exactly as it did before `deployment_mode` existed — this is the byte-identical regression guarantee for existing LAN/personal deployments. |
+| `multi_user` | Defaults `auth.rbac_enforcement` and `workspace_isolation_enforcement` to `enabled` and `auth.rate_limit.enabled` to `true` — but **only** for knobs the operator has not explicitly set in `foundry.yaml`. An explicit per-knob override always wins over the preset. `auth.provider` and `viewer.bind_host` are never touched by the preset; you must still choose a real provider yourself (see below). |
+
+### The `multi_user` startup gate
+
+`rf serve --mode multi_user` (or `foundry.yaml: deployment_mode: multi_user`) refuses to start unless **all** of the following hold — the process fails closed before any port opens, naming every unmet condition:
+
+1. `auth.provider` is not `none` (must be `local_static` or `clerk`).
+2. RBAC enforcement resolves to enforced (not explicitly `disabled`).
+3. Workspace isolation resolves to enforced (not explicitly `disabled`).
+4. **The DI-1 full-surface workspace-scoping audit gate** — a two-part check, both required:
+   - `auth.di1_audit_acknowledged: true` in `foundry.yaml` (an explicit operator acknowledgement), **and**
+   - the audit artifact at `docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md` (overridable via `auth.di1_audit_report_path`) has YAML frontmatter `status: accepted` — set only by a human reviewer, never by an agent.
+
+```yaml
+foundry:
+  deployment_mode: multi_user
+  auth:
+    provider: local_static      # or clerk — 'none' fails closed under multi_user
+    rbac_enforcement: enabled   # or omit to take the multi_user preset default
+    di1_audit_acknowledged: true  # operator confirms they have reviewed the DI-1 audit
+```
+
+**Read before setting `di1_audit_acknowledged: true`**: accepting the DI-1 audit authorizes a **trusted-cohort** deployment only (callers who are not adversarial toward each other) — it does **not** certify tenant isolation for runs, claims, source cards, or evidence bundles. See `docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md`'s Scope Boundary Statement and `docs/project_plans/design-specs/runs-evidence-workspace-isolation.md` for the tracked follow-up.
+
+Inspect the gate at any time without taking the server down: `GET /api/admin/deployment-mode-status` (owner/admin only) returns the resolved `deployment_mode` and the pass/fail status of every condition — never any secret material.
+
+### Agent-job identity binding under `multi_user`
+
+Set `agents.default_service_account_id` to a service-account id (see below) so agent jobs launched without an explicit human actor resolve to that service account's identity instead of an anonymous one:
+
+```yaml
+foundry:
+  agents:
+    enabled: true
+    default_service_account_id: svc_researcher_default
+```
+
+Only takes effect when `deployment_mode: multi_user`; `single_user` agent-job identity resolution is unchanged.
+
+---
+
+## Service Accounts & Personal Access Tokens
+
+Alongside human users authenticated via `local_static`/Clerk, RF supports two **non-human principal** types issued and managed through the admin API — a token store extending the same `rbac.db` used by RBAC. Both are scoped to the issuing caller's own workspace and get exactly one role from the [5-role model](#5-role-model) above (no sub-role scoping yet — see the fine-grained-scoping design spec if you need narrower machine permissions).
+
+| Principal type | Use case | Lifecycle |
+|---|---|---|
+| **Service account** | A standalone machine identity (CI, an integration, an unattended agent) not tied to any one human. | Owner/admin creates it with a name + role; issuing a token **rotates out** any prior token for that account (never more than one live token per account). |
+| **Personal access token (PAT)** | A delegated credential a human uses for scripted/API access under their own identity and role ceiling. | Self-issued by default; an owner/admin may issue one on behalf of another workspace member. Capped at the target user's *current* role — a later role downgrade revokes the PAT's elevated privilege immediately, no restart required. |
+
+Both token types are **hashed at rest** and the plaintext secret is returned **once**, at issue/rotation time only — no route ever re-displays or logs it.
+
+### Admin API
+
+All routes are under `/api/admin` and require owner/admin (service-account routes) or self-or-owner/admin (PAT routes — see the module's "self-service exceptions"):
+
+```text
+POST   /api/admin/service-accounts                                  # create
+GET    /api/admin/service-accounts                                  # list (paginated)
+DELETE /api/admin/service-accounts/{account_id}                      # disable (idempotent)
+POST   /api/admin/service-accounts/{account_id}/tokens                # issue / rotate
+GET    /api/admin/service-accounts/{account_id}/tokens                # list (no secrets)
+DELETE /api/admin/service-accounts/{account_id}/tokens/{token_id}     # revoke
+
+POST   /api/admin/pats                # issue (self by default; ?user_id via owner/admin)
+GET    /api/admin/pats                # list  (self by default; ?user_id via owner/admin)
+DELETE /api/admin/pats/{token_id}     # revoke (self, or owner/admin)
+
+GET    /api/admin/deployment-mode-status   # read-only introspection, never raises
+```
+
+Example: create a service account and issue its first token.
+
+```bash
+curl -X POST http://localhost:7432/api/admin/service-accounts \
+  -H "Authorization: Bearer $RF_TOKEN_ALICE" \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "ci-writeback-bot", "role": "contributor"}'
+# -> {"id": "svc_...", "name": "ci-writeback-bot", "role": "contributor", ...}
+
+curl -X POST http://localhost:7432/api/admin/service-accounts/svc_.../tokens \
+  -H "Authorization: Bearer $RF_TOKEN_ALICE"
+# -> {"token_id": "tok_...", "plaintext": "rf_sa_...", ...}   # save `plaintext` now — shown once
+```
+
+Every issue/rotate/revoke/disable is recorded as an `audit_event` row (fail-open — see `rf audit list`).
+
+Full endpoint docstrings live alongside the code: `src/research_foundry/api/routers/admin.py`. Cross-workspace behavior (an owner/admin in one workspace cannot see, rotate, or revoke another workspace's accounts/tokens) is verified by `tests/unit/test_admin_tokens_api.py::TestCrossWorkspaceIsolation`.
+
+---
+
 ## Admin Configuration
 
 ### Rate Limiting
@@ -312,8 +424,11 @@ auth:
 - **SPIKE & ADRs**: [docs/project_plans/SPIKEs/public-multiuser-p4p5-foundations-spike.md](../../../project_plans/SPIKEs/public-multiuser-p4p5-foundations-spike.md) — ADR-001 (auth-provider abstraction) and ADR-002 (agent-job credential isolation).
 - **Deferred Design-Spec**: [docs/project_plans/design-specs/oidc-byo-adapter-implementation.md](../../../project_plans/design-specs/oidc-byo-adapter-implementation.md) — FU-2 OIDC adapter (deferred).
 - **foundry.yaml**: [foundry.yaml](../../../foundry.yaml) — Full configuration reference with commented examples.
+- **DI-1 Audit**: [docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md](../../../project_plans/reports/audits/di-1-full-surface-scoping-audit.md) — the artifact `deployment_mode_validate()` reads; states its own accepted scope boundary (trusted-cohort only).
+- **Deferred Design-Specs** (public-multiuser-release-activation): [oidc-adapter-live-implementation.md](../../../project_plans/design-specs/oidc-adapter-live-implementation.md), [rbac-db-postgres-migration.md](../../../project_plans/design-specs/rbac-db-postgres-migration.md), [service-account-fine-grained-scoping.md](../../../project_plans/design-specs/service-account-fine-grained-scoping.md), [runs-evidence-workspace-isolation.md](../../../project_plans/design-specs/runs-evidence-workspace-isolation.md) — the follow-up that would lift the DI-1 gate's trusted-cohort limitation to true multi-tenant isolation.
+- **SERVICE_CONTRACT.md**: [docs/projects/research-foundry/SERVICE_CONTRACT.md](../../projects/research-foundry/SERVICE_CONTRACT.md) §14/§21/§22 — the `rf serve`/deployment-mode, DI-1 gate, and admin token API coordination contracts.
 
 ---
 
-**Last Updated**: 2026-07-08  
-**Phase**: Public Multi-User P5 (Auth/RBAC/Isolation/Audit Hardening)
+**Last Updated**: 2026-07-22
+**Phase**: Public Multi-User Release Activation (Deployment Modes, Non-Human Principals, DI-1 Gate)

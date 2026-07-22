@@ -32,6 +32,7 @@ const readyAuth: AuthContextValue = {
   isLoading: false,
   provider: "local_static",
   authMode: "local_static",
+  principalType: "human",
 };
 
 function wrapper({ children }: { children: ReactNode }) {

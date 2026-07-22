@@ -2920,6 +2920,14 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             "--sensitivity-threshold",
             help="Override foundry.yaml viewer.sensitivity_threshold (default: public)",
         ),
+        mode: str = typer.Option(
+            None,
+            "--mode",
+            help=(
+                "Deployment mode: single_user | multi_user "
+                "(default: from foundry.yaml deployment_mode, else single_user)"
+            ),
+        ),
     ) -> None:
         """Start the Research Foundry loopback HTTP API (spec §loopback-api-v1).
 
@@ -2987,6 +2995,23 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             config.viewer["auth_mode"] = effective_auth_mode
         if sensitivity_threshold is not None:
             config.viewer["sensitivity_threshold"] = sensitivity_threshold
+        # --mode overrides foundry.yaml deployment_mode (FR-5). Mutates the
+        # top-level `foundry` dict directly (same cached-dict-by-reference
+        # pattern as viewer[...] above) so deployment_mode_validate() below
+        # and create_app()'s later call both see the CLI-resolved value.
+        if mode is not None:
+            config.foundry["deployment_mode"] = mode
+
+        # --- Step 1.5: deployment_mode fail-closed startup gate (FR-4, partial
+        # a-c; ACT-102 stub — condition (d) DI-1 ack lands in P4/ACT-402).
+        # No-op for deployment_mode=single_user (the default); only ever
+        # constrains multi_user. Runs BEFORE any port is opened, mirroring
+        # the Step 2 gate below.
+        try:
+            config.deployment_mode_validate(bind_host=effective_bind_host)
+        except ValueError as _mode_gate_err:
+            err_console.print(f"[red]error:[/red] {_mode_gate_err}")
+            raise typer.Exit(1) from _mode_gate_err
 
         # --- Step 2: Fail-closed pre-bind validation (security invariants 1 & 2)
         # Both checks happen AFTER all CLI overrides are applied and BEFORE any

@@ -20,6 +20,8 @@ import { RoleAssignmentPanel } from "@/components/AdminSettings/RoleAssignmentPa
 import { RateLimitConfigPanel } from "@/components/AdminSettings/RateLimitConfigPanel";
 import { AuthProviderStatusPanel } from "@/components/AdminSettings/AuthProviderStatusPanel";
 import { RbacStatusPanel } from "@/components/AdminSettings/RbacStatusPanel";
+import { ServiceAccountsPanel } from "@/components/AdminSettings/ServiceAccountsPanel";
+import { PersonalAccessTokensPanel } from "@/components/AdminSettings/PersonalAccessTokensPanel";
 import "@/styles/settings.css";
 
 const DETAIL_TABS = [
@@ -302,6 +304,27 @@ export function SettingsScreen() {
               </p>
             </div>
             <RbacStatusPanel />
+          </div>
+
+          <div className="rv-settings__control rv-settings__control--panel">
+            <div className="rv-settings__label-block">
+              <span className="rv-settings__label">Service accounts</span>
+              <p className="rv-settings__note">
+                Issue, rotate, and revoke machine credentials for this
+                workspace. Tokens are shown once at issuance.
+              </p>
+            </div>
+            <ServiceAccountsPanel />
+          </div>
+
+          <div className="rv-settings__control rv-settings__control--panel">
+            <div className="rv-settings__label-block">
+              <span className="rv-settings__label">Personal access tokens</span>
+              <p className="rv-settings__note">
+                Issue and revoke your own personal access tokens for API use.
+              </p>
+            </div>
+            <PersonalAccessTokensPanel />
           </div>
         </section>
       )}

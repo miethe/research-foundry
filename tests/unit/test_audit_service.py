@@ -17,6 +17,8 @@ from unittest.mock import patch
 
 import pytest
 
+from research_foundry.api.auth.provider import AuthIdentity
+from research_foundry.config import FoundryConfig
 from research_foundry.paths import FoundryPaths
 from research_foundry.services import audit_service
 from research_foundry.services.audit_service import (
@@ -30,6 +32,7 @@ from research_foundry.services.audit_service import (
     list_events,
     record_event,
 )
+from research_foundry.services import rbac_store
 from research_foundry.services.rbac_store import bootstrap
 
 
@@ -274,6 +277,129 @@ class TestGetEvent:
 
 
 # ---------------------------------------------------------------------------
+# DI-1 full-surface audit (Phase 4 ACT-401): workspace scoping for
+# list_events / get_event.
+#
+# RBAC-006's owner/admin gate on the /api/audit routes is a workspace-scoped
+# role (AuthIdentity.roles is granted "within the workspace" — see
+# api/auth/provider.py), so absent this scoping an owner/admin of one
+# workspace could read another workspace's actor IDs / policy snapshots
+# either via the client-supplied `workspace` filter or (for get_event) with
+# no filter at all. Mirrors the ``_force_isolation_active`` pattern already
+# used by test_catalog_service.py / test_builder_service.py / test_agent_job_service.py.
+# ---------------------------------------------------------------------------
+
+_WS_MINE = AuthIdentity("u1", "ws-mine", ("owner",))
+_WS_OTHER = AuthIdentity("u2", "ws-other", ("owner",))
+
+
+def _force_isolation_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Simulate ``workspace_isolation_enforcement`` resolving active.
+
+    Monkeypatches :meth:`FoundryConfig.resolve_workspace_isolation_enforced`
+    itself (never a private helper) — same idiom as
+    ``test_builder_service.py``/``test_catalog_service.py``.
+    """
+
+    monkeypatch.setattr(
+        FoundryConfig,
+        "resolve_workspace_isolation_enforced",
+        lambda self, provider, bind_host: True,
+    )
+
+
+class TestListEventsWorkspaceScoping:
+    def test_identity_none_is_byte_identical(self, paths: FoundryPaths) -> None:
+        record_event(paths, _make_event(actor_workspace_id="ws-mine"))
+        record_event(paths, _make_event(actor_workspace_id="ws-other", action="create_draft"))
+
+        baseline = list_events(paths, workspace_id="ws-other")
+        assert list_events(paths, workspace_id="ws-other", identity=None) == baseline
+        # Without any workspace_id filter and identity=None, both events are visible.
+        assert len(list_events(paths, identity=None)["items"]) == 2
+
+    def test_isolation_inactive_client_filter_still_honored(self, paths: FoundryPaths) -> None:
+        """Isolation not yet enforced: identity present but inert — FR-2 regression guard."""
+        record_event(paths, _make_event(actor_workspace_id="ws-mine"))
+        record_event(paths, _make_event(actor_workspace_id="ws-other", action="create_draft"))
+
+        result = list_events(paths, workspace_id="ws-other", identity=_WS_MINE)
+        assert [i["actor_workspace_id"] for i in result["items"]] == ["ws-other"]
+
+    def test_enforcing_identity_overrides_client_supplied_workspace_filter(
+        self, paths: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The cross-tenant leak this remediates: an owner of ws-mine passing
+        ``workspace_id="ws-other"`` must NOT see ws-other's events once
+        isolation is enforced — their own workspace always wins."""
+
+        record_event(paths, _make_event(actor_workspace_id="ws-mine"))
+        record_event(paths, _make_event(actor_workspace_id="ws-other", action="create_draft"))
+
+        _force_isolation_active(monkeypatch)
+
+        result = list_events(paths, workspace_id="ws-other", identity=_WS_MINE)
+        assert [i["actor_workspace_id"] for i in result["items"]] == ["ws-mine"]
+
+    def test_enforcing_no_filter_defaults_to_callers_own_workspace(
+        self, paths: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The second half of the leak: omitting `workspace` entirely must not
+        return every workspace's events once enforcing."""
+
+        record_event(paths, _make_event(actor_workspace_id="ws-mine"))
+        record_event(paths, _make_event(actor_workspace_id="ws-other", action="create_draft"))
+
+        _force_isolation_active(monkeypatch)
+
+        result = list_events(paths, identity=_WS_MINE)
+        assert [i["actor_workspace_id"] for i in result["items"]] == ["ws-mine"]
+
+
+class TestGetEventWorkspaceScoping:
+    def test_identity_none_is_byte_identical(self, paths: FoundryPaths) -> None:
+        event_id = record_event(paths, _make_event(actor_workspace_id="ws-other"))
+        assert event_id is not None
+        baseline = get_event(paths, event_id)
+        assert get_event(paths, event_id, identity=None) == baseline
+
+    def test_isolation_inactive_cross_workspace_read_still_allowed(self, paths: FoundryPaths) -> None:
+        """FR-2 regression guard: identity present but isolation not enforced."""
+        event_id = record_event(paths, _make_event(actor_workspace_id="ws-other"))
+        assert event_id is not None
+        assert get_event(paths, event_id, identity=_WS_MINE) is not None
+
+    def test_enforcing_cross_workspace_read_denied_as_missing(
+        self, paths: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The clear leak this remediates: get_event had zero workspace check —
+        any owner/admin could read any other workspace's audit event by ID."""
+
+        event_id = record_event(paths, _make_event(actor_workspace_id="ws-other"))
+        assert event_id is not None
+
+        _force_isolation_active(monkeypatch)
+
+        assert get_event(paths, event_id, identity=_WS_OTHER) is not None
+        assert get_event(paths, event_id, identity=_WS_MINE) is None
+
+    def test_enforcing_denial_emits_audit_log(
+        self, paths: FoundryPaths, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        event_id = record_event(paths, _make_event(actor_workspace_id="ws-other"))
+        assert event_id is not None
+
+        _force_isolation_active(monkeypatch)
+
+        caplog.set_level("INFO", logger="research_foundry.services.audit_service")
+        caplog.clear()
+        assert get_event(paths, event_id, identity=_WS_MINE) is None
+        assert any(
+            "workspace_scope_enforced_denial" in rec.message for rec in caplog.records
+        )
+
+
+# ---------------------------------------------------------------------------
 # Fault injection: forced write failure
 # ---------------------------------------------------------------------------
 
@@ -325,6 +451,9 @@ class TestFaultInjection:
 
 
 class TestTaxonomyCompleteness:
+    # Original 6 (public-multiuser-release Phase 5) + 4 added by Phase 3
+    # ACT-303 (public-multiuser-release-activation) for the admin API's
+    # principal/token/role-change mutation surface.
     EXPECTED_MUTATION_TYPES = {
         "catalog_mutation",
         "report_edit",
@@ -332,9 +461,13 @@ class TestTaxonomyCompleteness:
         "artifact_accepted",
         "publish_preview",
         "writeback",
+        "principal_mutation",
+        "access_token_issued",
+        "access_token_revoked",
+        "role_change",
     }
 
-    def test_all_six_mutation_types_present(self) -> None:
+    def test_all_ten_mutation_types_present(self) -> None:
         assert self.EXPECTED_MUTATION_TYPES == MUTATION_TYPES
 
     def test_mutation_types_is_frozenset(self) -> None:
@@ -345,7 +478,7 @@ class TestTaxonomyCompleteness:
         assert "agent_job_launched" in MUTATION_TYPES
 
     def test_no_extra_mutation_types(self) -> None:
-        assert len(MUTATION_TYPES) == 6
+        assert len(MUTATION_TYPES) == 10
 
 
 # ---------------------------------------------------------------------------
@@ -585,11 +718,15 @@ class TestIdempotentSchema:
         finally:
             conn.close()
 
-    def test_schema_version_is_2(self, tmp_path: Path) -> None:
+    def test_schema_version_matches_current(self, tmp_path: Path) -> None:
+        """Asserts against ``RBAC_SCHEMA_VERSION`` itself (not a hardcoded
+        literal) so this test keeps passing across additive migrations —
+        e.g. public-multiuser Phase 2 (ACT-201) bumped 2 -> 3 to add
+        ``service_accounts``/``access_tokens``."""
         fp = FoundryPaths(root=tmp_path)
         conn = bootstrap(fp)
         try:
             (version,) = conn.execute("PRAGMA user_version").fetchone()
-            assert version == 2
+            assert version == rbac_store.RBAC_SCHEMA_VERSION
         finally:
             conn.close()

@@ -43,6 +43,7 @@ from __future__ import annotations
 import pytest
 from fastapi.routing import APIRoute
 
+from research_foundry.api.routers.admin import router as admin_router
 from research_foundry.api.routers.agent_jobs import router as agent_jobs_router
 from research_foundry.api.routers.catalog import router as catalog_router
 from research_foundry.api.routers.reports import router as reports_router
@@ -272,6 +273,74 @@ class TestAgentJobsRouterSweep:
         extra = routes - expected
         assert not missing, f"Missing expected agent-job mutation routes: {missing}"
         assert not extra, f"Unexpected agent-job mutation routes (update this test): {extra}"
+
+
+# ---------------------------------------------------------------------------
+# admin.py router sweep (public-multiuser-release-activation Phase 3, ACT-301..303)
+# ---------------------------------------------------------------------------
+
+# The PAT self-service mutation routes are intentionally NOT gated with
+# Depends(require_role(...)) — any authenticated (or no-auth/single-operator)
+# caller may act on their OWN PAT; acting on another user's PAT requires
+# owner/admin, enforced MANUALLY inside the function body (identical
+# rationale to reports.py's publish-preview exemption above: the permission
+# decision depends on request content, not just the caller's role). See
+# admin.py's module docstring, "Self-service exceptions" section, and
+# TestPatSelfServiceManualGating below for the manual-enforcement coverage.
+_ADMIN_MANUALLY_GATED_ROUTES: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("POST", "/admin/pats"),
+        ("DELETE", "/admin/pats/{token_id}"),
+    }
+)
+
+
+class TestAdminRouterSweep:
+    def test_all_admin_mutations_are_gated(self):
+        """RBAC-901: every admin.py mutation route carries require_role OR is
+        in _ADMIN_MANUALLY_GATED_ROUTES (manual, request-content-dependent RBAC)."""
+        ungated = _collect_ungated(admin_router, exempt=_ADMIN_MANUALLY_GATED_ROUTES)
+        assert ungated == [], f"admin_router has ungated mutation routes: {ungated}"
+
+    def test_admin_has_expected_mutation_count(self):
+        """Regression guard: 8 mutation routes in admin_router.
+
+        2 pre-existing (member role update, rate-limit config PATCH) + 6
+        added by Phase 3 ACT-301/ACT-302 (service accounts: create/disable/
+        issue-or-rotate-token/revoke-token = 4; PATs: issue/revoke = 2) —
+        see test_expected_admin_mutation_routes_present for the exact
+        inventory.
+        """
+        mutations = _collect_mutation_routes(admin_router)
+        assert len(mutations) == 8, (
+            f"Expected 8 mutation routes in admin_router, found {len(mutations)}: {mutations}"
+        )
+
+    def test_expected_admin_mutation_routes_present(self):
+        routes = {(m, p) for m, p in _collect_mutation_routes(admin_router)}
+        expected = {
+            ("PATCH", "/admin/members/{user_id}/role"),
+            ("PATCH", "/admin/rate-limit-config"),
+            ("POST", "/admin/service-accounts"),
+            ("DELETE", "/admin/service-accounts/{account_id}"),
+            ("POST", "/admin/service-accounts/{account_id}/tokens"),
+            ("DELETE", "/admin/service-accounts/{account_id}/tokens/{token_id}"),
+            ("POST", "/admin/pats"),
+            ("DELETE", "/admin/pats/{token_id}"),
+        }
+        missing = expected - routes
+        extra = routes - expected
+        assert not missing, f"Missing expected admin mutation routes: {missing}"
+        assert not extra, f"Unexpected admin mutation routes (update this test): {extra}"
+
+    def test_manually_gated_routes_are_documented(self):
+        """Every entry in _ADMIN_MANUALLY_GATED_ROUTES must appear in admin_router."""
+        routes = {(m, p) for m, p in _collect_mutation_routes(admin_router)}
+        for entry in _ADMIN_MANUALLY_GATED_ROUTES:
+            assert entry in routes, (
+                f"_ADMIN_MANUALLY_GATED_ROUTES entry {entry} is not in admin_router — "
+                "remove it from the exemption set"
+            )
 
 
 # ---------------------------------------------------------------------------

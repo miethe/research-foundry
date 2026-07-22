@@ -46,6 +46,7 @@ function makeAuth(overrides: Partial<AuthContextValue> = {}): AuthContextValue {
     isLoading: false,
     provider: "none",
     authMode: "none",
+    principalType: "human",
     ...overrides,
   };
 }

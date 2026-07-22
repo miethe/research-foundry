@@ -7,7 +7,13 @@
  *   (jsdom has no HTTP server; we intercept fetch and return fixture data)
  */
 import "@testing-library/jest-dom/vitest";
-import { vi, beforeAll, afterAll } from "vitest";
+import { vi, expect, beforeAll, afterAll } from "vitest";
+import { toHaveNoViolations } from "jest-axe";
+
+// WCAG 2.1 AA automated pass (Phase 5, ACT-503) — registers the
+// `toHaveNoViolations()` matcher globally so a11y specs can do
+// `expect(await axe(container)).toHaveNoViolations()` without per-file setup.
+expect.extend(toHaveNoViolations);
 
 // Inline fixture imports (build-time, no network needed in tests)
 import fixtureRunRaw    from "@/test/fixtures/run.json";

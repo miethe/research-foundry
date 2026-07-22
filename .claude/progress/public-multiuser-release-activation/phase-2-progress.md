@@ -4,53 +4,115 @@ schema_version: 2
 doc_type: progress
 prd: public-multiuser-release-activation
 feature_slug: public-multiuser-release-activation
-title: "Phase 2: Non-Human Principal Store + Auth Resolution"
+title: 'Phase 2: Non-Human Principal Store + Auth Resolution'
 phase: 2
-status: pending
-created: 2026-07-22
-updated: 2026-07-22
+status: completed
+created: '2026-07-22'
+updated: '2026-07-22'
 prd_ref: docs/project_plans/implementation_plans/features/public-multiuser-release-activation-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/public-multiuser-release-activation-v1.md
 commit_refs: []
 pr_refs: []
-
-owners: ["python-backend-engineer", "data-layer-expert"]
+owners:
+- python-backend-engineer
+- data-layer-expert
 contributors: []
-
 tasks:
-  - id: "ACT-201"
-    description: "Token store schema — service_accounts + access_tokens tables in rbac_store.py (OQ-2 discriminator resolved)"
-    status: "pending"
-    assigned_to: ["data-layer-expert"]
-    dependencies: ["ACT-101"]
-  - id: "ACT-202"
-    description: "Token issue/verify/revoke service (token_service.py) — hash-at-rest, constant-time verify, PAT role-ceiling"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["ACT-201"]
-  - id: "ACT-203"
-    description: "Composite auth chain — AuthProviderMiddleware resolves access_tokens first, falls through to configured provider"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["ACT-202"]
-  - id: "ACT-204"
-    description: "Agent-job identity binding — execution identity resolves to service account under multi_user only"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["ACT-203", "ACT-101"]
-  - id: "ACT-205"
-    description: "Composite-auth + resilience test suite — AC-2 (4 credential states), AC-4, AC-5"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["ACT-202", "ACT-203", "ACT-204"]
-  - id: "ACT-206"
-    description: "[SEAM] Schema<->service integration verification (round-trip issue -> store -> verify -> revoke -> verify-denied)"
-    status: "pending"
-    assigned_to: ["python-backend-engineer", "data-layer-expert"]
-    dependencies: ["ACT-201", "ACT-202"]
-
+- id: ACT-201
+  description: "Token store schema \u2014 service_accounts + access_tokens tables\
+    \ in rbac_store.py (OQ-2 discriminator resolved)"
+  status: completed
+  assigned_to:
+  - data-layer-expert
+  dependencies:
+  - ACT-101
+  started: '2026-07-22T19:21:38Z'
+  completed: '2026-07-22T19:21:38Z'
+  evidence:
+  - test: tests/unit/test_token_service.py::test_schema_idempotent_across_repeated_bootstrap
+  - file: src/research_foundry/services/rbac_store.py
+- id: ACT-202
+  description: "Token issue/verify/revoke service (token_service.py) \u2014 hash-at-rest,\
+    \ constant-time verify, PAT role-ceiling"
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - ACT-201
+  started: '2026-07-22T19:21:38Z'
+  completed: '2026-07-22T19:21:38Z'
+  evidence:
+  - test: tests/unit/test_token_service.py
+  - file: src/research_foundry/services/token_service.py
+- id: ACT-203
+  description: "Composite auth chain \u2014 AuthProviderMiddleware resolves access_tokens\
+    \ first, falls through to configured provider"
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - ACT-202
+  started: '2026-07-22T19:21:38Z'
+  completed: '2026-07-22T19:21:38Z'
+  evidence:
+  - test: tests/test_composite_auth_chain.py
+  - file: src/research_foundry/api/middleware/auth.py
+- id: ACT-204
+  description: "Agent-job identity binding \u2014 execution identity resolves to service\
+    \ account under multi_user only"
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - ACT-203
+  - ACT-101
+  started: '2026-07-22T19:21:38Z'
+  completed: '2026-07-22T19:21:38Z'
+  evidence:
+  - test: tests/unit/test_agent_job_identity_binding.py
+  - file: src/research_foundry/services/agent_job_service.py
+- id: ACT-205
+  description: "Composite-auth + resilience test suite \u2014 AC-2 (4 credential states),\
+    \ AC-4, AC-5"
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - ACT-202
+  - ACT-203
+  - ACT-204
+  started: '2026-07-22T19:21:38Z'
+  completed: '2026-07-22T19:21:38Z'
+  evidence:
+  - test: tests/test_composite_auth_chain.py
+  - test: tests/unit/test_agent_job_identity_binding.py
+- id: ACT-206
+  description: '[SEAM] Schema<->service integration verification (round-trip issue
+    -> store -> verify -> revoke -> verify-denied)'
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  - data-layer-expert
+  dependencies:
+  - ACT-201
+  - ACT-202
+  started: '2026-07-22T19:21:38Z'
+  completed: '2026-07-22T19:21:38Z'
+  evidence:
+  - test: tests/unit/test_token_service.py::test_round_trip_issue_store_verify_revoke_verify_denied
 parallelization:
-  batch_2: ["ACT-201", "ACT-202", "ACT-203", "ACT-204", "ACT-205", "ACT-206"]
+  batch_2:
+  - ACT-201
+  - ACT-202
+  - ACT-203
+  - ACT-204
+  - ACT-205
+  - ACT-206
+total_tasks: 6
+completed_tasks: 6
+in_progress_tasks: 0
+blocked_tasks: 0
+progress: 100
 ---
 
 # Phase 2: Non-Human Principal Store + Auth Resolution

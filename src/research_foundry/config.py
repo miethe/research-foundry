@@ -12,10 +12,11 @@ import enum
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from .errors import RFError
-from .paths import FoundryPaths
+from .frontmatter import load_md
+from .paths import FoundryPaths, distribution_root
 from .yamlio import load_yaml
 
 # Valid values for viewer.auth_mode (OQ-4 resolution).
@@ -147,12 +148,44 @@ def _is_loopback(bind_host: str) -> bool:
 _VALID_AUTH_PROVIDERS = frozenset({"none", "local_static", "clerk", "oidc"})
 _IMPLEMENTED_AUTH_PROVIDERS = frozenset({"none", "local_static", "clerk"})
 
+# Valid values for deployment_mode (FR-1, public-multiuser-release-activation P1).
+# "single_user" — default; behaviorally identical to today's un-set default (FR-2).
+# "multi_user"  — composes preset *defaults* over the rbac/isolation/rate-limit
+#                 knobs (FR-3); an explicit per-knob override in foundry.yaml
+#                 always wins over the preset.
+_VALID_DEPLOYMENT_MODES = frozenset({"single_user", "multi_user"})
+
+# Preset defaults applied ONLY when the underlying knob is unset (absent) in
+# foundry.yaml. ``single_user`` is intentionally empty — this is what makes the
+# FR-2 byte-identical regression guarantee hold: with no `deployment_mode` key
+# at all, ``deployment_mode()`` resolves to "single_user" and every preset
+# lookup below is a no-op, so resolved config is unchanged from pre-feature
+# behaviour.
+_DEPLOYMENT_MODE_PRESETS: dict[str, dict[str, Any]] = {
+    "single_user": {},
+    "multi_user": {
+        "auth_rbac_enforcement": "enabled",
+        "workspace_isolation_enforcement": "enabled",
+        "auth_rate_limit_enabled": True,
+    },
+}
+
 # Config filenames under config/ (spec §5).
 GOVERNANCE = "governance.yaml"
 MODEL_PROFILES = "model_profiles.yaml"
 ROUTING_RULES = "routing_rules.yaml"
 TOOLS = "tools.yaml"
 CLAIM_POLICY = "claim_policy.yaml"
+
+# DI-1 full-surface audit artifact (FR-13, FR-14, public-multiuser-release-
+# activation P4 ACT-401/ACT-402). This is a governance/planning artifact
+# that ships with the source checkout -- resolved relative to
+# ``distribution_root()`` (see :meth:`FoundryConfig._di1_audit_report_path`),
+# never relative to a runtime ``FoundryPaths.root`` (a separate directory in
+# split deployments -- see the data-plane-split note in project memory).
+_DI1_AUDIT_REPORT_RELATIVE_PATH = (
+    "docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md"
+)
 
 
 def _validate_auth_mode(value: str) -> None:
@@ -355,6 +388,24 @@ class FoundryConfig:
         or static-export deployments before P5 RBAC ships.
         """
         return bool(self.agents.get("enabled", False))
+
+    def agents_default_service_account_id(self) -> Optional[str]:
+        """Return ``agents.default_service_account_id``, or ``None`` if unset.
+
+        Consumed by ``agent_job_service.create_job`` (ACT-204, FR-12): when
+        ``deployment_mode() == "multi_user"`` AND this key is set, a launched
+        agent job's execution identity resolves to this service account
+        rather than the triggering caller's identity.  When unset (the
+        default) or ``deployment_mode() == "single_user"``, this key is
+        never consulted — the pre-feature identity resolution is unchanged
+        (AC-5)::
+
+            foundry:
+              agents:
+                default_service_account_id: svc_researcher_default
+        """
+        value = self.agents.get("default_service_account_id")
+        return str(value) if value else None
 
     @property
     def assertion_ledger(self) -> dict[str, Any]:
@@ -569,8 +620,17 @@ class FoundryConfig:
         return rl if isinstance(rl, dict) else {}
 
     def auth_rate_limit_enabled(self) -> bool:
-        """Return ``auth.rate_limit.enabled`` with default ``True``."""
-        return bool(self.auth_rate_limit().get("enabled", True))
+        """Return ``auth.rate_limit.enabled`` with default ``True``.
+
+        When unset in ``foundry.yaml``, defers to the ``deployment_mode``
+        preset default (ACT-101); ``single_user`` preserves the literal
+        ``True`` fallback (FR-2), ``multi_user`` also defaults to ``True``
+        per FR-3 (rate limiting stays on by default in multi-user mode too).
+        """
+        rl = self.auth_rate_limit()
+        if "enabled" in rl:
+            return bool(rl["enabled"])
+        return bool(self._deployment_mode_preset_default("auth_rate_limit_enabled", True))
 
     def auth_rate_limit_requests_per_window(self) -> int:
         """Return ``auth.rate_limit.requests_per_window`` with default ``60``."""
@@ -603,7 +663,14 @@ class FoundryConfig:
         Raises:
             ValueError: If the raw config value is not a recognised enum member.
         """
-        raw = str(self.auth.get("rbac_enforcement", "auto")).lower()
+        raw = self.auth.get("rbac_enforcement")
+        if raw is None:
+            # Unset in foundry.yaml — defer to the deployment_mode preset
+            # (ACT-101); "auto" is the preset-independent fallback so
+            # single_user (the default) is byte-identical to pre-feature
+            # behaviour (FR-2).
+            raw = self._deployment_mode_preset_default("auth_rbac_enforcement", "auto")
+        raw = str(raw).lower()
         try:
             return AuthRbacEnforcement(raw)
         except ValueError:
@@ -700,7 +767,14 @@ class FoundryConfig:
             ValueError: If the raw config value is not a recognised enum
                 member.
         """
-        raw = str(self.foundry.get("workspace_isolation_enforcement", "auto")).lower()
+        raw = self.foundry.get("workspace_isolation_enforcement")
+        if raw is None:
+            # Unset in foundry.yaml — defer to the deployment_mode preset
+            # (ACT-101); see auth_rbac_enforcement() for the FR-2 rationale.
+            raw = self._deployment_mode_preset_default(
+                "workspace_isolation_enforcement", "auto"
+            )
+        raw = str(raw).lower()
         try:
             return WorkspaceIsolationEnforcement(raw)
         except ValueError:
@@ -816,6 +890,337 @@ class FoundryConfig:
         except Exception:  # noqa: BLE001
             auth_mode = "none"
         return auth_mode == "token"
+
+    # --- deployment_mode block (FR-1..FR-5: single_user/multi_user presets) --
+
+    def deployment_mode(self) -> str:
+        """Return ``deployment_mode`` with default ``"single_user"``; validate.
+
+        Valid values: ``single_user``, ``multi_user``.
+
+        ``single_user``
+            Default.  Behaviorally identical to today's un-set default — the
+            per-knob resolvers (:meth:`auth_provider`,
+            :meth:`auth_rbac_enforcement`, :meth:`workspace_isolation_enforcement`,
+            :meth:`viewer_bind_host`, :meth:`auth_rate_limit_enabled`) resolve
+            exactly as they did before this method existed (FR-2). This is the
+            #1 regression gate for the LAN/NUC deployment.
+
+        ``multi_user``
+            Composes preset *defaults* over the RBAC/isolation/rate-limit knobs
+            (FR-3): ``auth.rbac_enforcement`` and
+            ``workspace_isolation_enforcement`` default to ``"enabled"`` and
+            ``auth.rate_limit.enabled`` defaults to ``True`` — but ONLY when the
+            operator has not explicitly set that knob in ``foundry.yaml``; an
+            explicit per-knob override always wins over the preset.
+            ``auth.provider`` and ``viewer.bind_host`` are NOT touched by this
+            preset — those remain fully operator-controlled (see
+            :meth:`deployment_mode_validate` for the fail-closed startup gate
+            that requires a real, non-``"none"`` auth provider).
+
+        Raises:
+            ValueError: If the raw config value is not a recognised mode.
+        """
+        raw = str(self.foundry.get("deployment_mode", "single_user")).lower()
+        if raw not in _VALID_DEPLOYMENT_MODES:
+            raise ValueError(
+                f"deployment_mode={raw!r} is not valid; "
+                f"must be one of: {', '.join(sorted(_VALID_DEPLOYMENT_MODES))}"
+            )
+        return raw
+
+    def _deployment_mode_preset_default(self, knob: str, fallback: Any) -> Any:
+        """Return the ``deployment_mode`` preset default for *knob*, else *fallback*.
+
+        Internal composition helper (ACT-101) — callers must only invoke this
+        AFTER determining the knob is unset (absent) in ``foundry.yaml``; it
+        never overrides an explicit operator-set value. ``single_user`` (the
+        default deployment_mode) maps every knob to ``fallback`` unchanged,
+        which is what makes the FR-2 byte-identical regression guarantee hold.
+        """
+        preset = _DEPLOYMENT_MODE_PRESETS.get(self.deployment_mode(), {})
+        return preset.get(knob, fallback)
+
+    def di1_audit_acknowledged(self) -> bool:
+        """Return ``auth.di1_audit_acknowledged`` (default ``False``).
+
+        The **operator-ack half** of the FR-13 two-part DI-1 gate (Phase 4
+        ACT-402) — a human/operator must explicitly set this ``true`` in
+        ``foundry.yaml``. On its own this flag satisfies nothing: see
+        :meth:`_di1_audit_report_path`/:meth:`_di1_audit_accepted` for the
+        other half (the audit artifact's machine-checkable ``status``), and
+        :meth:`deployment_mode_validate`'s condition (d) for where both halves
+        are required together.
+        """
+        return bool(self.auth.get("di1_audit_acknowledged", False))
+
+    def _di1_audit_report_path(self) -> Path:
+        """Resolve the DI-1 full-surface audit artifact's on-disk path.
+
+        This is a governance/planning document that ships with the source
+        checkout (``docs/project_plans/reports/audits/...``) — it is
+        resolved relative to :func:`~research_foundry.paths.distribution_root`
+        (the installed/checked-out package location), **never** relative to
+        :attr:`paths` (``FoundryPaths.root``, the RUNTIME workspace data
+        root) — those are two different directories in split deployments
+        (see the data-plane-split project note): the runtime root holds
+        ``config/``/``schemas/``/``templates/`` copied there by ``rf init``,
+        but audits are never copied anywhere. Overridable via
+        ``auth.di1_audit_report_path`` in ``foundry.yaml`` (relative to
+        ``distribution_root()`` unless given as an absolute path) — mainly
+        for tests and non-standard checkouts.
+        """
+        override = self.auth.get("di1_audit_report_path")
+        if override:
+            candidate = Path(str(override))
+            return candidate if candidate.is_absolute() else distribution_root() / candidate
+        return distribution_root() / _DI1_AUDIT_REPORT_RELATIVE_PATH
+
+    def _di1_audit_accepted(self) -> tuple[bool, str]:
+        """Resolve the **artifact half** of the FR-13 two-part DI-1 gate.
+
+        Returns ``(accepted, detail)``. ``accepted`` is ``True`` only when
+        the artifact at :meth:`_di1_audit_report_path` exists, is readable,
+        and its YAML frontmatter's ``status`` field is the literal string
+        ``"accepted"`` — set only by an explicit human sign-off (ACT-406;
+        Mode D — no agent may set this value itself). A **missing file** is
+        treated identically to ``status != "accepted"`` (fail-closed; never
+        "assume passed" just because there is nothing to disagree with).
+        ``detail`` names the concrete unmet reason for the startup-gate error
+        message; empty when ``accepted`` is ``True``.
+        """
+        path = self._di1_audit_report_path()
+        if not path.exists():
+            return False, f"DI-1 audit artifact not found at {path}"
+        try:
+            meta, _ = load_md(path)
+        except Exception as exc:  # noqa: BLE001 — malformed file is fail-closed too
+            return False, f"DI-1 audit artifact at {path} could not be read: {exc}"
+        status = meta.get("status")
+        if status != "accepted":
+            return False, (
+                f"DI-1 audit artifact status is {status!r} (must be 'accepted') at {path}"
+            )
+        return True, ""
+
+    def _deployment_mode_conditions(
+        self, *, bind_host: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Evaluate the FR-4 multi_user startup-gate conditions (a)-(d) WITHOUT raising.
+
+        Shared introspection helper consumed by both :meth:`deployment_mode_validate`
+        (the fail-closed startup gate, which raises when any condition is unmet)
+        and :meth:`deployment_mode_status` (the read-only admin-API introspection
+        endpoint, Phase 3 ACT-303) — factored out so the two can never drift out
+        of sync on what "passing" means for a given condition.
+
+        Returns an empty list when :meth:`deployment_mode` resolves to
+        ``"single_user"`` — the gate (and this introspection) is a no-op outside
+        multi_user.
+
+        Otherwise returns exactly one dict per condition ``"a"``..``"d"`` with
+        keys ``id`` (str), ``passed`` (bool), and ``detail`` (str — empty when
+        passed, otherwise the same human-readable reason
+        :meth:`deployment_mode_validate` raises with). Never includes secret
+        material — every condition here only ever names config keys, resolved
+        booleans, or file paths, exactly as :meth:`deployment_mode_validate`
+        already does.
+        """
+        mode = self.deployment_mode()
+        if mode != "multi_user":
+            return []
+
+        effective_bind_host = bind_host if bind_host is not None else self.viewer_bind_host()
+        conditions: list[dict[str, Any]] = []
+
+        try:
+            provider = self.auth_provider()
+        except ValueError as exc:
+            conditions.append({"id": "a", "passed": False, "detail": f"auth.provider is invalid: {exc}"})
+            return conditions
+
+        if provider == "none":
+            conditions.append(
+                {
+                    "id": "a",
+                    "passed": False,
+                    "detail": (
+                        "auth.provider must not be 'none' when deployment_mode=multi_user "
+                        "— configure auth.provider=local_static or clerk in foundry.yaml."
+                    ),
+                }
+            )
+        else:
+            conditions.append({"id": "a", "passed": True, "detail": ""})
+
+        try:
+            rbac_enforced = self.resolve_rbac_enforced(provider, effective_bind_host)
+        except ValueError as exc:
+            conditions.append(
+                {"id": "b", "passed": False, "detail": f"auth.rbac_enforcement is unresolvable: {exc}"}
+            )
+        else:
+            if rbac_enforced:
+                conditions.append({"id": "b", "passed": True, "detail": ""})
+            else:
+                conditions.append(
+                    {
+                        "id": "b",
+                        "passed": False,
+                        "detail": (
+                            "auth.rbac_enforcement must resolve to enforced when "
+                            "deployment_mode=multi_user — remove rbac_enforcement=disabled "
+                            "or set it to 'enabled' in foundry.yaml."
+                        ),
+                    }
+                )
+
+        try:
+            isolation_enforced = self.resolve_workspace_isolation_enforced(
+                provider, effective_bind_host
+            )
+        except ValueError as exc:
+            conditions.append(
+                {"id": "c", "passed": False, "detail": f"workspace_isolation_enforcement is unresolvable: {exc}"}
+            )
+        else:
+            if isolation_enforced:
+                conditions.append({"id": "c", "passed": True, "detail": ""})
+            else:
+                conditions.append(
+                    {
+                        "id": "c",
+                        "passed": False,
+                        "detail": (
+                            "workspace_isolation_enforcement must resolve to enforced when "
+                            "deployment_mode=multi_user — remove workspace_isolation_enforcement="
+                            "disabled or set it to 'enabled' in foundry.yaml."
+                        ),
+                    }
+                )
+
+        # Condition (d): FR-13 two-part DI-1 gate (Phase 4 ACT-402). Both halves
+        # are evaluated and named independently.
+        ack = self.di1_audit_acknowledged()
+        audit_accepted, audit_detail = self._di1_audit_accepted()
+        if ack and audit_accepted:
+            conditions.append({"id": "d", "passed": True, "detail": ""})
+        else:
+            di1_unmet: list[str] = []
+            if not ack:
+                di1_unmet.append(
+                    "operator has not set auth.di1_audit_acknowledged=true in foundry.yaml"
+                )
+            if not audit_accepted:
+                di1_unmet.append(audit_detail)
+            conditions.append(
+                {
+                    "id": "d",
+                    "passed": False,
+                    "detail": (
+                        "DI-1 full-surface audit two-part gate is incomplete when "
+                        "deployment_mode=multi_user — " + "; ".join(di1_unmet) + "."
+                    ),
+                }
+            )
+
+        return conditions
+
+    def deployment_mode_status(self, *, bind_host: str | None = None) -> dict[str, Any]:
+        """Read-only introspection over the FR-4 multi_user startup gate (ACT-303).
+
+        Unlike :meth:`deployment_mode_validate` this NEVER raises — it is
+        intended for the admin API's ``GET /api/admin/deployment-mode-status``
+        endpoint (Phase 3 ACT-303) so operators can see WHY a multi_user
+        deployment would refuse to start (or confirm it is clear to start)
+        without triggering the fail-closed exception path.
+
+        Returns
+        -------
+        dict with keys:
+            ``deployment_mode``  (str)  — resolved mode ("single_user"/"multi_user")
+            ``gate_applicable``  (bool) — False for single_user (gate is a no-op)
+            ``gate_passed``      (bool) — True when every applicable condition passes
+            ``conditions``       (list[dict]) — one entry per condition (a)-(d),
+                each ``{"id": str, "passed": bool, "detail": str}``; empty list
+                when ``gate_applicable`` is False.
+
+        Never includes secret material — see :meth:`_deployment_mode_conditions`.
+        """
+        mode = self.deployment_mode()
+        conditions = self._deployment_mode_conditions(bind_host=bind_host)
+        gate_applicable = mode == "multi_user"
+        gate_passed = (not gate_applicable) or all(c["passed"] for c in conditions)
+        return {
+            "deployment_mode": mode,
+            "gate_applicable": gate_applicable,
+            "gate_passed": gate_passed,
+            "conditions": conditions,
+        }
+
+    def deployment_mode_validate(self, *, bind_host: str | None = None) -> None:
+        """Fail-closed startup gate for ``deployment_mode=multi_user`` (FR-4).
+
+        **Full 4-condition suite** (Phase 4 ACT-402 completes the P1 stub,
+        which evaluated only (a)-(c)) — see Phase 4 AC-3.
+
+        No-op when :meth:`deployment_mode` resolves to ``"single_user"`` (the
+        default) — this gate only ever constrains ``multi_user`` deployments,
+        so it can never regress single-user/LAN behaviour.
+
+        Conditions checked (multi_user only)
+        -------------------------------------
+        (a) ``auth.provider`` must not be ``"none"``.
+        (b) ``auth.rbac_enforcement`` must resolve to enforced
+            (:meth:`resolve_rbac_enforced`).
+        (c) ``workspace_isolation_enforcement`` must resolve to enforced
+            (:meth:`resolve_workspace_isolation_enforced`).
+        (d) **DI-1 full-surface audit two-part gate** (FR-13, Phase 4
+            ACT-401/ACT-402): BOTH halves must independently hold —
+            :meth:`di1_audit_acknowledged` (``auth.di1_audit_acknowledged``
+            resolves ``True``) AND :meth:`_di1_audit_accepted` (the audit
+            artifact at :meth:`_di1_audit_report_path` exists and its
+            frontmatter ``status`` is literally ``"accepted"``). Neither a
+            stale/never-updated doc with the ack flag flipped, nor an
+            accepted doc with the ack flag never set, satisfies this
+            condition alone — both are named independently in the raised
+            error when either is missing. A missing artifact file is
+            treated identically to an unaccepted one (never "assume
+            passed"). No agent may set the artifact's ``status`` to
+            ``"accepted"`` itself (Mode D, ACT-406) — this method only
+            *reads* that field, it never writes it.
+
+        Parameters
+        ----------
+        bind_host:
+            The effective ``viewer.bind_host`` value, forwarded to
+            :meth:`resolve_rbac_enforced` / :meth:`resolve_workspace_isolation_enforced`
+            for their own fail-closed loopback checks. Defaults to
+            :meth:`viewer_bind_host` when omitted.
+
+        Raises
+        ------
+        ValueError
+            Naming EVERY unmet condition (not just the first) when
+            ``deployment_mode=multi_user`` and one or more of (a)-(d) fail.
+            The server/app **must not start** in this state.
+        """
+        mode = self.deployment_mode()
+        if mode != "multi_user":
+            return
+
+        # Phase 3 ACT-303: conditions (a)-(d) are evaluated by the shared
+        # non-raising helper so this gate and the admin API's read-only
+        # ``deployment_mode_status()`` introspection can never drift out of
+        # sync on what "passing" means for a given condition.
+        conditions = self._deployment_mode_conditions(bind_host=bind_host)
+        unmet = [f"({c['id']}) {c['detail']}" for c in conditions if not c["passed"]]
+
+        if unmet:
+            raise ValueError(
+                "deployment_mode=multi_user refused to start "
+                f"({len(unmet)} unmet condition(s)):\n  - " + "\n  - ".join(unmet)
+            )
 
 
 __all__ = [

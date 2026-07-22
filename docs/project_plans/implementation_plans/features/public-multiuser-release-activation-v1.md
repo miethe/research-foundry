@@ -1,209 +1,260 @@
 ---
-title: "Public Multi-User Release Activation — Implementation Plan"
+title: "Public Multi-User Release Activation \u2014 Implementation Plan"
 schema_version: 2
 doc_type: implementation_plan
 it_schema: 1
-status: draft
-created: 2026-07-22
-updated: 2026-07-22
+status: completed
+created: '2026-07-22'
+updated: '2026-07-22'
 feature_slug: public-multiuser-release-activation
 feature_version: v1
 tier: 3
 prd_ref: docs/project_plans/PRDs/features/public-multiuser-release-activation-v1.md
 plan_ref: null
-scope: >
-  Activate the shipped public-multiuser-p5-auth-rbac substrate: compose its five independent config
-  knobs into two fail-closed deployment-mode presets, add dynamic non-human principals (service
-  accounts + user-scoped PATs) backed by a new SQLite token store, close the DI-1 repo-wide
-  workspace-scoping audit as a hard pre-multi-tenant gate, and ship the admin UI to manage both.
-effort_estimate: "~52 points (bottom-up, see Estimation Sanity Check)"
-architecture_summary: >
-  Sequential config→identity→admin-API spine (P1→P2→P3→P5) gates the UI last; the DI-1 audit (P4)
-  is a largely independent long pole run in parallel with P2, rejoining the gate stub (P1) and the
-  live-session regression (needs P2+P3) before end-of-feature testing/docs (P6).
+scope: 'Activate the shipped public-multiuser-p5-auth-rbac substrate: compose its
+  five independent config knobs into two fail-closed deployment-mode presets, add
+  dynamic non-human principals (service accounts + user-scoped PATs) backed by a new
+  SQLite token store, close the DI-1 repo-wide workspace-scoping audit as a hard pre-multi-tenant
+  gate, and ship the admin UI to manage both.
+
+  '
+effort_estimate: ~52 points (bottom-up, see Estimation Sanity Check)
+architecture_summary: "Sequential config\u2192identity\u2192admin-API spine (P1\u2192\
+  P2\u2192P3\u2192P5) gates the UI last; the DI-1 audit (P4) is a largely independent\
+  \ long pole run in parallel with P2, rejoining the gate stub (P1) and the live-session\
+  \ regression (needs P2+P3) before end-of-feature testing/docs (P6).\n"
 related_documents:
-  - docs/project_plans/PRDs/features/public-multiuser-p5-auth-rbac-v1.md
-  - docs/project_plans/design-specs/public-multiuser-release-handoff-v1.md
-  - docs/project_plans/human-briefs/public-release-phase5-gap-closure.md
-  - docs/projects/research-foundry/SERVICE_CONTRACT.md
-  - .claude/worknotes/public-multiuser-release-activation/decisions-block.md
+- docs/project_plans/PRDs/features/public-multiuser-p5-auth-rbac-v1.md
+- docs/project_plans/design-specs/public-multiuser-release-handoff-v1.md
+- docs/project_plans/human-briefs/public-release-phase5-gap-closure.md
+- docs/projects/research-foundry/SERVICE_CONTRACT.md
+- .claude/worknotes/public-multiuser-release-activation/decisions-block.md
+- .claude/findings/public-multiuser-release-activation-findings.md
+- docs/dev/architecture/auth-rbac-operator-guide.md
 references:
   user_docs: []
   context: []
   specs:
-    - .claude/skills/planning/references/ac-schema.md
-    - .claude/rules/delegation-modes.md
+  - .claude/skills/planning/references/ac-schema.md
+  - .claude/rules/delegation-modes.md
   related_prds:
-    - docs/project_plans/PRDs/features/public-multiuser-p4-agents-v1.md
+  - docs/project_plans/PRDs/features/public-multiuser-p4-agents-v1.md
 spike_ref: docs/project_plans/SPIKEs/public-multiuser-p4p5-foundations-spike.md
 adr_refs:
-  - ADR-001 (auth-provider port, SPIKE public-multiuser-p4p5-foundations)
+- ADR-001 (auth-provider port, SPIKE public-multiuser-p4p5-foundations)
 charter_ref: null
 changelog_ref: null
 changelog_required: true
 test_plan_ref: null
 plan_structure: independent
 progress_init: auto
-deferred_items_spec_refs: []
-findings_doc_ref: null
+deferred_items_spec_refs:
+- docs/project_plans/design-specs/oidc-adapter-live-implementation.md
+- docs/project_plans/design-specs/rbac-db-postgres-migration.md
+- docs/project_plans/design-specs/service-account-fine-grained-scoping.md
+- docs/project_plans/design-specs/runs-evidence-workspace-isolation.md
+findings_doc_ref: .claude/findings/public-multiuser-release-activation-findings.md
 owner: nick
 contributors:
-  - opus-4-8
-  - implementation-planner
+- opus-4-8
+- implementation-planner
 priority: high
 risk_level: high
-category: "product-planning"
-tags: [implementation, planning, phases, auth, rbac, multi-user, activation, service-accounts, pat, di-1]
-milestone: "public-multiuser-activation"
-commit_refs: []
+category: product-planning
+tags:
+- implementation
+- planning
+- phases
+- auth
+- rbac
+- multi-user
+- activation
+- service-accounts
+- pat
+- di-1
+milestone: public-multiuser-activation
+commit_refs: ["60f40c8", "79daed5", "d243ab2", "1d53556", "3070945", "8fbe075"]
 pr_refs: []
 files_affected:
-  - src/research_foundry/config.py
-  - src/research_foundry/cli_commands.py
-  - src/research_foundry/services/rbac_store.py
-  - src/research_foundry/services/token_service.py
-  - src/research_foundry/services/audit_service.py
-  - src/research_foundry/services/agent_job_service.py
-  - src/research_foundry/api/middleware/auth.py
-  - src/research_foundry/api/auth/provider.py
-  - src/research_foundry/api/auth/scope.py
-  - src/research_foundry/api/routers/admin.py
-  - src/research_foundry/api/routers/agent_jobs.py
-  - frontend/runs-viewer/src/components/AdminSettings/RoleAssignmentPanel.tsx
-  - frontend/runs-viewer/src/components/AdminSettings/ServiceAccountsPanel.tsx
-  - frontend/runs-viewer/src/components/AdminSettings/PersonalAccessTokensPanel.tsx
-  - frontend/runs-viewer/src/auth/AuthContext.tsx
-  - docs/projects/research-foundry/SERVICE_CONTRACT.md
-  - docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md
-  - CHANGELOG.md
-planning_maturity: scoped
+- src/research_foundry/config.py
+- src/research_foundry/cli_commands.py
+- src/research_foundry/services/rbac_store.py
+- src/research_foundry/services/token_service.py
+- src/research_foundry/services/audit_service.py
+- src/research_foundry/services/agent_job_service.py
+- src/research_foundry/api/middleware/auth.py
+- src/research_foundry/api/auth/provider.py
+- src/research_foundry/api/auth/scope.py
+- src/research_foundry/api/routers/admin.py
+- src/research_foundry/api/routers/agent_jobs.py
+- frontend/runs-viewer/src/components/AdminSettings/RoleAssignmentPanel.tsx
+- frontend/runs-viewer/src/components/AdminSettings/ServiceAccountsPanel.tsx
+- frontend/runs-viewer/src/components/AdminSettings/PersonalAccessTokensPanel.tsx
+- frontend/runs-viewer/src/auth/AuthContext.tsx
+- docs/projects/research-foundry/SERVICE_CONTRACT.md
+- docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md
+- CHANGELOG.md
+planning_maturity: shipped
 open_questions:
-  - q: "OQ-1: Should token_service.py live under services/ (peer to rbac_store.py/audit_service.py) or api/auth/?"
-    owner: nick
-    status: open
-    recommendation: "services/ for store-adjacency; confirm against existing layering in P2."
-  - q: "OQ-2: access_tokens.principal_id FK target differs by type (service_accounts.id vs users.id) — nullable-pair or single polymorphic id + principal_type discriminator?"
-    owner: nick
-    status: open
-    recommendation: "Discriminator + app-level integrity (SQLite has no partial FK); resolve in P2 (ACT-201)."
-  - q: "OQ-3: Confirm docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md is the canonical artifact FR-13's status check reads."
-    owner: nick
-    status: open
-    recommendation: "Confirm at P4 kickoff (ACT-401); path is already load-bearing in PRD files_affected."
-  - q: "OQ-4: Does the composite middleware need a per-request last_used_at write on every token hit, or throttled/async?"
-    owner: nick
-    status: open
-    recommendation: "Throttled/best-effort, fail-open like audit — resolve in P2 (ACT-202/ACT-203)."
+- q: 'OQ-1: Should token_service.py live under services/ (peer to rbac_store.py/audit_service.py)
+    or api/auth/?'
+  owner: nick
+  status: open
+  recommendation: services/ for store-adjacency; confirm against existing layering
+    in P2.
+- q: "OQ-2: access_tokens.principal_id FK target differs by type (service_accounts.id\
+    \ vs users.id) \u2014 nullable-pair or single polymorphic id + principal_type\
+    \ discriminator?"
+  owner: nick
+  status: open
+  recommendation: Discriminator + app-level integrity (SQLite has no partial FK);
+    resolve in P2 (ACT-201).
+- q: 'OQ-3: Confirm docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md
+    is the canonical artifact FR-13''s status check reads.'
+  owner: nick
+  status: open
+  recommendation: Confirm at P4 kickoff (ACT-401); path is already load-bearing in
+    PRD files_affected.
+- q: 'OQ-4: Does the composite middleware need a per-request last_used_at write on
+    every token hit, or throttled/async?'
+  owner: nick
+  status: open
+  recommendation: "Throttled/best-effort, fail-open like audit \u2014 resolve in P2\
+    \ (ACT-202/ACT-203)."
 decisions:
-  - decision: "Public human auth = Clerk (wire/activate the shipped adapter; do NOT build a local human-user store)."
-    rationale: "Clerk adapter already shipped under P5; building a parallel human-user store duplicates identity surface."
-    status: accepted
-  - decision: "Non-human principals = BOTH standalone service accounts (principal_type=service) AND user-scoped PATs (principal_type=user_pat)."
-    rationale: "Machine callers (agents/CI/integrations) and delegated humans have distinct trust/revocation needs neither principal type alone covers."
-    status: accepted
-  - decision: "OIDC = deferred (seam/stub only; explicitly out of scope)."
-    rationale: "oidc.py remains a registered, unimplemented seam; no live IdP integration work in this feature."
-    status: accepted
-  - decision: "Token store extends the existing SQLite rbac.db (no Postgres, no new datastore)."
-    rationale: "Avoids a second source of truth for identity data; Postgres migration is an explicit future-scale item."
-    status: accepted
-  - decision: "multi_user's fail-closed gate checks auth.provider != 'none' (not a specific provider)."
-    rationale: "Decouples the gate from Clerk procurement status; local_static already satisfies server-verifiable non-none identity for closed-beta deployments."
-    status: accepted
+- decision: Public human auth = Clerk (wire/activate the shipped adapter; do NOT build
+    a local human-user store).
+  rationale: Clerk adapter already shipped under P5; building a parallel human-user
+    store duplicates identity surface.
+  status: accepted
+- decision: Non-human principals = BOTH standalone service accounts (principal_type=service)
+    AND user-scoped PATs (principal_type=user_pat).
+  rationale: Machine callers (agents/CI/integrations) and delegated humans have distinct
+    trust/revocation needs neither principal type alone covers.
+  status: accepted
+- decision: OIDC = deferred (seam/stub only; explicitly out of scope).
+  rationale: oidc.py remains a registered, unimplemented seam; no live IdP integration
+    work in this feature.
+  status: accepted
+- decision: Token store extends the existing SQLite rbac.db (no Postgres, no new datastore).
+  rationale: Avoids a second source of truth for identity data; Postgres migration
+    is an explicit future-scale item.
+  status: accepted
+- decision: multi_user's fail-closed gate checks auth.provider != 'none' (not a specific
+    provider).
+  rationale: Decouples the gate from Clerk procurement status; local_static already
+    satisfies server-verifiable non-none identity for closed-beta deployments.
+  status: accepted
 decision_gates:
-  - gate: "P4 DI-1 audit scope-boundary human sign-off (Mode D) before status: accepted"
-    status: pending
-  - gate: "karen milestone review after P2 (security-sensitive composite auth)"
-    status: pending
-  - gate: "karen milestone review after P4 (DI-1 gate)"
-    status: pending
-  - gate: "karen end-of-feature review (P6)"
-    status: pending
+- gate: 'P4 DI-1 audit scope-boundary human sign-off (Mode D) before status: accepted'
+  status: pending
+- gate: karen milestone review after P2 (security-sensitive composite auth)
+  status: pending
+- gate: karen milestone review after P4 (DI-1 gate)
+  status: pending
+- gate: karen end-of-feature review (P6)
+  status: pending
 success_metrics:
-  - "Operator selects deployment mode via one config key / --mode flag instead of tuning 5 independent knobs."
-  - "100% of enumerated workspace-write surfaces have a DI-1 audit verdict (accepted or remediated) before multi_user is startable."
-  - "Service accounts and PATs are issuable, listable, and revocable via admin API and admin UI with zero plaintext secrets persisted."
-  - "100% of agent_jobs launched under deployment_mode=multi_user resolve to a service-account execution identity in the audit log."
+- Operator selects deployment mode via one config key / --mode flag instead of tuning
+  5 independent knobs.
+- 100% of enumerated workspace-write surfaces have a DI-1 audit verdict (accepted
+  or remediated) before multi_user is startable.
+- Service accounts and PATs are issuable, listable, and revocable via admin API and
+  admin UI with zero plaintext secrets persisted.
+- 100% of agent_jobs launched under deployment_mode=multi_user resolve to a service-account
+  execution identity in the audit log.
 execution_mode: unassigned
-agent_title: "Activate public multi-user mode: deployment presets, non-human principals, DI-1 gate"
-agent_summary: >
-  Compose the shipped P5 auth/RBAC/isolation knobs into a validated single_user|multi_user preset,
-  add a dynamic service-account/PAT token store + admin API/UI, and close the DI-1 full-surface
-  workspace-scoping audit as a hard gate before multi_user can start.
+agent_title: 'Activate public multi-user mode: deployment presets, non-human principals,
+  DI-1 gate'
+agent_summary: 'Compose the shipped P5 auth/RBAC/isolation knobs into a validated
+  single_user|multi_user preset, add a dynamic service-account/PAT token store + admin
+  API/UI, and close the DI-1 full-surface workspace-scoping audit as a hard gate before
+  multi_user can start.
+
+  '
 wave_plan:
   serialization_barriers:
-    - docs/projects/research-foundry/SERVICE_CONTRACT.md
-    - CHANGELOG.md
+  - docs/projects/research-foundry/SERVICE_CONTRACT.md
+  - CHANGELOG.md
   phases:
-    - id: P1
-      depends_on: []
-      isolation: shared
-      parallelizable: true
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
-      files_affected:
-        - src/research_foundry/config.py
-        - src/research_foundry/cli_commands.py
-    - id: P2
-      depends_on: [P1]
-      isolation: worktree
-      parallelizable: true
-      owner_skills: []
-      model: sonnet
-      effort: extended
-      files_affected:
-        - src/research_foundry/services/rbac_store.py
-        - src/research_foundry/services/token_service.py
-        - src/research_foundry/api/middleware/auth.py
-        - src/research_foundry/services/agent_job_service.py
-    - id: P3
-      depends_on: [P2]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
-      files_affected:
-        - src/research_foundry/api/routers/admin.py
-    - id: P4
-      depends_on: [P1]
-      isolation: worktree
-      parallelizable: true
-      owner_skills: []
-      model: sonnet
-      effort: extended
-      files_affected:
-        - docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md
-        - docs/projects/research-foundry/SERVICE_CONTRACT.md
-        - src/research_foundry/config.py
-    - id: P5
-      depends_on: [P3]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
-      files_affected:
-        - frontend/runs-viewer/src/components/AdminSettings/ServiceAccountsPanel.tsx
-        - frontend/runs-viewer/src/components/AdminSettings/PersonalAccessTokensPanel.tsx
-        - frontend/runs-viewer/src/auth/AuthContext.tsx
-    - id: P6
-      depends_on: [P2, P3, P4, P5]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
-      files_affected:
-        - CHANGELOG.md
-        - docs/projects/research-foundry/SERVICE_CONTRACT.md
+  - id: P1
+    depends_on: []
+    isolation: shared
+    parallelizable: true
+    owner_skills: []
+    model: sonnet
+    effort: adaptive
+    files_affected:
+    - src/research_foundry/config.py
+    - src/research_foundry/cli_commands.py
+  - id: P2
+    depends_on:
+    - P1
+    isolation: worktree
+    parallelizable: true
+    owner_skills: []
+    model: sonnet
+    effort: extended
+    files_affected:
+    - src/research_foundry/services/rbac_store.py
+    - src/research_foundry/services/token_service.py
+    - src/research_foundry/api/middleware/auth.py
+    - src/research_foundry/services/agent_job_service.py
+  - id: P3
+    depends_on:
+    - P2
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    model: sonnet
+    effort: adaptive
+    files_affected:
+    - src/research_foundry/api/routers/admin.py
+  - id: P4
+    depends_on:
+    - P1
+    isolation: worktree
+    parallelizable: true
+    owner_skills: []
+    model: sonnet
+    effort: extended
+    files_affected:
+    - docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md
+    - docs/projects/research-foundry/SERVICE_CONTRACT.md
+    - src/research_foundry/config.py
+  - id: P5
+    depends_on:
+    - P3
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    model: sonnet
+    effort: adaptive
+    files_affected:
+    - frontend/runs-viewer/src/components/AdminSettings/ServiceAccountsPanel.tsx
+    - frontend/runs-viewer/src/components/AdminSettings/PersonalAccessTokensPanel.tsx
+    - frontend/runs-viewer/src/auth/AuthContext.tsx
+  - id: P6
+    depends_on:
+    - P2
+    - P3
+    - P4
+    - P5
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    model: sonnet
+    effort: adaptive
+    files_affected:
+    - CHANGELOG.md
+    - docs/projects/research-foundry/SERVICE_CONTRACT.md
   waves:
-    - [P1]
-    - [P2, P4]
-    - [P3]
-    - [P5]
-    - [P6]
+  - - P1
+  - - P2
+    - P4
+  - - P3
+  - - P5
+  - - P6
 ---
 
 # Implementation Plan: Public Multi-User Release Activation
@@ -323,12 +374,13 @@ Detailed phase breakdowns (task tables, structured ACs, reviewer gates) live in 
 | DF-001 | dependency-blocked | OIDC adapter (FU-2/FU-3) — `oidc.py` remains a registered, unimplemented seam; no live IdP integration in this feature per PRD §7 Out of Scope | An IdP procurement decision is made and a concrete tenant is available to validate against | `docs/project_plans/design-specs/oidc-adapter-live-implementation.md` |
 | DF-002 | research-needed | Postgres migration of `rbac.db` (future scale item; PRD §7 Out of Scope, decisions-block token-store decision) | Token-store row volume or concurrent-write contention on SQLite becomes a measured problem | `docs/project_plans/design-specs/rbac-db-postgres-migration.md` |
 | DF-003 | scope-cut | Fine-grained per-service-account tool/data-scope allowlists (PRD §7 Out of Scope, PRD OQ Q2 deferred) — service accounts get exactly one role from the existing 5-role model | A future feature needs narrower machine-scoping than "researcher" or "viewer" affords | `docs/project_plans/design-specs/service-account-fine-grained-scoping.md` |
+| DF-004 | in-flight finding (load-bearing) | The DI-1 full-surface audit's headline residual risk (rows 10-12): runs/claims/source-cards/evidence bundles have no `workspace_id` concept, so under `multi_user` any authenticated caller can read/writeback-dispatch any run cross-workspace; plus row 9 (`POST /agent-jobs` trusts client-supplied `workspace_id`, spoofing FR-12 audit attribution). Explicitly accepted-as-deferred by the P4 Mode D human sign-off (trusted-cohort scope only) — see the audit's `signoff.residual_risk_acknowledged`. | Before any deployment moves from trusted-cohort `multi_user` to an adversarial/untrusted multi-tenant posture | `docs/project_plans/design-specs/runs-evidence-workspace-isolation.md` |
 
-Both design specs are authored in P6 (ACT-606); `deferred_items_spec_refs` is populated with their paths as they land — see `.claude/skills/planning/references/deferred-items-and-findings.md` for the authoring checklist. DF-003 shares the same target-spec authoring task.
+All four design specs are authored in P6 (ACT-606); `deferred_items_spec_refs` is populated with their paths — see `.claude/skills/planning/references/deferred-items-and-findings.md` for the authoring checklist. DF-003 shares the same target-spec authoring task. DF-004 was added during P6 execution per the lazy-creation/load-bearing-finding rule below (not identified at original planning time) — it is the tracked follow-up that would lift this feature's `multi_user` gate from trusted-cohort to genuinely adversarial multi-tenant isolation.
 
 ### In-Flight Findings
 
-**Lazy-creation rule applies**: `.claude/findings/public-multiuser-release-activation-findings.md` is NOT pre-created. Create it only on the first real finding during execution (e.g., a DI-1 audit surface that contradicts this plan's phase boundaries, or a schema surprise in `rbac_store.py`). On creation, set `findings_doc_ref` in this plan's frontmatter and append the path to `related_documents`. If any load-bearing finding surfaces, add a row to ACT-606 and append the resulting spec path to `deferred_items_spec_refs`.
+**Lazy-creation rule applied**: `.claude/findings/public-multiuser-release-activation-findings.md` was created in P6 (ACT-606) on the first real findings (P2's `senior-code-reviewer`/`karen` non-blocking follow-ups M1/M2 and the karen Low perf note, all carried forward per the phase-2 completion note; plus the DI-1 audit's load-bearing residual-risk cross-reference). `findings_doc_ref` and `related_documents` were updated accordingly; the one load-bearing finding (DI-1 rows 9-12) was promoted to DF-004 above with its spec path appended to `deferred_items_spec_refs`. `status: draft` pending P6's final-phase-sealing step (ACT-607) advancing it to `accepted`.
 
 ### Quality Gate
 
@@ -425,7 +477,7 @@ Carried directly from PRD §4 Success Metrics (measurement methods there); this 
 
 - Regenerate `ai/symbols-api.json` post-implementation (new router/service symbols for `token_service.py`, admin routes).
 - Monitor: `audit_event` row volume post-launch (issuance/revocation/rotation traffic under real `multi_user` usage).
-- Follow-up: DF-001 (OIDC), DF-002 (Postgres migration), DF-003 (fine-grained SA scoping) tracked via their design specs; revisit when their promotion triggers fire.
+- Follow-up: DF-001 (OIDC), DF-002 (Postgres migration), DF-003 (fine-grained SA scoping), DF-004 (runs/claims/evidence workspace isolation — the highest-priority follow-up; see its design spec) tracked via their design specs; revisit when their promotion triggers fire.
 
 ---
 

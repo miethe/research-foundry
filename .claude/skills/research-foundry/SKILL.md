@@ -74,7 +74,7 @@ Match the operator's intent to the loop step, then the `rf` command.
 | Propose / promote SkillBOM | 19 | `rf skillbom propose <run>` / `rf skillbom promote <cand> --reviewer …` | — |
 | Export run data (viewer contract) | — | `rf run export --run-id <run> --all --stdout --sensitivity-threshold …` | — |
 | List runs | — | `rf run list` | — |
-| Serve loopback API (runs viewer) | — | `rf serve --port 7432 --bind-host 127.0.0.1 --auth-mode none\|token --sensitivity-threshold N` | — |
+| Serve loopback API (runs viewer) | — | `rf serve --port 7432 --bind-host 127.0.0.1 --auth-mode none\|token --sensitivity-threshold N --mode single_user\|multi_user` | — |
 | Reconcile backlog ↔ runs | — | `rf backlog reconcile [--dry-run\|--write]` | — |
 | Status / health / cost / redact / index | — | `rf status` · `rf doctor` · `rf cost <run>` · `rf redact <run> --target public` · `rf index rebuild` · `rf ccdash summarize --period daily` | — |
 | Import / search / rebuild the catalog | — | `rf catalog import <path>` · `rf catalog search <query>` · `rf catalog show <id>` · `rf catalog stats` · `rf catalog rebuild` | — |
@@ -90,6 +90,7 @@ Match the operator's intent to the loop step, then the `rf` command.
 - **`rf extract`** is **claim extraction**: it processes a run's source cards into extraction/claim cards (spec §10.7). It is NOT URL fetching.
 - **`rf writeback --targets meatywiki`** auto-emits an additional `decision_record` writeback (rendered from inference/recommendation claims) when inference claims exist in the claim ledger. The decision_record is NOT a separate `--targets` value — it is emitted automatically alongside the `meatywiki` source-note writeback.
 - **`rf serve`** requires the `[serve]` extra (fastapi, uvicorn). Non-loopback bind (e.g. `--bind-host 0.0.0.0`) FAILS CLOSED unless `--auth-mode token` AND env `RF_SERVE_TOKEN` is non-empty. Includes an IP allowlist middleware. All routes serve through export_service (read-only).
+- **`rf serve --mode single_user|multi_user`** (public-multiuser-release-activation, currency note 2026-07-22) overrides `foundry.yaml`'s `deployment_mode` for that invocation. `single_user` (default) is a no-op — behaviorally identical to no `--mode` flag at all. `multi_user` composes preset defaults over RBAC/workspace-isolation/rate-limit and additionally fails closed at startup unless a real auth provider is configured AND the DI-1 full-surface audit gate is satisfied (`auth.di1_audit_acknowledged: true` + the audit artifact's `status: accepted`) — see `docs/dev/architecture/auth-rbac-operator-guide.md` § Deployment Modes and `SERVICE_CONTRACT.md` §21/§22 for the full contract, including service-account/PAT admin endpoints under `/api/admin`.
 - **`rf run export`** produces export schema v1.2 with fields: `cost_usd`, `model_profiles`, `source_count_by_type`, `writebacks` summary, `linked_projects`, `category`, `tags`.
 - **`rf backlog reconcile`** defaults to `--dry-run`; pass `--write` to apply. Reconciles `run.yaml` `backlog_idea_ref` against the idea backlog, advancing status and filling links.
 - **`rf capture --backlog-idea-ref RIB-NNN`** links the captured idea to an entry in `backlog/research_idea_backlog.yaml`. The ref is validated before the idea is written. Run metadata `linked_projects`, `category`, and `tags` are populated on every run.

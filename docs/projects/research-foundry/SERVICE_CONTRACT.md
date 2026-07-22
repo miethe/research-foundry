@@ -4,8 +4,8 @@ type: build_contract
 title: "Research Foundry — Service API & Artifact Contract"
 status: authoritative
 created_at: "2026-06-13"
-updated_at: "2026-07-21"
-prior_version: "2026-06-13 — covered only the original 12 MVP service modules (§1-12 below)"
+updated_at: "2026-07-22"
+prior_version: "2026-07-21 — §21 (DI-1 gate) added but its content was mis-spliced into §20 (rights entity model), leaving §20 without a closing section break and §21 undocumented for the P3/P5 admin token-API surface; fixed in this revision alongside the ACT-406 status update"
 ---
 
 # Service API & Artifact Contract
@@ -541,7 +541,21 @@ def create_app(config: FoundryConfig) -> FastAPI: ...
 rate-limit middleware stack (below), then registers routers with
 `app.include_router(..., prefix="/api", tags=[...])`: `runs`, `catalog`,
 `reports` (Report Builder), `agent_jobs` (only when `agents.enabled`), `audit`,
-`auth_identity`, `admin`. It resolves and stores two fail-closed booleans on
+`auth_identity`, `admin`.
+
+**`deployment_mode` (`foundry.yaml`) / `rf serve --mode`**: `Config.deployment_mode()`
+(`single_user` default | `multi_user`) composes preset *defaults* over the
+RBAC/workspace-isolation/rate-limit knobs below — `multi_user` defaults each
+to enabled/enforced unless the operator has explicitly set that knob, `single_user`
+touches nothing (FR-2 byte-identical regression guarantee). `rf serve --mode`
+overrides the config value for that invocation; `Config.deployment_mode_validate()`
+runs as the first statement in `create_app()` and, for `multi_user` only, fails
+closed unless a real (non-`none`) auth provider, RBAC enforcement, workspace
+isolation, and the DI-1 audit gate (§21) are all satisfied. See §21 for the
+DI-1 condition and §22 for the admin API that manages the non-human principals
+(service accounts, PATs) `multi_user` deployments rely on for machine callers.
+
+It resolves and stores two fail-closed booleans on
 `app.state` at boot: `rbac_enforced` (`config.resolve_rbac_enforced(...)`) and
 `workspace_isolation_enforced` (`config.resolve_workspace_isolation_enforced(...)`)
 — both apply the same rule: `*_enforcement=disabled` is only honored on a
@@ -562,11 +576,14 @@ loopback bind; a non-loopback bind without an armed auth provider fails
 - `api/auth/scope.py` — workspace-scoping helper layer; calls the same
   `resolve_workspace_isolation_enforced()` config method used at boot to
   decide whether a request's `identity.workspace_id` gets applied as a query
-  predicate. **This is the surface DI-1 (§7 of the current-state report) must
-  re-audit before any shared-store multi-tenant deploy** — two post-hoc leaks
-  (`create_draft_from_run`/`create_draft_from_collection`, `catalog_service
-  .get_item`) were already found and fixed here after a prior "100% coverage"
-  sign-off (`eba75ab`).
+  predicate. Two post-hoc leaks (`create_draft_from_run`/
+  `create_draft_from_collection`, `catalog_service.get_item`) were found and
+  fixed here after a prior "100% coverage" sign-off (`eba75ab`) — the exact
+  failure mode the **DI-1 full-surface audit** (§21) now exists to close
+  project-wide, rather than feature-by-feature. A third leak of the same
+  class (`audit_service.list_events`/`get_event` — cross-tenant reads via
+  `/api/audit*`) was found and fixed by that audit. See §21 for the
+  enforcement gate and the audit artifact's current findings.
 
 **Coordination boundary**: `POST /api/runs` scaffolds+plans a run (mirrors
 `rf plan`) but **never drives the discovery swarm** — status is always
@@ -581,7 +598,17 @@ external delegates (ICA, opencode) are not given the token.
 **Maturity: shipped, flag-gated off by default** (`foundry.yaml:
 agents.enabled=false`). Real subprocess-spawning write path; blocked from any
 multi-user-reachable deployment until RBAC (P5.2) and workspace isolation
-(P5.3) are both fully sealed (DI-1 open).
+(P5.3) are both fully sealed and the `multi_user` startup gate's DI-1
+condition is accepted (§21). The DI-1 full-surface audit (§21) found the
+5 read/cancel/accept routes CONFINED (router-layer `_load_job_or_404
+(identity=identity)` pre-check), but flagged `POST /agent-jobs` (`launch_job`)
+as **needs-remediation**: `identity` is resolved but unused — `workspace_id`
+is trusted verbatim from the client-supplied request body rather than
+stamped from `identity.workspace_id` (unlike `builder_service.create_draft`'s
+pattern), and the audit-trail `actor_workspace_id` inherits the same
+unverified value. Not yet fixed — logged as an open finding pending a
+dedicated task (multi-call-site: `create_job`, `spawn_job`, and the audit
+call together).
 
 ```python
 # src/research_foundry/api/routers/agent_jobs.py:150
@@ -749,10 +776,21 @@ def list_events(
     mutation_type: Optional[str] = None, actor_user_id: Optional[str] = None,
     workspace_id: Optional[str] = None, since: Optional[str] = None,
     until: Optional[str] = None, limit: int = 50, cursor: Optional[str] = None,
+    identity: Optional[AuthIdentity] = None,
 ) -> dict[str, Any]: ...
-# Cursor-paginated list of audit events.
+# Cursor-paginated list of audit events. `identity` (DI-1 full-surface audit,
+# §21) overrides any client-supplied `workspace_id` with `identity
+# .workspace_id` once isolation enforcement is active -- RBAC-006's
+# owner/admin gate on these routes is workspace-scoped, so without this a
+# caller could read another workspace's events via `?workspace=<other>` or
+# by omitting the filter (defaulting to ALL workspaces). identity=None or
+# isolation-inactive is byte-identical to pre-fix behavior.
 
-def get_event(paths: FoundryPaths, audit_event_id: str) -> Optional[dict[str, Any]]: ...
+def get_event(
+    paths: FoundryPaths, audit_event_id: str, *, identity: Optional[AuthIdentity] = None,
+) -> Optional[dict[str, Any]]: ...
+# `identity` (DI-1, §21): a workspace mismatch returns None (indistinguishable
+# from missing), same fail-closed contract as catalog_service.get_item.
 def health_check(paths: FoundryPaths) -> AuditHealth: ...   # probe used by `rf audit health`
 def is_healthy_for_exposure(paths: FoundryPaths) -> bool: ...
 ```
@@ -760,7 +798,10 @@ def is_healthy_for_exposure(paths: FoundryPaths) -> bool: ...
 CLI (`cli_commands.py:2265+`): `rf audit list|show|health`. A P1 security fix
 (`b469fbf`) gated audit reads by role after the initial CLI/API landed —
 consistent with the pattern seen across this whole platform-expansion wave
-(land the surface, then a tight-window follow-up security fix).
+(land the surface, then a tight-window follow-up security fix). The DI-1
+full-surface audit (§21) found and fixed a second-generation instance of the
+same pattern: role-gating alone did not scope by workspace (see `identity`
+params above).
 
 **Coordination boundary**: `record_event()` is called by the other governed
 mutation paths above (Report Builder, catalog import, workspace migration,
@@ -825,6 +866,7 @@ fail-closed, proven unreachable by a dedicated negative test.
 at verify time: a `judgment_basis: unassessed` evidence item blocks a
 `commercial_release` disposition check but never blocks an
 `internal_capture` write (bidirectional per the release-gate asymmetry).
+
 `judgment_basis`/`evidence_item_type` live on `source_assertion`'s sibling
 `extensions.evidence_taxonomy` block — an independent axis, never nested
 under `extensions.rights`.
@@ -848,3 +890,146 @@ directory convention shipped yet — authoring them remains human/counsel-only
 `rights_record.review.next_review_at` are explicitly out of scope for this
 feature (Known Gap OQ-RF-5; design venue:
 `docs/project_plans/design-specs/rights-surveillance-loop.md`).
+
+---
+
+## 21. DI-1 Full-Surface Audit + `multi_user` Startup Gate (public-multiuser-release-activation P4)
+
+**Maturity: gate wired and fail-closed (ACT-402); audit artifact
+`status: accepted` (human Mode D sign-off obtained 2026-07-22, ACT-406) —
+scoped to a `trusted-cohort` `multi_user` deployment only (see caveat
+below).** Closes the WKSP-304 AAR failure mode (a prior "100%
+workspace-scoping coverage" self-certification on this exact surface was
+later found incomplete twice) by making project-wide DI-1 acceptance a
+**machine-checked precondition** for `deployment_mode=multi_user` to start
+at all, rather than a point-in-time claim in a doc nobody re-reads.
+
+**The audit artifact**:
+`docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md` —
+enumerates every HTTP router + workspace-scoped service module (33
+table rows covering 64 grep-reconciled endpoints as of the DELTA-AUDIT
+revision, up from 27 surfaces / 54 endpoints at original acceptance — the
+admin.py service-account/PAT/deployment-mode-status surface added by P3/P5
+was re-audited and folded in), verdicts each CONFINED / REMEDIATED /
+NEEDS-REMEDIATION / COULD-NOT-VERIFY with evidence, and states its own scope
+boundary (what was excluded and why) explicitly rather than silently. This
+is the canonical artifact `Config.deployment_mode_validate()`'s condition
+(d) reads — confirms OQ-3 from the phase plan.
+
+**Accepted scope is trusted-cohort, not adversarial multi-tenant**: setting
+`status: accepted` authorizes callers who are not adversarial toward each
+other, sharing the install by convenience/organization. It does **not**
+certify tenant isolation for runs, claims, source cards, or evidence
+bundles — the run/evidence-bundle data model has no `workspace_id` concept
+at all, so every run (including its full claim ledger and source cards) is
+readable, and writeback-dispatchable, by any authenticated caller in any
+workspace. This is the audit's headline residual risk (its rows 10-12,
+plus the related row 9 finding that `POST /agent-jobs` trusts a
+client-supplied `workspace_id` for audit-trail attribution) — explicitly
+acknowledged and deferred by the human sign-off, not silently accepted; see
+`docs/project_plans/design-specs/runs-evidence-workspace-isolation.md` for
+the tracked follow-up that would lift this to true multi-tenant isolation.
+
+**The gate** — `Config.deployment_mode_validate()` (`src/research_foundry
+/config.py`), condition (d), added to the existing (a)-(c) FR-4 conditions
+(§14): a **two-part** check, per FR-13 — BOTH halves independently required:
+
+```python
+def di1_audit_acknowledged(self) -> bool: ...
+# auth.di1_audit_acknowledged in foundry.yaml, default False. The
+# OPERATOR-ACK half -- a human must explicitly flip this.
+
+def _di1_audit_accepted(self) -> tuple[bool, str]: ...
+# Reads the audit artifact's YAML frontmatter `status` field. True only
+# when status == "accepted" literally. A MISSING artifact file is treated
+# IDENTICALLY to status != "accepted" -- never "assume passed". The
+# ARTIFACT half -- only a human sign-off (ACT-406) may set this to
+# "accepted"; deployment_mode_validate() only ever READS this field.
+```
+
+Resolved relative to `paths.distribution_root()` (the checked-out source
+tree), **not** `FoundryPaths.root` (the runtime workspace data root — a
+different directory in split deployments; see the data-plane-split project
+note) — audits are governance docs that ship with the codebase, never
+per-workspace runtime state. Overridable via `auth.di1_audit_report_path`.
+
+`deployment_mode_validate()` raises `ValueError` naming **every** unmet
+condition when `deployment_mode=multi_user`, including naming which half
+of (d) failed (ack-flag unset vs. artifact-not-accepted vs. artifact-missing
+are three distinct messages) — a stale doc with the ack flag flipped, or an
+accepted doc with the ack flag never set, each fail closed independently;
+neither half alone satisfies (d). `single_user` (the default) never
+evaluates condition (d) at all (FR-2 regression guarantee, extended).
+
+**Test coverage**: `tests/unit/test_deployment_mode.py::TestAC3FullFourConditionSuite`
+— all four conditions independently isolated, the all-four-satisfied happy
+path, the missing-artifact-file edge case, and a read-only invariant (the
+gate never mutates the artifact it reads).
+
+**Coordination boundary**: this gate is a precondition check only — it does
+not itself remediate any of the audit's open findings (the audit artifact
+lists 4 `needs-remediation` and 2 `could-not-verify` rows as of the
+DELTA-AUDIT revision, including the rows 10-12 data-model gap above).
+Setting the artifact's `status: accepted` is a distinct human decision from
+whether the gate is correctly wired, and does not retroactively certify
+those open findings as resolved — it certifies that a human reviewed them
+and judged the residual risk acceptable for that specific `multi_user`
+rollout.
+
+---
+
+## 22. `api/routers/admin.py` — Service-Account & PAT Admin API (public-multiuser-release-activation P3/P5, ACT-301..303)
+
+**Maturity: shipped-enforced.** Adds 10 endpoints to the pre-existing
+`admin.py` router (workspace-member/rate-limit/auth-provider/RBAC-status
+routes, §14) for issuing and managing the two non-human principal types
+introduced alongside the `deployment_mode` gate (§21), plus a read-only
+deployment-mode introspection endpoint. All service-account/token routes
+derive `workspace_id` exclusively from the caller's own resolved identity
+(`_resolve_workspace_id(request)`) — never from client-supplied input — and
+scope every lookup through `_get_service_account_or_404`, so a cross-
+workspace `account_id`/`token_id` 404s identically to an unknown one (never
+a distinguishable existence leak). Verified by the DI-1 audit (§21, rows
+30-33) and by `tests/unit/test_admin_tokens_api.py::TestCrossWorkspaceIsolation`.
+
+```python
+# Service accounts (owner/admin only)
+POST   /api/admin/service-accounts                          # create_service_account
+GET    /api/admin/service-accounts                           # list_service_accounts_route (paginated)
+DELETE /api/admin/service-accounts/{account_id}               # disable_service_account_route (idempotent)
+
+# Service-account tokens (owner/admin only)
+POST   /api/admin/service-accounts/{account_id}/tokens        # issue_service_account_token_route
+                                                                #   (rotate-on-issue: never >1 live token)
+GET    /api/admin/service-accounts/{account_id}/tokens        # list_service_account_tokens_route (no secrets)
+DELETE /api/admin/service-accounts/{account_id}/tokens/{token_id}  # revoke_service_account_token_route
+
+# Personal access tokens / PATs — self-service exceptions (NOT gated by
+# Depends(require_role(...)); each handler enforces self-vs-admin manually)
+POST   /api/admin/pats             # issue_pat — self by default; on-behalf requires owner/admin
+GET    /api/admin/pats             # list_pats — self by default; ?user_id= requires owner/admin
+DELETE /api/admin/pats/{token_id}  # revoke_pat — self or owner/admin; cross-workspace 404s, same-
+                                    #   workspace-different-user 403s (never a 404-leak, ACT-302 AC)
+
+# Deployment-mode introspection (owner/admin only, never raises)
+GET    /api/admin/deployment-mode-status   # get_deployment_mode_status -> config.deployment_mode_status()
+```
+
+**No plaintext secret persistence**: `_issued_token_response()` returns the
+plaintext token **once**, at issuance/rotation, and it is never logged,
+audited, or returned by any other route (`_token_metadata()` — used by
+every list/get path — projects a token row without `token_hash` or a
+plaintext field). Verified by
+`tests/unit/test_admin_tokens_api.py::test_no_secret_material_in_conditions`
+and the P2 static-scan test (§ Phase 2 completion note).
+
+**PAT role-ceiling (FR-9)**: `token_service.issue_user_pat()` re-checks the
+target user's *current* workspace role at issuance and `token_service`'s
+resolution path re-checks it again at every use — a role downgrade after
+issuance revokes the PAT's elevated privilege immediately, no restart
+required.
+
+**Coordination boundary**: every mutation records an `audit_event` row
+(`principal_mutation` / `access_token_issued` / `access_token_revoked`)
+via `audit_service.record_event()` (§19) — fail-open, same contract as
+every other governed mutation on this platform.

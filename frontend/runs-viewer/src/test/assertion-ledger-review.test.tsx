@@ -1041,6 +1041,7 @@ describe("E. Assertion-only lineage (canonical claims disabled by default)", () 
       isLoading: false,
       provider: "local_static",
       authMode: "local_static",
+      principalType: "human",
     };
     const scopeB: AuthContextValue = {
       ...scopeA,

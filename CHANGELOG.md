@@ -11,6 +11,33 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Public Multi-User Release Activation — Deployment Modes & Non-Human Principals**
+
+- **`deployment_mode` presets (`single_user` | `multi_user`)** — A single `deployment_mode`
+  config key in `foundry.yaml` (or `rf serve --mode single_user|multi_user`) now composes the
+  previously-independent RBAC/workspace-isolation/rate-limit knobs into one validated posture.
+  `single_user` (default) is byte-identical to pre-existing behavior; `multi_user` defaults
+  RBAC enforcement, workspace isolation, and rate limiting to enabled, with any explicit
+  per-knob override in `foundry.yaml` still taking precedence.
+- **Service accounts and personal access tokens (PATs)** — New non-human principal types
+  backed by a token store extending `rbac.db`. Service accounts get a single fixed role and a
+  rotate-on-issue access token; users can self-issue PATs (or have one issued on their behalf by
+  an owner/admin) capped at their current workspace role, re-checked at every use so a later
+  role downgrade revokes elevated PAT privilege immediately. Tokens are hashed at rest and shown
+  only once at issuance — no plaintext secret is ever persisted, logged, or re-displayed.
+- **Admin API for principal + token management** — `POST/GET/DELETE /api/admin/service-accounts`,
+  `POST/GET/DELETE /api/admin/service-accounts/{id}/tokens`, and `POST/GET/DELETE
+  /api/admin/pats` let owners/admins issue, list, rotate, and revoke both principal types;
+  `GET /api/admin/deployment-mode-status` exposes the resolved `deployment_mode` and the
+  pass/fail status of every startup-gate condition for read-only operator troubleshooting.
+- **Admin UI panels for service accounts and PATs** — New Service Accounts and Personal Access
+  Tokens panels in the admin settings UI cover the full issue → view → revoke lifecycle for
+  both principal types.
+- **Agent-job execution identity binding** — Under `deployment_mode=multi_user`, agent jobs
+  launched without an explicit human actor resolve to a configured default service account
+  (`agents.default_service_account_id`) instead of an anonymous/`None` identity; `single_user`
+  behavior is unchanged.
+
 #### **Rights & Evidence-Item Entity Model**
 
 - **`rf rights` CLI command group** — New commands for creating and inspecting rights
@@ -345,6 +372,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **Existence-gate parity** — All catalog endpoints (`/api/runs`, `/api/reports`, `/api/builder`, `/api/agent-jobs`) enforce role-based visibility: Analyst can see only runs in their workspace and assigned jobs; Contributor sees their own and team outputs; Admin/Owner see all workspace content. Existence gates prevent unauthorized 404→403 inference.
 
 ### Security
+
+- **DI-1 full-surface workspace-scoping audit gate** — `deployment_mode=multi_user` now
+  refuses to start unless both halves of a two-part gate are satisfied: an explicit operator
+  acknowledgement (`auth.di1_audit_acknowledged: true` in `foundry.yaml`) AND the project-wide
+  DI-1 workspace-scoping audit artifact's `status: accepted`, set only by human sign-off — a
+  missing or non-accepted artifact fails closed identically to an unset acknowledgement.
+  Acceptance of the current audit authorizes a **trusted-cohort** `multi_user` deployment only
+  (non-adversarial callers); it does not certify tenant isolation for runs, claims, source
+  cards, or evidence bundles, which remain a tracked follow-up (see the design-spec index for
+  this feature).
 
 - **RBAC route gating** — All catalog and reports mutations (`create`, `update`, `publish`, `writeback-approve`), research builder operations, and agent-job launches gated by role-based capability checks. Server validates user role per workspace before allowing operation; frontend enforces capability-gated affordances for UX consistency.
 

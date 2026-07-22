@@ -4,50 +4,104 @@ schema_version: 2
 doc_type: progress
 prd: public-multiuser-release-activation
 feature_slug: public-multiuser-release-activation
-title: "Phase 4: DI-1 Audit + Enforcement Flip"
+title: 'Phase 4: DI-1 Audit + Enforcement Flip'
 phase: 4
-status: pending
-created: 2026-07-22
-updated: 2026-07-22
+status: completed
+created: '2026-07-22'
+updated: '2026-07-22'
 prd_ref: docs/project_plans/implementation_plans/features/public-multiuser-release-activation-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/public-multiuser-release-activation-v1.md
 commit_refs: []
 pr_refs: []
-
-owners: ["python-backend-engineer", "codebase-explorer"]
+owners:
+- python-backend-engineer
+- codebase-explorer
 contributors: []
-
 tasks:
-  - id: "ACT-401"
-    description: "DI-1 full-surface audit — repo-wide backward-trace from every AuthIdentity/workspace_id construction site; produce di-1-full-surface-scoping-audit.md (status: draft) with complete surface inventory; remediate findings"
-    status: "pending"
-    assigned_to: ["codebase-explorer", "python-backend-engineer"]
-    dependencies: ["ACT-101"]
-  - id: "ACT-402"
-    description: "[SEAM] DI-1 gate wiring — auth.di1_audit_acknowledged flag + condition (d) added to deployment_mode_validate()"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["ACT-102"]
-  - id: "ACT-403"
-    description: "Sharing/sensitivity regression pass — re-verify public-sharing/publish-preview gates under deployment_mode=multi_user with a live human session"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["P2 sealed", "P3 sealed"]
-  - id: "ACT-404"
-    description: "Startup fail-closed gate test suite — AC-3 in full (all 4 FR-4 conditions + missing-artifact-file edge case)"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["ACT-402"]
-  - id: "ACT-406"
-    description: "Mode D: Human sign-off on audit scope-boundary statement — no agent transitions status to accepted"
-    status: "pending"
-    assigned_to: ["human"]
-    dependencies: ["ACT-401"]
-
+- id: ACT-401
+  description: "DI-1 full-surface audit \u2014 repo-wide backward-trace from every\
+    \ AuthIdentity/workspace_id construction site; produce di-1-full-surface-scoping-audit.md\
+    \ (status: draft) with complete surface inventory; remediate findings"
+  status: completed
+  assigned_to:
+  - codebase-explorer
+  - python-backend-engineer
+  dependencies:
+  - ACT-101
+  started: 2026-07-22T00:00Z
+  completed: 2026-07-22T00:00Z
+  evidence:
+  - doc: docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md
+  - test: tests/unit/test_audit_service.py::TestListEventsWorkspaceScoping
+  - test: tests/unit/test_audit_rbac.py::TestAuditCrossTenantScoping
+- id: ACT-402
+  description: "[SEAM] DI-1 gate wiring \u2014 auth.di1_audit_acknowledged flag +\
+    \ condition (d) added to deployment_mode_validate()"
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - ACT-102
+  started: 2026-07-22T00:00Z
+  completed: 2026-07-22T00:00Z
+  evidence:
+  - commit: uncommitted
+  - test: tests/unit/test_deployment_mode.py::TestAC3FullFourConditionSuite
+- id: ACT-403
+  description: "Sharing/sensitivity regression pass \u2014 re-verify public-sharing/publish-preview\
+    \ gates under deployment_mode=multi_user with a live human session"
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - P2 sealed
+  - P3 sealed
+  started: 2026-07-22T00:00Z
+  completed: 2026-07-22T00:00Z
+  evidence:
+  - test: tests/test_di1_gate_live_session_regression.py::TestCreateAppGateConditionDInIsolation
+  - test: tests/test_di1_gate_live_session_regression.py::TestLiveSessionCompositeAuthChain
+  - test: tests/test_di1_gate_live_session_regression.py::TestLiveSessionAgentJobServiceAccountBinding
+  - test: tests/test_di1_gate_live_session_regression.py::TestSingleUserNeverRequiresDi1Acceptance
+  verified_by:
+  - REV-P4-002
+- id: ACT-404
+  description: "Startup fail-closed gate test suite \u2014 AC-3 in full (all 4 FR-4\
+    \ conditions + missing-artifact-file edge case)"
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - ACT-402
+  started: 2026-07-22T00:00Z
+  completed: 2026-07-22T00:00Z
+  evidence:
+  - test: tests/unit/test_deployment_mode.py::TestAC3FullFourConditionSuite
+- id: ACT-406
+  description: "Mode D: Human sign-off on audit scope-boundary statement \u2014 no\
+    \ agent transitions status to accepted"
+  status: completed
+  assigned_to:
+  - human
+  dependencies:
+  - ACT-401
+  evidence:
+  - signoff: human-mode-d-accept-2026-07-22
+  - audit: status=accepted
 parallelization:
-  batch_2: ["ACT-401", "ACT-402"]
-  batch_3: ["ACT-404"]
-  batch_4: ["ACT-403", "ACT-406"]
+  batch_2:
+  - ACT-401
+  - ACT-402
+  batch_3:
+  - ACT-404
+  batch_4:
+  - ACT-403
+  - ACT-406
+total_tasks: 5
+completed_tasks: 5
+in_progress_tasks: 0
+blocked_tasks: 0
+progress: 100
 ---
 
 # Phase 4: DI-1 Audit + Enforcement Flip

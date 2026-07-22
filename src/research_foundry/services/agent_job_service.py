@@ -807,6 +807,24 @@ class AgentJobService:
         ``job.json`` is written to ``<agent_jobs>/<job_id>/job.json`` via
         :meth:`_safe_write_json` (secrets redacted).
 
+        **Agent-job identity binding (ACT-204, FR-12)**
+            When ``deployment_mode() == "multi_user"`` AND
+            ``agents.default_service_account_id`` is configured, the
+            *persisted* ``created_by`` on the returned job is the configured
+            service account, not *created_by* as passed in — the job's
+            execution identity is decoupled from the triggering caller.  The
+            triggering caller's original *created_by* value is preserved
+            only in a best-effort ``audit_event`` row (mutation_type
+            ``agent_job_launched``) alongside the executing identity; it is
+            never written to ``job.json`` itself.
+
+            Under ``deployment_mode() == "single_user"`` (including the
+            unset/default case) or when no default service account is
+            configured, this branch is never entered: *created_by* flows
+            through to the persisted job exactly as it does today, and no
+            new ``audit_event`` row is written by this method — byte-
+            identical to the pre-ACT-204 behavior (AC-5).
+
         Returns
         -------
         AgentJob
@@ -816,13 +834,27 @@ class AgentJobService:
 
         from research_foundry.ids import now_iso, stamp_compact  # noqa: PLC0415
 
+        # ACT-204 (FR-12): resolve the job's *execution* identity separately
+        # from the *triggering* identity.  `triggering_created_by` is always
+        # exactly what the caller passed in (recorded in the audit trail
+        # below); `executing_created_by` is what actually gets persisted on
+        # the job record and is only ever different under multi_user with a
+        # default service account configured.
+        triggering_created_by = created_by
+        executing_created_by = created_by
+        service_account_id: str | None = None
+        if self._config.deployment_mode() == "multi_user":
+            service_account_id = self._config.agents_default_service_account_id()
+            if service_account_id:
+                executing_created_by = service_account_id
+
         job_id = f"job_{stamp_compact()}_{uuid.uuid4().hex[:8]}"
         now = now_iso()
         job = AgentJob(
             agent_job_id=job_id,
             project_id=project_id,
             workspace_id=workspace_id,
-            created_by=created_by,
+            created_by=executing_created_by,
             provider=provider,
             model_profile=model_profile,
             request_kind=request_kind,
@@ -842,6 +874,40 @@ class AgentJobService:
         job_dir.mkdir(parents=True, exist_ok=True)
         self._safe_write_json(job.to_dict(), job_dir / "job.json", append=False)
         logger.info("Created agent job %s (provider=%s)", job_id, provider)
+
+        if service_account_id:
+            # FR-12: record BOTH the triggering and executing identity.
+            # Fail-open — mirrors audit_service.record_event's own
+            # never-raises contract; a lost audit row must never prevent
+            # (or roll back) an otherwise-successful job creation.
+            try:
+                from research_foundry.services.audit_service import (  # noqa: PLC0415
+                    AuditEvent,
+                    record_event,
+                )
+
+                record_event(
+                    self._paths,
+                    AuditEvent(
+                        mutation_type="agent_job_launched",
+                        action="agent_job_create",
+                        target_ref=job_id,
+                        actor_user_id=executing_created_by,
+                        actor_workspace_id=workspace_id,
+                        policy_snapshot={
+                            "triggering_identity": triggering_created_by,
+                            "executing_identity": executing_created_by,
+                            "deployment_mode": "multi_user",
+                        },
+                    ),
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "agent_job_service: audit_event write failed for job %s (non-fatal)",
+                    job_id,
+                    exc_info=True,
+                )
+
         return job
 
     def load_job(self, job_id: str, *, identity: AuthIdentity | None = None) -> AgentJob:

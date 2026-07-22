@@ -28,6 +28,8 @@ from research_foundry.api.auth.provider import AuthIdentity
 from research_foundry.api.routers.runs import get_paths
 from research_foundry.config import FoundryConfig
 from research_foundry.paths import FoundryPaths, distribution_root
+from research_foundry.services import audit_service
+from research_foundry.services.audit_service import AuditEvent
 from research_foundry.yamlio import dump_yaml, load_yaml
 
 
@@ -213,3 +215,81 @@ class TestGetAuditEventRBAC:
 
     def test_no_auth_allowed(self, tmp_path):
         _check_allowed(_make_client(tmp_path, None), "GET", self._path)
+
+
+# ---------------------------------------------------------------------------
+# DI-1 full-surface audit (Phase 4 ACT-401): cross-tenant scoping at the
+# router layer, end-to-end. RBAC-006's owner/admin gate above only checks
+# role membership (workspace-scoped, see AuthIdentity docstring) — it does
+# NOT itself prevent an owner of ws1 from reading ws2's audit trail. This
+# closes that gap: once isolation enforcement is active, an owner/admin can
+# only ever see their own workspace's events via these two routes.
+# ---------------------------------------------------------------------------
+
+_OWNER_WS1 = AuthIdentity("owner1", "ws1", ("owner",))
+_OWNER_WS2 = AuthIdentity("owner2", "ws2", ("owner",))
+
+
+def _force_isolation_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        FoundryConfig,
+        "resolve_workspace_isolation_enforced",
+        lambda self, provider, bind_host: True,
+    )
+
+
+class TestAuditCrossTenantScoping:
+    def test_list_events_hides_other_workspace_once_enforcing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = _make_client(tmp_path, _OWNER_WS1)
+        paths = client.app.dependency_overrides[get_paths]()
+        audit_service.record_event(
+            paths,
+            AuditEvent(
+                mutation_type="catalog_mutation",
+                action="import_run",
+                target_ref="run_ws1",
+                actor_workspace_id="ws1",
+            ),
+        )
+        audit_service.record_event(
+            paths,
+            AuditEvent(
+                mutation_type="catalog_mutation",
+                action="import_run",
+                target_ref="run_ws2",
+                actor_workspace_id="ws2",
+            ),
+        )
+
+        _force_isolation_active(monkeypatch)
+
+        # Even explicitly asking for ws2's events, an owner of ws1 gets ws1's.
+        resp = client.get("/api/audit", params={"workspace": "ws2"})
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert all(item["actor_workspace_id"] == "ws1" for item in items)
+        assert any(item["target_ref"] == "run_ws1" for item in items)
+        assert not any(item["target_ref"] == "run_ws2" for item in items)
+
+    def test_get_event_404s_for_other_workspace_once_enforcing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = _make_client(tmp_path, _OWNER_WS1)
+        paths = client.app.dependency_overrides[get_paths]()
+        event_id = audit_service.record_event(
+            paths,
+            AuditEvent(
+                mutation_type="catalog_mutation",
+                action="import_run",
+                target_ref="run_ws2",
+                actor_workspace_id="ws2",
+            ),
+        )
+        assert event_id is not None
+
+        _force_isolation_active(monkeypatch)
+
+        resp = client.get(f"/api/audit/{event_id}")
+        assert resp.status_code == 404

@@ -18,6 +18,20 @@
  *   AC-5c: Missing roles array on AuthIdentity → normalize to [] (least-privilege viewer);
  *          never an error, never elevated privilege.
  *
+ * Principal-type surfacing (Phase 5, ACT-502, AC-1):
+ *   `principalType` on AuthContextValue tells consuming components whether the
+ *   resolved caller is a human session (Clerk / local_static login), a service
+ *   account, or a self-issued personal access token (PAT). It is derived from
+ *   an optional `principal_type` field on AuthIdentity ("service" | "user_pat")
+ *   — which today the backend never emits (see `AuthIdentity` in
+ *   `research_foundry/api/auth/provider.py`: no such field exists yet), so
+ *   `derivePrincipalType()` always defaults to "human" in the current backend.
+ *   The field is read defensively so that once the backend threads
+ *   principal-type information through `/api/auth/identity` or the local_static
+ *   login response, this file requires no changes. AC-1 resilience: an absent
+ *   or unrecognized `principal_type` never errors — it degrades to "human"
+ *   (no principal-type badge rendered), exactly like the AC-5c roles default.
+ *
  * Static-export detection:
  *   VITE_RUNS_STATIC_EXPORT="true" → forces auth_mode=none regardless of configured
  *   provider. Static exports have no server to authenticate against; data fetches
@@ -60,7 +74,17 @@ export interface AuthIdentity {
   roles: string[];
   /** local_static session bearer token; absent in clerk/none modes. */
   token?: string;
+  /**
+   * Optional principal-type hint ("service" | "user_pat") on the resolved
+   * identity payload. Forward-compatible field — the backend does not emit
+   * this today (see module docstring); read defensively via
+   * `derivePrincipalType()`, never assumed present.
+   */
+  principal_type?: string;
 }
+
+/** Resolved caller kind surfaced to admin UI (ACT-502, AC-1). */
+export type PrincipalType = "human" | "service" | "user_pat";
 
 export interface AuthContextValue {
   identity: AuthIdentity | null;
@@ -69,6 +93,28 @@ export interface AuthContextValue {
   provider: string;
   /** Resolved auth mode: "clerk" | "local_static" | "none" */
   authMode: string;
+  /**
+   * Resolved principal type for the current identity. Defaults to "human"
+   * whenever `identity` is null or carries no recognized `principal_type`
+   * (AC-1 resilience: absent signal never errors, never renders a badge).
+   */
+  principalType: PrincipalType;
+}
+
+/**
+ * Derive the principal type from a resolved identity.
+ *
+ * AC-1 resilience contract: an absent or unrecognized `principal_type` on
+ * *identity* (including `identity === null`) always resolves to "human" —
+ * the least-surprising default that renders no principal-type badge, never
+ * an error state.
+ */
+export function derivePrincipalType(
+  identity: AuthIdentity | null,
+): PrincipalType {
+  if (identity?.principal_type === "service") return "service";
+  if (identity?.principal_type === "user_pat") return "user_pat";
+  return "human";
 }
 
 // ── Static-export guard ───────────────────────────────────────────────────────
@@ -201,6 +247,7 @@ const DEFAULT_CONTEXT: AuthContextValue = {
   isLoading: false,
   provider: "none",
   authMode: "none",
+  principalType: "human",
 };
 
 export const AuthContext = createContext<AuthContextValue>(DEFAULT_CONTEXT);
@@ -287,6 +334,8 @@ export function AuthProvider({
     isLoading,
     provider,
     authMode,
+    // ACT-502/AC-1: defaults to "human" until the backend emits principal_type.
+    principalType: derivePrincipalType(identity),
   };
 
   // ── Mode dispatch ─────────────────────────────────────────────────────────
@@ -360,10 +409,12 @@ export function AuthProvider({
  * useAuth — consume the resolved auth context.
  *
  * Returns AuthContextValue with:
- *   identity   — null in auth_mode=none or while loading; AuthIdentity when resolved
- *   isLoading  — true while credentials are being exchanged or Clerk session resolves
- *   provider   — "clerk" | "local_static" | "none"
- *   authMode   — "clerk" | "local_static" | "none"
+ *   identity      — null in auth_mode=none or while loading; AuthIdentity when resolved
+ *   isLoading     — true while credentials are being exchanged or Clerk session resolves
+ *   provider      — "clerk" | "local_static" | "none"
+ *   authMode      — "clerk" | "local_static" | "none"
+ *   principalType — "human" | "service" | "user_pat" (ACT-502/AC-1; defaults to
+ *                   "human" whenever identity carries no recognized principal_type)
  *
  * AC-5c: identity.roles is always [] (never undefined/null) when identity is present.
  * AC-5a: in auth_mode=none, identity is always null — no role/workspace affordances.

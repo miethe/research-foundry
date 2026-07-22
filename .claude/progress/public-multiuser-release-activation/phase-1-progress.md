@@ -4,33 +4,52 @@ schema_version: 2
 doc_type: progress
 prd: public-multiuser-release-activation
 feature_slug: public-multiuser-release-activation
-title: "Phase 1: Deployment-Mode Presets"
+title: 'Phase 1: Deployment-Mode Presets'
 phase: 1
-status: pending
-created: 2026-07-22
-updated: 2026-07-22
+status: completed
+created: '2026-07-22'
+updated: '2026-07-22'
 prd_ref: docs/project_plans/implementation_plans/features/public-multiuser-release-activation-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/public-multiuser-release-activation-v1.md
 commit_refs: []
 pr_refs: []
-
-owners: ["python-backend-engineer"]
+owners:
+- python-backend-engineer
 contributors: []
-
 tasks:
-  - id: "ACT-101"
-    description: "Deployment-mode resolver (Config.deployment_mode(); compose single_user/multi_user presets over the 5 existing per-knob resolvers)"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: []
-  - id: "ACT-102"
-    description: "`rf serve --mode` CLI flag + startup gate stub (Config.deployment_mode_validate(), conditions a-c only)"
-    status: "pending"
-    assigned_to: ["python-backend-engineer"]
-    dependencies: ["ACT-101"]
-
+- id: ACT-101
+  description: Deployment-mode resolver (Config.deployment_mode(); compose single_user/multi_user
+    presets over the 5 existing per-knob resolvers)
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies: []
+  started: 2026-07-22T00:00Z
+  completed: 2026-07-22T00:00Z
+  evidence:
+  - test: tests/unit/test_deployment_mode.py
+- id: ACT-102
+  description: '`rf serve --mode` CLI flag + startup gate stub (Config.deployment_mode_validate(),
+    conditions a-c only)'
+  status: completed
+  assigned_to:
+  - python-backend-engineer
+  dependencies:
+  - ACT-101
+  started: 2026-07-22T00:00Z
+  completed: 2026-07-22T00:00Z
+  evidence:
+  - test: tests/test_deployment_mode_cli_and_app.py
 parallelization:
-  batch_1: ["ACT-101", "ACT-102"]
+  batch_1:
+  - ACT-101
+  - ACT-102
+total_tasks: 2
+completed_tasks: 2
+in_progress_tasks: 0
+blocked_tasks: 0
+progress: 100
+completion_ref: .claude/progress/public-multiuser-release-activation/phase-1-completion.md
 ---
 
 # Phase 1: Deployment-Mode Presets

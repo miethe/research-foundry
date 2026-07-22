@@ -36,10 +36,26 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from research_foundry.api.auth.provider import AuthIdentity
+from research_foundry.api.auth.scope import resolve_workspace_isolation_active
 from research_foundry.paths import FoundryPaths
 from research_foundry.services.rbac_store import _connect, _ensure_schema
 
 log = logging.getLogger(__name__)
+
+
+def _isolation_active(paths: FoundryPaths) -> bool:
+    """Resolve whether WKSP-304 workspace isolation is actively enforced.
+
+    Thin delegate to the single shared implementation
+    (:func:`research_foundry.api.auth.scope.resolve_workspace_isolation_active`)
+    that ``catalog_service.py``/``builder_service.py``/``AgentJobService``
+    already use — see that module's docstring. Kept as a module-local
+    wrapper only for call-site symmetry with those modules (DI-1 full-surface
+    audit, Phase 4 ACT-401).
+    """
+
+    return resolve_workspace_isolation_active(paths)
 
 # ---------------------------------------------------------------------------
 # Health state dataclass (AUDIT-004)
@@ -68,10 +84,16 @@ MUTATION_TYPES: frozenset[str] = frozenset(
     {
         "catalog_mutation",
         "report_edit",
-        "agent_job_launched",  # Reserved -- N/A until P4 ships agent_jobs.py
+        "agent_job_launched",  # Wired ACT-204 (multi_user identity binding only)
         "artifact_accepted",
         "publish_preview",
         "writeback",
+        # Wired public-multiuser-release-activation Phase 3 (ACT-303) — admin
+        # API mutations over principals, access tokens, and role assignments.
+        "principal_mutation",   # service-account create/disable
+        "access_token_issued",  # PAT issuance, service-account token issue/rotate
+        "access_token_revoked",  # PAT revoke, service-account token revoke
+        "role_change",           # workspace member role update
     }
 )
 
@@ -265,6 +287,7 @@ def list_events(
     until: Optional[str] = None,
     limit: int = 50,
     cursor: Optional[str] = None,
+    identity: Optional[AuthIdentity] = None,
 ) -> dict[str, Any]:
     """Return a cursor-paginated list of audit events.
 
@@ -277,7 +300,28 @@ def list_events(
     Returns a dict with keys ``items``, ``next_cursor``, and ``total_hint``.
     Each item dict matches the ``audit_event`` table columns exactly.
     ``policy_snapshot`` is returned as a parsed ``dict`` (or ``None``).
+
+    ``identity`` is DI-1 full-surface audit scoping (Phase 4 ACT-401): the
+    ``RBAC-006`` ``owner``/``admin`` gate on this endpoint is
+    **workspace-scoped** (``AuthIdentity.roles`` is granted "within the
+    workspace" — see ``api/auth/provider.py``), so without this the
+    caller-supplied ``workspace_id`` filter let an owner/admin of workspace A
+    read workspace B's audit trail (actor IDs, policy snapshots) simply by
+    passing ``?workspace=B`` — or read *every* workspace's events at once by
+    omitting the filter entirely. When ``identity`` is not ``None`` and
+    isolation is actively enforced, the caller's own ``identity.workspace_id``
+    always wins over any client-supplied ``workspace_id`` argument — mirrors
+    the "identity overrides client input" idiom used by
+    ``builder_service.create_draft``/``admin.py``'s ``_resolve_workspace_id``.
+    ``identity=None`` (the default) or isolation inactive is byte-identical
+    to the pre-Phase-4 behavior (FR-2 regression guarantee) — every existing
+    caller that omits ``identity`` is unaffected.
     """
+    effective_workspace_id = workspace_id
+    if identity is not None and _isolation_active(paths):
+        effective_workspace_id = identity.workspace_id
+    workspace_id = effective_workspace_id
+
     conn = _connect(paths)
     try:
         _ensure_schema(conn)
@@ -341,10 +385,27 @@ def list_events(
         conn.close()
 
 
-def get_event(paths: FoundryPaths, audit_event_id: str) -> Optional[dict[str, Any]]:
+def get_event(
+    paths: FoundryPaths,
+    audit_event_id: str,
+    *,
+    identity: Optional[AuthIdentity] = None,
+) -> Optional[dict[str, Any]]:
     """Return a single audit event by ID, or ``None`` if not found.
 
     The caller (router) is responsible for mapping ``None`` to a 404 response.
+
+    ``identity`` is DI-1 full-surface audit scoping (Phase 4 ACT-401): this
+    lookup previously had **no** workspace check at all, so any owner/admin
+    (a workspace-scoped role — see :func:`list_events`) could read any other
+    workspace's audit event by ID. When ``identity`` is not ``None`` and
+    isolation is actively enforced, a row whose ``actor_workspace_id`` does
+    not match ``identity.workspace_id`` is treated exactly like a missing
+    event (``None``) — the same fail-closed, indistinguishable-404 contract
+    every other cross-workspace read in this codebase uses (e.g.
+    ``catalog_service.get_item``, ``builder_service.load_draft``).
+    ``identity=None`` (the default) or isolation inactive is byte-identical
+    to the pre-Phase-4 behavior.
     """
     conn = _connect(paths)
     try:
@@ -354,7 +415,24 @@ def get_event(paths: FoundryPaths, audit_event_id: str) -> Optional[dict[str, An
             "SELECT * FROM audit_event WHERE audit_event_id = ?",
             (audit_event_id,),
         ).fetchone()
-        return _row_to_dict(row) if row is not None else None
+        if row is None:
+            return None
+        result = _row_to_dict(row)
+        if identity is not None and _isolation_active(paths):
+            if result.get("actor_workspace_id") != identity.workspace_id:
+                log.error(
+                    json.dumps(
+                        {
+                            "event": "workspace_scope_enforced_denial",
+                            "record_type": "audit_event",
+                            "record_id": audit_event_id,
+                            "record_workspace_id": result.get("actor_workspace_id"),
+                            "identity_workspace_id": identity.workspace_id,
+                        }
+                    )
+                )
+                return None
+        return result
     finally:
         conn.close()
 

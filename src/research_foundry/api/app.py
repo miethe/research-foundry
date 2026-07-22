@@ -121,6 +121,14 @@ def create_app(config: FoundryConfig) -> FastAPI:
     Returns:
         A ready-to-serve :class:`fastapi.FastAPI` instance.
     """
+    # --- ACT-102: deployment_mode fail-closed startup gate (FR-4, partial a-c) ---
+    # P1 stub — condition (d) (DI-1 acknowledgment, FR-13) is wired in Phase 4
+    # (ACT-402). No-op for deployment_mode=single_user (the default), so this
+    # cannot regress the LAN/NUC single-user default (FR-2). Runs before any
+    # app state is constructed so a misconfigured multi_user deployment
+    # refuses to start rather than serving with a fail-open gap.
+    config.deployment_mode_validate(bind_host=config.viewer_bind_host())
+
     app = FastAPI(
         title="Research Foundry API",
         description="Loopback read API for the Research Foundry runs viewer.",
@@ -233,6 +241,12 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # no router or service may branch on provider name — all branching is
     # resolved at app construction time.
     #
+    # ACT-203 (public-multiuser Phase 2): every AuthProviderMiddleware
+    # instance below is constructed with `paths=config.paths` so the
+    # composite auth chain (access_tokens store checked first, provider
+    # fallthrough on a miss) is active regardless of which provider is
+    # configured — see AuthProviderMiddleware's class docstring.
+    #
     # NOTE: auth.provider=none + non-loopback bind is blocked in the rf serve
     # pre-bind gate (cli_commands._validate_nonloopback_bind).  create_app does
     # not duplicate this gate — the server can only reach create_app() after the
@@ -278,7 +292,7 @@ def create_app(config: FoundryConfig) -> FastAPI:
             ) from _init_exc
 
         register_provider(_auth_provider)
-        app.add_middleware(AuthProviderMiddleware, provider=_auth_provider)
+        app.add_middleware(AuthProviderMiddleware, provider=_auth_provider, paths=config.paths)
 
     elif _auth_provider is not None:
         # Re-initialise with runtime token configs and RBAC store.  The
@@ -292,7 +306,7 @@ def create_app(config: FoundryConfig) -> FastAPI:
                 rbac_paths=config.paths,
             )
             register_provider(_auth_provider)
-        app.add_middleware(AuthProviderMiddleware, provider=_auth_provider)
+        app.add_middleware(AuthProviderMiddleware, provider=_auth_provider, paths=config.paths)
 
     elif _provider_name == "none" and config.viewer_auth_mode() == "token":
         # Invariant 1 — Fail-closed legacy fallback.
@@ -324,7 +338,7 @@ def create_app(config: FoundryConfig) -> FastAPI:
             rbac_paths=config.paths,
         )
         register_provider(_auth_provider)
-        app.add_middleware(AuthProviderMiddleware, provider=_auth_provider)
+        app.add_middleware(AuthProviderMiddleware, provider=_auth_provider, paths=config.paths)
 
     # 2. IP allowlist (middle — added second, runs before auth)
     allowlist = config.viewer_allowlist()

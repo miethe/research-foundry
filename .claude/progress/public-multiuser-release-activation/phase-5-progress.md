@@ -4,38 +4,83 @@ schema_version: 2
 doc_type: progress
 prd: public-multiuser-release-activation
 feature_slug: public-multiuser-release-activation
-title: "Phase 5: Admin UI"
+title: 'Phase 5: Admin UI'
 phase: 5
-status: pending
-created: 2026-07-22
-updated: 2026-07-22
+status: completed
+created: '2026-07-22'
+updated: '2026-07-22'
 prd_ref: docs/project_plans/implementation_plans/features/public-multiuser-release-activation-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/public-multiuser-release-activation-v1.md
 commit_refs: []
 pr_refs: []
-
-owners: ["ui-engineer-enhanced"]
+owners:
+- ui-engineer-enhanced
 contributors: []
-
 tasks:
-  - id: "ACT-501"
-    description: "Admin UI — service accounts panel (issue/list/revoke/rotate, one-time-secret display with copy-and-dismiss UX)"
-    status: "pending"
-    assigned_to: ["ui-engineer-enhanced"]
-    dependencies: ["P3 sealed"]
-  - id: "ACT-502"
-    description: "Admin UI — PATs panel + AuthContext.tsx principalType extension"
-    status: "pending"
-    assigned_to: ["ui-engineer-enhanced"]
-    dependencies: ["P3 sealed"]
-  - id: "ACT-503"
-    description: "[R-P4] Runtime smoke + a11y pass — issue/list/revoke/rotate round-trip against live API + WCAG 2.1 AA (jest-axe)"
-    status: "pending"
-    assigned_to: ["ui-engineer-enhanced", "a11y-sheriff"]
-    dependencies: ["ACT-501", "ACT-502"]
-
+- id: ACT-501
+  description: Admin UI — service accounts panel (issue/list/revoke/rotate, one-time-secret
+    display with copy-and-dismiss UX)
+  status: completed
+  assigned_to:
+  - ui-engineer-enhanced
+  dependencies:
+  - P3 sealed
+  started: '2026-07-22T20:46:48Z'
+  completed: '2026-07-22T20:46:48Z'
+  evidence:
+  - file: frontend/runs-viewer/src/components/AdminSettings/ServiceAccountsPanel.tsx
+  - test: frontend/runs-viewer/src/test/p5-service-accounts-pats.test.tsx
+  verified_by:
+  - ACT-503
+- id: ACT-502
+  description: Admin UI — PATs panel + AuthContext.tsx principalType extension
+  status: completed
+  assigned_to:
+  - ui-engineer-enhanced
+  dependencies:
+  - P3 sealed
+  started: '2026-07-22T20:46:48Z'
+  completed: '2026-07-22T20:46:48Z'
+  evidence:
+  - file: frontend/runs-viewer/src/components/AdminSettings/PersonalAccessTokensPanel.tsx
+  - file: frontend/runs-viewer/src/auth/AuthContext.tsx
+  - test: frontend/runs-viewer/src/test/p5-service-accounts-pats.test.tsx
+  verified_by:
+  - ACT-503
+- id: ACT-503
+  description: '[R-P4] Runtime smoke + a11y pass — issue/list/revoke/rotate round-trip
+    against live API + WCAG 2.1 AA (jest-axe)'
+  status: completed
+  assigned_to:
+  - ui-engineer-enhanced
+  - a11y-sheriff
+  dependencies:
+  - ACT-501
+  - ACT-502
+  started: '2026-07-22T20:57:41Z'
+  completed: '2026-07-22T20:57:41Z'
+  evidence:
+  - test: frontend/runs-viewer/src/test/p5-service-accounts-pats.test.tsx (27 passed,
+      incl. 5 jest-axe zero-violation checks)
+  - cmd: npx tsc -p tsconfig.app.json --noEmit (clean)
+  - cmd: pnpm test (1045/1046 passed; 1 pre-existing unrelated failure)
+  - test: frontend/runs-viewer/src/test/p5-service-accounts-pats.test.tsx (32 passed,
+      incl. focus-restoration + copy-live-region regression tests, a11y-sheriff CHANGES_REQUESTED
+      fix)
+  verified_by:
+  - REV-P5-001
 parallelization:
-  batch_4: ["ACT-501", "ACT-502", "ACT-503"]
+  batch_4:
+  - ACT-501
+  - ACT-502
+  - ACT-503
+total_tasks: 3
+completed_tasks: 3
+in_progress_tasks: 0
+blocked_tasks: 0
+progress: 100
+tasks[2].verified_by:
+- REV-P5-001
 ---
 
 # Phase 5: Admin UI
