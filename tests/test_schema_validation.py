@@ -45,7 +45,7 @@ EXPECTED_SCHEMA_NAMES: list[str] = [
     "evidence_bundle", "extraction_card", "foundry", "ibom", "inference_record",
     "intenttree_node", "intenttree_update", "meatywiki_writeback", "notebooklm_update",
     "passage", "permission_record", "raw_idea", "report_draft", "report_frontmatter",
-    "research_brief", "research_idea_backlog", "research_intent", "review_packet",
+    "research_brief", "research_evidence_plan", "research_idea_backlog", "research_intent", "review_packet",
     "rights_extension", "rights_failure", "rights_record", "routing_decision",
     "search_request", "search_run", "skillbom_candidate", "source_assertion",
     "source_card", "source_edition", "swarm_plan", "tool_profile",
@@ -176,6 +176,16 @@ def _valid(name: str) -> dict:
             "id": "brief_demo",
             "intent_id": "intent_demo",
             "title": "Demo Brief",
+        },
+        # required: evidence_plan_id, workspace_id, retrieval_policy, catalog_receipt,
+        # questions, summary (CARP P1 contract freeze, catalog-assisted-research-planning-v1)
+        "research_evidence_plan": {
+            "evidence_plan_id": "evp_demo",
+            "workspace_id": "ws_demo",
+            "retrieval_policy": "catalog_only",
+            "catalog_receipt": {"record_count": 0},
+            "questions": [],
+            "summary": {"questions_total": 0},
         },
         # required: id, title, objective
         "research_intent": {
@@ -404,6 +414,7 @@ def _invalid(name: str) -> dict:
         "raw_idea": "id",
         "report_draft": "report_draft_id",
         "research_brief": "id",
+        "research_evidence_plan": "evidence_plan_id",
         "research_idea_backlog": "type",
         "research_intent": "id",
         "review_packet": "id",
@@ -1887,6 +1898,941 @@ def test_substitutability_field_set_identical_between_source_card_and_source_ass
         f"only in source_card={sorted(card_fields - assertion_fields)}, "
         f"only in source_assertion={sorted(assertion_fields - card_fields)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# CARP P1 (catalog-assisted-research-planning-v1) — Contract and Policy Freeze.
+#
+# Deliverable 7 of docs/project_plans/implementation_plans/enhancements/
+# catalog-assisted-research-planning-v1.md's Phase P1: schema example fixtures
+# that validate under this harness, plus enforcement guards for the
+# research_evidence_plan.schema.yaml covered/residual `allOf` partition (the
+# schema-level implementation of the frozen six-condition coverage rule — see
+# docs/dev/architecture/carp-contract-freeze.md §3.1) and the additive-only
+# properties on search_request/search_run/research_brief/routing_decision.
+# ---------------------------------------------------------------------------
+
+_CARP_RESIDUAL_REASON_MEMBERS = [
+    "no_candidate",
+    "lexical_miss",
+    "source_type_mismatch",
+    "qualifier_missing",
+    "reuse_refresh_required",
+    "reuse_denied",
+    "lifecycle_ineligible",
+    "version_mismatch",
+    "contradiction",
+    "pagination_limit",
+    "candidate_limit",
+    "catalog_denied",
+    "catalog_empty",
+    "evaluation_error",
+]
+
+
+def _carp_covered_question(question_id: str = "q_covered") -> dict[str, Any]:
+    return {
+        "question_id": question_id,
+        "required_terms": ["hemoglobin", "pediatric"],
+        "required_source_types": ["clinical_guideline"],
+        "required_qualifiers": {"population": "pediatric"},
+        "evaluated_candidates": [
+            {
+                "assertion_id": "ast_" + "a" * 64,
+                "assertion_version": 1,
+                "lifecycle_state": "eligible",
+                "lexical_match": True,
+                "source_type_satisfied": True,
+                "qualifiers_satisfied": True,
+                "reuse_decision": {"action": "allow", "reason_code": "eligible"},
+                "contradicts": False,
+                "selected": True,
+            }
+        ],
+        "selected_assertion_ref": {"assertion_id": "ast_" + "a" * 64, "assertion_version": 1},
+        "retrieval_receipt": {"source": "catalog", "catalog_generation_id": "gen_demo", "decided_at": "2026-07-23T00:00:00Z"},
+        "coverage_state": "covered",
+        "residual_reason": None,
+    }
+
+
+def _carp_residual_question(question_id: str = "q_residual", reason: str = "no_candidate") -> dict[str, Any]:
+    return {
+        "question_id": question_id,
+        "required_terms": ["unobtainable_term"],
+        "evaluated_candidates": [],
+        "coverage_state": "residual",
+        "residual_reason": reason,
+    }
+
+
+def _carp_evidence_plan(
+    *,
+    workspace_id: str = "ws_demo",
+    questions: list[dict[str, Any]] | None = None,
+    catalog_receipt: dict[str, Any] | None = None,
+    summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "evidence_plan_id": f"evp_{workspace_id}",
+        "workspace_id": workspace_id,
+        "retrieval_policy": "catalog_only",
+        "catalog_receipt": catalog_receipt or {"record_count": 1, "catalog_generation_id": "gen_demo"},
+        "questions": questions if questions is not None else [],
+        "summary": summary or {"questions_total": len(questions or [])},
+    }
+
+
+# --- Fixture (a): policy-absent legacy search_request -----------------------
+
+
+def test_carp_search_request_without_retrieval_block_is_legacy_disabled() -> None:
+    """AC (§7 fixture a): a legacy request that never sets `retrieval` at all
+    validates cleanly — the additive block being fully absent is
+    byte-identical to `policy: disabled`, the v1 default (CARP-OQ-2)."""
+
+    instance = {"query": "pediatric hemoglobin reference intervals", "mode": "cache_first"}
+    assert "retrieval" not in instance
+    result = validate(instance, "search_request")
+    assert result.ok, f"expected legacy search_request to validate, got: {result.errors}"
+
+
+def test_carp_search_request_explicit_disabled_policy_validates() -> None:
+    """The explicit `policy: disabled` spelling validates identically to omission."""
+
+    instance = {
+        "query": "pediatric hemoglobin reference intervals",
+        "mode": "cache_first",
+        "retrieval": {"policy": "disabled"},
+    }
+    result = validate(instance, "search_request")
+    assert result.ok, f"expected explicit disabled policy to validate, got: {result.errors}"
+
+
+def test_carp_search_request_retrieval_limits_within_ceiling_validates() -> None:
+    """A populated `retrieval.limits` block at exactly the frozen ceilings validates."""
+
+    instance = {
+        "query": "pediatric hemoglobin reference intervals",
+        "mode": "cache_first",
+        "retrieval": {
+            "policy": "catalog_then_discovery",
+            "limits": {
+                "max_questions": 200,
+                "max_candidates_per_question": 50,
+                "max_pages_per_question": 5,
+                "page_size": 100,
+            },
+        },
+    }
+    result = validate(instance, "search_request")
+    assert result.ok, f"expected in-ceiling limits to validate, got: {result.errors}"
+
+
+def test_carp_search_request_retrieval_limits_exceeding_ceiling_fails() -> None:
+    """§3.3: `max_questions` above 200 fails — limits are schema-validated, not advisory."""
+
+    instance = {
+        "query": "pediatric hemoglobin reference intervals",
+        "mode": "cache_first",
+        "retrieval": {"policy": "catalog_only", "limits": {"max_questions": 201}},
+    }
+    result = validate(instance, "search_request")
+    assert not result.ok, "expected max_questions: 201 to fail the 200 ceiling"
+    assert result.errors
+
+
+def test_carp_search_request_retrieval_rejects_unknown_policy() -> None:
+    """The retrieval policy enum is closed — an unrecognized value fails."""
+
+    instance = {
+        "query": "pediatric hemoglobin reference intervals",
+        "mode": "cache_first",
+        "retrieval": {"policy": "always_on"},
+    }
+    result = validate(instance, "search_request")
+    assert not result.ok, "expected an unrecognized retrieval policy to fail"
+    assert result.errors
+
+
+# --- Fixture (b): catalog_only denied/empty evidence plan -------------------
+
+
+def test_carp_evidence_plan_catalog_denied_reveals_no_candidate_derived_fields() -> None:
+    """AC (§7 fixture b, CARP-1.2): a catalog_only plan whose catalog issued a
+    fail-closed denial carries denial_reason + record_count 0 and validates
+    with only the request-echoed `questions_total` present in `summary`."""
+
+    instance = _carp_evidence_plan(
+        catalog_receipt={"record_count": 0, "denial_reason": "workspace_context_missing"},
+        questions=[],
+        summary={"questions_total": 3},
+    )
+    result = validate(instance, "research_evidence_plan")
+    assert result.ok, f"expected denied evidence plan to validate, got: {result.errors}"
+    assert instance["catalog_receipt"]["record_count"] == 0
+    assert instance["catalog_receipt"]["denial_reason"] == "workspace_context_missing"
+    assert instance["questions"] == []
+
+
+def test_carp_evidence_plan_catalog_denied_rejects_nonzero_candidate_derived_counters() -> None:
+    """Karen CARP-1.G finding #1/#3: the previous version of this test only
+    asserted a fact about a dict it had just built itself (tautological — it
+    proved nothing about enforcement). This is the real regression guard: the
+    schema's `allOf` (docs/dev/architecture/carp-contract-freeze.md §2.4/§3)
+    must REJECT a denied plan that carries any non-zero candidate-derived
+    summary counter, not merely happen to validate a fixture that omits them."""
+
+    instance = _carp_evidence_plan(
+        catalog_receipt={"record_count": 0, "denial_reason": "workspace_context_missing"},
+        questions=[],
+        summary={
+            "questions_total": 3,
+            "questions_covered": 0,
+            "candidates_evaluated": 42,
+            "candidates_selected": 7,
+            "avoided_provider_calls": 99,
+            "residual_reason_counts": {"no_candidate": 3},
+        },
+    )
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected schema to reject a denied plan carrying candidate-derived counters"
+    assert result.errors
+
+
+def test_carp_evidence_plan_catalog_denied_allows_zero_candidate_derived_counters() -> None:
+    """Positive counterpart: the same denied plan validates when every
+    candidate-derived counter is explicitly 0 rather than omitted — "0 or
+    omitted" per §3, not merely "omitted"."""
+
+    instance = _carp_evidence_plan(
+        catalog_receipt={"record_count": 0, "denial_reason": "workspace_context_missing"},
+        questions=[],
+        summary={
+            "questions_total": 3,
+            "questions_covered": 0,
+            "questions_residual": 0,
+            "candidates_evaluated": 0,
+            "candidates_selected": 0,
+            "avoided_provider_calls": 0,
+            "residual_reason_counts": {},
+        },
+    )
+    result = validate(instance, "research_evidence_plan")
+    assert result.ok, f"expected all-zero counters on a denied plan to validate, got: {result.errors}"
+
+
+def test_carp_evidence_plan_catalog_empty_reveals_no_candidate_derived_fields() -> None:
+    """AC (§7 fixture b variant): an empty (not denied) authorized corpus is
+    the other terminal denial-shaped state — same zero-candidate-derived-field
+    contract, distinct reason code (`catalog_empty` per the residual enum,
+    surfaced here at the receipt level as the plan-wide denial signal)."""
+
+    instance = _carp_evidence_plan(
+        catalog_receipt={"record_count": 0, "denial_reason": None},
+        questions=[],
+        summary={"questions_total": 1},
+    )
+    result = validate(instance, "research_evidence_plan")
+    assert result.ok, f"expected empty-catalog evidence plan to validate, got: {result.errors}"
+    assert instance["catalog_receipt"]["record_count"] == 0
+
+
+def test_carp_evidence_plan_catalog_empty_rejects_nonzero_candidate_derived_counters() -> None:
+    """CARP-1.G fix cycle 2: catalog-empty ({record_count: 0, denial_reason: None})
+    is the other terminal state sharing the zero-candidate-derived-counters
+    invariant with catalog-denied (§2 point 3) — the schema's `allOf` must
+    reject it when it carries non-zero candidate-derived counters, not only
+    the denial-reason-set half of the invariant."""
+
+    instance = _carp_evidence_plan(
+        catalog_receipt={"record_count": 0, "denial_reason": None},
+        questions=[],
+        summary={
+            "questions_total": 3,
+            "questions_covered": 99,
+            "candidates_evaluated": 500,
+            "candidates_selected": 50,
+            "avoided_provider_calls": 12345,
+            "residual_reason_counts": {"no_candidate": 999},
+        },
+    )
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected schema to reject a catalog-empty plan carrying candidate-derived counters"
+    assert result.errors
+
+
+# --- Fixture (c): two-workspace case -----------------------------------------
+
+
+def test_carp_evidence_plan_two_workspace_case_both_validate_independently() -> None:
+    """AC (§7 fixture c): two evidence plans scoped to distinct workspace_id
+    values each validate independently, and neither's identity leaks into the
+    other's fields (schema-level contract: each plan carries its own
+    workspace_id; nothing in the shape ties two workspaces together)."""
+
+    plan_a = _carp_evidence_plan(workspace_id="ws_alpha", questions=[_carp_covered_question("q1")], summary={"questions_total": 1, "questions_covered": 1})
+    plan_b = _carp_evidence_plan(workspace_id="ws_bravo", questions=[_carp_residual_question("q1")], summary={"questions_total": 1, "questions_residual": 1})
+
+    result_a = validate(plan_a, "research_evidence_plan")
+    result_b = validate(plan_b, "research_evidence_plan")
+    assert result_a.ok, f"expected ws_alpha plan to validate, got: {result_a.errors}"
+    assert result_b.ok, f"expected ws_bravo plan to validate, got: {result_b.errors}"
+    assert plan_a["workspace_id"] != plan_b["workspace_id"]
+    assert plan_a["evidence_plan_id"] != plan_b["evidence_plan_id"]
+
+
+# --- Fixture (d): mixed covered/residual evidence plan -----------------------
+
+
+def test_carp_evidence_plan_mixed_covered_and_residual_validates() -> None:
+    """AC (§7 fixture d, CARP-1.3): one plan carrying both a `covered` and a
+    `residual` question, each satisfying the covered/residual `allOf`
+    partition (§3.1)."""
+
+    covered = _carp_covered_question()
+    residual = _carp_residual_question(reason="lexical_miss")
+    instance = _carp_evidence_plan(
+        questions=[covered, residual],
+        summary={"questions_total": 2, "questions_covered": 1, "questions_residual": 1, "candidates_evaluated": 1, "candidates_selected": 1},
+    )
+    result = validate(instance, "research_evidence_plan")
+    assert result.ok, f"expected mixed covered/residual plan to validate, got: {result.errors}"
+    assert instance["questions"][0]["coverage_state"] == "covered"
+    assert instance["questions"][0]["residual_reason"] is None
+    assert instance["questions"][1]["coverage_state"] == "residual"
+    assert instance["questions"][1]["residual_reason"] == "lexical_miss"
+
+
+@pytest.mark.parametrize("reason", _CARP_RESIDUAL_REASON_MEMBERS)
+def test_carp_evidence_plan_every_residual_reason_member_validates(reason: str) -> None:
+    """Every one of the 14 closed `residual_reason` codes is independently a
+    valid residual question (§3.2 — the enum names, not merely tolerates,
+    each code)."""
+
+    instance = _carp_evidence_plan(questions=[_carp_residual_question(reason=reason)], summary={"questions_total": 1, "questions_residual": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert result.ok, f"expected residual_reason={reason!r} to validate, got: {result.errors}"
+
+
+# --- reuse_decision.reason_code closed enum (CARP-1.G finding) --------------
+#
+# Mirrors assertion_reuse.evaluate_reuse()'s exact 19-literal return set —
+# the schema's own description at reuse_decision calls it "Exact decision ref
+# mirroring assertion_reuse.evaluate_reuse()", so the enum must be closed to
+# precisely those codes.
+
+_CARP_REUSE_REASON_MEMBERS = [
+    "assertion_missing",
+    "assertion_id_missing",
+    "workspace_context_missing",
+    "workspace_mismatch",
+    "lifecycle_unknown",
+    "lifecycle_blocked",
+    "freshness_refresh_required",
+    "freshness_context_missing",
+    "rights_denied",
+    "sensitivity_denied",
+    "evaluation_missing_or_failed",
+    "invalidation_unknown",
+    "edition_context_invalid",
+    "extraction_contract_invalid",
+    "required_edition_invalid",
+    "required_extraction_contract_invalid",
+    "edition_refresh_required",
+    "extraction_refresh_required",
+    "eligible",
+]
+
+_CARP_REUSE_REFRESH_REASONS = frozenset({"freshness_refresh_required", "edition_refresh_required", "extraction_refresh_required"})
+
+
+def _carp_reuse_decision_candidate(reason_code: str) -> dict[str, Any]:
+    if reason_code == "eligible":
+        action = "allow"
+    elif reason_code in _CARP_REUSE_REFRESH_REASONS:
+        action = "refresh"
+    else:
+        action = "deny"
+    return {
+        "assertion_id": "ast_" + "c" * 64,
+        "assertion_version": 1,
+        "lifecycle_state": "eligible",
+        "lexical_match": True,
+        "source_type_satisfied": True,
+        "qualifiers_satisfied": True,
+        "reuse_decision": {"action": action, "reason_code": reason_code},
+        "contradicts": False,
+        "selected": False,
+    }
+
+
+@pytest.mark.parametrize("reason_code", _CARP_REUSE_REASON_MEMBERS)
+def test_carp_evidence_plan_every_reuse_decision_reason_code_member_validates(reason_code: str) -> None:
+    """Every one of the 19 closed `reuse_decision.reason_code` codes
+    (mirroring assertion_reuse.evaluate_reuse(), CARP-1.G) is independently a
+    valid evaluated_candidates entry."""
+
+    question = _carp_residual_question(reason="no_candidate")
+    question["evaluated_candidates"] = [_carp_reuse_decision_candidate(reason_code)]
+    instance = _carp_evidence_plan(questions=[question], summary={"questions_total": 1, "questions_residual": 1, "candidates_evaluated": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert result.ok, f"expected reuse_decision.reason_code={reason_code!r} to validate, got: {result.errors}"
+
+
+def test_carp_evidence_plan_unknown_reuse_decision_reason_code_fails() -> None:
+    """An unknown `reuse_decision.reason_code` value fails validation — the
+    enum is closed to assertion_reuse.evaluate_reuse()'s literal set, not an
+    open string."""
+
+    candidate = _carp_reuse_decision_candidate("eligible")
+    candidate["reuse_decision"]["reason_code"] = "not_a_real_reason_code"
+    question = _carp_residual_question(reason="no_candidate")
+    question["evaluated_candidates"] = [candidate]
+    instance = _carp_evidence_plan(questions=[question], summary={"questions_total": 1, "questions_residual": 1, "candidates_evaluated": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected unknown reuse_decision.reason_code to fail validation"
+    assert result.errors
+
+
+# --- reuse_decision.action <-> reason_code pairing (Karen finding #7) -------
+#
+# assertion_reuse.evaluate_reuse() (src/research_foundry/services/
+# assertion_reuse.py) only ever returns three deterministic groupings:
+#   allow   -> eligible
+#   refresh -> freshness_refresh_required | edition_refresh_required |
+#              extraction_refresh_required
+#   deny    -> the remaining 15 literals
+# Re-derived directly from the function body (every `return ReuseDecision(...)`
+# call site), confirmed to match the grouping this addendum's schema encodes —
+# no code/schema disagreement found.
+
+
+def test_carp_evidence_plan_reuse_decision_allow_with_wrong_reason_code_fails() -> None:
+    """`{action: allow, reason_code: rights_denied}` validated before this
+    addendum even though evaluate_reuse() never returns that pairing — the
+    action/reason_code binding must be structural."""
+
+    candidate = _carp_reuse_decision_candidate("eligible")
+    candidate["reuse_decision"] = {"action": "allow", "reason_code": "rights_denied"}
+    question = _carp_residual_question(reason="no_candidate")
+    question["evaluated_candidates"] = [candidate]
+    instance = _carp_evidence_plan(questions=[question], summary={"questions_total": 1, "questions_residual": 1, "candidates_evaluated": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected action=allow with a non-eligible reason_code to fail validation"
+    assert result.errors
+
+
+def test_carp_evidence_plan_refresh_with_wrong_reason_code_fails() -> None:
+    """`{action: refresh, reason_code: rights_denied}` is not a pairing
+    evaluate_reuse() ever returns — refresh is only ever paired with one of
+    the three refresh-required codes."""
+
+    candidate = _carp_reuse_decision_candidate("freshness_refresh_required")
+    candidate["reuse_decision"] = {"action": "refresh", "reason_code": "rights_denied"}
+    question = _carp_residual_question(reason="reuse_refresh_required")
+    question["evaluated_candidates"] = [candidate]
+    instance = _carp_evidence_plan(questions=[question], summary={"questions_total": 1, "questions_residual": 1, "candidates_evaluated": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected action=refresh with a non-refresh reason_code to fail validation"
+    assert result.errors
+
+
+def test_carp_evidence_plan_deny_with_refresh_reason_code_fails() -> None:
+    """`{action: deny, reason_code: freshness_refresh_required}` is not a
+    pairing evaluate_reuse() ever returns — a refresh-required reason always
+    comes back as action `refresh`, never `deny`."""
+
+    candidate = _carp_reuse_decision_candidate("rights_denied")
+    candidate["reuse_decision"] = {"action": "deny", "reason_code": "freshness_refresh_required"}
+    question = _carp_residual_question(reason="reuse_denied")
+    question["evaluated_candidates"] = [candidate]
+    instance = _carp_evidence_plan(questions=[question], summary={"questions_total": 1, "questions_residual": 1, "candidates_evaluated": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected action=deny with a refresh-required reason_code to fail validation"
+    assert result.errors
+
+
+# --- allOf covered/residual partition enforcement ----------------------------
+
+
+def test_carp_evidence_plan_covered_with_non_null_residual_reason_fails() -> None:
+    """§3.1 partition: `coverage_state: covered` with a non-null residual_reason
+    is a contract violation, not merely unusual data."""
+
+    covered = _carp_covered_question()
+    covered["residual_reason"] = "no_candidate"
+    instance = _carp_evidence_plan(questions=[covered], summary={"questions_total": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected covered-with-reason to fail validation"
+    assert result.errors
+
+
+def test_carp_evidence_plan_covered_missing_selection_fails() -> None:
+    """§3.1 partition: `coverage_state: covered` with no `selected_assertion_ref`
+    fails — covered must carry proof of what was selected."""
+
+    covered = _carp_covered_question()
+    del covered["selected_assertion_ref"]
+    instance = _carp_evidence_plan(questions=[covered], summary={"questions_total": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected covered without a selection ref to fail validation"
+    assert result.errors
+
+
+def test_carp_evidence_plan_residual_with_non_null_selection_fails() -> None:
+    """§3.1 partition: `coverage_state: residual` with a non-null
+    `selected_assertion_ref` is the exact negation-violation — a residual
+    question must not carry a selection."""
+
+    residual = _carp_residual_question()
+    residual["selected_assertion_ref"] = {"assertion_id": "ast_" + "b" * 64, "assertion_version": 1}
+    instance = _carp_evidence_plan(questions=[residual], summary={"questions_total": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected residual-with-selection to fail validation"
+    assert result.errors
+
+
+def test_carp_evidence_plan_residual_with_null_reason_fails() -> None:
+    """A residual question with `residual_reason: null` fails the required-code
+    invariant — residual MUST carry exactly one real code, never null."""
+
+    residual = _carp_residual_question()
+    residual["residual_reason"] = None
+    instance = _carp_evidence_plan(questions=[residual], summary={"questions_total": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected residual with a null reason to fail validation"
+    assert result.errors
+
+
+# --- Six-condition rule: selected=true candidate-level allOf (Karen finding #4) ---
+#
+# Five of the six covered conditions (carp-contract-freeze.md §3.1) are
+# encoded as a single if/then on the candidate item: a `selected: true`
+# candidate must be lexical_match, lifecycle eligible, reuse-allowed,
+# source-type/qualifier-satisfied, and non-contradicting. Condition 6 (exact
+# version pinning) is already covered by the required `assertion_version` on
+# `selected_assertion_ref` and is not re-tested here.
+
+
+def _carp_selected_candidate_variant(**overrides: Any) -> dict[str, Any]:
+    """A `_carp_covered_question()` clone with one candidate field overridden,
+    used to prove each of the five conditions independently gates `selected: true`."""
+
+    question = _carp_covered_question()
+    question["evaluated_candidates"][0].update(overrides)
+    return question
+
+
+def test_carp_evidence_plan_selected_candidate_meeting_all_five_conditions_validates() -> None:
+    """Positive baseline: the unmodified `_carp_covered_question()` candidate
+    (lexical_match/source_type_satisfied/qualifiers_satisfied all true,
+    lifecycle_state eligible, reuse_decision allow, contradicts false)
+    validates as `selected: true`."""
+
+    instance = _carp_evidence_plan(questions=[_carp_covered_question()], summary={"questions_total": 1, "questions_covered": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert result.ok, f"expected a fully-qualifying selected candidate to validate, got: {result.errors}"
+
+
+def test_carp_evidence_plan_selected_candidate_lexical_mismatch_fails() -> None:
+    """Condition 1 (lexical match): a selected candidate with `lexical_match: false` fails."""
+
+    question = _carp_selected_candidate_variant(lexical_match=False)
+    instance = _carp_evidence_plan(questions=[question], summary={"questions_total": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected selected candidate with lexical_match=False to fail validation"
+    assert result.errors
+
+
+def test_carp_evidence_plan_selected_candidate_non_eligible_lifecycle_fails() -> None:
+    """Condition 2 (lifecycle re-read): a selected candidate whose
+    `lifecycle_state` is not `eligible` fails."""
+
+    question = _carp_selected_candidate_variant(lifecycle_state="stale")
+    instance = _carp_evidence_plan(questions=[question], summary={"questions_total": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected selected candidate with a non-eligible lifecycle_state to fail validation"
+    assert result.errors
+
+
+def test_carp_evidence_plan_selected_candidate_reuse_not_allowed_fails() -> None:
+    """Condition 3 (reuse decision): a selected candidate whose
+    `reuse_decision.action` is not `allow` (e.g. `deny`) fails."""
+
+    question = _carp_selected_candidate_variant(reuse_decision={"action": "deny", "reason_code": "rights_denied"})
+    instance = _carp_evidence_plan(questions=[question], summary={"questions_total": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected selected candidate with reuse_decision.action=deny to fail validation"
+    assert result.errors
+
+
+def test_carp_evidence_plan_selected_candidate_source_type_unsatisfied_fails() -> None:
+    """Condition 4a (required_source_types): a selected candidate with
+    `source_type_satisfied: false` fails."""
+
+    question = _carp_selected_candidate_variant(source_type_satisfied=False)
+    instance = _carp_evidence_plan(questions=[question], summary={"questions_total": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected selected candidate with source_type_satisfied=False to fail validation"
+    assert result.errors
+
+
+def test_carp_evidence_plan_selected_candidate_qualifiers_unsatisfied_fails() -> None:
+    """Condition 4b (required_qualifiers): a selected candidate with
+    `qualifiers_satisfied: false` fails."""
+
+    question = _carp_selected_candidate_variant(qualifiers_satisfied=False)
+    instance = _carp_evidence_plan(questions=[question], summary={"questions_total": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected selected candidate with qualifiers_satisfied=False to fail validation"
+    assert result.errors
+
+
+def test_carp_evidence_plan_selected_candidate_contradicting_fails() -> None:
+    """Condition 5 (no contradiction): a selected candidate with
+    `contradicts: true` fails."""
+
+    question = _carp_selected_candidate_variant(contradicts=True)
+    instance = _carp_evidence_plan(questions=[question], summary={"questions_total": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected selected candidate with contradicts=True to fail validation"
+    assert result.errors
+
+
+def test_carp_evidence_plan_unselected_candidate_may_violate_all_five_conditions() -> None:
+    """Backward-compatibility guard: the five-condition `allOf` gates only on
+    `selected: true` — an unselected (`selected: false`) candidate failing
+    every one of the five conditions still validates, because a residual
+    question's evaluated_candidates legitimately records disqualified
+    candidates for audit purposes."""
+
+    question = _carp_residual_question(reason="lexical_miss")
+    question["evaluated_candidates"] = [
+        {
+            "assertion_id": "ast_" + "e" * 64,
+            "assertion_version": 1,
+            "lifecycle_state": "stale",
+            "lexical_match": False,
+            "source_type_satisfied": False,
+            "qualifiers_satisfied": False,
+            "reuse_decision": {"action": "deny", "reason_code": "rights_denied"},
+            "contradicts": True,
+            "selected": False,
+        }
+    ]
+    instance = _carp_evidence_plan(questions=[question], summary={"questions_total": 1, "questions_residual": 1, "candidates_evaluated": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert result.ok, f"expected an unselected, fully-disqualified candidate to validate, got: {result.errors}"
+
+
+def test_carp_evidence_plan_rejects_unknown_top_level_property() -> None:
+    """Strict-family guard: research_evidence_plan.schema.yaml is
+    additionalProperties: false at the top level."""
+
+    instance = _carp_evidence_plan()
+    instance["unexpected_field"] = "nope"
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected an unknown top-level field to fail validation"
+    assert result.errors
+
+
+def test_carp_evidence_plan_rejects_unknown_catalog_receipt_property() -> None:
+    """Strict-family guard: `catalog_receipt` is additionalProperties: false."""
+
+    instance = _carp_evidence_plan(catalog_receipt={"record_count": 0, "unexpected_field": "nope"})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected an unknown catalog_receipt field to fail validation"
+    assert result.errors
+
+
+def test_carp_evidence_plan_exceeding_max_candidates_per_question_fails() -> None:
+    """§3.3: `evaluated_candidates` above 50 entries fails the schema-validated ceiling."""
+
+    covered = _carp_covered_question()
+    covered["evaluated_candidates"] = covered["evaluated_candidates"] * 51
+    instance = _carp_evidence_plan(questions=[covered], summary={"questions_total": 1})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected 51 evaluated_candidates to fail the 50-item ceiling"
+    assert result.errors
+
+
+def test_carp_evidence_plan_exceeding_max_questions_fails() -> None:
+    """§3.3: `questions` above 200 entries fails the schema-validated ceiling."""
+
+    questions = [_carp_residual_question(question_id=f"q_{i}") for i in range(201)]
+    instance = _carp_evidence_plan(questions=questions, summary={"questions_total": 201})
+    result = validate(instance, "research_evidence_plan")
+    assert not result.ok, "expected 201 questions to fail the 200-item ceiling"
+    assert result.errors
+
+
+# --- research_brief additive coverage fields --------------------------------
+
+
+def test_carp_research_brief_primary_question_without_coverage_fields_is_legacy() -> None:
+    """A pre-CARP brief question (no coverage_state/residual_reason) still
+    validates — additive-only, legacy briefs are unaffected."""
+
+    instance = {
+        "id": "brief_demo",
+        "intent_id": "intent_demo",
+        "title": "Demo Brief",
+        "questions": {"primary": [{"id": "q1", "question": "What is X?"}]},
+    }
+    result = validate(instance, "research_brief")
+    assert result.ok, f"expected legacy brief question to validate, got: {result.errors}"
+
+
+def test_carp_research_brief_primary_question_with_coverage_state_validates() -> None:
+    instance = {
+        "id": "brief_demo",
+        "intent_id": "intent_demo",
+        "title": "Demo Brief",
+        "questions": {
+            "primary": [
+                {"id": "q1", "question": "What is X?", "coverage_state": "covered", "residual_reason": None},
+                {"id": "q2", "question": "What is Y?", "coverage_state": "residual", "residual_reason": "no_candidate"},
+            ],
+            "secondary": [
+                {"id": "q3", "question": "What is Z?", "coverage_state": "residual", "residual_reason": "catalog_denied"},
+            ],
+        },
+    }
+    result = validate(instance, "research_brief")
+    assert result.ok, f"expected populated coverage fields to validate, got: {result.errors}"
+
+
+def test_carp_research_brief_rejects_unknown_coverage_state() -> None:
+    instance = {
+        "id": "brief_demo",
+        "intent_id": "intent_demo",
+        "title": "Demo Brief",
+        "questions": {"primary": [{"id": "q1", "question": "What is X?", "coverage_state": "partially_covered"}]},
+    }
+    result = validate(instance, "research_brief")
+    assert not result.ok, "expected an unrecognized coverage_state to fail"
+    assert result.errors
+
+
+def test_carp_residual_reason_enum_identical_across_evidence_plan_and_brief() -> None:
+    """Propagation-contract check (mirrors the rights_summary field-identity
+    tests elsewhere in this file): the 14-member `residual_reason` enum must
+    be byte-identical across research_evidence_plan's per-question field and
+    research_brief's primary/secondary question-item fields — one closed
+    vocabulary, never three independently-drifting copies."""
+
+    registry = SchemaRegistry()
+    plan_schema = registry.get("research_evidence_plan")
+    brief_schema = registry.get("research_brief")
+
+    plan_enum = plan_schema["properties"]["questions"]["items"]["properties"]["residual_reason"]["enum"]
+    primary_enum = brief_schema["properties"]["questions"]["properties"]["primary"]["items"]["properties"]["residual_reason"]["enum"]
+    secondary_enum = brief_schema["properties"]["questions"]["properties"]["secondary"]["items"]["properties"]["residual_reason"]["enum"]
+
+    assert primary_enum == plan_enum, "research_brief.primary residual_reason enum diverged from research_evidence_plan"
+    assert secondary_enum == plan_enum, "research_brief.secondary residual_reason enum diverged from research_evidence_plan"
+
+
+# --- research_brief covered/residual PARTITION identity (Karen finding #5) ---
+#
+# Distinct from the enum-identity check above: this proves the brief carries
+# the same STRUCTURAL partition as the plan (a propagation TARGET per
+# CARP-4.2), not merely the same vocabulary of residual_reason codes.
+
+
+def test_carp_research_brief_covered_question_with_non_null_residual_reason_fails() -> None:
+    """The exact currently-passing bad case Karen flagged: `coverage_state:
+    covered, residual_reason: reuse_denied` must fail here, or a propagation
+    bug from the evidence plan into the brief is invisible at the destination."""
+
+    instance = {
+        "id": "brief_demo",
+        "intent_id": "intent_demo",
+        "title": "Demo Brief",
+        "questions": {
+            "primary": [
+                {"id": "q1", "question": "What is X?", "coverage_state": "covered", "residual_reason": "reuse_denied"},
+            ],
+        },
+    }
+    result = validate(instance, "research_brief")
+    assert not result.ok, "expected a covered brief question with a non-null residual_reason to fail"
+    assert result.errors
+
+
+def test_carp_research_brief_residual_question_with_null_residual_reason_fails() -> None:
+    """Exact negation of the case above, on `secondary`: `coverage_state:
+    residual` MUST carry a real residual_reason code, never null."""
+
+    instance = {
+        "id": "brief_demo",
+        "intent_id": "intent_demo",
+        "title": "Demo Brief",
+        "questions": {
+            "secondary": [
+                {"id": "q1", "question": "What is X?", "coverage_state": "residual", "residual_reason": None},
+            ],
+        },
+    }
+    result = validate(instance, "research_brief")
+    assert not result.ok, "expected a residual brief question with a null residual_reason to fail"
+    assert result.errors
+
+
+def test_carp_research_brief_partition_does_not_misfire_on_legacy_question_without_coverage_state() -> None:
+    """Backward-compatibility guard for the new partition `allOf`: a legacy
+    question item that never sets `coverage_state` at all must not vacuously
+    satisfy the `residual` branch's `required: [residual_reason]` — both
+    if-clauses explicitly require `coverage_state`'s presence for exactly
+    this reason."""
+
+    instance = {
+        "id": "brief_demo",
+        "intent_id": "intent_demo",
+        "title": "Demo Brief",
+        "questions": {"primary": [{"id": "q1", "question": "What is X?"}]},
+    }
+    assert "coverage_state" not in instance["questions"]["primary"][0]
+    assert "residual_reason" not in instance["questions"]["primary"][0]
+    result = validate(instance, "research_brief")
+    assert result.ok, f"expected a legacy question without coverage_state to validate, got: {result.errors}"
+
+
+# --- search_run additive retrieval block -------------------------------------
+
+
+def test_carp_search_run_without_retrieval_block_is_legacy() -> None:
+    """A legacy (or disabled-policy) search_run omitting `retrieval` entirely
+    still validates."""
+
+    instance = {"run_id": "rf_run_demo", "request": {"query": "q", "mode": "cache_first"}}
+    assert "retrieval" not in instance
+    result = validate(instance, "search_run")
+    assert result.ok, f"expected legacy search_run to validate, got: {result.errors}"
+
+
+def test_carp_search_run_populated_retrieval_block_validates() -> None:
+    instance = {
+        "run_id": "rf_run_demo",
+        "request": {"query": "q", "mode": "cache_first"},
+        "retrieval": {
+            "policy": "catalog_only",
+            "evidence_plan_ref": "evp_ws_demo",
+            "mirror_is_authoritative": False,
+            "selections": [
+                {
+                    "question_id": "q1",
+                    "assertion_id": "ast_" + "a" * 64,
+                    "assertion_version": 1,
+                    "retrieval_receipt": {"source": "catalog", "catalog_generation_id": "gen_demo", "decided_at": "2026-07-23T00:00:00Z"},
+                }
+            ],
+            "metrics": {"questions_total": 1, "questions_covered": 1, "candidates_evaluated": 1, "candidates_selected": 1, "avoided_provider_calls": 1},
+        },
+    }
+    result = validate(instance, "search_run")
+    assert result.ok, f"expected a populated retrieval block to validate, got: {result.errors}"
+
+
+def test_carp_search_run_retrieval_mirror_is_authoritative_const_false_rejects_true() -> None:
+    """Hard governance invariant, same convention as rights_summary: the
+    search_run retrieval mirror can never claim to be authoritative."""
+
+    instance = {
+        "run_id": "rf_run_demo",
+        "request": {"query": "q", "mode": "cache_first"},
+        "retrieval": {"policy": "catalog_only", "mirror_is_authoritative": True},
+    }
+    result = validate(instance, "search_run")
+    assert not result.ok, "expected mirror_is_authoritative: true to fail validation"
+    assert result.errors
+
+
+# --- routing_decision additive retrieval fields ------------------------------
+
+
+def test_carp_routing_decision_retrieval_fields_are_optional_and_additive() -> None:
+    instance = {"id": "route_demo", "intent_id": "intent_demo", "active_node_id": "node_demo"}
+    assert "retrieval_policy" not in instance
+    result = validate(instance, "routing_decision")
+    assert result.ok, f"expected legacy routing_decision to validate, got: {result.errors}"
+
+
+def test_carp_routing_decision_populated_retrieval_fields_validate() -> None:
+    instance = {
+        "id": "route_demo",
+        "intent_id": "intent_demo",
+        "active_node_id": "node_demo",
+        "retrieval_policy": "catalog_then_discovery",
+        "residual_question_ids": ["q2", "q3"],
+    }
+    result = validate(instance, "routing_decision")
+    assert result.ok, f"expected populated retrieval fields to validate, got: {result.errors}"
+
+
+def test_carp_routing_decision_rejects_unknown_retrieval_policy() -> None:
+    instance = {
+        "id": "route_demo",
+        "intent_id": "intent_demo",
+        "active_node_id": "node_demo",
+        "retrieval_policy": "always_on",
+    }
+    result = validate(instance, "routing_decision")
+    assert not result.ok, "expected an unrecognized retrieval_policy to fail"
+    assert result.errors
+
+
+# --- quality gate 2: catalog_only never routes to discovery (Karen finding #8) ---
+
+
+def test_carp_routing_decision_catalog_only_rejects_nonempty_residual_question_ids() -> None:
+    """Quality gate 2: catalog-only denial/empty must not trigger discovery.
+    `residual_question_ids` is the exact set this decision MAY route to
+    providers (AC CARP-4) — under `catalog_only` that set must be empty."""
+
+    instance = {
+        "id": "route_demo",
+        "intent_id": "intent_demo",
+        "active_node_id": "node_demo",
+        "retrieval_policy": "catalog_only",
+        "residual_question_ids": ["q1"],
+    }
+    result = validate(instance, "routing_decision")
+    assert not result.ok, "expected catalog_only with a non-empty residual_question_ids to fail validation"
+    assert result.errors
+
+
+def test_carp_routing_decision_catalog_only_with_empty_residual_question_ids_validates() -> None:
+    """Positive counterpart: `catalog_only` with an explicit empty
+    `residual_question_ids` — or the field omitted entirely — validates."""
+
+    instance = {
+        "id": "route_demo",
+        "intent_id": "intent_demo",
+        "active_node_id": "node_demo",
+        "retrieval_policy": "catalog_only",
+        "residual_question_ids": [],
+    }
+    result = validate(instance, "routing_decision")
+    assert result.ok, f"expected catalog_only with empty residual_question_ids to validate, got: {result.errors}"
+
+
+def test_carp_routing_decision_catalog_only_gate_does_not_misfire_when_policy_absent() -> None:
+    """Backward-compatibility guard: the if-clause explicitly requires
+    `retrieval_policy`'s presence — a legacy decision that never sets it must
+    not vacuously match the `catalog_only` branch even though a `const`-only
+    check (without `required`) would be satisfied by an absent field."""
+
+    instance = {
+        "id": "route_demo",
+        "intent_id": "intent_demo",
+        "active_node_id": "node_demo",
+        "residual_question_ids": ["q1", "q2"],
+    }
+    assert "retrieval_policy" not in instance
+    result = validate(instance, "routing_decision")
+    assert result.ok, f"expected a legacy decision without retrieval_policy to validate, got: {result.errors}"
 
 
 # ---------------------------------------------------------------------------

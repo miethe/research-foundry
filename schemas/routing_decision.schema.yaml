@@ -46,8 +46,44 @@ properties:
         type:
           type: string
       additionalProperties: true
+  retrieval_policy:
+    description: >
+      CARP (catalog-assisted-research-planning) additive field: the
+      retrieval policy in effect for this routing decision. Absent means
+      disabled (the v1 default and every legacy decision). See
+      docs/dev/architecture/carp-contract-freeze.md.
+    enum:
+      - disabled
+      - catalog_only
+      - catalog_then_discovery
+  residual_question_ids:
+    description: >
+      The exact residual-question-id set this decision may route to
+      discovery providers (AC CARP-4: provider requests equal this set,
+      never more).
+    type: array
+    items:
+      type: string
 required:
   - id
   - intent_id
   - active_node_id
 additionalProperties: true
+allOf:
+  # Karen finding #8 (quality gate 2): catalog_only denial/empty must never
+  # trigger discovery routing — residual_question_ids is the exact set this
+  # decision MAY route to providers (AC CARP-4), so under catalog_only it
+  # must be empty. `required: [retrieval_policy]` in the if-clause matters:
+  # the field is additive/optional, so without it a legacy decision that
+  # never sets retrieval_policy would vacuously satisfy the const check and
+  # (harmlessly, but incorrectly) still "match" this branch.
+  - if:
+      required:
+        - retrieval_policy
+      properties:
+        retrieval_policy:
+          const: catalog_only
+    then:
+      properties:
+        residual_question_ids:
+          const: []

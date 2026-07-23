@@ -90,6 +90,41 @@ properties:
           - string
           - "null"
     additionalProperties: true
+  retrieval:
+    description: >
+      CARP (catalog-assisted-research-planning) retrieval policy and limits.
+      Additive and OPTIONAL: a request that omits this block entirely (every
+      legacy request) is byte-identical to `policy: disabled` — the v1
+      default. See docs/dev/architecture/carp-contract-freeze.md.
+    type: object
+    properties:
+      policy:
+        default: disabled
+        enum:
+          - disabled
+          - catalog_only
+          - catalog_then_discovery
+      limits:
+        type: object
+        properties:
+          max_questions:
+            type: integer
+            minimum: 1
+            maximum: 200
+          max_candidates_per_question:
+            type: integer
+            minimum: 1
+            maximum: 50
+          max_pages_per_question:
+            type: integer
+            minimum: 1
+            maximum: 5
+          page_size:
+            type: integer
+            minimum: 1
+            maximum: 100
+        additionalProperties: false
+    additionalProperties: false
 required:
   - query
   - mode

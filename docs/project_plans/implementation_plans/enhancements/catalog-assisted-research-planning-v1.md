@@ -36,6 +36,8 @@ references:
     - schemas/search_run.schema.yaml
     - schemas/research_brief.schema.yaml
     - schemas/routing_decision.schema.yaml
+    - schemas/research_evidence_plan.schema.yaml
+    - docs/dev/architecture/carp-contract-freeze.md
   related_prds:
     - docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
     - docs/project_plans/PRDs/features/assertion-ledger-activation-v1.md
@@ -79,14 +81,36 @@ files_affected:
   - src/research_foundry/api/openapi.json
 open_questions:
   - id: CARP-OQ-1
-    status: open
+    status: resolved
     question: "Freeze the conservative deterministic evidence-coverage rule."
+    resolution: >
+      Six-condition conservative rule (docs/dev/architecture/carp-contract-freeze.md §3.1): a
+      question is covered only if ALL SIX hold (lexical match on search_text, lifecycle eligible
+      at immediate-before-selection re-read, evaluate_reuse() returns allow, required
+      source-types/qualifiers satisfied, no contradicting authorized candidate, exact
+      assertion_version pinned at selection). Any failure/uncertainty/error resolves to residual
+      via a 14-member closed residual_reason enum (§3.2), never to covered and never left
+      unresolved. Schema-enforced by research_evidence_plan.schema.yaml's covered/residual `allOf`
+      partition (§3.1) plus the P1-addendum candidate-level `allOf` (five of the six conditions
+      gated on `selected: true`; the sixth — version pinning — via the required
+      `selected_assertion_ref.assertion_version`).
   - id: CARP-OQ-2
-    status: open
+    status: resolved
     question: "Confirm opt-in versus default-on retrieval policy for v1."
+    resolution: >
+      Opt-in; default `disabled` (docs/dev/architecture/carp-contract-freeze.md §1). Absent/omitted
+      `retrieval.policy` on `search_request` behaves byte-identically to pre-CARP legacy behavior:
+      no catalog query, no evidence plan, no additive metrics. No implicit network fallback from
+      any state, in any policy.
   - id: CARP-OQ-3
-    status: open
+    status: resolved
     question: "Decide whether cache_first exposes anonymous refresh-required state."
+    resolution: >
+      No anonymous refresh-required state (docs/dev/architecture/carp-contract-freeze.md §2.4).
+      `reuse_decision.action == "refresh"` is visible only inside `evaluated_candidates[]` on a
+      plan built for an authorized identity inside the owning workspace. A denied/cross-workspace
+      caller's `evaluated_candidates` is always empty (never populated with a refresh entry) —
+      the denial path returns before any candidate is evaluated.
 wave_plan:
   serialization_barriers:
     - schemas/search_request.schema.yaml
@@ -253,6 +277,17 @@ Leave `findings_doc_ref: null`. On the first load-bearing execution finding, cre
 **Dependencies**: Research Provenance Continuity `RPC-1.G` validator and Karen approval on the same exact contract tree.
 **Assigned Subagents**: backend-architect, api-designer
 **Exit State**: Adapter/planner/router writers have stable DTOs, enums, limits, denial behavior, and compatibility rules.
+
+**RPC-1.G waiver**: every P1 task below declares `RPC-1.G` as a dependency (directly on CARP-1.1/
+CARP-1.2, and via the phase-level Dependencies line above), but P1 executed and closed
+(`CARP-1.G` APPROVED-with-conditions, then closed by this addendum) without it — sibling child `C1`
+(Research Provenance Continuity) has not been executed, and no `RPC-1.G` gate exists to satisfy.
+`docs/dev/architecture/carp-contract-freeze.md` §4 is honest about this ("Research Provenance
+Continuity (`C1`) has not been executed... This document and its schemas therefore..." plus the §4
+"Normative substitution" note); this plan was silent about it until now. The waiver: P1 substitutes
+the CARP-owned `selected_assertion_ref` + `retrieval_receipt` pair for "the RPC context" everywhere
+downstream ACs (CARP-5, CARP-4.2, CARP-6.6) name it, and the actual RPC leg is deferred to the §4.2
+rebase whenever `C1` lands. See freeze doc §4 for the full contract.
 
 | Task ID | Task | Description | Acceptance Criteria | Estimate | Subagent | Model | Effort | Dependencies |
 |---|---|---|---|---:|---|---|---|---|

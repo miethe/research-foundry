@@ -35,7 +35,69 @@ properties:
               type: string
             question:
               type: string
+            coverage_state:
+              description: >
+                CARP (catalog-assisted-research-planning) additive field.
+                Absent means retrieval_policy was disabled for this brief's
+                run — the legacy state. See
+                docs/dev/architecture/carp-contract-freeze.md.
+              enum:
+                - covered
+                - residual
+            residual_reason:
+              type:
+                - string
+                - "null"
+              enum:
+                - no_candidate
+                - lexical_miss
+                - source_type_mismatch
+                - qualifier_missing
+                - reuse_refresh_required
+                - reuse_denied
+                - lifecycle_ineligible
+                - version_mismatch
+                - contradiction
+                - pagination_limit
+                - candidate_limit
+                - catalog_denied
+                - catalog_empty
+                - evaluation_error
+                - null
           additionalProperties: true
+          allOf:
+            # Karen finding #5: the brief is CARP-4.2's propagation TARGET for
+            # the plan's per-question partition, not just its residual_reason
+            # vocabulary — mirror the covered/residual allOf partition from
+            # research_evidence_plan.schema.yaml here too, so a propagation
+            # bug from the plan is visible at the destination. Both if-clauses
+            # require coverage_state's presence explicitly: it is additive
+            # and optional here (unlike the plan, where it is required), so a
+            # legacy question item that never sets it must not vacuously
+            # satisfy either branch.
+            - if:
+                required:
+                  - coverage_state
+                properties:
+                  coverage_state:
+                    const: covered
+              then:
+                properties:
+                  residual_reason:
+                    const: null
+            - if:
+                required:
+                  - coverage_state
+                properties:
+                  coverage_state:
+                    const: residual
+              then:
+                required:
+                  - residual_reason
+                properties:
+                  residual_reason:
+                    not:
+                      const: null
       secondary:
         type: array
         items:
@@ -45,7 +107,60 @@ properties:
               type: string
             question:
               type: string
+            coverage_state:
+              enum:
+                - covered
+                - residual
+            residual_reason:
+              type:
+                - string
+                - "null"
+              enum:
+                - no_candidate
+                - lexical_miss
+                - source_type_mismatch
+                - qualifier_missing
+                - reuse_refresh_required
+                - reuse_denied
+                - lifecycle_ineligible
+                - version_mismatch
+                - contradiction
+                - pagination_limit
+                - candidate_limit
+                - catalog_denied
+                - catalog_empty
+                - evaluation_error
+                - null
           additionalProperties: true
+          allOf:
+            # Same covered/residual partition as `primary` above (Karen
+            # finding #5) — kept as a literal copy rather than a $ref because
+            # this repo's SchemaRegistry has no cross-file/intra-file $ref
+            # resolver support (see the P0-3 test docstring elsewhere in
+            # tests/test_schema_validation.py for the same convention).
+            - if:
+                required:
+                  - coverage_state
+                properties:
+                  coverage_state:
+                    const: covered
+              then:
+                properties:
+                  residual_reason:
+                    const: null
+            - if:
+                required:
+                  - coverage_state
+                properties:
+                  coverage_state:
+                    const: residual
+              then:
+                required:
+                  - residual_reason
+                properties:
+                  residual_reason:
+                    not:
+                      const: null
     additionalProperties: true
   source_strategy:
     type: object

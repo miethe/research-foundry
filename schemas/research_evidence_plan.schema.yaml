@@ -1,0 +1,483 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/research_evidence_plan.schema.yaml"
+title: Research Evidence Plan
+description: >
+  Deterministic, catalog-backed evidence plan for a research brief (CARP —
+  Catalog-Assisted Research Planning — P1 contract freeze). An evidence plan
+  exists ONLY when the governing retrieval_policy is catalog_only or
+  catalog_then_discovery: the disabled policy (the v1 default) produces no
+  evidence plan at all, preserving byte-identical legacy behavior. Every
+  question maps to a bounded set of evaluated candidates and exactly one
+  terminal coverage state (covered or residual). See
+  docs/dev/architecture/carp-contract-freeze.md for the coverage rule,
+  residual-reason semantics, limits, deterministic-ordering rule, and the RPC
+  rebase contract this schema is written against.
+type: object
+properties:
+  evidence_plan_id:
+    type: string
+  schema_version:
+    type: string
+  workspace_id:
+    description: The authenticated workspace this plan was built and evaluated within.
+    type: string
+  brief_id:
+    type:
+      - string
+      - "null"
+  run_id:
+    type:
+      - string
+      - "null"
+  retrieval_policy:
+    description: >
+      The retrieval policy this plan was built under. "disabled" is
+      deliberately excluded from this enum: a disabled request never
+      produces an evidence plan (CARP-OQ-2).
+    enum:
+      - catalog_only
+      - catalog_then_discovery
+  catalog_receipt:
+    description: >
+      Proof that the plan was built against one specific, rebuildable catalog
+      projection generation. denial_reason is populated, and record_count is
+      0, when the catalog issued a fail-closed denial or returned zero
+      authorized rows for the whole plan (the catalog_only terminal-denial
+      state — AC CARP-1/CARP-2). A denied/empty receipt exposes no
+      candidate-derived fields anywhere else in the plan.
+    type: object
+    properties:
+      record_count:
+        type: integer
+        minimum: 0
+      catalog_generation_id:
+        description: Opaque, stable identifier of the projection generation used (never a filesystem path).
+        type:
+          - string
+          - "null"
+      generated_at:
+        type:
+          - string
+          - "null"
+        format: date-time
+      denial_reason:
+        type:
+          - string
+          - "null"
+    required:
+      - record_count
+    additionalProperties: false
+  limits:
+    description: >
+      Schema-validated ceilings (see docs/dev/architecture/carp-contract-freeze.md
+      §Limits). Absent limits fall back to the same ceilings applied as
+      defaults by the planner.
+    type: object
+    properties:
+      max_questions:
+        type: integer
+        minimum: 1
+        maximum: 200
+      max_candidates_per_question:
+        type: integer
+        minimum: 1
+        maximum: 50
+      max_pages_per_question:
+        type: integer
+        minimum: 1
+        maximum: 5
+      page_size:
+        description: Must respect the catalog's existing page cap (AssertionCatalog._MAX_PAGE_SIZE == 100).
+        type: integer
+        minimum: 1
+        maximum: 100
+    additionalProperties: false
+  questions:
+    description: >
+      Ordered question entries. Deterministic ordering: sorted by question_id
+      ascending (docs/dev/architecture/carp-contract-freeze.md §Deterministic
+      ordering).
+    type: array
+    maxItems: 200
+    items:
+      type: object
+      properties:
+        question_id:
+          type: string
+        question_text:
+          type:
+            - string
+            - "null"
+        required_terms:
+          description: Case-folded lexical terms every selected candidate's search_text must contain (conservative rule; no semantic/vector matching).
+          type: array
+          items:
+            type: string
+        required_source_types:
+          type: array
+          items:
+            type: string
+        required_qualifiers:
+          description: Required qualifier key/value pairs a selected candidate must satisfy.
+          type: object
+          additionalProperties:
+            type: string
+        evaluated_candidates:
+          description: >
+            Bounded, deterministically ordered (assertion_id ascending)
+            evaluated candidates for this question — never the full catalog
+            result set.
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            properties:
+              assertion_id:
+                type: string
+              assertion_version:
+                type: integer
+                minimum: 1
+              lifecycle_state:
+                enum:
+                  - eligible
+                  - stale
+                  - blocked
+                  - invalid
+                  - retracted
+                  - deleted
+                  - superseded
+              lexical_match:
+                type: boolean
+              source_type_satisfied:
+                type: boolean
+              qualifiers_satisfied:
+                type: boolean
+              reuse_decision:
+                description: Exact decision ref mirroring assertion_reuse.evaluate_reuse().
+                type: object
+                properties:
+                  action:
+                    enum:
+                      - allow
+                      - deny
+                      - refresh
+                  reason_code:
+                    description: Exact reason-code literal from assertion_reuse.evaluate_reuse().
+                    enum:
+                      - assertion_missing
+                      - assertion_id_missing
+                      - workspace_context_missing
+                      - workspace_mismatch
+                      - lifecycle_unknown
+                      - lifecycle_blocked
+                      - freshness_refresh_required
+                      - freshness_context_missing
+                      - rights_denied
+                      - sensitivity_denied
+                      - evaluation_missing_or_failed
+                      - invalidation_unknown
+                      - edition_context_invalid
+                      - extraction_contract_invalid
+                      - required_edition_invalid
+                      - required_extraction_contract_invalid
+                      - edition_refresh_required
+                      - extraction_refresh_required
+                      - eligible
+                required:
+                  - action
+                  - reason_code
+                additionalProperties: false
+                allOf:
+                  # CARP-1.G Karen finding #7: the action<->reason_code pairing is
+                  # deterministic in assertion_reuse.evaluate_reuse() (never e.g.
+                  # {action: allow, reason_code: rights_denied}) — re-derived from
+                  # the function body, not asserted independently of it.
+                  - if:
+                      required:
+                        - action
+                      properties:
+                        action:
+                          const: allow
+                    then:
+                      properties:
+                        reason_code:
+                          const: eligible
+                  - if:
+                      required:
+                        - action
+                      properties:
+                        action:
+                          const: refresh
+                    then:
+                      properties:
+                        reason_code:
+                          enum:
+                            - freshness_refresh_required
+                            - edition_refresh_required
+                            - extraction_refresh_required
+                  - if:
+                      required:
+                        - action
+                      properties:
+                        action:
+                          const: deny
+                    then:
+                      properties:
+                        reason_code:
+                          enum:
+                            - assertion_missing
+                            - assertion_id_missing
+                            - workspace_context_missing
+                            - workspace_mismatch
+                            - lifecycle_unknown
+                            - lifecycle_blocked
+                            - freshness_context_missing
+                            - rights_denied
+                            - sensitivity_denied
+                            - evaluation_missing_or_failed
+                            - invalidation_unknown
+                            - edition_context_invalid
+                            - extraction_contract_invalid
+                            - required_edition_invalid
+                            - required_extraction_contract_invalid
+              contradicts:
+                description: True when this candidate contradicts another authorized candidate for the same question.
+                type: boolean
+              selected:
+                type: boolean
+            required:
+              - assertion_id
+              - assertion_version
+              - lifecycle_state
+              - reuse_decision
+              - selected
+            additionalProperties: false
+            allOf:
+              # CARP-1.G Karen finding #4: five of the six covered conditions
+              # (docs/dev/architecture/carp-contract-freeze.md §3.1) are
+              # enforceable directly on the candidate item — a selected
+              # candidate must be lexically matched, lifecycle-eligible,
+              # reuse-allowed, source-type/qualifier-satisfied, and
+              # non-contradicting. Condition 6 (exact version pinning) is
+              # already covered — condition 6's *presence* half — by the
+              # required `assertion_version` on `selected_assertion_ref` at
+              # the question level. That only enforces that A pinned version
+              # exists; it does NOT enforce that it matches the selected
+              # candidate item's own `assertion_version` above.
+              - if:
+                  required:
+                    - selected
+                  properties:
+                    selected:
+                      const: true
+                then:
+                  required:
+                    - lexical_match
+                    - lifecycle_state
+                    - source_type_satisfied
+                    - qualifiers_satisfied
+                    - reuse_decision
+                    - contradicts
+                  properties:
+                    lexical_match:
+                      const: true
+                    lifecycle_state:
+                      const: eligible
+                    source_type_satisfied:
+                      const: true
+                    qualifiers_satisfied:
+                      const: true
+                    contradicts:
+                      const: false
+                    reuse_decision:
+                      required:
+                        - action
+                      properties:
+                        action:
+                          const: allow
+        selected_assertion_ref:
+          description: >
+            CARP-owned selection-provenance carrier (CARP-1.4): the exact
+            selected assertion_id + assertion_version pair, pinned at
+            selection time. non-null iff coverage_state == covered. Migrates
+            into the RPC activity receipt's selected-evidence-versions field
+            when C1 lands — see the RPC rebase contract in
+            docs/dev/architecture/carp-contract-freeze.md.
+          type:
+            - object
+            - "null"
+          properties:
+            assertion_id:
+              type: string
+            assertion_version:
+              type: integer
+              minimum: 1
+          required:
+            - assertion_id
+            - assertion_version
+          additionalProperties: false
+        retrieval_receipt:
+          description: >
+            CARP-owned retrieval receipt for the selected candidate. v1 only
+            ever populates source: catalog (no network provider may produce a
+            selection). non-null iff coverage_state == covered.
+          type:
+            - object
+            - "null"
+          properties:
+            source:
+              const: catalog
+            catalog_generation_id:
+              type:
+                - string
+                - "null"
+            decided_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+          required:
+            - source
+          additionalProperties: false
+        coverage_state:
+          description: Exactly one terminal coverage state per question.
+          enum:
+            - covered
+            - residual
+        residual_reason:
+          description: >
+            Required, and exactly one closed code, whenever coverage_state is
+            residual; MUST be null when coverage_state is covered.
+          type:
+            - string
+            - "null"
+          enum:
+            - no_candidate
+            - lexical_miss
+            - source_type_mismatch
+            - qualifier_missing
+            - reuse_refresh_required
+            - reuse_denied
+            - lifecycle_ineligible
+            - version_mismatch
+            - contradiction
+            - pagination_limit
+            - candidate_limit
+            - catalog_denied
+            - catalog_empty
+            - evaluation_error
+            - null
+      required:
+        - question_id
+        - required_terms
+        - evaluated_candidates
+        - coverage_state
+        - residual_reason
+      additionalProperties: false
+      allOf:
+        # covered ⇒ residual_reason is null AND a selection ref/receipt exist.
+        - if:
+            properties:
+              coverage_state:
+                const: covered
+          then:
+            required:
+              - selected_assertion_ref
+              - retrieval_receipt
+            properties:
+              residual_reason:
+                const: null
+              selected_assertion_ref:
+                type: object
+              retrieval_receipt:
+                type: object
+        # residual ⇒ residual_reason is a real code AND no selection was made.
+        # Exact negation of the branch above so the two partition every
+        # instance with no gap and no overlap.
+        - if:
+            properties:
+              coverage_state:
+                const: residual
+          then:
+            properties:
+              residual_reason:
+                not:
+                  const: null
+              selected_assertion_ref:
+                const: null
+              retrieval_receipt:
+                const: null
+  summary:
+    description: >
+      Bounded aggregate summary. Every counter below is candidate-derived and
+      MUST be 0 (or omitted) when catalog_receipt.denial_reason is set —
+      questions_total is the sole exception, since it is echoed from the
+      request rather than derived from the corpus.
+    type: object
+    properties:
+      questions_total:
+        type: integer
+        minimum: 0
+      questions_covered:
+        type: integer
+        minimum: 0
+      questions_residual:
+        type: integer
+        minimum: 0
+      candidates_evaluated:
+        type: integer
+        minimum: 0
+      candidates_selected:
+        type: integer
+        minimum: 0
+      avoided_provider_calls:
+        type: integer
+        minimum: 0
+      residual_reason_counts:
+        type: object
+        additionalProperties:
+          type: integer
+          minimum: 0
+    required:
+      - questions_total
+    additionalProperties: false
+required:
+  - evidence_plan_id
+  - workspace_id
+  - retrieval_policy
+  - catalog_receipt
+  - questions
+  - summary
+additionalProperties: false
+allOf:
+  # CARP-1.G Karen finding #3: the "zero candidate-derived fields on denial"
+  # claim (docs/dev/architecture/carp-contract-freeze.md §2.4) is structural,
+  # not merely asserted by a hand-built fixture. questions_total is excluded
+  # deliberately — it is echoed from the request, not derived from the
+  # corpus.
+  - if:
+      required:
+        - catalog_receipt
+      properties:
+        catalog_receipt:
+          required:
+            - record_count
+          properties:
+            record_count:
+              const: 0
+    then:
+      properties:
+        summary:
+          properties:
+            questions_covered:
+              const: 0
+            questions_residual:
+              const: 0
+            candidates_evaluated:
+              const: 0
+            candidates_selected:
+              const: 0
+            avoided_provider_calls:
+              const: 0
+            residual_reason_counts:
+              const: {}

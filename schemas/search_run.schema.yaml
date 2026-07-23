@@ -105,6 +105,96 @@ properties:
         items:
           type: string
     additionalProperties: true
+  retrieval:
+    description: >
+      CARP (catalog-assisted-research-planning) additive block. Present ONLY
+      when this run's effective retrieval_policy was catalog_only or
+      catalog_then_discovery — a disabled run (the v1 default, and every
+      legacy run) omits this block entirely and remains readable without a
+      placeholder. `selections` is a NON-AUTHORITATIVE persisted mirror of the
+      evidence plan's per-question selections at run-completion time (same
+      mirror convention as source_card/source_assertion's `rights_summary`);
+      the evidence plan (schemas/research_evidence_plan.schema.yaml) stays the
+      sole authoritative source for the coverage/selection decision itself —
+      see docs/dev/architecture/carp-contract-freeze.md.
+    type: object
+    properties:
+      policy:
+        enum:
+          - catalog_only
+          - catalog_then_discovery
+      evidence_plan_ref:
+        type:
+          - string
+          - "null"
+      mirror_is_authoritative:
+        const: false
+      selections:
+        type: array
+        items:
+          type: object
+          properties:
+            question_id:
+              type: string
+            assertion_id:
+              type:
+                - string
+                - "null"
+            assertion_version:
+              type:
+                - integer
+                - "null"
+            retrieval_receipt:
+              type:
+                - object
+                - "null"
+              properties:
+                source:
+                  const: catalog
+                catalog_generation_id:
+                  type:
+                    - string
+                    - "null"
+                decided_at:
+                  type:
+                    - string
+                    - "null"
+              additionalProperties: false
+          required:
+            - question_id
+          additionalProperties: false
+      metrics:
+        description: >
+          Observed authorized counts derived from actual adapter/provider
+          execution (AC CARP-6). A denied or empty catalog_only terminal
+          state exposes zero candidate-derived counters here.
+        type: object
+        properties:
+          questions_total:
+            type: integer
+            minimum: 0
+          questions_covered:
+            type: integer
+            minimum: 0
+          questions_residual:
+            type: integer
+            minimum: 0
+          candidates_evaluated:
+            type: integer
+            minimum: 0
+          candidates_selected:
+            type: integer
+            minimum: 0
+          avoided_provider_calls:
+            type: integer
+            minimum: 0
+          residual_reason_counts:
+            type: object
+            additionalProperties:
+              type: integer
+              minimum: 0
+        additionalProperties: false
+    additionalProperties: false
 required:
   - run_id
   - request

@@ -213,13 +213,8 @@ def list_jobs(
         jobs = [j for j in jobs if j.get("status") == status]
 
     # Sensitivity filter (exclude jobs whose sensitivity rank exceeds threshold).
-    _SENS_ORDER = {
-        "public": 0,
-        "personal": 1,
-        "work_sensitive": 2,
-        "client_sensitive": 3,
-        "top_secret": 4,
-    }
+    from research_foundry.services.sensitivity import SENSITIVITY_RANK as _SENS_ORDER
+
     if sensitivity_threshold:
         threshold_rank = _SENS_ORDER.get(sensitivity_threshold, len(_SENS_ORDER))
         jobs = [
@@ -280,13 +275,8 @@ def stream(
     With ``--follow``: connects to the SSE endpoint of a running ``rf serve``
     instance and streams events until the job reaches a terminal state.
     """
-    _SENS_ORDER = {
-        "public": 0,
-        "personal": 1,
-        "work_sensitive": 2,
-        "client_sensitive": 3,
-        "top_secret": 4,
-    }
+    from research_foundry.services.sensitivity import SENSITIVITY_RANK as _SENS_ORDER
+
     threshold_rank = _SENS_ORDER.get(sensitivity_threshold or "top_secret", len(_SENS_ORDER))
 
     def _filter_event(event: dict[str, Any]) -> bool:

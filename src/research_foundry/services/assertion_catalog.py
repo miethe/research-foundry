@@ -45,15 +45,39 @@ class AssertionCatalogDenied(AssertionCatalogError):
 
 @dataclass(frozen=True)
 class ProjectionReceipt:
-    """Stable proof that a derived projection was rebuilt."""
+    """Stable proof that a derived projection was rebuilt.
+
+    ``catalog_generation_id`` (CARP contract-freeze §3.6, Seam 1) is a
+    ``sha256`` content digest over the canonicalized ``records`` list, never
+    a filesystem path or an mtime. It changes iff the record set actually
+    changes, so repeated ``rebuild()`` calls against an unchanged corpus are
+    idempotent and return the same generation id -- a monotonic counter was
+    explicitly rejected because it would increment on every cold-start
+    rebuild and every no-op rebuild triggered by :meth:`AssertionCatalog._records`,
+    spuriously tripping the "catalog generation changed mid-plan" scenario.
+    """
 
     workspace_id: str
     record_count: int
     projection_path: Path
+    catalog_generation_id: str
 
 
 def _workspace_key(workspace_id: str) -> str:
     return hashlib.sha256(workspace_id.encode("utf-8")).hexdigest()
+
+
+def _canonical_generation_digest(records: list[dict[str, Any]]) -> str:
+    """Sha256 over the canonicalized ``records`` list (CARP-2 Seam 1).
+
+    ``sort_keys=True`` plus fixed separators make the digest stable across
+    dict key-insertion order; the list's own order is already deterministic
+    (``_build_records`` walks ``sorted(...glob("*.yaml"))``), so this is a
+    pure function of record *content*, never of the filesystem path or mtime
+    the projection happens to be written to.
+    """
+    encoded = json.dumps(records, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _mapping(path: Path) -> dict[str, Any] | None:
@@ -109,9 +133,23 @@ class AssertionCatalog:
         if not workspace_id.strip():
             raise AssertionCatalogError("workspace_context_missing")
         records = self._build_records(workspace_id)
+        generation_id = _canonical_generation_digest(records)
         path = self.projection_path(workspace_id)
-        _atomic_json_dump({"schema_version": 1, "workspace_key": _workspace_key(workspace_id), "records": records}, path)
-        return ProjectionReceipt(workspace_id=workspace_id, record_count=len(records), projection_path=path)
+        _atomic_json_dump(
+            {
+                "schema_version": 1,
+                "workspace_key": _workspace_key(workspace_id),
+                "catalog_generation_id": generation_id,
+                "records": records,
+            },
+            path,
+        )
+        return ProjectionReceipt(
+            workspace_id=workspace_id,
+            record_count=len(records),
+            projection_path=path,
+            catalog_generation_id=generation_id,
+        )
 
     def search(
         self,
