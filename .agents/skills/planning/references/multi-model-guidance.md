@@ -13,14 +13,14 @@ Is the task image/asset generation?
 
 Is the task UI wireframing, SVG animation, or complex visuals?
   Is it structural (layout, component hierarchy, interaction states, data tables)?
-    YES → gemini-3.1-pro SVG wireframe (machine-readable, editable, deterministic labels)
+    YES → gemini-3.1-pro-preview SVG wireframe (machine-readable, editable, deterministic labels)
   Is it aesthetic (color exploration, visual feel, high-fidelity stakeholder preview)?
     YES → nano-banana-pro raster mockup (quality mode for finals, standard for iteration)
   Need both? → Gemini SVG first (structure), then Nano Banana (aesthetic target)
   NO  → Continue
 
 Does the task require current web information (post-Feb 2025)?
-  YES → gemini-3.1-pro (web search capability)
+  YES → gemini-3.1-pro-preview (web search capability)
   NO  → Continue
 
 Is this a debug escalation (2+ failed Claude cycles)?
@@ -47,7 +47,7 @@ Source of truth: `.claude/config/multi-model.toml` § `[models.effort_levels]`
 |---|---|---|---|
 | claude | opus, sonnet, haiku | `adaptive`, `extended` | `adaptive` |
 | codex | gpt-5.6-terra | `none`, `low`, `medium`, `high`, `xhigh` | `medium` |
-| gemini | gemini-3.1-pro, gemini-3.1-flash | `none`, `low`, `medium`, `high` | `medium` |
+| gemini | gemini-3.1-pro-preview, gemini-3.1-flash-lite | `none`, `low`, `medium`, `high` | `medium` |
 | nano_banana | nano-banana-pro | `standard`, `quality` | `standard` |
 
 **Effort is a model-keyed reasoning budget, not a size estimate.** Task size (story points, hours) belongs in the `Estimate` column of the phase task table, never in `Effort`.
@@ -84,7 +84,7 @@ parallelization:
       effort: quality
 
     - task: RESEARCH-1.1
-      assigned_to: gemini-3.1-pro
+      assigned_to: gemini-3.1-pro-preview
       effort: medium
 
   batch_1:
@@ -107,11 +107,11 @@ parallelization:
 | Task | Model | Effort | Rationale |
 |------|-------|--------|-----------|
 | Generate app icon (final) | nano-banana-pro | quality | visual asset generation at max quality |
-| Research Next.js 15 patterns | gemini-3.1-pro | medium | web search + synthesis needed |
+| Research Next.js 15 patterns | gemini-3.1-pro-preview | medium | web search + synthesis needed |
 | Implement user profile API | sonnet | adaptive | standard implementation |
 | Debug auth flow (3rd attempt) | gpt-5.6-terra | xhigh | escalated debugging (threshold: 2 cycles) |
 | Write component documentation | haiku | adaptive | documentation is cheap (haiku optimized) |
-| UI wireframe (layout/hierarchy) | gemini-3.1-pro | medium | SVG wireframe — machine-readable, editable, precise labels |
+| UI wireframe (layout/hierarchy) | gemini-3.1-pro-preview | medium | SVG wireframe — machine-readable, editable, precise labels |
 | UI mockup (aesthetic/feel) | nano-banana-pro | standard | raster mockup — visual aesthetics, color exploration |
 | UI mockup (stakeholder preview) | nano-banana-pro | quality | high-fidelity raster for sign-off |
 

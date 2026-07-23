@@ -17,9 +17,9 @@ exploration = "claude-haiku-4-5"
 orchestration = "claude-opus-4-6"
 documentation = "claude-haiku-4-5"
 image_generation = "nano-banana-2"   # nb2 = Gemini 3.1 Flash Image (default); use nano-banana-pro for max quality
-svg_generation = "gemini-3.1-pro"
+svg_generation = "gemini-3.1-pro-preview"
 video_generation = "sora-2"
-web_research = "gemini-3.1-pro"
+web_research = "gemini-3.1-pro-preview"
 
 [models.effort_policy]
 # Claude: "adaptive" (default) | "extended" (deep reasoning)
@@ -46,8 +46,8 @@ sandbox_default = "read-only"
 debug_escalation_threshold = 2
 
 [models.gemini]
-default_model = "gemini-3.1-pro"
-fast_model = "gemini-3-flash"
+default_model = "gemini-3.1-pro-preview"
+fast_model = "gemini-3.5-flash"
 flash_threshold = "simple"
 max_output_tokens = 65536
 chunking_threshold = 32000
