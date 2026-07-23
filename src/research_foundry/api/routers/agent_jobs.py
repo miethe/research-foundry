@@ -162,7 +162,16 @@ def launch_job(
     Returns the created :class:`~research_foundry.services.agent_job_schemas.AgentJob`
     record on success (HTTP 201).
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (create_job/spawn_job have no identity param; not Phase 3 scoping targets)
+    identity = getattr(request.state, "identity", None)
+    # DF-004: an authenticated identity's own workspace always wins over the
+    # client-supplied body.workspace_id — the same "identity overrides client
+    # input" idiom already used elsewhere in the report-draft create path and
+    # audit_service.record_event. identity=None (LAN single_user / auth
+    # provider "none") falls back to body.workspace_id, byte-identical to
+    # pre-DF-004 behavior.
+    effective_workspace_id = (
+        body.workspace_id if identity is None else identity.workspace_id
+    )
     # Build governance context from the policy_snapshot.
     ps = body.policy_snapshot
     ctx = GuardContext(
@@ -200,7 +209,6 @@ def launch_job(
 
     # Create and persist the job record.
     try:
-        # TODO(WKSP-304 P4): AgentJobService.create_job() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         job = service.create_job(
             provider=body.provider,
             model_profile=body.model_profile,
@@ -214,6 +222,7 @@ def launch_job(
             input_report_id=body.input_report_id,
             budget_usd=body.budget_usd,
             max_runtime_minutes=body.max_runtime_minutes,
+            identity=identity,
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to create agent job: %s", exc)
@@ -230,8 +239,11 @@ def launch_job(
             ) from exc
 
     # Spawn subprocess (only if not an in-process provider).
+    # DF-004: spawn_job takes the already-persisted `job` object, not a
+    # separate workspace_id/identity — it inherits the corrected
+    # `job.workspace_id` stamped by create_job() above with no code change
+    # needed here.
     try:
-        # TODO(WKSP-304 P4): AgentJobService.spawn_job() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         service.spawn_job(job, credential_bytes)
     except InProcessProviderError as exc:
         raise HTTPException(
@@ -243,13 +255,17 @@ def launch_job(
         raise HTTPException(status_code=500, detail="Failed to spawn agent job subprocess") from exc
 
     # Audit: record successful agent job launch after job is persisted and spawned (fail-open).
+    # DF-004: actor_workspace_id is stamped from the SAME effective_workspace_id
+    # used for the persisted job (identity overrides client-supplied
+    # body.workspace_id when present) so the audit trail cannot be spoofed
+    # independently of the job record.
     audit_service.record_event(
         paths,
         AuditEvent(
             mutation_type="agent_job_launched",
             action="launch_job",
             target_ref=job.agent_job_id,
-            actor_workspace_id=str(body.workspace_id) if body.workspace_id else None,
+            actor_workspace_id=str(effective_workspace_id) if effective_workspace_id else None,
             result="success",
         ),
     )

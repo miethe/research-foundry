@@ -16,6 +16,22 @@ Security invariants:
     ``agent_jobs.py``'s RBAC-FORWARD-COMPAT pattern (RBAC-005/RBAC-901).
     Respects ``auth.rbac_enforcement``'s auto/disabled/enabled modes for
     free via the shared ``require_role`` dependency.
+  * DF-004: dispatch is additionally gated on run *ownership* — an
+    owner/admin caller from workspace A must not be able to approve+dispatch
+    a run belonging to workspace B. ``_enforce_run_workspace_scope`` runs
+    FIRST inside the try block, before ``approve_and_dispatch`` (i.e. before
+    any external side effect). It reuses the shared
+    ``api/auth/scope.py::require_workspace_scope`` predicate (same
+    advisory/enforcing semantics as ``catalog_service.get_item`` /
+    ``audit_service.get_event``): ``identity is None``, workspace isolation
+    not actively enforced, or ``run.workspace_id == identity.workspace_id``
+    all allow; anything else (including a missing/legacy ``workspace_id``)
+    is a mismatch. An *enforced* mismatch raises ``NotFoundError`` — caught
+    by the SAME branch as a genuinely-missing run below, so the response is
+    an indistinguishable 404, never a distinguishable 403, and the existing
+    "exactly one audit row" invariant is preserved for free. Writeback is a
+    mutating cross-tenant action, so ``public`` visibility never grants it —
+    only workspace ownership does.
   * Exactly one ``audit_service.record_event()`` call happens per invocation,
     covering all four outcome classes: success, partial ("failure" per
     ``AuditEvent.result``'s three-value contract), blocked ("denied"), and an
@@ -49,6 +65,7 @@ Judgment calls (for the phase-owner's Completion Note):
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Literal
 
@@ -61,7 +78,10 @@ from ...services import audit_service
 from ...services.audit_service import AuditEvent
 from ...services.governance import GuardResult
 from ...services.writeback import ApproveDispatchResult, approve_and_dispatch
+from ...yamlio import load_yaml
+from ..auth.provider import AuthIdentity
 from ..auth.rbac import require_role
+from ..auth.scope import require_workspace_scope, resolve_workspace_isolation_active
 from .runs import get_paths
 
 logger = logging.getLogger(__name__)
@@ -235,6 +255,85 @@ def _governance_rejected_exception(result: ApproveDispatchResult) -> HTTPExcepti
     )
 
 
+def _run_workspace_id(paths: FoundryPaths, run_id: str) -> str | None:
+    """Best-effort read of ``run.workspace_id`` from ``runs/<run_id>/run.yaml``.
+
+    Returns ``None`` when the run directory/``run.yaml`` is missing or
+    unreadable, or when the field itself is absent (a legacy run predating
+    DF-004's ``workspace_id`` field). Callers treat ``None`` as "not your
+    workspace" once enforcement is active — it is never defaulted to
+    allowed (see :func:`_enforce_run_workspace_scope`).
+    """
+    rp = paths.run_paths(run_id)
+    try:
+        meta = load_yaml(rp.run_yaml)
+    except (FileNotFoundError, OSError):
+        return None
+    if not isinstance(meta, dict):
+        return None
+    value = meta.get("workspace_id")
+    return str(value) if value else None
+
+
+def _enforce_run_workspace_scope(
+    run_id: str,
+    paths: FoundryPaths,
+    identity: AuthIdentity | None,
+) -> None:
+    """DF-004: gate writeback dispatch on run ownership BEFORE any side effect.
+
+    Writeback is a MUTATING cross-tenant ACTION, so it is gated on *owner*
+    only — ``public`` visibility never grants it (public is read-only).
+    Predicate (reusing the shared ``require_workspace_scope`` idiom):
+    allowed IFF ``identity is None`` OR workspace isolation is not actively
+    enforced OR ``run.workspace_id == identity.workspace_id``. A missing or
+    null ``workspace_id`` (legacy run) is treated as a mismatch, never
+    defaulted to allowed.
+
+    * ``identity is None`` (single-operator-trust / LAN no-auth mode) short-
+      circuits inside ``require_workspace_scope`` itself — byte-identical to
+      pre-DF-004 behaviour.
+    * Advisory mode (isolation not enforced): a mismatch is logged by
+      ``require_workspace_scope`` itself (``workspace_scope_advisory_mismatch``,
+      ``WARNING``) and the call **allows** — dispatch proceeds unchanged.
+    * Enforcing mode: a mismatch additionally emits the
+      ``workspace_scope_enforced_denial`` structured log at ``ERROR`` (same
+      event name/shape as ``catalog_service.get_item`` /
+      ``audit_service.get_event``) and raises :class:`NotFoundError`. The
+      caller (``approve_dispatch``) must call this BEFORE
+      ``approve_and_dispatch`` inside its existing ``try`` block, so the
+      raise is caught by the SAME branch as a genuinely-missing run — the
+      response is an indistinguishable 404, never a distinguishable 403,
+      and NO dispatch / external side effect has occurred.
+    """
+    if identity is None:
+        return
+
+    run_workspace_id = _run_workspace_id(paths, run_id)
+    result = require_workspace_scope(
+        identity,
+        {"workspace_id": run_workspace_id},
+        record_type="run",
+        record_id=run_id,
+        resolve_enforcement=lambda: resolve_workspace_isolation_active(paths),
+    )
+    if result.allowed:
+        return
+
+    logger.error(
+        json.dumps(
+            {
+                "event": "workspace_scope_enforced_denial",
+                "record_type": "run",
+                "record_id": run_id,
+                "record_workspace_id": run_workspace_id,
+                "identity_workspace_id": identity.workspace_id,
+            }
+        )
+    )
+    raise NotFoundError(f"run not found: {run_id}")
+
+
 # ---------------------------------------------------------------------------
 # API-001..004: POST /runs/{run_id}/writeback/approve
 # ---------------------------------------------------------------------------
@@ -289,6 +388,11 @@ def approve_dispatch(
     targets = tuple(body.targets) if body.targets else _DEFAULT_TARGETS
 
     try:
+        # DF-004: ownership gate runs FIRST — before approve_and_dispatch and
+        # therefore before any target dispatch / external side effect. An
+        # enforced mismatch raises NotFoundError, caught by the branch below
+        # (indistinguishable-404, same as a genuinely-missing run).
+        _enforce_run_workspace_scope(run_id, paths, identity)
         result = approve_and_dispatch(
             run_id,
             approver_identity=approver_identity,

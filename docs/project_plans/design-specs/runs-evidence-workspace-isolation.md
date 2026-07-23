@@ -2,10 +2,10 @@
 schema_version: 2
 doc_type: design_spec
 title: "Public Multi-User Release Activation: Runs/Claims/Evidence Workspace Isolation (DF-004)"
-status: draft
-maturity: shaping
+status: implemented
+maturity: implemented
 created: 2026-07-22
-updated: 2026-07-22
+updated: 2026-07-23
 feature_slug: public-multiuser-release-activation
 prd_ref: docs/project_plans/PRDs/features/public-multiuser-release-activation-v1.md
 problem_statement: >
@@ -34,6 +34,46 @@ related_documents:
 ---
 
 # Runs/Claims/Evidence Workspace Isolation (DF-004)
+
+## Resolution (2026-07-23) — Implemented, pending formal re-audit
+
+The four per-surface fixes below are **implemented and tested** on branch
+`feat/df-004-runs-workspace-isolation`. The blocking product decisions (open
+questions #1–#3) were made by the operator and are recorded in
+`docs/dev/architecture/adr-runs-workspace-isolation.md`:
+
+1. **Run ownership** = the workspace of the identity that launched it.
+   `POST /runs` stamps `run.yaml.workspace_id` from `identity.workspace_id`,
+   never from client input (mirrors `builder_service.create_draft`).
+2. **Public visibility with preserved provenance** (operator addition): runs
+   carry a new `visibility` field (`workspace` default | `public`).
+   `public` grants cross-workspace **read** only — it never bypasses the
+   writeback-dispatch owner check (a mutating cross-tenant action). The owning
+   `workspace_id` is always recorded regardless of visibility.
+3. **Enforcement** reuses the shared `resolve_workspace_isolation_active` /
+   `require_workspace_scope` flag (advisory-default, operator opts into
+   enforcing) — so `identity=None` single-operator-trust (the LAN `single_user`
+   deployment) is byte-identical to pre-DF-004, and trusted-cohort installs are
+   unchanged until an operator turns enforcement on.
+4. **Legacy runs** backfilled to `"default"` via a new run-aware
+   `dry_run_runs`/`backfill_runs`/rollback path in
+   `workspace_migration_service.py` (mirrors the WKSP-30x draft-backfill
+   contract: zero-write dry-run, JSON manifest, null-not-wildcard).
+
+Commits: read scoping + stamping (`runs.py`/`export_service.py`/`planning.py`/
+`run_launch.py`), writeback owner gate (`writeback.py`), agent-jobs row-9 stamp
+(`agent_jobs.py`/`agent_job_service.py`), run backfill
+(`workspace_migration_service.py`). New tests:
+`tests/unit/test_runs_workspace_isolation.py`,
+`tests/test_writeback_router.py::TestWorkspaceOwnershipGate`,
+`tests/unit/test_agent_jobs_workspace_stamp.py`,
+`tests/unit/test_run_workspace_backfill.py`.
+
+**Still open (AC #4):** a formal DI-1 re-audit + Mode D human sign-off must
+re-verify rows 9-12 flip to CONFINED/REMEDIATED **before** any deployment claims
+adversarial-multi-tenant readiness. Code remediation being done and tested does
+**not** by itself lift the trusted-cohort scope boundary — that remains a
+human decision, unchanged by this implementation.
 
 ## Status: Shaping — the single highest-priority follow-up from this feature
 

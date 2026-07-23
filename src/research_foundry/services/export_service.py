@@ -22,12 +22,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from markdown_it import MarkdownIt
@@ -38,6 +39,23 @@ from ..errors import ExitCode, RFError
 from ..frontmatter import split_frontmatter
 from ..paths import FoundryPaths, RunPaths
 from ..yamlio import loads_yaml
+
+# NOTE (serve-extra decoupling, FU-1 — same convention as
+# ``agent_job_service.py``): ``api.auth.provider`` module-imports
+# ``starlette`` (a ``[serve]``-tier dependency), so importing it at module
+# scope here would force the deterministic, zero-network ``rf run export``
+# spine to require the serve extras just to import this module.
+# ``AuthIdentity`` is used only in annotations (``from __future__ import
+# annotations`` makes them lazy), so it lives under ``TYPE_CHECKING``; the
+# runtime scope helpers (``require_workspace_scope`` /
+# ``resolve_workspace_isolation_active``) are imported lazily inside
+# ``_run_read_allowed`` below, which only runs when a caller actually passes
+# a non-``None`` ``identity`` (i.e. only in the serve context, where
+# ``starlette`` is present).
+if TYPE_CHECKING:
+    from ..api.auth.provider import AuthIdentity
+
+_logger = logging.getLogger(__name__)
 
 EXPORT_SCHEMA_VERSION = "1.6"
 
@@ -1027,16 +1045,93 @@ def _verification_block(rp: RunPaths, *, run_id: str | None) -> dict[str, Any]:
     }
 
 
+# --- DF-004: workspace-scope read gate (runs) --------------------------------
+def _run_read_allowed(
+    paths: FoundryPaths,
+    run_meta: dict[str, Any],
+    run_id: str,
+    identity: AuthIdentity | None,
+) -> bool:
+    """DF-004 workspace-scope read gate for a single run record.
+
+    Readable IFF ``identity is None`` OR isolation is not actively enforced
+    OR ``run_meta["visibility"] == "public"`` OR ``run_meta["workspace_id"]
+    == identity.workspace_id``.
+
+    ``identity is None`` (single-operator-trust / CLI / any pre-DF-004
+    caller) short-circuits to ``True`` as the literal first statement —
+    before any lazy import of ``api.auth.scope`` — so the deterministic,
+    zero-network ``rf run export`` / ``rf swarm drive`` spine is never forced
+    to import ``starlette`` just because this module was imported (same FU-1
+    serve-extra-decoupling invariant ``agent_job_service.py`` documents).
+
+    A ``visibility == "public"`` run is readable by any identity regardless
+    of enforcement state — this bypass is checked before any workspace
+    comparison, so a public run never produces a mismatch log.
+
+    Otherwise this delegates to the shared
+    :func:`~research_foundry.api.auth.scope.require_workspace_scope` /
+    :func:`~research_foundry.api.auth.scope.resolve_workspace_isolation_active`
+    idiom already used by ``agent_job_service.AgentJobService.load_job`` for
+    file-canonical (non-SQL) records: a workspace mismatch (including a
+    ``None``/absent ``workspace_id`` on the run, per AC-3 — never treated as
+    a wildcard) logs a ``WARNING`` and still allows under advisory mode, or
+    denies (after this function additionally logs an ``ERROR``
+    ``workspace_scope_enforced_denial`` event, mirroring
+    ``catalog_service.get_item``'s ``_log_enforced_denial_if_exists_elsewhere``
+    and ``AgentJobService.load_job``) under enforcing mode.
+    """
+
+    if identity is None:
+        return True
+    if run_meta.get("visibility") == "public":
+        return True
+
+    from ..api.auth.scope import require_workspace_scope, resolve_workspace_isolation_active
+
+    scope_result = require_workspace_scope(
+        identity,
+        run_meta,
+        record_type="run",
+        record_id=run_id,
+        resolve_enforcement=lambda: resolve_workspace_isolation_active(paths),
+    )
+    if not scope_result.allowed:
+        _logger.error(
+            json.dumps(
+                {
+                    "event": "workspace_scope_enforced_denial",
+                    "record_type": "run",
+                    "record_id": run_id,
+                    "record_workspace_id": run_meta.get("workspace_id"),
+                    "identity_workspace_id": identity.workspace_id,
+                }
+            )
+        )
+        return False
+    return True
+
+
 # --- top-level export --------------------------------------------------------
 def export_run(
     paths: FoundryPaths,
     run_id: str,
     *,
     sensitivity_threshold: str | None = None,
-) -> dict[str, Any]:
+    identity: AuthIdentity | None = None,
+) -> dict[str, Any] | None:
     """Build the denormalized ``run.json`` dict for ``run_id``.
 
     All reads are path-derived; sensitivity filtering is applied before return.
+
+    ``identity`` is DF-004 workspace-scope read gating (see
+    :func:`_run_read_allowed`): when the run is not readable by ``identity``
+    under active enforcement, this returns ``None`` — the caller (router)
+    must map that to the same 404 a genuinely-missing run already gets (never
+    a 403; no-existence-leak). ``identity=None`` (the default) is
+    byte-identical to pre-DF-004 behavior — this function never returned
+    ``None`` before, and cannot now that ``identity is None`` short-circuits
+    :func:`_run_read_allowed` to always-allowed.
     """
 
     rp = resolve_run_paths(paths, run_id)
@@ -1044,6 +1139,8 @@ def export_run(
     threshold_rank = _sensitivity_rank(threshold)
 
     run_meta = _load_yaml_dict(rp.run_yaml, run_id=run_id)
+    if not _run_read_allowed(paths, run_meta, run_id, identity):
+        return None
     bundle = _load_yaml_dict(rp.evidence_bundle, run_id=run_id)
     ledger = _load_yaml_dict(rp.claim_ledger, run_id=run_id)
     cards = _load_source_cards(rp, run_id=run_id)
@@ -1188,7 +1285,11 @@ def export_to_file(
     """Export ``run_id`` and write ``<run_dir>/run.json`` atomically."""
 
     rp = resolve_run_paths(paths, run_id)
+    # identity is never passed here (CLI-only call site) -- export_run() can
+    # only return None for a workspace-scope denial, which requires a non-None
+    # identity (DF-004 D3 short-circuit) -- so this is always a dict in practice.
     data = export_run(paths, run_id, sensitivity_threshold=sensitivity_threshold)
+    assert data is not None
     return _atomic_write_json(data, run_json_path(rp))
 
 
@@ -1204,16 +1305,28 @@ def export_all(
         run_dir = run_yaml.parent
         run_meta = _load_yaml_dict(run_yaml, run_id=run_dir.name)
         run_id = str(run_meta.get("run_id") or run_dir.name)
+        # identity is never passed here (CLI-only call site) -- see export_to_file.
         data = export_run(paths, run_id, sensitivity_threshold=sensitivity_threshold)
+        assert data is not None
         written.append(_atomic_write_json(data, run_dir / "run.json"))
     return written
 
 
-def list_runs(paths: FoundryPaths) -> list[dict[str, Any]]:
+def list_runs(
+    paths: FoundryPaths, *, identity: AuthIdentity | None = None
+) -> list[dict[str, Any]]:
     """Summarize every discovered run for the run-list surface.
 
     ``status_derived`` reflects on-disk artifacts (not the stale
     ``run.yaml.status``). No path field from ``run_index.yaml`` is read for I/O.
+
+    ``identity`` is DF-004 workspace-scope read gating (see
+    :func:`_run_read_allowed`): under active enforcement, a run this
+    ``identity`` cannot read (not public, not its own workspace) is silently
+    omitted from the summary list -- the same "filter, don't 403" contract
+    ``catalog_service.search`` and ``builder_service.list_drafts`` already use.
+    Under advisory mode (or ``identity=None``, the default), every run is
+    still returned -- byte-identical to pre-DF-004 behavior.
     """
 
     summaries: list[dict[str, Any]] = []
@@ -1222,6 +1335,8 @@ def list_runs(paths: FoundryPaths) -> list[dict[str, Any]]:
         rp = RunPaths(run=run_dir)
         run_meta = _load_yaml_dict(run_yaml, run_id=run_dir.name)
         run_id = str(run_meta.get("run_id") or run_dir.name)
+        if not _run_read_allowed(paths, run_meta, run_id, identity):
+            continue
         bundle = _load_yaml_dict(rp.evidence_bundle, run_id=run_id)
         verification = _load_yaml_dict(rp.verification, run_id=run_id)
         governance = bundle.get("governance") or {}

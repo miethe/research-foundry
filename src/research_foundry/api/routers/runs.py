@@ -45,6 +45,7 @@ from ...services.export_service import (
     list_runs,
     resolve_threshold,
 )
+from ..auth.provider import AuthIdentity
 from ..auth.rbac import require_role
 from ..response_stamp import stamp
 
@@ -98,22 +99,32 @@ def _sensitivity_threshold_override(request: Request) -> str | None:
     return getattr(request.app.state, "catalog_sensitivity_threshold", None)
 
 
+def _identity_from_request(request: Request) -> AuthIdentity | None:
+    """Read ``request.state.identity`` (``None`` when no auth middleware is
+    configured -- see ``api/auth/provider.py``'s absent-identity contract)."""
+
+    return getattr(request.state, "identity", None)
+
+
 def _enforce_existence_gate(
     paths: FoundryPaths,
     run_id: str,
     sensitivity_threshold: str | None,
+    identity: AuthIdentity | None = None,
 ) -> dict[str, Any]:
-    """Load and gate *run_id* against *sensitivity_threshold*.
+    """Load and gate *run_id* against *sensitivity_threshold* and *identity*.
 
-    Returns the export dict when the run exists and is at or below the
-    caller's requested threshold.
+    Returns the export dict when the run exists, is at or below the caller's
+    requested threshold, AND (DF-004) is readable by *identity* under the
+    workspace-scope read gate.
 
     Raises:
         HTTPException(400): *sensitivity_threshold* is not a recognised label.
-        HTTPException(404): run not found **or** run sensitivity exceeds the
-            threshold — the two cases are intentionally indistinguishable so
-            that hidden sensitive run IDs are not leaked (no-existence-leak /
-            landmine #4).
+        HTTPException(404): run not found, run sensitivity exceeds the
+            threshold, **or** the run is workspace-scoped away from
+            *identity* (DF-004) — all three cases are intentionally
+            indistinguishable so that hidden/other-workspace run IDs are
+            never leaked (no-existence-leak / landmine #4; never a 403).
     """
     try:
         threshold = resolve_threshold(paths, sensitivity_threshold)
@@ -126,9 +137,14 @@ def _enforce_existence_gate(
     # Pass the already-resolved threshold so export-time claim filtering honors
     # the same override used for the existence gate.
     try:
-        data = export_run(paths, run_id, sensitivity_threshold=threshold)
+        data = export_run(paths, run_id, sensitivity_threshold=threshold, identity=identity)
     except ExportError as exc:
         raise HTTPException(status_code=404, detail="not found") from exc
+
+    # DF-004: export_run() returns None on a workspace-scope enforced denial —
+    # map it to the same 404 a genuinely-missing run gets (never a 403).
+    if data is None:
+        raise HTTPException(status_code=404, detail="not found")
 
     # No-existence-leak gate: a run whose sensitivity exceeds the threshold is
     # indistinguishable from a non-existent run (landmine #4).
@@ -145,13 +161,20 @@ def _enforce_existence_gate(
 # ---------------------------------------------------------------------------
 
 @router.get("/runs", summary="List all runs")
-def get_run_list(paths: FoundryPaths = Depends(get_paths)) -> list[dict[str, Any]]:
+def get_run_list(
+    request: Request, paths: FoundryPaths = Depends(get_paths)
+) -> list[dict[str, Any]]:
     """Return a summary of every discovered run.
 
     Empty corpus returns ``[]`` — never 404.  All data is routed through
     :func:`~research_foundry.services.export_service.list_runs` (R1).
+
+    DF-004: runs the caller's ``identity`` cannot read under active workspace
+    isolation (not public, not the caller's own workspace) are silently
+    omitted — filtered, never 403/404'd (there is no single "not found" run
+    to gate on a list endpoint).
     """
-    return list_runs(paths)
+    return list_runs(paths, identity=_identity_from_request(request))
 
 
 @router.get("/runs/{run_id}", summary="Get run detail")
@@ -186,7 +209,9 @@ def get_run_detail(
         if sensitivity_threshold is not None
         else _sensitivity_threshold_override(request)
     )
-    return stamp(_enforce_existence_gate(paths, run_id, effective_threshold))
+    return stamp(_enforce_existence_gate(
+        paths, run_id, effective_threshold, _identity_from_request(request)
+    ))
 
 
 @router.get("/runs/{run_id}/claims", summary="Get claim ledger for a run")
@@ -214,7 +239,9 @@ def get_run_claims(
         if sensitivity_threshold is not None
         else _sensitivity_threshold_override(request)
     )
-    data = _enforce_existence_gate(paths, run_id, effective_threshold)
+    data = _enforce_existence_gate(
+        paths, run_id, effective_threshold, _identity_from_request(request)
+    )
     # export_run always populates "claims" as a list; guard defensively
     claims = data.get("claims")
     return claims if isinstance(claims, list) else []
@@ -256,7 +283,9 @@ def get_run_context(
         if sensitivity_threshold is not None
         else _sensitivity_threshold_override(request)
     )
-    data = _enforce_existence_gate(paths, run_id, effective_threshold)
+    data = _enforce_existence_gate(
+        paths, run_id, effective_threshold, _identity_from_request(request)
+    )
     return data.get("context")
 
 
@@ -288,7 +317,9 @@ def get_source_card(
         if sensitivity_threshold is not None
         else _sensitivity_threshold_override(request)
     )
-    data = _enforce_existence_gate(paths, run_id, effective_threshold)
+    data = _enforce_existence_gate(
+        paths, run_id, effective_threshold, _identity_from_request(request)
+    )
 
     for claim in (data.get("claims") or []):
         for source in (claim.get("sources") or []):
@@ -327,7 +358,9 @@ def get_run_anchors(
         if sensitivity_threshold is not None
         else _sensitivity_threshold_override(request)
     )
-    data = _enforce_existence_gate(paths, run_id, effective_threshold)
+    data = _enforce_existence_gate(
+        paths, run_id, effective_threshold, _identity_from_request(request)
+    )
     return stamp({"run_id": run_id, "report_anchors": data.get("report_anchors")})
 
 
@@ -360,6 +393,12 @@ class LaunchRunRequest(BaseModel):
     existing ``block_authoritative_reuse`` lifecycle path, or a cross-
     workspace target) surfaces as a 400 via the existing
     ``except ValueError`` mapping below.
+
+    ``visibility`` (DF-004) is the new run's read-visibility: ``"workspace"``
+    (default) or ``"public"``. The owning ``workspace_id`` is NEVER taken
+    from this request body -- it is always stamped server-side from
+    ``request.state.identity.workspace_id`` (or left ``None`` when no auth
+    middleware is configured, i.e. single-operator-trust mode).
     """
 
     text: str | None = None
@@ -379,6 +418,7 @@ class LaunchRunRequest(BaseModel):
     reuse_workspace_id: str | None = None
     required_reuse_edition_id: str | None = None
     required_extraction_contract: str | None = None
+    visibility: str = "workspace"
 
 
 @router.post("/runs", summary="Launch a new run (scaffold + register only)", status_code=201)
@@ -402,9 +442,10 @@ def launch_run_endpoint(
     ``GET /api/runs/{run_id}``'s ``status_derived`` field for actual progress
     once a swarm has run against the returned ``run_id`` out-of-band.
     """
-    # TODO(WKSP-304 P4): launch_run() does not accept identity (confirmed not
-    # a Phase 3 scoping target); wire once a future phase adds scoping here.
-    identity = getattr(request.state, "identity", None)  # noqa: F841
+    # DF-004: identity is now threaded through to launch_run() -> plan_run(),
+    # which stamps run.yaml.workspace_id from identity.workspace_id (never
+    # from client input). None when no auth middleware is configured.
+    identity = _identity_from_request(request)
 
     try:
         result = run_launch.launch_run(
@@ -424,6 +465,8 @@ def launch_run_endpoint(
             reuse_assertion=body.reuse_assertion,
             reuse_workspace_id=body.reuse_workspace_id,
             required_reuse_edition_id=body.required_reuse_edition_id,
+            visibility=body.visibility,
+            identity=identity,
             required_extraction_contract=body.required_extraction_contract,
             paths=paths,
         )

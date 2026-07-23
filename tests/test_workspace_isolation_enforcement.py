@@ -986,8 +986,26 @@ class TestIdentityNoneSingleOperatorFallback:
         # Calling it never raises regardless of workspace context.
         assert catalog_service.stats(tmp_foundry)["counts"] is not None
 
-    def test_agent_job_create_job_never_had_an_identity_concept(self) -> None:
-        assert "identity" not in inspect.signature(AgentJobService.create_job).parameters
+    def test_agent_job_create_job_identity_none_equals_omitted(
+        self, tmp_foundry: FoundryPaths
+    ) -> None:
+        """Escalation finding closed by DF-004: ``create_job`` now accepts
+        ``identity`` (create-path workspace stamping, mirroring
+        ``builder_service.create_draft``) — see ``agent_job_service.py``'s
+        own docstring. ``identity=None`` remains byte-identical to omitting
+        the parameter (the pre-DF-004 single-operator baseline)."""
+        assert "identity" in inspect.signature(AgentJobService.create_job).parameters
+        service = AgentJobService(tmp_foundry)
+        kwargs: dict[str, Any] = {
+            "provider": "claude_agent_sdk",
+            "model_profile": "personal",
+            "request_kind": "research",
+            "policy_snapshot": _MINIMAL_POLICY_SNAPSHOT,
+            "workspace_id": "ws-mine",
+        }
+        omitted = service.create_job(**kwargs)
+        explicit_none = service.create_job(**kwargs, identity=None)
+        assert omitted.workspace_id == explicit_none.workspace_id == "ws-mine"
 
 
 # ---------------------------------------------------------------------------

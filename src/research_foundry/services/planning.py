@@ -13,7 +13,15 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+# NOTE (serve-extra decoupling, FU-1 — same convention as
+# ``agent_job_service.py`` / ``export_service.py``): ``api.auth.provider``
+# module-imports ``starlette``, so it is imported only under TYPE_CHECKING
+# here — ``plan_run`` never needs it at runtime (it only reads
+# ``identity.workspace_id``, a plain attribute access).
+if TYPE_CHECKING:
+    from ..api.auth.provider import AuthIdentity
 
 from ..config import FoundryConfig
 from ..errors import ExitCode, GovernanceError, NotFoundError, SchemaError
@@ -255,6 +263,9 @@ def plan_run(
     profile: str | None = None,
     project: str | None = None,
     backlog_idea_ref: str | None = None,
+    workspace_id: str | None = None,
+    visibility: str = "workspace",
+    identity: AuthIdentity | None = None,
     paths: FoundryPaths | None = None,
 ) -> PlanResult:
     """Plan a research run for ``intent_id``.
@@ -310,6 +321,26 @@ def plan_run(
         ``linked_projects``, ``category``, ``tags``, ``backlog_idea_ref``,
         and ``backlog_idea_id`` are populated in ``run.yaml`` from the
         backlog entry.
+    workspace_id:
+        DF-004 owner field, written to ``run.yaml.workspace_id``.  Used only
+        when ``identity`` is ``None`` (forward-compat, unenforced -- mirrors
+        ``builder_service.create_draft``'s ``workspace_id`` parameter).
+    visibility:
+        DF-004 read-visibility field, written to ``run.yaml.visibility``.
+        Either ``"workspace"`` (default -- readable only within the owning
+        workspace once isolation is enforced) or ``"public"`` (readable by
+        any identity regardless of enforcement). Any other value falls back
+        to ``"workspace"``.
+    identity:
+        DF-004 owner-stamping identity: when not ``None``, ``workspace_id``
+        is stamped from ``identity.workspace_id`` instead of the
+        ``workspace_id`` parameter -- the record always carries the
+        workspace of the identity that actually planned it, mirroring
+        ``builder_service.create_draft``'s stamping contract exactly
+        (``workspace_id if identity is None else identity.workspace_id``).
+        ``identity=None`` (the default) is byte-identical to the pre-DF-004
+        behavior: no prior caller passed ``workspace_id``, so it was always
+        ``None`` before -- unaffected by this change.
     paths:
         FoundryPaths override (defaults to ``FoundryPaths.discover()``).
     """
@@ -524,6 +555,16 @@ def plan_run(
             "human_required": human_required,
             "project": effective_project,
             "notebook_id": None,
+            # --- DF-004: owner + read-visibility fields --------------------------
+            # workspace_id: ALWAYS stamped from identity.workspace_id when an
+            # identity is present, never from client-supplied input (mirrors
+            # builder_service.create_draft's stamping contract exactly).
+            "workspace_id": workspace_id if identity is None else identity.workspace_id,
+            # visibility: "workspace" (default, gated once isolation is
+            # enforced) or "public" (always readable). Any other value falls
+            # back to "workspace" -- never a silent typo-bypass.
+            "visibility": visibility if visibility in ("workspace", "public") else "workspace",
+            # ---------------------------------------------------------------------
             # --- new metadata fields (P3 creation path; backfill in P2) ----------
             # linked_projects: list of project slugs this run is associated with.
             "linked_projects": _linked_projects,

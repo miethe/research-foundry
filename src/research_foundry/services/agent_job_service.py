@@ -800,12 +800,24 @@ class AgentJobService:
         input_report_id: str | None = None,
         budget_usd: float | None = None,
         max_runtime_minutes: int | None = None,
+        identity: AuthIdentity | None = None,
     ) -> AgentJob:
         """Create a new :class:`AgentJob` record, persist it to disk, and return it.
 
         The job is initialised in :attr:`~AgentJobStatus.queued` state.
         ``job.json`` is written to ``<agent_jobs>/<job_id>/job.json`` via
         :meth:`_safe_write_json` (secrets redacted).
+
+        **Workspace stamping (DF-004)**
+            ``identity`` is create-path scoping mirroring
+            ``builder_service.create_draft``: when ``identity`` is not
+            ``None``, the *persisted* ``workspace_id`` is
+            ``identity.workspace_id`` — overriding the client-supplied
+            ``workspace_id`` parameter — so an authenticated caller can never
+            spoof another workspace's attribution via the request body.
+            ``identity=None`` (the default; LAN single-user / auth provider
+            ``none``) is byte-identical to the pre-DF-004 behavior: the
+            ``workspace_id`` parameter is stamped exactly as before.
 
         **Agent-job identity binding (ACT-204, FR-12)**
             When ``deployment_mode() == "multi_user"`` AND
@@ -848,12 +860,16 @@ class AgentJobService:
             if service_account_id:
                 executing_created_by = service_account_id
 
+        # DF-004: an authenticated identity's own workspace always wins over
+        # client-supplied workspace_id — see docstring above.
+        effective_workspace_id = workspace_id if identity is None else identity.workspace_id
+
         job_id = f"job_{stamp_compact()}_{uuid.uuid4().hex[:8]}"
         now = now_iso()
         job = AgentJob(
             agent_job_id=job_id,
             project_id=project_id,
-            workspace_id=workspace_id,
+            workspace_id=effective_workspace_id,
             created_by=executing_created_by,
             provider=provider,
             model_profile=model_profile,
@@ -893,7 +909,7 @@ class AgentJobService:
                         action="agent_job_create",
                         target_ref=job_id,
                         actor_user_id=executing_created_by,
-                        actor_workspace_id=workspace_id,
+                        actor_workspace_id=effective_workspace_id,
                         policy_snapshot={
                             "triggering_identity": triggering_created_by,
                             "executing_identity": executing_created_by,

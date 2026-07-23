@@ -11,6 +11,32 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Runs/Claims/Evidence Workspace Isolation & Public Visibility (DF-004)**
+
+- **Runs now carry an owner (`workspace_id`) and a `visibility` field
+  (`workspace` | `public`).** `POST /runs` stamps `workspace_id` from the
+  authenticated identity, never from client input (mirrors
+  `builder_service.create_draft`); provenance is always recorded.
+- **Workspace-scoped run reads.** The six run read endpoints (`GET /runs`,
+  `GET /runs/{id}`, `.../claims`, `.../context`, `GET /source-cards/{id}`,
+  `GET /reports/{id}/anchors`) now gate on the caller's workspace under
+  enforcement: a cross-workspace run returns an indistinguishable `404` (never a
+  `403` — no existence leak), and `GET /runs` filters unreadable runs from the
+  list. A `visibility: public` run is readable across workspaces (read only).
+- **Writeback dispatch is owner-gated.** `POST /runs/{id}/writeback/approve`
+  now verifies run ownership *before* any external dispatch side effect; `public`
+  visibility does **not** grant cross-workspace writeback.
+- **Agent-job attribution can no longer be spoofed (audit row 9).**
+  `create_job` and the `agent_job_launched` audit event stamp `workspace_id`
+  from the authenticated identity, not the client-supplied body value.
+- **Legacy run backfill.** `workspace_migration_service` gains a run-aware
+  `dry_run_runs`/`backfill_runs`/rollback path (default `"default"`, zero-write
+  dry-run, JSON manifest), mirroring the WKSP-30x draft-backfill contract.
+- **Non-breaking:** `identity=None` (single-operator-trust / LAN `single_user`)
+  and advisory-mode installs are byte-identical to before; enforcement is the
+  existing shared opt-in flag. Adversarial-multi-tenant readiness still requires
+  a formal DI-1 re-audit (see `docs/dev/architecture/adr-runs-workspace-isolation.md`).
+
 #### **Public Multi-User Release Activation — Deployment Modes & Non-Human Principals**
 
 - **`deployment_mode` presets (`single_user` | `multi_user`)** — A single `deployment_mode`

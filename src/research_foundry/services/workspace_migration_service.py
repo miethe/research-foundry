@@ -48,6 +48,22 @@ Each :func:`backfill` run writes a JSON manifest to::
 
 The ``migration_run_id`` is an ISO-8601 compact timestamp (microsecond
 precision).  Pass it to :func:`rollback` to reverse the run.
+
+Run-record backfill (DF-004)
+-----------------------------
+:func:`dry_run_runs` / :func:`backfill_runs` are the parallel entry points
+for legacy ``runs/<run_id>/run.yaml`` records (created before ``workspace_id``
+existed on the run schema — a concurrent DF-004 task adds ``workspace_id`` /
+``visibility`` to newly-created runs; this module only backfills the
+pre-existing ones already on disk).  They reuse the canonical
+:class:`BackfillReport` / :class:`BackfillManifestEntry` schemas
+(``record_type="run"``) and the shared atomic-write + manifest helpers, so a
+single :func:`rollback` call reverses either kind of record by
+``migration_run_id``.  Runs are pure files with no rebuildable SQLite index
+(unlike ``catalog_items`` for drafts) so :func:`backfill_runs` has no
+DB-rebuild step, and it never sets ``visibility`` — only ``workspace_id`` —
+so legacy runs stay at the reader's ``"workspace"`` default rather than
+becoming public.
 """
 
 from __future__ import annotations
@@ -111,14 +127,48 @@ class DryRunReport:
 
 
 @dataclass
+class RunDryRunReport:
+    """Results of a zero-write dry-run evaluation over legacy ``run.yaml`` records.
+
+    Parallel to :class:`DryRunReport` but scoped to ``runs/<run_id>/run.yaml``
+    files (DF-004 backfill).  Unlike the draft dry-run, there is no
+    ``catalog_items`` counterpart — runs are pure files with no rebuildable
+    SQLite index — so this report tracks only run counts.
+
+    Attributes
+    ----------
+    total_runs:
+        Total ``run.yaml`` files found directly under ``<workspace>/runs/``.
+    runs_missing_workspace_id:
+        Runs whose ``run.yaml`` has a null or absent ``workspace_id`` field —
+        the target of :func:`backfill_runs`.
+    target_workspace_id:
+        The ``workspace_id`` that :func:`backfill_runs` will stamp onto every
+        pre-migration run record (``"default"`` for the initial deployment).
+    caller_impact_summary:
+        Human-readable impact statement for the operator reviewing the
+        dry-run output.
+    """
+
+    total_runs: int = 0
+    runs_missing_workspace_id: int = 0
+    target_workspace_id: str = "default"
+    caller_impact_summary: str = (
+        "Today there is 1 implicit workspace so 0 existing callers "
+        "would be newly denied by the run workspace-isolation backfill."
+    )
+
+
+@dataclass
 class BackfillManifestEntry:
-    """One record in the backfill manifest (used by WKSP-302/303).
+    """One record in the backfill manifest (used by WKSP-302/303/DF-004).
 
     Attributes
     ----------
     record_type:
         ``"draft"`` for ``draft.yaml`` records; ``"catalog_item"`` for rows
-        in ``catalog.db``'s ``catalog_items`` table.
+        in ``catalog.db``'s ``catalog_items`` table; ``"run"`` for
+        ``run.yaml`` records (DF-004 backfill).
     record_id:
         Stable identifier (``report_draft_id`` for drafts;
         ``catalog_item_id`` for catalog items).
@@ -190,9 +240,13 @@ class RollbackReport:
     migration_run_id:
         The identifier of the backfill run that was reversed.
     total_attempted:
-        Total draft records in the manifest that were attempted.
+        Total records in the manifest that were attempted (drafts + runs +
+        catalog_items).
     total_reverted_drafts:
         Draft records successfully reverted to their prior state.
+    total_reverted_runs:
+        Run records (``run.yaml``, DF-004) successfully reverted to their
+        prior state.
     total_failed:
         Records whose revert failed (missing file, unreadable YAML, etc.).
     catalog_item_note:
@@ -205,6 +259,7 @@ class RollbackReport:
     migration_run_id: str
     total_attempted: int = 0
     total_reverted_drafts: int = 0
+    total_reverted_runs: int = 0
     total_failed: int = 0
     catalog_item_note: str = (
         "catalog_items rollback = revert schema_version + run 'rf catalog rebuild' "
@@ -289,6 +344,58 @@ def dry_run(paths: FoundryPaths) -> DryRunReport:
                 report.total_catalog_items = row[0] if row else 0
         except Exception:  # noqa: BLE001 — table absent or schema mismatch
             report.total_catalog_items = 0
+
+    return report
+
+
+# ---------------------------------------------------------------------------
+# dry_run_runs — zero-write evaluation over run.yaml records (DF-004)
+# ---------------------------------------------------------------------------
+
+
+def dry_run_runs(paths: FoundryPaths) -> RunDryRunReport:
+    """Evaluate what the run-record workspace backfill would affect.
+
+    Mirrors :func:`dry_run`'s draft walk but scoped to
+    ``<workspace>/runs/<run_id>/run.yaml`` files. **Performs zero writes**
+    to any file.
+
+    Runs are pure files with no rebuildable SQLite index counterpart (unlike
+    ``catalog_items`` for drafts), so this function has no DB-count step.
+
+    Parameters
+    ----------
+    paths:
+        Resolved :class:`~research_foundry.paths.FoundryPaths` for the
+        workspace under inspection.
+
+    Returns
+    -------
+    RunDryRunReport
+        Snapshot of on-disk state: run counts by ``workspace_id`` presence
+        and the projected migration target.
+    """
+    report = RunDryRunReport(target_workspace_id="default")
+
+    runs_root = paths.runs
+    if runs_root.is_dir():
+        for run_dir in sorted(runs_root.iterdir()):
+            if not run_dir.is_dir():
+                continue
+            run_yaml_path = paths.run_paths(run_dir.name).run_yaml
+            if not run_yaml_path.exists():
+                continue
+            report.total_runs += 1
+            try:
+                data: Any = load_yaml(run_yaml_path)
+                if not isinstance(data, dict):
+                    # Malformed run record — count as missing.
+                    report.runs_missing_workspace_id += 1
+                    continue
+                if not data.get("workspace_id"):
+                    report.runs_missing_workspace_id += 1
+            except Exception:  # noqa: BLE001 — unreadable run still counted
+                report.runs_missing_workspace_id += 1
 
     return report
 
@@ -502,6 +609,132 @@ def backfill(
 
 
 # ---------------------------------------------------------------------------
+# backfill_runs — forward mutation over run.yaml records (DF-004)
+# ---------------------------------------------------------------------------
+
+
+def backfill_runs(
+    paths: FoundryPaths, workspace_id: str = "default"
+) -> BackfillReport:
+    """Assign ``workspace_id`` to every legacy run record that lacks one.
+
+    Mirrors :func:`backfill`'s draft walk/mutation logic but scoped to
+    ``<workspace>/runs/<run_id>/run.yaml`` files (DF-004). Reuses the
+    canonical :class:`BackfillReport` / :class:`BackfillManifestEntry`
+    schemas with ``record_type="run"`` so :func:`rollback` can reverse this
+    run unambiguously alongside draft-record migrations.
+
+    Walk Logic
+    ----------
+    Iterates ``<workspace>/runs/<run_id>/run.yaml`` directly. Only records
+    where ``workspace_id`` is currently falsy (``None``, empty string,
+    absent key) are mutated — records with an existing non-null
+    ``workspace_id`` are silently skipped (same invariant as :func:`backfill`).
+
+    Visibility is intentionally NOT set here: legacy runs must not become
+    public. Only ``workspace_id`` is stamped; the reader defaults absent
+    ``visibility`` to ``"workspace"``.
+
+    No DB Rebuild
+    -------------
+    Unlike :func:`backfill`, this function does **not** rebuild any catalog
+    index — runs are pure files with no rebuildable SQLite counterpart.
+    ``catalog_rebuild_ok``/``catalog_rebuild_error`` on the returned report
+    are left at their defaults (``True``/``None``) and should be ignored by
+    callers of this function.
+
+    Atomic Writes
+    -------------
+    Each ``run.yaml`` is updated using the temp-file + ``os.replace`` atomic
+    pattern (:func:`_atomic_write_yaml`) to prevent torn writes.
+
+    Manifest
+    --------
+    After processing all runs a JSON manifest is written via
+    :func:`_write_manifest` to::
+
+        <workspace>/.rf_state/migrations/<migration_run_id>-workspace-backfill.json
+
+    The manifest is the sole input to :func:`rollback`.
+
+    Parameters
+    ----------
+    paths:
+        Resolved :class:`~research_foundry.paths.FoundryPaths` for the
+        workspace to migrate.
+    workspace_id:
+        The workspace identifier to stamp on all pre-migration run records
+        (default ``"default"``).
+
+    Returns
+    -------
+    BackfillReport
+        Counts and full manifest for the run. ``migration_run_id`` on the
+        returned report is the key needed to call :func:`rollback`.
+    """
+    migration_run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+    report = BackfillReport(
+        target_workspace_id=workspace_id, migration_run_id=migration_run_id
+    )
+
+    runs_root = Path(paths.runs)
+    if runs_root.is_dir():
+        for run_dir in sorted(runs_root.iterdir()):
+            if not run_dir.is_dir():
+                continue
+            run_yaml_path = paths.run_paths(run_dir.name).run_yaml
+            if not run_yaml_path.exists():
+                continue
+
+            try:
+                data: Any = load_yaml(run_yaml_path)
+                if not isinstance(data, dict):
+                    # Malformed run record — skip (dry_run_runs already tallied it).
+                    continue
+
+                # INVARIANT: only touch records where workspace_id is null.
+                if data.get("workspace_id"):
+                    continue
+
+                prior_workspace_id: str | None = data.get("workspace_id")  # None
+                prior_created_by: str | None = data.get("created_by")
+                record_id = str(data.get("run_id", run_dir.name))
+
+                entry = BackfillManifestEntry(
+                    record_type="run",
+                    record_id=record_id,
+                    prior_workspace_id=prior_workspace_id,
+                    prior_created_by=prior_created_by,
+                    new_workspace_id=workspace_id,
+                    migration_run_id=migration_run_id,
+                )
+
+                report.total_attempted += 1
+
+                # Atomic write: stamp workspace_id onto the run record.
+                # visibility is intentionally NOT set — the reader defaults
+                # absent visibility to "workspace"; legacy runs must not
+                # become public.
+                updated_data = dict(data)
+                updated_data["workspace_id"] = workspace_id
+                _atomic_write_yaml(updated_data, run_yaml_path)
+
+                report.manifest.append(entry)
+                report.total_succeeded += 1
+
+            except Exception:  # noqa: BLE001 — unreadable run; skip
+                report.total_attempted += 1
+                report.total_failed += 1
+
+    _write_manifest(paths, migration_run_id, report)
+
+    # No DB rebuild for runs — they are pure files (see docstring). Leave
+    # report.catalog_rebuild_ok / catalog_rebuild_error at their defaults.
+
+    return report
+
+
+# ---------------------------------------------------------------------------
 # rollback — reverse mutation (WKSP-302)
 # ---------------------------------------------------------------------------
 
@@ -518,6 +751,11 @@ def rollback(
     * ``catalog_items`` have no coded per-row rollback (the table is a
       rebuildable index); the ``catalog_item_note`` field on the returned
       report explains what the operator must do manually.
+    * ``run`` entries (DF-004, produced by :func:`backfill_runs`) are
+      reverted with the exact same restore logic as ``draft`` entries —
+      only the on-disk path differs (``runs/<run_id>/run.yaml`` via
+      ``paths.run_paths(record_id).run_yaml`` instead of
+      ``reports/drafts/<id>/draft.yaml``).
 
     Parameters
     ----------
@@ -553,21 +791,22 @@ def rollback(
             # Counted as attempted; result.catalog_item_note explains the manual step.
             continue
 
-        if entry.record_type != "draft":
+        if entry.record_type == "draft":
+            record_path = Path(paths.report_drafts) / entry.record_id / "draft.yaml"
+        elif entry.record_type == "run":
+            record_path = paths.run_paths(entry.record_id).run_yaml
+        else:
             # Unknown record type — skip silently.
             continue
 
         result.total_attempted += 1
 
-        draft_dir = Path(paths.report_drafts) / entry.record_id
-        draft_yaml_path = draft_dir / "draft.yaml"
-
-        if not draft_yaml_path.exists():
+        if not record_path.exists():
             result.total_failed += 1
             continue
 
         try:
-            data = load_yaml(draft_yaml_path)
+            data = load_yaml(record_path)
             if not isinstance(data, dict):
                 result.total_failed += 1
                 continue
@@ -586,11 +825,14 @@ def rollback(
                 data["created_by"] = entry.prior_created_by
 
             if not dry_run:
-                _atomic_write_yaml(data, draft_yaml_path)
+                _atomic_write_yaml(data, record_path)
 
-            result.total_reverted_drafts += 1
+            if entry.record_type == "run":
+                result.total_reverted_runs += 1
+            else:
+                result.total_reverted_drafts += 1
 
-        except Exception:  # noqa: BLE001 — unreadable draft
+        except Exception:  # noqa: BLE001 — unreadable record
             result.total_failed += 1
 
     return result
@@ -620,10 +862,13 @@ def _catalog_has_workspace_id_column(paths: FoundryPaths) -> bool:
 
 __all__ = [
     "DryRunReport",
+    "RunDryRunReport",
     "BackfillManifestEntry",
     "BackfillReport",
     "RollbackReport",
     "dry_run",
+    "dry_run_runs",
     "backfill",
+    "backfill_runs",
     "rollback",
 ]

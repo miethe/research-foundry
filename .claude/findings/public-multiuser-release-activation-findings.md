@@ -94,6 +94,15 @@ findings doc records the cross-reference per the deferred-items-and-findings
 lifecycle; the full problem statement, proposed per-surface fixes, and promotion
 trigger live in that spec, not duplicated here.
 
+**Update (2026-07-23): the code remediation is implemented and tested** (DF-004,
+branch `feat/df-004-runs-workspace-isolation`; see the spec's Resolution section
+and `docs/dev/architecture/adr-runs-workspace-isolation.md`). Runs now carry
+`workspace_id` (owner) + `visibility` (workspace|public); reads/writeback/agent-job
+attribution are workspace-scoped under enforcement, advisory-and-single_user
+unchanged. **The deferred item is NOT closed:** audit rows 9-12 require a formal
+DI-1 re-audit + Mode D human sign-off (spec AC #4) before any deployment claims
+adversarial-multi-tenant readiness. Status: remediated-in-code, pending re-audit.
+
 ## Summary
 
 No findings in this feature required a *new* deferred item beyond the one already

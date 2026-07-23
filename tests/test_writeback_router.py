@@ -9,6 +9,11 @@ Covers:
      all four outcome classes: success, partial, blocked, exception.
   4. actor_user_id threading into the audit event and into
      ``approve_and_dispatch``'s ``approver_identity`` — present vs None.
+  5. DF-004 — run-ownership gate: dispatch is denied (indistinguishable
+     404, NO dispatch call) when an enforced workspace mismatch is
+     detected, BEFORE ``approve_and_dispatch`` (and therefore before any
+     external side effect) ever runs. Advisory mode still allows (and logs)
+     a mismatch; ``identity=None`` always bypasses the check.
 
 ``approve_and_dispatch`` itself (Phase 1) is mocked throughout so each
 outcome class can be forced directly, mirroring the mocking style used in
@@ -17,6 +22,7 @@ outcome class can be forced directly, mirroring the mocking style used in
 
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 from typing import Any
@@ -434,3 +440,150 @@ class TestWritebackApproveRBACEnforcementToggle:
         with patch(_PATCH_TARGET, return_value=_success_result()):
             resp = client.post(_URL, json={})
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# 5. DF-004 — run-ownership gate (before any dispatch / external side effect)
+# ---------------------------------------------------------------------------
+
+_ISOLATION_TARGET = "research_foundry.api.routers.writeback.resolve_workspace_isolation_active"
+
+
+def _write_run_workspace(
+    client: TestClient,
+    run_id: str,
+    *,
+    workspace_id: str | None,
+    omit_field: bool = False,
+    visibility: str | None = None,
+) -> None:
+    """Write ``runs/<run_id>/run.yaml`` with the given ``workspace_id`` (DF-004 fixture).
+
+    ``omit_field=True`` simulates a legacy run predating the ``workspace_id``
+    field entirely (as opposed to ``workspace_id=None``, which still writes
+    the key with a null value) — both are treated identically by the gate
+    (missing/null -> mismatch under enforcement), but this covers both shapes.
+
+    ``visibility`` (when provided) writes the DF-004 read-visibility field —
+    used to prove that ``public`` visibility, which grants cross-workspace
+    *reads*, never grants a cross-workspace writeback dispatch.
+    """
+    paths: FoundryPaths = client.app.dependency_overrides[get_paths]()
+    rp = paths.run_paths(run_id)
+    rp.run.mkdir(parents=True, exist_ok=True)
+    doc: dict[str, Any] = {"run_id": run_id}
+    if not omit_field:
+        doc["workspace_id"] = workspace_id
+    if visibility is not None:
+        doc["visibility"] = visibility
+    dump_yaml(doc, rp.run_yaml)
+
+
+class TestWorkspaceOwnershipGate:
+    """DF-004: writeback dispatch gated on run ownership BEFORE any side effect.
+
+    ``_OWNER`` (defined above) is workspace ``"ws1"`` throughout.
+    """
+
+    def test_cross_workspace_enforced_denies_before_dispatch(self, tmp_path):
+        client = _make_client(tmp_path, identity=_OWNER)
+        _write_run_workspace(client, _RUN_ID, workspace_id="ws_other")
+
+        with patch(_PATCH_TARGET, return_value=_success_result()) as mock_dispatch, patch(
+            _AUDIT_TARGET
+        ) as mock_record, patch(_ISOLATION_TARGET, return_value=True):
+            resp = client.post(_URL, json={})
+
+        # Indistinguishable-404 — same shape as a genuinely-missing run, NEVER
+        # a distinguishable 403.
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "run not found"
+        # The whole point: dispatch (and therefore every external side
+        # effect it performs) must never have been attempted.
+        mock_dispatch.assert_not_called()
+        # Exactly one audit row still happens (the existing NotFoundError
+        # branch handles it) — invariant preserved for free.
+        assert mock_record.call_count == 1
+        event = mock_record.call_args[0][1]
+        assert event.result == "failure"
+        assert event.target_ref == _RUN_ID
+
+    def test_public_run_cross_workspace_still_denies_writeback(self, tmp_path):
+        # DF-004 invariant: `visibility: public` grants cross-workspace READ
+        # only — it must NEVER grant a cross-workspace writeback dispatch (a
+        # mutating action stays owner-scoped). The gate provably ignores
+        # `visibility` today; this test trips red if a future refactor makes
+        # the writeback gate start honoring public visibility.
+        client = _make_client(tmp_path, identity=_OWNER)  # _OWNER is ws1
+        _write_run_workspace(
+            client, _RUN_ID, workspace_id="ws_other", visibility="public"
+        )
+
+        with patch(_PATCH_TARGET, return_value=_success_result()) as mock_dispatch, patch(
+            _ISOLATION_TARGET, return_value=True
+        ):
+            resp = client.post(_URL, json={})
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "run not found"
+        mock_dispatch.assert_not_called()
+
+    def test_legacy_run_missing_workspace_id_enforced_denies(self, tmp_path):
+        # A run predating DF-004's workspace_id field is treated as a
+        # mismatch under enforcement — never defaulted to allowed.
+        client = _make_client(tmp_path, identity=_OWNER)
+        _write_run_workspace(client, _RUN_ID, workspace_id=None, omit_field=True)
+
+        with patch(_PATCH_TARGET, return_value=_success_result()) as mock_dispatch, patch(
+            _ISOLATION_TARGET, return_value=True
+        ):
+            resp = client.post(_URL, json={})
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "run not found"
+        mock_dispatch.assert_not_called()
+
+    def test_same_workspace_enforced_succeeds(self, tmp_path):
+        client = _make_client(tmp_path, identity=_OWNER)
+        _write_run_workspace(client, _RUN_ID, workspace_id="ws1")
+
+        with patch(_PATCH_TARGET, return_value=_success_result()) as mock_dispatch, patch(
+            _ISOLATION_TARGET, return_value=True
+        ):
+            resp = client.post(_URL, json={})
+
+        assert resp.status_code == 200
+        mock_dispatch.assert_called_once()
+
+    def test_no_identity_bypasses_gate_even_on_mismatch(self, tmp_path):
+        # identity=None (single-operator-trust / LAN no-auth) always allows,
+        # byte-identical to pre-DF-004 behaviour, regardless of enforcement
+        # or the run's workspace_id.
+        client = _make_client(tmp_path, identity=None)
+        _write_run_workspace(client, _RUN_ID, workspace_id="ws_other")
+
+        with patch(_PATCH_TARGET, return_value=_success_result()) as mock_dispatch, patch(
+            _ISOLATION_TARGET, return_value=True
+        ):
+            resp = client.post(_URL, json={})
+
+        assert resp.status_code == 200
+        mock_dispatch.assert_called_once()
+
+    def test_advisory_mode_cross_workspace_allows_and_logs(self, tmp_path, caplog):
+        # Advisory mode (isolation not actively enforced): a mismatch is
+        # logged (by the shared require_workspace_scope predicate) but the
+        # call is ALLOWED — dispatch DOES run.
+        client = _make_client(tmp_path, identity=_OWNER)
+        _write_run_workspace(client, _RUN_ID, workspace_id="ws_other")
+
+        with patch(_PATCH_TARGET, return_value=_success_result()) as mock_dispatch, patch(
+            _ISOLATION_TARGET, return_value=False
+        ), caplog.at_level(logging.WARNING, logger="research_foundry.api.auth.scope"):
+            resp = client.post(_URL, json={})
+
+        assert resp.status_code == 200
+        mock_dispatch.assert_called_once()
+        assert any(
+            "workspace_scope_advisory_mismatch" in record.message for record in caplog.records
+        )

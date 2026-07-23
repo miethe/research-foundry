@@ -28,7 +28,15 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+# NOTE (serve-extra decoupling, FU-1 — same convention as ``planning.py`` /
+# ``export_service.py`` / ``agent_job_service.py``): ``api.auth.provider``
+# module-imports ``starlette``; ``launch_run`` only ever forwards ``identity``
+# straight through to ``plan_run`` (never inspects it), so it needs the name
+# only for annotations.
+if TYPE_CHECKING:
+    from ..api.auth.provider import AuthIdentity
 
 from ..config import AssertionLedgerCapabilities, FoundryConfig
 from ..paths import FoundryPaths
@@ -113,6 +121,8 @@ def launch_run(
     reuse_workspace_id: str | None = None,
     required_reuse_edition_id: str | None = None,
     required_extraction_contract: str | None = None,
+    visibility: str = "workspace",
+    identity: AuthIdentity | None = None,
     paths: FoundryPaths | None = None,
 ) -> LaunchRunResult:
     """Scaffold and register a new run (scaffold + register only).
@@ -131,6 +141,14 @@ def launch_run(
 
     ``depth``, ``audience``, ``max_cost_usd``, ``freshness_days``, ``profile``,
     and ``project`` are passed through to ``plan_run`` on both paths.
+
+    ``visibility`` and ``identity`` are DF-004 workspace-ownership fields,
+    forwarded straight through to ``plan_run`` unmodified: ``identity`` is
+    never inspected here beyond that passthrough, so ``run.yaml.workspace_id``
+    is always stamped from ``identity.workspace_id`` by ``plan_run`` itself
+    (never from client-supplied input on this path). ``identity=None`` (the
+    default -- no auth middleware configured) is byte-identical to the
+    pre-DF-004 behavior.
 
     Does NOT spawn, drive, or poll the Path B discovery swarm (Decision #1) --
     this is the deterministic scaffold+register chain only.
@@ -199,6 +217,8 @@ def launch_run(
         freshness_days=freshness_days,
         profile=profile,
         project=project,
+        visibility=visibility,
+        identity=identity,
         paths=paths,
     )
 
