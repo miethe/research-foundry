@@ -38,8 +38,8 @@ formatting = { claude = "adaptive", codex = "none" }
 escalation_requires_artifacts = true
 
 [models.codex]
-default_model = "gpt-5.3-codex"
-fast_model = "gpt-5.3-codex-spark"
+default_model = "gpt-5.6-terra"
+fast_model = "gpt-5.6-luna"
 general_model = "gpt-5.2"
 default_reasoning = "medium"
 sandbox_default = "read-only"
