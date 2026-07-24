@@ -247,6 +247,14 @@
       ],
       "description": "Count of source cards by source_type (e.g. {official_doc: 3, paper: 1}). Aggregated from all source cards in the run's sources/ directory. Null when no source cards are present.",
       "nullable": true
+    },
+    "retrieval": {
+      "oneOf": [
+        { "$ref": "#/$defs/RFRunRetrievalSummary" },
+        { "type": "null" }
+      ],
+      "description": "CARP (catalog-assisted-research-planning) additive block (CARP-5.3). Read directly from the run's research_evidence_plan.yaml — the sole authoritative source for the coverage/selection decision (docs/dev/architecture/carp-contract-freeze.md §4.1), never from search_run.yaml's non-authoritative mirror. Null — never a zero-filled placeholder — when no evidence plan was ever built for this run (the disabled-policy v1 default, and every legacy/pre-CARP run).",
+      "nullable": true
     }
   },
   "$defs": {
@@ -534,6 +542,42 @@
         "filename":     { "type": "string" },
         "content_type": { "type": "string", "enum": ["markdown", "yaml"] },
         "content":      { "type": "string" }
+      }
+    },
+    "RFRunRetrievalSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "CARP-5.3 propagation of the run's research_evidence_plan.yaml. On a fail-closed/empty-catalog denial, `metrics` carries ONLY `questions_total` — every other candidate-derived counter is dropped outright (carp-contract-freeze.md §2.4), never passed through as a zero.",
+      "properties": {
+        "policy": {
+          "type": ["string", "null"],
+          "enum": ["catalog_only", "catalog_then_discovery", null]
+        },
+        "evidence_plan_ref": { "type": ["string", "null"] },
+        "denial_reason": {
+          "type": ["string", "null"],
+          "description": "Verbatim catalog_receipt.denial_reason. Non-null iff the catalog issued a fail-closed denial for the whole plan."
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": { "type": ["integer", "object"] },
+          "description": "Verbatim pass-through of the evidence plan's own summary block when the plan is not denied; {questions_total} only when denied (see this def's own description)."
+        },
+        "selections": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/RFRunRetrievalSelection" }
+        }
+      }
+    },
+    "RFRunRetrievalSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "question_id":       { "type": ["string", "null"] },
+        "coverage_state":    { "type": ["string", "null"], "enum": ["covered", "residual", null] },
+        "residual_reason":   { "type": ["string", "null"] },
+        "assertion_id":      { "type": ["string", "null"], "description": "Null unless coverage_state == covered (schema-enforced on the source evidence plan)." },
+        "assertion_version": { "type": ["integer", "null"], "minimum": 1 }
       }
     }
   }

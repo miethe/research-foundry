@@ -12,14 +12,28 @@ a schema mismatch never raises — issues are recorded in the returned record's
 
 from __future__ import annotations
 
+import re
 import time
-from typing import Any
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from research_foundry import ids
 from research_foundry.paths import FoundryPaths
 from research_foundry.schemas import SchemaRegistry
+from research_foundry.services.assertion_catalog import AssertionCatalog
+from research_foundry.services.catalog_retrieval import (
+    RetrievalConstraints,
+    RetrievalLimits,
+)
 from research_foundry.services.extractors.pdf_extractor import extract_pdf
+from research_foundry.services.research_evidence_planning import (
+    EvidencePlanLimits,
+    EvidencePlanQuestion,
+    EvidencePlanRequest,
+    build_evidence_plan,
+    write_evidence_plan,
+)
 from research_foundry.yamlio import dump_yaml
 
 from .budgets import Budget, BudgetTracker
@@ -29,7 +43,319 @@ from .policy import build_routing_decision, resolve_chain, select_mode
 from .providers.base import SearchHit, SearchProvider, all_providers
 from .ranking import rank_hits
 
+# NOTE (offline-safety convention -- same rationale as ``planning.py`` /
+# ``run_launch.py``): ``api.auth.provider`` module-imports ``starlette``.
+# ``run_search`` only ever forwards ``identity`` into the CARP catalog helpers
+# below (never inspects it directly), so it needs the name only for
+# annotations -- imported under TYPE_CHECKING only. (``catalog_retrieval.py``/
+# ``research_evidence_planning.py`` already import it unconditionally
+# themselves, so this module's own transitive dependency on ``starlette`` is
+# unchanged by this branch either way -- this is purely about not adding a
+# *second*, direct, unconditional import here.)
+if TYPE_CHECKING:
+    from research_foundry.api.auth.provider import AuthIdentity
+
 _EXTRACTION_PROVIDER_PREFERENCE = ("jina", "firecrawl")
+
+#: CARP-4.1/4.3. A retrieval policy other than these two is treated as
+#: "disabled" -- the v1 default and every legacy caller's behavior
+#: (carp-contract-freeze.md §1).
+_ACTIVE_RETRIEVAL_POLICIES = frozenset({"catalog_only", "catalog_then_discovery"})
+
+#: Same conservative lexical-terms rule as ``planning.py``'s own
+#: ``_lexical_terms`` -- duplicated rather than imported (the two call sites
+#: turn different free-text into terms: a brief question here vs. a raw
+#: search query there; sharing one three-line regex helper across an
+#: unrelated import boundary is not worth the coupling).
+_WORD_RE = re.compile(r"[A-Za-z0-9]+")
+
+#: Same conservative English closed-class stopword set as ``planning.py``'s
+#: own ``_STOPWORDS`` -- see that module's comment for the full rationale
+#: (articles/auxiliaries/prepositions/pronouns/conjunctions/wh-words carry no
+#: discriminating power against ``search_text`` and each still spends one of
+#: the shared ``max_pages_per_question`` sub-query slots in
+#: ``catalog_retrieval._collect_candidates``, crowding out real topical
+#: terms). Kept as a literal duplicate, not shared, for the same reason
+#: ``_WORD_RE`` above is duplicated.
+_STOPWORDS: frozenset[str] = frozenset(
+    {
+        # Articles
+        "a",
+        "an",
+        "the",
+        # Auxiliary / modal verbs
+        "am",
+        "are",
+        "be",
+        "been",
+        "being",
+        "can",
+        "could",
+        "did",
+        "do",
+        "does",
+        "had",
+        "has",
+        "have",
+        "is",
+        "may",
+        "might",
+        "must",
+        "said",
+        "say",
+        "says",
+        "shall",
+        "should",
+        "was",
+        "were",
+        "will",
+        "would",
+        # Prepositions
+        "about",
+        "above",
+        "across",
+        "after",
+        "against",
+        "along",
+        "among",
+        "around",
+        "at",
+        "before",
+        "behind",
+        "below",
+        "between",
+        "beyond",
+        "by",
+        "down",
+        "during",
+        "for",
+        "from",
+        "in",
+        "into",
+        "near",
+        "of",
+        "off",
+        "on",
+        "onto",
+        "out",
+        "over",
+        "through",
+        "to",
+        "toward",
+        "under",
+        "until",
+        "up",
+        "upon",
+        "with",
+        "within",
+        "without",
+        # Pronouns
+        "he",
+        "her",
+        "hers",
+        "him",
+        "his",
+        "i",
+        "it",
+        "its",
+        "me",
+        "mine",
+        "my",
+        "our",
+        "ours",
+        "she",
+        "that",
+        "their",
+        "theirs",
+        "them",
+        "these",
+        "they",
+        "this",
+        "those",
+        "us",
+        "we",
+        "you",
+        "your",
+        "yours",
+        # Conjunctions
+        "although",
+        "and",
+        "because",
+        "but",
+        "nor",
+        "or",
+        "so",
+        "than",
+        "though",
+        "unless",
+        "while",
+        "yet",
+        # Wh-words
+        "how",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "whom",
+        "whose",
+        "why",
+        # planning.py's default-fallback-question template's one content
+        # word -- kept for parity with that copy, not a function word here.
+        "evidence",
+    }
+)
+
+
+def _lexical_terms(text: str) -> tuple[str, ...]:
+    """Derive ``required_terms`` from free text: case-folded, 3+ chars,
+    stopword-filtered, deduped, first-occurrence order, uncapped.
+
+    LIMITATION: see ``planning.py``'s own ``_lexical_terms`` docstring --
+    ``catalog_retrieval._collect_candidates`` spends ``max_pages_per_question``
+    (frozen ceiling: 5) as ONE budget shared across every required-term
+    sub-query, never per term. A question whose distinct content-term count
+    exceeds that shared budget resolves ``residual``/``pagination_limit``
+    even when catalog evidence may exist, rather than falsely resolving
+    ``covered`` (the previous per-question term cap this function used to
+    apply). This is a documented v1 fail-closed limitation, not an optimal
+    outcome.
+
+    P6 CARP-6.9 F1 fix -- same fail-closed guard as ``planning.py``'s own
+    ``_lexical_terms``: ``catalog_retrieval.retrieve()``'s coverage condition
+    1 is vacuous whenever ``required_terms`` is empty (every authorized
+    candidate reports lexically matched). A raw search query that is entirely
+    stopwords/short tokens (e.g. a query typed as "how do they do it") would
+    otherwise collapse to ``()`` and silently trip that vacuous rule. When
+    stopword filtering would empty an otherwise non-empty length-filtered
+    token stream, this function falls back to the unfiltered (stopwords
+    included) token set instead.
+    """
+
+    seen: set[str] = set()
+    ordered: list[str] = []
+    fallback_seen: set[str] = set()
+    fallback_ordered: list[str] = []
+    for match in _WORD_RE.finditer(text.casefold()):
+        term = match.group(0)
+        if len(term) < 3:
+            continue
+        if term not in fallback_seen:
+            fallback_seen.add(term)
+            fallback_ordered.append(term)
+        if term in seen or term in _STOPWORDS:
+            continue
+        seen.add(term)
+        ordered.append(term)
+    if not ordered and fallback_ordered:
+        return tuple(fallback_ordered)
+    return tuple(ordered)
+
+
+def _evidence_plan_question(question_id: str, question_text: str) -> EvidencePlanQuestion:
+    """Build one CARP question, guarding the P6 CARP-6.9 F4 boundary.
+
+    Duplicated copy of ``planning.py``'s own helper of the same name -- see
+    that module's docstring for the full rationale. ``_lexical_terms`` above
+    still correctly derives ``()`` for a genuinely contentless query (no
+    token clears the 3-char floor, e.g. "is it up?"), or an empty/whitespace
+    query outright; passing that straight through as ``required_terms``
+    would trip ``catalog_retrieval.retrieve()``'s frozen condition-1
+    vacuous-match rule and let an arbitrary catalog assertion resolve
+    ``covered`` for a query that said nothing derivable. ``required_terms``
+    at this boundary is always derived from ``query``, never a caller
+    declaration, so an empty derived term set is always a derivation
+    outcome -- it is unconditionally marked
+    ``forced_residual_reason="evaluation_error"`` instead of ever calling
+    ``retrieve()`` for it.
+    """
+
+    terms = _lexical_terms(question_text)
+    if not terms:
+        return EvidencePlanQuestion(
+            question_id=question_id,
+            question_text=question_text,
+            required_terms=(),
+            forced_residual_reason="evaluation_error",
+        )
+    return EvidencePlanQuestion(question_id=question_id, question_text=question_text, required_terms=terms)
+
+
+def _evidence_plan_limits(retrieval_limits: Mapping[str, Any] | None) -> EvidencePlanLimits:
+    """Map ``search_request.schema.yaml``'s ``retrieval.limits`` shape onto
+    :class:`EvidencePlanLimits`; absent/partial input falls back to the
+    dataclass's own defaults field-by-field."""
+
+    defaults = EvidencePlanLimits()
+    if not retrieval_limits:
+        return defaults
+    return EvidencePlanLimits(
+        max_questions=int(retrieval_limits.get("max_questions", defaults.max_questions)),
+        retrieval=RetrievalLimits(
+            max_candidates_per_question=int(
+                retrieval_limits.get(
+                    "max_candidates_per_question", defaults.retrieval.max_candidates_per_question
+                )
+            ),
+            max_pages_per_question=int(
+                retrieval_limits.get("max_pages_per_question", defaults.retrieval.max_pages_per_question)
+            ),
+            page_size=int(retrieval_limits.get("page_size", defaults.retrieval.page_size)),
+        ),
+    )
+
+
+def _build_ad_hoc_evidence_plan(
+    query: str,
+    *,
+    run_id: str,
+    catalog: AssertionCatalog,
+    identity: AuthIdentity | None,
+    retrieval_policy: str,
+    sensitivity_threshold: str | None,
+    retrieval_limits: Mapping[str, Any] | None,
+    generated_at: str,
+    paths: FoundryPaths,
+) -> dict[str, Any]:
+    """CARP-4.1: treat this search request's own ``query`` as ONE evidence-
+    plan question and evaluate it through the P2 adapter + P3 planner
+    (:func:`build_evidence_plan`) -- never the ledger, never a provider.
+
+    ``sensitivity_threshold`` is threaded through verbatim, never defaulted:
+    an omitted threshold makes every candidate deny with
+    ``sensitivity_denied`` (fail-closed by the adapter's own design, not a
+    bug this function papers over -- see
+    ``catalog_retrieval.RetrievalConstraints``).
+
+    ``automated_reuse_allowed`` is resolved from the SAME source
+    ``run_launch.py:195`` uses -- ``FoundryConfig(paths).assertion_ledger_capabilities()``.
+    Never hardcoded to ``True``; a deployment with automated reuse disabled
+    resolves every otherwise-eligible candidate to ``residual``/``reuse_denied``,
+    the same fail-closed outcome the ledger seam already produces.
+    """
+
+    from research_foundry.config import FoundryConfig  # local: avoid top-level cycle risk
+
+    capabilities = FoundryConfig(paths=paths).assertion_ledger_capabilities()
+
+    question = _evidence_plan_question(run_id, query)
+    request = EvidencePlanRequest(
+        evidence_plan_id=f"evp_{run_id}",
+        workspace_id=identity.workspace_id if identity is not None else "",
+        retrieval_policy=retrieval_policy,
+        questions=(question,),
+        schema_version="1",
+        brief_id=None,
+        run_id=run_id,
+        generated_at=generated_at,
+        decided_at=generated_at,
+        constraints=RetrievalConstraints(
+            sensitivity_threshold=sensitivity_threshold,
+            automated_reuse_allowed=capabilities.automated_reuse_allowed,
+        ),
+        limits=_evidence_plan_limits(retrieval_limits),
+    )
+    return build_evidence_plan(catalog, identity=identity, request=request)
 
 # Router provider id -> SkillMeat tool-profile id (skillmeat/tool_profiles/*.yaml,
 # §17.1). Providers without an authored profile (e.g. the keyless aos-web/searxng
@@ -176,8 +502,39 @@ def run_search(
     *,
     paths: FoundryPaths | None = None,
     providers: dict[str, SearchProvider] | None = None,
+    identity: AuthIdentity | None = None,
+    catalog: AssertionCatalog | None = None,
+    sensitivity_threshold: str | None = None,
+    evidence_plan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Execute a full search run and return the ``search_run`` record."""
+    """Execute a full search run and return the ``search_run`` record.
+
+    CARP-4.1/4.3 (catalog-assisted-research-planning) additions, all
+    keyword-only with safe defaults that reproduce the pre-CARP behavior
+    exactly: ``identity``, ``catalog``, ``sensitivity_threshold``, and
+    ``evidence_plan``. They activate ONLY when ``request["retrieval"]
+    ["policy"]`` is ``"catalog_only"`` or ``"catalog_then_discovery"`` --
+    every legacy request (the field absent, or ``"disabled"``, the v1
+    default) runs the exact same discovery/extraction/metrics flow as
+    before this phase, byte-identical (carp-contract-freeze.md §1).
+
+    When active:
+
+    * ``evidence_plan`` (a pre-built ``research_evidence_plan`` dict -- e.g.
+      one :mod:`planning` already built and persisted over a brief's
+      questions) is consumed AS-IS: no retrieval happens inside this call.
+    * Otherwise, this request's own ``query`` is treated as ONE evidence-plan
+      question and evaluated live through the P2 adapter + P3 planner
+      (:func:`_build_ad_hoc_evidence_plan`) -- never the ledger, never a
+      provider.
+
+    Either way, the plan's covered/residual partition then governs
+    discovery: under ``catalog_only`` no provider is ever called (an empty
+    or denied catalog result is terminal); under ``catalog_then_discovery``
+    only the plan's residual question IDs generate a provider request --
+    covered questions are never re-queried and their selection is never
+    mutated by the discovery merge.
+    """
 
     paths = paths or FoundryPaths.discover()
     started = time.monotonic()
@@ -203,6 +560,54 @@ def run_search(
     chain = resolve_chain(mode, providers=providers_map)
     constraints: dict[str, Any] = request.get("constraints", {}) or {}
 
+    # --- CARP-4.1/4.3: catalog retrieval phase ----------------------------
+    # Gated entirely on retrieval_policy != "disabled". A legacy request
+    # (the common case) never enters this block: plan_dict stays None,
+    # residual_question_ids stays empty, catalog_terminal stays False, and
+    # discovery_queries below collapses to today's exact single-query loop.
+    retrieval_block: dict[str, Any] = request.get("retrieval") or {}
+    retrieval_policy = str(retrieval_block.get("policy") or "disabled")
+    if retrieval_policy not in _ACTIVE_RETRIEVAL_POLICIES:
+        retrieval_policy = "disabled"
+
+    plan_dict: dict[str, Any] | None = None
+    residual_questions: list[dict[str, Any]] = []
+    residual_question_ids: list[str] = []
+    catalog_terminal = False
+
+    if evidence_plan is not None:
+        plan_dict = dict(evidence_plan)
+        # An explicitly-supplied plan is authoritative over its own policy;
+        # a mismatched/absent retrieval.policy on the raw request is not
+        # trusted to override it.
+        plan_policy = str(plan_dict.get("retrieval_policy") or retrieval_policy)
+        retrieval_policy = plan_policy if plan_policy in _ACTIVE_RETRIEVAL_POLICIES else "disabled"
+    elif retrieval_policy != "disabled":
+        plan_dict = _build_ad_hoc_evidence_plan(
+            query,
+            run_id=run_id,
+            catalog=catalog if catalog is not None else AssertionCatalog(paths),
+            identity=identity,
+            retrieval_policy=retrieval_policy,
+            sensitivity_threshold=sensitivity_threshold,
+            retrieval_limits=retrieval_block.get("limits"),
+            generated_at=created_at,
+            paths=paths,
+        )
+        schema_errors.extend(_validate(plan_dict, "research_evidence_plan", paths))
+        write_evidence_plan(plan_dict, rp.run / "research_evidence_plan.yaml")
+
+    if plan_dict is not None and retrieval_policy != "disabled":
+        residual_questions = [q for q in plan_dict.get("questions", []) if q.get("coverage_state") == "residual"]
+        if retrieval_policy == "catalog_only":
+            # catalog_only NEVER routes to discovery (carp-contract-freeze.md
+            # §1) -- terminal regardless of any question's own coverage_state.
+            residual_question_ids = []
+            catalog_terminal = True
+        else:  # catalog_then_discovery
+            residual_question_ids = [q["question_id"] for q in residual_questions]
+            catalog_terminal = not residual_question_ids
+
     # --- discovery -------------------------------------------------------
     provider_chain_log: list[dict[str, Any]] = []
     all_hits: list[SearchHit] = []
@@ -223,30 +628,47 @@ def run_search(
         if budget.max_urls_to_extract and budget.max_urls_to_extract > 0
         else 10
     )
-    for pid in chain:
-        provider = providers_map.get(pid)
-        if provider is None or "discovery" not in provider.roles:
-            continue
-        if not tracker.can_query():
-            break
-        try:
-            res = provider.search(query, max_results=max_search, constraints=constraints)
-        except Exception as exc:  # noqa: BLE001 - providers must never break the run
-            provider_chain_log.append({"provider": pid, "role": "discovery", "status": "failed"})
-            schema_errors.append(f"provider {pid}: {exc}")
-            continue
-        provider_chain_log.append(
-            {"provider": pid, "role": "discovery", "status": res.status}
-        )
-        tracker.add_query()
-        tracker.add_cost(res.estimated_cost_usd)
-        all_hits.extend(res.hits)
-        stat = _touch_provider(pid, "discovery")
-        stat["queries_executed"] = stat.get("queries_executed", 0) + 1
-        stat["estimated_cost_usd"] = round(
-            stat.get("estimated_cost_usd", 0.0) + res.estimated_cost_usd, 6
-        )
-        stat["raw_hits"] = stat.get("raw_hits", 0) + len(res.hits)
+
+    # CARP-4.1/4.3: which (question_id, query_text) pairs actually reach a
+    # provider. Legacy/disabled reduces to exactly one iteration with this
+    # request's own ``query`` -- identical to the pre-CARP single loop below.
+    # catalog_only (or a fully-covered catalog_then_discovery plan) is
+    # terminal: zero iterations, so the loop body never runs and no provider
+    # is ever touched, regardless of what ``chain`` contains.
+    if retrieval_policy == "disabled":
+        discovery_queries: list[tuple[str | None, str]] = [(None, query)]
+    elif catalog_terminal:
+        discovery_queries = []
+    else:
+        discovery_queries = [(q["question_id"], q.get("question_text") or query) for q in residual_questions]
+
+    for _question_id, q_query in discovery_queries:
+        for pid in chain:
+            provider = providers_map.get(pid)
+            if provider is None or "discovery" not in provider.roles:
+                continue
+            if not tracker.can_query():
+                break
+            try:
+                res = provider.search(q_query, max_results=max_search, constraints=constraints)
+            except Exception as exc:  # noqa: BLE001 - providers must never break the run
+                provider_chain_log.append({"provider": pid, "role": "discovery", "status": "failed"})
+                schema_errors.append(f"provider {pid}: {exc}")
+                continue
+            provider_chain_log.append(
+                {"provider": pid, "role": "discovery", "status": res.status}
+            )
+            tracker.add_query()
+            tracker.add_cost(res.estimated_cost_usd)
+            all_hits.extend(res.hits)
+            stat = _touch_provider(pid, "discovery")
+            stat["queries_executed"] = stat.get("queries_executed", 0) + 1
+            stat["estimated_cost_usd"] = round(
+                stat.get("estimated_cost_usd", 0.0) + res.estimated_cost_usd, 6
+            )
+            stat["raw_hits"] = stat.get("raw_hits", 0) + len(res.hits)
+            if tracker.exceeded():
+                break
         if tracker.exceeded():
             break
 
@@ -366,6 +788,28 @@ def run_search(
         },
     }
 
+    # CARP-4.1/4.3: mirror the evidence plan's selections/metrics into this
+    # search run (search_run.schema.yaml's `retrieval` block --
+    # non-authoritative persisted mirror; the plan file itself, written
+    # above, stays the sole authoritative source -- carp-contract-freeze.md
+    # §4.1). Omitted entirely under disabled, exactly like every legacy run.
+    if plan_dict is not None and retrieval_policy != "disabled":
+        search_run["retrieval"] = {
+            "policy": retrieval_policy,
+            "evidence_plan_ref": plan_dict.get("evidence_plan_id"),
+            "mirror_is_authoritative": False,
+            "selections": [
+                {
+                    "question_id": q["question_id"],
+                    "assertion_id": (q.get("selected_assertion_ref") or {}).get("assertion_id"),
+                    "assertion_version": (q.get("selected_assertion_ref") or {}).get("assertion_version"),
+                    "retrieval_receipt": q.get("retrieval_receipt"),
+                }
+                for q in plan_dict.get("questions", [])
+            ],
+            "metrics": plan_dict.get("summary", {}),
+        }
+
     # CCDash telemetry — best-effort; never breaks the run. Runs before the
     # search_run.yaml dump below so the persisted artifact (not just the
     # in-memory return value) reflects the minted ccdash_event_id.
@@ -381,7 +825,14 @@ def run_search(
     dump_yaml(search_run, rp.run / "search_run.yaml")
 
     # Routing decision — only persist when it is schema-valid.
-    routing = build_routing_decision(run_id, request, mode, chain)
+    routing = build_routing_decision(
+        run_id,
+        request,
+        mode,
+        chain,
+        retrieval_policy=retrieval_policy,
+        residual_question_ids=residual_question_ids,
+    )
     if not _validate(routing, "routing_decision", paths):
         dump_yaml(routing, rp.run / "routing_decision.yaml")
 

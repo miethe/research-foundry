@@ -300,6 +300,17 @@ class RunPaths:
         return self.run / "evidence_bundle.yaml"
 
     @property
+    def research_evidence_plan(self) -> Path:
+        """CARP (catalog-assisted-research-planning) evidence plan.
+
+        Present only when the run's ``retrieval_policy`` was active
+        (``catalog_only`` / ``catalog_then_discovery``) -- absent on every
+        legacy/disabled run. See ``research_evidence_plan.schema.yaml`` and
+        ``docs/dev/architecture/carp-contract-freeze.md``.
+        """
+        return self.run / "research_evidence_plan.yaml"
+
+    @property
     def lineage(self) -> Path:
         """Append-only seal/lineage record for tamper-evidence (TASK-4.2/4.3).
 

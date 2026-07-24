@@ -946,6 +946,74 @@ def _context_summary(
     return ctx
 
 
+# --- CARP-5.3: retrieval metrics + evidence-plan-ref propagation ------------
+def _retrieval_summary(rp: RunPaths, *, run_id: str | None) -> dict[str, Any] | None:
+    """Build the ``retrieval`` export block from the run's evidence plan.
+
+    ``research_evidence_plan.yaml`` (read via ``rp.research_evidence_plan``)
+    is the sole authoritative source for the coverage/selection decision
+    (carp-contract-freeze.md §4.1) -- this reads that already-written plan
+    directly and never re-derives, recomputes, or reads ``search_run.yaml``'s
+    non-authoritative mirror instead.
+
+    Returns ``None`` -- never a zero-filled placeholder -- when no evidence
+    plan was ever built for this run (the ``disabled``-policy v1 default, and
+    every legacy/pre-CARP run). Absence stays absence: a run with no
+    catalog-assisted retrieval activity gets no ``retrieval`` object, not one
+    with invented zero/null fields.
+
+    On a fail-closed or empty-catalog denial (``catalog_receipt.denial_reason``
+    set, or ``record_count == 0``), ``metrics`` is deliberately built with
+    ONLY the request-echoed ``questions_total`` key -- every other
+    candidate-derived counter (``questions_covered``, ``questions_residual``,
+    ``candidates_evaluated``, ``candidates_selected``, ``avoided_provider_calls``,
+    ``residual_reason_counts``) is dropped outright rather than passed through
+    as a zero, so this export layer enforces "no candidate signals on denial"
+    independently of whatever the upstream plan's own schema-validated
+    ``summary`` already guarantees (carp-contract-freeze.md §2.4).
+
+    ``selections`` mirrors each question's terminal decision
+    (``coverage_state``/``residual_reason``) plus its exact
+    ``selected_assertion_ref`` (``assertion_id``/``assertion_version``, both
+    ``None`` for a ``residual`` question -- schema-enforced, never a leaked
+    candidate id on denial since no question can be ``covered`` when the
+    catalog returned zero authorized rows).
+    """
+
+    plan = _load_yaml_dict(rp.research_evidence_plan, run_id=run_id)
+    if not plan:
+        return None
+
+    catalog_receipt = plan.get("catalog_receipt") or {}
+    summary = plan.get("summary") or {}
+    denied = bool(catalog_receipt.get("denial_reason")) or catalog_receipt.get("record_count") == 0
+
+    if denied:
+        metrics: dict[str, Any] = {"questions_total": summary.get("questions_total", 0)}
+    else:
+        metrics = dict(summary)
+
+    selections = [
+        {
+            "question_id": q.get("question_id"),
+            "coverage_state": q.get("coverage_state"),
+            "residual_reason": q.get("residual_reason"),
+            "assertion_id": (q.get("selected_assertion_ref") or {}).get("assertion_id"),
+            "assertion_version": (q.get("selected_assertion_ref") or {}).get("assertion_version"),
+        }
+        for q in (plan.get("questions") or [])
+        if isinstance(q, dict)
+    ]
+
+    return {
+        "policy": plan.get("retrieval_policy"),
+        "evidence_plan_ref": plan.get("evidence_plan_id"),
+        "denial_reason": catalog_receipt.get("denial_reason"),
+        "metrics": metrics,
+        "selections": selections,
+    }
+
+
 # --- title derivation --------------------------------------------------------
 
 _FRONTMATTER_TITLE_RE = re.compile(r"^title:\s*(.+?)\s*$", re.MULTILINE)
@@ -1183,6 +1251,7 @@ def export_run(
     context_summary = _context_summary(
         rp, run_id=run_id, run_meta=run_meta, threshold_rank=threshold_rank
     )
+    retrieval_summary = _retrieval_summary(rp, run_id=run_id)
 
     # Read report_draft once; reuse for title derivation and export field.
     report_draft = _read_report_draft(rp)
@@ -1237,6 +1306,10 @@ def export_run(
         "report_anchors": report_anchors,
         # Optional v2 context (ENR-003): routing_decision + swarm_plan; null on pre-v2 runs
         "context": context_summary,
+        # CARP-5.3: catalog-retrieval metrics + evidence-plan-ref propagation;
+        # null when no research_evidence_plan.yaml was ever built for this run
+        # (disabled policy / every legacy run).
+        "retrieval": retrieval_summary,
         # Metadata enrichment (schema 1.2) — null for pre-migration runs
         "linked_projects": linked_projects,
         "category": category,
@@ -1554,4 +1627,6 @@ __all__ = [
     "_cost_and_model_profiles",
     "_context_summary",
     "_collect_writebacks",
+    # CARP-5.3 (exported for test access)
+    "_retrieval_summary",
 ]

@@ -179,3 +179,148 @@ def test_plan_run_gcs_partial_scaffold_on_failure(tmp_foundry, sample_idea_text,
     # The scaffolded run dir (which had research_brief.md written, but never
     # got run.yaml or a registry entry) was GC'd -- no orphan left behind.
     assert after == before
+
+
+# ---------------------------------------------------------------------------
+# P4 fix-cycle: _lexical_terms unit coverage (stopword filtering, no cap)
+# ---------------------------------------------------------------------------
+
+
+def test_lexical_terms_filters_stopwords_short_tokens_and_dedupes_in_order():
+    text = "What does the evidence say about renewable energy and renewable grid storage economics?"
+    terms = planning_module._lexical_terms(text)
+    # No function words/boilerplate ("what", "does", "the", "say", "about",
+    # "evidence", "and") -- only the real topical, deduped, first-occurrence
+    # ordered content terms survive.
+    assert terms == ("renewable", "energy", "grid", "storage", "economics")
+
+
+def test_lexical_terms_drops_two_char_tokens_even_if_not_a_stopword():
+    assert planning_module._lexical_terms("an ox by a dam") == ("dam",)
+
+
+def test_lexical_terms_is_never_truncated_for_a_nine_content_term_question():
+    """The old ``_MAX_LEXICAL_TERMS`` cap silently dropped any term beyond
+    the 5th -- this is the regression guard that it is gone for good."""
+
+    text = "alpha bravo charlie delta echo foxtrot golf hotel india"
+    terms = planning_module._lexical_terms(text)
+    assert terms == ("alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india")
+    assert len(terms) == 9
+
+
+def test_lexical_terms_is_deterministic_across_repeated_calls():
+    text = "Zebra yak xylophone whale zebra yak vulture umbrella tiger"
+    first = planning_module._lexical_terms(text)
+    second = planning_module._lexical_terms(text)
+    assert first == second
+    assert first == ("zebra", "yak", "xylophone", "whale", "vulture", "umbrella", "tiger")
+
+
+# ---------------------------------------------------------------------------
+# P6 CARP-6.9 F1 fix-cycle: vacuous required_terms fail-open guard
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            "What is the evidence for and against this?",
+            ("what", "the", "evidence", "for", "and", "against", "this"),
+        ),
+        ("How do they do it?", ("how", "they")),
+    ],
+)
+def test_lexical_terms_falls_back_to_unfiltered_tokens_when_stopwords_empty_the_result(
+    text, expected
+):
+    """A question whose every 3+-char token is a stopword must never derive
+    ``()`` -- catalog_retrieval.retrieve()'s condition-1 lexical-match check
+    treats an empty ``required_terms`` as vacuously true (every authorized
+    candidate matches), so an empty derivation here would silently flip a
+    real, worded question into "match anything"."""
+
+    terms = planning_module._lexical_terms(text)
+    assert terms != ()
+    assert terms == expected
+
+
+def test_lexical_terms_genuinely_contentless_text_still_yields_empty_but_is_guarded():
+    """Text with no token reaching the 3-char floor (e.g. all 1-2 char
+    tokens) has no fallback to offer either -- ``_lexical_terms`` returning
+    ``()`` here is a true, correct reflection of "no derivable terms", not a
+    stopword-filtering artifact.
+
+    P6 CARP-6.9 F4 fix-cycle: an earlier version of this test stopped there
+    and called that safe. It is NOT safe on its own -- ``()`` is exactly the
+    shape ``catalog_retrieval.retrieve()``'s condition 1 treats as vacuously
+    true for every authorized candidate, which would let an arbitrary,
+    unrelated catalog assertion resolve ``covered`` for a question that said
+    nothing derivable. ``_evidence_plan_question`` -- the actual
+    plan-construction boundary -- must catch this and mark the question
+    terminal ``residual``/``evaluation_error`` instead, so ``build_evidence_plan``
+    never calls ``retrieve()`` for it at all."""
+
+    assert planning_module._lexical_terms("is it up?") == ()
+
+    question = planning_module._evidence_plan_question("q1", "is it up?")
+    assert question.required_terms == ()
+    assert question.forced_residual_reason == "evaluation_error"
+
+
+def test_lexical_terms_fallback_does_not_engage_when_content_terms_survive():
+    """The fallback only fires when stopword filtering would empty an
+    otherwise non-empty stream -- a question with at least one real content
+    term keeps the normal stopword-filtered (not fallback) behavior."""
+
+    text = "What does the evidence say about renewable energy?"
+    terms = planning_module._lexical_terms(text)
+    assert terms == ("renewable", "energy")
+
+
+# ---------------------------------------------------------------------------
+# P6 CARP-6.9 F3: "evidence" as a global stopword -- accepted tradeoff,
+# recorded explicitly (not left silent) rather than fixed.
+#
+# The module docstring above _STOPWORDS already documents WHY "evidence" is
+# blacklisted: it is this module's own default-fallback-question template's
+# scaffolding vocabulary (f"What does the evidence say about {objective}?").
+# The alternative -- stripping that one template's scaffolding at
+# construction time instead of blacklisting a topical word globally -- was
+# considered and rejected for P6: it would require a second, template-aware
+# term-derivation path solely for the auto-generated fallback question
+# (every other call site derives required_terms from arbitrary caller/user
+# text, where "the template" does not apply), adding a special case to a
+# frozen-contract-adjacent surface for a narrow benefit. The accepted
+# consequence, demonstrated below, is that "evidence" is dropped from
+# required_terms even when a caller's OWN question uses it as a genuine
+# topical word -- but only when other content words survive alongside it;
+# when "evidence" is the question's only survivor, F1's fallback (above)
+# already restores it. This is the loud, tested version of "acceptable,
+# not silent."
+# ---------------------------------------------------------------------------
+
+
+def test_evidence_stopword_is_dropped_even_as_a_genuine_topical_word():
+    """Accepted P6 tradeoff: a real question using "evidence" as content
+    (not template scaffolding) still loses it, because _STOPWORDS is global
+    and cannot distinguish the two uses. Other real content terms in the
+    same question are unaffected."""
+
+    text = "What does chain of custody evidence review require for admissibility?"
+    terms = planning_module._lexical_terms(text)
+    assert "evidence" not in terms
+    assert terms == ("chain", "custody", "review", "require", "admissibility")
+
+
+def test_evidence_stopword_does_not_survive_alone_but_f1_fallback_still_rescues_it():
+    """The narrower case F1 already covers, restated here to make the
+    F3/F1 interaction explicit: when "evidence" is the ONLY surviving token,
+    the F1 fallback (unfiltered token set) restores it rather than yielding
+    ``()`` -- the two fixes compose, they do not fight each other."""
+
+    text = "What is the evidence?"
+    terms = planning_module._lexical_terms(text)
+    assert terms != ()
+    assert "evidence" in terms

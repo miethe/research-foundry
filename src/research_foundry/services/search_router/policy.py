@@ -64,16 +64,26 @@ def build_routing_decision(
     request: dict[str, Any],
     mode: str,
     chain: list[str],
+    *,
+    retrieval_policy: str | None = None,
+    residual_question_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build a schema-valid ``routing_decision`` record for the run.
 
     Populates every required field (``id``/``intent_id``/``active_node_id``)
     plus sensible search-router defaults so the record validates and can be
     persisted alongside the run.
+
+    ``retrieval_policy``/``residual_question_ids`` are CARP-4.3 additions:
+    when ``retrieval_policy`` is ``None`` or ``"disabled"`` (the default, and
+    every legacy call site), neither key is added to the returned mapping --
+    byte-identical to the pre-CARP shape. Otherwise both are set verbatim, so
+    the caller (``run_search``) is the sole source of truth for what counts
+    as "residual" here; this function performs no coverage evaluation itself.
     """
 
     approval = request.get("approval", {}) or {}
-    return {
+    decision: dict[str, Any] = {
         "id": f"routing_{run_id}",
         "intent_id": request.get("intent_id") or f"intent_search_{run_id}",
         "active_node_id": request.get("task_node_id") or run_id,
@@ -86,6 +96,10 @@ def build_routing_decision(
         "provider_chain": list(chain),
         "query": request.get("query", ""),
     }
+    if retrieval_policy is not None and retrieval_policy != "disabled":
+        decision["retrieval_policy"] = retrieval_policy
+        decision["residual_question_ids"] = list(residual_question_ids or [])
+    return decision
 
 
 __all__ = ["select_mode", "resolve_chain", "build_routing_decision"]

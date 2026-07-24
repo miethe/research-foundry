@@ -5,7 +5,7 @@ doc_type: context
 prd: "catalog-assisted-research-planning"
 feature_slug: "catalog-assisted-research-planning"
 title: "C3 Catalog-Assisted Research Planning — Execution Handoff (P1–P2 done, P3–P6 remaining)"
-status: "active"
+status: "complete"
 created: 2026-07-23
 updated: 2026-07-23
 prd_ref: "docs/project_plans/PRDs/enhancements/catalog-assisted-research-planning-v1.md"
@@ -22,13 +22,17 @@ phase_status:
     status: complete
     gate: "CARP-2.G — validator APPROVE + karen APPROVE (two governance re-gates)"
   - phase: P3
-    status: not_started
+    status: complete
+    gate: "CARP-3.G — validator APPROVE + karen APPROVE (commit d9d67b0)"
   - phase: P4
-    status: not_started
+    status: complete
+    gate: "CARP-4.G — validator APPROVE + karen APPROVE after one fix-cycle (e8f5688 -> 4f94d1f)"
   - phase: P5
-    status: not_started
+    status: complete
+    gate: "CARP-5.G — validator APPROVE (c002412, 1f82ef6, 064f7ae, dcd4adb, 65284e8)"
   - phase: P6
-    status: not_started
+    status: complete
+    gate: "CARP-6.G — validator APPROVE + karen APPROVE after two fix-cycles (e9a06df, 4edd287, e4c8b71)"
 ---
 
 # C3 Catalog-Assisted Research Planning — Execution Handoff
@@ -116,6 +120,38 @@ field carries `required: [<field>]` inside the `if` to defeat JSON-Schema vacuou
 - Sensitivity axis is now gated (§8.1), but the ledger still has no independent sensitivity field
   distinct from `access_scope` + `allowed_for_work_output`.
 
+## P4 fix-cycle: `_lexical_terms` cap defect (both reviewers rejected CARP-4.G on this)
+
+`_lexical_terms()` (duplicated in `planning.py` and `search_router/router.py`) derived
+`required_terms` from free text by regex-scanning for ≥3-char tokens, casefolded, first-occurrence
+order, **capped at `_MAX_LEXICAL_TERMS = MAX_PAGES_PER_QUESTION` (=5)**, with no stopword
+filtering. Two fail-open consequences: (1) truncation could satisfy condition 1
+(`matched_terms == frozenset(required_terms)`) against only the *first 5* of a question's real
+terms, marking a candidate `covered` without ever confirming the rest of the question — a false
+positive on the governed coverage gate; (2) with no stopword filtering, the module's own default
+fallback question (`f"What does the evidence say about {objective}?"`) burned all 5 cap slots on
+boilerplate (`what, does, the, evidence, say`) before ever reaching the objective's real words.
+
+**Fix:** added a small, explicit, module-level English stopword set (articles, auxiliaries,
+prepositions, pronouns, conjunctions, wh-words, plus `say`/`evidence` as this module's own
+fixed-template scaffolding vocabulary) to both copies, and removed `_MAX_LEXICAL_TERMS` +
+its truncation guard entirely — every stopword-filtered term now passes through uncapped.
+
+**Documented residual limitation (do NOT re-litigate — same freeze-doc §3.6 Seam-2 tension P2
+already flagged, resolved conservatively/fail-closed):** `catalog_retrieval._collect_candidates`
+still spends `max_pages_per_question` (frozen ceiling: 5) as ONE budget shared across every
+required-term sub-query for a question, never per term. **A question whose distinct content-term
+count exceeds that shared budget will resolve `residual`/`pagination_limit` even when catalog
+evidence may exist** — the adapter's own pre-existing fail-closed mechanism (empty hit set once
+`pages_remaining <= 0`) now reliably fires instead of being masked by the old truncation. This is a
+real v1 limitation, not an optimal outcome; scaling the budget by term count or reading
+`search_text` directly were both explicitly ruled out of scope for this fix (the former contradicts
+the frozen shared-budget ruling, the latter reopens P2's privacy decision). One existing test
+(`test_plan_run_catalog_only_marks_each_question_terminal_with_exact_selected_refs`'s `covered_q`)
+had 6 distinct terms and only passed because of the removed cap — shortened to 5 terms to keep it a
+valid "covered" happy path post-fix, per the ruling to fix the test's own setup rather than restore
+the cap.
+
 ## P3 counter-emission trap (from the P1 Karen gate — will bite every catalog-empty/denied run)
 
 The schema constrains ALL SIX candidate-derived summary counters — **including
@@ -164,3 +200,77 @@ mypy errors (whole-package; **none in CARP files**). Bar every phase: **no NEW f
 ## Resume prompt (paste into a fresh session)
 
 See `RESUME-PROMPT.md` in this directory — it contains the exact prompt plus the full P3–P6 briefs.
+
+
+---
+
+# EXECUTION COMPLETE — P3–P6 landed and gated (2026-07-23)
+
+All six phases of C3 are now complete. P3–P6 were executed in this worktree with every leaf on ICA
+(`ICA_KEY=CC1`, `claude-sonnet-5[1m]`) and every reviewer gate on claude.
+
+| Phase | Gate | Commits |
+|---|---|---|
+| P3 Evidence Planner | CARP-3.G — validator + karen APPROVE (first pass) | `d9d67b0` |
+| P4 Retrieval-then-Discovery | CARP-4.G — validator + karen APPROVE after 1 fix-cycle | `e8f5688` → `4f94d1f` |
+| P5 API/MCP/Export/Metrics | CARP-5.G — validator APPROVE | `c002412` `1f82ef6` `064f7ae` `dcd4adb` `65284e8` |
+| P6 Hardening + Docs | CARP-6.G — validator + karen APPROVE after 2 fix-cycles | `b5023be` `1d41c1c` `9927a72` `d0f0569` `e41ae28` `f519463` `fc8010e` `e9a06df` `2d66a02` `504e3d4` `58e1c4b` `4edd287` `e4c8b71` |
+
+Final validation at HEAD: full-suite failure set **identical to the 16-test pre-existing baseline**
+(zero new failures); `validate_artifact.py --strict` exit 0; frontend `tsc -p tsconfig.app.json
+--noEmit` clean; ruff clean on all touched files.
+
+## Five fail-opens found and closed (the headline lesson)
+
+This feature produced **five** fail-open defects of the SAME shape — a strict fail-closed rule
+meeting a partially-wired data model creates pressure to synthesize or soften a value. **None was
+caught by the implementing leaf's own "all green" report; every one was caught by a reviewer gate.**
+
+1. **P2** — sensitivity axis aliased onto the rights boolean (fixed pre-handoff).
+2. **P2 follow-up** — unknown/malformed threshold silently granted the highest ceiling.
+3. **P4** — `_MAX_LEXICAL_TERMS` truncated `required_terms`, so `covered` was reachable on a strict
+   subset; with no stopword filtering the default question derived `{what,does,the,evidence,say}`.
+   Fixed by removing the cap + adding stopword filtering (`4f94d1f`).
+4. **P6** — CARP's retrieval path never checked `AssertionLedgerCapabilities.automated_reuse_allowed`,
+   bypassing a gate `run_launch.py:106-107` already enforced. Closed fail-closed (`e9a06df`).
+5. **P6 fix-cycle** — stopword/short-token filtering could empty `required_terms`, making coverage
+   condition 1 *vacuously true* for every candidate (an empty query returned an arbitrary assertion
+   as `covered`). Closed at the plan-construction boundary (`4edd287`, `e4c8b71`).
+
+**Rule reaffirmed:** if fail-closed makes a path dead, ESCALATE — never default/alias/synthesize.
+Unknown governance input must DENY. A documented fail-**open** is not the same class of thing as a
+documented fail-**closed** conservatism and must not ship as one.
+
+## Maintainer watch items (from the final karen gate)
+
+1. **`run_launch.py:105` fails open where CARP fails closed.** Its
+   `capabilities is not None and not capabilities.automated_reuse_allowed` allows on `None`; CARP's
+   `is not True` denies. Unreachable today (`:195` always passes a real object), but any new caller
+   omitting the argument silently reopens the ledger-side gate. Consider aligning to `is not True`.
+2. **Three duplicated helper pairs** now exist across `planning.py` and `search_router/router.py`:
+   `_STOPWORDS`, `_lexical_terms`, `_evidence_plan_question`. Every fix must land twice. Three drift
+   guards cover them — do not add a fourth pair without one.
+3. **`covered` requires two default-off flags.** `ledger_write_enabled` and `automated_reuse_enabled`
+   both default `False` (`config.py:110-111`). Any future test asserting `covered` must configure
+   both, or it asserts against a world it did not build.
+4. **Keep the `forced_residual_reason` escape hatch narrow.** It bypasses `retrieve()` entirely.
+   Today only two call sites set it, only to `evaluation_error`, only on empty derived terms. Any
+   widening deserves coverage-gate-level scrutiny — it is the one path producing a terminal question
+   without consulting the catalog.
+
+## Known limitations shipped (documented in the user guide)
+
+Four fail-closed (cost recall, never over-cover): advisory `required_extraction_contract` matching;
+no independent sensitivity field on the ledger; the shared per-question pagination-arithmetic limit
+(>budget content terms ⇒ `residual`/`pagination_limit`); structurally-unsatisfiable
+`required_source_types`. The fifth (blank query) is now closed outright.
+
+## Execution mechanics worth reusing
+
+- **The `execute-plan` workflow shell cannot reach ICA** — Opus drove the wave sequence directly.
+- **Long ICA sessions are unstable on this gateway.** P5 died twice as one monolithic leaf; splitting
+  it into four short sub-task leaves (5.1/5.2/5.3/5.4), each committing independently, worked.
+- **Orphaned-leaf hazard (important):** a wrapper reporting "timed out"/exit 144 does NOT kill the
+  underlying `claude` process. One orphan ran **37 minutes** unsupervised, committing to the branch
+  (`1f82ef6`) and mid-writing files. Always `ps` for stragglers referencing the worktree, and wrap
+  dispatches in `timeout -k` so leaves self-terminate instead of being orphaned.

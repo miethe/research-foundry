@@ -77,11 +77,25 @@ class RetrievalConstraints:
     ``sensitivity_allowed`` entirely rather than defaulting a threshold, and
     :func:`~research_foundry.services.assertion_reuse.evaluate_reuse` denies
     with ``sensitivity_denied`` -- fail-closed, never fail-open.
+
+    ``automated_reuse_allowed`` is the caller's (never-defaulted) capability
+    signal -- the same
+    :class:`~research_foundry.config.AssertionLedgerCapabilities.automated_reuse_allowed`
+    the pre-existing :func:`~research_foundry.services.run_launch.retrieve_first_reuse_decision`
+    seam already gates on (``run_launch.py`` ~L106-107). Absence semantics
+    mirror ``sensitivity_threshold``: ``None`` (the dataclass default) is a
+    caller who never supplied a capability, and :func:`retrieve` maps every
+    otherwise-``allow`` candidate to the SAME
+    ``deny``/``automated_reuse_disabled`` decision (frozen residual reason
+    ``reuse_denied``) rather than defaulting the capability to allowed.
+    Fail-closed, never fail-open -- the CARP catalog-retrieval path must
+    honor the same capability gate as the ledger.
     """
 
     required_edition_id: str | None = None
     required_extraction_contract: str | None = None
     sensitivity_threshold: str | None = None
+    automated_reuse_allowed: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -550,6 +564,19 @@ def retrieve(
             required_edition_id=constraints.required_edition_id,
             required_extraction_contract=constraints.required_extraction_contract,
         )
+        # CARP capability gate -- mirror run_launch.py:106-107 exactly.
+        # ``constraints.automated_reuse_allowed`` is caller-supplied and never
+        # defaulted here (§8.1 sensitivity-threshold precedent): a missing
+        # (``None``) or explicitly-``False`` capability collapses every
+        # otherwise-``allow`` decision into the SAME
+        # ``deny``/``automated_reuse_disabled`` reason code the ledger seam
+        # already emits -- CARP's catalog-retrieval path is bound by the
+        # same capability gate as the ledger, never fail-open. Fail-closed
+        # here (``coverage_state == residual`` / ``residual_reason ==
+        # reuse_denied`` via ``_residual_reason``) is the frozen behavior;
+        # the §3.2 residual-reason enum is CLOSED and needs no new member.
+        if decision.allowed and constraints.automated_reuse_allowed is not True:
+            decision = ReuseDecision("deny", "automated_reuse_disabled", decision.assertion_id)
         matched_terms = matches.get(assertion_id, frozenset())
         lexical_match = (not question.required_terms) or (matched_terms == frozenset(question.required_terms))
         qualifiers = packet.get("qualifiers")

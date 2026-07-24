@@ -2180,3 +2180,283 @@ def test_zero_writebacks_writebacks_key_is_none(tmp_foundry: FoundryPaths) -> No
     build_run(tmp_foundry, with_writebacks=False)
     data = svc.export_run(tmp_foundry, "rf_run_test001")
     assert data["writebacks"] is None
+
+
+# --------------------------------------------------------------------------
+# CARP-5.3: retrieval metrics + evidence-plan-ref propagation
+#
+# research_evidence_plan.yaml (schemas/research_evidence_plan.schema.yaml) is
+# the sole authoritative source for the coverage/selection decision
+# (carp-contract-freeze.md §4.1) -- these tests read it directly via
+# svc.export_run()'s new `retrieval` block, never via search_run.yaml's
+# non-authoritative mirror.
+# --------------------------------------------------------------------------
+
+from research_foundry.schemas import validate as _schema_validate  # noqa: E402
+
+
+def _carp_covered_question(question_id: str = "q_covered") -> dict[str, Any]:
+    return {
+        "question_id": question_id,
+        "required_terms": ["hemoglobin", "pediatric"],
+        "evaluated_candidates": [
+            {
+                "assertion_id": "ast_" + "a" * 64,
+                "assertion_version": 3,
+                "lifecycle_state": "eligible",
+                "lexical_match": True,
+                "source_type_satisfied": True,
+                "qualifiers_satisfied": True,
+                "reuse_decision": {"action": "allow", "reason_code": "eligible"},
+                "contradicts": False,
+                "selected": True,
+            }
+        ],
+        "selected_assertion_ref": {"assertion_id": "ast_" + "a" * 64, "assertion_version": 3},
+        "retrieval_receipt": {
+            "source": "catalog",
+            "catalog_generation_id": "gen_demo",
+            "decided_at": "2026-07-23T00:00:00Z",
+        },
+        "coverage_state": "covered",
+        "residual_reason": None,
+    }
+
+
+def _carp_residual_question(
+    question_id: str = "q_residual", reason: str = "no_candidate"
+) -> dict[str, Any]:
+    return {
+        "question_id": question_id,
+        "required_terms": ["unobtainable_term"],
+        "evaluated_candidates": [],
+        "coverage_state": "residual",
+        "residual_reason": reason,
+    }
+
+
+def _carp_evidence_plan(
+    *,
+    workspace_id: str = "ws_demo",
+    retrieval_policy: str = "catalog_only",
+    questions: list[dict[str, Any]] | None = None,
+    catalog_receipt: dict[str, Any] | None = None,
+    summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    qs = questions if questions is not None else []
+    return {
+        "evidence_plan_id": f"evp_{workspace_id}",
+        "workspace_id": workspace_id,
+        "retrieval_policy": retrieval_policy,
+        "catalog_receipt": catalog_receipt or {"record_count": 1, "catalog_generation_id": "gen_demo"},
+        "questions": qs,
+        "summary": summary or {"questions_total": len(qs)},
+    }
+
+
+def _build_run_with_evidence_plan(
+    paths: FoundryPaths, run_id: str, plan: dict[str, Any]
+) -> RunPaths:
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "type": "run",
+            "run_id": run_id,
+            "status": "planned",
+            "evidence_plan_ref": plan.get("evidence_plan_id"),
+        },
+        rp.run_yaml,
+    )
+    dump_yaml(plan, rp.research_evidence_plan)
+    return rp
+
+
+def test_retrieval_null_when_no_evidence_plan(tmp_foundry: FoundryPaths) -> None:
+    """Legacy/disabled run (no research_evidence_plan.yaml on disk at all):
+    `retrieval` is None -- present as a key, never omitted, and never a
+    zero-filled placeholder."""
+    build_run(tmp_foundry)  # standard build_run never writes an evidence plan
+    data = svc.export_run(tmp_foundry, "rf_run_test001")
+    assert "retrieval" in data
+    assert data["retrieval"] is None
+
+
+def test_retrieval_helper_returns_none_for_missing_plan_file(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    rp = tmp_foundry.run_paths("rf_run_noplan")
+    rp.ensure_scaffold()
+    dump_yaml({"schema_version": "0.1", "run_id": "rf_run_noplan"}, rp.run_yaml)
+    assert svc._retrieval_summary(rp, run_id="rf_run_noplan") is None
+
+
+def test_retrieval_mixed_plan_propagates_metrics_and_exact_refs(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """A plan with one covered + one residual question propagates its exact
+    selected_assertion_ref (assertion_id + assertion_version) and observed
+    metrics through to the run export."""
+    plan = _carp_evidence_plan(
+        retrieval_policy="catalog_then_discovery",
+        questions=[_carp_covered_question(), _carp_residual_question()],
+        summary={
+            "questions_total": 2,
+            "questions_covered": 1,
+            "questions_residual": 1,
+            "candidates_evaluated": 1,
+            "candidates_selected": 1,
+            "avoided_provider_calls": 1,
+            "residual_reason_counts": {"no_candidate": 1},
+        },
+    )
+    assert _schema_validate(plan, "research_evidence_plan").ok, _schema_validate(
+        plan, "research_evidence_plan"
+    ).errors
+    _build_run_with_evidence_plan(tmp_foundry, "rf_run_mixed001", plan)
+
+    data = svc.export_run(tmp_foundry, "rf_run_mixed001")
+    retrieval = data["retrieval"]
+    assert retrieval is not None
+    assert retrieval["policy"] == "catalog_then_discovery"
+    assert retrieval["evidence_plan_ref"] == plan["evidence_plan_id"]
+    assert retrieval["denial_reason"] is None
+    assert retrieval["metrics"] == plan["summary"]
+
+    by_qid = {s["question_id"]: s for s in retrieval["selections"]}
+    covered = by_qid["q_covered"]
+    assert covered["coverage_state"] == "covered"
+    assert covered["residual_reason"] is None
+    assert covered["assertion_id"] == "ast_" + "a" * 64
+    assert covered["assertion_version"] == 3
+
+    residual = by_qid["q_residual"]
+    assert residual["coverage_state"] == "residual"
+    assert residual["residual_reason"] == "no_candidate"
+    assert residual["assertion_id"] is None
+    assert residual["assertion_version"] is None
+
+
+def test_retrieval_denial_metrics_contain_no_candidate_signals(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """CARP-1.2 §2.4: a catalog_denied plan's exported metrics carry ONLY the
+    request-echoed `questions_total` -- no counts, no facets, no ids.
+    Positively asserted as the exact key set, not merely value-zero, and
+    independent of whatever the upstream plan's own summary already zeroed."""
+    plan = _carp_evidence_plan(
+        questions=[
+            _carp_residual_question("q1", "catalog_denied"),
+            _carp_residual_question("q2", "catalog_denied"),
+        ],
+        catalog_receipt={"record_count": 0, "denial_reason": "workspace_context_missing"},
+        summary={
+            "questions_total": 2,
+            "questions_covered": 0,
+            "questions_residual": 0,
+            "candidates_evaluated": 0,
+            "candidates_selected": 0,
+            "avoided_provider_calls": 0,
+            "residual_reason_counts": {},
+        },
+    )
+    assert _schema_validate(plan, "research_evidence_plan").ok, _schema_validate(
+        plan, "research_evidence_plan"
+    ).errors
+    _build_run_with_evidence_plan(tmp_foundry, "rf_run_denied001", plan)
+
+    data = svc.export_run(tmp_foundry, "rf_run_denied001")
+    retrieval = data["retrieval"]
+    assert retrieval is not None
+    assert retrieval["denial_reason"] == "workspace_context_missing"
+
+    metrics = retrieval["metrics"]
+    assert set(metrics) == {"questions_total"}
+    assert metrics["questions_total"] == 2
+    for leaked_key in (
+        "questions_covered",
+        "questions_residual",
+        "candidates_evaluated",
+        "candidates_selected",
+        "avoided_provider_calls",
+        "residual_reason_counts",
+    ):
+        assert leaked_key not in metrics
+
+    # No question was ever selected -- no candidate id leaks through
+    # selections either, on top of the metrics-level suppression above.
+    assert retrieval["selections"]
+    for selection in retrieval["selections"]:
+        assert selection["coverage_state"] == "residual"
+        assert selection["assertion_id"] is None
+        assert selection["assertion_version"] is None
+
+
+def test_retrieval_catalog_empty_denial_also_suppresses_metrics(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """H3 scenario #17 (catalog_empty): record_count == 0 with
+    denial_reason: null is ALSO a denial for metrics-suppression purposes --
+    not only the denial_reason-set case."""
+    plan = _carp_evidence_plan(
+        questions=[_carp_residual_question("q1", "catalog_empty")],
+        catalog_receipt={"record_count": 0, "denial_reason": None},
+        summary={
+            "questions_total": 1,
+            "questions_covered": 0,
+            "questions_residual": 0,
+            "candidates_evaluated": 0,
+            "candidates_selected": 0,
+            "avoided_provider_calls": 0,
+            "residual_reason_counts": {},
+        },
+    )
+    assert _schema_validate(plan, "research_evidence_plan").ok, _schema_validate(
+        plan, "research_evidence_plan"
+    ).errors
+    _build_run_with_evidence_plan(tmp_foundry, "rf_run_empty001", plan)
+
+    data = svc.export_run(tmp_foundry, "rf_run_empty001")
+    retrieval = data["retrieval"]
+    assert set(retrieval["metrics"]) == {"questions_total"}
+    assert retrieval["denial_reason"] is None
+
+
+def test_malformed_evidence_plan_artifact_exports_cleanly_without_placeholders(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """A partial/malformed on-disk artifact (missing `summary` entirely --
+    e.g. hand-edited or from an earlier, incompatible builder revision) must
+    not crash export and must never invent a placeholder value to fill the
+    gap: the missing `summary` propagates as an empty metrics object, not a
+    fabricated `questions_total`."""
+    plan = {
+        "evidence_plan_id": "evp_legacy",
+        "workspace_id": "ws_legacy",
+        "retrieval_policy": "catalog_only",
+        "catalog_receipt": {"record_count": 1},
+        "questions": [],
+        # summary omitted entirely.
+    }
+    _build_run_with_evidence_plan(tmp_foundry, "rf_run_legacy001", plan)
+
+    data = svc.export_run(tmp_foundry, "rf_run_legacy001")
+    retrieval = data["retrieval"]
+    assert retrieval is not None
+    assert retrieval["evidence_plan_ref"] == "evp_legacy"
+    assert retrieval["metrics"] == {}
+    assert retrieval["selections"] == []
+
+
+def test_retrieval_key_always_present_alongside_existing_fields(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """Regression: adding `retrieval` must not disturb any existing exported
+    field on a standard, non-CARP run."""
+    build_run(tmp_foundry)
+    data = svc.export_run(tmp_foundry, "rf_run_test001")
+    assert data["schema_version"] == svc.EXPORT_SCHEMA_VERSION
+    assert data["claim_counts"]["total"] == 5
+    assert "retrieval" in data
+    assert data["retrieval"] is None

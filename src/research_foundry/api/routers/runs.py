@@ -399,6 +399,16 @@ class LaunchRunRequest(BaseModel):
     from this request body -- it is always stamped server-side from
     ``request.state.identity.workspace_id`` (or left ``None`` when no auth
     middleware is configured, i.e. single-operator-trust mode).
+
+    ``retrieval_policy`` and ``retrieval_limits`` (CARP-5.1) are optional
+    catalog-assisted-research-planning passthroughs, forwarded unmodified to
+    ``run_launch.launch_run`` -> ``plan_run``. Both absent (the default) is
+    byte-identical to the pre-CARP request shape: no evidence plan is built,
+    and the response below omits ``evidence_plan_ref``/``retrieval_summary``
+    entirely -- carp-contract-freeze.md §1. ``retrieval_policy`` is one of
+    ``"catalog_only"`` / ``"catalog_then_discovery"``; any other value
+    (including omission) is treated as ``"disabled"`` by ``plan_run`` --
+    there is no implicit network fallback from any state.
     """
 
     text: str | None = None
@@ -419,6 +429,8 @@ class LaunchRunRequest(BaseModel):
     required_reuse_edition_id: str | None = None
     required_extraction_contract: str | None = None
     visibility: str = "workspace"
+    retrieval_policy: str | None = None
+    retrieval_limits: dict[str, Any] | None = None
 
 
 @router.post("/runs", summary="Launch a new run (scaffold + register only)", status_code=201)
@@ -468,6 +480,8 @@ def launch_run_endpoint(
             visibility=body.visibility,
             identity=identity,
             required_extraction_contract=body.required_extraction_contract,
+            retrieval_policy=body.retrieval_policy,
+            retrieval_limits=body.retrieval_limits,
             paths=paths,
         )
     except ValueError as exc:
@@ -541,6 +555,17 @@ def launch_run_endpoint(
             "reason_code": result.reuse_decision.reason_code,
             "assertion_id": result.reuse_decision.assertion_id,
         }
+    # evidence_plan_ref / retrieval_summary (CARP-5.1) are populated ONLY
+    # when a caller supplied retrieval_policy != "disabled" (see
+    # LaunchRunRequest docstring) -- omitted entirely otherwise, so a request
+    # with no retrieval_* fields gets a byte-identical response shape to
+    # before this field pair existed. retrieval_summary is already the
+    # evidence plan's own safe summary block: zero/omitted candidate-derived
+    # counters on a denied or empty catalog (carp-contract-freeze.md §2.3) --
+    # no extra redaction happens here.
+    if result.evidence_plan_ref is not None:
+        response["evidence_plan_ref"] = result.evidence_plan_ref
+        response["retrieval_summary"] = result.retrieval_summary
     return stamp(response)
 
 

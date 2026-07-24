@@ -10,7 +10,9 @@ caller's arguments.
 
 from __future__ import annotations
 
+import re
 import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -42,7 +44,304 @@ from ..registry import RUN_INDEX, Registry
 from ..schemas import default_registry, validate
 from ..yamlio import append_jsonl, dump_yaml, load_yaml
 from . import governance as governance_svc
+from .assertion_catalog import AssertionCatalog
 from .backlog_metadata import BacklogMetadata, lookup_metadata
+from .catalog_retrieval import RetrievalConstraints, RetrievalLimits
+from .research_evidence_planning import (
+    EvidencePlanLimits,
+    EvidencePlanQuestion,
+    EvidencePlanRequest,
+    build_evidence_plan,
+    write_evidence_plan,
+)
+
+#: CARP-4.2. A retrieval policy other than these two never builds an evidence
+#: plan (carp-contract-freeze.md §1) -- an absent/unknown/``"disabled"`` value
+#: all collapse to the same legacy no-op branch.
+_ACTIVE_RETRIEVAL_POLICIES = frozenset({"catalog_only", "catalog_then_discovery"})
+
+#: Case-folded word-boundary terms, 3+ chars, first-occurrence order. Turns a
+#: free-text research question into the catalog adapter's conservative
+#: "every required term must appear in search_text" lexical rule (carp-
+#: contract-freeze.md §3.1 condition 1) -- a documented v1 judgment call, not
+#: an invented catalog behavior (see research_evidence_planning.py's own
+#: module docstring for the sibling judgment calls this mirrors in spirit).
+_WORD_RE = re.compile(r"[A-Za-z0-9]+")
+
+#: A small, explicit, English closed-class stopword set (articles,
+#: auxiliary/modal verbs, prepositions, pronouns, conjunctions, wh-words)
+#: filtered out of the derived ``required_terms`` before condition 1 ever
+#: sees them. These tokens match nearly every ``search_text`` record and
+#: carry no discriminating power -- admitting them (1) can satisfy condition
+#: 1 (``matched_terms == frozenset(required_terms)``) against an otherwise
+#: unrelated candidate, and (2) each still spends one of the shared
+#: ``max_pages_per_question`` sub-query slots in
+#: ``catalog_retrieval._collect_candidates``, crowding out the real topical
+#: terms that follow them in the question text. ``say``/``says``/``said`` and
+#: ``evidence`` are included deliberately even though they are not textbook
+#: function words: they are this module's own fixed default-fallback-question
+#: template's scaffolding vocabulary (see the no-``research_questions``
+#: branch of :func:`_build_questions`, ``f"What does the evidence say about
+#: {objective}?"``) and would otherwise be near-universally present ahead of
+#: the objective's real content words in every default-question run.
+_STOPWORDS: frozenset[str] = frozenset(
+    {
+        # Articles
+        "a",
+        "an",
+        "the",
+        # Auxiliary / modal verbs (+ this module's template's "does"/"say")
+        "am",
+        "are",
+        "be",
+        "been",
+        "being",
+        "can",
+        "could",
+        "did",
+        "do",
+        "does",
+        "had",
+        "has",
+        "have",
+        "is",
+        "may",
+        "might",
+        "must",
+        "said",
+        "say",
+        "says",
+        "shall",
+        "should",
+        "was",
+        "were",
+        "will",
+        "would",
+        # Prepositions
+        "about",
+        "above",
+        "across",
+        "after",
+        "against",
+        "along",
+        "among",
+        "around",
+        "at",
+        "before",
+        "behind",
+        "below",
+        "between",
+        "beyond",
+        "by",
+        "down",
+        "during",
+        "for",
+        "from",
+        "in",
+        "into",
+        "near",
+        "of",
+        "off",
+        "on",
+        "onto",
+        "out",
+        "over",
+        "through",
+        "to",
+        "toward",
+        "under",
+        "until",
+        "up",
+        "upon",
+        "with",
+        "within",
+        "without",
+        # Pronouns
+        "he",
+        "her",
+        "hers",
+        "him",
+        "his",
+        "i",
+        "it",
+        "its",
+        "me",
+        "mine",
+        "my",
+        "our",
+        "ours",
+        "she",
+        "that",
+        "their",
+        "theirs",
+        "them",
+        "these",
+        "they",
+        "this",
+        "those",
+        "us",
+        "we",
+        "you",
+        "your",
+        "yours",
+        # Conjunctions
+        "although",
+        "and",
+        "because",
+        "but",
+        "nor",
+        "or",
+        "so",
+        "than",
+        "though",
+        "unless",
+        "while",
+        "yet",
+        # Wh-words
+        "how",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "whom",
+        "whose",
+        "why",
+        # This module's default fallback template's one content word --
+        # kept here as fixed scaffolding vocabulary, not a function word.
+        #
+        # P6 CARP-6.9 F3 (reviewed, kept as-is): a caller-supplied question
+        # that genuinely uses "evidence" as content also loses it, since
+        # this set is global and has no way to distinguish that use from
+        # the template's scaffolding use. Stripping only the template's
+        # scaffolding at construction time was considered and rejected --
+        # it would need a second, template-aware term-derivation path
+        # solely for the one auto-generated fallback question, a special
+        # case on a frozen-contract-adjacent surface for a narrow benefit.
+        # See tests/test_planning.py's F3 section for the accepted-tradeoff
+        # regression coverage and its interaction with the F1 fallback
+        # below (F1 still rescues "evidence" when it is the only survivor).
+        "evidence",
+    }
+)
+
+
+def _lexical_terms(text: str) -> tuple[str, ...]:
+    """Derive ``required_terms`` from free text: case-folded, 3+ chars,
+    stopword-filtered, deduped, first-occurrence order.
+
+    LIMITATION (documented, not silently absorbed -- see carp-contract-freeze
+    §3.6 Seam 2): ``catalog_retrieval._collect_candidates`` spends
+    ``max_pages_per_question`` (frozen ceiling: 5) as ONE budget shared across
+    every required-term sub-query for a question, never per term. This
+    function used to cap its own output at that same ceiling so a
+    well-formed multi-word question could still reach "covered" -- but that
+    silently dropped terms *before* the coverage decision ever saw them,
+    which could mark a candidate ``covered`` on a partial word match it was
+    never actually confirmed against (a false positive on the governed
+    coverage gate). That cap has been removed: every stopword-filtered term
+    is now passed through, uncapped. The consequence is asymmetric but
+    fail-closed by design -- a question whose distinct content-term count
+    exceeds the shared per-question page budget will resolve
+    ``residual``/``pagination_limit`` even when catalog evidence may exist,
+    rather than falsely resolving ``covered``. This is a real v1 limitation,
+    not an optimal outcome; loosening it (e.g. scaling the budget by term
+    count, or reading ``search_text`` directly) is out of scope for this fix.
+
+    P6 CARP-6.9 F1 fix-closed guard: ``catalog_retrieval.retrieve()``'s
+    coverage condition 1 (carp-contract-freeze.md §3.1) is *vacuous* whenever
+    ``required_terms`` is empty -- every authorized candidate is reported
+    lexically matched (see that module's own ``_collect_candidates``/
+    ``retrieve`` docstrings). Stopword filtering alone can drive a non-empty,
+    length-filtered token stream all the way down to ``()`` (e.g. "What is
+    the evidence for and against this?" or "How do they do it?" -- every
+    surviving 3+-char token is a stopword). Returning ``()`` in that case
+    would silently flip the coverage gate from "match these terms" to "match
+    anything", which is the opposite of this function's purpose. When
+    stopword filtering would empty an otherwise non-empty stream, this
+    function falls back to the length-filtered-but-not-stopword-filtered
+    token set instead -- discriminating power beats none, and the vacuous
+    rule (a deliberate, documented, unrelated behavior) is never triggered by
+    a question that actually had words in it.
+    """
+
+    seen: set[str] = set()
+    ordered: list[str] = []
+    fallback_seen: set[str] = set()
+    fallback_ordered: list[str] = []
+    for match in _WORD_RE.finditer(text.casefold()):
+        term = match.group(0)
+        if len(term) < 3:
+            continue
+        if term not in fallback_seen:
+            fallback_seen.add(term)
+            fallback_ordered.append(term)
+        if term in seen or term in _STOPWORDS:
+            continue
+        seen.add(term)
+        ordered.append(term)
+    if not ordered and fallback_ordered:
+        return tuple(fallback_ordered)
+    return tuple(ordered)
+
+
+def _evidence_plan_question(question_id: str, question_text: str) -> EvidencePlanQuestion:
+    """Build one CARP question, guarding the P6 CARP-6.9 F4 boundary.
+
+    ``_lexical_terms`` above still correctly derives ``()`` when a question's
+    text is genuinely contentless -- no token clears the 3-char floor at all
+    (e.g. "Is it up?"), or the text is empty/whitespace outright. F1's
+    fallback cannot rescue either case (there is nothing to fall back to).
+    Passing that ``()`` straight through as ``required_terms`` would trip
+    ``catalog_retrieval.retrieve()``'s frozen condition-1 vacuous-match rule
+    -- every authorized candidate would report lexically matched, letting an
+    arbitrary catalog assertion resolve ``covered`` for a question that said
+    nothing derivable. That rule itself is correct and untouched -- but a
+    caller-declared empty ``required_terms`` is not reachable through this
+    helper at all: ``required_terms`` here is always derived from
+    ``question_text``, never passed in independently. So at this boundary an
+    empty derived term set is always a derivation outcome, never an
+    intentional declaration, and is always marked
+    ``forced_residual_reason="evaluation_error"`` -- ``build_evidence_plan``
+    then emits it terminal ``residual`` without ever calling ``retrieve()``
+    for it.
+    """
+
+    terms = _lexical_terms(question_text)
+    if not terms:
+        return EvidencePlanQuestion(
+            question_id=question_id,
+            question_text=question_text,
+            required_terms=(),
+            forced_residual_reason="evaluation_error",
+        )
+    return EvidencePlanQuestion(question_id=question_id, question_text=question_text, required_terms=terms)
+
+
+def _evidence_plan_limits(retrieval_limits: Mapping[str, Any] | None) -> EvidencePlanLimits:
+    """Map a plain ``{max_questions, max_candidates_per_question, ...}`` dict
+    (the shape of ``search_request.schema.yaml``'s ``retrieval.limits``) onto
+    :class:`EvidencePlanLimits`. Absent/partial input falls back to the
+    dataclass's own defaults for every unset field -- never a caller-hostile
+    ``KeyError``."""
+
+    defaults = EvidencePlanLimits()
+    if not retrieval_limits:
+        return defaults
+    return EvidencePlanLimits(
+        max_questions=int(retrieval_limits.get("max_questions", defaults.max_questions)),
+        retrieval=RetrievalLimits(
+            max_candidates_per_question=int(
+                retrieval_limits.get(
+                    "max_candidates_per_question", defaults.retrieval.max_candidates_per_question
+                )
+            ),
+            max_pages_per_question=int(
+                retrieval_limits.get("max_pages_per_question", defaults.retrieval.max_pages_per_question)
+            ),
+            page_size=int(retrieval_limits.get("page_size", defaults.retrieval.page_size)),
+        ),
+    )
 
 # Default model profiles when the I-BOM does not specify a model_policy.
 _DEFAULT_MODEL_POLICY = {
@@ -127,7 +426,16 @@ _WRITEBACKS = [
 
 @dataclass(frozen=True)
 class PlanResult:
-    """Outcome of :func:`plan_run` — the planned run and its four artifacts."""
+    """Outcome of :func:`plan_run` — the planned run and its four artifacts.
+
+    ``evidence_plan_ref`` and ``retrieval_summary`` (CARP-5.1) are ``None``
+    unless ``retrieval_policy`` was active for this run -- a disabled/legacy
+    plan leaves both absent, exactly as before this field pair existed.
+    ``retrieval_summary`` is the evidence plan's own ``summary`` block, which
+    is already safe by construction: zero/omitted candidate-derived counters
+    on a denied or empty catalog, ``questions_total`` always present
+    (carp-contract-freeze.md §2.3). No additional redaction happens here.
+    """
 
     run_id: str
     brief_id: str
@@ -137,6 +445,8 @@ class PlanResult:
     brief_path: Path
     swarm_path: Path
     routing_path: Path
+    evidence_plan_ref: str | None = None
+    retrieval_summary: dict[str, Any] | None = None
 
 
 def load_intent(intent_id: str, *, paths: FoundryPaths | None = None) -> dict[str, Any]:
@@ -266,6 +576,8 @@ def plan_run(
     workspace_id: str | None = None,
     visibility: str = "workspace",
     identity: AuthIdentity | None = None,
+    retrieval_policy: str | None = None,
+    retrieval_limits: Mapping[str, Any] | None = None,
     paths: FoundryPaths | None = None,
 ) -> PlanResult:
     """Plan a research run for ``intent_id``.
@@ -341,6 +653,23 @@ def plan_run(
         ``identity=None`` (the default) is byte-identical to the pre-DF-004
         behavior: no prior caller passed ``workspace_id``, so it was always
         ``None`` before -- unaffected by this change.
+    retrieval_policy:
+        CARP-4.2 (catalog-assisted-research-planning). One of ``"catalog_only"``
+        / ``"catalog_then_discovery"`` opts this plan into building a
+        catalog-backed :mod:`research_evidence_planning` evidence plan over
+        the brief's own primary+secondary questions. ``None`` (the default)
+        or any other value is treated as ``"disabled"`` -- the v1 default --
+        and this function's behavior is then byte-identical to before this
+        parameter existed: no evidence plan is built or written, no brief
+        question gains a ``coverage_state``/``residual_reason`` key, and
+        ``routing_decision.yaml`` gains no ``retrieval_policy``/
+        ``residual_question_ids`` keys (carp-contract-freeze.md §1).
+    retrieval_limits:
+        Optional ``{max_questions, max_candidates_per_question,
+        max_pages_per_question, page_size}`` ceilings (the shape of
+        ``search_request.schema.yaml``'s ``retrieval.limits``), clamped to
+        the frozen §3.3 ceilings by :class:`EvidencePlanLimits.clamped`.
+        Ignored when ``retrieval_policy`` is inactive.
     paths:
         FoundryPaths override (defaults to ``FoundryPaths.discover()``).
     """
@@ -351,6 +680,9 @@ def plan_run(
     intent = load_intent(intent_id, paths=paths)
     ibom = _load_ibom(intent, paths)
     policy = _model_policy(ibom)
+    effective_retrieval_policy = (
+        retrieval_policy if retrieval_policy in _ACTIVE_RETRIEVAL_POLICIES else "disabled"
+    )
 
     # Resolve project slug: explicit arg → intent.project → raw_idea suggested_project → 'unassigned'.
     effective_project: str = (
@@ -409,10 +741,16 @@ def plan_run(
     node_ref = intent.get("intenttree_node_ref")
     active_node_id = str(node_ref) if node_ref else "tree_research_foundry"
 
+    # DF-004's stamping expression, named once so the CARP-4.2 evidence-plan
+    # block below and the run_doc construction further down share the exact
+    # same value (never re-derived, never drifting).
+    effective_workspace_id = workspace_id if identity is None else identity.workspace_id
+
     run = paths.run_paths(run_id).ensure_scaffold()
 
     try:
         # --- research_brief.md (front matter TOP LEVEL + body) -------------------
+        questions = _build_questions(intent)
         brief_fields: dict[str, Any] = {
             "schema_version": 0.1,
             "type": "research_brief",
@@ -421,7 +759,7 @@ def plan_run(
             "title": title,
             "audience": audience,
             "research_depth": depth,
-            "questions": _build_questions(intent),
+            "questions": questions,
             "source_strategy": {
                 "include_source_types": [
                     "official_docs",
@@ -450,6 +788,87 @@ def plan_run(
                 "include_open_questions": True,
             },
         }
+
+        # --- CARP-4.2: evidence-aware run planning --------------------------------
+        # Gated entirely on effective_retrieval_policy != "disabled" -- with the
+        # policy absent (the default) this block never runs, so the brief/swarm/
+        # routing/run artifacts stay byte-identical to the pre-CARP shape
+        # (carp-contract-freeze.md §1; see test_planning.py's legacy-snapshot
+        # regression).
+        evidence_plan_dict: dict[str, Any] | None = None
+        residual_question_ids: list[str] = []
+        if effective_retrieval_policy != "disabled":
+            all_questions = tuple(
+                _evidence_plan_question(str(q["id"]), str(q["question"]))
+                for q in (*questions["primary"], *questions["secondary"])
+            )
+            # Resolve the automated-reuse capability from the SAME source
+            # ``run_launch.py:195`` uses (never hardcoded / never defaulted
+            # to ``True`` here) so CARP's catalog-retrieval gate sees exactly
+            # the same fail-closed capability state the ledger seam sees.
+            capabilities = config.assertion_ledger_capabilities()
+            plan_request = EvidencePlanRequest(
+                evidence_plan_id=f"evp_{run_id}",
+                workspace_id=effective_workspace_id or "",
+                retrieval_policy=effective_retrieval_policy,
+                questions=all_questions,
+                schema_version="1",
+                brief_id=b_id,
+                run_id=run_id,
+                generated_at=created_at,
+                decided_at=created_at,
+                # sensitivity_threshold is the run's OWN declared sensitivity
+                # posture (governance.sensitivity, defaulting "personal" above)
+                # -- never hardcoded, never a second default invented here.
+                # catalog_retrieval.py never defaults a missing threshold: an
+                # empty/garbage value here would fail every candidate closed
+                # with sensitivity_denied, never fail open.
+                # automated_reuse_allowed is the real, resolved
+                # AssertionLedgerCapabilities value (config.py) -- same source
+                # run_launch.py:195 uses. Never hardcoded to True; a run
+                # against a deployment where automated_reuse_enabled is off
+                # (or ledger_write_enabled is off) resolves every otherwise-
+                # eligible candidate to residual/reuse_denied, the same
+                # fail-closed outcome the ledger seam already produces.
+                constraints=RetrievalConstraints(
+                    sensitivity_threshold=sensitivity,
+                    automated_reuse_allowed=capabilities.automated_reuse_allowed,
+                ),
+                limits=_evidence_plan_limits(retrieval_limits),
+            )
+            evidence_plan_dict = build_evidence_plan(
+                AssertionCatalog(paths), identity=identity, request=plan_request
+            )
+            _validate_or_raise(
+                evidence_plan_dict, "research_evidence_plan", run.run / "research_evidence_plan.yaml"
+            )
+            write_evidence_plan(evidence_plan_dict, run.run / "research_evidence_plan.yaml")
+
+            # Mark every brief question terminal (covered/residual) -- CARP-4.2
+            # propagation target. A question absent from the plan (should not
+            # happen: every brief question was fed in above) is left untouched
+            # rather than guessed at.
+            plan_by_question_id = {q["question_id"]: q for q in evidence_plan_dict["questions"]}
+            for q in (*questions["primary"], *questions["secondary"]):
+                stamped = plan_by_question_id.get(q["id"])
+                if stamped is not None:
+                    q["coverage_state"] = stamped["coverage_state"]
+                    q["residual_reason"] = stamped["residual_reason"]
+
+            # catalog_only NEVER routes to discovery (carp-contract-freeze.md
+            # §1) -- residual_question_ids is "the set this decision MAY route
+            # to providers" (routing_decision.schema.yaml), which is always
+            # empty under catalog_only regardless of any question's own
+            # coverage_state (schema-enforced: the allOf partition pins
+            # residual_question_ids to `const: []` whenever
+            # retrieval_policy == catalog_only).
+            if effective_retrieval_policy == "catalog_then_discovery":
+                residual_question_ids = [
+                    q["question_id"]
+                    for q in evidence_plan_dict["questions"]
+                    if q["coverage_state"] == "residual"
+                ]
+
         objective = str(intent.get("objective") or title)
         brief_body = (
             f"# Research Brief: {title}\n\n"
@@ -518,6 +937,9 @@ def plan_run(
             "validation": list(_VALIDATION_STEPS),
             "writebacks": [dict(w) for w in _WRITEBACKS],
         }
+        if effective_retrieval_policy != "disabled":
+            routing["retrieval_policy"] = effective_retrieval_policy
+            routing["residual_question_ids"] = list(residual_question_ids)
         dump_yaml(routing, run.routing_decision)
         _validate_or_raise(routing, "routing_decision", run.routing_decision)
 
@@ -559,7 +981,7 @@ def plan_run(
             # workspace_id: ALWAYS stamped from identity.workspace_id when an
             # identity is present, never from client-supplied input (mirrors
             # builder_service.create_draft's stamping contract exactly).
-            "workspace_id": workspace_id if identity is None else identity.workspace_id,
+            "workspace_id": effective_workspace_id,
             # visibility: "workspace" (default, gated once isolation is
             # enforced) or "public" (always readable). Any other value falls
             # back to "workspace" -- never a silent typo-bypass.
@@ -588,6 +1010,13 @@ def plan_run(
                 "verification_model_profile": policy["verification_profile"],
             },
         }
+        if evidence_plan_dict is not None:
+            # CARP-1.4/CARP-4.2: reference the plan by id, never by filesystem
+            # path (mirrors catalog_generation_id's own "never a path" rule) --
+            # the plan itself is the sole authoritative source of the
+            # coverage/selection decision (carp-contract-freeze.md §4.1); this
+            # is only a pointer to it.
+            run_doc["evidence_plan_ref"] = evidence_plan_dict["evidence_plan_id"]
         dump_yaml(run_doc, run.run_yaml)
 
         # --- registry + telemetry ------------------------------------------------
@@ -645,6 +1074,12 @@ def plan_run(
         brief_path=run.research_brief,
         swarm_path=run.swarm_plan,
         routing_path=run.routing_decision,
+        evidence_plan_ref=(
+            evidence_plan_dict["evidence_plan_id"] if evidence_plan_dict is not None else None
+        ),
+        retrieval_summary=(
+            evidence_plan_dict["summary"] if evidence_plan_dict is not None else None
+        ),
     )
 
 

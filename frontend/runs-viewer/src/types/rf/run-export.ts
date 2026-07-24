@@ -471,6 +471,49 @@ export interface RFRunExport {
    * Consumers MUST treat this field as optional and guard every access.
    */
   reusable_output_candidates?: ReusableOutputCandidate[] | null;
+
+  /**
+   * CARP (catalog-assisted-research-planning) additive block (CARP-5.3).
+   * Read directly from the run's research_evidence_plan.yaml — never from
+   * search_run.yaml's non-authoritative mirror (carp-contract-freeze.md §4.1).
+   * Null — never a zero-filled placeholder — when no evidence plan was ever
+   * built for this run (the `disabled`-policy v1 default, and every
+   * legacy/pre-CARP run). Consumers MUST treat this field as optional and
+   * guard every access.
+   */
+  retrieval?: RFRunRetrievalSummary | null;
+}
+
+// ── Retrieval Summary (CARP-5.3, schema 1.6) ────────────────────────────────
+
+/**
+ * One question's terminal coverage decision from the evidence plan.
+ * `assertion_id`/`assertion_version` are null unless `coverage_state ===
+ * "covered"` (schema-enforced on the source evidence plan) — never a leaked
+ * candidate id on a `residual` question.
+ */
+export interface RFRunRetrievalSelection {
+  question_id?:       string | null;
+  coverage_state?:    "covered" | "residual" | null;
+  residual_reason?:   string | null;
+  assertion_id?:      string | null;
+  assertion_version?: number | null;
+}
+
+/**
+ * CARP-5.3 propagation of the run's research_evidence_plan.yaml. On a
+ * fail-closed/empty-catalog denial, `metrics` carries ONLY `questions_total`
+ * — every other candidate-derived counter is dropped outright
+ * (carp-contract-freeze.md §2.4), never passed through as a zero.
+ */
+export interface RFRunRetrievalSummary {
+  policy?:            "catalog_only" | "catalog_then_discovery" | null;
+  evidence_plan_ref?: string | null;
+  /** Verbatim catalog_receipt.denial_reason. Non-null iff the catalog issued a fail-closed denial for the whole plan. */
+  denial_reason?:     string | null;
+  /** Verbatim pass-through of the evidence plan's own summary block when not denied; `{questions_total}` only when denied. */
+  metrics?:           Record<string, number | Record<string, unknown>>;
+  selections?:        RFRunRetrievalSelection[];
 }
 
 // ── Reusable Output Candidate (F5/P7, schema 1.2+) ──────────────────────────

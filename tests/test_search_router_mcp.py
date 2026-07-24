@@ -21,13 +21,16 @@ import pytest
 pytest.importorskip("mcp", reason="optional 'mcp' extra not installed (uv sync --extra mcp)")
 
 from research_foundry.paths import FoundryPaths  # noqa: E402
+from research_foundry.services import claim_mapping, extraction  # noqa: E402
+from research_foundry.services.assertion_materialization import AssertionMaterializer  # noqa: E402
 from research_foundry.services.search_router import mcp_server  # noqa: E402
 from research_foundry.services.search_router import router as router_module
 from research_foundry.services.search_router.providers.base import (  # noqa: E402
     ProviderResult,
     SearchHit,
 )
-from research_foundry.yamlio import load_yaml  # noqa: E402
+from research_foundry.services.source_cards import ingest_source  # noqa: E402
+from research_foundry.yamlio import dump_yaml, load_yaml  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fake provider (offline-safe; mirrors the pattern in test_search_router_router.py)
@@ -54,6 +57,57 @@ class FakeDiscoveryProvider:
 
     def extract(self, urls: list[str]) -> ProviderResult:
         return ProviderResult(provider="brave", role="discovery", status="skipped")
+
+
+def _materialize(tmp_foundry, run_id: str, workspace_id: str, content: str) -> str:
+    """Same helper as ``tests/test_search_router_router.py`` -- seeds one
+    real, eligible, ``access_scope="personal"`` assertion into
+    ``workspace_id``."""
+
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    # Explicitly enable both controls ``automated_reuse_allowed`` depends on
+    # (config.py: ``ledger_write_enabled AND automated_reuse_enabled``) --
+    # a test asserting a CARP plan is "covered" must describe a world where
+    # automated reuse is permitted. See P6 CARP-6.2 capability-gate fix.
+    foundry["foundry"]["assertion_ledger"] = {
+        "ledger_write_enabled": True,
+        "automated_reuse_enabled": True,
+    }
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
+    tmp_foundry.run_paths(run_id).ensure_scaffold()
+    ingest_source(
+        f"{run_id}.txt",
+        run_id=run_id,
+        title=f"Evidence {run_id}",
+        sensitivity="personal",
+        content=content,
+        assertion_registry_workspace_id=workspace_id,
+        paths=tmp_foundry,
+    )
+    extraction.extract_run(run_id, paths=tmp_foundry)
+    claim_mapping.build_claim_ledger(run_id, paths=tmp_foundry)
+    result = AssertionMaterializer(workspace_id=workspace_id, paths=tmp_foundry).materialize_run(run_id)
+    assert result.status == "materialized"
+    return result.assertion_ids[0]
+
+
+class RaisingSpyProvider:
+    """Fails the test the instant ``search()``/``extract()`` is invoked at
+    all -- the zero-provider-call proof CARP-4.1/5.2 asks for."""
+
+    id = "brave"
+    roles: tuple[str, ...] = ("discovery", "extraction")
+    requires: tuple[str, ...] = ()
+    env_keys: tuple[str, ...] = ()
+
+    def available(self) -> bool:
+        return True
+
+    def search(self, query: str, *, max_results: int, constraints: dict[str, Any]) -> ProviderResult:
+        raise AssertionError(f"provider.search must never be called under catalog_only (query={query!r})")
+
+    def extract(self, urls: list[str]) -> ProviderResult:
+        raise AssertionError(f"provider.extract must never be called under catalog_only (urls={urls!r})")
 
 
 def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -181,3 +235,86 @@ def test_mode_preset_tool_also_passes_intent_and_task_node_id_through(
     on_disk = load_yaml(rp.run / "routing_decision.yaml")
     assert on_disk["intent_id"] == "intent_preset_test"
     assert on_disk["active_node_id"] == "node_preset_test"
+
+
+# ---------------------------------------------------------------------------
+# CARP-5.2: identity / sensitivity_threshold / evidence_plan context options
+# ---------------------------------------------------------------------------
+
+
+def test_search_run_tool_identity_and_sensitivity_threshold_reach_catalog_only_selection(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The MCP wrapper marshals a plain-JSON ``identity`` mapping into an
+    ``AuthIdentity`` and forwards ``sensitivity_threshold`` straight through
+    to :func:`router.run_search` -- both reach the P2/P3 catalog seam intact,
+    selecting the real assertion with zero provider calls (mirrors
+    ``test_search_router_router.py``'s
+    ``test_cache_first_catalog_only_covered_selects_assertion_zero_provider_calls``,
+    but through the MCP transport instead of a direct Python call)."""
+
+    monkeypatch.chdir(tmp_foundry.root)
+    monkeypatch.setattr(router_module, "all_providers", lambda: {"brave": RaisingSpyProvider()})
+
+    assertion_id = _materialize(
+        tmp_foundry, "rf_run_carp52_mcp_covered", "workspace-a", "Quantum entanglement enables secure key distribution."
+    )
+
+    result = _call_tool(
+        "search_run",
+        {
+            "request": {
+                "query": "quantum entanglement",
+                "mode": "cache_first",
+                "retrieval": {"policy": "catalog_only"},
+            },
+            "identity": {"user_id": "alice", "workspace_id": "workspace-a", "roles": ["researcher"]},
+            "sensitivity_threshold": "personal",
+        },
+    )
+
+    retrieval = result["retrieval"]
+    assert retrieval["policy"] == "catalog_only"
+    assert retrieval["selections"][0]["assertion_id"] == assertion_id
+    assert retrieval["metrics"]["questions_covered"] == 1
+    assert result["metrics"]["queries_executed"] == 0
+    assert result["provider_chain"] == []
+
+
+def test_search_run_tool_without_identity_or_sensitivity_threshold_denies_closed(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Omitting ``identity``/``sensitivity_threshold`` (the pre-CARP-5.2 call
+    shape) must NOT silently grant access to the same real assertion the
+    identity-bearing test above selects -- the P2 adapter's fail-closed
+    identity/workspace precondition (carp-contract-freeze.md §2.1) reaches
+    all the way through the MCP transport unmodified, and this run's
+    ``retrieval_summary``-equivalent metrics stay in the frozen zero-
+    candidate-fields shape (§2.3). Proves the new optional arguments are
+    additive, not required for the tool to keep working, and that omission
+    is never silently upgraded into an allow."""
+
+    monkeypatch.chdir(tmp_foundry.root)
+    monkeypatch.setattr(router_module, "all_providers", lambda: {"brave": RaisingSpyProvider()})
+
+    _materialize(
+        tmp_foundry, "rf_run_carp52_mcp_denied", "workspace-a", "Quantum entanglement enables secure key distribution."
+    )
+
+    result = _call_tool(
+        "search_run",
+        {
+            "request": {
+                "query": "quantum entanglement",
+                "mode": "cache_first",
+                "retrieval": {"policy": "catalog_only"},
+            },
+        },
+    )
+
+    retrieval = result["retrieval"]
+    assert retrieval["policy"] == "catalog_only"
+    assert retrieval["selections"][0]["assertion_id"] is None
+    assert retrieval["metrics"] == {"questions_total": retrieval["metrics"]["questions_total"]}
+    assert result["metrics"]["queries_executed"] == 0
+    assert result["provider_chain"] == []

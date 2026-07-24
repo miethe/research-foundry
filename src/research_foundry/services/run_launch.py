@@ -53,6 +53,10 @@ class LaunchRunResult:
     ``raw_idea_id`` is ``None`` when the ``intent_id`` path was taken (no
     capture/triage step ran). ``status`` is always ``"planned"`` on success --
     the initial ``run.yaml.status`` value written by :func:`plan_run`.
+
+    ``evidence_plan_ref`` and ``retrieval_summary`` (CARP-5.1) are forwarded
+    unmodified from :class:`~.planning.PlanResult` -- both ``None`` unless
+    ``retrieval_policy`` was active for this launch.
     """
 
     run_id: str
@@ -63,6 +67,8 @@ class LaunchRunResult:
     swarm_path: Path
     routing_path: Path
     reuse_decision: ReuseDecision | None = None
+    evidence_plan_ref: str | None = None
+    retrieval_summary: dict[str, Any] | None = None
 
 
 def retrieve_first_reuse_decision(
@@ -123,6 +129,8 @@ def launch_run(
     required_extraction_contract: str | None = None,
     visibility: str = "workspace",
     identity: AuthIdentity | None = None,
+    retrieval_policy: str | None = None,
+    retrieval_limits: Mapping[str, Any] | None = None,
     paths: FoundryPaths | None = None,
 ) -> LaunchRunResult:
     """Scaffold and register a new run (scaffold + register only).
@@ -149,6 +157,12 @@ def launch_run(
     (never from client-supplied input on this path). ``identity=None`` (the
     default -- no auth middleware configured) is byte-identical to the
     pre-DF-004 behavior.
+
+    ``retrieval_policy`` and ``retrieval_limits`` are CARP-4.2 passthroughs,
+    forwarded unmodified to ``plan_run`` (same "never inspected here" rule as
+    ``identity``). ``retrieval_policy=None`` (the default) is byte-identical
+    to the pre-CARP behavior: ``plan_run`` treats it as ``"disabled"`` and
+    builds no evidence plan.
 
     Does NOT spawn, drive, or poll the Path B discovery swarm (Decision #1) --
     this is the deterministic scaffold+register chain only.
@@ -219,6 +233,8 @@ def launch_run(
         project=project,
         visibility=visibility,
         identity=identity,
+        retrieval_policy=retrieval_policy,
+        retrieval_limits=retrieval_limits,
         paths=paths,
     )
 
@@ -231,6 +247,8 @@ def launch_run(
         swarm_path=plan_result.swarm_path,
         routing_path=plan_result.routing_path,
         reuse_decision=reuse_decision,
+        evidence_plan_ref=plan_result.evidence_plan_ref,
+        retrieval_summary=plan_result.retrieval_summary,
     )
 
 

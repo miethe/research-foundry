@@ -162,7 +162,18 @@ properties:
                       - deny
                       - refresh
                   reason_code:
-                    description: Exact reason-code literal from assertion_reuse.evaluate_reuse().
+                    description: |
+                      Exact reason-code literal from assertion_reuse.evaluate_reuse(),
+                      plus `automated_reuse_disabled` -- the pre-existing
+                      capability-gate reason emitted by
+                      services/run_launch.py::retrieve_first_reuse_decision
+                      (line ~106) when
+                      AssertionLedgerCapabilities.automated_reuse_allowed is
+                      false. CARP's catalog-retrieval path collapses every
+                      otherwise-`allow` candidate into that same
+                      deny/automated_reuse_disabled decision (P6 CARP-6.2
+                      capability-gate fix) -- not a new reason invented here,
+                      the same string the ledger seam already emits.
                     enum:
                       - assertion_missing
                       - assertion_id_missing
@@ -183,6 +194,7 @@ properties:
                       - edition_refresh_required
                       - extraction_refresh_required
                       - eligible
+                      - automated_reuse_disabled
                 required:
                   - action
                   - reason_code
@@ -240,6 +252,7 @@ properties:
                             - extraction_contract_invalid
                             - required_edition_invalid
                             - required_extraction_contract_invalid
+                            - automated_reuse_disabled
               contradicts:
                 description: True when this candidate contradicts another authorized candidate for the same question.
                 type: boolean

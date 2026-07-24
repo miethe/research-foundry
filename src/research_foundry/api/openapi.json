@@ -62,7 +62,7 @@
           "runs"
         ],
         "summary": "List all runs",
-        "description": "Return a summary of every discovered run.\n\nEmpty corpus returns ``[]`` \u2014 never 404.  All data is routed through\n:func:`~research_foundry.services.export_service.list_runs` (R1).",
+        "description": "Return a summary of every discovered run.\n\nEmpty corpus returns ``[]`` \u2014 never 404.  All data is routed through\n:func:`~research_foundry.services.export_service.list_runs` (R1).\n\nDF-004: runs the caller's ``identity`` cannot read under active workspace\nisolation (not public, not the caller's own workspace) are silently\nomitted \u2014 filtered, never 403/404'd (there is no single \"not found\" run\nto gate on a list endpoint).",
         "operationId": "get_run_list_api_runs_get",
         "responses": {
           "200": {
@@ -131,7 +131,7 @@
           "runs"
         ],
         "summary": "Get run detail",
-        "description": "Return the full denormalized export for *run_id*.\n\nAll sensitivity redaction is applied by\n:func:`~research_foundry.services.export_service.export_run` (R1).\n\nAn existence gate is enforced: a run whose sensitivity exceeds the\nthreshold returns 404, indistinguishable from a genuinely absent run\n(no-existence-leak / landmine #4).\n\nRaises 404 when the run does not exist or is over-threshold.\nRaises 400 on invalid sensitivity_threshold.",
+        "description": "Return the full denormalized export for *run_id*.\n\nAll sensitivity redaction is applied by\n:func:`~research_foundry.services.export_service.export_run` (R1).\n\nAn existence gate is enforced: a run whose sensitivity exceeds the\nthreshold returns 404, indistinguishable from a genuinely absent run\n(no-existence-leak / landmine #4).\n\nThe explicit ``?sensitivity_threshold=`` query param always takes\nprecedence; when omitted, falls back to the ``rf serve\n--sensitivity-threshold`` override captured on ``app.state`` (see\n:func:`_sensitivity_threshold_override`).\n\nRaises 404 when the run does not exist or is over-threshold.\nRaises 400 on invalid sensitivity_threshold.",
         "operationId": "get_run_detail_api_runs__run_id__get",
         "parameters": [
           {
@@ -194,7 +194,7 @@
           "runs"
         ],
         "summary": "Get claim ledger for a run",
-        "description": "Return the claims array from the run's denormalized export.\n\nEmpty ledger returns ``[]`` \u2014 never null.  Propagates 404 when the run\ndoes not exist or is over-threshold.  All data routed through\nexport_service (R1).",
+        "description": "Return the claims array from the run's denormalized export.\n\nEmpty ledger returns ``[]`` \u2014 never null.  Propagates 404 when the run\ndoes not exist or is over-threshold.  All data routed through\nexport_service (R1).\n\nThe explicit ``?sensitivity_threshold=`` query param always takes\nprecedence over the ``rf serve --sensitivity-threshold`` override on\n``app.state`` (see :func:`_sensitivity_threshold_override`).",
         "operationId": "get_run_claims_api_runs__run_id__claims_get",
         "parameters": [
           {
@@ -237,6 +237,76 @@
                     "additionalProperties": true
                   },
                   "title": "Response Get Run Claims Api Runs  Run Id  Claims Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runs/{run_id}/context": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get context block for a run",
+        "description": "Return the ``context`` block for *run_id* (DFR-001 v2 lazy-load endpoint).\n\nResponse shape matches ``run.json``'s top-level ``context`` key exactly\n(schema 1.3 contract, \u00a79 of ``rf-run-export-schema.md``) \u2014 the same shape\nthe SPA's embedded ``run.context`` fallback already renders. Returns\n``null`` (HTTP 200) when the run exists but carries no v2 context\nartifacts (no ``routing_decision.yaml``, ``swarm_plan.yaml``, or\n``research_brief.md``).\n\n**Sensitivity gating**: identical existence-gate + redaction pass as\n``GET /runs/{run_id}`` \u2014 a run whose sensitivity exceeds the threshold\nreturns 404, indistinguishable from an unknown run (no-existence-leak /\nlandmine #4). Redaction of ``routing_decision`` / ``swarm_plan`` /\n``research_brief_md`` content is applied by\n:func:`~research_foundry.services.export_service._context_summary`\nbefore reaching this handler \u2014 data is always routed through the export\nservice (R1), never read directly from run artifact files here.\n\nRaises 404 when the run does not exist or is over-threshold.\nRaises 400 on invalid sensitivity_threshold.",
+        "operationId": "get_run_context_api_runs__run_id__context_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Run Context Api Runs  Run Id  Context Get"
                 }
               }
             }
@@ -2133,7 +2203,7 @@
           "audit"
         ],
         "summary": "List audit events (paginated)",
-        "description": "Return a cursor-paginated list of audit events, most-recent-first.\n\nPass ``cursor`` (the ``next_cursor`` value from a prior response) to\nretrieve the next page.  An empty audit log returns ``{\"items\": [],\n\"next_cursor\": null, \"total_hint\": null}`` \u2014 never 404.",
+        "description": "Return a cursor-paginated list of audit events, most-recent-first.\n\nPass ``cursor`` (the ``next_cursor`` value from a prior response) to\nretrieve the next page.  An empty audit log returns ``{\"items\": [],\n\"next_cursor\": null, \"total_hint\": null}`` \u2014 never 404.\n\nDI-1 (Phase 4 ACT-401): ``owner``/``admin`` (the RBAC-006 gate above) is\na workspace-scoped role, so ``identity`` is threaded into\n:func:`~research_foundry.services.audit_service.list_events` \u2014 once\nisolation enforcement is active, the caller's own workspace always wins\nover the ``workspace`` query param.",
         "operationId": "list_audit_events_api_audit_get",
         "parameters": [
           {
@@ -2185,10 +2255,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Filter by workspace id",
+              "description": "Filter by workspace id. Ignored once workspace isolation enforcement is active for an authenticated caller \u2014 the caller's own workspace always wins (DI-1, Phase 4 ACT-401).",
               "title": "Workspace"
             },
-            "description": "Filter by workspace id"
+            "description": "Filter by workspace id. Ignored once workspace isolation enforcement is active for an authenticated caller \u2014 the caller's own workspace always wins (DI-1, Phase 4 ACT-401)."
           },
           {
             "name": "since",
@@ -2315,7 +2385,7 @@
           "audit"
         ],
         "summary": "Get a single audit event",
-        "description": "Return the full detail for *audit_event_id*.\n\n404 when the id is unknown.",
+        "description": "Return the full detail for *audit_event_id*.\n\n404 when the id is unknown, OR when it exists but belongs to another\nworkspace under active isolation enforcement (DI-1, Phase 4 ACT-401) \u2014\nindistinguishable from \"unknown\", never a distinct 403 (no confirmation\nthat a cross-workspace event exists).",
         "operationId": "get_audit_event_api_audit__audit_event_id__get",
         "parameters": [
           {
@@ -2411,7 +2481,7 @@
           "admin"
         ],
         "summary": "Update a workspace member's role",
-        "description": "Update *user_id*'s role within the caller's workspace.\n\nRequest body: ``{ \"role\": \"<role_name>\" }``\n\n``role`` must be one of the canonical values: owner, admin, researcher,\nreviewer, viewer.  Invalid values are rejected by the RBAC store FK\nconstraint.\n\nReturns 404 when the user has no existing membership in this workspace.\nUse ``PATCH /api/admin/workspace`` to invite new members (future P5 work).\n\nAccess: owner / admin only.",
+        "description": "Update *user_id*'s role within the caller's workspace.\n\nRequest body: ``{ \"role\": \"<role_name>\" }``\n\n``role`` must be one of the canonical values: owner, admin, researcher,\nreviewer, viewer.  Invalid values are rejected by the RBAC store FK\nconstraint.\n\nReturns 404 when the user has no existing membership in this workspace.\nUse ``PATCH /api/admin/workspace`` to invite new members (future P5 work).\n\nAccess: owner / admin only.\n\nPhase 3 ACT-303: every successful update produces exactly one\n``audit_event`` row (``mutation_type=\"role_change\"``), recorded AFTER the\nmutation commits (fail-open \u2014 an audit-write failure here can never turn\na successful role update into an error response).",
         "operationId": "update_member_role_api_admin_members__user_id__role_patch",
         "parameters": [
           {
@@ -2575,6 +2645,609 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Get Rbac Status Api Admin Rbac Status Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/service-accounts": {
+      "post": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Create a service account",
+        "description": "Create a new service account with a single fixed role (FR-8).\n\nRequest body: ``{ \"name\": str, \"role\": str, \"description\"?: str }``.\nNever returns a token \u2014 call ``POST .../{id}/tokens`` next to obtain one.\n\nAccess: owner / admin only.",
+        "operationId": "create_service_account_api_admin_service_accounts_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Service Account Api Admin Service Accounts Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "List service accounts (paginated)",
+        "description": "List service accounts in the caller's workspace.\n\nAccess: owner / admin only.",
+        "operationId": "list_service_accounts_route_api_admin_service_accounts_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Page size",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Page size"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of items to skip",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Number of items to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Service Accounts Route Api Admin Service Accounts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/service-accounts/{account_id}": {
+      "delete": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Disable a service account",
+        "description": "Disable *account_id* (idempotent).\n\nDisabling does not itself revoke previously-issued tokens as a separate\nstep \u2014 ``token_service.verify_token`` independently checks\n``disabled_at`` at every resolution, so the practical effect is\nimmediate regardless (see ``rbac_store.disable_service_account``).\n\n404 when unknown or in another workspace.\n\nAccess: owner / admin only.",
+        "operationId": "disable_service_account_route_api_admin_service_accounts__account_id__delete",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Disable Service Account Route Api Admin Service Accounts  Account Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/service-accounts/{account_id}/tokens": {
+      "post": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Issue (or rotate) a service account's access token",
+        "description": "Issue a fresh access token for *account_id*, rotating out any prior\nactive token for it first (FR-8; rotate-on-issue \u2014 a service account\nnever has more than one live token).\n\nRequest body: ``{ \"expires_at\"?: str }`` (both optional; may be omitted).\n\n**``plaintext`` in the response is shown here ONLY** \u2014 it is never\npersisted, logged, or returned by any other route in this router.\n\n404 when *account_id* is unknown or in another workspace.\n\nAccess: owner / admin only.",
+        "operationId": "issue_service_account_token_route_api_admin_service_accounts__account_id__tokens_post",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "default": {},
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Issue Service Account Token Route Api Admin Service Accounts  Account Id  Tokens Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "List a service account's tokens (paginated, no secrets)",
+        "description": "List *account_id*'s tokens.\n\nNEVER includes ``token_hash`` or a plaintext secret.\n\n404 when *account_id* is unknown or in another workspace.\n\nAccess: owner / admin only.",
+        "operationId": "list_service_account_tokens_route_api_admin_service_accounts__account_id__tokens_get",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Page size",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Page size"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of items to skip",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Number of items to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Service Account Tokens Route Api Admin Service Accounts  Account Id  Tokens Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/service-accounts/{account_id}/tokens/{token_id}": {
+      "delete": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Revoke a specific service-account token",
+        "description": "Revoke *token_id*, provided it belongs to *account_id* in the caller's workspace.\n\n404 when the token is unknown, belongs to a different account, is not a\nservice-account token, or is in another workspace \u2014 never confirms\nexistence of a token outside the caller's own service account/workspace.\n\nAccess: owner / admin only.",
+        "operationId": "revoke_service_account_token_route_api_admin_service_accounts__account_id__tokens__token_id__delete",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "token_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Revoke Service Account Token Route Api Admin Service Accounts  Account Id  Tokens  Token Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/pats": {
+      "post": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Issue a personal access token (self, or on-behalf via owner/admin)",
+        "description": "Issue a PAT.\n\nRequest body: ``{ \"role\": str, \"expires_at\"?: str, \"user_id\"?: str }``.\n\nSelf-issues for the caller by default (``user_id`` defaults to the\ncaller's own identity). Setting ``user_id`` to a DIFFERENT user requires\nthe caller to hold owner/admin (403 otherwise) \u2014 e.g. an admin\nprovisioning a PAT on behalf of another workspace member.\n\nRole-ceiling (FR-9): *role* must be <= the target user's CURRENT role in\nthe workspace; :func:`token_service.issue_user_pat` enforces this and\nindependently re-checks it at every resolution (a later role downgrade\nfor the target user invalidates the PAT's elevated privilege\nimmediately, no restart required).\n\n**``plaintext`` in the response is shown here ONLY.**\n\n422 when ``user_id`` is omitted AND there is no caller identity (no\n\"self\" to default to in single-operator/no-auth mode \u2014 the caller must\nsay who the PAT is for).",
+        "operationId": "issue_pat_api_admin_pats_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Issue Pat Api Admin Pats Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "List personal access tokens (self, or any via owner/admin)",
+        "description": "List PATs.\n\nDefaults to the caller's OWN PATs. Passing ``user_id`` to target a\nDIFFERENT user requires owner/admin (403 \u2014 never a silently-empty list,\nso a caller can't mistake \"no permission\" for \"no PATs\").\n\nIn single-operator/no-auth mode (no caller identity), an omitted\n``user_id`` lists every PAT in the workspace \u2014 matches this router's\nexisting no-identity passthrough (see ``require_role``'s absent-identity\nsemantics).",
+        "operationId": "list_pats_api_admin_pats_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Target user id (defaults to caller)",
+              "title": "User Id"
+            },
+            "description": "Target user id (defaults to caller)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Page size",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Page size"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of items to skip",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Number of items to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Pats Api Admin Pats Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/pats/{token_id}": {
+      "delete": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Revoke a personal access token (self, or any via owner/admin)",
+        "description": "Revoke a PAT by id.\n\n404 when the token is unknown, is a service-account token (not a PAT \u2014\nhidden behind this endpoint's 404 rather than exposed as \"wrong type\"),\nor belongs to a DIFFERENT workspace (existence not confirmed, mirroring\n``audit.py``'s cross-workspace convention).\n\n403 when the token exists in the caller's OWN workspace but belongs to a\ndifferent user AND the caller lacks owner/admin \u2014 existence is knowable\nhere (the caller is a legitimate member of that workspace) but the\naction is denied; never a 404-leak (ACT-302 acceptance criteria).",
+        "operationId": "revoke_pat_api_admin_pats__token_id__delete",
+        "parameters": [
+          {
+            "name": "token_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Revoke Pat Api Admin Pats  Token Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/deployment-mode-status": {
+      "get": {
+        "tags": [
+          "admin",
+          "admin"
+        ],
+        "summary": "Resolved deployment_mode + FR-4 startup-gate condition status",
+        "description": "Return the resolved ``deployment_mode`` and, for ``multi_user``, the\npass/fail status of every FR-4 startup-gate condition (a)-(d).\n\nRead-only introspection over\n:meth:`~research_foundry.config.FoundryConfig.deployment_mode_validate`\n(via the shared, non-raising\n:meth:`~research_foundry.config.FoundryConfig.deployment_mode_status`\nhelper) \u2014 this endpoint NEVER raises the way the startup gate does, so\nan operator can inspect why a multi_user deployment would refuse to\nstart without taking the server down.\n\n``conditions`` is an empty list when ``deployment_mode=single_user``\n(the gate is a no-op outside multi_user).\n\n**Never returns secret material** \u2014 every condition ``detail`` only\never names config keys, resolved booleans, or file paths (identical to\nthe text ``deployment_mode_validate`` raises with).\n\nAccess: owner / admin only.",
+        "operationId": "get_deployment_mode_status_api_admin_deployment_mode_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Deployment Mode Status Api Admin Deployment Mode Status Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runs/{run_id}/writeback/approve": {
+      "post": {
+        "tags": [
+          "writeback"
+        ],
+        "summary": "Approve a run's evidence bundle and dispatch to writeback targets",
+        "description": "Approve *run_id*'s evidence bundle and dispatch it to writeback targets.\n\nWraps :func:`~research_foundry.services.writeback.approve_and_dispatch`\n(Phase 1, locked contract \u2014 not modified here). See the module docstring\nabove for the full governance-mapping and audit-outcome-class rules.\n\nReturns 200 with the full result on ``\"success\"``/``\"partial\"``\n(``\"partial\"`` is NOT an error \u2014 some targets failed but the run WAS\napproved and dispatch WAS attempted). Returns 422/400 with a\n``governance_rejected`` envelope on ``\"blocked\"``. Returns 404 if\n*run_id* does not exist. Returns 500 on any other unexpected exception.",
+        "operationId": "approve_dispatch_api_runs__run_id__writeback_approve_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveDispatchBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApproveDispatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Governance guard requires human review (exit_code 7).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceRejectedResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "run not found"
+          },
+          "422": {
+            "description": "Governance guard blocked (exit_code 3), or the guard passed but council_decision == \"required_block\" (synthetic council_required_block violation appended).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceRejectedResponse"
                 }
               }
             }
@@ -2784,6 +3457,89 @@
           "source_card_id"
         ],
         "title": "AddSourceLinkBody"
+      },
+      "ApproveDispatchBody": {
+        "properties": {
+          "targets": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targets"
+          }
+        },
+        "type": "object",
+        "title": "ApproveDispatchBody",
+        "description": "Body for POST /api/runs/{run_id}/writeback/approve.\n\n``targets`` defaults to the MVP triple (``ccdash``, ``meatywiki``,\n``skillmeat``) when omitted or ``null``."
+      },
+      "ApproveDispatchResponse": {
+        "properties": {
+          "bundle_id": {
+            "type": "string",
+            "title": "Bundle Id"
+          },
+          "verified": {
+            "type": "boolean",
+            "title": "Verified"
+          },
+          "council_decision": {
+            "type": "string",
+            "title": "Council Decision"
+          },
+          "reviewer_notes": {
+            "type": "string",
+            "title": "Reviewer Notes"
+          },
+          "required_fix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Fix"
+          },
+          "guard_result": {
+            "$ref": "#/components/schemas/GuardResultOut"
+          },
+          "target_status": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Target Status"
+          },
+          "overall_status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "partial"
+            ],
+            "title": "Overall Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bundle_id",
+          "verified",
+          "council_decision",
+          "reviewer_notes",
+          "required_fix",
+          "guard_result",
+          "target_status",
+          "overall_status"
+        ],
+        "title": "ApproveDispatchResponse",
+        "description": "200 response body \u2014 JSON-serializable projection of\n:class:`~...services.writeback.ApproveDispatchResult` (``\"success\"``/\n``\"partial\"`` outcomes only; ``\"blocked\"`` never reaches this model \u2014\nsee :class:`GovernanceRejectedResponse` below)."
       },
       "AssertionFacets": {
         "properties": {
@@ -3379,6 +4135,74 @@
         ],
         "title": "EvidencePacket"
       },
+      "GovernanceRejectedDetail": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "const": "governance_rejected",
+            "title": "Error"
+          },
+          "exit_code": {
+            "type": "integer",
+            "title": "Exit Code"
+          },
+          "violations": {
+            "items": {
+              "$ref": "#/components/schemas/ViolationOut"
+            },
+            "type": "array",
+            "title": "Violations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "exit_code",
+          "violations"
+        ],
+        "title": "GovernanceRejectedDetail",
+        "description": "The ``detail`` payload of a 422/400 ``governance_rejected`` response.\n\nField set is intentionally identical whether the guard itself failed or\nthe combined gate blocked solely on ``council_decision ==\n\"required_block\"`` (a synthetic ``council_required_block`` entry is\nappended to ``violations`` in the latter case) \u2014 no new top-level fields\nare invented for that branch."
+      },
+      "GovernanceRejectedResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/GovernanceRejectedDetail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "GovernanceRejectedResponse",
+        "description": "The runtime ``HTTPException`` envelope for a blocked writeback."
+      },
+      "GuardResultOut": {
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "exit_code": {
+            "type": "integer",
+            "title": "Exit Code"
+          },
+          "violations": {
+            "items": {
+              "$ref": "#/components/schemas/ViolationOut"
+            },
+            "type": "array",
+            "title": "Violations",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "passed",
+          "exit_code"
+        ],
+        "title": "GuardResultOut",
+        "description": "JSON-serializable projection of :class:`~...services.governance.GuardResult`."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3548,11 +4372,39 @@
               }
             ],
             "title": "Required Extraction Contract"
+          },
+          "visibility": {
+            "type": "string",
+            "title": "Visibility",
+            "default": "workspace"
+          },
+          "retrieval_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Policy"
+          },
+          "retrieval_limits": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Limits"
           }
         },
         "type": "object",
         "title": "LaunchRunRequest",
-        "description": "Body for POST /api/runs.\n\nExactly one of ``text`` / ``intent_id`` is required \u2014 supplying both or\nneither is a 400 (raised as ``ValueError`` by\n:func:`~research_foundry.services.run_launch.launch_run` and mapped here).\n\n``title``, ``sensitivity``, ``urgency``, ``tags``, and ``backlog_idea_ref``\nare ``text``-path fields (forwarded to ``capture_idea``) and are ignored\nwhen ``intent_id`` is supplied instead. The remaining fields are common\nplanning passthrough forwarded to ``plan_run`` on both paths.\n\n``reuse_assertion``, ``reuse_workspace_id``, ``required_reuse_edition_id``,\nand ``required_extraction_contract`` are optional reuse-reachability\nfields (Phase 4 of the assertion-ledger activation plan). All four are\nabsent by default and, when omitted, ``run_launch.launch_run`` performs\nNO reuse evaluation at all -- launch behaves exactly as it did before\nthis field set existed. When ``reuse_assertion`` is supplied, it is\nrouted through the existing ``assertion_reuse.evaluate_reuse`` /\n``retrieve_first_reuse_decision`` seam (no new policy logic here); an\nineligible result (deny or refresh -- including a target denied via the\nexisting ``block_authoritative_reuse`` lifecycle path, or a cross-\nworkspace target) surfaces as a 400 via the existing\n``except ValueError`` mapping below."
+        "description": "Body for POST /api/runs.\n\nExactly one of ``text`` / ``intent_id`` is required \u2014 supplying both or\nneither is a 400 (raised as ``ValueError`` by\n:func:`~research_foundry.services.run_launch.launch_run` and mapped here).\n\n``title``, ``sensitivity``, ``urgency``, ``tags``, and ``backlog_idea_ref``\nare ``text``-path fields (forwarded to ``capture_idea``) and are ignored\nwhen ``intent_id`` is supplied instead. The remaining fields are common\nplanning passthrough forwarded to ``plan_run`` on both paths.\n\n``reuse_assertion``, ``reuse_workspace_id``, ``required_reuse_edition_id``,\nand ``required_extraction_contract`` are optional reuse-reachability\nfields (Phase 4 of the assertion-ledger activation plan). All four are\nabsent by default and, when omitted, ``run_launch.launch_run`` performs\nNO reuse evaluation at all -- launch behaves exactly as it did before\nthis field set existed. When ``reuse_assertion`` is supplied, it is\nrouted through the existing ``assertion_reuse.evaluate_reuse`` /\n``retrieve_first_reuse_decision`` seam (no new policy logic here); an\nineligible result (deny or refresh -- including a target denied via the\nexisting ``block_authoritative_reuse`` lifecycle path, or a cross-\nworkspace target) surfaces as a 400 via the existing\n``except ValueError`` mapping below.\n\n``visibility`` (DF-004) is the new run's read-visibility: ``\"workspace\"``\n(default) or ``\"public\"``. The owning ``workspace_id`` is NEVER taken\nfrom this request body -- it is always stamped server-side from\n``request.state.identity.workspace_id`` (or left ``None`` when no auth\nmiddleware is configured, i.e. single-operator-trust mode).\n\n``retrieval_policy`` and ``retrieval_limits`` (CARP-5.1) are optional\ncatalog-assisted-research-planning passthroughs, forwarded unmodified to\n``run_launch.launch_run`` -> ``plan_run``. Both absent (the default) is\nbyte-identical to the pre-CARP request shape: no evidence plan is built,\nand the response below omits ``evidence_plan_ref``/``retrieval_summary``\nentirely -- carp-contract-freeze.md \u00a71. ``retrieval_policy`` is one of\n``\"catalog_only\"`` / ``\"catalog_then_discovery\"``; any other value\n(including omission) is treated as ``\"disabled\"`` by ``plan_run`` --\nthere is no implicit network fallback from any state."
       },
       "ReorderBlocksBody": {
         "properties": {
@@ -3713,6 +4565,35 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "ViolationOut": {
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "title": "Rule Id"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "rule_id",
+          "severity",
+          "message"
+        ],
+        "title": "ViolationOut",
+        "description": "JSON-serializable projection of :class:`~...services.governance.Violation`."
       }
     }
   }

@@ -11,6 +11,29 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Catalog-Assisted Research Planning (CARP)**
+
+- **Opt-in catalog-first evidence planning for research briefs.** A `search_request` may now set
+  `retrieval.policy` to `catalog_only` or `catalog_then_discovery` to resolve brief questions against
+  the existing governed assertion catalog before any network discovery provider is called;
+  `disabled` remains the default and is byte-identical to pre-CARP behavior (no implicit network
+  fallback in any state).
+- **Deterministic evidence plans.** A new `research_evidence_plan` schema records a terminal
+  `covered`/`residual` decision for every question against a fixed six-condition coverage rule (exact
+  lexical match, fresh eligibility, allowed reuse, satisfiable source-type/qualifier constraints, no
+  contradiction, pinned version), with one of 14 closed `residual_reason` codes on every non-covered
+  question.
+  See `docs/dev/guides/catalog-assisted-research-planning.md` for the full policy, coverage-rule, and
+  denial-guarantee reference, including documented v1 limitations (advisory extraction-contract
+  matching, a shared per-question pagination budget, and a structurally unsatisfiable
+  `required_source_types` constraint).
+- **Denial-safe summaries.** A denied or unauthorized caller receives zero candidate-derived counters
+  on the evidence-plan summary; `questions_total` (echoed from the request, not the corpus) is the
+  only safe field on a denied response.
+- **Residual-only discovery routing.** Under `catalog_then_discovery`, only questions that resolve
+  `residual` are eligible for Search Router provider routing; `covered` questions never reach a
+  provider.
+
 #### **Runs/Claims/Evidence Workspace Isolation & Public Visibility (DF-004)**
 
 - **Runs now carry an owner (`workspace_id`) and a `visibility` field

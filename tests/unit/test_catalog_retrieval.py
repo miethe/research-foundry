@@ -28,7 +28,20 @@ from research_foundry.yamlio import dump_yaml, load_yaml
 
 def _materialize(tmp_foundry, run_id: str, workspace_id: str, content: str) -> str:
     foundry = load_yaml(tmp_foundry.foundry_yaml)
-    foundry["foundry"]["assertion_ledger"] = {"ledger_write_enabled": True}
+    # Explicitly enable BOTH controls that ``automated_reuse_allowed`` depends
+    # on (config.py: ``ledger_write_enabled AND automated_reuse_enabled``).
+    # A test asserting a candidate is "allow"/"covered" must describe a world
+    # where automated reuse is actually permitted -- see the P6 CARP-6.2
+    # capability-gate fix. Prior to that fix, this fixture replaced the
+    # assertion_ledger config with only ledger_write_enabled=True, silently
+    # leaving automated_reuse_enabled at its dataclass-default False. The
+    # CARP catalog-retrieval path ignored the capability so those tests
+    # passed anyway; now that the gate is honored fail-closed, the fixture
+    # must state the world it actually intends to describe.
+    foundry["foundry"]["assertion_ledger"] = {
+        "ledger_write_enabled": True,
+        "automated_reuse_enabled": True,
+    }
     dump_yaml(foundry, tmp_foundry.foundry_yaml)
     tmp_foundry.run_paths(run_id).ensure_scaffold()
     ingest_source(
@@ -198,7 +211,7 @@ def test_eligible_candidate_is_allow_and_receipt_is_exact(tmp_foundry) -> None:
         catalog,
         identity=_identity(),
         question=_question(required_terms=("forty", "two")),
-        constraints=RetrievalConstraints(sensitivity_threshold="personal"),
+        constraints=RetrievalConstraints(sensitivity_threshold="personal", automated_reuse_allowed=True),
     )
 
     assert result.denial_reason is None
@@ -301,7 +314,7 @@ def test_wrong_required_edition_is_residual_reuse_refresh_required(tmp_foundry) 
         catalog,
         identity=_identity(),
         question=_question(required_terms=("exact",)),
-        constraints=RetrievalConstraints(required_edition_id=f"sed_{'0' * 64}", sensitivity_threshold="personal"),
+        constraints=RetrievalConstraints(required_edition_id=f"sed_{'0' * 64}", sensitivity_threshold="personal", automated_reuse_allowed=True),
     )
 
     assert len(result.candidates) == 1
@@ -321,7 +334,7 @@ def test_wrong_required_extraction_contract_is_residual_reuse_refresh_required(t
         catalog,
         identity=_identity(),
         question=_question(required_terms=("exact",)),
-        constraints=RetrievalConstraints(required_extraction_contract="some-other-contract-v9", sensitivity_threshold="personal"),
+        constraints=RetrievalConstraints(required_extraction_contract="some-other-contract-v9", sensitivity_threshold="personal", automated_reuse_allowed=True),
     )
 
     assert len(result.candidates) == 1
@@ -373,7 +386,7 @@ def test_public_edition_allows_under_a_public_threshold(tmp_foundry) -> None:
         catalog,
         identity=_identity(),
         question=_question(required_terms=("exactly",)),
-        constraints=RetrievalConstraints(sensitivity_threshold="public"),
+        constraints=RetrievalConstraints(sensitivity_threshold="public", automated_reuse_allowed=True),
     )
 
     assert len(result.candidates) == 1
@@ -430,7 +443,7 @@ def test_sensitivity_ordinal_comparison_is_correct_at_each_boundary(
         catalog,
         identity=_identity(),
         question=_question(required_terms=("boundary",)),
-        constraints=RetrievalConstraints(sensitivity_threshold=threshold),
+        constraints=RetrievalConstraints(sensitivity_threshold=threshold, automated_reuse_allowed=True),
     )
 
     assert len(result.candidates) == 1
@@ -488,7 +501,7 @@ def test_private_access_scope_is_rankable_and_allows_under_a_private_threshold(t
         catalog,
         identity=_identity(),
         question=_question(required_terms=("exactly",)),
-        constraints=RetrievalConstraints(sensitivity_threshold="private"),
+        constraints=RetrievalConstraints(sensitivity_threshold="private", automated_reuse_allowed=True),
     )
 
     assert len(result.candidates) == 1
@@ -533,7 +546,7 @@ def test_stale_snapshot_cannot_select_a_now_ineligible_packet(tmp_foundry) -> No
     )
     catalog = AssertionCatalog(tmp_foundry)
     question = _question(required_terms=("drifted",))
-    constraints = RetrievalConstraints(sensitivity_threshold="personal")
+    constraints = RetrievalConstraints(sensitivity_threshold="personal", automated_reuse_allowed=True)
 
     before = retrieve(catalog, identity=_identity(), question=question, constraints=constraints)
     assert len(before.candidates) == 1

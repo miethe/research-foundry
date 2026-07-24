@@ -4,7 +4,7 @@ schema_version: 2
 doc_type: implementation_plan
 status: draft
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-07-23
 feature_slug: catalog-assisted-research-planning
 feature_version: v1
 tier: 3
@@ -26,7 +26,8 @@ related_documents:
   - docs/project_plans/implementation_plans/features/assertion-ledger-activation-v1.md
   - docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
 references:
-  user_docs: []
+  user_docs:
+    - docs/dev/guides/catalog-assisted-research-planning.md
   context: []
   specs:
     - .agents/skills/planning/references/ac-schema.md
@@ -44,10 +45,14 @@ references:
     - docs/project_plans/PRDs/enhancements/research-provenance-continuity-v1.md
 spike_ref: null
 adr_refs: []
-deferred_items_spec_refs: []
+deferred_items_spec_refs:
+  - docs/project_plans/design-specs/catalog-planning-semantic-reranking.md
+  - docs/project_plans/design-specs/catalog-planning-adaptive-query-decomposition.md
+  - docs/project_plans/design-specs/catalog-planning-canonical-claim-coverage.md
+  - docs/project_plans/design-specs/catalog-planning-shared-evidence.md
 findings_doc_ref: null
 charter_ref: null
-changelog_ref: null
+changelog_ref: CHANGELOG.md#unreleased
 changelog_required: true
 test_plan_ref: null
 plan_structure: unified
