@@ -4,11 +4,11 @@ doc_type: design_spec
 title: "Claim Term Indexing"
 description: "Deterministic, write-time vocabulary/usage-role index over claims (and later inferences/reports/source cards), propagated read-only through export, catalog, and search."
 status: draft
-maturity: ready
+maturity: promoted
 created: 2026-07-23
-updated: 2026-07-23
+updated: 2026-07-24
 feature_slug: claim-term-indexing
-prd_ref: null
+prd_ref: docs/project_plans/PRDs/features/claim-term-indexing-v1.md
 related_documents:
   - docs/project_plans/exploration/claim-term-indexing/claim-term-indexing-charter.md
   - docs/project_plans/exploration/claim-term-indexing/claim-term-indexing-feasibility-brief.md
