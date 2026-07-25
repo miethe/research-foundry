@@ -6,19 +6,20 @@ prd: claim-term-indexing
 feature_slug: claim-term-indexing
 phase: 1
 title: Vocabulary + Write-Path Core
-status: pending
+status: completed
 created: '2026-07-24'
-updated: '2026-07-24'
+updated: '2026-07-25'
 prd_ref: docs/project_plans/PRDs/features/claim-term-indexing-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/claim-term-indexing-v1.md
-commit_refs: []
+commit_refs:
+- ab282f2
 pr_refs: []
-started: null
-completed: null
-overall_progress: 0
+started: 2026-07-24T18:00Z
+completed: 2026-07-25T02:00Z
+overall_progress: 100
 completion_estimate: on-track
 total_tasks: 6
-completed_tasks: 0
+completed_tasks: 6
 in_progress_tasks: 0
 blocked_tasks: 0
 owners:
@@ -35,19 +36,25 @@ tasks:
     (canonical term ID -> surface-form aliases); loader stamps vocabulary_version;
     jsonschema-validate at load time (OQ-D: malformed vocab fails closed and blocks
     claim-map; missing vocab warns and skips indexing)'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 0.5 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-24T18:00Z
+  completed: 2026-07-25T02:00Z
+  evidence:
+  - commit: ab282f2
+  verified_by:
+  - task-completion-validator
 - id: TASK-1.2
   description: 'Deterministic term matcher: adapt CARP''s case-folded, word-boundary
     substring/token matcher (catalog_retrieval.py:385-419) as a pure function taking
     claim text + loaded vocabulary, returning matched canonical term IDs; no Aho-Corasick
     dependency per D5'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies:
@@ -55,11 +62,17 @@ tasks:
   estimated_effort: 0.5 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-24T18:00Z
+  completed: 2026-07-25T02:00Z
+  evidence:
+  - commit: ab282f2
+  verified_by:
+  - task-completion-validator
 - id: TASK-1.3
   description: 'Usage-role classifier: rule-based regex context-window classifier
     (threshold vs background) plus pediatric_cds structured threshold{value,units_ucum}
     field keying; zero model/embedding calls (D6, FR-3)'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies:
@@ -67,12 +80,18 @@ tasks:
   estimated_effort: 0.5 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-24T18:00Z
+  completed: 2026-07-25T02:00Z
+  evidence:
+  - commit: ab282f2
+  verified_by:
+  - task-completion-validator
 - id: TASK-1.4
   description: 'Attach _term_index in claim_mapping.build_claim_ledger: wire matcher
     + classifier into build_claim_ledger (services/claim_mapping.py); write _term_index:{terms,usage_roles,vocabulary_version}
-    per claim item under the single namespaced key; never emit a bare usage_role
-    field (D2, FR-4, FR-5)'
-  status: pending
+    per claim item under the single namespaced key; never emit a bare usage_role field
+    (D2, FR-4, FR-5)'
+  status: completed
   assigned_to:
   - ica-executor
   dependencies:
@@ -81,13 +100,18 @@ tasks:
   estimated_effort: 0.5 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-24T18:00Z
+  completed: 2026-07-25T02:00Z
+  evidence:
+  - commit: ab282f2
+  verified_by:
+  - task-completion-validator
 - id: TASK-1.5
-  description: 'report_frontmatter rollup field: add additive _term_index-shaped
-    rollup field to report_frontmatter.schema.yaml (union of terms/roles across a
-    report''s claims), computed at the same write time as claim-map (OQ-E); update
-    claim_ledger.schema.yaml/report_frontmatter.schema.yaml docs for the new additive
-    key'
-  status: pending
+  description: 'report_frontmatter rollup field: add additive _term_index-shaped rollup
+    field to report_frontmatter.schema.yaml (union of terms/roles across a report''s
+    claims), computed at the same write time as claim-map (OQ-E); update claim_ledger.schema.yaml/report_frontmatter.schema.yaml
+    docs for the new additive key'
+  status: completed
   assigned_to:
   - ica-executor
   dependencies:
@@ -95,14 +119,20 @@ tasks:
   estimated_effort: 0.5 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-24T18:00Z
+  completed: 2026-07-25T02:00Z
+  evidence:
+  - commit: ab282f2
+  verified_by:
+  - task-completion-validator
 - id: TASK-1.6
   description: 'Guard tests (ENTRY-BLOCKING EXIT GATE): (a) fingerprint regression
-    test asserting source_assertion_fingerprint() is byte-identical with/without
-    an injected _term_index key, failing loudly if _term_index is ever added to
-    SOURCE_ASSERTION_MATERIAL_FIELDS; (b) fixture-based rf verify before/after regression
-    suite across >=2 runs (87-claim pediatric ledger + one synthetic zero-hit fixture),
-    asserting byte-identical console output and 0 status flips'
-  status: pending
+    test asserting source_assertion_fingerprint() is byte-identical with/without an
+    injected _term_index key, failing loudly if _term_index is ever added to SOURCE_ASSERTION_MATERIAL_FIELDS;
+    (b) fixture-based rf verify before/after regression suite across >=2 runs (87-claim
+    pediatric ledger + one synthetic zero-hit fixture), asserting byte-identical console
+    output and 0 status flips'
+  status: completed
   assigned_to:
   - ica-executor
   - task-completion-validator
@@ -112,6 +142,12 @@ tasks:
   estimated_effort: 0.5 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-24T18:00Z
+  completed: 2026-07-25T02:00Z
+  evidence:
+  - commit: ab282f2
+  verified_by:
+  - task-completion-validator
 parallelization:
   batch_1:
   - TASK-1.1
@@ -136,8 +172,7 @@ success_criteria:
 - _term_index writes deterministically with zero model/network calls (grep-verified)
 - Fingerprint regression test (AC-2) gates CI and fails loudly on a future material-fields
   change
-- Verify byte-inertness fixture suite (>=2 runs, AC-3/OQ-A) passes with 0 status
-  flips
+- Verify byte-inertness fixture suite (>=2 runs, AC-3/OQ-A) passes with 0 status flips
 - Malformed vocab fails closed; missing vocab warns and skips (OQ-D)
 - task-completion-validator review passed -- P2 does not start until this gate is
   green
@@ -148,6 +183,7 @@ files_modified:
 - src/research_foundry/schemas/report_frontmatter.schema.yaml
 notes: 'Entry-blocking exit gate for the whole plan: TASK-1.6 must pass before any
   P2 task begins.'
+progress: 100
 ---
 
 # claim-term-indexing - Phase 1: Vocabulary + Write-Path Core

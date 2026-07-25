@@ -48,7 +48,7 @@ EXPECTED_SCHEMA_NAMES: list[str] = [
     "research_brief", "research_evidence_plan", "research_idea_backlog", "research_intent", "review_packet",
     "rights_extension", "rights_failure", "rights_record", "routing_decision",
     "search_request", "search_run", "skillbom_candidate", "source_assertion",
-    "source_card", "source_edition", "swarm_plan", "tool_profile",
+    "source_card", "source_edition", "swarm_plan", "term_vocab", "tool_profile",
 ]
 
 
@@ -247,6 +247,12 @@ def _valid(name: str) -> dict:
             "brief_id": "brief_demo",
             "intent_id": "intent_demo",
         },
+        # required: vocabulary_version, terms (terms: object of term-id ->
+        # non-empty array of non-empty alias strings; additionalProperties: false)
+        "term_vocab": {
+            "vocabulary_version": "pediatric-terms-v1",
+            "terms": {"cbc": ["cbc", "complete blood count"]},
+        },
         # required: run_id, update_timestamp, status, push_status
         "notebooklm_update": {
             "run_id": "run_demo",
@@ -426,6 +432,7 @@ def _invalid(name: str) -> dict:
         "source_edition": "source_edition_id",
         "passage": "passage_id",
         "swarm_plan": "id",
+        "term_vocab": "vocabulary_version",
         "tool_profile": "id",
         # rights-entity-model-v1 (P0-1..P0-4)
         "rights_record": "rights_record_id",

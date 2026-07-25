@@ -1479,6 +1479,12 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         status: str = typer.Option(None, "--status"),
         sensitivity: str = typer.Option(None, "--sensitivity"),
         run_id: str = typer.Option(None, "--run-id"),
+        term: list[str] = typer.Option(
+            None, "--term", help="filter: catalog_terms.term (repeatable; OR within repeats, AND with other filters)"
+        ),
+        role: list[str] = typer.Option(
+            None, "--role", help="filter: catalog_terms.role (repeatable; OR within repeats, AND with other filters)"
+        ),
         sort: str = typer.Option("updated", "--sort", help="updated|title|confidence"),
         page: int = typer.Option(1, "--page"),
         page_size: int = typer.Option(25, "--page-size"),
@@ -1505,6 +1511,8 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             status=status,
             sensitivity=sensitivity,
             run_id=run_id,
+            term=term,
+            role=role,
             sort=sort,
             page=page,
             page_size=page_size,
@@ -2900,6 +2908,75 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                 console.print(f"  {verb} {r.path}")
 
     app.add_typer(rights_app, name="rights")
+
+    # ----- term-index (claim-term-indexing-v1 backfill, Phase 3) -----
+    term_index_app = typer.Typer(
+        help="Backfill the deterministic term/usage-role index (`_term_index`)."
+    )
+
+    @term_index_app.command("backfill")
+    def term_index_backfill_cmd(
+        run: list[str] = typer.Option(
+            None,
+            "--run",
+            help="Backfill only this run id (repeatable). Default: every "
+            "runs/*/claims/claim_ledger.yaml in the workspace.",
+        ),
+        dry_run: bool = typer.Option(
+            True,
+            "--dry-run/--wet-run",
+            help="Preview only (default): report claims that would gain `_term_index` "
+            "with zero writes. Pass --wet-run to actually write.",
+        ),
+    ) -> None:
+        """Backfill `_term_index` onto pre-existing claim_ledger.yaml files (P1 vocabulary).
+
+        Additive-only and non-clobbering: only ever adds the `_term_index` key
+        to a claim that lacks one — `verification_status`, `status`, and every
+        other already-attested field are left untouched. Dry-run by default;
+        pass --wet-run to actually write.
+
+        IMPORTANT: the shared evidence catalog (`catalog_terms`) is derived
+        from source files (file-is-truth doctrine) — a --wet-run backfill
+        MUST be followed by `rf catalog rebuild` so the catalog regenerates
+        from the newly-indexed claims. This command does not run that rebuild
+        for you.
+        """
+
+        from .paths import FoundryPaths
+        from .services.term_index_backfill import ACTION_BACKFILLED, backfill_term_index
+
+        fp = FoundryPaths.discover()
+
+        if run:
+            ledger_paths: list[Path] = [fp.run_paths(r).claim_ledger for r in run]
+        else:
+            ledger_paths = sorted(fp.runs.glob("*/claims/claim_ledger.yaml"))
+
+        results = backfill_term_index(ledger_paths, dry_run=dry_run, paths=fp)
+        backfilled = [r for r in results if r.action == ACTION_BACKFILLED]
+        skipped_count = len(results) - len(backfilled)
+
+        table = Table(
+            title="rf term-index backfill" + (" (--dry-run)" if dry_run else " (--wet-run)"),
+            show_header=True,
+        )
+        table.add_column("checked", justify="right")
+        table.add_column("would_backfill" if dry_run else "backfilled", justify="right")
+        table.add_column("skipped", justify="right")
+        table.add_row(str(len(results)), str(len(backfilled)), str(skipped_count))
+        console.print(table)
+        for r in backfilled:
+            verb = "[yellow]WOULD BACKFILL[/yellow]" if dry_run else "[green]BACKFILLED[/green]"
+            console.print(f"  {verb} {r.path} {r.claim_id}")
+        if not dry_run and backfilled:
+            console.print(
+                "\n[bold yellow]Follow-up required:[/bold yellow] run "
+                "[bold]rf catalog rebuild[/bold] now so catalog_terms regenerates "
+                "from these newly-indexed claims."
+            )
+
+    app.add_typer(term_index_app, name="term-index")
 
     # ----- serve (loopback API) -----
     @app.command()

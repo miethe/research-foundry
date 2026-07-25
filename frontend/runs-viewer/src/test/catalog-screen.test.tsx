@@ -36,7 +36,7 @@ import type { RFRunExport, RFRunSummary } from "@/types/rf";
 const RUN_ID = "rf_run_catalog_test";
 
 const RUN_FIXTURE: RFRunExport = {
-  schema_version: "1.3",
+  schema_version: "1.7",
   run_id: RUN_ID,
   status_derived: "verified",
   sensitivity: "public",
@@ -50,6 +50,10 @@ const RUN_FIXTURE: RFRunExport = {
       claim_type: "factual",
       confidence: "high",
       report_locations: [{ heading: "Findings" }],
+      // Claim-term-indexing v1 (TASK-4.1/4.2 test fixture): a real term hit
+      // so the facet chip-row + ?term= deep-link tests exercise live data,
+      // not an empty/omitted state.
+      _term_index: { terms: ["cbc"], usage_roles: { cbc: "background" }, vocabulary_version: "v1" },
       sources: [
         {
           source_card_id: "src_a",
@@ -76,6 +80,23 @@ const RUN_FIXTURE: RFRunExport = {
       claim_type: "inference",
       confidence: "medium",
       inference_basis: { from_claims: ["c1"], reasoning_summary: "Because c1 shows the latency reduction." },
+      sources: [],
+    },
+    {
+      claim_id: "c3",
+      // Claim-term-indexing v1 (TASK-4.1/4.2 test fixture): a second
+      // "claim"-type item (same tab as c1 — see catalog.ts's
+      // isInference-derived itemType split) but with NO _term_index, so the
+      // ?term=cbc deep-link tests can prove the filter actually excludes a
+      // non-matching item from the SAME tab rather than merely observing
+      // c1's presence (which would hold even if term filtering were a
+      // no-op). Text is unambiguously distinct from c1's — no shared words
+      // — so no assertion can pass by accidental substring/case overlap.
+      text: "Quarterly headcount growth outpaced revenue in the same fiscal period.",
+      status: "supported",
+      claim_type: "factual",
+      confidence: "medium",
+      report_locations: [{ heading: "Findings" }],
       sources: [],
     },
   ],
@@ -283,6 +304,68 @@ describe("CatalogScreen — tab switching", () => {
 });
 
 // ── Free-text search ──────────────────────────────────────────────────────────
+
+// ── Terms facet + ?term= deep-link (claim-term-indexing v1, TASK-4.1/4.2) ────
+
+describe("CatalogScreen — terms facet chip-row and ?term= deep-link", () => {
+  it("renders a terms facet chip for a term present in the loaded catalog", async () => {
+    renderCatalog();
+    const chip = await screen.findByTestId("catalog-term-chip-cbc");
+    expect(chip.textContent).toContain("cbc");
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("navigating to ?term=CBC pre-filters the catalog view to matching items (normalized to lowercase)", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    render(
+      <MemoryRouter initialEntries={["/catalog?term=CBC"]}>
+        <QueryClientProvider client={qc}>
+          <CatalogScreen />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    const chip = await screen.findByTestId("catalog-term-chip-cbc");
+    // The deep-link seeds termFilter pre-normalized (CBC → cbc) — the chip
+    // reflects the active filter as pressed without any further user click.
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    await waitFor(() => {
+      const tableText = screen.getByTestId("catalog-results-table").textContent;
+      // c1 has a matching _term_index (cbc) and must be included.
+      expect(tableText).toContain("Hybrid retrieval");
+      // c3 is the SAME item type (claim, same tab as c1) but has NO
+      // _term_index, so it must be excluded by the term filter — this is
+      // the assertion that actually proves filtering happened (a no-op
+      // filter would still show c1, so its presence alone proves nothing;
+      // c2 lives in a different tab (inference) and was never a valid
+      // control for this check).
+      expect(tableText).not.toContain("Quarterly headcount growth");
+    });
+  });
+
+  it("absence of ?term= behaves exactly as today (chip present but not pre-selected, no filtering)", async () => {
+    renderCatalog();
+    const chip = await screen.findByTestId("catalog-term-chip-cbc");
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    await waitFor(() => {
+      const tableText = screen.getByTestId("catalog-results-table").textContent;
+      // Unfiltered: both claim-tab items (c1, c3) render — proving the
+      // no-param path shows everything, so the filtered test's exclusion
+      // of c3 is due to the term filter and not some unrelated cause
+      // (e.g. c3 never rendering at all).
+      expect(tableText).toContain("Hybrid retrieval");
+      expect(tableText).toContain("Quarterly headcount growth");
+    });
+  });
+
+  it("clicking a term chip toggles the filter on, then off", async () => {
+    renderCatalog();
+    const chip = await screen.findByTestId("catalog-term-chip-cbc");
+    fireEvent.click(chip);
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(chip);
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+  });
+});
 
 describe("CatalogScreen — free-text search", () => {
   it("filters rows by a debounced search query", async () => {

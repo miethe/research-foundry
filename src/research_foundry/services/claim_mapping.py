@@ -19,6 +19,7 @@ from ..paths import FoundryPaths
 from ..registry import CLAIM_INDEX, Registry
 from ..schemas import SchemaRegistry
 from ..yamlio import append_jsonl, dump_yaml, load_yaml
+from .term_index import build_term_index, index_pediatric_cds_thresholds, load_vocabulary
 
 _NUMERIC = re.compile(r"\d|%")
 _COMPARATIVE = re.compile(r"\b(more|less|than|vs\.?|versus|fewer|greater|higher|lower)\b", re.I)
@@ -230,6 +231,16 @@ def build_claim_ledger(
     contradictions: list[dict] = []
     counter = 0
 
+    # Deterministic, write-time term/usage-role index (_term_index) -- D2/D8:
+    # namespaced, additive, never authoritative; never consulted by verify or
+    # identity hashing. A missing vocabulary file warns and disables indexing
+    # for this ledger (OQ-D); a malformed vocabulary file raises and blocks
+    # claim-map entirely (fail closed) via load_vocabulary's own contract.
+    vocabulary = load_vocabulary(paths=paths)
+    pediatric_cds_thresholds = (
+        index_pediatric_cds_thresholds(run_paths.sources) if vocabulary else {}
+    )
+
     for ext_file in sorted(run_paths.extractions.glob("*.yaml")):
         card = load_yaml(ext_file)
         if not isinstance(card, dict):
@@ -243,27 +254,35 @@ def build_claim_ledger(
             claim_type = _claim_type(text)
             evidence_id = str(fact.get("evidence_id") or "ev_001")
             locator = str(fact.get("locator") or "para/0")
-            claims.append(
-                {
-                    "claim_id": f"clm_{counter:03d}",
-                    "text": text or "(no text)",
-                    "materiality": _materiality(text, claim_type),
-                    "claim_type": claim_type,
-                    "status": "supported",
-                    "confidence": str(fact.get("confidence") or "medium"),
-                    "sources": [
-                        {
-                            "source_card_id": source_card_id,
-                            "evidence_id": evidence_id,
-                            "relation": "supports",
-                            "locator": locator,
-                        }
-                    ],
-                    "inference_basis": {"from_claims": [], "reasoning_summary": None},
-                    "report_locations": [],
-                    "reviewer_notes": "",
-                }
+            claim = {
+                "claim_id": f"clm_{counter:03d}",
+                "text": text or "(no text)",
+                "materiality": _materiality(text, claim_type),
+                "claim_type": claim_type,
+                "status": "supported",
+                "confidence": str(fact.get("confidence") or "medium"),
+                "sources": [
+                    {
+                        "source_card_id": source_card_id,
+                        "evidence_id": evidence_id,
+                        "relation": "supports",
+                        "locator": locator,
+                    }
+                ],
+                "inference_basis": {"from_claims": [], "reasoning_summary": None},
+                "report_locations": [],
+                "reviewer_notes": "",
+            }
+            term_index = build_term_index(
+                text,
+                vocabulary,
+                pediatric_cds_threshold=pediatric_cds_thresholds.get(
+                    (source_card_id, evidence_id), False
+                ),
             )
+            if term_index is not None:
+                claim["_term_index"] = term_index
+            claims.append(claim)
 
         # Seed contradictions from extraction cautions.
         for caution in card.get("contradictions_or_cautions") or []:

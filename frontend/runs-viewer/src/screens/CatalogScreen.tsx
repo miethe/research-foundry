@@ -18,7 +18,7 @@
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   isAgentsLoopbackEnabled,
   isBuilderLoopbackEnabled,
@@ -444,8 +444,20 @@ function CatalogInspector({ item, isLoading, onOpenRun, onSelectItem }: CatalogI
 const EMPTY_FACETS: CatalogSearchFacets = { projects: [], statuses: [], sensitivities: [] };
 const PAGE_SIZE = 20;
 
+/**
+ * Claim-term-indexing v1 (TASK-4.2). Backend catalog_terms rows key on the
+ * canonical lowercase term id (e.g. "cbc"), exact-string, never case-folded
+ * server-side (catalog_service.search()'s `term IN (...)`) — so a `?term=CBC`
+ * deep-link must be lowercased here or it silently matches zero rows.
+ */
+function normalizeTermParam(raw: string | null): string | null {
+  const trimmed = raw?.trim().toLowerCase();
+  return trimmed ? trimmed : null;
+}
+
 export function CatalogScreen() {
   const { data: stats, isLoading: statsLoading } = useCatalogStats();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [tab, setTab] = useState<CatalogTabId>("claim");
   const [project, setProject] = useState("");
@@ -457,11 +469,26 @@ export function CatalogScreen() {
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
+  // Seeded once from the `?term=` deep-link (TASK-4.2); absence of the param
+  // leaves this null, which is byte-identical to pre-TASK-4.2 behavior (no
+  // `term` filter ever applied) — the no-regression AC.
+  const [termFilter, setTermFilter] = useState<string | null>(() => normalizeTermParam(searchParams.get("term")));
+
+  function toggleTermFilter(term: string) {
+    setTermFilter((current) => {
+      const next = current === term ? null : term;
+      const nextParams = new URLSearchParams(searchParams);
+      if (next) nextParams.set("term", next);
+      else nextParams.delete("term");
+      setSearchParams(nextParams, { replace: true });
+      return next;
+    });
+  }
 
   // Reset to page 1 whenever the active filter set changes.
   useEffect(() => {
     setPage(1);
-  }, [tab, project, status, sensitivity, debouncedQuery, sort]);
+  }, [tab, project, status, sensitivity, debouncedQuery, sort, termFilter]);
 
   const baseParams = useMemo(
     () => ({
@@ -480,10 +507,15 @@ export function CatalogScreen() {
       // "assertions" is backed by a separate ledger (AssertionCatalogPane), not
       // this CatalogItemType search — treated the same as "report-ready" here.
       item_type: tab === "report-ready" || tab === "assertions" ? undefined : tab,
+      // TASK-4.2: only the CatalogItemType tabs carry claim/inference term
+      // data — applying it to reusable_output/writeback (report-ready) would
+      // zero out those results whenever a term is active, so it is NOT part
+      // of baseParams and never reaches reusableParams/writebackParams below.
+      term: termFilter ? [termFilter] : undefined,
       page,
       page_size: PAGE_SIZE,
     }),
-    [baseParams, tab, page],
+    [baseParams, tab, termFilter, page],
   );
   const reusableParams = useMemo(
     () => ({ ...baseParams, item_type: "reusable_output" as const, page: 1, page_size: 200 }),
@@ -631,6 +663,34 @@ export function CatalogScreen() {
           </span>
         )}
       </div>
+
+      {/*
+        TASK-4.1: terms-present facet chip-row, wired into the same
+        facets-driven pattern as the Project/Status/Sensitivity selects
+        above. `facets.terms` is optional: the loopback `/api/catalog/search`
+        backend's `_facets()` (catalog_service.py) now computes it from the
+        `catalog_terms` table (threshold- and workspace-scoped), same as
+        static mode's browser-built index from each claim's own
+        `_term_index`. Still absent when the catalog has zero indexed terms
+        — never an error, never a fabricated chip.
+      */}
+      {facets.terms && facets.terms.length > 0 && (
+        <div className="rv-catalog-term-facets" role="group" aria-label="Filter by term" data-testid="catalog-term-facets">
+          <span className="rv-catalog-term-facets__label">Terms</span>
+          {facets.terms.map((term) => (
+            <button
+              key={term}
+              type="button"
+              className={`rv-catalog-term-chip${termFilter === term ? " rv-catalog-term-chip--active" : ""}`}
+              aria-pressed={termFilter === term}
+              onClick={() => toggleTermFilter(term)}
+              data-testid={`catalog-term-chip-${term}`}
+            >
+              {term}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="rv-catalog-content">
         <div className="rv-catalog-main">

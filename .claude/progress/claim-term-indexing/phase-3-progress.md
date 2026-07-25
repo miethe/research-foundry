@@ -6,19 +6,20 @@ prd: claim-term-indexing
 feature_slug: claim-term-indexing
 phase: 3
 title: Backfill
-status: pending
+status: completed
 created: '2026-07-24'
-updated: '2026-07-24'
+updated: '2026-07-25'
 prd_ref: docs/project_plans/PRDs/features/claim-term-indexing-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/claim-term-indexing-v1.md
-commit_refs: []
+commit_refs:
+- 335a014
 pr_refs: []
-started: null
-completed: null
-overall_progress: 0
+started: 2026-07-25T02:00Z
+completed: 2026-07-25T06:00Z
+overall_progress: 100
 completion_estimate: on-track
 total_tasks: 4
-completed_tasks: 0
+completed_tasks: 4
 in_progress_tasks: 0
 blocked_tasks: 0
 owners:
@@ -33,22 +34,28 @@ tasks:
 - id: TASK-3.1
   description: 'term_index_backfill.py service: new service modeled on services/rights_backfill.py;
     dry-run by default, idempotent, additive-only; re-runs the deterministic claim-map
-    extraction function (TASK-1.2/1.3) against existing claim_ledger.yaml files
-    and writes _term_index in place; never touches verification_status, status,
-    or any already-attested field (FR-14)'
-  status: pending
+    extraction function (TASK-1.2/1.3) against existing claim_ledger.yaml files and
+    writes _term_index in place; never touches verification_status, status, or any
+    already-attested field (FR-14)'
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 1.0 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 335a014
+  verified_by:
+  - task-completion-validator
 - id: TASK-3.2
   description: 'CLI wiring + rf catalog rebuild follow-up: wire the backfill into
     cli_commands.py as a new subcommand; document the mandatory rf catalog rebuild
-    follow-up pass so derived catalog tables regenerate from the newly-additive
-    source files'
-  status: pending
+    follow-up pass so derived catalog tables regenerate from the newly-additive source
+    files'
+  status: completed
   assigned_to:
   - ica-executor
   dependencies:
@@ -56,12 +63,18 @@ tasks:
   estimated_effort: 0.25 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 335a014
+  verified_by:
+  - task-completion-validator
 - id: TASK-3.3
   description: 'Validate against pediatric-CDS bundle population: exercise the backfill''s
     dry-run mode against the 7 existing pediatric-CDS bundles (highest-stakes corpus,
     private data repo); review the dry-run diff before any wet run; wet-run first
     against fixtures only in this task'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies:
@@ -69,13 +82,19 @@ tasks:
   estimated_effort: 0.5 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 335a014
+  verified_by:
+  - task-completion-validator
 - id: TASK-3.4
   description: 'Idempotency + non-clobber tests (EXIT GATE): re-running the backfill
-    against an already-indexed ledger with an unchanged vocabulary version is a
-    no-op (0 writes); before/after rf verify regression on the real 87-claim pediatric-CDS
+    against an already-indexed ledger with an unchanged vocabulary version is a no-op
+    (0 writes); before/after rf verify regression on the real 87-claim pediatric-CDS
     ledger confirms no status change; an interrupted-then-re-run backfill converges
     to the same end state with no duplicate/partial writes'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   - task-completion-validator
@@ -84,6 +103,12 @@ tasks:
   estimated_effort: 0.25 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 335a014
+  verified_by:
+  - task-completion-validator
 parallelization:
   batch_1:
   - TASK-3.1
@@ -118,9 +143,10 @@ success_criteria:
 files_modified:
 - src/research_foundry/services/term_index_backfill.py
 - src/research_foundry/cli_commands.py
-notes: 'Runs in parallel with Phase 4 (disjoint file ownership -- no shared file
-  in either phase''s files_affected). Both fork from the Phase 2 exit gate and join
-  at Phase 5.'
+notes: Runs in parallel with Phase 4 (disjoint file ownership -- no shared file in
+  either phase's files_affected). Both fork from the Phase 2 exit gate and join at
+  Phase 5.
+progress: 100
 ---
 
 # claim-term-indexing - Phase 3: Backfill

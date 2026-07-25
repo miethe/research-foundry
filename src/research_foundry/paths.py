@@ -84,6 +84,10 @@ class FoundryPaths:
         return self.root / "templates"
 
     @property
+    def vocab(self) -> Path:
+        return self.root / "vocab"
+
+    @property
     def inbox(self) -> Path:
         return self.root / "inbox"
 

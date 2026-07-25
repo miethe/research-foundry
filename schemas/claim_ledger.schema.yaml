@@ -117,6 +117,27 @@ properties:
             additionalProperties: true
         reviewer_notes:
           type: string
+        _term_index:
+          type: object
+          description: >-
+            Additive, non-authoritative, write-time term/usage-role index
+            computed by claim-map (docs/project_plans/design-specs/claim-term-indexing.md).
+            Never participates in verification, identity hashing, or rights
+            governance, and never added outside this namespaced key (no bare
+            `usage_role`). Absent when the claim has zero vocabulary hits or
+            no vocabulary file was loaded.
+          additionalProperties: true
+          properties:
+            terms:
+              type: array
+              items:
+                type: string
+            usage_roles:
+              type: object
+              additionalProperties:
+                type: string
+            vocabulary_version:
+              type: [string, "null"]
       additionalProperties: true
   unresolved_questions:
     type: array

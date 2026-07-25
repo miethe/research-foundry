@@ -3,9 +3,9 @@ title: 'Implementation Plan: Claim Term Indexing'
 schema_version: 2
 doc_type: implementation_plan
 it_schema: 1
-status: approved
+status: completed
 created: '2026-07-24'
-updated: '2026-07-24'
+updated: '2026-07-25'
 feature_slug: claim-term-indexing
 feature_version: v1
 tier: 2
@@ -36,10 +36,14 @@ references:
 spike_ref: null
 adr_refs:
 - docs/dev/architecture/adr-rights-entity-model.md
-deferred_items_spec_refs: []
+deferred_items_spec_refs:
+- docs/project_plans/design-specs/term-index-model-assisted-roles-v2.md
+- docs/project_plans/design-specs/term-index-strict-schema-extension-v2.md
+- docs/project_plans/design-specs/controlled-vocabulary-import-v2.md
+- docs/project_plans/design-specs/catalog-search-text-term-aliasing-v2.md
 findings_doc_ref: null
 charter_ref: docs/project_plans/exploration/claim-term-indexing/claim-term-indexing-charter.md
-changelog_ref: null
+changelog_ref: CHANGELOG.md
 changelog_required: true
 test_plan_ref: null
 plan_structure: unified
@@ -58,7 +62,11 @@ tags:
 - catalog
 - vocabulary
 milestone: null
-commit_refs: []
+commit_refs:
+- ab282f2
+- 42ddf40
+- 335a014
+- 1df4fa8
 pr_refs: []
 files_affected:
 - vocab/pediatric-terms.yaml
@@ -75,7 +83,7 @@ files_affected:
 - frontend/runs-viewer/src/components/AssertionCatalog/AssertionCatalogPane.tsx
 - frontend/runs-viewer/src/screens/CatalogScreen.tsx
 - frontend/runs-viewer/src/components/ClaimLedger/ClaimLedgerTable.tsx
-planning_maturity: scoped
+planning_maturity: shipped
 open_questions:
 - q: 'OQ-B (design spec): should search_text in catalog_items also carry canonical
     term aliases, or is catalog_terms the only new query surface in v1?'

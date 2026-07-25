@@ -6,9 +6,9 @@ description: "Deterministic, write-time vocabulary/usage-role index over claims 
   \ namespaced, additive, non-authoritative \u2014 closing the term-lookup gap that\
   \ CARP's required_terms mechanism independently hand-rolled around, without adding\
   \ a model call to any read path."
-status: approved
+status: completed
 created: '2026-07-24'
-updated: '2026-07-24'
+updated: '2026-07-25'
 feature_slug: claim-term-indexing
 feature_version: v1
 tier: 2
@@ -45,7 +45,11 @@ tags:
 - vocabulary
 - carp
 milestone: null
-commit_refs: []
+commit_refs:
+- ab282f2
+- 42ddf40
+- 335a014
+- 1df4fa8
 pr_refs: []
 files_affected:
 - vocab/pediatric-terms.yaml (new)

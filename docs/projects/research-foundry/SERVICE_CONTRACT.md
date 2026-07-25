@@ -251,6 +251,11 @@ def build_claim_ledger(
 # Update registries/claim_index.yaml. by_status counts each status.
 ```
 
+**`_term_index` attach (claim-term-indexing-v1)**: `build_claim_ledger` also
+attaches a namespaced, additive, non-authoritative `_term_index` block to
+each claim item via `services/term_index.py`. See §23 for the full
+contract, the vocabulary format, and the backfill/CLI surface.
+
 ## 6. synthesis.py  (owner: W2-5)  — `rf synthesize`
 
 ```python
@@ -699,6 +704,7 @@ def search(
     paths: FoundryPaths, *,
     q: str | None = None, item_type: str | None = None, project: str | None = None,
     status: str | None = None, sensitivity: str | None = None, run_id: str | None = None,
+    term: list[str] | None = None, role: list[str] | None = None,
     sort: str = "updated", page: int = 1, page_size: int = ...,
     sensitivity_threshold: str | None = None,
     identity: AuthIdentity | None = None,
@@ -708,16 +714,52 @@ def search(
 # query; supplied + isolation active adds a parameterized
 # "AND workspace_id = ?" predicate to every statement, including the facet
 # query. get_item() had its own scope-leak fix (eba75ab) — see §14 note.
+#
+# term/role (claim-term-indexing-v1, OQ-C resolved): repeatable filters
+# against catalog_terms (§23). Semantics: AND across distinct flags (a
+# --term AND a --role both narrow the result set), OR within repeats of
+# the same flag (--term cbc --term ferritin matches either). Matching is
+# exact-string against canonical lowercase term ids -- "--term cbc" matches,
+# "--term CBC" does not (no case-folding at the query layer; case-folding
+# happens once, at write time, in services/term_index.py::match_terms).
 ```
 
 CLI (`cli_commands.py:1318+`): `rf catalog import|search|show|stats|rebuild`.
 Rows built by `_build_catalog_rows()` covering claims/inferences, sources,
 report summaries, reusable outputs, and writeback records, each carrying a
 `_rank(label)`-derived sensitivity/confidence rank for the fail-closed filter.
+`rf catalog search --term/--role` (`cli_commands.py:1483+`) exposes the
+`term`/`role` filters above; `rf serve`'s catalog router (§14) passes the
+same `term`/`role` query params through with zero new read-path computation.
+
+**`catalog_terms` join table (claim-term-indexing-v1)**:
+`catalog_terms(catalog_item_id, term, role, run_id, sensitivity_rank)`
+mirrors `catalog_links`, populated by `_build_claim_and_inference_rows()`
+from each claim's `_term_index` at `rebuild()`/`rebuild_schema()` time.
+Each row carries the **per-row** `sensitivity_rank` of the claim/evidence
+point it derives from — never a single flat blob computed once at the
+max-permissive tier, which would repeat the `search_text` leak precedent
+this same module already fixed once (`_redact_evidence_points`, below).
+See §23 for the write-time index this table is derived from, and
+`docs/project_plans/design-specs/catalog-search-text-term-aliasing-v2.md`
+for why term aliasing into the flat `search_text` blob (rather than this
+per-row table) was deferred.
 
 **Coordination boundary**: read-only derived index over `runs/**`; safe to
 `rebuild` at any time with zero data loss (source of truth is always the
-run-directory artifacts, never the catalog DB).
+run-directory artifacts, never the catalog DB). A `rf term-index backfill
+--wet-run` (§23) requires a follow-up `rf catalog rebuild` for
+`catalog_terms` to reflect the newly-indexed claims.
+
+> **Operator note — catalog wipe on first connection after upgrade
+> (claim-term-indexing-v1).** `catalog_terms` bumped `SCHEMA_VERSION` from 3
+> to 4. `_ensure_schema()` drops and recreates the whole catalog on any
+> `PRAGMA user_version` mismatch, and it runs from `_connect()` on **every**
+> connection — including a read-only `search()`. The first `rf catalog
+> search` (or `rf serve` catalog query) after this deploy silently wipes the
+> existing v3 catalog and returns empty results until someone runs `rf
+> catalog rebuild`. **Run `rf catalog rebuild` immediately after deploying
+> this change**, before serving any catalog reads.
 
 ---
 
@@ -1033,3 +1075,117 @@ required.
 (`principal_mutation` / `access_token_issued` / `access_token_revoked`)
 via `audit_service.record_event()` (§19) — fail-open, same contract as
 every other governed mutation on this platform.
+
+---
+
+## 23. `services/term_index.py` + `services/term_index_backfill.py` — Deterministic Term/Usage-Role Index (`_term_index`, `rf term-index backfill`) (claim-term-indexing-v1)
+
+**Maturity: shipped.** Attaches a namespaced, additive, **non-authoritative**
+index to claim items at write time: which canonical vocabulary terms a
+claim's text mentions, and how each is used (`threshold` vs `background`).
+Every function here is pure over already-loaded data or a bounded local
+file read — **zero model or network calls anywhere in this module** (D6) —
+and `_term_index` is never added to `SOURCE_ASSERTION_MATERIAL_FIELDS` and
+never consulted by `rf verify`, identity hashing, or rights governance
+(D2/D8; see `services/assertion_identity.py:16-21`). See design spec
+`docs/project_plans/design-specs/claim-term-indexing.md` for the full
+rationale.
+
+```python
+# services/term_index.py
+def load_vocabulary(
+    paths: FoundryPaths | None = None, *, filename: str = "pediatric-terms.yaml",
+) -> dict[str, Any] | None: ...
+# Loads + jsonschema-validates vocab/*.yaml against schemas/term_vocab.schema.yaml.
+# Missing file -> logs a warning, returns None (caller omits _term_index, OQ-D).
+# Malformed file -> raises VocabularyError, fails closed and blocks claim-map (OQ-D).
+
+def match_terms(text: str, vocabulary: Mapping[str, Any] | None) -> list[str]: ...
+# Case-folded, word-boundary surface-form matcher over the loaded vocabulary's
+# alias lists. Returns [] on zero hits or no vocabulary, never raises.
+
+def classify_usage_role(
+    term: str, text: str, *,
+    pediatric_cds_threshold_terms: Iterable[str] = (), aliases: Iterable[str] | None = None,
+) -> str: ...
+# Rule-based only: a term already resolved (by build_term_index) as one the
+# claim's pediatric_cds structured threshold block actually names classifies
+# "threshold" directly from that structured field (no regex); otherwise a
+# comparative-operator/numeric-adjacency regex check is scoped to a bounded
+# context window (+/-15 chars) around the term's OWN match position(s) in
+# text -- not the whole claim -- so a coincidental digit elsewhere in the
+# sentence (a year, an age) cannot promote an unrelated term.
+
+def build_term_index(
+    text: str, vocabulary: Mapping[str, Any] | None, *,
+    pediatric_cds_threshold: str | bool = False,
+) -> dict[str, Any] | None: ...
+# {"terms": [...], "usage_roles": {term: role, ...}, "vocabulary_version": str}.
+# pediatric_cds_threshold is the locator text from
+# index_pediatric_cds_thresholds() (""/False when none) -- matched against
+# the vocabulary to resolve the SPECIFIC term(s) it names; only those
+# term(s) inherit "threshold" directly, never every term the claim's text
+# also happens to mention. An unidentifying/absent locator promotes no term
+# on that basis (falls back to the windowed regex check above).
+# Returns None (never an empty-but-present block) on zero vocabulary hits or
+# no vocabulary loaded (AC-1 resilience) -- callers must omit the key entirely.
+
+def report_term_index_rollup(claims: Iterable[Mapping[str, Any]]) -> dict[str, Any] | None: ...
+# Unions _term_index across a report's claims into a report_frontmatter-level
+# rollup (OQ-E), computed at the same write time as claim-map's attach.
+```
+
+Wired into `claim_mapping.build_claim_ledger` (§5): every claim in a
+freshly-built `claim_ledger.yaml` carries `_term_index` under that single
+namespaced key when the vocabulary loads and the claim has >=1 hit; a
+zero-hit claim or a missing vocab file omits the key entirely rather than
+writing an empty block. Never emits a bare `usage_role` field anywhere in
+output (D2, FR-4/FR-5) — this is deliberate: a bare key next to a real
+`pediatric_cds` schema-validated threshold block would be a
+readability/audit hazard even though it is technically inert.
+
+**Vocabulary format (`vocab/*.yaml`, schema: `schemas/term_vocab.schema.yaml`)**:
+hand-maintained only for v1 (D4/D5 — controlled-vocabulary import from
+MeSH/UMLS/LOINC is deferred, see
+`docs/project_plans/design-specs/controlled-vocabulary-import-v2.md`).
+
+```yaml
+vocabulary_version: pediatric-terms-v1   # bumped on any edit to this file
+terms:
+  cbc:                                    # canonical term id
+    - CBC                                 # surface-form aliases, matched
+    - complete blood count                #   case-insensitively at word boundaries
+```
+
+```python
+# services/term_index_backfill.py — modeled directly on services/rights_backfill.py
+@dataclass(frozen=True)
+class BackfillResult:
+    path: Path
+    claim_id: str
+    action: str    # ACTION_BACKFILLED | ACTION_SKIPPED
+
+def backfill_term_index(
+    ledger_paths: list[Path], *, dry_run: bool = True, paths: FoundryPaths | None = None,
+) -> list[BackfillResult]: ...
+# Re-runs the same deterministic match/classify functions above against
+# existing claim_ledger.yaml files and writes _term_index in place.
+# Dry-run by DEFAULT; additive-only; idempotent against an unchanged
+# vocabulary_version (reruns are 0-write); NEVER touches verification_status,
+# status, or any already-attested field (FR-14).
+```
+
+CLI (`cli_commands.py:2913+`): `rf term-index backfill [--run RUN_ID ...] [--dry-run|--wet-run]`.
+Dry-run (default) reports claims that would gain `_term_index` with zero
+writes; `--wet-run` writes. **A `--wet-run` backfill must be followed by
+`rf catalog rebuild`** — `catalog_terms` (§17) is a derived read model over
+source `claim_ledger.yaml` files (file-is-truth doctrine) and does not
+pick up a backfill on its own.
+
+**Coordination boundary**: `term_index.py` is a pure-function library
+consumed by `claim_mapping.py` (write path) and `term_index_backfill.py`
+(retrofit path); `export_service.py` (§ export contract) copies
+`_term_index` forward verbatim in `run.json` (schema 1.7) with no
+recomputation; `catalog_service.py` (§17) derives `catalog_terms` rows
+from it at rebuild time. No component in this chain ever writes back to
+`claim_ledger.yaml`'s verification/identity fields.

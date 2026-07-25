@@ -86,6 +86,7 @@ export function ClaimLedgerTable({ claims, onClaimSelect, selectedClaimId, onExp
             <th className="rv-ledger-th rv-ledger-th--status">Status</th>
             <th className="rv-ledger-th rv-ledger-th--conf">Confidence</th>
             <th className="rv-ledger-th rv-ledger-th--mat">Materiality</th>
+            <th className="rv-ledger-th rv-ledger-th--terms">Terms</th>
           </tr>
         </thead>
         <tbody>
@@ -96,6 +97,12 @@ export function ClaimLedgerTable({ claims, onClaimSelect, selectedClaimId, onExp
             const matChip     = claim.materiality ? MATERIALITY_CHIP[claim.materiality] ?? "" : "";
             const matLabel    = claim.materiality ? MATERIALITY_LABEL[claim.materiality] ?? claim.materiality : "—";
             const isSelected  = selectedClaimId === claim.claim_id;
+            // Schema 1.7 (TASK-2.1): _term_index is OMITTED ENTIRELY (not
+            // null/empty) for legacy claims and claims with zero vocabulary
+            // hits — terms stays [] and the cell below renders nothing, per
+            // AC "a claim with no _term_index renders no badge".
+            const termIndex = claim._term_index;
+            const terms = termIndex?.terms ?? [];
 
             return (
               <tr
@@ -169,6 +176,38 @@ export function ClaimLedgerTable({ claims, onClaimSelect, selectedClaimId, onExp
                     </span>
                   ) : (
                     <span className="rv-ledger-dash">—</span>
+                  )}
+                </td>
+
+                {/*
+                  Term/usage-role badge (D2/FR-15 namespace-boundary
+                  requirement): deliberately NOT `.it-chip` (the solid-fill
+                  pill used by every status/confidence/materiality badge
+                  above, and the pattern any future real `pediatric_cds`
+                  structured-threshold display would use) — a dashed
+                  outline, transparent fill, monospace "#term" glyph in its
+                  own dedicated column so it can never visually merge with
+                  or be mistaken for an attested clinical value.
+                */}
+                <td className="rv-ledger-td rv-ledger-td--terms" data-testid={`ledger-terms-${claim.claim_id}`}>
+                  {terms.length > 0 && (
+                    <div className="rv-ledger-term-badges">
+                      {terms.map((term) => {
+                        const role = termIndex?.usage_roles[term];
+                        return (
+                          <span
+                            key={term}
+                            className="rv-ledger-term-badge"
+                            data-testid={`ledger-term-${claim.claim_id}-${term}`}
+                            title={`Derived vocabulary term — non-authoritative, not an attested clinical threshold${role ? ` (usage role: ${role})` : ""}`}
+                          >
+                            <span className="rv-ledger-term-badge__mark" aria-hidden="true">#</span>
+                            {term}
+                            {role && <span className="rv-ledger-term-badge__role">{role}</span>}
+                          </span>
+                        );
+                      })}
+                    </div>
                   )}
                 </td>
               </tr>

@@ -489,7 +489,7 @@
           "catalog"
         ],
         "summary": "Search the catalog",
-        "description": "Search catalog items. Over-threshold items are excluded (fail-closed).\n\nEmpty corpus / no matches \u2192 ``{\"items\": [], \"total\": 0, ...}`` \u2014 never 404.",
+        "description": "Search catalog items. Over-threshold items are excluded (fail-closed).\n\nEmpty corpus / no matches \u2192 ``{\"items\": [], \"total\": 0, ...}`` \u2014 never 404.\n\n``term``/``role`` (claim-term-indexing v1, TASK-2.6) are passed straight\nthrough to :func:`catalog_service.search` with zero additional\ncomputation here (FR-13) \u2014 the service layer owns both the OR-within-\nrepeats/AND-across-flags semantics (OQ-C) and the sensitivity-rank gate\non ``catalog_terms`` (D3).",
         "operationId": "get_catalog_search_api_catalog_search_get",
         "parameters": [
           {
@@ -586,6 +586,44 @@
                 }
               ],
               "title": "Run Id"
+            }
+          },
+          {
+            "name": "term",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Term"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
             }
           },
           {

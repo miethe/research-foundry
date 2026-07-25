@@ -1,0 +1,26 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/term_vocab.schema.yaml"
+title: Term Vocabulary
+description: >-
+  Canonical term-id -> surface-form alias list backing the deterministic
+  write-time term/usage-role index (`_term_index`). Hand-maintained,
+  project-scoped, versioned (decision D4). Validated fail-closed at
+  claim-map load time by `research_foundry.services.term_index.load_vocabulary`.
+type: object
+properties:
+  vocabulary_version:
+    type: string
+    minLength: 1
+  terms:
+    type: object
+    minProperties: 1
+    additionalProperties:
+      type: array
+      minItems: 1
+      items:
+        type: string
+        minLength: 1
+required:
+  - vocabulary_version
+  - terms
+additionalProperties: false

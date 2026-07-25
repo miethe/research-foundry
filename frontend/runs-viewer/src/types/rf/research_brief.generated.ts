@@ -11,13 +11,9 @@ export interface ResearchBrief {
   research_depth?: "skim" | "standard" | "deep" | "exhaustive";
   questions?: {
     primary?: {
-      id?: string;
-      question?: string;
       [k: string]: any;
     }[];
     secondary?: {
-      id?: string;
-      question?: string;
       [k: string]: any;
     }[];
     [k: string]: any;

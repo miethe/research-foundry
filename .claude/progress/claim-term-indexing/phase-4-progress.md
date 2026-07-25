@@ -6,19 +6,20 @@ prd: claim-term-indexing
 feature_slug: claim-term-indexing
 phase: 4
 title: runs-viewer Surfaces
-status: pending
+status: completed
 created: '2026-07-24'
-updated: '2026-07-24'
+updated: '2026-07-25'
 prd_ref: docs/project_plans/PRDs/features/claim-term-indexing-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/claim-term-indexing-v1.md
-commit_refs: []
+commit_refs:
+- 335a014
 pr_refs: []
-started: null
-completed: null
-overall_progress: 0
+started: 2026-07-25T02:00Z
+completed: 2026-07-25T06:00Z
+overall_progress: 100
 completion_estimate: on-track
 total_tasks: 4
-completed_tasks: 0
+completed_tasks: 4
 in_progress_tasks: 0
 blocked_tasks: 0
 owners:
@@ -35,44 +36,60 @@ tasks:
     facet chip-row sourced from catalog_terms, wired into the existing facet-driven
     filter row (search.data?.facets, AssertionCatalogPane.tsx:53-114); no-hit items
     render an empty/omitted state, not an error'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 0.5 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 335a014
+  verified_by:
+  - task-completion-validator
 - id: TASK-4.2
   description: 'CatalogScreen.tsx ?term= deep-link: add a ?term=CBC deep-link parameter
-    to CatalogScreen.tsx (:448-497), filtering the existing useCatalogSearch tab
-    query; absence of the param behaves exactly as today (no regression)'
-  status: pending
+    to CatalogScreen.tsx (:448-497), filtering the existing useCatalogSearch tab query;
+    absence of the param behaves exactly as today (no regression)'
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 0.5 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 335a014
+  verified_by:
+  - task-completion-validator
 - id: TASK-4.3
   description: 'ClaimLedgerTable.tsx term/role badge: add a term/usage-role column
     or badge sourced from _term_index.usage_roles, visually distinct from any real
-    pediatric_cds structured threshold value (namespace-boundary reinforcement,
-    D2/FR-15); a claim with no _term_index renders no badge, not an empty/error
-    badge'
-  status: pending
+    pediatric_cds structured threshold value (namespace-boundary reinforcement, D2/FR-15);
+    a claim with no _term_index renders no badge, not an empty/error badge'
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 0.5 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 335a014
+  verified_by:
+  - task-completion-validator
 - id: TASK-4.4
   description: 'tsc clean + runtime smoke across every target_surface (EXIT GATE,
-    R-P4): run tsc -p tsconfig.app.json --noEmit (the real gate -- plain npx tsc
-    --noEmit is a no-op in this repo); runtime-smoke the dev build against all three
-    target_surfaces plus a desktop >=1440px screenshot per PRD AC-8''s visual-evidence
-    requirement'
-  status: pending
+    R-P4): run tsc -p tsconfig.app.json --noEmit (the real gate -- plain npx tsc --noEmit
+    is a no-op in this repo); runtime-smoke the dev build against all three target_surfaces
+    plus a desktop >=1440px screenshot per PRD AC-8''s visual-evidence requirement'
+  status: completed
   assigned_to:
   - ica-executor
   - task-completion-validator
@@ -83,6 +100,12 @@ tasks:
   estimated_effort: 0.5 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 335a014
+  verified_by:
+  - task-completion-validator
 parallelization:
   batch_1:
   - TASK-4.1
@@ -106,12 +129,12 @@ blockers:
     any Phase 4 task
   created: '2026-07-24'
 success_criteria:
-- 'tsc -p tsconfig.app.json --noEmit clean (not the no-op npx tsc --noEmit)'
+- tsc -p tsconfig.app.json --noEmit clean (not the no-op npx tsc --noEmit)
 - Runtime smoke covers all three target_surfaces (AssertionCatalogPane, CatalogScreen,
   ClaimLedgerTable)
 - Term/role badge visually distinct from real pediatric_cds threshold values
-- Missing-_term_index state renders empty/omitted, never an error or misleading
-  zero-value badge
+- Missing-_term_index state renders empty/omitted, never an error or misleading zero-value
+  badge
 - Desktop >=1440px screenshot captured per AC-8 visual-evidence requirement
 - task-completion-validator review passed
 files_modified:
@@ -121,6 +144,7 @@ files_modified:
 notes: 'Runs in parallel with Phase 3 (disjoint file ownership -- frontend-only).
   Both fork from the Phase 2 exit gate and join at Phase 5. Use the real gate: tsc
   -p tsconfig.app.json --noEmit (plain npx tsc --noEmit is a no-op in this repo).'
+progress: 100
 ---
 
 # claim-term-indexing - Phase 4: runs-viewer Surfaces

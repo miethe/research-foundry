@@ -1,0 +1,105 @@
+# Hand-maintained pediatric anemia/CBC term vocabulary for the deterministic
+# write-time `_term_index` (D4: project-scoped, versioned, hand-maintained
+# for v1; MeSH/UMLS/LOINC import deferred until this list outgrows itself).
+#
+# Shape: `vocabulary_version` (bumped on any edit to this file) + `terms`, a
+# canonical term id -> non-empty list of case-insensitive surface-form
+# aliases matched at word boundaries (see
+# `research_foundry.services.term_index.match_terms`).
+vocabulary_version: pediatric-terms-v1
+terms:
+  cbc:
+    - CBC
+    - complete blood count
+  hemoglobin:
+    - hemoglobin
+    - Hgb
+    - Hb
+  hematocrit:
+    - hematocrit
+    - Hct
+  ferritin:
+    - ferritin
+    - serum ferritin
+  anemia:
+    - anemia
+    - anaemia
+  iron_deficiency:
+    - iron deficiency
+    - iron-deficient
+    - IDA
+  mcv:
+    - MCV
+    - mean corpuscular volume
+  mchc:
+    - MCHC
+    - mean corpuscular hemoglobin concentration
+  mch:
+    - MCH
+    - mean corpuscular hemoglobin
+  rdw:
+    - RDW
+    - red cell distribution width
+  reticulocyte_count:
+    - reticulocyte count
+    - reticulocytes
+    - retic count
+  rbc_count:
+    - RBC count
+    - red blood cell count
+    - erythrocyte count
+  wbc_count:
+    - WBC count
+    - white blood cell count
+    - leukocyte count
+  platelet_count:
+    - platelet count
+    - thrombocyte count
+  transferrin_saturation:
+    - transferrin saturation
+    - TSAT
+  tibc:
+    - TIBC
+    - total iron binding capacity
+  serum_iron:
+    - serum iron
+  soluble_transferrin_receptor:
+    - soluble transferrin receptor
+    - sTfR
+  zinc_protoporphyrin:
+    - zinc protoporphyrin
+    - ZPP
+  thalassemia:
+    - thalassemia
+    - thalassaemia
+  sickle_cell_disease:
+    - sickle cell disease
+    - sickle cell anemia
+    - SCD
+  hemoglobinopathy:
+    - hemoglobinopathy
+    - hemoglobinopathies
+  gestational_age:
+    - gestational age
+  preterm:
+    - preterm
+    - premature infant
+    - prematurity
+  newborn_screening:
+    - newborn screening
+    - NBS
+  bilirubin:
+    - bilirubin
+    - total bilirubin
+  jaundice:
+    - jaundice
+    - hyperbilirubinemia
+  growth_percentile:
+    - growth percentile
+    - percentile for age
+  who_growth_standard:
+    - WHO growth standard
+    - WHO growth chart
+  venous_blood_sample:
+    - venous blood sample
+    - venous draw

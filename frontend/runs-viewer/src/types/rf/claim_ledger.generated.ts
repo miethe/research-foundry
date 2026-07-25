@@ -53,6 +53,17 @@ export interface ClaimLedger {
       [k: string]: any;
     }[];
     reviewer_notes?: string;
+    /**
+     * Additive, non-authoritative, write-time term/usage-role index computed by claim-map (docs/project_plans/design-specs/claim-term-indexing.md). Never participates in verification, identity hashing, or rights governance, and never added outside this namespaced key (no bare `usage_role`). Absent when the claim has zero vocabulary hits or no vocabulary file was loaded.
+     */
+    _term_index?: {
+      terms?: string[];
+      usage_roles?: {
+        [k: string]: string;
+      };
+      vocabulary_version?: string | null;
+      [k: string]: any;
+    };
     [k: string]: any;
   }[];
   unresolved_questions?: {

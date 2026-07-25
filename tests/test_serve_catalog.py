@@ -170,6 +170,127 @@ def test_stats_after_import(tmp_path):
     assert data["counts"]["source"] == 1
 
 
+def _plant_run_with_terms(paths: FoundryPaths, run_id: str) -> None:
+    """Two claims at different sensitivity ranks, each carrying a
+    ``_term_index`` block on the SAME term (``cbc``) with a DIFFERENT role —
+    mirrors ``tests/unit/test_catalog_terms.py``'s ``_build_two_rank_run``
+    fixture, adapted to this file's ``_plant_run`` conventions, for
+    serve-layer (HTTP) ``--term``/``--role`` passthrough (TASK-2.6) and
+    sensitivity-gate-parity (TASK-2.7) tests.
+
+    - ``clm_low`` cites ``src_public`` (no evidence-point override) -> the
+      lowest possible effective rank (public).
+    - ``clm_high`` cites ``src_sensitive`` whose evidence point is pinned
+      ``work_sensitive`` -> a strictly higher effective rank.
+    """
+
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+    dump_yaml(
+        {
+            "run_id": run_id,
+            "intent_id": f"intent_{run_id}",
+            "status": "planned",
+            "sensitivity": "public",
+            "created_at": "2026-07-24T09:00:00-04:00",
+        },
+        rp.run_yaml,
+    )
+    dump_md(
+        {
+            "type": "source_card",
+            "source_card_id": "src_public",
+            "sensitivity": "public",
+            "trust": "high",
+            "usage": "direct",
+            "source": {"title": "Public Source", "source_type": "web"},
+            "extracted_points": [
+                {
+                    "evidence_id": "ev_pub",
+                    "locator": "p1",
+                    "quote": "PUBLIC QUOTE",
+                    "summary": "public point",
+                }
+            ],
+        },
+        "",
+        rp.sources / "src_public.md",
+    )
+    dump_md(
+        {
+            "type": "source_card",
+            "source_card_id": "src_sensitive",
+            "sensitivity": "public",
+            "trust": "medium",
+            "usage": "paraphrase",
+            "source": {"title": "Sensitive Source", "source_type": "paper"},
+            "extracted_points": [
+                {
+                    "evidence_id": "ev_sens",
+                    "locator": "s1",
+                    "quote": "SENSITIVE QUOTE",
+                    "summary": "sensitive point",
+                    "sensitivity": "work_sensitive",
+                }
+            ],
+        },
+        "",
+        rp.sources / "src_sensitive.md",
+    )
+    dump_yaml(
+        {
+            "id": f"ledger_{run_id}",
+            "claims": [
+                {
+                    "claim_id": "clm_low",
+                    "text": "CBC panel is unremarkable in this cohort.",
+                    "materiality": "core",
+                    "claim_type": "factual",
+                    "status": "supported",
+                    "confidence": "high",
+                    "sources": [
+                        {
+                            "source_card_id": "src_public",
+                            "evidence_id": "ev_pub",
+                            "relation": "supports",
+                            "locator": "p1",
+                        }
+                    ],
+                    "inference_basis": {"from_claims": [], "reasoning_summary": None},
+                    "_term_index": {
+                        "terms": ["cbc"],
+                        "usage_roles": {"cbc": "background"},
+                        "vocabulary_version": "pediatric-v1",
+                    },
+                },
+                {
+                    "claim_id": "clm_high",
+                    "text": "CBC threshold above 15 x10^9/L triggers escalation.",
+                    "materiality": "core",
+                    "claim_type": "factual",
+                    "status": "supported",
+                    "confidence": "high",
+                    "sources": [
+                        {
+                            "source_card_id": "src_sensitive",
+                            "evidence_id": "ev_sens",
+                            "relation": "supports",
+                            "locator": "s1",
+                        }
+                    ],
+                    "inference_basis": {"from_claims": [], "reasoning_summary": None},
+                    "_term_index": {
+                        "terms": ["cbc"],
+                        "usage_roles": {"cbc": "threshold"},
+                        "vocabulary_version": "pediatric-v1",
+                    },
+                },
+            ],
+        },
+        rp.claim_ledger,
+    )
+
+
 # ---------------------------------------------------------------------------
 # search
 # ---------------------------------------------------------------------------
@@ -185,7 +306,13 @@ def test_search_empty_catalog_returns_empty_not_404(tmp_path):
         "total": 0,
         "page": 1,
         "page_size": 25,
-        "facets": {"projects": [], "statuses": [], "sensitivities": []},
+        "facets": {
+            "projects": [],
+            "statuses": [],
+            "sensitivities": [],
+            "terms": [],
+            "roles": [],
+        },
         "rf_schema_version": "1.0.0",
     }
 
@@ -320,6 +447,162 @@ def test_search_page_size_capped_at_200(tmp_path):
     client, _ = _make_client(tmp_path)
     resp = client.get("/api/catalog/search", params={"page_size": 9999})
     assert resp.status_code == 422  # FastAPI Query(le=200) validation
+
+
+# ---------------------------------------------------------------------------
+# term/role passthrough (claim-term-indexing v1, TASK-2.6)
+# ---------------------------------------------------------------------------
+
+
+def _local_refs(payload: dict) -> set[str]:
+    return {item["local_ref"] for item in payload["items"]}
+
+
+def test_search_term_query_param_matches_cli_layer_output(tmp_path):
+    """AC: the endpoint's `term` param returns the same result set as
+    `rf catalog search --term` (`catalog_service.search(term=...)`) for the
+    same fixture — FR-13's "zero new read-path computation" means the router
+    is a pure passthrough, so this is really testing that the wiring exists.
+    """
+
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="client_sensitive")
+    _plant_run_with_terms(cfg.paths, "rf_run_term_api")
+    svc.import_run(cfg.paths, "rf_run_term_api")
+
+    resp = client.get("/api/catalog/search", params={"term": "cbc"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert _local_refs(data) == {"clm_low", "clm_high"}
+
+    direct = svc.search(cfg.paths, term=["cbc"], sensitivity_threshold="client_sensitive")
+    assert _local_refs(direct) == _local_refs(data)
+    assert direct["total"] == data["total"]
+
+
+def test_search_role_query_param_narrows_to_matching_role(tmp_path):
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="client_sensitive")
+    _plant_run_with_terms(cfg.paths, "rf_run_role_api")
+    svc.import_run(cfg.paths, "rf_run_role_api")
+
+    resp = client.get("/api/catalog/search", params={"role": "threshold"})
+    assert resp.status_code == 200
+    assert _local_refs(resp.json()) == {"clm_high"}
+
+
+def test_search_term_and_role_query_params_combine_with_and(tmp_path):
+    """OQ-C at the HTTP layer: distinct params (`term` + `role`) combine
+    with AND, not OR — a request is not silently ignoring one of them.
+    """
+
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="client_sensitive")
+    _plant_run_with_terms(cfg.paths, "rf_run_and_api")
+    svc.import_run(cfg.paths, "rf_run_and_api")
+
+    resp = client.get("/api/catalog/search", params={"term": "cbc", "role": "background"})
+    assert resp.status_code == 200
+    assert _local_refs(resp.json()) == {"clm_low"}
+
+
+def test_search_repeated_term_query_params_combine_with_or(tmp_path):
+    """OQ-C at the HTTP layer: repeats of the SAME param (`?term=cbc&term=x`)
+    OR together — a second `term=` value that matches nothing must not
+    narrow the result produced by the first.
+    """
+
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="client_sensitive")
+    _plant_run_with_terms(cfg.paths, "rf_run_or_api")
+    svc.import_run(cfg.paths, "rf_run_or_api")
+
+    resp = client.get(
+        "/api/catalog/search",
+        params=[("term", "cbc"), ("term", "not_a_real_term")],
+    )
+    assert resp.status_code == 200
+    assert _local_refs(resp.json()) == {"clm_low", "clm_high"}
+
+
+# ---------------------------------------------------------------------------
+# sensitivity-threshold gate parity (TASK-2.7, PHASE EXIT GATE)
+#
+# Serve-layer (HTTP), not just service-layer -- the documented trap in this
+# repo is that a router can silently ignore `rf serve --sensitivity-threshold`
+# even when the underlying service function enforces it correctly (see the
+# 5 known-failing tests in tests/test_serve_api.py this file's sibling
+# baseline documents). Every threshold tier below is exercised through the
+# actual HTTP client, never by calling catalog_service.search() directly.
+# ---------------------------------------------------------------------------
+
+
+def test_serve_term_filter_hides_above_threshold_row_at_public(tmp_path):
+    """At the strictest tier (`public`), only `clm_low` (public rank) may
+    match `--term cbc` -- `clm_high` (work_sensitive rank) must not appear,
+    proving the term-row sensitivity gate is enforced through the live HTTP
+    router, not only in the service function under direct test.
+    """
+
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="public")
+    _plant_run_with_terms(cfg.paths, "rf_run_gate_public")
+    svc.import_run(cfg.paths, "rf_run_gate_public")
+
+    resp = client.get("/api/catalog/search", params={"term": "cbc"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert _local_refs(data) == {"clm_low"}
+    assert data["total"] == 1
+
+
+def test_serve_term_filter_hides_above_threshold_row_at_personal(tmp_path):
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="personal")
+    _plant_run_with_terms(cfg.paths, "rf_run_gate_personal")
+    svc.import_run(cfg.paths, "rf_run_gate_personal")
+
+    resp = client.get("/api/catalog/search", params={"term": "cbc"})
+    assert resp.status_code == 200
+    assert _local_refs(resp.json()) == {"clm_low"}
+
+
+def test_serve_term_filter_shows_both_rows_at_work_sensitive(tmp_path):
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="work_sensitive")
+    _plant_run_with_terms(cfg.paths, "rf_run_gate_ws")
+    svc.import_run(cfg.paths, "rf_run_gate_ws")
+
+    resp = client.get("/api/catalog/search", params={"term": "cbc"})
+    assert resp.status_code == 200
+    assert _local_refs(resp.json()) == {"clm_low", "clm_high"}
+
+
+def test_serve_term_filter_shows_both_rows_at_client_sensitive(tmp_path):
+    client, cfg = _make_client(tmp_path, sensitivity_threshold="client_sensitive")
+    _plant_run_with_terms(cfg.paths, "rf_run_gate_cs")
+    svc.import_run(cfg.paths, "rf_run_gate_cs")
+
+    resp = client.get("/api/catalog/search", params={"term": "cbc"})
+    assert resp.status_code == 200
+    assert _local_refs(resp.json()) == {"clm_low", "clm_high"}
+
+
+def test_serve_role_filter_never_exposes_above_threshold_role_at_any_tier(tmp_path):
+    """AC-5, consolidated: across every defined threshold tier, `--role
+    threshold` (the role that only exists on `clm_high`, the higher-rank
+    claim) never surfaces a result above what that tier permits -- 0 items
+    exposed above the requesting read's own sensitivity threshold, at every
+    tested tier, via the live HTTP endpoint.
+    """
+
+    expected_by_tier = {
+        "public": set(),
+        "personal": set(),
+        "work_sensitive": {"clm_high"},
+        "client_sensitive": {"clm_high"},
+    }
+    for tier, expected in expected_by_tier.items():
+        client, cfg = _make_client(tmp_path / tier, sensitivity_threshold=tier)
+        _plant_run_with_terms(cfg.paths, f"rf_run_gate_role_{tier}")
+        svc.import_run(cfg.paths, f"rf_run_gate_role_{tier}")
+
+        resp = client.get("/api/catalog/search", params={"role": "threshold"})
+        assert resp.status_code == 200
+        assert _local_refs(resp.json()) == expected, f"tier={tier}"
 
 
 # ---------------------------------------------------------------------------

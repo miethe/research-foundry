@@ -44,6 +44,28 @@ properties:
       - pending
       - passed
       - failed
+  _term_index:
+    type: object
+    description: >-
+      Additive, non-authoritative rollup of terms/usage-roles across this
+      report's claims (union), computed at the same write time as
+      claim-map's own attach (docs/project_plans/design-specs/claim-term-indexing.md,
+      OQ-E). Never participates in verification or governance. Absent when
+      no claim in this report carries a `_term_index`.
+    additionalProperties: true
+    properties:
+      terms:
+        type: array
+        items:
+          type: string
+      usage_roles:
+        type: object
+        additionalProperties:
+          type: array
+          items:
+            type: string
+      vocabulary_version:
+        type: [string, "null"]
 required:
   - report_id
   - type

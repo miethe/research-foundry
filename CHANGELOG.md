@@ -11,6 +11,46 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Claim Term Indexing — Deterministic Vocabulary/Usage-Role Index (`_term_index`)**
+
+- **Write-time term index attached to every claim.** `claim_mapping.build_claim_ledger` now
+  attaches a namespaced, additive `_term_index: {terms, usage_roles, vocabulary_version}` key to
+  each claim item, computed by a case-folded, word-boundary vocabulary matcher and a rule-based
+  usage-role classifier (`threshold` vs. `background`, with direct `pediatric_cds` structured-field
+  keying where available). Zero model or network calls; a missing vocab file warns and skips
+  indexing rather than failing the claim map, a malformed vocab file fails closed and blocks it.
+  `_term_index` is derived and never authoritative — it is outside
+  `SOURCE_ASSERTION_MATERIAL_FIELDS`, never consumed by `rf verify`, and never emits a bare
+  `usage_role` field that could be mistaken for an attested `pediatric_cds` value.
+- **`run.json` schema bumped to 1.7 (additive-only).** `export_run` copies `_term_index`
+  additively into exported claims; a 1.6-shaped consumer still parses 1.7 output unchanged. The
+  runs-viewer's hand-written `run-export.ts` types were bumped in the same change (D7 dual-update
+  rule) to avoid a silently dropped field.
+- **`catalog_terms` join table with per-row sensitivity ranking.** A new
+  `catalog_terms(catalog_item_id, term, role, run_id, sensitivity_rank)` table mirrors
+  `catalog_links`, carrying the sensitivity rank of the claim/evidence point each row derives from
+  rather than a single flat blob computed at the most-permissive tier.
+- **`rf catalog search --term/--role` facets, and `rf serve` passthrough.** Both flags are
+  repeatable; combining distinct flags is AND, repeating the same flag is OR. Matching is exact
+  against canonical lowercase term IDs (`--term cbc` matches; `--term CBC` does not).
+  `rf serve`'s catalog endpoint accepts equivalent `term`/`role` query params with no new read-path
+  computation.
+- **`rf term-index backfill` subcommand.** Dry-run by default, additive-only, and idempotent
+  against already-indexed claims; a wet run never touches `verification_status`, `status`, or any
+  attested field, and must be followed by `rf catalog rebuild` to regenerate derived catalog rows.
+- **runs-viewer terms facet + `?term=` deep-link + claim-ledger term/role column.**
+  `CatalogScreen.tsx` gained a terms facet chip-row and a `?term=` deep-link parameter;
+  `ClaimLedgerTable.tsx` gained a term/usage-role column styled distinct from attested
+  `pediatric_cds` threshold values. Backend `_facets()` now also returns `terms`/`roles`
+  (threshold- and workspace-scoped).
+
+> **Operator note — catalog wipe on first connection after this deploy.** `catalog_terms` bumped
+> `catalog_service.SCHEMA_VERSION` from 3 to 4. `_ensure_schema()` drops and recreates the whole
+> catalog on any `PRAGMA user_version` mismatch, and it runs from `_connect()` on **every**
+> connection — including a read-only `rf catalog search`. The first catalog query after upgrading
+> will silently wipe the existing v3 catalog and return empty results. **Run `rf catalog rebuild`
+> immediately after deploying this change**, before serving any catalog reads.
+
 #### **Catalog-Assisted Research Planning (CARP)**
 
 - **Opt-in catalog-first evidence planning for research briefs.** A `search_request` may now set

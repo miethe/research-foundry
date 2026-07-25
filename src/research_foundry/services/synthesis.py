@@ -23,6 +23,7 @@ from ..paths import FoundryPaths
 from ..registry import REPORT_INDEX, Registry
 from ..schemas import default_registry, validate
 from ..yamlio import append_jsonl, load_yaml
+from .term_index import report_term_index_rollup
 
 # The standard claim_policy text carried in report front matter (spec §6.12).
 _CLAIM_POLICY_TEXT = (
@@ -295,6 +296,13 @@ def synthesize_report(
         "claim_policy": _CLAIM_POLICY_TEXT,
         "verification_status": "pending",
     }
+
+    # Additive, non-authoritative rollup of claims' _term_index blocks (OQ-E,
+    # TASK-1.5) -- computed at the same write time as claim-map's own attach;
+    # omitted entirely when no claim in this report carries a _term_index.
+    term_index_rollup = report_term_index_rollup(claims)
+    if term_index_rollup is not None:
+        front["_term_index"] = term_index_rollup
 
     report_path = rp.report_final if final else rp.report_draft
     dump_md(front, body, report_path)

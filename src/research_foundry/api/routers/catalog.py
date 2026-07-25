@@ -37,6 +37,12 @@ _PATHS_DEP = Depends(get_paths)
 # Module-level so tests can reference the inner callable for dependency_overrides.
 _RBAC_CATALOG_WRITE = Depends(require_role("owner", "admin", "researcher"))
 
+# Module-level singletons (ruff B008: same rationale as _PATHS_DEP above —
+# fires specifically for list-typed Query() defaults, which `term`/`role`
+# are, TASK-2.6).
+_TERM_QUERY = Query(None)
+_ROLE_QUERY = Query(None)
+
 
 def _sensitivity_threshold_override(request: Request) -> str | None:
     """Read the serve-time sensitivity-threshold override off ``app.state``.
@@ -71,6 +77,8 @@ def get_catalog_search(
     status: str | None = Query(None),
     sensitivity: str | None = Query(None),
     run_id: str | None = Query(None),
+    term: list[str] | None = _TERM_QUERY,
+    role: list[str] | None = _ROLE_QUERY,
     sort: str = Query("updated"),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
@@ -79,6 +87,12 @@ def get_catalog_search(
     """Search catalog items. Over-threshold items are excluded (fail-closed).
 
     Empty corpus / no matches → ``{"items": [], "total": 0, ...}`` — never 404.
+
+    ``term``/``role`` (claim-term-indexing v1, TASK-2.6) are passed straight
+    through to :func:`catalog_service.search` with zero additional
+    computation here (FR-13) — the service layer owns both the OR-within-
+    repeats/AND-across-flags semantics (OQ-C) and the sensitivity-rank gate
+    on ``catalog_terms`` (D3).
     """
     identity = getattr(request.state, "identity", None)
     return stamp(
@@ -90,6 +104,8 @@ def get_catalog_search(
             status=status,
             sensitivity=sensitivity,
             run_id=run_id,
+            term=term,
+            role=role,
             sort=sort,
             page=page,
             page_size=page_size,

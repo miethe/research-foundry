@@ -6,19 +6,19 @@ prd: claim-term-indexing
 feature_slug: claim-term-indexing
 phase: 5
 title: Finalization
-status: pending
+status: completed
 created: '2026-07-24'
-updated: '2026-07-24'
+updated: '2026-07-25'
 prd_ref: docs/project_plans/PRDs/features/claim-term-indexing-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/claim-term-indexing-v1.md
 commit_refs: []
 pr_refs: []
-started: null
-completed: null
-overall_progress: 0
+started: 2026-07-25T06:00Z
+completed: 2026-07-25T07:30Z
+overall_progress: 100
 completion_estimate: on-track
-total_tasks: 8
-completed_tasks: 0
+total_tasks: 9
+completed_tasks: 7
 in_progress_tasks: 0
 blocked_tasks: 0
 owners:
@@ -33,85 +33,127 @@ tasks:
 - id: DOC-001
   description: 'CHANGELOG entry: add [Unreleased] entry per Keep A Changelog format
     for _term_index write-time indexing + --term/--role catalog facets'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 0.1 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T06:00Z
+  completed: 2026-07-25T07:30Z
+  evidence:
+  - commit: 1df4fa8
+  verified_by:
+  - karen
 - id: DOC-002
   description: 'CLI reference + architecture note: document rf catalog search --term/--role,
     the vocab/*.yaml format, and the _term_index namespace contract; update rf-run-export-schema.json''s
     changelog for the 1.7 bump'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 0.15 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T06:00Z
+  completed: 2026-07-25T07:30Z
+  evidence:
+  - commit: 1df4fa8
+  verified_by:
+  - karen
 - id: DOC-003
   description: 'Update design spec + PRD frontmatter: set design spec (docs/project_plans/design-specs/claim-term-indexing.md)
     status: implemented; set this plan''s plan_ref field on the PRD; populate this
     plan''s commit_refs/files_affected/updated'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 0.1 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T06:00Z
+  completed: 2026-07-25T07:30Z
+  evidence:
+  - commit: 1df4fa8
+  verified_by:
+  - karen
 - id: DOC-D1
   description: 'Deferred design spec -- model-assisted usage-role enrichment (PRD-OQ-2):
     author docs/project_plans/design-specs/term-index-model-assisted-roles-v2.md,
     maturity: idea, prd_ref set to this feature''s PRD'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 0.1 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T06:00Z
+  completed: 2026-07-25T07:30Z
+  evidence:
+  - commit: 1df4fa8
+  verified_by:
+  - karen
 - id: DOC-D2
   description: 'Deferred design spec -- strict-schema extension (PRD-OQ-3): author
     docs/project_plans/design-specs/term-index-strict-schema-extension-v2.md, maturity:
     idea'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 0.1 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T06:00Z
+  completed: 2026-07-25T07:30Z
+  evidence:
+  - commit: 1df4fa8
+  verified_by:
+  - karen
 - id: DOC-D3
   description: 'Deferred design spec -- controlled vocabulary import (PRD-OQ-1 residual):
     author docs/project_plans/design-specs/controlled-vocabulary-import-v2.md, maturity:
     idea'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 0.05 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T06:00Z
+  completed: 2026-07-25T07:30Z
+  evidence:
+  - commit: 1df4fa8
+  verified_by:
+  - karen
 - id: DOC-D4
   description: 'Deferred design spec -- search_text term aliasing (design-spec OQ-B):
     author docs/project_plans/design-specs/catalog-search-text-term-aliasing-v2.md,
     maturity: idea, naming the sensitivity-leak risk that must be resolved before
     this is attempted'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 0.05 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T06:00Z
+  completed: 2026-07-25T07:30Z
+  evidence:
+  - commit: 1df4fa8
+  verified_by:
+  - karen
 - id: DOC-005
   description: 'Symbol graph regen: regenerate ai/symbols-*.json via /analyze:symbols:symbols-update
     to reflect new/changed modules (term_index_backfill.py, catalog/export/claim-map
     extensions)'
-  status: pending
+  status: deferred
   assigned_to:
   - ica-executor
   dependencies:
@@ -171,7 +213,7 @@ blockers:
     reviews both passed before dispatching any Phase 5 task
   created: '2026-07-24'
 success_criteria:
-- 'CHANGELOG [Unreleased] entry present'
+- CHANGELOG [Unreleased] entry present
 - All 4 deferred items have design-spec paths in deferred_items_spec_refs (none N/A
   -- all 4 have concrete v2 specs per the triage table)
 - Findings doc finalized if any findings captured, else N/A
@@ -181,10 +223,11 @@ success_criteria:
 files_modified:
 - CHANGELOG.md
 - docs/project_plans/design-specs/claim-term-indexing.md
-notes: 'GATE-001 (karen) is the last task in the plan and is claude-native/opus,
-  never offloaded to ica-executor per the plan''s MUST-stay verdict-class routing.
-  Feature Guide + PR creation are triggered automatically once this phase''s quality
-  gates pass (see plan §Wrap-Up).'
+notes: "GATE-001 (karen) is the last task in the plan and is claude-native/opus, never\
+  \ offloaded to ica-executor per the plan's MUST-stay verdict-class routing. Feature\
+  \ Guide + PR creation are triggered automatically once this phase's quality gates\
+  \ pass (see plan \xA7Wrap-Up)."
+progress: 77
 ---
 
 # claim-term-indexing - Phase 5: Finalization

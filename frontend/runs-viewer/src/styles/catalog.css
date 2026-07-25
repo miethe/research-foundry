@@ -113,6 +113,54 @@
   padding-bottom: 8px;
 }
 
+/* ── Terms facet chip-row (claim-term-indexing v1, TASK-4.1) ── */
+
+.rv-catalog-term-facets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--it-space-2);
+  margin: calc(-1 * var(--it-space-3)) 0 var(--it-space-4);
+  padding: var(--it-space-3) var(--it-space-4);
+  background: var(--it-surface-base);
+  border: 1px solid var(--it-border-soft);
+  border-radius: var(--it-radius-lg);
+}
+
+.rv-catalog-term-facets__label {
+  font-size: 10.5px;
+  font-weight: var(--it-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--it-tracking-eyebrow);
+  color: var(--it-text-tertiary);
+  margin-right: var(--it-space-1);
+}
+
+.rv-catalog-term-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 var(--it-space-3);
+  border-radius: var(--it-radius-pill);
+  border: 1px solid var(--it-border-soft);
+  background: var(--it-neutral-100);
+  color: var(--it-text-secondary);
+  font-size: var(--it-text-sm);
+  font-family: var(--it-font-mono);
+  cursor: pointer;
+  transition: background var(--it-dur-fast) var(--it-ease-out), border-color var(--it-dur-fast) var(--it-ease-out);
+}
+
+.rv-catalog-term-chip:hover {
+  background: var(--it-neutral-150);
+}
+
+.rv-catalog-term-chip--active {
+  background: var(--it-blue-50);
+  color: var(--it-blue-700);
+  border-color: rgba(59, 111, 189, 0.35);
+}
+
 /* ── Content grid ── */
 
 .rv-catalog-content {

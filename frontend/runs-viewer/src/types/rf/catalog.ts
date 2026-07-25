@@ -101,6 +101,15 @@ export interface CatalogSearchParams {
   status?: string;
   sensitivity?: RFSensitivity | string;
   run_id?: string;
+  /**
+   * Claim-term-indexing v1 (TASK-4.1/4.2). Canonical lowercase term IDs
+   * (e.g. "cbc") — repeatable, OR semantics within the list. Matches a
+   * claim/inference item that has this term in its `_term_index`. Never
+   * case-folded by the transport layer; callers normalize before setting.
+   */
+  term?: string[];
+  /** Companion to `term` — usage-role filter ("threshold" | "background"), same OR-within/AND-across semantics. */
+  role?: string[];
   sort?: CatalogSortKey;
   page?: number;
   page_size?: number;
@@ -110,6 +119,17 @@ export interface CatalogSearchFacets {
   projects: string[];
   statuses: string[];
   sensitivities: string[];
+  /**
+   * Distinct canonical term IDs present across the (sensitivity- and
+   * workspace-scoped) catalog, for the terms facet chip-row (TASK-4.1).
+   * The loopback `/api/catalog/search` backend's `_facets()` now computes
+   * this (and a companion `roles` facet, not yet surfaced in this type)
+   * from the `catalog_terms` table. Still optional/undefined on older
+   * backends or when the catalog has zero `_term_index` rows — never a
+   * fabricated list. Static mode derives it from each claim's own
+   * `_term_index.terms`.
+   */
+  terms?: string[];
 }
 
 export interface CatalogSearchResult {

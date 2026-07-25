@@ -2,7 +2,7 @@
  * RF Run Export Types — hand-written to match the frozen run.json contract.
  *
  * Source of truth: docs/dev/architecture/rf-run-export-schema.json (JSON Schema draft-07)
- * Bound to schema_version "1.6".
+ * Bound to schema_version "1.7".
  *
  * Codegen evaluated (P1/SCH-003): json-schema-to-typescript was tested against
  * rf-run-export-schema.json. Rejected because: (1) codegen inlines all
@@ -146,6 +146,24 @@ export interface RFPersistentReferences {
   inference_id?:            string | null;
 }
 
+// ── Term Index (schema 1.7, TASK-2.1) ────────────────────────────────────────
+
+/** Usage role of a matched vocabulary term within a claim's text. */
+export type RFTermUsageRole = "threshold" | "background";
+
+/**
+ * Namespaced, additive, non-authoritative term/usage-role index computed at
+ * claim-map write time (services/term_index.py::build_term_index()). Never
+ * consulted by rf verify, identity hashing, or rights governance. Shape
+ * mirrors the backend's output verbatim -- the export layer copies it
+ * through read-only.
+ */
+export interface RFTermIndex {
+  terms:              string[];
+  usage_roles:        Record<string, RFTermUsageRole>;
+  vocabulary_version: string | null;
+}
+
 // ── Report Anchors (§16, schema 1.4 — P2 Wave A/D7-D8) ───────────────────────
 //
 // Backend-derived (markdown-it-py AST, never regex) block/paragraph anchors +
@@ -198,6 +216,12 @@ export interface RFClaim {
   report_locations?: RFReportLocation[];
   inference_basis?:  RFInferenceBasis;
   persistent_references?: RFPersistentReferences | null;
+  /**
+   * Schema 1.7 (TASK-2.1). Absent (key omitted, not merely null) when the
+   * claim had zero vocabulary hits or no vocabulary was loaded -- consumers
+   * MUST use optional access (`?.`).
+   */
+  _term_index?:      RFTermIndex | null;
   sources:           RFResolvedSource[];
 }
 

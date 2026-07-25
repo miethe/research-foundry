@@ -29,6 +29,14 @@ export interface CCDashEvent {
     rework_count?: number;
     drift_score?: number;
     quality_score?: string | number;
+    queries_executed?: number;
+    urls_extracted?: number;
+    useful_source_count?: number;
+    duplicate_rate?: number;
+    extraction_failure_rate?: number;
+    citation_coverage?: number;
+    estimated_cost_usd?: number;
+    latency_ms?: number;
     [k: string]: any;
   };
   governance?: {

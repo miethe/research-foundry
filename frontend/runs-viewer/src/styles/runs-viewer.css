@@ -2993,6 +2993,7 @@ button.active .rv-tab-count {
 .rv-ledger-th--status { width: 110px; }
 .rv-ledger-th--conf   { width: 90px; }
 .rv-ledger-th--mat    { width: 110px; }
+.rv-ledger-th--terms  { min-width: 140px; }
 
 .rv-ledger-row {
   cursor: pointer;
@@ -3041,6 +3042,43 @@ button.active .rv-tab-count {
 .rv-ledger-dash {
   color: var(--it-text-muted);
   font-size: var(--it-text-xs);
+}
+
+/* Term/usage-role badge (claim-term-indexing v1, TASK-4.3). Dashed/
+   transparent/monospace by design — the opposite visual language of
+   .it-chip (solid pill) used above for status/confidence/materiality, so a
+   derived vocabulary term can never be mistaken for an attested clinical
+   threshold (D2/FR-15). */
+.rv-ledger-term-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.rv-ledger-term-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border: 1px dashed var(--it-border-subtle);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--it-text-tertiary);
+  font-family: var(--it-font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.rv-ledger-term-badge__mark {
+  opacity: 0.6;
+}
+
+.rv-ledger-term-badge__role {
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  opacity: 0.65;
 }
 
 .rv-ledger-empty {

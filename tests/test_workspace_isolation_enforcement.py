@@ -317,7 +317,13 @@ class TestCatalogItemMatrix:
         _force_isolation_active(monkeypatch)
         client = _make_client(tmp_foundry, _WS_OTHER)
         resp = client.get("/api/catalog/search", params={"page_size": 200})
-        assert resp.json()["facets"] == {"projects": [], "statuses": [], "sensitivities": []}
+        assert resp.json()["facets"] == {
+            "projects": [],
+            "statuses": [],
+            "sensitivities": [],
+            "terms": [],
+            "roles": [],
+        }
 
 
 class TestCatalogItemsWorkspaceIdNotNullInvariant:
@@ -742,7 +748,13 @@ class TestJoinAndTombstoneLeaksClosed:
         )
         _force_isolation_active(monkeypatch)
         result = catalog_service.search(tmp_foundry, page_size=200, identity=_WS_OTHER)
-        assert result["facets"] == {"projects": [], "statuses": [], "sensitivities": []}
+        assert result["facets"] == {
+            "projects": [],
+            "statuses": [],
+            "sensitivities": [],
+            "terms": [],
+            "roles": [],
+        }
 
     def test_get_draft_index_primary_row_predicate_closes_leak(
         self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch

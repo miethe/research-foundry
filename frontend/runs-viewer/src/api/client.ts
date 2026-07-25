@@ -485,6 +485,10 @@ function catalogSearchQueryString(params: CatalogSearchParams): string {
   if (params.sort) query.set("sort", params.sort);
   if (params.page) query.set("page", String(params.page));
   if (params.page_size) query.set("page_size", String(params.page_size));
+  // Repeatable — matches the backend's `term: list[str] | None` / `role: list[str] | None`
+  // Query() params (OR semantics within repeats of the same flag).
+  for (const t of params.term ?? []) query.append("term", t);
+  for (const r of params.role ?? []) query.append("role", r);
   const qs = query.toString();
   return qs ? `?${qs}` : "";
 }

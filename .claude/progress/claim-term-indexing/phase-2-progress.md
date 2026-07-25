@@ -6,19 +6,19 @@ prd: claim-term-indexing
 feature_slug: claim-term-indexing
 phase: 2
 title: Read-Model Propagation
-status: pending
+status: completed
 created: '2026-07-24'
-updated: '2026-07-24'
+updated: '2026-07-25'
 prd_ref: docs/project_plans/PRDs/features/claim-term-indexing-v1.md
 plan_ref: docs/project_plans/implementation_plans/features/claim-term-indexing-v1.md
 commit_refs: []
 pr_refs: []
-started: null
-completed: null
-overall_progress: 0
+started: 2026-07-25T02:00Z
+completed: 2026-07-25T06:00Z
+overall_progress: 100
 completion_estimate: on-track
 total_tasks: 7
-completed_tasks: 0
+completed_tasks: 7
 in_progress_tasks: 0
 blocked_tasks: 0
 owners:
@@ -35,18 +35,24 @@ tasks:
     to additively include _term_index in run.json; bump rf-run-export-schema.json
     to schema version 1.7 (additive-only); a legacy claim with no _term_index exports
     cleanly'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 0.75 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 42ddf40
+  verified_by:
+  - task-completion-validator
 - id: TASK-2.2
   description: 'runs-viewer run-export.ts type bump (seam task, R-P3, D7 dual-update):
     same leaf as TASK-2.1; add _term_index to the hand-written run-export.ts types
     so the field is not silently dropped'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies:
@@ -54,24 +60,36 @@ tasks:
   estimated_effort: 0.5 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 42ddf40
+  verified_by:
+  - task-completion-validator
 - id: TASK-2.3
   description: 'catalog_terms DDL + per-row sensitivity_rank: add catalog_terms(catalog_item_id,
     term, role, run_id, sensitivity_rank) join table mirroring catalog_links (catalog_service.py:192-199);
-    each row carries the sensitivity_rank of the claim/evidence point it derives
-    from (D3) -- never a single flat blob at max-permissive tier'
-  status: pending
+    each row carries the sensitivity_rank of the claim/evidence point it derives from
+    (D3) -- never a single flat blob at max-permissive tier'
+  status: completed
   assigned_to:
   - ica-executor
   dependencies: []
   estimated_effort: 1.0 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 42ddf40
+  verified_by:
+  - task-completion-validator
 - id: TASK-2.4
   description: '_build_claim_and_inference_rows extension + rebuild wiring: extend
-    _build_claim_and_inference_rows (:567-620) to carry _term_index fields into
-    catalog_terms rows at the sensitivity rank established by TASK-2.3; wire into
-    the same rebuild()/rebuild_schema() pass as catalog_items (:313)'
-  status: pending
+    _build_claim_and_inference_rows (:567-620) to carry _term_index fields into catalog_terms
+    rows at the sensitivity rank established by TASK-2.3; wire into the same rebuild()/rebuild_schema()
+    pass as catalog_items (:313)'
+  status: completed
   assigned_to:
   - ica-executor
   dependencies:
@@ -79,12 +97,18 @@ tasks:
   estimated_effort: 0.75 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 42ddf40
+  verified_by:
+  - task-completion-validator
 - id: TASK-2.5
   description: 'rf catalog search --term/--role facets (OQ-C resolved): add repeatable
     --term/--role filters against catalog_terms, following the existing --item_type/--project
     multi-value filter pattern (catalog_service.py:1263-1298); AND across distinct
     flags, OR within repeats of the same flag'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies:
@@ -92,11 +116,17 @@ tasks:
   estimated_effort: 0.5 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 42ddf40
+  verified_by:
+  - task-completion-validator
 - id: TASK-2.6
   description: 'rf serve term/role passthrough: api/routers/catalog.py passes --term/--role-equivalent
     query params through to the catalog layer with zero new read-path computation
     (FR-13)'
-  status: pending
+  status: completed
   assigned_to:
   - ica-executor
   dependencies:
@@ -104,12 +134,18 @@ tasks:
   estimated_effort: 0.25 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 42ddf40
+  verified_by:
+  - task-completion-validator
 - id: TASK-2.7
   description: 'Sensitivity-threshold tests + rebuild idempotency (EXIT GATE): serve-api
-    sensitivity tests at each threshold level, testing the serve layer (not just
-    service layer) per the sensitivity-threshold-router-gate diagnostic trap; plus
-    a catalog_terms rebuild idempotency test'
-  status: pending
+    sensitivity tests at each threshold level, testing the serve layer (not just service
+    layer) per the sensitivity-threshold-router-gate diagnostic trap; plus a catalog_terms
+    rebuild idempotency test'
+  status: completed
   assigned_to:
   - ica-executor
   - task-completion-validator
@@ -118,6 +154,12 @@ tasks:
   estimated_effort: 0.25 pts
   assigned_model: sonnet
   model_effort: adaptive
+  started: 2026-07-25T02:00Z
+  completed: 2026-07-25T06:00Z
+  evidence:
+  - commit: 42ddf40
+  verified_by:
+  - task-completion-validator
 parallelization:
   batch_1:
   - TASK-2.1
@@ -164,8 +206,9 @@ files_modified:
 - src/research_foundry/cli_commands.py
 - src/research_foundry/api/routers/catalog.py
 - frontend/runs-viewer/src/lib/run-export.ts
-notes: 'Highest-risk phase in the plan. Entry gate: Phase 1 TASK-1.6 green. Exit
-  gate (TASK-2.7) unlocks P3 and P4, which fork in parallel on disjoint file sets.'
+notes: 'Highest-risk phase in the plan. Entry gate: Phase 1 TASK-1.6 green. Exit gate
+  (TASK-2.7) unlocks P3 and P4, which fork in parallel on disjoint file sets.'
+progress: 100
 ---
 
 # claim-term-indexing - Phase 2: Read-Model Propagation

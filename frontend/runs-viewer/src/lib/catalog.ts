@@ -244,6 +244,15 @@ export interface CatalogProvenance {
 interface IndexEntry {
   detail: CatalogItemDetail;
   searchBody: string;
+  /**
+   * Claim-term-indexing v1 (TASK-4.1/4.2, static-mode parity with
+   * catalog_terms). Canonical term IDs from this item's own claim
+   * `_term_index.terms` — [] for non-claim/inference item types and for
+   * claims with no vocabulary hits (never a placeholder).
+   */
+  terms: string[];
+  /** Usage roles present among `terms` (deduped) — mirrors catalog_terms.role for the `role` filter. */
+  roles: string[];
 }
 
 export interface CatalogIndex {
@@ -394,6 +403,8 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
           detail,
           evidenceUses.flatMap((u) => [u.summary, u.quote]),
         ),
+        terms: [],
+        roles: [],
       });
     }
 
@@ -465,9 +476,17 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
         },
         links: { outgoing: links, incoming: [] },
       };
+      // Claim-term-indexing v1 (TASK-4.1): _term_index is absent entirely
+      // (key omitted, not merely null/empty) for legacy claims and claims
+      // with zero vocabulary hits — [] here, never a placeholder value.
+      const termIndex = claim._term_index;
+      const terms = termIndex?.terms ?? [];
+      const roles = uniqueSorted(terms.map((t) => termIndex?.usage_roles[t]));
       entries.push({
         detail,
         searchBody: searchBodyOf(detail, [claim.inference_basis?.reasoning_summary]),
+        terms,
+        roles,
       });
     }
 
@@ -497,7 +516,7 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
         },
         links: { outgoing: reportContainsLinks, incoming: [] },
       };
-      entries.push({ detail, searchBody: searchBodyOf(detail, [run.report_draft]) });
+      entries.push({ detail, searchBody: searchBodyOf(detail, [run.report_draft]), terms: [], roles: [] });
     }
 
     // ── Reusable output candidates ──
@@ -527,7 +546,7 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
         },
         links: { outgoing: [], incoming: [] },
       };
-      entries.push({ detail, searchBody: searchBodyOf(detail) });
+      entries.push({ detail, searchBody: searchBodyOf(detail), terms: [], roles: [] });
     });
 
     // ── Writeback targets ──
@@ -562,7 +581,7 @@ export function buildCatalogIndex(runs: RFRunExport[]): CatalogIndex {
         },
         links: { outgoing: [], incoming: [] },
       };
-      entries.push({ detail, searchBody: searchBodyOf(detail) });
+      entries.push({ detail, searchBody: searchBodyOf(detail), terms: [], roles: [] });
     });
   }
 
@@ -590,6 +609,11 @@ function computeFacets(index: CatalogIndex): CatalogSearchFacets {
     projects: uniqueSorted(index.entries.map((e) => e.detail.project)),
     statuses: uniqueSorted(index.entries.map((e) => e.detail.status)),
     sensitivities: uniqueSorted(index.entries.map((e) => e.detail.sensitivity)),
+    // Claim-term-indexing v1 (TASK-4.1): real distinct terms across every
+    // claim/inference item's own `_term_index` — [] (not omitted) when no
+    // loaded run has any vocabulary hit, so the FE can render its empty
+    // state rather than treat the key itself as missing.
+    terms: uniqueSorted(index.entries.flatMap((e) => e.terms)),
   };
 }
 
@@ -624,6 +648,8 @@ export function searchCatalog(index: CatalogIndex, params: CatalogSearchParams =
     status,
     sensitivity,
     run_id,
+    term,
+    role,
     sort = "updated",
     page = 1,
     page_size = DEFAULT_PAGE_SIZE,
@@ -633,13 +659,18 @@ export function searchCatalog(index: CatalogIndex, params: CatalogSearchParams =
   const pageNum = Math.max(Math.trunc(page) || 1, 1);
   const qLower = q?.trim().toLowerCase();
 
-  const filtered = index.entries.filter(({ detail, searchBody }) => {
+  const filtered = index.entries.filter(({ detail, searchBody, terms, roles }) => {
     if (item_type && detail.item_type !== item_type) return false;
     if (project && detail.project !== project) return false;
     if (status && detail.status !== status) return false;
     if (sensitivity && detail.sensitivity !== sensitivity) return false;
     if (run_id && detail.run_id !== run_id) return false;
     if (qLower && !searchBody.includes(qLower)) return false;
+    // OR within `term`/`role` (a match on any listed value), AND across the
+    // two flags and every other filter — mirrors catalog_service.search()'s
+    // EXISTS-against-catalog_terms semantics (OQ-C) for static-mode parity.
+    if (term && term.length > 0 && !term.some((t) => terms.includes(t))) return false;
+    if (role && role.length > 0 && !role.some((r) => roles.includes(r))) return false;
     return true;
   });
 

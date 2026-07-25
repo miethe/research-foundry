@@ -119,7 +119,11 @@ def _isolation_active(paths: FoundryPaths) -> bool:
 # export_run() via import_all(), and draft index rows are rebuilt from
 # on-disk draft.yaml files via builder_service.reindex_all_drafts(). Neither
 # rebuild path reads anything from the DB itself.
-SCHEMA_VERSION = 3
+# v4 (claim-term-indexing v1, TASK-2.3/D3): adds the catalog_terms derived
+# index table. Rows are rebuilt from each claim/inference item's own
+# `_term_index` block during import_run()/rebuild() — never a separate read
+# path, so a version bump is safe by the same "100% derived" argument above.
+SCHEMA_VERSION = 4
 
 # --- sensitivity ranks (mirrors export_service's private helper; only the
 # public SENSITIVITY_ORDER constant is reused, per the contract) ------------
@@ -200,6 +204,30 @@ _DDL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_catalog_links_run ON catalog_links(run_id)",
     "CREATE INDEX IF NOT EXISTS idx_catalog_links_from ON catalog_links(from_item_id)",
     "CREATE INDEX IF NOT EXISTS idx_catalog_links_to ON catalog_links(to_item_id)",
+    # --- catalog_terms (v4, claim-term-indexing v1 TASK-2.3, decision D3) ---
+    # Mirrors catalog_links's join-table shape. Each row is a single
+    # (catalog_item_id, term) hit derived from THAT item's own `_term_index`
+    # block, carrying THAT item's own already-computed effective
+    # sensitivity_rank (see _build_claim_and_inference_rows) — never a single
+    # flat value computed once at the run's max-permissive tier, which would
+    # repeat the search_text flat-blob leak this table's design is written to
+    # avoid (see module docstring + _redact_evidence_points). Read-time
+    # filtering (a future task) must apply the same
+    # `sensitivity_rank <= threshold_rank` predicate used by catalog_items.
+    """
+    CREATE TABLE IF NOT EXISTS catalog_terms (
+        catalog_item_id   TEXT NOT NULL,
+        term              TEXT NOT NULL,
+        role              TEXT NOT NULL,
+        run_id            TEXT NOT NULL,
+        sensitivity_rank  INTEGER NOT NULL,
+        PRIMARY KEY (catalog_item_id, term)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_catalog_terms_run ON catalog_terms(run_id)",
+    "CREATE INDEX IF NOT EXISTS idx_catalog_terms_term ON catalog_terms(term)",
+    "CREATE INDEX IF NOT EXISTS idx_catalog_terms_sensitivity_rank "
+    "ON catalog_terms(sensitivity_rank)",
     """
     CREATE TABLE IF NOT EXISTS catalog_import_log (
         run_id       TEXT PRIMARY KEY,
@@ -252,6 +280,7 @@ _FTS_DDL = (
 _DROP_STATEMENTS: tuple[str, ...] = (
     "DROP TABLE IF EXISTS catalog_fts",
     "DROP TABLE IF EXISTS catalog_links",
+    "DROP TABLE IF EXISTS catalog_terms",
     "DROP TABLE IF EXISTS catalog_items",
     "DROP TABLE IF EXISTS catalog_import_log",
     "DROP TABLE IF EXISTS catalog_report_drafts",
@@ -564,6 +593,50 @@ def _base_row(
     }
 
 
+def _build_term_rows(
+    term_index: Any, *, catalog_item_id: str, run_id: str, sensitivity_rank: int
+) -> list[dict[str, Any]]:
+    """Build ``catalog_terms`` rows for one claim/inference item's `_term_index`.
+
+    D3: every row carries *this item's own* already-computed effective
+    ``sensitivity_rank`` (the same value used for the item's own
+    ``catalog_items`` row) — never a run-wide or max-permissive constant.
+    Absent, malformed, or empty `_term_index` (no vocabulary hits, no
+    vocabulary loaded, or pre-backfill legacy claim — see term_index.py's
+    module docstring) yields ``[]``, never a placeholder row.
+    """
+
+    if not isinstance(term_index, dict):
+        return []
+    terms = term_index.get("terms")
+    usage_roles = term_index.get("usage_roles")
+    if not isinstance(terms, list) or not isinstance(usage_roles, dict):
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for term in terms:
+        if not isinstance(term, str) or not term:
+            continue
+        role = usage_roles.get(term)
+        if not isinstance(role, str) or not role:
+            # Defensive only (D8: non-authoritative) — build_term_index()
+            # always populates a role for every term it emits; a term
+            # missing its role here signals corrupted upstream data, not a
+            # governance/sensitivity gap, so it is simply skipped rather
+            # than defaulted to an invented label.
+            continue
+        rows.append(
+            {
+                "catalog_item_id": catalog_item_id,
+                "term": term,
+                "role": role,
+                "run_id": run_id,
+                "sensitivity_rank": sensitivity_rank,
+            }
+        )
+    return rows
+
+
 def _build_claim_and_inference_rows(
     export_data: dict[str, Any],
     run_id: str,
@@ -572,17 +645,20 @@ def _build_claim_and_inference_rows(
     created_at: str | None,
     run_sensitivity_rank: int,
     citation_ranks: dict[_CitationKey, int],
-) -> tuple[list[dict[str, Any]], dict[str, str], list[str]]:
+) -> tuple[list[dict[str, Any]], dict[str, str], list[str], list[dict[str, Any]]]:
     """Build claim/inference rows.
 
-    Returns ``(rows, claim_id_to_item_id, report_claim_ids)`` — the last
-    element lists every claim/inference ``claim_id`` with a non-empty
-    ``report_locations``, for the ``report -> claim`` ("contains") links.
+    Returns ``(rows, claim_id_to_item_id, report_claim_ids, term_rows)`` —
+    ``report_claim_ids`` lists every claim/inference ``claim_id`` with a
+    non-empty ``report_locations``, for the ``report -> claim`` ("contains")
+    links; ``term_rows`` are the ``catalog_terms`` rows derived from each
+    claim's own `_term_index` block (D3 — see :func:`_build_term_rows`).
     """
 
     rows: list[dict[str, Any]] = []
     claim_id_to_item_id: dict[str, str] = {}
     report_claim_ids: list[str] = []
+    term_rows: list[dict[str, Any]] = []
 
     for claim in export_data.get("claims") or []:
         if not isinstance(claim, dict):
@@ -654,8 +730,16 @@ def _build_claim_and_inference_rows(
         claim_id_to_item_id[claim_id] = row["catalog_item_id"]
         if claim.get("report_locations"):
             report_claim_ids.append(claim_id)
+        term_rows.extend(
+            _build_term_rows(
+                claim.get("_term_index"),
+                catalog_item_id=row["catalog_item_id"],
+                run_id=run_id,
+                sensitivity_rank=item_sensitivity_rank,
+            )
+        )
 
-    return rows, claim_id_to_item_id, report_claim_ids
+    return rows, claim_id_to_item_id, report_claim_ids, term_rows
 
 
 def _build_source_rows(
@@ -981,8 +1065,8 @@ def _build_links(
 
 def _build_catalog_rows(
     paths: FoundryPaths, run_id: str
-) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    """Build every catalog row + link row for a single run.
+) -> tuple[list[dict[str, Any]], list[dict[str, str]], list[dict[str, Any]]]:
+    """Build every catalog row + link row + term row for a single run.
 
     Fetches ``export_run()`` at ``client_sensitive`` (max permissive) once,
     per D2, and reuses it as the loosest probe in :func:`_probe_citation_ranks`.
@@ -995,7 +1079,7 @@ def _build_catalog_rows(
 
     citation_ranks = _probe_citation_ranks(paths, run_id, permissive_export=export_data)
 
-    claim_rows, claim_id_to_item_id, report_claim_ids = _build_claim_and_inference_rows(
+    claim_rows, claim_id_to_item_id, report_claim_ids, term_rows = _build_claim_and_inference_rows(
         export_data,
         run_id,
         project=project,
@@ -1066,7 +1150,7 @@ def _build_catalog_rows(
         rows.append(report_row)
     rows.extend(reusable_output_rows)
     rows.extend(writeback_rows)
-    return rows, links
+    return rows, links, term_rows
 
 
 def _delete_run(conn: sqlite3.Connection, run_id: str) -> None:
@@ -1077,13 +1161,19 @@ def _delete_run(conn: sqlite3.Connection, run_id: str) -> None:
             (run_id,),
         )
     conn.execute("DELETE FROM catalog_links WHERE run_id = ?", (run_id,))
+    conn.execute("DELETE FROM catalog_terms WHERE run_id = ?", (run_id,))
     conn.execute("DELETE FROM catalog_items WHERE run_id = ?", (run_id,))
 
 
 def _insert_rows(
-    conn: sqlite3.Connection, rows: list[dict[str, Any]], links: list[dict[str, str]], run_id: str
+    conn: sqlite3.Connection,
+    rows: list[dict[str, Any]],
+    links: list[dict[str, str]],
+    run_id: str,
+    term_rows: list[dict[str, Any]] | None = None,
 ) -> None:
     fts_on = _fts_available(conn)
+    term_rows = term_rows or []
     for row in rows:
         conn.execute(
             """
@@ -1113,6 +1203,13 @@ def _insert_rows(
             "VALUES (?, ?, ?, ?)",
             (run_id, link["from_item_id"], link["to_item_id"], link["relation"]),
         )
+    for term_row in term_rows:
+        conn.execute(
+            "INSERT OR IGNORE INTO catalog_terms "
+            "(catalog_item_id, term, role, run_id, sensitivity_rank) "
+            "VALUES (:catalog_item_id, :term, :role, :run_id, :sensitivity_rank)",
+            term_row,
+        )
     conn.execute(
         "INSERT INTO catalog_import_log (run_id, imported_at, item_count) VALUES (?, ?, ?) "
         "ON CONFLICT(run_id) DO UPDATE SET imported_at = excluded.imported_at, "
@@ -1130,7 +1227,7 @@ def import_run(paths: FoundryPaths, run_id: str) -> dict[str, Any]:
     """
 
     try:
-        rows, links = _build_catalog_rows(paths, run_id)
+        rows, links, term_rows = _build_catalog_rows(paths, run_id)
     except ExportError as exc:
         raise CatalogError(
             str(exc), run_id=run_id, artifact_path=exc.artifact_path
@@ -1140,7 +1237,7 @@ def import_run(paths: FoundryPaths, run_id: str) -> dict[str, Any]:
         conn.execute("BEGIN IMMEDIATE")
         try:
             _delete_run(conn, run_id)
-            _insert_rows(conn, rows, links, run_id)
+            _insert_rows(conn, rows, links, run_id, term_rows)
             conn.commit()
         except BaseException:
             conn.rollback()
@@ -1265,6 +1362,8 @@ def search(
     status: str | None = None,
     sensitivity: str | None = None,
     run_id: str | None = None,
+    term: list[str] | None = None,
+    role: list[str] | None = None,
     sort: str = "updated",
     page: int = 1,
     page_size: int = _DEFAULT_PAGE_SIZE,
@@ -1278,6 +1377,15 @@ def search(
     pre-WKSP-304 query; supplied + isolation active adds a parameterized
     ``AND workspace_id = ?`` predicate to every statement this function runs,
     including the facet query.
+
+    ``term``/``role`` are the claim-term-indexing v1 facets (TASK-2.5, OQ-C):
+    repeatable — OR semantics within repeats of the *same* flag (``term=["cbc",
+    "hgb"]`` matches either), AND semantics against every other filter
+    including each other. Each is enforced via an ``EXISTS`` against
+    ``catalog_terms`` that also re-checks ``sensitivity_rank <= threshold_rank``
+    (D3) — a term/role row above the caller's threshold can never be used to
+    match an item, even one that is itself visible, closing the same
+    flat-blob leak class ``_redact_evidence_points`` guards against.
     """
 
     if sort not in _VALID_SORTS:
@@ -1308,6 +1416,24 @@ def search(
     if run_id:
         where.append("run_id = ?")
         params.append(run_id)
+    if term:
+        placeholders = ",".join("?" for _ in term)
+        where.append(
+            "EXISTS (SELECT 1 FROM catalog_terms ct WHERE "
+            "ct.catalog_item_id = catalog_items.catalog_item_id "
+            f"AND ct.term IN ({placeholders}) AND ct.sensitivity_rank <= ?)"
+        )
+        params.extend(term)
+        params.append(threshold_rank)
+    if role:
+        placeholders = ",".join("?" for _ in role)
+        where.append(
+            "EXISTS (SELECT 1 FROM catalog_terms ct WHERE "
+            "ct.catalog_item_id = catalog_items.catalog_item_id "
+            f"AND ct.role IN ({placeholders}) AND ct.sensitivity_rank <= ?)"
+        )
+        params.extend(role)
+        params.append(threshold_rank)
 
     order_sql = {
         "updated": "updated_at DESC, catalog_item_id ASC",
@@ -1453,10 +1579,33 @@ def _facets(
         ).fetchall()
         return [r[0] for r in rows]
 
+    def _distinct_term_column(column: str) -> list[str]:
+        # catalog_terms carries its own per-row sensitivity_rank (D3) but no
+        # workspace_id, so workspace scoping (WKSP-304) requires a join back
+        # to catalog_items — a bare `SELECT DISTINCT ... FROM catalog_terms`
+        # would silently cross workspace boundaries. The sensitivity gate
+        # mirrors search()'s term/role EXISTS clauses: only ct.sensitivity_rank
+        # is checked (it is already the item's own effective rank), never a
+        # value looser than the caller's threshold.
+        term_extra_where = " AND ci.workspace_id = ?" if workspace_id is not None else ""
+        params: tuple[Any, ...] = (
+            (threshold_rank, workspace_id) if workspace_id is not None else (threshold_rank,)
+        )
+        rows = conn.execute(
+            f"SELECT DISTINCT ct.{column} FROM catalog_terms ct "
+            "JOIN catalog_items ci ON ci.catalog_item_id = ct.catalog_item_id "
+            f"WHERE ct.sensitivity_rank <= ?{term_extra_where} "
+            f"ORDER BY ct.{column}",
+            params,
+        ).fetchall()
+        return [r[0] for r in rows]
+
     return {
         "projects": _distinct("project"),
         "statuses": _distinct("status"),
         "sensitivities": _distinct("sensitivity"),
+        "terms": _distinct_term_column("term"),
+        "roles": _distinct_term_column("role"),
     }
 
 

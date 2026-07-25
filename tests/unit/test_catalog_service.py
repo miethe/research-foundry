@@ -721,7 +721,7 @@ def test_report_sensitivity_propagates_unknown_label_fail_closed(
     report_id = svc._make_item_id("report", "rf_run_catalog001", "report")
     assert svc.get_item(tmp_foundry, report_id) is None
 
-    rows, _links = svc._build_catalog_rows(tmp_foundry, "rf_run_catalog001")
+    rows, _links, _term_rows = svc._build_catalog_rows(tmp_foundry, "rf_run_catalog001")
     report_row = next(r for r in rows if r["item_type"] == "report")
     assert report_row["sensitivity_rank"] == svc._UNKNOWN_RANK
     assert report_row["sensitivity"] == "unknown"
@@ -1334,7 +1334,13 @@ def test_search_identity_active_scopes_to_workspace(
     assert other_ws["total"] == 0
     assert other_ws["items"] == []
     # Facets must not leak values that exist only in another workspace either.
-    assert other_ws["facets"] == {"projects": [], "statuses": [], "sensitivities": []}
+    assert other_ws["facets"] == {
+        "projects": [],
+        "statuses": [],
+        "sensitivities": [],
+        "terms": [],
+        "roles": [],
+    }
 
 
 def test_search_identity_present_but_inactive_stays_unscoped(

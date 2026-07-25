@@ -159,6 +159,44 @@ describe("ClaimLedgerTable", () => {
     expect(container.querySelector("[data-testid='ledger-table']")).toBeNull();
   });
 
+  // ── Term/usage-role badge (claim-term-indexing v1, TASK-4.3) ────────────────
+
+  it("renders a term badge with its usage role for a claim with a populated _term_index", () => {
+    const claimsWithTerms: RFClaim[] = [
+      makeClaim({
+        claim_id: "clm_010",
+        text: "CBC results were within normal range for the patient's age.",
+        _term_index: { terms: ["cbc"], usage_roles: { cbc: "threshold" }, vocabulary_version: "v1" },
+      }),
+    ];
+    const { container } = render(
+      <ClaimLedgerTable claims={claimsWithTerms} onClaimSelect={() => {}} />,
+      { wrapper: makeWrapper() },
+    );
+    const badge = container.querySelector("[data-testid='ledger-term-clm_010-cbc']");
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toMatch(/cbc/i);
+    expect(badge?.textContent).toMatch(/threshold/i);
+    // Namespace-boundary requirement (D2/FR-15): never the solid-fill `it-chip`
+    // pattern used by status/confidence/materiality/any future pediatric_cds display.
+    expect(badge?.className).toContain("rv-ledger-term-badge");
+    expect(badge?.className).not.toContain("it-chip");
+  });
+
+  it("renders no term badge (not an empty badge) for a claim with no _term_index", () => {
+    const claimsNoTerms: RFClaim[] = [
+      makeClaim({ claim_id: "clm_011", text: "A claim with no vocabulary hits at all." }),
+    ];
+    const { container } = render(
+      <ClaimLedgerTable claims={claimsNoTerms} onClaimSelect={() => {}} />,
+      { wrapper: makeWrapper() },
+    );
+    const cell = container.querySelector("[data-testid='ledger-terms-clm_011']");
+    expect(cell).not.toBeNull();
+    expect(cell?.querySelector(".rv-ledger-term-badge")).toBeNull();
+    expect(cell?.textContent).toBe("");
+  });
+
   it("renders all clm_NNN rows from the real fixture (91 claims)", () => {
     const { container } = render(
       <ClaimLedgerTable claims={fixtureRun.claims} onClaimSelect={() => {}} />,

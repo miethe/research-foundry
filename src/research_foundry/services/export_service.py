@@ -57,7 +57,7 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-EXPORT_SCHEMA_VERSION = "1.6"
+EXPORT_SCHEMA_VERSION = "1.7"
 
 AOS_CORRELATION_FIELDS = (
     "aos_run_uuid",
@@ -692,6 +692,12 @@ def _build_claims(
         # claim ledgers; omission remains the assertion-ledger-absent signal.
         if "persistent_references" in claim:
             claim_out["persistent_references"] = claim.get("persistent_references")
+        # _term_index (schema 1.7, TASK-2.1) is additive and non-authoritative
+        # (services/term_index.py, D8): copied forward verbatim, never
+        # recomputed or validated here. Omitted entirely when claim-map found
+        # zero vocabulary hits or no vocabulary was loaded for the claim.
+        if "_term_index" in claim:
+            claim_out["_term_index"] = claim.get("_term_index")
         claims_out.append(claim_out)
     return claims_out
 

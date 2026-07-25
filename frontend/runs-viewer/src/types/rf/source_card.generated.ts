@@ -64,5 +64,14 @@ export interface SourceCard {
     supports_potential_claims?: string[];
     [k: string]: any;
   }[];
+  rights_summary?: {
+    [k: string]: any;
+  };
+  substitutability?: {
+    searched_at: string | null;
+    status: "substitute_found" | "no_substitute_found" | "not_searched";
+    candidate_source_ids: string[];
+    coverage_notes: string;
+  } | null;
   [k: string]: any;
 }
