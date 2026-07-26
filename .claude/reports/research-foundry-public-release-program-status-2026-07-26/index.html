@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; connect-src 'none'; media-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Research Foundry Public Release Program Status &mdash; Program Status</title>
+<style>/* delivery-report &#8212; unified theme-aware stylesheet.
+ * Four-block token system (&#167;4 rule 2): :root light default, dark via media query,
+ * and explicit :root[data-theme=dark|light] so a viewer toggle wins both directions.
+ * Route chrome is scoped under body.route-feature / body.route-status; the handoff
+ * component, domain chips, media, and theme toggle are shared. */
+
+:root {
+  --paper:#f4f7f5; --paper-2:#ffffff; --rule:#d3ded9; --rule-hard:#b3c4be;
+  --ink:#0d1c1b; --ink-2:#354746; --muted:#6a7d79;
+  --accent:#0e6f68; --accent-dim:#d5e8e5; --know:#4a5486; --know-dim:#e2e5f2;
+  --crit:#a3302b; --crit-dim:#f6e0de; --warn:#8a5f05; --warn-dim:#f7ecd2;
+  --ok:#2f6d43; --ok-dim:#dcecdf; --idle:#8493a0; --idle-dim:#e6eaed;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --maxw: 1180px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:#0b1413; --paper-2:#111d1c; --rule:#233634; --rule-hard:#35504c;
+    --ink:#e7efec; --ink-2:#b3c5c1; --muted:#7d918d;
+    --accent:#4fc4b6; --accent-dim:#14312e; --know:#93a2e0; --know-dim:#1c2338;
+    --crit:#ef8078; --crit-dim:#371917; --warn:#d9a63c; --warn-dim:#33270e;
+    --ok:#74c68c; --ok-dim:#16301f; --idle:#7b8b95; --idle-dim:#1c2528;
+  }
+}
+:root[data-theme="dark"] {
+  --paper:#0b1413; --paper-2:#111d1c; --rule:#233634; --rule-hard:#35504c;
+  --ink:#e7efec; --ink-2:#b3c5c1; --muted:#7d918d;
+  --accent:#4fc4b6; --accent-dim:#14312e; --know:#93a2e0; --know-dim:#1c2338;
+  --crit:#ef8078; --crit-dim:#371917; --warn:#d9a63c; --warn-dim:#33270e;
+  --ok:#74c68c; --ok-dim:#16301f; --idle:#7b8b95; --idle-dim:#1c2528;
+}
+:root[data-theme="light"] {
+  --paper:#f4f7f5; --paper-2:#ffffff; --rule:#d3ded9; --rule-hard:#b3c4be;
+  --ink:#0d1c1b; --ink-2:#354746; --muted:#6a7d79;
+  --accent:#0e6f68; --accent-dim:#d5e8e5; --know:#4a5486; --know-dim:#e2e5f2;
+  --crit:#a3302b; --crit-dim:#f6e0de; --warn:#8a5f05; --warn-dim:#f7ecd2;
+  --ok:#2f6d43; --ok-dim:#dcecdf; --idle:#8493a0; --idle-dim:#e6eaed;
+}
+
+/* ---- base ---- */
+* { box-sizing: border-box; }
+body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans);
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+a { color:var(--accent); }
+button { font:inherit; }
+code { font-family:var(--mono); font-size:0.88em; background:var(--accent-dim); color:var(--ink);
+  padding:1px 5px; border-radius:3px; overflow-wrap:anywhere; }
+.muted { color:var(--muted); }
+.wrap { max-width:var(--maxw); margin:0 auto; padding:0 28px 100px; }
+
+/* ---- theme toggle (shared, &#167;4.2) ---- */
+.theme-toggle { position:fixed; top:14px; right:16px; z-index:50; font-family:var(--mono);
+  font-size:10px; letter-spacing:0.09em; text-transform:uppercase; font-weight:600;
+  padding:6px 11px; cursor:pointer; background:var(--paper-2); color:var(--ink);
+  border:1px solid var(--rule-hard); border-radius:2px; }
+.theme-toggle:hover { border-color:var(--accent); color:var(--accent); }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* ==================================================================== */
+/* STATUS ROUTES &#8212; program | phase | readiness (editorial, multi-item)   */
+/* ==================================================================== */
+.route-status .masthead { border-bottom:2px solid var(--ink); padding:46px 0 20px; margin-bottom:34px; }
+.route-status .eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:0.13em; text-transform:uppercase;
+  color:var(--accent); margin:0 0 14px; display:flex; flex-wrap:wrap; gap:8px 16px; align-items:baseline; }
+.route-status .eyebrow .sep { color:var(--rule-hard); }
+.route-status h1 { font-size:clamp(30px,4.4vw,47px); line-height:1.04; letter-spacing:-0.024em; font-weight:700;
+  margin:0 0 14px; text-wrap:balance; }
+.route-status .dek { font-size:17px; color:var(--ink-2); max-width:62ch; margin:0; }
+.route-status section { margin:52px 0 0; }
+.route-status h2 { font-size:12px; font-family:var(--mono); letter-spacing:0.13em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; margin:0 0 6px; padding-bottom:8px;
+  border-bottom:1px solid var(--rule); display:flex; justify-content:space-between; gap:16px; align-items:baseline; }
+.route-status h2 .h2-note { color:var(--rule-hard); letter-spacing:0.04em; text-transform:none; font-size:11px; }
+.route-status h3 { font-size:20px; letter-spacing:-0.015em; margin:26px 0 8px; font-weight:650; text-wrap:balance; }
+.route-status p { margin:0 0 14px; max-width:72ch; }
+
+.vitals { display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr)); gap:1px;
+  background:var(--rule); border:1px solid var(--rule); margin:22px 0 0; }
+.vital { background:var(--paper-2); padding:15px 16px 14px; }
+.vital .k { font-family:var(--mono); font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
+  color:var(--muted); margin-bottom:7px; }
+.vital .v { font-family:var(--mono); font-size:26px; font-weight:600; line-height:1;
+  letter-spacing:-0.02em; font-variant-numeric:tabular-nums; }
+.vital .sub { font-size:12px; color:var(--muted); margin-top:6px; line-height:1.35; }
+.vital .measured { font-family:var(--mono); font-size:10px; color:var(--rule-hard); margin-top:6px; line-height:1.4; }
+.vital.is-crit .v { color:var(--crit); }
+.vital.is-warn .v { color:var(--warn); }
+.vital.is-ok .v { color:var(--ok); }
+
+.callout { border:1px solid var(--rule); border-left:4px solid var(--muted); background:var(--paper-2);
+  padding:18px 20px; margin:22px 0; }
+.callout.crit { border-left-color:var(--crit); background:var(--crit-dim); }
+.callout.warn { border-left-color:var(--warn); background:var(--warn-dim); }
+.callout.fix  { border-left-color:var(--accent); background:var(--accent-dim); }
+.callout .ct { font-family:var(--mono); font-size:11px; letter-spacing:0.11em; text-transform:uppercase;
+  font-weight:600; margin-bottom:8px; }
+.callout.crit .ct { color:var(--crit); }
+.callout.warn .ct { color:var(--warn); }
+.callout.fix  .ct { color:var(--accent); }
+.callout p:last-child { margin-bottom:0; }
+.callout details.ns { border-top-color:var(--rule-hard); }
+
+.scroller { overflow-x:auto; border:1px solid var(--rule); background:var(--paper-2); margin:22px 0 10px; }
+table.flow { border-collapse:collapse; width:100%; min-width:760px; font-size:13px; }
+table.flow th, table.flow td { border-bottom:1px solid var(--rule); padding:0; }
+table.flow thead th { font-family:var(--mono); font-size:10px; letter-spacing:0.07em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; text-align:center; padding:10px 4px 9px;
+  border-bottom:1px solid var(--rule-hard); white-space:nowrap; }
+table.flow thead th.rowhead { text-align:left; padding-left:14px; min-width:190px; }
+table.flow th.rowhead { text-align:left; padding:9px 10px 9px 14px; font-weight:550; font-size:13px;
+  color:var(--ink); white-space:nowrap; }
+table.flow th.rowhead .tag { display:block; font-family:var(--mono); font-size:10px; letter-spacing:0.06em;
+  color:var(--muted); text-transform:uppercase; margin-top:1px; }
+td.cell { text-align:center; vertical-align:middle; padding:6px 3px; }
+.dot { display:inline-flex; align-items:center; justify-content:center; width:30px; height:22px;
+  border-radius:2px; font-family:var(--mono); font-size:11px; font-variant-numeric:tabular-nums; font-weight:600; }
+.d1 { background:color-mix(in srgb, var(--accent) 34%, transparent); color:var(--ink); }
+.d2 { background:color-mix(in srgb, var(--accent) 58%, transparent); color:var(--ink); }
+.d3 { background:var(--accent); color:var(--paper); }
+@media (prefers-color-scheme: dark) { .d3 { color:#06201e; } }
+:root[data-theme="dark"] .d3 { color:#06201e; }
+:root[data-theme="light"] .d3 { color:var(--paper); }
+td.cell.empty::after { content:"\00B7"; color:var(--rule-hard); font-family:var(--mono); }
+.legend { display:flex; flex-wrap:wrap; gap:6px 20px; font-family:var(--mono); font-size:10.5px;
+  letter-spacing:0.05em; text-transform:uppercase; color:var(--muted); margin-bottom:26px; }
+.legend span { display:inline-flex; align-items:center; gap:6px; }
+.swatch { width:13px; height:13px; border-radius:2px; display:inline-block; }
+
+.tracks { display:grid; grid-template-columns:1fr 1fr; gap:26px; margin-top:22px; }
+@media (max-width:900px) { .tracks { grid-template-columns:1fr; } }
+.track-h { font-family:var(--mono); font-size:11px; letter-spacing:0.11em; text-transform:uppercase;
+  color:var(--ink); font-weight:600; padding-bottom:8px; border-bottom:1px solid var(--rule-hard); }
+.track-h em { font-style:normal; color:var(--muted); font-weight:400; letter-spacing:0.04em; }
+.step { display:grid; grid-template-columns:66px 1fr; gap:14px; border-bottom:1px solid var(--rule);
+  padding:13px 14px 13px 12px; border-left:4px solid var(--idle); background:var(--paper-2); }
+.step.s-done { border-left-color:var(--ok); }
+.step.s-part { border-left-color:var(--accent); }
+.step.s-blocked { border-left-color:var(--warn); }
+.step.s-none { border-left-color:var(--rule-hard); }
+.step .code { font-family:var(--mono); font-size:15px; font-weight:700; letter-spacing:-0.01em;
+  color:var(--ink); line-height:1.4; }
+.step .code small { display:block; font-size:9.5px; font-weight:600; letter-spacing:0.09em;
+  text-transform:uppercase; margin-top:3px; }
+.s-done .code small { color:var(--ok); }
+.s-part .code small { color:var(--accent); }
+.s-blocked .code small { color:var(--warn); }
+.s-none .code small { color:var(--idle); }
+.step .body { font-size:13.5px; line-height:1.5; }
+.step .body .ev { display:block; font-family:var(--mono); font-size:11px; color:var(--muted);
+  margin-top:5px; line-height:1.45; }
+.step .body .domline { margin-bottom:6px; }
+.step .body > .doms { display:flex; margin-bottom:6px; }
+.here { background:var(--accent); color:var(--paper); padding:9px 14px; font-family:var(--mono);
+  font-size:11px; letter-spacing:0.13em; text-transform:uppercase; font-weight:700;
+  display:flex; justify-content:space-between; gap:10px; align-items:center; margin-top:14px; }
+@media (prefers-color-scheme: dark) { .here { color:#06201e; } }
+:root[data-theme="dark"] .here { color:#06201e; }
+:root[data-theme="light"] .here { color:var(--paper); }
+
+table.data { border-collapse:collapse; width:100%; min-width:820px; font-size:13.5px; }
+table.data th { font-family:var(--mono); font-size:10px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; text-align:left; padding:10px 14px;
+  border-bottom:1px solid var(--rule-hard); white-space:nowrap; }
+table.data td { padding:11px 14px; border-bottom:1px solid var(--rule); vertical-align:top; line-height:1.45; }
+table.data tr:last-child td { border-bottom:none; }
+table.data td.nowrap { white-space:nowrap; }
+table.data td .doms { display:flex; max-width:150px; }
+.route-status .pill { display:inline-block; font-family:var(--mono); font-size:10px; letter-spacing:0.07em;
+  text-transform:uppercase; font-weight:600; padding:3px 8px; border-radius:2px; white-space:nowrap; }
+.p-ok { background:var(--ok-dim); color:var(--ok); }
+.p-part { background:var(--accent-dim); color:var(--accent); }
+.p-none { background:var(--idle-dim); color:var(--idle); }
+.p-blocked { background:var(--warn-dim); color:var(--warn); }
+.p-crit { background:var(--crit-dim); color:var(--crit); }
+.p-deferred { background:var(--know-dim); color:var(--know); }
+.route-status footer { margin-top:56px; padding-top:20px; border-top:1px solid var(--rule);
+  font-size:12px; color:var(--muted); line-height:1.6; }
+.route-status footer strong { color:var(--ink-2); }
+
+/* ==================================================================== */
+/* FEATURE ROUTE &#8212; retrospective single feature (token-based, both themes)*/
+/* ==================================================================== */
+.route-feature .shell { width:min(var(--maxw), calc(100% - 36px)); margin:0 auto; }
+.route-feature .hero { padding:64px 0 40px; border-bottom:2px solid var(--ink); }
+.route-feature .hero .eyebrow { color:var(--accent); font-family:var(--mono); font-size:11px; font-weight:600;
+  letter-spacing:0.13em; text-transform:uppercase; }
+.route-feature h1 { max-width:900px; margin:14px 0 14px; font-size:clamp(30px,5vw,52px); line-height:1.04;
+  letter-spacing:-0.03em; font-weight:700; text-wrap:balance; }
+.route-feature .lede { max-width:820px; margin:0; color:var(--ink-2); font-size:clamp(16px,2vw,20px); }
+.route-feature .meta { display:flex; flex-wrap:wrap; gap:9px; margin-top:26px; }
+.route-feature .pill { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--rule-hard);
+  border-radius:2px; padding:5px 10px; background:var(--paper-2); color:var(--ink-2);
+  font-family:var(--mono); font-size:11px; letter-spacing:0.04em; }
+.route-feature .pill.verified, .status.passed, .status.resolved, .status.shipped { border-color:var(--ok); color:var(--ok); }
+.route-feature .pill.draft, .status.failed, .status.open { border-color:var(--crit); color:var(--crit); }
+.route-feature .pill.partial, .status.unverified, .status.deferred, .status.not_executed, .status.owner_data_absent,
+  .status.accepted { border-color:var(--warn); color:var(--warn); }
+.draft-banner { margin-top:22px; padding:12px 16px; border:1px solid var(--crit); border-left:4px solid var(--crit);
+  background:var(--crit-dim); color:var(--crit); font-weight:700; font-family:var(--mono); font-size:12px;
+  letter-spacing:0.04em; text-transform:uppercase; }
+.route-feature .layout { display:grid; grid-template-columns:210px minmax(0,1fr); gap:44px; padding:34px 0 72px; }
+.route-feature .toc { position:sticky; top:20px; align-self:start; border:1px solid var(--rule);
+  background:var(--paper-2); padding:16px; }
+.route-feature .toc strong { display:block; margin-bottom:9px; font-family:var(--mono); font-size:10px;
+  letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); }
+.route-feature .toc a { display:block; padding:6px 0; color:var(--ink-2); text-decoration:none; font-size:13.5px; }
+.route-feature .toc a:hover { color:var(--accent); }
+.route-feature main { min-width:0; }
+.route-feature section { scroll-margin-top:22px; padding:34px 0; border-bottom:1px solid var(--rule); }
+.route-feature section:first-child { padding-top:0; }
+.route-feature h2 { margin:0 0 18px; font-size:clamp(22px,3vw,32px); letter-spacing:-0.02em; font-weight:680; }
+.route-feature h3 { margin:0 0 8px; font-size:16px; font-weight:650; }
+.route-feature p { margin:0 0 14px; max-width:74ch; }
+.split { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
+.card { border:1px solid var(--rule); background:var(--paper-2); padding:19px 20px; }
+.card.accent { border-top:3px solid var(--know); }
+.card p:last-child { margin-bottom:0; }
+.beneficiary { color:var(--know); font-family:var(--mono); font-size:10px; font-weight:600;
+  letter-spacing:0.08em; text-transform:uppercase; margin-bottom:6px; }
+.list { margin:0; padding-left:1.25rem; }
+.list li { margin:8px 0; }
+.change { display:grid; grid-template-columns:minmax(140px,.35fr) 1fr; gap:18px; padding:19px 0;
+  border-top:1px solid var(--rule); }
+.change:first-child { border-top:0; }
+.area { color:var(--accent); font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:0.04em; }
+.technical { margin-top:9px; color:var(--muted); font-size:13px; }
+.refs { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+.ref { border-radius:2px; padding:3px 8px; background:var(--idle-dim); color:var(--ink-2);
+  text-decoration:none; font:600 11px var(--mono); }
+.ref:hover { color:var(--accent); }
+.status { display:inline-block; margin-bottom:10px; border:1px solid var(--rule-hard); border-radius:2px;
+  padding:3px 8px; font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; }
+.validation { width:100%; border-collapse:collapse; font-size:13.5px; }
+.validation th, .validation td { padding:13px 12px; border-bottom:1px solid var(--rule); text-align:left; vertical-align:top; }
+.validation th { color:var(--muted); font-family:var(--mono); font-size:10px; letter-spacing:0.08em; text-transform:uppercase; }
+.visual-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; }
+.visual { overflow:hidden; border:1px solid var(--rule); background:var(--paper-2); }
+.visual img { display:block; width:100%; height:auto; max-height:720px; object-fit:contain; }
+.visual figcaption { padding:12px 15px; color:var(--muted); font-size:12px; border-top:1px solid var(--rule); }
+.visual-label { color:var(--know); font-family:var(--mono); font-weight:600; text-transform:uppercase; letter-spacing:0.08em; }
+.chart, .diagram { overflow-x:auto; border:1px solid var(--rule); padding:16px; background:var(--paper-2); }
+.chart svg, .diagram svg { display:block; min-width:640px; width:100%; height:auto; }
+.timeline { position:relative; margin-left:8px; padding-left:25px; border-left:2px solid var(--rule-hard); }
+.moment { position:relative; padding:0 0 22px; }
+.moment::before { content:""; position:absolute; left:-32px; top:5px; width:11px; height:11px; border-radius:50%;
+  background:var(--accent); box-shadow:0 0 0 4px var(--paper); }
+.moment strong { display:block; }
+.evidence { display:grid; grid-template-columns:110px 1fr; gap:14px; padding:14px 0; border-top:1px solid var(--rule); }
+.evidence:first-child { border-top:0; }
+.evidence-id { color:var(--accent); font:600 12px var(--mono); }
+.evidence-meta { color:var(--muted); font-size:13px; }
+.toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-top:20px; }
+.btn { cursor:pointer; border:1px solid var(--rule-hard); border-radius:2px; padding:7px 11px;
+  background:var(--paper-2); color:var(--ink); font-family:var(--mono); font-size:11px; letter-spacing:0.04em; }
+.btn:hover { border-color:var(--accent); color:var(--accent); }
+.route-feature footer { padding:26px 0 50px; color:var(--muted); font-size:12px; }
+@media (max-width:780px) {
+  .route-feature .layout { grid-template-columns:1fr; }
+  .route-feature .toc { position:static; }
+  .split { grid-template-columns:1fr; }
+  .change { grid-template-columns:1fr; gap:6px; }
+  .validation { display:block; overflow-x:auto; }
+}
+
+/* ==================================================================== */
+/* SHARED &#8212; domain chips + handoff copy component + code-copy            */
+/* ==================================================================== */
+.doms { display:inline-flex; flex-wrap:wrap; gap:4px; vertical-align:middle; }
+.dom { font-family:var(--mono); font-size:9.5px; letter-spacing:0.09em; text-transform:uppercase;
+  font-weight:600; padding:2px 6px; border-radius:2px; white-space:nowrap;
+  border:1px solid currentColor; line-height:1.5; }
+.dom-build { color:var(--accent); }
+.dom-know  { color:var(--know); }
+.dom-gov   { color:var(--warn); }
+
+details.ns { margin-top:10px; border-top:1px dashed var(--rule); }
+details.ns > summary { cursor:pointer; list-style:none; padding:7px 0 0; font-family:var(--mono);
+  font-size:10px; letter-spacing:0.11em; text-transform:uppercase; color:var(--accent);
+  font-weight:600; display:flex; align-items:center; gap:7px; user-select:none; }
+details.ns > summary::-webkit-details-marker { display:none; }
+details.ns > summary::before { content:"\25B8"; display:inline-block; transition:transform 0.14s ease; font-size:11px; }
+details.ns[open] > summary::before { transform:rotate(90deg); }
+details.ns > summary:hover { color:var(--ink); }
+details.ns.human > summary { color:var(--warn); }
+.ns-body { margin-top:9px; border:1px solid var(--rule); background:var(--paper);
+  padding:12px 13px 11px; display:grid; gap:9px; }
+.route-feature .ns-body, td .ns-body { background:var(--paper-2); }
+.ns-row { display:grid; grid-template-columns:90px 1fr; gap:10px; align-items:baseline; }
+.ns-row .kk { font-family:var(--mono); font-size:9.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; }
+.ns-row .vv { font-family:var(--mono); font-size:11.5px; line-height:1.6; word-break:break-word; }
+.ns-row .vv .cmd { color:var(--accent); font-weight:600; }
+.ns-row .vv .cmd.human { color:var(--warn); }
+.ns-row .vv .idc { display:inline-block; background:var(--idle-dim); color:var(--ink-2);
+  padding:0 4px; border-radius:2px; margin:0 3px 3px 0; }
+.ns-row .vv .gate { background:var(--warn-dim); color:var(--warn); }
+.ns-row .vv .miss { color:var(--crit); }
+.ns-prompt { font-family:var(--mono); font-size:11.5px; line-height:1.6; color:var(--ink-2);
+  background:var(--paper-2); border-left:2px solid var(--rule-hard); padding:9px 11px;
+  white-space:pre-wrap; margin:0; }
+.ns-foot { display:flex; justify-content:flex-end; gap:8px; }
+.copy-btn { font-family:var(--mono); font-size:10px; letter-spacing:0.09em; text-transform:uppercase;
+  font-weight:600; padding:5px 11px; cursor:pointer; background:var(--accent); color:var(--paper-2);
+  border:1px solid var(--accent); border-radius:2px; transition:background 0.12s ease, color 0.12s ease; }
+@media (prefers-color-scheme: dark) { .copy-btn { color:#06201e; } }
+:root[data-theme="dark"] .copy-btn { color:#06201e; }
+:root[data-theme="light"] .copy-btn { color:var(--paper-2); }
+.copy-btn:hover { background:transparent; color:var(--accent); }
+.copy-btn.done { background:var(--ok); border-color:var(--ok); color:var(--paper-2); }
+.ns-payload { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:pre; }
+.ns-fallback { width:100%; min-height:150px; font-family:var(--mono); font-size:11px; line-height:1.55;
+  background:var(--paper-2); color:var(--ink); border:1px solid var(--accent); border-radius:2px;
+  padding:9px 11px; resize:vertical; white-space:pre; }
+
+/* per-<code> inline copy (feature route, &#167;7.4) */
+.copyable { cursor:pointer; border-bottom:1px dotted var(--rule-hard); }
+.copyable:hover { background:var(--accent-dim); }
+.copyable.done { background:var(--ok-dim); }
+
+figure { margin:26px 0; }
+figure img { width:100%; height:auto; display:block; border:1px solid var(--rule-hard); }
+figcaption { font-family:var(--mono); font-size:11px; color:var(--muted); line-height:1.5; margin-top:9px;
+  padding-left:10px; border-left:2px solid var(--rule-hard); max-width:78ch; }
+figcaption b { color:var(--ink-2); font-weight:600; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition:none !important; }
+  html { scroll-behavior:auto; }
+}
+@media print {
+  .theme-toggle, .toolbar, .route-feature .toc { display:none; }
+  body { background:#fff; color:#111; }
+  .card, .visual, .chart, .diagram, .callout, .step { break-inside:avoid; }
+}
+</style>
+</head>
+<body class="dr route-status" data-route="program">
+<button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+<div class="wrap">
+<header class="masthead">
+  <div class="eyebrow"><span>Program status</span><span class="sep">/</span><span>research-foundry</span><span class="sep">/</span><span>rev 3</span><span class="sep">/</span><span>origin/main d71a261d85cf6eb05f12f250c244e7ef253b759e</span><span class="sep">/</span><span>2026-07-26</span></div>
+  <h1>Research Foundry Public Release Program Status</h1>
+  <p class="dek">Research Foundry is already public as source and documentation, and the evidence, assertion, catalog, rights, and trusted-cohort multi-user substrates are substantial. Its differentiated market value is not another literature-search UI: it is accumulated, reviewable assertion capital with source passage, version, lifecycle, evaluation, rights, and downstream-use provenance. The current application remains LAN-hosted rather than a revision-proven public service. Recommended release sequence: formal OSS packaging, curated read-only showcase, invited beta, private ingestion, reviewed public contribution, then federation after interchange, promotion, shared-index, and tombstone contracts mature.</p>
+</header>
+<section aria-label="Vitals"><div class="vitals"><div class="vital is-positive"><div class="k">Source</div><div class="v">PUBLIC</div><div class="sub">GitHub repository &#183; main is the default branch</div><div class="measured">gh repo view --json nameWithOwner,visibility,isPrivate,url,defaultBranchRef on 2026-07-26</div></div><div class="vital is-positive"><div class="k">Main drift</div><div class="v">0</div><div class="sub">HEAD, main and origin/main all d71a261</div><div class="measured">git rev-parse HEAD main origin/main and git ls-remote origin HEAD refs/heads/main</div></div><div class="vital is-warn"><div class="k">Ahead branches</div><div class="v">17</div><div class="sub">all also behind main &#183; historical divergent worktrees</div><div class="measured">git for-each-ref refs/heads plus git rev-list --count main..&lt;branch&gt; and &lt;branch&gt;..main</div></div><div class="vital is-critical"><div class="k">Public app</div><div class="v">0</div><div class="sub">no public hosted-app receipt or deployment manifest</div><div class="measured">repository scan for hosting.json, Docker/Compose/Kubernetes/app-host workflows, tags, releases and deployment receipts</div></div><div class="vital is-warn"><div class="k">LAN surfaces</div><div class="v">2</div><div class="sub">viewer and API health returned HTTP 200; revision unproven</div><div class="measured">curl http://10.42.10.76:3030/ and curl http://10.42.10.76:7432/health on 2026-07-26</div></div><div class="vital is-critical"><div class="k">ERI phase 1</div><div class="v">0/5</div><div class="sub">0 of 5 contract-freeze tasks complete &#183; RPC-1.G unexecuted</div><div class="measured">read untracked worktree-eri-v1 phase-1-progress.md and grep ERI-1.1..ERI-1.5 plus RPC-1.G</div></div></div></section>
+<section><h2>Corrections <span class="h2-note">prior-revision claims now known wrong</span></h2><div class="callout warn"><div class="ct">What changed since the last revision</div><p><strong>Rev 2 claimed:</strong> The ERI vital paired a 0/5 value with the contradictory subtitle &#x27;contract-freeze tasks complete&#x27;.<br><strong>Actually:</strong> Zero of five ERI phase-1 contract-freeze tasks are complete; RPC-1.G remains unexecuted.<br><span class="muted">Verified by: Reconciled against the detailed ERI item and phase-1 progress evidence already cited by the report.</span></p></div></section>
+
+<section><h2>Two tracks to a credible public Research Foundry <span class="h2-note">The public knowledge product can advance before unrestricted public execution, but both tracks must preserve the same evidence and governance contracts.</span></h2><div class="tracks"><div><div class="track-h">Knowledge and product track <em>&mdash; curated public library before open contribution</em></div><div class="step s-done"><div class="code">K1<small>done</small></div><div class="body"><div class="domline"><span class="doms"><span class="dom dom-gov">Release</span><span class="dom dom-build">Application</span></span></div><strong>Public source and documentation.</strong> The repository is public and the GitHub Pages documentation site is reachable.<span class="ev">GitHub visibility PUBLIC &#183; docs HTTP 200</span></div></div><div class="step s-done"><div class="code">K2<small>done</small></div><div class="body"><div class="domline"><span class="doms"><span class="dom dom-know">Evidence</span><span class="dom dom-build">Catalog</span><span class="dom dom-gov">Rights</span></span></div><strong>Evidence and assertion substrate.</strong> Run-local provenance, reusable assertions, rights records, lexical catalogs, reports, and governed reuse are merged.<span class="ev">main commits f95585b &#183; 17a2cb0 &#183; 95e8419 &#183; d71a261</span></div></div><div class="step s-part"><div class="code">K3<small>part</small></div><div class="body"><div class="domline"><span class="doms"><span class="dom dom-know">Interchange</span><span class="dom dom-know">Evidence</span><span class="dom dom-gov">Governance</span></span></div><strong>Controlled contribution and interchange.</strong> The external-report packet is planned and progress is scaffolded, but ERI phase 1 has completed no tasks and RPC-1.G is absent.<span class="ev">ERI-1.1..ERI-1.5 pending &#183; RPC-1.G unexecuted</span></div></div><div class="step s-none"><div class="code">K4<small>none</small></div><div class="body"><div class="domline"><span class="doms"><span class="dom dom-build">Catalog</span><span class="dom dom-gov">Release</span><span class="dom dom-gov">Rights</span></span></div><strong>Curated public assertion library.</strong> Start with one canonical public source/assertion spine and governed domain cells. Public promotion must be reviewed, rights-cleared, non-PHI, lifecycle-aware, and reversible.<span class="ev">no public app receipt &#183; no semantic release</span></div></div><div class="step s-blocked"><div class="code">K5<small>blocked</small></div><div class="body"><div class="domline"><span class="doms"><span class="dom dom-build">Catalog</span><span class="dom dom-know">Interchange</span><span class="dom dom-gov">Governance</span></span></div><strong>Federated domain catalogs.</strong> Federate only after packet interchange, public-promotion, shared-index, correction, retraction, and tombstone contracts are qualified.<span class="ev">shared indexes and public-rights promotion remain deferred</span></div></div></div><div><div class="track-h">Hosted platform track <em>&mdash; secure contribution, jobs and scale</em></div><div class="step s-done"><div class="code">P1<small>done</small></div><div class="body"><div class="domline"><span class="doms"><span class="dom dom-gov">Identity</span><span class="dom dom-gov">Governance</span><span class="dom dom-build">Infrastructure</span></span></div><strong>Trusted-cohort identity and isolation substrate.</strong> Deployment presets, Clerk/local auth, RBAC, service accounts, PATs, visibility, and workspace enforcement are merged.<span class="ev">99ef69d &#183; 08559a0 &#183; ACT-406 trusted-cohort acceptance</span></div></div><div class="step s-part"><div class="code">P2<small>part</small></div><div class="body"><div class="domline"><span class="doms"><span class="dom dom-gov">Identity</span><span class="dom dom-gov">Governance</span><span class="dom dom-build">Catalog</span></span></div><strong>Adversarial tenant closure.</strong> DF-004 engineering landed, but the formal DI-1 re-audit and Mode-D signoff have not lifted the trusted-cohort boundary; catalog import/stat seams remain.<span class="ev">ADR lines 85&#8211;89 &#183; WKSP-304 P4 TODOs</span></div></div><div class="step s-none"><div class="code">P3<small>none</small></div><div class="body"><div class="domline"><span class="doms"><span class="dom dom-build">Execution</span><span class="dom dom-build">Infrastructure</span><span class="dom dom-gov">Identity</span></span></div><strong>Durable hosted execution plane.</strong> Production agent spawn is blocked behind Mode-D Gate #2 and the SDK runner is absent; no queue, hosted key vault, or production datastore migration is shipped.<span class="ev">agent_job_service.py:367&#8211;373 &#183; DF-001..DF-003 deferred</span></div></div><div class="step s-blocked"><div class="code">P4<small>blocked</small></div><div class="body"><div class="domline"><span class="doms"><span class="dom dom-build">Execution</span><span class="dom dom-gov">Identity</span><span class="dom dom-gov">Governance</span></span></div><strong>Provider and cost policy.</strong> Allowlisted BYOK can follow encrypted tenant key references and budget controls. Arbitrary BYOM belongs only in isolated private/quarantined execution until endpoint trust and data-egress policy are proven.<span class="ev">credential_b64 seam exists &#183; real runner and budget enforcement absent</span></div></div></div></div><div class="here"><span>You are here</span><span>public source + docs &#183; LAN app &#183; strong evidence core &#183; no public hosted service</span></div></section>
+<section><h2>Items <span class="h2-note">every open item carries a copyable handoff</span></h2><div class="scroller"><table class="data"><thead><tr><th>Item</th><th>Domains</th><th>State</th><th>Notes &amp; next step</th></tr></thead><tbody><tr><td>Public source repository and documentation</td><td><span class="doms"><span class="dom dom-gov">Release</span><span class="dom dom-build">Application</span></span></td><td class="nowrap"><span class="pill p-ok">public</span><span class="muted"> &middot; self</span></td><td>GitHub reports the repository PUBLIC; the GitHub Pages site returned HTTP 200. No tag or GitHub Release exists.</td></tr><tr><td>Evidence, assertion, rights, catalog, and reuse foundation</td><td><span class="doms"><span class="dom dom-know">Evidence</span><span class="dom dom-build">Catalog</span><span class="dom dom-gov">Rights</span></span></td><td class="nowrap"><span class="pill p-ok">merged</span><span class="muted"> &middot; self</span></td><td>Current main contains reusable assertion identity and lifecycle, rights write ceilings, catalog-assisted planning, and deterministic claim-term indexing. Owner-data and real-corpus qualification remain separate items.</td></tr><tr><td>Complete the external research report interchange contract</td><td><span class="doms"><span class="dom dom-know">Interchange</span><span class="dom dom-know">Evidence</span><span class="dom dom-gov">Governance</span></span></td><td class="nowrap"><span class="pill p-part">0 of 5 phase-1 tasks</span><span class="muted"> &middot; self</span></td><td>An active worktree has progress scaffolding only. Research Provenance Continuity is still draft, so ERI must honor the documented compatibility escape hatch without inventing authority.<details class="ns"><summary>Next step</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd">/dev:execute-plan</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">docs/project_plans/implementation_plans/enhancements/external-research-report-interchange-v1.md<br />docs/project_plans/implementation_plans/enhancements/research-provenance-continuity-v1.md</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">ERI-1.1</span><span class="idc">RPC-1.G</span></span></div><div class="ns-row"><span class="kk">Gates</span><span class="vv"><span class="idc gate">RPC-1.G</span><span class="idc gate">ERI-1.G</span></span></div><p class="ns-prompt">Execute ERI phase 1 contract freeze from the existing eri-v1 worktree. Resolve the RPC-1.G dependency only through the documented forward-compatible seam; do not fabricate missing provenance schemas or weaken hostile-input and SSRF controls.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">/dev:execute-plan
+
+Task: Complete the external research report interchange contract
+Domains: Interchange, Evidence, Governance
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - docs/project_plans/implementation_plans/enhancements/external-research-report-interchange-v1.md
+  - docs/project_plans/implementation_plans/enhancements/research-provenance-continuity-v1.md
+
+Requirement IDs: ERI-1.1, RPC-1.G
+Gates: RPC-1.G, ERI-1.G (blocked-external, human-only)
+
+Prompt:
+Execute ERI phase 1 contract freeze from the existing eri-v1 worktree. Resolve the RPC-1.G dependency only through the documented forward-compatible seam; do not fabricate missing provenance schemas or weaken hostile-input and SSRF controls.
+
+Constraints: Preserve unrelated worktree changes. Keep Markdown/YAML evidence bundles and immutable provenance first-class. Never treat repository readiness, trusted-cohort acceptance, fixture validation, or a healthy LAN endpoint as proof of adversarial multi-tenant safety, owner-data qualification, public deployment, clinical validation, or a released hosted service. Human Mode-D signoffs remain human-only.</pre></div></details></td></tr><tr><td>Re-certify adversarial multi-tenant isolation</td><td><span class="doms"><span class="dom dom-gov">Identity</span><span class="dom dom-gov">Governance</span><span class="dom dom-know">Validation</span></span></td><td class="nowrap"><span class="pill p-part">engineering landed &#183; certification pending</span><span class="muted"> &middot; self</span></td><td>DF-004 closed the headline run/evidence isolation defect in code. The accepted DI-1 artifact remains explicitly scoped to trusted-cohort multi_user.<details class="ns"><summary>Next step</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd">/dev:execute-plan</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">docs/dev/architecture/adr-runs-workspace-isolation.md<br />docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md<br />.claude/progress/public-multiuser-release-activation/plan-completion.md</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">DF-004</span><span class="idc">ACT-406</span></span></div><div class="ns-row"><span class="kk">Gates</span><span class="vv"><span class="idc gate">DI-1</span><span class="idc gate">Mode D</span></span></div><p class="ns-prompt">Run a formal DI-1 delta re-audit against current HEAD, including catalog, run, report, assertion, job, admin and share surfaces. Stop at the human Mode-D decision; do not self-sign or claim adversarial tenancy from code review alone.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">/dev:execute-plan
+
+Task: Re-certify adversarial multi-tenant isolation
+Domains: Identity, Governance, Validation
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - docs/dev/architecture/adr-runs-workspace-isolation.md
+  - docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md
+  - .claude/progress/public-multiuser-release-activation/plan-completion.md
+
+Requirement IDs: DF-004, ACT-406
+Gates: DI-1, Mode D (blocked-external, human-only)
+
+Prompt:
+Run a formal DI-1 delta re-audit against current HEAD, including catalog, run, report, assertion, job, admin and share surfaces. Stop at the human Mode-D decision; do not self-sign or claim adversarial tenancy from code review alone.
+
+Constraints: Preserve unrelated worktree changes. Keep Markdown/YAML evidence bundles and immutable provenance first-class. Never treat repository readiness, trusted-cohort acceptance, fixture validation, or a healthy LAN endpoint as proof of adversarial multi-tenant safety, owner-data qualification, public deployment, clinical validation, or a released hosted service. Human Mode-D signoffs remain human-only.</pre></div></details></td></tr><tr><td>Close catalog stats and import workspace seams</td><td><span class="doms"><span class="dom dom-build">Catalog</span><span class="dom dom-gov">Identity</span><span class="dom dom-gov">Governance</span></span></td><td class="nowrap"><span class="pill p-blocked">actionable defect</span><span class="muted"> &middot; self</span></td><td>Catalog stats, import-run, and import-all reserve request identity but do not pass it into the service; imports currently land in the default workspace.<details class="ns"><summary>Next step</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd">/plan:plan-feature --tier=2</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">src/research_foundry/api/routers/catalog.py<br />src/research_foundry/services/catalog_service.py</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">WKSP-304 P4</span></span></div><div class="ns-row"><span class="kk">Gates</span><span class="vv"><span class="idc gate">DI-1</span></span></div><p class="ns-prompt">Plan and implement identity-scoped catalog stats/import ownership without weakening single-user compatibility. Include cross-workspace denial, public visibility, import attribution, facet non-leakage, migration, and concurrent-write tests.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">/plan:plan-feature --tier=2
+
+Task: Close catalog stats and import workspace seams
+Domains: Catalog, Identity, Governance
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - src/research_foundry/api/routers/catalog.py
+  - src/research_foundry/services/catalog_service.py
+
+Requirement IDs: WKSP-304 P4
+Gates: DI-1 (blocked-external, human-only)
+
+Prompt:
+Plan and implement identity-scoped catalog stats/import ownership without weakening single-user compatibility. Include cross-workspace denial, public visibility, import attribution, facet non-leakage, migration, and concurrent-write tests.
+
+Constraints: Preserve unrelated worktree changes. Keep Markdown/YAML evidence bundles and immutable provenance first-class. Never treat repository readiness, trusted-cohort acceptance, fixture validation, or a healthy LAN endpoint as proof of adversarial multi-tenant safety, owner-data qualification, public deployment, clinical validation, or a released hosted service. Human Mode-D signoffs remain human-only.</pre></div></details></td></tr><tr><td>Build the durable hosted research execution plane</td><td><span class="doms"><span class="dom dom-build">Execution</span><span class="dom dom-build">Infrastructure</span><span class="dom dom-gov">Identity</span></span></td><td class="nowrap"><span class="pill p-blocked">production spawn blocked</span><span class="muted"> &middot; self</span></td><td>The jobs API and credential firewall are present, but the configured SDK runner does not exist and the production path intentionally raises. Process-local registries and file-polled SSE are not a multi-worker queue.<details class="ns"><summary>Next step</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd">/plan:plan-feature --tier=3</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">src/research_foundry/services/agent_job_service.py<br />src/research_foundry/api/routers/agent_jobs.py</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">Mode-D Gate #2</span></span></div><div class="ns-row"><span class="kk">Gates</span><span class="vv"><span class="idc gate">Mode-D Gate #2</span></span></div><p class="ns-prompt">Plan a queue-backed worker plane with durable state, idempotency, cancellation, retry, quotas, cost attribution, provider allowlisting, and encrypted tenant key references. Preserve the existing credential firewall and require human approval before production provider execution.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">/plan:plan-feature --tier=3
+
+Task: Build the durable hosted research execution plane
+Domains: Execution, Infrastructure, Identity
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - src/research_foundry/services/agent_job_service.py
+  - src/research_foundry/api/routers/agent_jobs.py
+
+Requirement IDs: Mode-D Gate #2
+Gates: Mode-D Gate #2 (blocked-external, human-only)
+
+Prompt:
+Plan a queue-backed worker plane with durable state, idempotency, cancellation, retry, quotas, cost attribution, provider allowlisting, and encrypted tenant key references. Preserve the existing credential firewall and require human approval before production provider execution.
+
+Constraints: Preserve unrelated worktree changes. Keep Markdown/YAML evidence bundles and immutable provenance first-class. Never treat repository readiness, trusted-cohort acceptance, fixture validation, or a healthy LAN endpoint as proof of adversarial multi-tenant safety, owner-data qualification, public deployment, clinical validation, or a released hosted service. Human Mode-D signoffs remain human-only.</pre></div></details></td></tr><tr><td>Run the assertion-ledger private qualification</td><td><span class="doms"><span class="dom dom-know">Evidence</span><span class="dom dom-know">Validation</span><span class="dom dom-gov">Governance</span></span></td><td class="nowrap"><span class="pill p-crit">owner data absent</span><span class="muted"> &middot; self</span></td><td>Repository readiness is implemented and reviewed, but no authorized private workspace, owner data, rollout authority, or observation window was supplied.<details class="ns human"><summary>Human action</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd human">human decision &mdash; no agent path</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">.Codex/progress/reusable-assertion-ledger/phase-9-progress.md</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">P8-004</span><span class="idc">AC-P8-ROLLOUT</span></span></div><div class="ns-row"><span class="kk">Gates</span><span class="vv"><span class="idc gate">P8-004</span><span class="idc gate">owner authorization</span></span></div><p class="ns-prompt">The workspace owner must authorize a specific private workspace, data scope, observation window, and rollout operator. Preserve not_executed_owner_data_absent until that authorization and data are explicitly supplied.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">human decision -- no agent path
+
+Task: Run the assertion-ledger private qualification
+Domains: Evidence, Validation, Governance
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - .Codex/progress/reusable-assertion-ledger/phase-9-progress.md
+
+Requirement IDs: P8-004, AC-P8-ROLLOUT
+Gates: P8-004, owner authorization (blocked-external, human-only)
+
+Prompt:
+The workspace owner must authorize a specific private workspace, data scope, observation window, and rollout operator. Preserve not_executed_owner_data_absent until that authorization and data are explicitly supplied.
+
+Constraints: Preserve unrelated worktree changes. Keep Markdown/YAML evidence bundles and immutable provenance first-class. Never treat repository readiness, trusted-cohort acceptance, fixture validation, or a healthy LAN endpoint as proof of adversarial multi-tenant safety, owner-data qualification, public deployment, clinical validation, or a released hosted service. Human Mode-D signoffs remain human-only.</pre></div></details></td></tr><tr><td>Qualify term indexing on the real corpus and runtime UI</td><td><span class="doms"><span class="dom dom-build">Catalog</span><span class="dom dom-know">Validation</span><span class="dom dom-build">Application</span></span></td><td class="nowrap"><span class="pill p-part">fixture-verified only</span><span class="muted"> &middot; self</span></td><td>The feature is merged and gate-reviewed, but the seven private pediatric-CDS bundles and a wide-screen browser smoke were unavailable.<details class="ns"><summary>Next step</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd">/dev:autopilot</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">.claude/progress/claim-term-indexing/plan-completion.md</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">AC-8</span><span class="idc">TASK-3.3</span></span></div><div class="ns-row"><span class="kk">Gates</span><span class="vv"><span class="idc gate">owner corpus access</span></span></div><p class="ns-prompt">With authorized access to the seven pediatric-CDS bundles, run dry then wet backfill, measure classifier precision and recall, verify zero claim-status or identity drift, and capture a redacted 1440px catalog/claim-ledger browser smoke.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">/dev:autopilot
+
+Task: Qualify term indexing on the real corpus and runtime UI
+Domains: Catalog, Validation, Application
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - .claude/progress/claim-term-indexing/plan-completion.md
+
+Requirement IDs: AC-8, TASK-3.3
+Gates: owner corpus access (blocked-external, human-only)
+
+Prompt:
+With authorized access to the seven pediatric-CDS bundles, run dry then wet backfill, measure classifier precision and recall, verify zero claim-status or identity drift, and capture a redacted 1440px catalog/claim-ledger browser smoke.
+
+Constraints: Preserve unrelated worktree changes. Keep Markdown/YAML evidence bundles and immutable provenance first-class. Never treat repository readiness, trusted-cohort acceptance, fixture validation, or a healthy LAN endpoint as proof of adversarial multi-tenant safety, owner-data qualification, public deployment, clinical validation, or a released hosted service. Human Mode-D signoffs remain human-only.</pre></div></details></td></tr><tr><td>Shape production storage, shared limits, and enterprise identity</td><td><span class="doms"><span class="dom dom-build">Infrastructure</span><span class="dom dom-gov">Identity</span><span class="dom dom-gov">Release</span></span></td><td class="nowrap"><span class="pill p-none">deferred foundations</span><span class="muted"> &middot; self</span></td><td>Postgres, live OIDC, fine-grained service-account scopes, shared rate limits, object storage, and multi-node coordination are not implemented.<details class="ns"><summary>Next step</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd">/plan:plan-feature --tier=3</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">.claude/progress/public-multiuser-release-activation/plan-completion.md<br />docs/project_plans/design-specs/rbac-db-postgres-migration.md<br />docs/project_plans/design-specs/oidc-adapter-live-implementation.md</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">DF-001</span><span class="idc">DF-002</span><span class="idc">DF-003</span></span></div><div class="ns-row"><span class="kk">Gates</span><span class="vv"><span class="idc gate">measured scale baseline</span><span class="idc gate">DI-1</span></span></div><p class="ns-prompt">Create a measured hosted-runtime plan covering Postgres, object storage, shared rate limits, backups, migration, OIDC, and service-account scope enforcement. Benchmark current SQLite contention first and preserve file-backed evidence as an export contract, not the hot query plane.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">/plan:plan-feature --tier=3
+
+Task: Shape production storage, shared limits, and enterprise identity
+Domains: Infrastructure, Identity, Release
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - .claude/progress/public-multiuser-release-activation/plan-completion.md
+  - docs/project_plans/design-specs/rbac-db-postgres-migration.md
+  - docs/project_plans/design-specs/oidc-adapter-live-implementation.md
+
+Requirement IDs: DF-001, DF-002, DF-003
+Gates: measured scale baseline, DI-1 (blocked-external, human-only)
+
+Prompt:
+Create a measured hosted-runtime plan covering Postgres, object storage, shared rate limits, backups, migration, OIDC, and service-account scope enforcement. Benchmark current SQLite contention first and preserve file-backed evidence as an export contract, not the hot query plane.
+
+Constraints: Preserve unrelated worktree changes. Keep Markdown/YAML evidence bundles and immutable provenance first-class. Never treat repository readiness, trusted-cohort acceptance, fixture validation, or a healthy LAN endpoint as proof of adversarial multi-tenant safety, owner-data qualification, public deployment, clinical validation, or a released hosted service. Human Mode-D signoffs remain human-only.</pre></div></details></td></tr><tr><td>Hosted Knowledge MCP and canonical remote access</td><td><span class="doms"><span class="dom dom-know">Interchange</span><span class="dom dom-gov">Identity</span><span class="dom dom-gov">Release</span></span></td><td class="nowrap"><span class="pill p-deferred">local schema alignment only</span><span class="muted"> &middot; self</span></td><td>The planned v1 is explicitly local stdio and must not be described as OpenAI/ChatGPT compatible. Remote HTTPS, OAuth, canonical URLs, and cache isolation remain separately gated.<details class="ns"><summary>Next step</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd">/dev:execute-plan</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md<br />docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-transport.md</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">KMCP-6.G</span><span class="idc">RPC-1.G</span></span></div><div class="ns-row"><span class="kk">Gates</span><span class="vv"><span class="idc gate">RPC-1.G</span><span class="idc gate">CARP-2.G</span><span class="idc gate">KMCP-6.G</span></span></div><div class="ns-row"><span class="kk">Trigger</span><span class="vv">Re-enter after RPC-1.G and the local Knowledge MCP exact-tree gates pass, and after a remote threat model, canonical URL contract, cache-isolation design, and named hosted-client qualification matrix are approved.</span></div><p class="ns-prompt">Execute only the local read-only Knowledge MCP plan once dependencies clear. Keep remote transport absent; then shape the canonical HTTPS profile through the linked threat-model and cache-isolation gates without reusing ambient filesystem or operator credentials.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">/dev:execute-plan
+
+Task: Hosted Knowledge MCP and canonical remote access
+Domains: Interchange, Identity, Release
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
+  - docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-transport.md
+
+Requirement IDs: KMCP-6.G, RPC-1.G
+Gates: RPC-1.G, CARP-2.G, KMCP-6.G (blocked-external, human-only)
+Re-entry trigger: Re-enter after RPC-1.G and the local Knowledge MCP exact-tree gates pass, and after a remote threat model, canonical URL contract, cache-isolation design, and named hosted-client qualification matrix are approved.
+
+Prompt:
+Execute only the local read-only Knowledge MCP plan once dependencies clear. Keep remote transport absent; then shape the canonical HTTPS profile through the linked threat-model and cache-isolation gates without reusing ambient filesystem or operator credentials.
+
+Constraints: Preserve unrelated worktree changes. Keep Markdown/YAML evidence bundles and immutable provenance first-class. Never treat repository readiness, trusted-cohort acceptance, fixture validation, or a healthy LAN endpoint as proof of adversarial multi-tenant safety, owner-data qualification, public deployment, clinical validation, or a released hosted service. Human Mode-D signoffs remain human-only.</pre></div></details></td></tr></tbody></table></div></section>
+<section><h2>Visuals</h2><div class="callout"><div class="ct">No visual</div><p>No screenshots are embedded because the public-hosted application does not exist and the LAN build revision could not be proven. The two-track ladder is the evidence-aligned visual.</p></div></section>
+<section><h2>Domain key <span class="h2-note">closed vocabulary used throughout</span></h2><div class="scroller"><table class="data" style="min-width:520px;"><thead><tr><th>Group</th><th>Domains</th></tr></thead><tbody><tr><td><span class="dom dom-build">Build</span></td><td><span class="doms"><span class="dom dom-build">Application</span><span class="dom dom-build">Catalog</span><span class="dom dom-build">Execution</span><span class="dom dom-build">Infrastructure</span></span></td></tr><tr><td><span class="dom dom-know">Knowledge</span></td><td><span class="doms"><span class="dom dom-know">Evidence</span><span class="dom dom-know">Interchange</span><span class="dom dom-know">Validation</span></span></td></tr><tr><td><span class="dom dom-gov">Governance</span></td><td><span class="doms"><span class="dom dom-gov">Governance</span><span class="dom dom-gov">Identity</span><span class="dom dom-gov">Release</span><span class="dom dom-gov">Rights</span></span></td></tr></tbody></table></div></section>
+<footer><strong>Preserve unrelated worktree changes. Keep Markdown/YAML evidence bundles and immutable provenance first-class. Never treat repository readiness, trusted-cohort acceptance, fixture validation, or a healthy LAN endpoint as proof of adversarial multi-tenant safety, owner-data qualification, public deployment, clinical validation, or a released hosted service. Human Mode-D signoffs remain human-only.</strong><br /><br />Revision 3, generated by delivery-report 0.1.0 at 2026-07-26. <p class="muted">Research Foundry is already public as source and documentation, and the evidence, assertion, catalog, rights, and trusted-cohort multi-user substrates are substantial. Its differentiated market value is not another literature-search UI: it is accumulated, reviewable assertion capital with source passage, version, lifecycle, evaluation, rights, and downstream-use provenance. The current application remains LAN-hosted rather than a revision-proven public service. Recommended release sequence: formal OSS packaging, curated read-only showcase, invited beta, private ingestion, reviewed public contribution, then federation after interchange, promotion, shared-index, and tombstone contracts mature.</p> Source manifest remains canonical; the handoff prompts are drafting aids &mdash; pasting one starts work, it does not authorize anything.</footer>
+</div>
+<script>/* delivery-report client behaviour. ASCII-only (Appendix C pitfall 1: entities do not
+ * decode inside <script>). No external calls; pure DOM. */
+(function () {
+  "use strict";
+
+  /* ---- theme toggle: a viewer choice that wins over the media query (Sec 4.2) ---- */
+  var root = document.documentElement;
+  var toggle = document.querySelector(".theme-toggle");
+  function currentMode() {
+    var set = root.getAttribute("data-theme");
+    if (set) return set;
+    return (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+  }
+  function paintToggle() {
+    if (!toggle) return;
+    var next = currentMode() === "dark" ? "light" : "dark";
+    toggle.textContent = next === "dark" ? "Dark" : "Light";
+    toggle.setAttribute("aria-label", "Switch to " + next + " theme");
+  }
+  if (toggle) {
+    toggle.addEventListener("click", function () {
+      root.setAttribute("data-theme", currentMode() === "dark" ? "light" : "dark");
+      paintToggle();
+    });
+    paintToggle();
+  }
+
+  /* ---- feature-route toolbar: copy summary + print ---- */
+  var copySummary = document.querySelector("[data-copy-summary]");
+  if (copySummary) {
+    copySummary.addEventListener("click", function () {
+      var lede = document.querySelector("[data-summary]");
+      if (lede) writeText(lede.textContent.trim() + "\n", copySummary, "Copied");
+    });
+  }
+  var printBtn = document.querySelector("[data-print]");
+  if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
+
+  /* ---- per-<code> inline copy (feature route, Sec 7.4) ---- */
+  document.addEventListener("click", function (ev) {
+    var c = ev.target && ev.target.closest ? ev.target.closest("code.copyable") : null;
+    if (!c) return;
+    writeText(c.textContent, c, null, function () {
+      c.classList.add("done");
+      window.setTimeout(function () { c.classList.remove("done"); }, 1200);
+    });
+  });
+
+  /* ---- handoff copy component: three-tier degrade path.
+   * The settled/guard race is load-bearing: Chrome can leave writeText's promise
+   * permanently pending when the click carries no user activation. ---- */
+  function fallbackCopy(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", "");
+    ta.style.position = "fixed"; ta.style.top = "-1000px";
+    document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+  function revealForManualCopy(body, text) {
+    var existing = body.querySelector(".ns-fallback");
+    if (existing) { existing.focus(); existing.select(); return; }
+    var ta = document.createElement("textarea");
+    ta.className = "ns-fallback";
+    ta.value = text;
+    ta.setAttribute("aria-label", "Handoff text - select and copy manually");
+    body.insertBefore(ta, body.querySelector(".ns-foot"));
+    ta.focus(); ta.select();
+  }
+  function flash(btn, label) {
+    if (!btn.getAttribute("data-label")) btn.setAttribute("data-label", btn.textContent);
+    btn.textContent = label; btn.classList.add("done");
+    window.setTimeout(function () {
+      btn.textContent = btn.getAttribute("data-label");
+      btn.classList.remove("done");
+    }, 1600);
+  }
+  /* Shared writer used by summary + inline-code copy (single tier + fallback). */
+  function writeText(text, btn, okLabel, onOk) {
+    function done() { if (onOk) onOk(); else if (btn && okLabel) flash(btn, okLabel); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      var settled = false;
+      var guard = window.setTimeout(function () {
+        if (!settled) { settled = true; if (fallbackCopy(text)) done(); }
+      }, 1200);
+      navigator.clipboard.writeText(text).then(
+        function () { if (settled) return; settled = true; window.clearTimeout(guard); done(); },
+        function () { if (settled) return; settled = true; window.clearTimeout(guard); if (fallbackCopy(text)) done(); }
+      );
+    } else if (fallbackCopy(text)) { done(); }
+  }
+
+  document.addEventListener("click", function (ev) {
+    var btn = ev.target && ev.target.closest ? ev.target.closest(".copy-btn") : null;
+    if (!btn) return;
+    var body = btn.closest(".ns-body");
+    var payload = body ? body.querySelector(".ns-payload") : null;
+    if (!payload) return;
+    var text = payload.textContent.replace(/^\s+/, "").replace(/\s+$/, "") + "\n";
+    function degrade() {
+      if (fallbackCopy(text)) { flash(btn, "Copied"); return; }
+      revealForManualCopy(body, text);
+      flash(btn, "Copy manually");
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      var settled = false;
+      var guard = window.setTimeout(function () {
+        if (!settled) { settled = true; degrade(); }
+      }, 1200);
+      navigator.clipboard.writeText(text).then(
+        function () { if (settled) return; settled = true; window.clearTimeout(guard); flash(btn, "Copied"); },
+        function () { if (settled) return; settled = true; window.clearTimeout(guard); degrade(); }
+      );
+    } else {
+      degrade();
+    }
+  });
+})();
+</script>
+</body>
+</html>

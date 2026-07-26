@@ -1,0 +1,445 @@
+{
+  "schema_version": "1.0",
+  "report": {
+    "route": "program",
+    "title": "Research Foundry Public Release Program Status",
+    "subject": "research-foundry",
+    "revision": 3,
+    "generated_from": {
+      "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+      "ref": "origin/main",
+      "commit": "d71a261d85cf6eb05f12f250c244e7ef253b759e"
+    },
+    "truth_status": "partially_verified",
+    "generated_by": "delivery-report 0.1.0",
+    "generated_at": "2026-07-26",
+    "scope_note": "Research Foundry is already public as source and documentation, and the evidence, assertion, catalog, rights, and trusted-cohort multi-user substrates are substantial. Its differentiated market value is not another literature-search UI: it is accumulated, reviewable assertion capital with source passage, version, lifecycle, evaluation, rights, and downstream-use provenance. The current application remains LAN-hosted rather than a revision-proven public service. Recommended release sequence: formal OSS packaging, curated read-only showcase, invited beta, private ingestion, reviewed public contribution, then federation after interchange, promotion, shared-index, and tombstone contracts mature.",
+    "constraints": "Preserve unrelated worktree changes. Keep Markdown/YAML evidence bundles and immutable provenance first-class. Never treat repository readiness, trusted-cohort acceptance, fixture validation, or a healthy LAN endpoint as proof of adversarial multi-tenant safety, owner-data qualification, public deployment, clinical validation, or a released hosted service. Human Mode-D signoffs remain human-only."
+  },
+  "vitals": [
+    {
+      "key": "Source",
+      "value": "PUBLIC",
+      "sub": "GitHub repository · main is the default branch",
+      "severity": "positive",
+      "measured_by": "gh repo view --json nameWithOwner,visibility,isPrivate,url,defaultBranchRef on 2026-07-26"
+    },
+    {
+      "key": "Main drift",
+      "value": "0",
+      "sub": "HEAD, main and origin/main all d71a261",
+      "severity": "positive",
+      "measured_by": "git rev-parse HEAD main origin/main and git ls-remote origin HEAD refs/heads/main"
+    },
+    {
+      "key": "Ahead branches",
+      "value": "17",
+      "sub": "all also behind main · historical divergent worktrees",
+      "severity": "warn",
+      "measured_by": "git for-each-ref refs/heads plus git rev-list --count main..<branch> and <branch>..main"
+    },
+    {
+      "key": "Public app",
+      "value": "0",
+      "sub": "no public hosted-app receipt or deployment manifest",
+      "severity": "critical",
+      "measured_by": "repository scan for hosting.json, Docker/Compose/Kubernetes/app-host workflows, tags, releases and deployment receipts"
+    },
+    {
+      "key": "LAN surfaces",
+      "value": "2",
+      "sub": "viewer and API health returned HTTP 200; revision unproven",
+      "severity": "warn",
+      "measured_by": "curl http://10.42.10.76:3030/ and curl http://10.42.10.76:7432/health on 2026-07-26"
+    },
+    {
+      "key": "ERI phase 1",
+      "value": "0/5",
+      "sub": "0 of 5 contract-freeze tasks complete · RPC-1.G unexecuted",
+      "severity": "critical",
+      "measured_by": "read untracked worktree-eri-v1 phase-1-progress.md and grep ERI-1.1..ERI-1.5 plus RPC-1.G"
+    }
+  ],
+  "corrections": [
+    {
+      "revision": 2,
+      "claimed": "The ERI vital paired a 0/5 value with the contradictory subtitle 'contract-freeze tasks complete'.",
+      "actual": "Zero of five ERI phase-1 contract-freeze tasks are complete; RPC-1.G remains unexecuted.",
+      "verified_by": "Reconciled against the detailed ERI item and phase-1 progress evidence already cited by the report."
+    }
+  ],
+  "domains": {
+    "Application": "build",
+    "Catalog": "build",
+    "Execution": "build",
+    "Infrastructure": "build",
+    "Evidence": "knowledge",
+    "Interchange": "knowledge",
+    "Validation": "knowledge",
+    "Governance": "governance",
+    "Identity": "governance",
+    "Release": "governance",
+    "Rights": "governance"
+  },
+  "visuals": {
+    "ladder": {
+      "title": "Two tracks to a credible public Research Foundry",
+      "caption": "The public knowledge product can advance before unrestricted public execution, but both tracks must preserve the same evidence and governance contracts.",
+      "tracks": [
+        {
+          "title": "Knowledge and product track",
+          "note": "curated public library before open contribution",
+          "steps": [
+            {
+              "code": "K1",
+              "state": "done",
+              "label": "Public source and documentation.",
+              "body": "The repository is public and the GitHub Pages documentation site is reachable.",
+              "domains": ["Release", "Application"],
+              "ev": "GitHub visibility PUBLIC · docs HTTP 200"
+            },
+            {
+              "code": "K2",
+              "state": "done",
+              "label": "Evidence and assertion substrate.",
+              "body": "Run-local provenance, reusable assertions, rights records, lexical catalogs, reports, and governed reuse are merged.",
+              "domains": ["Evidence", "Catalog", "Rights"],
+              "ev": "main commits f95585b · 17a2cb0 · 95e8419 · d71a261"
+            },
+            {
+              "code": "K3",
+              "state": "part",
+              "label": "Controlled contribution and interchange.",
+              "body": "The external-report packet is planned and progress is scaffolded, but ERI phase 1 has completed no tasks and RPC-1.G is absent.",
+              "domains": ["Interchange", "Evidence", "Governance"],
+              "ev": "ERI-1.1..ERI-1.5 pending · RPC-1.G unexecuted"
+            },
+            {
+              "code": "K4",
+              "state": "none",
+              "label": "Curated public assertion library.",
+              "body": "Start with one canonical public source/assertion spine and governed domain cells. Public promotion must be reviewed, rights-cleared, non-PHI, lifecycle-aware, and reversible.",
+              "domains": ["Catalog", "Release", "Rights"],
+              "ev": "no public app receipt · no semantic release"
+            },
+            {
+              "code": "K5",
+              "state": "blocked",
+              "label": "Federated domain catalogs.",
+              "body": "Federate only after packet interchange, public-promotion, shared-index, correction, retraction, and tombstone contracts are qualified.",
+              "domains": ["Catalog", "Interchange", "Governance"],
+              "ev": "shared indexes and public-rights promotion remain deferred"
+            }
+          ]
+        },
+        {
+          "title": "Hosted platform track",
+          "note": "secure contribution, jobs and scale",
+          "steps": [
+            {
+              "code": "P1",
+              "state": "done",
+              "label": "Trusted-cohort identity and isolation substrate.",
+              "body": "Deployment presets, Clerk/local auth, RBAC, service accounts, PATs, visibility, and workspace enforcement are merged.",
+              "domains": ["Identity", "Governance", "Infrastructure"],
+              "ev": "99ef69d · 08559a0 · ACT-406 trusted-cohort acceptance"
+            },
+            {
+              "code": "P2",
+              "state": "part",
+              "label": "Adversarial tenant closure.",
+              "body": "DF-004 engineering landed, but the formal DI-1 re-audit and Mode-D signoff have not lifted the trusted-cohort boundary; catalog import/stat seams remain.",
+              "domains": ["Identity", "Governance", "Catalog"],
+              "ev": "ADR lines 85–89 · WKSP-304 P4 TODOs"
+            },
+            {
+              "code": "P3",
+              "state": "none",
+              "label": "Durable hosted execution plane.",
+              "body": "Production agent spawn is blocked behind Mode-D Gate #2 and the SDK runner is absent; no queue, hosted key vault, or production datastore migration is shipped.",
+              "domains": ["Execution", "Infrastructure", "Identity"],
+              "ev": "agent_job_service.py:367–373 · DF-001..DF-003 deferred"
+            },
+            {
+              "code": "P4",
+              "state": "blocked",
+              "label": "Provider and cost policy.",
+              "body": "Allowlisted BYOK can follow encrypted tenant key references and budget controls. Arbitrary BYOM belongs only in isolated private/quarantined execution until endpoint trust and data-egress policy are proven.",
+              "domains": ["Execution", "Identity", "Governance"],
+              "ev": "credential_b64 seam exists · real runner and budget enforcement absent"
+            }
+          ]
+        }
+      ],
+      "here": {
+        "label": "You are here",
+        "detail": "public source + docs · LAN app · strong evidence core · no public hosted service"
+      }
+    }
+  },
+  "items": [
+    {
+      "id": "public-source-docs",
+      "title": "Public source repository and documentation",
+      "kind": "shipped",
+      "domains": ["Release", "Application"],
+      "status_label": "public",
+      "verified_by": "self",
+      "note": "GitHub reports the repository PUBLIC; the GitHub Pages site returned HTTP 200. No tag or GitHub Release exists."
+    },
+    {
+      "id": "evidence-foundation",
+      "title": "Evidence, assertion, rights, catalog, and reuse foundation",
+      "kind": "shipped",
+      "domains": ["Evidence", "Catalog", "Rights"],
+      "status_label": "merged",
+      "verified_by": "self",
+      "note": "Current main contains reusable assertion identity and lifecycle, rights write ceilings, catalog-assisted planning, and deterministic claim-term indexing. Owner-data and real-corpus qualification remain separate items."
+    },
+    {
+      "id": "external-interchange",
+      "title": "Complete the external research report interchange contract",
+      "kind": "partial",
+      "domains": ["Interchange", "Evidence", "Governance"],
+      "status_label": "0 of 5 phase-1 tasks",
+      "verified_by": "self",
+      "note": "An active worktree has progress scaffolding only. Research Provenance Continuity is still draft, so ERI must honor the documented compatibility escape hatch without inventing authority.",
+      "handoff": {
+        "command": "/dev:execute-plan",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "docs/project_plans/implementation_plans/enhancements/external-research-report-interchange-v1.md",
+          "docs/project_plans/implementation_plans/enhancements/research-provenance-continuity-v1.md"
+        ],
+        "requirement_ids": ["ERI-1.1", "RPC-1.G"],
+        "gates": ["RPC-1.G", "ERI-1.G"],
+        "tracker": null,
+        "prompt": "Execute ERI phase 1 contract freeze from the existing eri-v1 worktree. Resolve the RPC-1.G dependency only through the documented forward-compatible seam; do not fabricate missing provenance schemas or weaken hostile-input and SSRF controls."
+      }
+    },
+    {
+      "id": "tenant-recertification",
+      "title": "Re-certify adversarial multi-tenant isolation",
+      "kind": "partial",
+      "domains": ["Identity", "Governance", "Validation"],
+      "status_label": "engineering landed · certification pending",
+      "verified_by": "self",
+      "note": "DF-004 closed the headline run/evidence isolation defect in code. The accepted DI-1 artifact remains explicitly scoped to trusted-cohort multi_user.",
+      "handoff": {
+        "command": "/dev:execute-plan",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "docs/dev/architecture/adr-runs-workspace-isolation.md",
+          "docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md",
+          ".claude/progress/public-multiuser-release-activation/plan-completion.md"
+        ],
+        "requirement_ids": ["DF-004", "ACT-406"],
+        "gates": ["DI-1", "Mode D"],
+        "tracker": null,
+        "prompt": "Run a formal DI-1 delta re-audit against current HEAD, including catalog, run, report, assertion, job, admin and share surfaces. Stop at the human Mode-D decision; do not self-sign or claim adversarial tenancy from code review alone."
+      }
+    },
+    {
+      "id": "catalog-workspace-seams",
+      "title": "Close catalog stats and import workspace seams",
+      "kind": "finding",
+      "domains": ["Catalog", "Identity", "Governance"],
+      "status_label": "actionable defect",
+      "verified_by": "self",
+      "note": "Catalog stats, import-run, and import-all reserve request identity but do not pass it into the service; imports currently land in the default workspace.",
+      "handoff": {
+        "command": "/plan:plan-feature --tier=2",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "src/research_foundry/api/routers/catalog.py",
+          "src/research_foundry/services/catalog_service.py"
+        ],
+        "requirement_ids": ["WKSP-304 P4"],
+        "gates": ["DI-1"],
+        "tracker": null,
+        "prompt": "Plan and implement identity-scoped catalog stats/import ownership without weakening single-user compatibility. Include cross-workspace denial, public visibility, import attribution, facet non-leakage, migration, and concurrent-write tests."
+      }
+    },
+    {
+      "id": "hosted-job-plane",
+      "title": "Build the durable hosted research execution plane",
+      "kind": "finding",
+      "domains": ["Execution", "Infrastructure", "Identity"],
+      "status_label": "production spawn blocked",
+      "verified_by": "self",
+      "note": "The jobs API and credential firewall are present, but the configured SDK runner does not exist and the production path intentionally raises. Process-local registries and file-polled SSE are not a multi-worker queue.",
+      "handoff": {
+        "command": "/plan:plan-feature --tier=3",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "src/research_foundry/services/agent_job_service.py",
+          "src/research_foundry/api/routers/agent_jobs.py"
+        ],
+        "requirement_ids": ["Mode-D Gate #2"],
+        "gates": ["Mode-D Gate #2"],
+        "tracker": null,
+        "prompt": "Plan a queue-backed worker plane with durable state, idempotency, cancellation, retry, quotas, cost attribution, provider allowlisting, and encrypted tenant key references. Preserve the existing credential firewall and require human approval before production provider execution."
+      }
+    },
+    {
+      "id": "private-ledger-rollout",
+      "title": "Run the assertion-ledger private qualification",
+      "kind": "blocked_external",
+      "domains": ["Evidence", "Validation", "Governance"],
+      "status_label": "owner data absent",
+      "verified_by": "self",
+      "note": "Repository readiness is implemented and reviewed, but no authorized private workspace, owner data, rollout authority, or observation window was supplied.",
+      "handoff": {
+        "command": null,
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          ".Codex/progress/reusable-assertion-ledger/phase-9-progress.md"
+        ],
+        "requirement_ids": ["P8-004", "AC-P8-ROLLOUT"],
+        "gates": ["P8-004", "owner authorization"],
+        "tracker": null,
+        "prompt": "The workspace owner must authorize a specific private workspace, data scope, observation window, and rollout operator. Preserve not_executed_owner_data_absent until that authorization and data are explicitly supplied."
+      }
+    },
+    {
+      "id": "term-runtime-validation",
+      "title": "Qualify term indexing on the real corpus and runtime UI",
+      "kind": "partial",
+      "domains": ["Catalog", "Validation", "Application"],
+      "status_label": "fixture-verified only",
+      "verified_by": "self",
+      "note": "The feature is merged and gate-reviewed, but the seven private pediatric-CDS bundles and a wide-screen browser smoke were unavailable.",
+      "handoff": {
+        "command": "/dev:autopilot",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          ".claude/progress/claim-term-indexing/plan-completion.md"
+        ],
+        "requirement_ids": ["AC-8", "TASK-3.3"],
+        "gates": ["owner corpus access"],
+        "tracker": null,
+        "prompt": "With authorized access to the seven pediatric-CDS bundles, run dry then wet backfill, measure classifier precision and recall, verify zero claim-status or identity drift, and capture a redacted 1440px catalog/claim-ledger browser smoke."
+      }
+    },
+    {
+      "id": "hosted-storage-identity",
+      "title": "Shape production storage, shared limits, and enterprise identity",
+      "kind": "not_started",
+      "domains": ["Infrastructure", "Identity", "Release"],
+      "status_label": "deferred foundations",
+      "verified_by": "self",
+      "note": "Postgres, live OIDC, fine-grained service-account scopes, shared rate limits, object storage, and multi-node coordination are not implemented.",
+      "handoff": {
+        "command": "/plan:plan-feature --tier=3",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          ".claude/progress/public-multiuser-release-activation/plan-completion.md",
+          "docs/project_plans/design-specs/rbac-db-postgres-migration.md",
+          "docs/project_plans/design-specs/oidc-adapter-live-implementation.md"
+        ],
+        "requirement_ids": ["DF-001", "DF-002", "DF-003"],
+        "gates": ["measured scale baseline", "DI-1"],
+        "tracker": null,
+        "prompt": "Create a measured hosted-runtime plan covering Postgres, object storage, shared rate limits, backups, migration, OIDC, and service-account scope enforcement. Benchmark current SQLite contention first and preserve file-backed evidence as an export contract, not the hot query plane."
+      }
+    },
+    {
+      "id": "remote-knowledge-mcp",
+      "title": "Hosted Knowledge MCP and canonical remote access",
+      "kind": "deferred",
+      "domains": ["Interchange", "Identity", "Release"],
+      "status_label": "local schema alignment only",
+      "verified_by": "self",
+      "note": "The planned v1 is explicitly local stdio and must not be described as OpenAI/ChatGPT compatible. Remote HTTPS, OAuth, canonical URLs, and cache isolation remain separately gated.",
+      "handoff": {
+        "command": "/dev:execute-plan",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md",
+          "docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-transport.md"
+        ],
+        "requirement_ids": ["KMCP-6.G", "RPC-1.G"],
+        "gates": ["RPC-1.G", "CARP-2.G", "KMCP-6.G"],
+        "tracker": null,
+        "trigger": "Re-enter after RPC-1.G and the local Knowledge MCP exact-tree gates pass, and after a remote threat model, canonical URL contract, cache-isolation design, and named hosted-client qualification matrix are approved.",
+        "prompt": "Execute only the local read-only Knowledge MCP plan once dependencies clear. Keep remote transport absent; then shape the canonical HTTPS profile through the linked threat-model and cache-isolation gates without reusing ambient filesystem or operator credentials."
+      }
+    }
+  ],
+  "media": [],
+  "no_visual_reason": "No screenshots are embedded because the public-hosted application does not exist and the LAN build revision could not be proven. The two-track ladder is the evidence-aligned visual.",
+  "evidence": [
+    {
+      "id": "git-truth",
+      "label": "Exact local and remote main identity",
+      "kind": "git",
+      "note": "HEAD, main, origin/main and remote refs/heads/main all resolved to d71a261."
+    },
+    {
+      "id": "public-surfaces",
+      "label": "GitHub visibility and public documentation probe",
+      "kind": "runtime",
+      "note": "Repository visibility PUBLIC; documentation returned HTTP 200."
+    },
+    {
+      "id": "lan-probe",
+      "label": "LAN viewer and API liveness",
+      "kind": "runtime",
+      "note": "Both returned HTTP 200; no deployed revision was inferred."
+    },
+    {
+      "id": "branch-inventory",
+      "label": "All local branches reconciled against main",
+      "kind": "branch",
+      "note": "17 branches were ahead and also behind main; active ERI work is untracked progress scaffolding on a zero-ahead branch."
+    },
+    {
+      "id": "gate-audit",
+      "label": "Current plans, progress files, ADRs and code-level blockers",
+      "kind": "review",
+      "note": "Requirement IDs and paths in every handoff were grep-verified before render."
+    },
+    {
+      "id": "market-differentiation-assessment",
+      "label": "Core market value: reviewed assertion capital",
+      "kind": "assessment",
+      "note": "Assessment, not measured demand: Research Foundry differentiates through a compounding catalog of passage-bound assertion versions, evaluation and lifecycle history, rights posture, provenance, contradictions, and downstream uses. Generic literature search and one-off generated reports are inputs and views; the durable assertion capital is the defensible product substrate."
+    },
+    {
+      "id": "topology-assessment",
+      "label": "Recommended topology: canonical spine with governed domain cells",
+      "kind": "assessment",
+      "note": "Recommendation: operate one public canonical source/assertion spine with domain-specific policy, vocabulary, evaluation, and presentation cells. Preserve cross-domain identifiers and discovery centrally. Defer federation until interchange, public-promotion, shared-index, correction, retraction, and tombstone propagation contracts are implemented and qualified."
+    },
+    {
+      "id": "provider-policy-assessment",
+      "label": "BYOK later; arbitrary BYOM private or quarantined",
+      "kind": "assessment",
+      "note": "Current code accepts a base64 job credential seam, but the production SDK runner is absent and there is no hosted tenant key vault, provider budget, quota, billing, or durable worker enforcement. A later public beta may support allowlisted BYOK through encrypted server-resolved key references. Arbitrary BYOM endpoints should remain private/quarantined because endpoint trust, data egress, reproducibility, and prompt-injection controls are unresolved."
+    },
+    {
+      "id": "economics-assessment",
+      "label": "Illustrative model-only processing range: $0.13–$2.16 per article",
+      "kind": "assessment",
+      "note": "Planning range only, not measured Research Foundry unit economics: an illustrative article extraction/evaluation workload was bounded at roughly $0.13–$2.16 in model calls depending on document length, model mix, retries, and review passes. Storage and lexical search are likely secondary. Human source verification, rights adjudication, domain review, contradiction handling, and public-promotion decisions are more likely to be the throughput and cost bottleneck."
+    },
+    {
+      "id": "rights-publication-assessment",
+      "label": "Immutable records do not make truth state immutable",
+      "kind": "assessment",
+      "note": "Source editions, assertion versions, evaluations, and receipts should remain immutable, while lifecycle, confidence, contradiction, correction, retraction, rights eligibility, and public visibility evolve through new governed records and pointers. The public promotion/removal workflow is deferred. A public alpha should contain no PHI and should publish only reviewed, rights-cleared material with a removal and tombstone path."
+    },
+    {
+      "id": "scale-assessment",
+      "label": "Bounded pilot feasible; all-research scale is not",
+      "kind": "assessment",
+      "note": "The current file-canonical, SQLite-backed, process-local rate-limit/job-registry, full-projection assertion search, and Python-paged catalog architecture can support a bounded single-host pilot. It is not evidence of feasibility for consolidating all research. Public scale requires measured migration to durable relational/object storage, indexed incremental search, shared queues and limits, and observability; federation remains deferred."
+    },
+    {
+      "id": "release-sequence-assessment",
+      "label": "Staged public release recommendation",
+      "kind": "assessment",
+      "note": "Recommended sequence: 1) formal OSS packaging, contribution/security policy, tags and releases; 2) curated read-only showcase; 3) invited trusted-cohort beta; 4) private ingestion with quotas; 5) reviewed rights-cleared public contribution with lifecycle/removal controls; 6) federation only after cross-node identity, promotion, shared-index, correction, and tombstone contracts pass."
+    }
+  ]
+}

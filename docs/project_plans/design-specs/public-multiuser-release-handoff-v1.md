@@ -2,10 +2,16 @@
 title: "Research Foundry Public Multi-User Release Handoff Spec"
 doc_type: handoff_spec
 schema_version: 2
-status: draft
+status: superseded
 maturity: planning
 created: 2026-07-04
-updated: 2026-07-04
+updated: 2026-07-26
+superseded_by:
+  - docs/project_plans/design-specs/research-foundry-public-knowledge-platform.md
+superseded_note: >-
+  Superseded for cross-cutting public-platform product direction. Retained as
+  historical implementation handoff, interface rationale, screenshots, and
+  mockup assets; linked bounded child authorities remain independently valid.
 feature_slug: public-multiuser-release
 feature_family: runs-viewer
 feature_version: v1
@@ -37,6 +43,14 @@ related_documents:
 ---
 
 # Research Foundry Public Multi-User Release Handoff Spec
+
+> [!IMPORTANT]
+> **Historical handoff.** This document is superseded for public-platform
+> product-direction authority by the
+> [Research Foundry Public Knowledge Platform](research-foundry-public-knowledge-platform.md)
+> design spec. Preserve this handoff for its historical implementation context,
+> screenshots, mockups, and interface rationale; do not use it to claim current
+> readiness or override the newer staged-release and governance boundaries.
 
 ## 1. Intent
 

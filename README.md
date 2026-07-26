@@ -40,10 +40,13 @@ fully **offline and deterministic by default**, and remains the differentiated v
 deterministic report verifier and the claim ledger it checks against. That core has since grown a
 platform around it: ~30 `rf` CLI commands (Report Builder, evidence catalog, audit log, workspace
 migration), an HTTP API + MCP surface (`rf serve`, `rf-mcp`), and a web app
-(`frontend/runs-viewer/`, Vite + React) with a static read-only mode deployed today and an
-opt-in live-loopback mode for authoring. An early self-host/small-team scaffold — auth providers
-(`none`/`local_static`/`clerk`), role-based access control, and workspace row-level isolation — is
-shipped but **advisory-by-default**, not yet hardened for a shared multi-tenant deployment.
+(`frontend/runs-viewer/`, Vite + React) with a static read-only export mode and opt-in
+live-loopback authoring. The repository and documentation are public; the observed application
+runtime is LAN-hosted, its deployed revision was not proven, and no public hosted-app receipt
+exists. The self-host/small-team substrate — auth providers (`none`/`local_static`/`clerk`),
+role-based access control, service accounts/PATs, public-read visibility, and DF-004 workspace
+ownership and enforcement engineering — is merged for a trusted cohort. It is not certified for
+adversarial shared-store tenancy pending a formal DI-1 delta audit and human Mode-D signoff.
 
 Be clear-eyed about maturity: the governance guard, schema validation, claim verification, and the
 full demo loop need no network and no LLM, and are battle-tested. Several platform-expanding pieces
@@ -58,6 +61,8 @@ adapter has confirmed live use (the Path B discovery-swarm workflow).
 
 Source of truth:
 
+- Public knowledge platform direction (shaping):
+  [`docs/project_plans/design-specs/research-foundry-public-knowledge-platform.md`](docs/project_plans/design-specs/research-foundry-public-knowledge-platform.md)
 - Spec: [`docs/projects/research-foundry/research-foundry-mvp-spec.md`](docs/projects/research-foundry/research-foundry-mvp-spec.md)
 - Plan: [`docs/projects/research-foundry/IMPLEMENTATION_PLAN.md`](docs/projects/research-foundry/IMPLEMENTATION_PLAN.md)
 - Service contract (current): [`docs/projects/research-foundry/SERVICE_CONTRACT.md`](docs/projects/research-foundry/SERVICE_CONTRACT.md)
