@@ -228,12 +228,21 @@ def _read_rate_limit(request: Request, config: FoundryConfig) -> dict[str, Any]:
     never stored in ``app.state.rate_limit_overrides`` because the middleware
     reads ``self._limiter`` (wired at startup) and cannot be toggled at runtime
     via the admin API.
+
+    F5 (DI-1 delta re-audit): ``app.state.rate_limit_overrides`` is keyed by
+    ``workspace_id`` (see :func:`update_rate_limit_config`) — this reads only
+    the CALLER's own bucket (:func:`_resolve_workspace_id`), never a flat
+    process-global value, so this endpoint reflects exactly the budget the
+    caller's own ``PATCH`` calls have set and nothing another workspace's
+    admin configured.
     """
-    overrides: dict[str, Any] = getattr(
+    workspace_id = _resolve_workspace_id(request)
+    overrides_by_workspace: dict[str, Any] = getattr(
         getattr(getattr(request, "app", None), "state", None),
         "rate_limit_overrides",
         {},
     ) or {}
+    overrides: dict[str, Any] = overrides_by_workspace.get(workspace_id) or {}
     return {
         "enabled": config.auth_rate_limit_enabled(),
         "window_seconds": overrides.get(
@@ -483,17 +492,33 @@ def update_rate_limit_config(
 
     Returns the full updated config object on success.
 
+    **Workspace scoping (F5, DI-1 delta re-audit)**: this route is gated on
+    role only (``require_role("owner", "admin")``), and that role is granted
+    *within the caller's own workspace* — it is not a deployment-wide
+    capability. ``app.state.rate_limit_overrides`` is therefore keyed by
+    ``identity.workspace_id`` (:func:`_resolve_workspace_id`): a workspace
+    admin's override is written to, and only ever read back from, that one
+    workspace's bucket. ``RateLimitMiddleware`` (``middleware/rate_limit.py``)
+    reads the same per-workspace bucket for the request's own identity — a
+    workspace-B admin's `PATCH` can never change workspace A's effective
+    budget, and vice versa.
+
     Access: owner / admin only.
     """
     app_state = getattr(getattr(request, "app", None), "state", None)
     if app_state is None:
         raise HTTPException(status_code=500, detail="App state unavailable")
 
-    # Ensure overrides dict exists (should have been initialised by create_app).
+    # Ensure the top-level (per-workspace) overrides dict exists (should have
+    # been initialised by create_app).
     if not hasattr(app_state, "rate_limit_overrides"):
         app_state.rate_limit_overrides = {}
 
-    overrides: dict[str, Any] = app_state.rate_limit_overrides
+    workspace_id = _resolve_workspace_id(request)
+    overrides_by_workspace: dict[str, Any] = app_state.rate_limit_overrides
+    # F5: mutate only the caller's own workspace bucket — never a flat,
+    # process-global dict shared across every tenant.
+    overrides: dict[str, Any] = overrides_by_workspace.setdefault(workspace_id, {})
 
     # NOTE: "enabled" is intentionally not processed here.  It is a startup-only
     # decision driven by foundry.yaml (auth.rate_limit.enabled) and wired into

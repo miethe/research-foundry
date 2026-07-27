@@ -348,16 +348,35 @@ def list_events(
 
         # Cursor pagination: find events older than (or equal to) the cursor's
         # created_at, excluding the cursor row itself.
+        #
+        # F7(c) (DI-1 delta re-audit): this lookup is scoped by the SAME
+        # `workspace_id` (== `effective_workspace_id`, resolved above) the
+        # main result filter uses. Before this fix, the cursor lookup was
+        # unscoped while the main filter was workspace-scoped — a caller
+        # could pass a known foreign `audit_event_id` as `cursor` and its
+        # (unscoped) `created_at` would shift this caller's own,
+        # correctly-scoped page boundary, leaking the foreign event's
+        # timestamp ordering relative to the caller's own events. Only
+        # applying the extra clause when `workspace_id` is set (i.e.
+        # identity-enforced or an explicit caller filter — the exact same
+        # condition already gating the main filter) preserves
+        # single-operator-trust / advisory-mode behavior byte-for-byte.
         if cursor is not None:
-            row = conn.execute(
-                "SELECT created_at FROM audit_event WHERE audit_event_id = ?",
-                (cursor,),
-            ).fetchone()
-            if row is not None:
+            if workspace_id is not None:
+                cursor_row = conn.execute(
+                    "SELECT created_at FROM audit_event WHERE audit_event_id = ? AND actor_workspace_id = ?",
+                    (cursor, workspace_id),
+                ).fetchone()
+            else:
+                cursor_row = conn.execute(
+                    "SELECT created_at FROM audit_event WHERE audit_event_id = ?",
+                    (cursor,),
+                ).fetchone()
+            if cursor_row is not None:
                 clauses.append(
                     "(created_at < ? OR (created_at = ? AND audit_event_id < ?))"
                 )
-                params.extend([row["created_at"], row["created_at"], cursor])
+                params.extend([cursor_row["created_at"], cursor_row["created_at"], cursor])
 
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
 

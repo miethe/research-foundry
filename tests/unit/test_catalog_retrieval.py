@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from research_foundry.api.auth.provider import AuthIdentity
+from research_foundry.config import FoundryConfig
 from research_foundry.services import claim_mapping, extraction
 from research_foundry.services.assertion_catalog import AssertionCatalog, AssertionCatalogDenied
 from research_foundry.services.assertion_materialization import AssertionMaterializer
@@ -696,6 +697,72 @@ def test_peek_generation_id_does_not_trigger_a_rebuild(tmp_foundry) -> None:
 def test_peek_generation_id_is_none_when_no_projection_exists_yet(tmp_foundry) -> None:
     catalog = AssertionCatalog(tmp_foundry)
     assert peek_catalog_generation_id(catalog, "workspace-never-built") is None
+
+
+# ---------------------------------------------------------------------------
+# F6 (DI-1 delta re-audit): peek_catalog_generation_id must not be an
+# unscoped existence + content-digest oracle -- a caller must not be able to
+# learn whether ANOTHER workspace has ever built a catalog projection (nor
+# its current corpus digest) merely by naming that workspace_id.
+# ---------------------------------------------------------------------------
+
+
+def _force_isolation_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Same convention as ``tests/test_workspace_isolation_enforcement.py``:
+    monkeypatch the real Phase 1 resolver, never a private per-module helper."""
+
+    monkeypatch.setattr(
+        FoundryConfig,
+        "resolve_workspace_isolation_enforced",
+        lambda self, provider, bind_host: True,
+    )
+
+
+def test_peek_generation_id_cross_workspace_denied_under_enforcement(tmp_foundry, monkeypatch) -> None:
+    _materialize(tmp_foundry, "rf_run_carp2_peek_f6_a", "workspace-a", "F6 probe content for workspace-a.")
+    catalog = AssertionCatalog(tmp_foundry)
+    catalog.rebuild("workspace-a")
+    _force_isolation_active(monkeypatch)
+
+    other_identity = _identity(workspace_id="workspace-b")
+    assert peek_catalog_generation_id(catalog, "workspace-a", identity=other_identity) is None
+
+
+def test_peek_generation_id_same_workspace_allowed_under_enforcement(tmp_foundry, monkeypatch) -> None:
+    _materialize(tmp_foundry, "rf_run_carp2_peek_f6_b", "workspace-a", "F6 probe content, same workspace.")
+    catalog = AssertionCatalog(tmp_foundry)
+    receipt = catalog.rebuild("workspace-a")
+    _force_isolation_active(monkeypatch)
+
+    own_identity = _identity(workspace_id="workspace-a")
+    assert peek_catalog_generation_id(catalog, "workspace-a", identity=own_identity) == receipt.catalog_generation_id
+
+
+def test_peek_generation_id_identity_none_preserves_single_operator_trust(tmp_foundry, monkeypatch) -> None:
+    """``identity=None`` (the default / CLI / single-operator-trust) sees
+    every workspace's projection, even under active enforcement -- byte
+    identical to the pre-F6 behavior."""
+
+    _materialize(tmp_foundry, "rf_run_carp2_peek_f6_c", "workspace-a", "F6 probe content, identity=None.")
+    catalog = AssertionCatalog(tmp_foundry)
+    receipt = catalog.rebuild("workspace-a")
+    _force_isolation_active(monkeypatch)
+
+    assert peek_catalog_generation_id(catalog, "workspace-a") == receipt.catalog_generation_id
+    assert peek_catalog_generation_id(catalog, "workspace-a", identity=None) == receipt.catalog_generation_id
+
+
+def test_peek_generation_id_cross_workspace_allowed_under_advisory_mode(tmp_foundry) -> None:
+    """Sanity control: without forcing enforcement, the real default
+    (advisory) does not filter -- proving the denial above is caused by
+    enforcement, not an unrelated bug."""
+
+    _materialize(tmp_foundry, "rf_run_carp2_peek_f6_d", "workspace-a", "F6 advisory-mode control content.")
+    catalog = AssertionCatalog(tmp_foundry)
+    receipt = catalog.rebuild("workspace-a")
+
+    other_identity = _identity(workspace_id="workspace-b")
+    assert peek_catalog_generation_id(catalog, "workspace-a", identity=other_identity) == receipt.catalog_generation_id
 
 
 # ---------------------------------------------------------------------------

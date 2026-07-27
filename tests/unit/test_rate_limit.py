@@ -58,6 +58,11 @@ def _make_app(
     reads the ``X-Test-User-ID`` request header to populate
     ``request.state.identity``.  Requests without that header have no
     identity and are exempt from rate limiting (auth_mode=none semantics).
+
+    ``X-Test-Workspace-ID`` is also read (defaulting to ``"default"`` to
+    preserve prior behaviour for tests that never set it) so tests can
+    exercise the F5 per-workspace isolation key without inventing a new
+    harness (mirrors how ``X-Test-User-ID`` is threaded).
     """
     app = FastAPI()
 
@@ -70,9 +75,10 @@ def _make_app(
         async def dispatch(self, request: Request, call_next):
             user_id = request.headers.get("X-Test-User-ID")
             if user_id:
+                workspace_id = request.headers.get("X-Test-Workspace-ID", "default")
                 request.state.identity = AuthIdentity(
                     user_id=user_id,
-                    workspace_id="default",
+                    workspace_id=workspace_id,
                     roles=("researcher",),
                 )
             return await call_next(request)
@@ -106,9 +112,14 @@ def _client(app: FastAPI) -> TestClient:
     return TestClient(app, raise_server_exceptions=True)
 
 
-def _as(user_id: str) -> dict[str, str]:
-    """Build the identity header dict for a given user."""
-    return {"X-Test-User-ID": user_id}
+def _as(user_id: str, workspace_id: str = "default") -> dict[str, str]:
+    """Build the identity header dict for a given user (+ optional workspace).
+
+    ``workspace_id`` defaults to ``"default"`` so existing call sites
+    (``_as("alice")``) are unaffected; pass an explicit value to exercise
+    the F5 per-workspace isolation key.
+    """
+    return {"X-Test-User-ID": user_id, "X-Test-Workspace-ID": workspace_id}
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +301,50 @@ class TestRateLimitMiddleware:
         assert alice_resp.status_code == 429
         assert bob_resp.status_code == 200
 
+    def test_same_user_id_different_workspace_have_independent_counters(self) -> None:
+        """F5 (DI-1 delta re-audit) regression: two identities sharing the SAME
+        ``user_id`` but in DIFFERENT workspaces must not share a rate-limit
+        counter.  Before the fix, the bucket key was ``(user_id, route)`` only,
+        so exhausting ``u1``'s budget in ``ws_a`` would also throttle ``u1`` in
+        ``ws_b`` — a cross-tenant availability leak.  After the fix, the key is
+        ``(workspace_id, user_id, route)``, so each workspace's bucket is
+        independent.
+        """
+        client = _client(_make_app(requests_per_window=2))
+
+        # Exhaust u1's budget in workspace ws_a.
+        client.get("/api/test", headers=_as("u1", "ws_a"))
+        client.get("/api/test", headers=_as("u1", "ws_a"))
+        ws_a_blocked = client.get("/api/test", headers=_as("u1", "ws_a"))
+        assert ws_a_blocked.status_code == 429, (
+            "ws_a budget should be exhausted after 2 requests with limit=2"
+        )
+
+        # SAME user_id, DIFFERENT workspace — must NOT be throttled (1st of 2
+        # allowed requests in ws_b's own, independent bucket).
+        ws_b_resp = client.get("/api/test", headers=_as("u1", "ws_b"))
+        assert ws_b_resp.status_code == 200, (
+            "u1 in ws_b must be independent of u1's exhausted ws_a counter "
+            "(cross-workspace counter sharing regression)"
+        )
+
+        # Reverse isolation: exhaust ws_b's own budget (2nd allowed + 3rd
+        # denied request), then confirm ws_a is still blocked — proves
+        # neither bucket leaks into the other in either direction, not just
+        # the first-checked one.
+        ws_b_allowed_2nd = client.get("/api/test", headers=_as("u1", "ws_b"))
+        assert ws_b_allowed_2nd.status_code == 200, (
+            "ws_b's 2nd request should still be within its own limit=2 budget"
+        )
+        ws_b_blocked = client.get("/api/test", headers=_as("u1", "ws_b"))
+        assert ws_b_blocked.status_code == 429, (
+            "ws_b budget should now also be exhausted after its own 2 requests"
+        )
+        ws_a_still_blocked = client.get("/api/test", headers=_as("u1", "ws_a"))
+        assert ws_a_still_blocked.status_code == 429, (
+            "ws_a should remain independently exhausted, unaffected by ws_b activity"
+        )
+
     def test_mw09_health_always_exempt(self) -> None:
         """MW-09: GET /health returns 200 regardless of rate-limit state."""
         client = _client(_make_app(requests_per_window=1))
@@ -403,12 +458,21 @@ def _make_app_with_overrides(
 
     @app.patch("/test/set-override")
     def set_override(body: dict) -> dict:
-        """Write runtime overrides into app.state — mirrors admin PATCH endpoint."""
+        """Write runtime overrides into app.state — mirrors admin PATCH endpoint.
+
+        F5 (DI-1 delta re-audit): ``app.state.rate_limit_overrides`` is keyed
+        by ``workspace_id`` (matching ``admin.py``'s ``update_rate_limit_config``
+        and the middleware's per-workspace read) — every identity in this
+        test file carries ``workspace_id="default"``, so overrides are
+        written into that one bucket, mirroring the real endpoint's
+        per-workspace scoping exactly.
+        """
+        bucket: dict = app.state.rate_limit_overrides.setdefault("default", {})
         if "max_requests" in body:
-            app.state.rate_limit_overrides["max_requests"] = int(body["max_requests"])
+            bucket["max_requests"] = int(body["max_requests"])
         if "window_seconds" in body:
-            app.state.rate_limit_overrides["window_seconds"] = int(body["window_seconds"])
-        return {"ok": True, "overrides": dict(app.state.rate_limit_overrides)}
+            bucket["window_seconds"] = int(body["window_seconds"])
+        return {"ok": True, "overrides": dict(bucket)}
 
     return app
 

@@ -56,6 +56,7 @@ from research_foundry.paths import FoundryPaths
 from research_foundry.services import audit_service, rbac_store
 from research_foundry.services.agent_job_service import AgentJobService
 from research_foundry.yamlio import dump_yaml, load_yaml
+from tests.conftest import DI1_AUDIT_TEST_HEAD
 
 _OWNER_TOKEN_ENV = "RF_TEST_MULTIUSER_E2E_OWNER_TOKEN"
 _OWNER_USER_ID = "u_owner_e2e"
@@ -95,7 +96,10 @@ def _set_foundry_overrides(paths: FoundryPaths, overrides: dict) -> None:
 
 def _write_accepted_audit(tmp_path: Path) -> Path:
     audit_path = tmp_path / "di1-audit-e2e.md"
-    audit_path.write_text("---\nstatus: accepted\n---\n\nbody\n", encoding="utf-8")
+    audit_path.write_text(
+        f"---\nstatus: accepted\naudited_head: {DI1_AUDIT_TEST_HEAD}\n---\n\nbody\n",
+        encoding="utf-8",
+    )
     return audit_path
 
 

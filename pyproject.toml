@@ -58,7 +58,11 @@ rf = "research_foundry.cli:app"
 # (`pip install 'research-foundry[mcp]'` / `uv tool install --with mcp .`).
 # Without it the entrypoint raises a clear RuntimeError pointing to the extra.
 # Exposed over ssh-stdio by the launchpad's aos-mcp (AOS remote targeting).
-rf-mcp = "research_foundry.services.search_router.mcp_server:main"
+# Points at mcp_launcher (DI-1 F2 remediation) -- the sole blessed launcher,
+# which resolves the launch principal and enforces the stdio-only transport
+# guard before delegating to mcp_server.build_server(). mcp_server.main()
+# still works too (delegates here) for .mcp.json's direct `python -m` launch.
+rf-mcp = "research_foundry.services.search_router.mcp_launcher:main"
 
 [build-system]
 requires = ["hatchling"]

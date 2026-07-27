@@ -831,9 +831,15 @@ def test_delete_draft_denies_cross_workspace_without_deleting(
     caller's workspace) requires a real authenticated identity AND active
     enforcement, so it gets its own dedicated setup here.
 
-    Asserts the draft is fail-closed (404) AND still exists on disk
-    afterward — proving ``bsvc.delete_draft`` (the physical ``rmtree``) never
-    executed against the cross-workspace target.
+    F7c (DI-1 delta re-audit MISSED-NEIGHBOR fix): this used to assert 404
+    here, but 404-vs-204 (missing) is itself a cross-workspace existence
+    oracle on this endpoint's otherwise fully-idempotent DELETE contract —
+    so the cross-workspace case now also returns 204, made
+    indistinguishable from "missing" to the caller. The zero-write
+    invariant this test exists to prove is unchanged: asserts 204 AND that
+    the draft still exists on disk afterward — proving ``bsvc.delete_draft``
+    (the physical ``rmtree``) never executed against the cross-workspace
+    target.
     """
     cfg = _make_config_with_identity(tmp_path, monkeypatch, workspace_id="ws-caller")
     paths = cfg.paths
@@ -862,9 +868,10 @@ def test_delete_draft_denies_cross_workspace_without_deleting(
         headers={"Authorization": "Bearer test-reports-api-token"},
     )
 
-    assert resp.status_code == 404, (
-        f"Expected 404 (fail-closed, cross-workspace deny) — the draft "
-        f"genuinely exists but not in the caller's workspace, "
+    assert resp.status_code == 204, (
+        f"Expected 204 (fail-closed-but-idempotent cross-workspace deny) — "
+        f"the draft genuinely exists but not in the caller's workspace, so "
+        f"this must be indistinguishable from 'missing', "
         f"got {resp.status_code}: {resp.text}"
     )
     # Zero-write proof: the draft must still be on disk (identity=None probe

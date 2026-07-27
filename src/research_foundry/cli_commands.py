@@ -3072,6 +3072,17 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             config.viewer["auth_mode"] = effective_auth_mode
         if sensitivity_threshold is not None:
             config.viewer["sensitivity_threshold"] = sensitivity_threshold
+        # DI-1 delta re-audit remediation (F1(1), 2026-07-26): --bind-host was
+        # forwarded to uvicorn but never written into config.viewer["bind_host"],
+        # so every isolation guard that reads config.viewer_bind_host() (this
+        # module's own gate below, app.py's resolve_rbac_enforced/
+        # resolve_workspace_isolation_enforced calls, scope.py) saw the stale
+        # loopback default regardless of the real bind. --bind-host always
+        # provides an effective value (its Typer default is the loopback
+        # literal), so this override is unconditional — unlike the three
+        # siblings above, which only fire when their CLI flag was explicitly
+        # passed.
+        config.viewer["bind_host"] = effective_bind_host
         # --mode overrides foundry.yaml deployment_mode (FR-5). Mutates the
         # top-level `foundry` dict directly (same cached-dict-by-reference
         # pattern as viewer[...] above) so deployment_mode_validate() below

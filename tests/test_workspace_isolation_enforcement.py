@@ -64,7 +64,7 @@ from research_foundry.api.routers import auth_identity as auth_identity_router
 from research_foundry.api.routers.runs import get_paths
 from research_foundry.config import FoundryConfig
 from research_foundry.errors import NotFoundError
-from research_foundry.paths import FoundryPaths
+from research_foundry.paths import FoundryPaths, RunPaths
 from research_foundry.services import agent_job_service, builder_service, catalog_service
 from research_foundry.services.agent_job_service import AgentJobService
 from research_foundry.yamlio import dump_yaml, load_yaml
@@ -233,6 +233,50 @@ def _seed_citing_draft(
         insert_tag=False,
     )
     return draft_id
+
+
+def _plant_report_run(paths: FoundryPaths, *, run_id: str, workspace_id: str | None) -> RunPaths:
+    """Minimal run scaffold for F3 (``create_draft_from_run``) isolation tests.
+
+    Mirrors ``tests/unit/test_builder_service.py``'s ``_plant_run`` helper
+    (``run.yaml`` + ``report_draft.md`` + ``evidence_bundle.yaml``) but
+    stamps ``run.yaml.workspace_id`` and deliberately omits
+    ``visibility: public`` so the run is a genuinely private DF-004 target
+    for ``export_service._run_read_allowed`` to gate — never a bypass via
+    the ``visibility == "public"`` short-circuit.
+    """
+
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "run_id": run_id,
+            "intent_id": f"intent_{run_id}",
+            "status": "verified",
+            "sensitivity": "public",
+            "created_at": "2026-06-13T09:41:00+00:00",
+            "workspace_id": workspace_id,
+        },
+        rp.run_yaml,
+    )
+    rp.report_draft.write_text(
+        "# F3 Leak Probe\n\n"
+        "This paragraph is the private run's draft content and must never "
+        "reach a cross-workspace caller's new draft.\n",
+        encoding="utf-8",
+    )
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "run_id": run_id,
+            "status": "verified",
+            "counts": {"claims_total": 0},
+            "governance": {"sensitivity": "public", "approved_for_writeback": False},
+        },
+        rp.evidence_bundle,
+    )
+    return rp
 
 
 def _seed_agent_job(paths: FoundryPaths, *, workspace_id: str | None) -> dict[str, Any]:
@@ -471,6 +515,219 @@ class TestReportsRouterMatrix:
         client = _make_client(tmp_foundry, _WS_OTHER)
         resp = client.get(f"/api/reports/{draft['report_draft_id']}/export")
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# DI-1 delta re-audit F7c: DELETE /api/reports/{id} previously reintroduced a
+# cross-workspace existence oracle on an endpoint whose contract is
+# otherwise fully idempotent (204 == "not there"). Before the fix, a
+# cross-workspace draft (identity-scoped load denies, identity=None re-probe
+# succeeds) raised 404, while a genuinely-missing draft returned 204 --
+# 404-vs-204 distinguishes "exists in another workspace" from "doesn't exist
+# anywhere". The fix makes the cross-workspace case return 204 too, and
+# WITHOUT ever calling bsvc.delete_draft, so the foreign draft's files on
+# disk are never touched.
+# ---------------------------------------------------------------------------
+
+
+class TestReportsDeleteMatrix:
+    """DELETE /api/reports/{id} — router-level, 2-workspace matrix."""
+
+    def test_delete_draft_same_workspace_allowed_removes_file(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        draft = builder_service.create_draft(tmp_foundry, title="Mine", workspace_id="ws-mine", sensitivity="public")
+        draft_dir = tmp_foundry.report_draft_dir(draft["report_draft_id"])
+        assert draft_dir.exists()
+        _force_isolation_active(monkeypatch)
+        client = _make_client(tmp_foundry, _WS_MINE)
+        resp = client.delete(f"/api/reports/{draft['report_draft_id']}")
+        assert resp.status_code == 204
+        assert not draft_dir.exists()
+
+    def test_delete_draft_cross_workspace_returns_204_without_touching_file(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The fix: a ws-other draft deleted by a ws-mine caller returns 204
+        (same as "missing"), and the foreign draft's directory on disk is
+        NEVER removed -- bsvc.delete_draft must not have been reached."""
+        draft = builder_service.create_draft(
+            tmp_foundry, title="Other's draft", workspace_id="ws-other", sensitivity="public"
+        )
+        draft_dir = tmp_foundry.report_draft_dir(draft["report_draft_id"])
+        assert draft_dir.exists()
+        _force_isolation_active(monkeypatch)
+        client = _make_client(tmp_foundry, _WS_MINE)
+        resp = client.delete(f"/api/reports/{draft['report_draft_id']}")
+        assert resp.status_code == 204
+        # The foreign draft's files were never touched.
+        assert draft_dir.exists()
+        assert (draft_dir / "draft.yaml").exists()
+
+    def test_delete_draft_genuinely_missing_returns_204(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Unchanged idempotent behavior: a well-formed id that exists in NO
+        workspace returns 204, indistinguishable from the cross-workspace
+        case above."""
+        _force_isolation_active(monkeypatch)
+        client = _make_client(tmp_foundry, _WS_MINE)
+        resp = client.delete("/api/reports/rpt_does_not_exist_at_all")
+        assert resp.status_code == 204
+
+    def test_delete_draft_malformed_id_returns_404(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Unchanged: a malformed id (bad shape -- missing the ``rpt_``
+        prefix ``_DRAFT_ID_RE`` requires) is a pre-flight shape error, not an
+        existence signal -- it 404s regardless of workspace."""
+        _force_isolation_active(monkeypatch)
+        client = _make_client(tmp_foundry, _WS_MINE)
+        resp = client.delete("/api/reports/not-a-valid-draft-id-shape")
+        assert resp.status_code == 404
+
+    def test_delete_draft_advisory_identity_none_preserves_existing_behavior(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``identity=None`` (no auth provider configured) is the
+        single-operator-trust baseline: the pre-flight cross-workspace probe
+        is skipped entirely, and delete proceeds straight to
+        bsvc.delete_draft -- byte-identical to pre-WKSP-304 behavior."""
+        draft = builder_service.create_draft(tmp_foundry, title="Mine", workspace_id="ws-mine", sensitivity="public")
+        draft_dir = tmp_foundry.report_draft_dir(draft["report_draft_id"])
+        _force_isolation_active(monkeypatch)
+        client = _make_client(tmp_foundry, None)
+        resp = client.delete(f"/api/reports/{draft['report_draft_id']}")
+        assert resp.status_code == 204
+        assert not draft_dir.exists()
+
+
+# ---------------------------------------------------------------------------
+# DI-1 delta re-audit F3: create_draft_from_run's underlying export_run()
+# read must be identity-scoped (DF-004), or a ws_b caller can seed a
+# brand-new ws_b-owned draft straight from a private ws_a run's
+# report_draft/report_anchors — a workspace-boundary bypass the destination
+# draft's own workspace stamp says nothing about.
+# ---------------------------------------------------------------------------
+
+
+class TestReportsFromRunMatrix:
+    """builder_service.create_draft_from_run — router-level, 2-workspace matrix."""
+
+    def test_create_from_run_same_workspace_allowed(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _plant_report_run(tmp_foundry, run_id="rf_run_f3_a", workspace_id="ws-mine")
+        _force_isolation_active(monkeypatch)
+        client = _make_client(tmp_foundry, _WS_MINE)
+        resp = client.post(
+            "/api/reports",
+            json={"origin": "run", "source_run_id": "rf_run_f3_a", "title": "From run"},
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["workspace_id"] == "ws-mine"
+        assert any(
+            "must never reach a cross-workspace caller" in (b.get("markdown") or "")
+            for b in body["blocks"]
+        )
+
+    def test_create_from_run_cross_workspace_denied_404(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _plant_report_run(tmp_foundry, run_id="rf_run_f3_b", workspace_id="ws-mine")
+        _force_isolation_active(monkeypatch)
+        client = _make_client(tmp_foundry, _WS_OTHER)
+        resp = client.post(
+            "/api/reports",
+            json={"origin": "run", "source_run_id": "rf_run_f3_b", "title": "From run"},
+        )
+        assert resp.status_code == 404
+        # The private run's content never reaches disk in ANY draft — the
+        # leak is stopped before create_draft() (the destination write) ever
+        # runs, not merely hidden after the fact.
+        assert builder_service.list_drafts(tmp_foundry) == []
+
+    def test_create_from_run_advisory_identity_none_preserves_existing_behavior(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``identity=None`` (no auth provider configured) is the pre-DF-004,
+        AC-6 single-operator-trust baseline — byte-identical behavior."""
+        _plant_report_run(tmp_foundry, run_id="rf_run_f3_c", workspace_id="ws-mine")
+        _force_isolation_active(monkeypatch)
+        client = _make_client(tmp_foundry, None)
+        resp = client.post(
+            "/api/reports",
+            json={"origin": "run", "source_run_id": "rf_run_f3_c", "title": "From run"},
+        )
+        assert resp.status_code == 201
+
+
+# ---------------------------------------------------------------------------
+# DI-1 delta re-audit F4: verify_draft's load_draft() read must be
+# identity-scoped, closing both the cross-workspace READ and the subsequent
+# verification.yaml WRITE (previously reachable under enforcement because
+# verify_draft had no identity param at all).
+# ---------------------------------------------------------------------------
+
+
+class TestReportsVerifyPublishPreviewMatrix:
+    """verification.verify_draft (via /verify and /publish-preview) — router-level."""
+
+    def test_verify_same_workspace_allowed_writes_verification_yaml(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        draft = builder_service.create_draft(tmp_foundry, title="Mine", workspace_id="ws-mine", sensitivity="public")
+        _force_isolation_active(monkeypatch)
+        client = _make_client(tmp_foundry, _WS_MINE)
+        resp = client.post(f"/api/reports/{draft['report_draft_id']}/verify")
+        assert resp.status_code == 200
+        assert resp.json()["passed"] is True
+        assert (tmp_foundry.report_draft_dir(draft["report_draft_id"]) / "verification.yaml").exists()
+
+    def test_verify_cross_workspace_denied_404_no_write(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        draft = builder_service.create_draft(tmp_foundry, title="Mine", workspace_id="ws-mine", sensitivity="public")
+        _force_isolation_active(monkeypatch)
+        client = _make_client(tmp_foundry, _WS_OTHER)
+        resp = client.post(f"/api/reports/{draft['report_draft_id']}/verify")
+        assert resp.status_code == 404
+        # The overwrite never happens: load_draft() raises NotFoundError
+        # before verify_draft() reaches the verification.yaml dump_yaml() call.
+        assert not (tmp_foundry.report_draft_dir(draft["report_draft_id"]) / "verification.yaml").exists()
+
+    def test_publish_preview_same_workspace_allowed(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        draft = builder_service.create_draft(tmp_foundry, title="Mine", workspace_id="ws-mine", sensitivity="public")
+        _force_isolation_active(monkeypatch)
+        client = _make_client(tmp_foundry, _WS_MINE)
+        resp = client.post(f"/api/reports/{draft['report_draft_id']}/publish-preview")
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_publish_preview_cross_workspace_denied_404_no_write(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        draft = builder_service.create_draft(tmp_foundry, title="Mine", workspace_id="ws-mine", sensitivity="public")
+        _force_isolation_active(monkeypatch)
+        client = _make_client(tmp_foundry, _WS_OTHER)
+        resp = client.post(f"/api/reports/{draft['report_draft_id']}/publish-preview")
+        assert resp.status_code == 404
+        assert not (tmp_foundry.report_draft_dir(draft["report_draft_id"]) / "verification.yaml").exists()
+
+    def test_verify_advisory_identity_none_preserves_existing_behavior(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``identity=None`` (no auth provider configured) is the pre-fix,
+        single-operator-trust baseline — byte-identical behavior."""
+        draft = builder_service.create_draft(tmp_foundry, title="Mine", workspace_id="ws-mine", sensitivity="public")
+        _force_isolation_active(monkeypatch)
+        client = _make_client(tmp_foundry, None)
+        resp = client.post(f"/api/reports/{draft['report_draft_id']}/verify")
+        assert resp.status_code == 200
+        assert resp.json()["passed"] is True
 
 
 class TestAgentJobRouterMatrix:
@@ -855,6 +1112,12 @@ class TestMutationDenySpies:
     def test_delete_draft_cross_workspace_never_calls_service_delete(
         self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """F7c (DI-1 delta re-audit MISSED-NEIGHBOR fix): the cross-workspace
+        deny now returns 204 (indistinguishable from "missing"), not 404 —
+        404-vs-204 was itself a cross-workspace existence oracle on this
+        endpoint's otherwise fully-idempotent DELETE contract. The
+        zero-write-issued invariant this spy exists to prove (delete_draft
+        never called, foreign file never touched) is unchanged."""
         draft = builder_service.create_draft(tmp_foundry, title="Mine", workspace_id="ws-mine", sensitivity="public")
         draft_id = draft["report_draft_id"]
         calls = {"n": 0}
@@ -868,7 +1131,7 @@ class TestMutationDenySpies:
         _force_isolation_active(monkeypatch)
         client = _make_client(tmp_foundry, _WS_OTHER)
         resp = client.delete(f"/api/reports/{draft_id}")
-        assert resp.status_code == 404
+        assert resp.status_code == 204
         assert calls["n"] == 0
         # The draft must still exist on disk — the deny happened BEFORE any write.
         assert builder_service.load_draft(tmp_foundry, draft_id, identity=None)["report_draft_id"] == draft_id
@@ -1087,12 +1350,22 @@ class TestWorkspaceIdBindParamDiscipline:
 # ---------------------------------------------------------------------------
 
 
-def _plant_minimal_run(paths: FoundryPaths, run_id: str) -> None:
+def _plant_minimal_run(paths: FoundryPaths, run_id: str, *, workspace_id: str | None = None) -> None:
     """Bare-minimum run scaffold sufficient for ``export_run``/
     ``create_draft_from_run`` — no source cards or claim ledger entries are
     needed since this suite only asserts on identity/workspace_id threading,
     not on seeded blocks/claim_links (covered by
-    ``tests/unit/test_builder_service.py``)."""
+    ``tests/unit/test_builder_service.py``).
+
+    ``workspace_id`` (F3, DI-1 delta re-audit follow-up): stamps
+    ``run.yaml.workspace_id`` so a "legit owner" scenario can seed a run
+    genuinely owned by the identity under test. Omitted (``None``, the
+    original default) intentionally leaves the run ownerless — per DF-004
+    AC-3 (documented in ``export_service._run_read_allowed``), an
+    absent/``None`` ``workspace_id`` is never treated as a wildcard, so an
+    ownerless run is correctly DENIED to every identity under active
+    enforcement, not just to a specific "other" workspace.
+    """
 
     rp = paths.run_paths(run_id)
     rp.ensure_scaffold()
@@ -1104,18 +1377,32 @@ def _plant_minimal_run(paths: FoundryPaths, run_id: str) -> None:
             "status": "verified",
             "sensitivity": "public",
             "created_at": "2026-01-01T00:00:00+00:00",
+            "workspace_id": workspace_id,
         },
         rp.run_yaml,
     )
 
 
 class TestCreateDraftFromRunAndCollectionIdentityThreading:
-    """TASK-5.5 follow-up (karen HIGH-1/HIGH-2)."""
+    """TASK-5.5 follow-up (karen HIGH-1/HIGH-2).
+
+    F3 follow-up (DI-1 delta re-audit, 2026-07-26): ``test_create_draft_from_run_legit_owner_allowed``
+    originally planted an OWNERLESS run (no ``workspace_id`` stamped) and
+    asserted ``identity=_WS_MINE`` could read it — true only because the
+    pre-F3 ``create_draft_from_run`` never forwarded ``identity`` into the
+    underlying ``export_run`` (source-run) read at all, so that read was
+    always unconditionally allowed regardless of the run's own ownership.
+    Now that F3 threads ``identity`` into that read too, an ownerless run is
+    correctly DENIED under enforcement (DF-004 AC-3: a ``None``
+    ``workspace_id`` is never a wildcard) — this test now plants a run
+    genuinely owned by ``ws-mine`` so it exercises the intended "legit
+    owner" path; the ownerless-run case is covered separately below.
+    """
 
     def test_create_draft_from_run_legit_owner_allowed(
         self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _plant_minimal_run(tmp_foundry, "rf_run_p5followup_run")
+        _plant_minimal_run(tmp_foundry, "rf_run_p5followup_run", workspace_id="ws-mine")
         _force_isolation_active(monkeypatch)
         draft = builder_service.create_draft_from_run(
             tmp_foundry, run_id="rf_run_p5followup_run", identity=_WS_MINE
@@ -1124,6 +1411,26 @@ class TestCreateDraftFromRunAndCollectionIdentityThreading:
         assert draft["workspace_id"] == "ws-mine"
         loaded = builder_service.load_draft(tmp_foundry, report_draft_id, identity=_WS_MINE)
         assert loaded["workspace_id"] == "ws-mine"
+
+    def test_create_draft_from_run_ownerless_run_denied_under_enforcement(
+        self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """F3 (DI-1 delta re-audit): a run with no ``workspace_id`` stamped
+        is DENIED to every identity under active enforcement — DF-004 AC-3
+        forbids treating an absent workspace_id as a wildcard match."""
+
+        _plant_minimal_run(tmp_foundry, "rf_run_p5followup_ownerless")
+        _force_isolation_active(monkeypatch)
+        with pytest.raises(NotFoundError):
+            builder_service.create_draft_from_run(
+                tmp_foundry, run_id="rf_run_p5followup_ownerless", identity=_WS_MINE
+            )
+        # And, symmetrically, cross-workspace-owned run reads are denied too.
+        _plant_minimal_run(tmp_foundry, "rf_run_p5followup_otherowned", workspace_id="ws-other")
+        with pytest.raises(NotFoundError):
+            builder_service.create_draft_from_run(
+                tmp_foundry, run_id="rf_run_p5followup_otherowned", identity=_WS_MINE
+            )
 
     def test_create_draft_from_collection_legit_owner_allowed(
         self, tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch

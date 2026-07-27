@@ -59,6 +59,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ..config import FoundryConfig
+from ._bind_gate import assert_bind_is_safe
 from .auth.adapters import (
     local_static as _local_static_module,  # noqa: F401 — triggers self-registration
 )
@@ -121,6 +122,21 @@ def create_app(config: FoundryConfig) -> FastAPI:
     Returns:
         A ready-to-serve :class:`fastapi.FastAPI` instance.
     """
+    # --- DI-1 delta re-audit remediation (F1(2), 2026-07-26): non-loopback +
+    # no-auth gate, enforced HERE regardless of caller ------------------------
+    #
+    # Runs FIRST, before any other startup gate or app-state construction, so
+    # a direct ASGI mount (uvicorn/gunicorn or any other runner that imports
+    # create_app without ever going through `rf serve`) can no longer bind
+    # publicly with auth.provider=none — closing exposure (B) of finding F1
+    # in docs/project_plans/reports/audits/di-1-delta-reaudit-2026-07-26.md.
+    # See api/_bind_gate.py for the full rationale; this is intentionally
+    # narrower than the CLI's own pre-bind gate
+    # (cli_commands._validate_nonloopback_bind), which additionally verifies
+    # a resolvable token value exists — that CLI-only check still runs first
+    # for the `rf serve` path and remains the more complete gate there.
+    assert_bind_is_safe(config)
+
     # --- ACT-102: deployment_mode fail-closed startup gate (FR-4, partial a-c) ---
     # P1 stub — condition (d) (DI-1 acknowledgment, FR-13) is wired in Phase 4
     # (ACT-402). No-op for deployment_mode=single_user (the default), so this
@@ -247,11 +263,20 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # fallthrough on a miss) is active regardless of which provider is
     # configured — see AuthProviderMiddleware's class docstring.
     #
-    # NOTE: auth.provider=none + non-loopback bind is blocked in the rf serve
-    # pre-bind gate (cli_commands._validate_nonloopback_bind).  create_app does
-    # not duplicate this gate — the server can only reach create_app() after the
-    # CLI gate has passed.  The canonical check is config.is_auth_enabled().
+    # NOTE (superseded by DI-1 delta re-audit remediation F1(2), 2026-07-26):
+    # auth.provider=none + non-loopback bind is blocked in the rf serve
+    # pre-bind gate (cli_commands._validate_nonloopback_bind) — but that CLI
+    # gate is no longer the ONLY enforcement point. create_app() now ALSO
+    # asserts this invariant itself, at the very top of this function
+    # (see the assert_bind_is_safe(config) call above) — a prior comment here
+    # claimed create_app "does not duplicate this gate" on the premise that
+    # the server could only ever reach create_app() after the CLI gate had
+    # passed; the DI-1 delta re-audit found that premise false for direct
+    # ASGI mounts (uvicorn/gunicorn importing create_app without going
+    # through `rf serve` at all). The canonical check is still
+    # config.is_auth_enabled(); see api/_bind_gate.py for the shared helper.
     # Tests: tests/unit/test_rbac_enforcement_toggle.py::TestAuthNoneNonLoopbackCLIGate
+    #        tests/unit/test_bind_gate.py
     _provider_name = config.auth_provider()
     _auth_provider = get_provider(_provider_name)  # None when provider == "none"
 

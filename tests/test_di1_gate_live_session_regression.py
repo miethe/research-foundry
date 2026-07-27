@@ -44,6 +44,7 @@ from research_foundry.services import rbac_store, token_service
 from research_foundry.services.agent_job_service import AgentJobService
 from research_foundry.services.audit_service import list_events
 from research_foundry.yamlio import dump_yaml, load_yaml
+from tests.conftest import DI1_AUDIT_TEST_HEAD
 
 _MINIMAL_POLICY_SNAPSHOT = {"allowed_tools": ["search"], "data_scopes": []}
 _DEFAULT_SA_ID = "svc_default_researcher"
@@ -62,8 +63,19 @@ def _set_foundry_overrides(paths: FoundryPaths, overrides: dict) -> None:
 
 
 def _write_audit(tmp_path: Path, *, status: str, name: str) -> Path:
+    """Write an audit artifact with the given ``status``.
+
+    Always includes a matching ``audited_head`` (pinned by the autouse
+    ``_pin_di1_audit_current_head`` fixture in ``tests/conftest.py``) so this
+    helper's callers exercise the ``status`` check specifically -- the
+    separate G2 freshness check is covered in ``tests/unit/
+    test_deployment_mode.py::TestG2AuditFreshnessStaleness``, not here.
+    """
     audit_path = tmp_path / name
-    audit_path.write_text(f"---\nstatus: {status}\n---\n\nbody\n", encoding="utf-8")
+    audit_path.write_text(
+        f"---\nstatus: {status}\naudited_head: {DI1_AUDIT_TEST_HEAD}\n---\n\nbody\n",
+        encoding="utf-8",
+    )
     return audit_path
 
 

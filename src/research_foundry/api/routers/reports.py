@@ -307,6 +307,15 @@ def create_draft(
                 identity=identity,
             )
         )
+    except NotFoundError as exc:
+        # F3 (DI-1 delta re-audit): create_draft_from_run's underlying
+        # export_run() read is now identity-scoped (DF-004) and raises
+        # NotFoundError when the source run is cross-workspace-denied or
+        # genuinely missing — both map to the same generic 404 here as
+        # "origin 'run' requires source_run_id" pointing at a bad id would,
+        # so a private ws_a run can never be distinguished from "no such
+        # run" (no-existence-leak) and is never copied into the new draft.
+        raise _not_found(body.source_run_id or "", detail="not found") from exc
     except bsvc.BuilderError as exc:
         raise _builder_error(exc) from exc
 
@@ -377,18 +386,26 @@ def delete_draft(
     service layer's :func:`~research_foundry.services.builder_service._draft_dir`
     raises :class:`NotFoundError` before anything is touched on disk.
 
-    WKSP-304 P4 (TASK-4.3, AC-5): a workspace-scoped pre-flight check gates
-    the actual delete, but the idempotent-204 contract above must survive it.
-    ``bsvc.load_draft`` cannot distinguish "malformed id" / "genuinely
-    missing" from "exists but is cross-workspace-denied" — all three raise
-    the same :class:`NotFoundError` (by design, no-existence-leak). So when
-    the identity-scoped load denies, a second identity=None probe (byte-
-    identical to pre-Phase-4 behavior) tells us which case we are in: if the
-    draft doesn't exist AT ALL either, this is the pre-existing idempotent
-    no-op path — fall through unchanged to ``bsvc.delete_draft`` below. If
-    the identity=None probe SUCCEEDS, the draft genuinely exists in another
-    workspace — fail closed (404) WITHOUT ever calling ``bsvc.delete_draft``,
-    so no cross-workspace file is ever touched.
+    WKSP-304 P4 (TASK-4.3, AC-5) / F7c (DI-1 delta re-audit MISSED-NEIGHBOR
+    fix): a workspace-scoped pre-flight check gates the actual delete, but
+    the idempotent-204 contract above must survive it AND must not leak
+    whether a cross-workspace draft exists. ``bsvc.load_draft`` cannot
+    distinguish "malformed id" / "genuinely missing" from "exists but is
+    cross-workspace-denied" — all three raise the same :class:`NotFoundError`
+    (by design, no-existence-leak). So when the identity-scoped load denies,
+    a second identity=None probe (byte-identical to pre-Phase-4 behavior)
+    tells us which case we are in: if the draft doesn't exist AT ALL either,
+    this is the pre-existing idempotent no-op path — fall through unchanged
+    to ``bsvc.delete_draft`` below (204). If the identity=None probe
+    SUCCEEDS, the draft genuinely exists in another workspace — that case
+    must be made indistinguishable from "missing" too, so this now returns
+    204 WITHOUT ever calling ``bsvc.delete_draft`` (the foreign draft's files
+    are never touched). An earlier version of this fix raised 404 here
+    instead, which reintroduced a cross-workspace existence oracle on this
+    endpoint's otherwise fully-idempotent DELETE contract (404 = "exists in
+    another workspace" vs. 204 = "doesn't exist anywhere" — distinguishable
+    to the caller); corrected to 204-without-touching-the-file so both cases
+    are the same response.
     """
     identity = getattr(request.state, "identity", None)
     if identity is not None:
@@ -400,7 +417,10 @@ def delete_draft(
             except NotFoundError:
                 pass  # genuinely missing / malformed — idempotent path below.
             else:
-                raise _not_found(report_id)
+                # Cross-workspace: exists, but not in this identity's
+                # workspace. Return 204 (same as "missing") WITHOUT calling
+                # bsvc.delete_draft — never touch the foreign draft's files.
+                return None
     try:
         bsvc.delete_draft(paths, report_id)
     except NotFoundError as exc:
@@ -696,6 +716,7 @@ def add_claim_link(
                 span_end=body.span_end,
                 insert_tag=body.insert_tag,
                 updated_by=body.updated_by,
+                identity=identity,
             )
         )
     except NotFoundError as exc:
@@ -815,11 +836,13 @@ def verify_draft_endpoint(
     Always returns 200 with a structured result (``passed``, per-check details).
     Use /publish-preview for the fail-closed gate.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (verify_draft() is services.verification, not builder_service, and has no identity param; not a Phase 3 scoping target)
+    # F4 (DI-1 delta re-audit): verify_draft() now accepts identity and
+    # forwards it into builder_service.load_draft's fail-closed workspace
+    # scoping, closing the cross-workspace read+verification.yaml-write gap.
+    identity = getattr(request.state, "identity", None)
     try:
-        # TODO(WKSP-304 P4): verify_draft() (services.verification) does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         result = verify_draft(
-            paths, report_id, sensitivity_threshold=sensitivity_threshold
+            paths, report_id, sensitivity_threshold=sensitivity_threshold, identity=identity
         )
     except NotFoundError as exc:
         raise _not_found(report_id) from exc
@@ -900,8 +923,12 @@ def publish_preview(
     # check below, so a sensitivity violation (422) cannot be bypassed by
     # choosing a higher-privileged role.
     try:
+        # F4 (DI-1 delta re-audit): identity threaded through so a
+        # cross-workspace draft fails closed here (NotFoundError) rather
+        # than being read and having its verification.yaml overwritten
+        # before the RBAC gate below ever runs.
         result = verify_draft(
-            paths, report_id, sensitivity_threshold=sensitivity_threshold
+            paths, report_id, sensitivity_threshold=sensitivity_threshold, identity=identity
         )
     except NotFoundError as exc:
         # Draft not found.  Under-privileged callers get 403 (existence pre-check)

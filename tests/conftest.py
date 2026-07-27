@@ -17,6 +17,21 @@ import pytest
 from research_foundry import ids
 from research_foundry.paths import FoundryPaths, distribution_root
 
+# DI-1 delta re-audit remediation (G2, ACT-406): FoundryConfig._di1_audit_accepted()
+# now requires an accepted audit artifact's frontmatter `audited_head` to match
+# the CURRENT source-tree HEAD (research_foundry.config._current_source_head_sha,
+# a plain `.git/HEAD` file-read). Any test that writes a `status: accepted`
+# audit fixture to satisfy the FR-13 DI-1 gate needs its `audited_head` to
+# match whatever _current_source_head_sha() resolves to. Pinning that resolver
+# to this fixed sentinel for the WHOLE suite (see the autouse fixture below)
+# means fixtures only need to declare this literal instead of the real,
+# ever-changing, per-commit repo HEAD -- import this constant wherever such a
+# fixture is written (see tests/unit/test_deployment_mode.py,
+# tests/test_deployment_mode_cli_and_app.py,
+# tests/test_di1_gate_live_session_regression.py,
+# tests/integration/test_multiuser_activation_e2e.py).
+DI1_AUDIT_TEST_HEAD = "deadbeef1234567890abcdef1234567890abcdef"
+
 # Directories every run/workspace needs (mirror of the spec §5 substrate).
 _SUBSTRATE = [
     "inbox/raw_ideas",
@@ -46,6 +61,24 @@ def _fixed_clock():
     ids.set_clock(lambda: _FIXED)
     yield
     ids.set_clock(lambda: datetime.now(UTC).astimezone())
+
+
+@pytest.fixture(autouse=True)
+def _pin_di1_audit_current_head(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the G2 audit-freshness HEAD resolver to a fixed sentinel.
+
+    Without this, ``FoundryConfig._di1_audit_accepted()`` would resolve the
+    REAL, ever-changing repo HEAD via ``research_foundry.config.
+    _current_source_head_sha()`` -- making every ``status: accepted`` audit
+    fixture across the suite go stale on the next commit. See
+    ``DI1_AUDIT_TEST_HEAD`` above.
+    """
+
+    import research_foundry.config as _config_module
+
+    monkeypatch.setattr(
+        _config_module, "_current_source_head_sha", lambda: DI1_AUDIT_TEST_HEAD
+    )
 
 
 @pytest.fixture

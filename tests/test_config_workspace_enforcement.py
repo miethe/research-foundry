@@ -58,6 +58,7 @@ def _make_config(
     provider: str = _PROVIDER_NONE,
     workspace_isolation_enforcement: str = "auto",
     bind_host: str = _LOOPBACK_HOST,
+    auth_mode: str = "none",
 ) -> FoundryConfig:
     """Create a temporary full workspace with the given auth/isolation settings.
 
@@ -68,6 +69,28 @@ def _make_config(
     ``foundry.workspace_isolation_enforcement`` key (a sibling of ``auth:``,
     not nested under it — see ``FoundryConfig.workspace_isolation_enforcement``
     docstring for why).
+
+    ``deployment_mode`` is pinned to ``"single_user"`` explicitly (rather than
+    left unset) so the DI-1 delta re-audit remediation's G1 bind/auth-based
+    ``multi_user`` INFERENCE (``FoundryConfig.deployment_mode()``) can never
+    fire for this file's matrix — this file's whole point is the orthogonal
+    ``workspace_isolation_enforcement`` flag, not the FR-13 DI-1 gate, and an
+    inferred ``multi_user`` would otherwise make ``create_app()`` raise on
+    the unrelated, unconfigured DI-1-acknowledgment condition for several
+    ``provider=local_static`` + non-loopback combinations below. An explicit
+    ``deployment_mode`` always wins over inference (precedence rule #1), so
+    this pin is a no-op for every case this file already covered pre-G1.
+
+    Phase 5 "G1-precedence" hardening: an explicit ``deployment_mode:
+    single_user`` on a non-loopback, auth-enabled bind now requires a
+    declared ``trusted_single_operator_posture`` or ``deployment_mode()``
+    raises at load (closing the dodge the explicit pin above would
+    otherwise open). This file's whole point is the orthogonal
+    ``workspace_isolation_enforcement`` flag, so a fully-populated posture
+    is declared unconditionally alongside the pin — inert for every
+    loopback/no-auth case in this matrix, and exactly the escape hatch the
+    non-loopback + real-auth-provider (or legacy ``auth_mode=token``)
+    cases below are meant to exercise instead of the new gate.
     """
     root = tmp_path / "fdry"
     root.mkdir(parents=True, exist_ok=True)
@@ -91,7 +114,7 @@ def _make_config(
 
     # viewer block
     viewer: dict[str, Any] = dict(existing["foundry"].get("viewer") or {})
-    viewer["auth_mode"] = "none"
+    viewer["auth_mode"] = auth_mode
     viewer["bind_host"] = bind_host
     existing["foundry"]["viewer"] = viewer
 
@@ -103,6 +126,20 @@ def _make_config(
 
     # workspace_isolation_enforcement: TOP-LEVEL sibling of auth:, not nested.
     existing["foundry"]["workspace_isolation_enforcement"] = workspace_isolation_enforcement
+
+    # DI-1 delta re-audit remediation (G1): see docstring above.
+    existing["foundry"]["deployment_mode"] = "single_user"
+
+    # Phase 5 "G1-precedence" hardening: see docstring above.
+    existing["foundry"]["trusted_single_operator_posture"] = {
+        "declared": True,
+        "rationale": (
+            "test fixture: exercises the orthogonal workspace_isolation_"
+            "enforcement matrix, not the G1 bind/auth inference gate"
+        ),
+        "declared_at": "2026-07-27",
+        "declared_by": "test-fixture",
+    }
 
     dump_yaml(existing, foundry_yaml_path)
     return FoundryConfig(paths=FoundryPaths(root=root))
@@ -175,11 +212,22 @@ class TestEnabledAlwaysEnforced:
     @pytest.mark.parametrize("bind_host", [_LOOPBACK_HOST, _NON_LOOPBACK_HOST])
     @pytest.mark.parametrize("provider", [_PROVIDER_NONE, _PROVIDER_OTHER])
     def test_enabled_is_always_true(self, tmp_path, provider, bind_host):
+        # DI-1 delta re-audit remediation (F1(2)): create_app() now refuses a
+        # non-loopback bind with no auth configured at all. The
+        # provider=none + non-loopback combination below would otherwise hit
+        # that unrelated gate before ever reaching the workspace_isolation_
+        # enforcement resolution this test targets, so satisfy it via the
+        # legacy viewer.auth_mode=token path (is_auth_enabled() ->  True) —
+        # orthogonal to the provider value itself, which stays "none".
+        auth_mode = (
+            "token" if (provider == _PROVIDER_NONE and bind_host == _NON_LOOPBACK_HOST) else "none"
+        )
         config = _make_config(
             tmp_path,
             provider=provider,
             workspace_isolation_enforcement="enabled",
             bind_host=bind_host,
+            auth_mode=auth_mode,
         )
         # enabled has no fail-closed bind_host gate (only disabled does) —
         # create_app must not raise here.
@@ -197,11 +245,15 @@ class TestAutoProviderNoneAdvisory:
 
     @pytest.mark.parametrize("bind_host", [_LOOPBACK_HOST, _NON_LOOPBACK_HOST])
     def test_auto_none_resolves_false(self, tmp_path, bind_host):
+        # DI-1 delta re-audit remediation (F1(2)): see the identical note in
+        # TestEnabledAlwaysEnforced.test_enabled_is_always_true above.
+        auth_mode = "token" if bind_host == _NON_LOOPBACK_HOST else "none"
         config = _make_config(
             tmp_path,
             provider=_PROVIDER_NONE,
             workspace_isolation_enforcement="auto",
             bind_host=bind_host,
+            auth_mode=auth_mode,
         )
         app = create_app(config)
         assert app.state.workspace_isolation_enforced is False

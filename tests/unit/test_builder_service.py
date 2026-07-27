@@ -725,3 +725,196 @@ def test_export_markdown_workspace_scoping(
     assert bsvc.export_markdown(tmp_foundry, draft_id, identity=_WS_MINE) == baseline
     with pytest.raises(NotFoundError):
         bsvc.export_markdown(tmp_foundry, draft_id, identity=_WS_OTHER)
+
+
+# ---------------------------------------------------------------------------
+# F7(b) (DI-1 delta re-audit): add_claim_link / _resolve_claim must not leak
+# a foreign workspace's claim existence/status. Before the fix, the raw
+# claim-ledger fallback (``source_run_id`` path) read ``claim_ledger.yaml``
+# with no identity/workspace check at all — a ws-mine caller referencing a
+# ws-other run's real claim_id would get ``link_status="linked"`` (the
+# claim's true relation inferred from its true status), confirming both the
+# claim's existence AND its status. The fix gates that raw-ledger read with
+# the same DF-004 run-scope gate ``export_run()`` already applies, resolving
+# a denied read to the SAME outcome a genuinely-unknown claim_id produces
+# (``link_status="missing_claim"``).
+# ---------------------------------------------------------------------------
+
+
+def _plant_run_with_workspace(
+    paths: FoundryPaths, run_id: str, *, workspace_id: str | None, claim_id: str = "clm_a"
+) -> RunPaths:
+    """Like :func:`_plant_run`, but stamps ``run.yaml.workspace_id`` so F7b's
+    cross-workspace / same-workspace matrix has a genuinely-owned run to
+    probe (mirrors ``test_workspace_isolation_enforcement.py``'s
+    ``_plant_minimal_run`` convention for this same purpose)."""
+
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "run_id": run_id,
+            "intent_id": f"intent_{run_id}",
+            "status": "verified",
+            "sensitivity": "public",
+            "created_at": "2026-06-13T09:41:00+00:00",
+            "workspace_id": workspace_id,
+        },
+        rp.run_yaml,
+    )
+    dump_yaml(
+        {
+            "id": f"ledger_{run_id}",
+            "claims": [
+                {
+                    "claim_id": claim_id,
+                    "text": "Alpha holds under scrutiny.",
+                    "materiality": "core",
+                    "claim_type": "factual",
+                    "status": "supported",
+                    "confidence": "high",
+                    "sources": [],
+                    "inference_basis": {"from_claims": [], "reasoning_summary": None},
+                    "report_locations": [],
+                },
+            ],
+        },
+        rp.claim_ledger,
+    )
+    return rp
+
+
+def test_add_claim_link_source_run_id_cross_workspace_denied_no_status_leak(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _plant_run_with_workspace(tmp_foundry, "rf_run_f7b_other", workspace_id="ws-other")
+    _force_isolation_active(monkeypatch)
+
+    draft = bsvc.create_draft(tmp_foundry, title="F7b probe", workspace_id="ws-mine")
+    report_draft_id = draft["report_draft_id"]
+    draft = bsvc.add_block(tmp_foundry, report_draft_id, markdown="Probing a foreign claim.")
+    block_id = draft["blocks"][0]["block_id"]
+
+    draft = bsvc.add_claim_link(
+        tmp_foundry,
+        report_draft_id,
+        block_id=block_id,
+        claim_id="clm_a",
+        source_run_id="rf_run_f7b_other",
+        identity=_WS_MINE,
+    )
+
+    link = draft["claim_links"][0]
+    # Denied exactly like a genuinely-unknown claim_id — never "linked", and
+    # never distinguishable from "no such claim" (no existence/status leak).
+    assert link["link_status"] == "missing_claim"
+    assert draft["blocks"][0]["coverage_status"] == "unsupported"
+
+
+def test_add_claim_link_source_run_id_same_workspace_allowed(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _plant_run_with_workspace(tmp_foundry, "rf_run_f7b_mine", workspace_id="ws-mine")
+    _force_isolation_active(monkeypatch)
+
+    draft = bsvc.create_draft(tmp_foundry, title="F7b same-ws", workspace_id="ws-mine")
+    report_draft_id = draft["report_draft_id"]
+    draft = bsvc.add_block(tmp_foundry, report_draft_id, markdown="Own claim, own workspace.")
+    block_id = draft["blocks"][0]["block_id"]
+
+    draft = bsvc.add_claim_link(
+        tmp_foundry,
+        report_draft_id,
+        block_id=block_id,
+        claim_id="clm_a",
+        source_run_id="rf_run_f7b_mine",
+        identity=_WS_MINE,
+    )
+
+    link = draft["claim_links"][0]
+    assert link["link_status"] == "linked"
+    assert draft["blocks"][0]["coverage_status"] == "supported"
+
+
+def test_add_claim_link_identity_none_preserves_existing_behavior(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-6 single-operator baseline: ``identity=None`` (the default — CLI's
+    ``rf report claim-link add`` never passes ``identity``) resolves the
+    same real run/claim regardless of any stamped ``workspace_id``, even
+    under active enforcement — byte-identical to the pre-F7b behavior."""
+
+    _plant_run_with_workspace(tmp_foundry, "rf_run_f7b_none", workspace_id="ws-other")
+    _force_isolation_active(monkeypatch)
+
+    draft = bsvc.create_draft(tmp_foundry, title="F7b identity=None")
+    report_draft_id = draft["report_draft_id"]
+    draft = bsvc.add_block(tmp_foundry, report_draft_id, markdown="No identity threaded.")
+    block_id = draft["blocks"][0]["block_id"]
+
+    draft = bsvc.add_claim_link(
+        tmp_foundry,
+        report_draft_id,
+        block_id=block_id,
+        claim_id="clm_a",
+        source_run_id="rf_run_f7b_none",
+    )
+
+    link = draft["claim_links"][0]
+    assert link["link_status"] == "linked"
+    assert draft["blocks"][0]["coverage_status"] == "supported"
+
+
+def test_resolve_claim_catalog_item_id_cross_workspace_denied(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The catalog_item_id path: ``catalog_service.get_item`` already denies
+    a cross-workspace item under enforcement — this proves ``_resolve_claim``
+    actually forwards ``identity`` into that call (F7b), rather than the
+    hardcoded max-permissive read papering over the workspace check too."""
+
+    row = csvc._base_row(
+        item_type="claim",
+        run_id="rf_run_f7b_catalog",
+        local_ref="clm_catalog_other",
+        project=None,
+        title="Foreign claim",
+        summary="Foreign claim",
+        status="supported",
+        sensitivity_rank=0,
+        trust_label=None,
+        confidence="high",
+        source_count=0,
+        created_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        payload={"text": "Foreign claim"},
+    )
+    row["workspace_id"] = "ws-other"
+    catalog_item_id = row["catalog_item_id"]
+    with csvc._db(tmp_foundry) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            csvc._insert_rows(conn, [row], [], "rf_run_f7b_catalog")
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+
+    _force_isolation_active(monkeypatch)
+    draft = bsvc.create_draft(tmp_foundry, title="F7b catalog probe", workspace_id="ws-mine")
+    report_draft_id = draft["report_draft_id"]
+    draft = bsvc.add_block(tmp_foundry, report_draft_id, markdown="Probing a foreign catalog claim.")
+    block_id = draft["blocks"][0]["block_id"]
+
+    draft = bsvc.add_claim_link(
+        tmp_foundry,
+        report_draft_id,
+        block_id=block_id,
+        claim_id="clm_catalog_other",
+        catalog_item_id=catalog_item_id,
+        identity=_WS_MINE,
+    )
+
+    link = draft["claim_links"][0]
+    assert link["link_status"] == "missing_claim"

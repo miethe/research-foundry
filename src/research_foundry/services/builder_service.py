@@ -92,6 +92,12 @@ def _isolation_active(paths: FoundryPaths) -> bool:
 from .export_service import _anchor_text_hash as _text_hash  # noqa: E402
 from .export_service import _normalize_anchor_text as _normalize_text  # noqa: E402
 
+# F7(b) fix (DI-1 delta re-audit): the same DF-004 run-workspace-scope gate
+# export_run() already applies — reused (not reimplemented) so
+# _resolve_claim's raw claim-ledger fallback denies a foreign-workspace run
+# identically to every other run read in this codebase.
+from .export_service import _run_read_allowed  # noqa: E402
+
 BUILDER_SCHEMA_VERSION = 1
 
 BLOCK_TYPES: tuple[str, ...] = (
@@ -679,6 +685,7 @@ def _resolve_claim(
     catalog_item_id: str | None,
     source_run_id: str | None,
     claim_id: str,
+    identity: AuthIdentity | None = None,
 ) -> dict[str, Any] | None:
     """Best-effort claim lookup for relation inference + existence checking.
 
@@ -687,15 +694,38 @@ def _resolve_claim(
     claim_id)`` is known. Uses the max-permissive threshold internally — this
     is an existence/status check for link bookkeeping, not a read-time
     redaction decision (that happens at export/verify time).
+
+    ``identity`` (F7(b), DI-1 delta re-audit) closes a cross-workspace claim
+    existence/status oracle: forwarded into :func:`catalog_service.get_item`
+    (which already denies a cross-workspace catalog item under active
+    enforcement via its own "identity's workspace wins" idiom), and — for
+    the raw-ledger fallback — gates the source run itself via
+    :func:`~research_foundry.services.export_service._run_read_allowed` (the
+    same DF-004 gate :func:`~research_foundry.services.export_service.export_run`
+    already applies) before ``claim_ledger.yaml`` is read. A run this
+    identity may not read resolves to ``None`` — indistinguishable from "no
+    such claim", never a distinct denial. ``identity=None`` (the default) is
+    byte-identical to the pre-fix behavior.
     """
 
     if catalog_item_id:
-        item = catalog_service.get_item(paths, catalog_item_id, sensitivity_threshold="client_sensitive")
+        item = catalog_service.get_item(
+            paths, catalog_item_id, sensitivity_threshold="client_sensitive", identity=identity
+        )
         if item is not None:
             return {"status": item.get("status")}
         return None
     if source_run_id:
         rp = paths.run_paths(source_run_id)
+        if identity is not None:
+            try:
+                run_meta = load_yaml(rp.run_yaml) if rp.run_yaml.exists() else None
+            except Exception:  # noqa: BLE001 - malformed run.yaml; fail closed below
+                run_meta = None
+            if not isinstance(run_meta, dict):
+                run_meta = {}
+            if not _run_read_allowed(paths, run_meta, source_run_id, identity):
+                return None
         if rp.claim_ledger.exists():
             ledger = load_yaml(rp.claim_ledger) or {}
             for c in ledger.get("claims") or []:
@@ -717,6 +747,7 @@ def add_claim_link(
     span_end: int | None = None,
     insert_tag: bool = True,
     updated_by: str | None = None,
+    identity: AuthIdentity | None = None,
 ) -> dict[str, Any]:
     """Link *claim_id* to *block_id* (spec §7 Report Location V2 / §8 claim_links[]).
 
@@ -734,16 +765,28 @@ def add_claim_link(
     defaults to the *entire* normalized block — one hash validates "this
     paragraph is unchanged", matching P2's per-block ``text_hash`` semantics
     (D8) rather than the narrow tag-marker text.
+
+    ``identity`` (F7(b), DI-1 delta re-audit) is forwarded into
+    :func:`_resolve_claim` so a foreign claim reference resolves to
+    ``link_status="missing_claim"`` — the same outcome a genuinely-unknown
+    claim id produces — rather than leaking another workspace's claim
+    existence/status. ``identity=None`` (the default) is byte-identical to
+    the pre-fix behavior (the CLI's ``rf report claim-link add`` does not
+    pass ``identity``, and is unaffected).
     """
 
-    draft = load_draft(paths, report_draft_id)
+    draft = load_draft(paths, report_draft_id, identity=identity)
     block = _find_block(draft, block_id)
 
     if insert_tag and not re.search(rf"\[claim:{re.escape(claim_id)}\]", block["markdown"]):
         block["markdown"] = (block["markdown"].rstrip() + f" [claim:{claim_id}]").strip()
 
     resolved = _resolve_claim(
-        paths, catalog_item_id=catalog_item_id, source_run_id=source_run_id, claim_id=claim_id
+        paths,
+        catalog_item_id=catalog_item_id,
+        source_run_id=source_run_id,
+        claim_id=claim_id,
+        identity=identity,
     )
     link_status = "linked" if resolved is not None else "missing_claim"
     if relation is None:
@@ -1012,9 +1055,30 @@ def create_draft_from_run(
     ``identity=None`` (the default) is byte-identical to the pre-WKSP-304
     behavior — the AC-6 single-operator baseline this function's existing
     callers exercise.
+
+    F3 fix (DI-1 delta re-audit): ``identity`` is also forwarded into the
+    :func:`export_run` read below (the *source* run), not just the
+    destination :func:`create_draft` call. Without this, a ws_b caller could
+    read a private ws_a run's ``report_draft``/``report_anchors`` and have
+    them copied into a new ws_b-owned draft — the destination draft's
+    workspace stamp said nothing about what was legally readable when it was
+    seeded. Under active enforcement a cross-workspace ``run_id`` makes
+    :func:`export_run` return ``None``, which raises :class:`NotFoundError`
+    here (see below) — mapped by the router to the same 404 a genuinely
+    unknown run id gets (no-existence-leak).
     """
 
-    export_data = export_run(paths, run_id, sensitivity_threshold=sensitivity_threshold)
+    export_data = export_run(
+        paths, run_id, sensitivity_threshold=sensitivity_threshold, identity=identity
+    )
+    if export_data is None:
+        # DF-004/F3: export_run() returns None on a workspace-scope enforced
+        # denial (or a genuinely-missing run) — map both to the same
+        # NotFoundError the router already maps to a generic 404, so a
+        # private ws_a run can never be distinguished from "no such run"
+        # (no-existence-leak) and, critically, is never copied into a
+        # ws_b-owned draft below.
+        raise NotFoundError(f"run not found: {run_id}")
     report_draft_md = export_data.get("report_draft") or ""
     anchors = export_data.get("report_anchors") or []
 

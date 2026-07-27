@@ -182,7 +182,12 @@ class RetrievalResult:
     candidate_limit_reached: bool
 
 
-def peek_catalog_generation_id(catalog: AssertionCatalog, workspace_id: str) -> str | None:
+def peek_catalog_generation_id(
+    catalog: AssertionCatalog,
+    workspace_id: str,
+    *,
+    identity: AuthIdentity | None = None,
+) -> str | None:
     """Read the persisted ``catalog_generation_id`` *without* forcing a rebuild.
 
     Reads the catalog's own on-disk projection cache
@@ -197,7 +202,35 @@ def peek_catalog_generation_id(catalog: AssertionCatalog, workspace_id: str) -> 
     generation id once via :func:`catalog_receipt`, then re-check it here
     (never via another ``rebuild()``) before resolving each remaining
     question in the same plan.
+
+    ``identity`` (F6, DI-1 delta re-audit) closes an unscoped existence +
+    content-digest oracle: absent a check, any caller who could name another
+    workspace's ``workspace_id`` could read whether that workspace has ever
+    built a catalog projection, plus its current corpus digest. Gated via
+    :func:`~research_foundry.api.auth.scope.require_workspace_scope` against
+    a synthetic ``{"workspace_id": workspace_id}`` record -- the same
+    "identity's workspace wins" idiom ``catalog_service.get_item`` uses.
+    ``identity=None`` (the default) is byte-identical to the pre-fix
+    behavior -- single-operator-trust callers (and every existing caller
+    that has not yet been updated to pass ``identity``) are unaffected.
+    Under active enforcement, a cross-workspace *workspace_id* denies by
+    returning ``None`` -- indistinguishable from "no projection built yet",
+    so this closes the oracle without inventing a new leak shape. Advisory
+    mode (or an exact match) is unchanged.
     """
+
+    if identity is not None:
+        from ..api.auth.scope import require_workspace_scope, resolve_workspace_isolation_active
+
+        scope_result = require_workspace_scope(
+            identity,
+            {"workspace_id": workspace_id},
+            record_type="catalog_generation",
+            record_id=workspace_id,
+            resolve_enforcement=lambda: resolve_workspace_isolation_active(catalog.paths),
+        )
+        if not scope_result.allowed:
+            return None
 
     path = catalog.projection_path(workspace_id)
     if not path.is_file() or path.is_symlink():

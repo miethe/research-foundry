@@ -14,6 +14,7 @@ Covers:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -23,7 +24,9 @@ from research_foundry.config import (
     FoundryConfig,
     WorkspaceIsolationEnforcement,
 )
+from research_foundry.errors import RFError
 from research_foundry.paths import FoundryPaths
+from tests.conftest import DI1_AUDIT_TEST_HEAD
 
 
 def _make_config(tmp_path, foundry_overrides: dict | None = None) -> FoundryConfig:
@@ -58,7 +61,10 @@ def _di1_accepted_overrides(tmp_path, auth_overrides: dict | None = None) -> dic
     (Phase 4 ACT-402).
     """
     audit_path = tmp_path / "di1-audit-accepted.md"
-    audit_path.write_text("---\nstatus: accepted\n---\n\nbody\n", encoding="utf-8")
+    audit_path.write_text(
+        f"---\nstatus: accepted\naudited_head: {DI1_AUDIT_TEST_HEAD}\n---\n\nbody\n",
+        encoding="utf-8",
+    )
     overrides = dict(auth_overrides or {})
     overrides["di1_audit_acknowledged"] = True
     overrides["di1_audit_report_path"] = str(audit_path)
@@ -394,7 +400,14 @@ class TestAC3FullFourConditionSuite:
         doc with the flag flipped is still an unmet two-part gate."""
         overrides = _all_conditions_satisfied_overrides(tmp_path)
         stale_audit = tmp_path / "stale-audit.md"
-        stale_audit.write_text("---\nstatus: pending-human-signoff\n---\n\nbody\n", encoding="utf-8")
+        # audited_head matches the pinned test sentinel so this exercises the
+        # STATUS check specifically, isolated from the separate G2 freshness
+        # check (covered by TestG2AuditFreshnessStaleness below).
+        stale_audit.write_text(
+            f"---\nstatus: pending-human-signoff\naudited_head: {DI1_AUDIT_TEST_HEAD}\n"
+            "---\n\nbody\n",
+            encoding="utf-8",
+        )
         overrides["auth"]["di1_audit_report_path"] = str(stale_audit)
         config = _make_config(tmp_path, overrides)
         with pytest.raises(ValueError) as excinfo:
@@ -460,3 +473,275 @@ class TestAC3FullFourConditionSuite:
         with pytest.raises(ValueError):
             config.deployment_mode_validate(bind_host="127.0.0.1")
         assert artifact_path.read_text(encoding="utf-8") == before
+
+
+# ---------------------------------------------------------------------------
+# G1 (DI-1 delta re-audit remediation, 2026-07-26): trusted_single_operator_
+# posture escape hatch + bind/auth-based multi_user inference precedence.
+# ---------------------------------------------------------------------------
+
+
+class TestG1DeploymentModeInferenceAndEscapeHatch:
+    def test_explicit_multi_user_is_honored_over_inference(self, tmp_path):
+        """An explicit deployment_mode always wins -- precedence rule #1,
+        unchanged by G1. Verified on a loopback+no-auth config where
+        inference would otherwise resolve single_user, so a pass here can
+        only be attributed to the explicit value being read first."""
+        config = _make_config(tmp_path, {"deployment_mode": "multi_user"})
+        assert config.deployment_mode() == "multi_user"
+
+    def test_trusted_single_operator_posture_declared_keeps_single_user(
+        self, tmp_path, caplog
+    ):
+        """A fully-populated posture keeps single_user even though bind +
+        a real auth provider alone would otherwise infer multi_user, and
+        emits exactly ONE startup warning across multiple deployment_mode()
+        calls (idempotence -- deployment_mode() is called many times per
+        app-startup via _deployment_mode_preset_default)."""
+        config = _make_config(
+            tmp_path,
+            {
+                "viewer": {"bind_host": "0.0.0.0"},
+                "auth": {"provider": "local_static"},
+                "trusted_single_operator_posture": {
+                    "declared": True,
+                    "rationale": "Single trusted LAN operator; DI-1 not yet re-accepted.",
+                    "declared_at": "2026-07-26",
+                    "declared_by": "nick",
+                },
+            },
+        )
+
+        with caplog.at_level(logging.WARNING, logger="research_foundry.config"):
+            assert config.deployment_mode() == "single_user"
+            assert config.deployment_mode() == "single_user"
+            assert config.deployment_mode() == "single_user"
+
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1, (
+            "expected exactly one startup warning across 3 deployment_mode() "
+            f"calls, got {len(warnings)}"
+        )
+        assert "nick" in warnings[0].getMessage()
+
+    def test_declared_true_with_missing_rationale_raises_config_error(self, tmp_path):
+        """declared=true with any of rationale/declared_at/declared_by
+        missing must fail closed at read-time -- never silently activate
+        with a blank field, never silently fall through to inference."""
+        config = _make_config(
+            tmp_path,
+            {
+                "trusted_single_operator_posture": {
+                    "declared": True,
+                    "declared_at": "2026-07-26",
+                    "declared_by": "nick",
+                    # rationale intentionally omitted
+                },
+            },
+        )
+        with pytest.raises(RFError, match="rationale"):
+            config.deployment_mode()
+
+    def test_nonloopback_bind_with_real_auth_provider_infers_multi_user(self, tmp_path):
+        """No explicit deployment_mode, no posture declared -- a public bind
+        with a real auth provider must be INFERRED multi_user so the FR-13
+        gate arms, instead of silently running under single_user forever."""
+        config = _make_config(
+            tmp_path,
+            {
+                "viewer": {"bind_host": "0.0.0.0"},
+                "auth": {"provider": "local_static"},
+            },
+        )
+        assert config.deployment_mode() == "multi_user"
+
+    def test_loopback_bind_never_infers_multi_user(self, tmp_path):
+        """The inference is bind-gated -- a loopback bind with a real auth
+        provider configured still resolves single_user (unchanged default);
+        loopback deployments are not the public-exposure case G1 targets."""
+        config = _make_config(
+            tmp_path,
+            {
+                "viewer": {"bind_host": "127.0.0.1"},
+                "auth": {"provider": "local_static"},
+            },
+        )
+        assert config.deployment_mode() == "single_user"
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 "G1-precedence" hardening (2026-07-27, Codex gpt-5.6-sol
+# adversarial finding): an operator could previously write an explicit
+# ``deployment_mode: single_user`` on a non-loopback, auth-enabled bind and
+# dodge the G1 inference above without ever declaring
+# ``trusted_single_operator_posture`` -- defeating the whole point of the
+# posture being the ONLY way to keep single_user semantics on a public+auth
+# bind. These tests cover the five scenarios named in the remediation plan.
+# ---------------------------------------------------------------------------
+
+
+def _posture_overrides(*, declared_by: str = "nick") -> dict:
+    return {
+        "declared": True,
+        "rationale": "Single trusted LAN operator; DI-1 not yet re-accepted.",
+        "declared_at": "2026-07-27",
+        "declared_by": declared_by,
+    }
+
+
+class TestG1PrecedenceExplicitSingleUserGate:
+    def test_a_explicit_single_user_nonloopback_auth_no_posture_raises(self, tmp_path):
+        """(a) Explicit single_user + non-loopback + auth-enabled + NO
+        posture -> config error at load. This is the exact dodge the
+        Phase-5 gate closes: without it, the config below would silently
+        resolve to single_user despite being a public+authenticated bind."""
+        config = _make_config(
+            tmp_path,
+            {
+                "deployment_mode": "single_user",
+                "viewer": {"bind_host": "0.0.0.0"},
+                "auth": {"provider": "local_static"},
+            },
+        )
+        with pytest.raises(RFError, match="trusted_single_operator_posture"):
+            config.deployment_mode()
+
+    def test_b_explicit_single_user_nonloopback_auth_with_posture_allowed(
+        self, tmp_path, caplog
+    ):
+        """(b) Explicit single_user + non-loopback + auth-enabled + posture
+        declared -> allowed, warning emitted once, single_user returned."""
+        config = _make_config(
+            tmp_path,
+            {
+                "deployment_mode": "single_user",
+                "viewer": {"bind_host": "0.0.0.0"},
+                "auth": {"provider": "local_static"},
+                "trusted_single_operator_posture": _posture_overrides(),
+            },
+        )
+
+        with caplog.at_level(logging.WARNING, logger="research_foundry.config"):
+            assert config.deployment_mode() == "single_user"
+            assert config.deployment_mode() == "single_user"
+
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1, (
+            f"expected exactly one startup warning across 2 deployment_mode() calls, "
+            f"got {len(warnings)}"
+        )
+        assert "nick" in warnings[0].getMessage()
+
+    def test_c_explicit_single_user_loopback_auth_no_posture_allowed(self, tmp_path):
+        """(c) Explicit single_user + loopback + auth-enabled + no posture
+        -> allowed, single_user returned (no error -- loopback is safe)."""
+        config = _make_config(
+            tmp_path,
+            {
+                "deployment_mode": "single_user",
+                "viewer": {"bind_host": "127.0.0.1"},
+                "auth": {"provider": "local_static"},
+            },
+        )
+        assert config.deployment_mode() == "single_user"
+
+    def test_d_explicit_single_user_nonloopback_no_auth_unaffected_by_new_gate(
+        self, tmp_path
+    ):
+        """(d) Explicit single_user + non-loopback + no auth
+        (auth.provider=none) -> deployment_mode() itself must NOT raise;
+        this combination is refused by the separate ``_bind_gate`` invariant
+        at ``create_app()`` time (F1(2)), not by this resolver. Verifies the
+        Phase-5 gate is bind+auth-enabled-scoped, not bind-only."""
+        config = _make_config(
+            tmp_path,
+            {
+                "deployment_mode": "single_user",
+                "viewer": {"bind_host": "0.0.0.0"},
+                "auth": {"provider": "none"},
+            },
+        )
+        assert config.deployment_mode() == "single_user"
+
+    def test_legacy_auth_mode_token_also_gated(self, tmp_path):
+        """The gate uses ``is_auth_enabled()`` (covers the legacy
+        ``viewer.auth_mode=="token"`` path too, not only ``auth.provider``)
+        -- a deliberately broader net than the canonical-path-only
+        inference it guards. No posture declared -> still raises."""
+        config = _make_config(
+            tmp_path,
+            {
+                "deployment_mode": "single_user",
+                "viewer": {"bind_host": "0.0.0.0", "auth_mode": "token"},
+                "auth": {"provider": "none"},
+            },
+        )
+        with pytest.raises(RFError, match="trusted_single_operator_posture"):
+            config.deployment_mode()
+
+    def test_explicit_multi_user_always_honored_regardless_of_posture(self, tmp_path):
+        """Step 1 (explicit multi_user always wins) is untouched by the new
+        gate -- no posture required, no error, even on a public+auth bind."""
+        config = _make_config(
+            tmp_path,
+            {
+                "deployment_mode": "multi_user",
+                "viewer": {"bind_host": "0.0.0.0"},
+                "auth": {"provider": "local_static"},
+            },
+        )
+        assert config.deployment_mode() == "multi_user"
+
+
+# ---------------------------------------------------------------------------
+# G2 (DI-1 delta re-audit remediation, 2026-07-26): _di1_audit_accepted()
+# staleness detection -- audited_head vs. the current source-tree HEAD.
+# ---------------------------------------------------------------------------
+
+
+class TestG2AuditFreshnessStaleness:
+    def test_audited_head_matches_current_head_and_status_accepted_passes(self, tmp_path):
+        audit_path = tmp_path / "audit.md"
+        audit_path.write_text(
+            f"---\nstatus: accepted\naudited_head: {DI1_AUDIT_TEST_HEAD}\n---\n\nbody\n",
+            encoding="utf-8",
+        )
+        config = _make_config(tmp_path, {"auth": {"di1_audit_report_path": str(audit_path)}})
+
+        accepted, detail = config._di1_audit_accepted()
+
+        assert accepted is True
+        assert detail == ""
+
+    def test_audited_head_mismatch_fails_with_staleness_message(self, tmp_path):
+        audit_path = tmp_path / "audit.md"
+        # A hex-lettered SHA (not all-digit) -- an all-digit dummy like
+        # "0000...0" is parsed by PyYAML's YAML-1.1 octal resolver as the
+        # integer 0, not the string "0000...0", which would spuriously hit
+        # the "audited_head not declared" branch instead of the staleness
+        # branch this test targets.
+        audit_path.write_text(
+            "---\nstatus: accepted\n"
+            "audited_head: ffffffffffffffffffffffffffffffffffffffff\n"
+            "---\n\nbody\n",
+            encoding="utf-8",
+        )
+        config = _make_config(tmp_path, {"auth": {"di1_audit_report_path": str(audit_path)}})
+
+        accepted, detail = config._di1_audit_accepted()
+
+        assert accepted is False
+        assert "stale" in detail
+        assert "audited_head" in detail
+        assert "HEAD" in detail
+
+    def test_missing_audited_head_fails_with_cannot_verify_message(self, tmp_path):
+        audit_path = tmp_path / "audit.md"
+        audit_path.write_text("---\nstatus: accepted\n---\n\nbody\n", encoding="utf-8")
+        config = _make_config(tmp_path, {"auth": {"di1_audit_report_path": str(audit_path)}})
+
+        accepted, detail = config._di1_audit_accepted()
+
+        assert accepted is False
+        assert "audited_head" in detail
+        assert "cannot verify" in detail

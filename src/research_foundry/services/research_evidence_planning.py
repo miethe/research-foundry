@@ -592,7 +592,9 @@ def build_evidence_plan(
                 plan_state.append(("residual", question.forced_residual_reason, 0))
                 continue
 
-            current_generation_id = peek_catalog_generation_id(catalog, request.workspace_id)
+            current_generation_id = peek_catalog_generation_id(
+                catalog, request.workspace_id, identity=identity
+            )
             if captured_generation_id is not None and current_generation_id != captured_generation_id:
                 question_dicts.append(_terminal_question_dict(question, "evaluation_error"))
                 plan_state.append(("residual", "evaluation_error", 0))

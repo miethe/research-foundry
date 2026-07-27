@@ -24,10 +24,14 @@ On a **rate-limited** request (HTTP 429)::
 
 Key scheme
 ----------
-``(AuthIdentity.user_id, request.url.path)``
+``(AuthIdentity.workspace_id, AuthIdentity.user_id, request.url.path)``
 
 One user's burst NEVER throttles another user.  One endpoint's burst NEVER
-throttles another endpoint for the same user.
+throttles another endpoint for the same user.  ``workspace_id`` is part of
+the key (F5, DI-1 delta re-audit MISSED-NEIGHBOR fix) so that if a
+``user_id`` is ever reused across workspaces, two tenants never share a
+counter bucket — the limiter must not rely on ``user_id`` being globally
+unique.
 
 Algorithm
 ---------
@@ -57,8 +61,8 @@ Configuration (``foundry.yaml``)
           requests_per_window: 60  # default 60
           window_seconds: 60       # default 60
 
-Defaults yield 60 requests/minute per ``(user_id, route)`` pair —
-1 req/sec sustained without bursting.  Adjust per-deployment.
+Defaults yield 60 requests/minute per ``(workspace_id, user_id, route)``
+triple — 1 req/sec sustained without bursting.  Adjust per-deployment.
 
 Middleware stack position
 -------------------------
@@ -95,10 +99,17 @@ _Bucket = collections.deque
 
 
 class SlidingWindowRateLimiter:
-    """In-process sliding-window rate limiter keyed on ``(user_id, route)``.
+    """In-process sliding-window rate limiter keyed on
+    ``(workspace_id, user_id, route)``.
 
-    Each ``(user_id, route)`` pair maintains a :class:`collections.deque`
-    of request timestamps (UNIX seconds, float).  On each :meth:`check` call:
+    Each ``(workspace_id, user_id, route)`` triple maintains a
+    :class:`collections.deque` of request timestamps (UNIX seconds, float).
+    ``workspace_id`` defaults to ``""`` when the caller does not pass one
+    (F5, DI-1 delta re-audit: including it in the key closes a cross-tenant
+    counter-sharing gap — without it, two identities with the same
+    ``user_id`` in different workspaces would throttle each other even
+    though the F5 override read is already correctly per-workspace).  On
+    each :meth:`check` call:
 
     1. Evict expired entries from the left (older than ``now - window_seconds``).
     2. Compute ``reset_at``: the moment the oldest in-window entry expires.
@@ -136,8 +147,9 @@ class SlidingWindowRateLimiter:
             )
         self._limit = requests_per_window
         self._window = window_seconds
-        # Mapping (user_id, route) → deque[float] of request timestamps.
-        self._buckets: dict[tuple[str, str], _Bucket] = {}
+        # Mapping (workspace_id, user_id, route) → deque[float] of request
+        # timestamps.
+        self._buckets: dict[tuple[str, str, str], _Bucket] = {}
 
     def check(
         self,
@@ -145,10 +157,12 @@ class SlidingWindowRateLimiter:
         route: str,
         _now: float | None = None,
         *,
+        workspace_id: str | None = None,
         limit_override: int | None = None,
         window_override: int | None = None,
     ) -> tuple[bool, int, float]:
-        """Check and (if allowed) record a request for ``(user_id, route)``.
+        """Check and (if allowed) record a request for
+        ``(workspace_id, user_id, route)``.
 
         Args:
             user_id:         The authenticated user identifier.
@@ -156,6 +170,13 @@ class SlidingWindowRateLimiter:
             _now:            Override for the current timestamp.  Pass a float
                              for deterministic unit tests; ``None`` (default)
                              uses :func:`time.time`.
+            workspace_id:    The identity's workspace, included in the bucket
+                             key (F5, DI-1 delta re-audit) so a ``user_id``
+                             shared across workspaces never shares a counter.
+                             ``None`` (default) is normalised to ``""`` —
+                             callers that never pass it (e.g. the pre-F5
+                             algorithm-level unit tests) keep a single shared
+                             bucket per ``(user_id, route)``, unchanged.
             limit_override:  Override the configured ``requests_per_window``
                              for this check only.  ``None`` keeps
                              ``self._limit``.  Used by
@@ -186,7 +207,7 @@ class SlidingWindowRateLimiter:
         effective_limit: int = limit_override if limit_override is not None else self._limit
         effective_window: int = window_override if window_override is not None else self._window
 
-        key = (user_id, route)
+        key = (workspace_id or "", user_id, route)
         bucket: _Bucket = self._buckets.setdefault(key, collections.deque())
 
         # Evict timestamps outside the sliding window's left boundary.
@@ -210,9 +231,12 @@ class SlidingWindowRateLimiter:
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Starlette middleware that enforces per-identity + per-route rate limits.
 
-    Rate-limit key: ``(AuthIdentity.user_id, request.url.path)``.  This
-    ensures one user's burst does NOT throttle another user, and one endpoint's
-    burst does NOT throttle other endpoints for the same user.
+    Rate-limit key: ``(AuthIdentity.workspace_id, AuthIdentity.user_id,
+    request.url.path)``.  This ensures one user's burst does NOT throttle
+    another user, one endpoint's burst does NOT throttle other endpoints for
+    the same user, and (F5, DI-1 delta re-audit) two identities that happen
+    to share a ``user_id`` across different workspaces do NOT share a
+    counter bucket either.
 
     **Exempt cases** (pass through unconditionally):
 
@@ -238,8 +262,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     Args:
         app:                 The inner ASGI application.
-        requests_per_window: Maximum requests per ``(user_id, route)`` per
-                             window.  Default: 60.
+        requests_per_window: Maximum requests per ``(workspace_id, user_id,
+                             route)`` per window.  Default: 60.
         window_seconds:      Sliding window width in seconds.  Default: 60.
     """
 
@@ -269,8 +293,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Read runtime overrides set by PATCH /api/admin/rate-limit-config.
         # These are applied per-request so changes take effect immediately
         # without rebuilding the limiter or restarting the process.
+        #
+        # F5 (DI-1 delta re-audit): overrides are keyed by workspace_id — a
+        # workspace-local admin's PATCH mutates only that workspace's own
+        # bucket (see admin.py's update_rate_limit_config), so this reads
+        # the bucket for the CURRENT request's own identity.workspace_id
+        # only. A workspace-B admin's override can never change the
+        # effective budget applied to a workspace-A request, and vice versa.
         _app_state = getattr(getattr(request, "app", None), "state", None)
-        _overrides: dict = getattr(_app_state, "rate_limit_overrides", None) or {}
+        _overrides_by_workspace: dict = getattr(_app_state, "rate_limit_overrides", None) or {}
+        _overrides: dict = _overrides_by_workspace.get(identity.workspace_id) or {}
         limit_override: int | None = _overrides.get("max_requests")
         window_override: int | None = _overrides.get("window_seconds")
 
@@ -302,6 +334,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         allowed, remaining, reset_at = self._limiter.check(
             user_id,
             route,
+            workspace_id=identity.workspace_id,
             limit_override=limit_override,
             window_override=window_override,
         )

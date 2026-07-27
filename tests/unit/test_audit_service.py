@@ -400,6 +400,98 @@ class TestGetEventWorkspaceScoping:
 
 
 # ---------------------------------------------------------------------------
+# F7(c) (DI-1 delta re-audit): the cursor lookup in list_events() must be
+# scoped to the SAME effective workspace as the main result filter. Before
+# the fix, the cursor's ``SELECT created_at FROM audit_event WHERE
+# audit_event_id = ?`` ignored workspace entirely while the main filter was
+# already workspace-scoped -- a caller who knew a foreign audit_event_id
+# could pass it as `cursor` and have that foreign event's real `created_at`
+# silently shift their own, correctly-scoped page boundary (a pagination-
+# shift oracle on a known foreign id, weak but real).
+# ---------------------------------------------------------------------------
+
+
+def _set_created_at(paths: FoundryPaths, event_id: str, created_at: str) -> None:
+    """Force a specific ``created_at`` on an already-recorded event.
+
+    ``record_event`` always stamps ``datetime.now()`` (second precision, no
+    override param) -- direct control is needed here to build a
+    deterministic 3-event timeline (two ws-mine events straddling one
+    ws-other event) without a real-time ``sleep()``.
+    """
+
+    conn = bootstrap(paths)
+    try:
+        conn.execute(
+            "UPDATE audit_event SET created_at = ? WHERE audit_event_id = ?",
+            (created_at, event_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class TestListEventsCursorWorkspaceScoping:
+    def test_foreign_cursor_does_not_shift_page_boundary_under_enforcement(
+        self, paths: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        e1 = record_event(paths, _make_event(actor_workspace_id="ws-mine", action="e1"))
+        e2 = record_event(paths, _make_event(actor_workspace_id="ws-mine", action="e2"))
+        # A ws-other event whose real created_at sits strictly BETWEEN e1
+        # and e2 -- exactly the shape that (pre-fix) would silently drop e2
+        # from ws-mine's own page if the cursor lookup were unscoped.
+        o1 = record_event(paths, _make_event(actor_workspace_id="ws-other", action="o1"))
+        assert e1 is not None and e2 is not None and o1 is not None
+        _set_created_at(paths, e1, "2026-01-01T00:00:00Z")
+        _set_created_at(paths, o1, "2026-01-01T00:00:30Z")
+        _set_created_at(paths, e2, "2026-01-01T00:01:00Z")
+
+        _force_isolation_active(monkeypatch)
+
+        baseline = list_events(paths, identity=_WS_MINE, limit=10)
+        assert [i["audit_event_id"] for i in baseline["items"]] == [e2, e1]
+
+        # A foreign audit_event_id as cursor must be IGNORED entirely (no
+        # matching row in the workspace-scoped cursor lookup) -- never
+        # filtered against the foreign event's real created_at.
+        result = list_events(paths, identity=_WS_MINE, cursor=o1, limit=10)
+        assert [i["audit_event_id"] for i in result["items"]] == [e2, e1]
+
+    def test_same_workspace_cursor_still_paginates_normally(
+        self, paths: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        e1 = record_event(paths, _make_event(actor_workspace_id="ws-mine", action="e1"))
+        e2 = record_event(paths, _make_event(actor_workspace_id="ws-mine", action="e2"))
+        assert e1 is not None and e2 is not None
+        _set_created_at(paths, e1, "2026-01-01T00:00:00Z")
+        _set_created_at(paths, e2, "2026-01-01T00:01:00Z")
+
+        _force_isolation_active(monkeypatch)
+
+        page1 = list_events(paths, identity=_WS_MINE, limit=1)
+        assert [i["audit_event_id"] for i in page1["items"]] == [e2]
+        assert page1["next_cursor"] == e2
+
+        page2 = list_events(paths, identity=_WS_MINE, cursor=page1["next_cursor"], limit=1)
+        assert [i["audit_event_id"] for i in page2["items"]] == [e1]
+
+    def test_advisory_mode_or_identity_none_cursor_lookup_unchanged(self, paths: FoundryPaths) -> None:
+        """Sanity control / AC-6 baseline: without enforcement (or without
+        identity), `workspace_id` never gets set from an identity, so the
+        cursor lookup keeps its exact pre-fix (unscoped) shape."""
+
+        e1 = record_event(paths, _make_event(actor_workspace_id="ws-mine", action="e1"))
+        e2 = record_event(paths, _make_event(actor_workspace_id="ws-mine", action="e2"))
+        assert e1 is not None and e2 is not None
+        _set_created_at(paths, e1, "2026-01-01T00:00:00Z")
+        _set_created_at(paths, e2, "2026-01-01T00:01:00Z")
+
+        page1 = list_events(paths, limit=1)
+        page2 = list_events(paths, cursor=page1["next_cursor"], limit=1)
+        assert [i["audit_event_id"] for i in page2["items"]] == [e1]
+
+
+# ---------------------------------------------------------------------------
 # Fault injection: forced write failure
 # ---------------------------------------------------------------------------
 

@@ -23,6 +23,7 @@ from research_foundry.cli import app
 from research_foundry.config import FoundryConfig
 from research_foundry.paths import FoundryPaths, distribution_root
 from research_foundry.yamlio import dump_yaml, load_yaml
+from tests.conftest import DI1_AUDIT_TEST_HEAD
 
 runner = CliRunner()
 
@@ -126,7 +127,10 @@ def _config_with_mode(
     auth_block = {**(existing["foundry"].get("auth") or {}), "provider": provider}
     if di1_accepted:
         audit_path = tmp_path / "di1-audit-accepted.md"
-        audit_path.write_text("---\nstatus: accepted\n---\n\nbody\n", encoding="utf-8")
+        audit_path.write_text(
+            f"---\nstatus: accepted\naudited_head: {DI1_AUDIT_TEST_HEAD}\n---\n\nbody\n",
+            encoding="utf-8",
+        )
         auth_block["di1_audit_acknowledged"] = True
         auth_block["di1_audit_report_path"] = str(audit_path)
     existing["foundry"]["auth"] = auth_block

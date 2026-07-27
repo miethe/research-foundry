@@ -515,10 +515,13 @@ def test_h3_14_catalog_generation_changed_mid_plan_resolves_remaining_to_evaluat
     original_peek = planning_module.peek_catalog_generation_id
     calls = {"count": 0}
 
-    def _patched_peek(catalog_arg, workspace_id):
+    def _patched_peek(catalog_arg, workspace_id, **kwargs):
+        # F6 (DI-1 delta re-audit) added a keyword-only `identity` param to
+        # the real peek_catalog_generation_id — accept and forward it so
+        # this stub's signature does not drift from the real one.
         calls["count"] += 1
         if calls["count"] == 1:
-            return original_peek(catalog_arg, workspace_id)
+            return original_peek(catalog_arg, workspace_id, **kwargs)
         return "gen_drifted_mid_plan_sentinel"
 
     monkeypatch.setattr(planning_module, "peek_catalog_generation_id", _patched_peek)

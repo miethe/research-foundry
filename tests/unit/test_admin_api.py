@@ -588,3 +588,137 @@ class TestRateLimitConfigValidation:
             f"4th request to /api/admin/rbac-status returned {limited.status_code}, "
             "expected 429 — the max_requests=3 override is not being enforced"
         )
+
+
+# ---------------------------------------------------------------------------
+# F5 (DI-1 delta re-audit): PATCH /admin/rate-limit-config gates on role only
+# (owner/admin, granted WITHIN one workspace) but historically wrote a
+# process-global app.state.rate_limit_overrides dict read by
+# RateLimitMiddleware for EVERY tenant — a workspace-local admin could mutate
+# every other workspace's effective rate-limit budget. All prior tests in
+# this module use a single fixed identity per app instance (via
+# _InjectIdentityMiddleware), so they only ever exercise ONE workspace_id
+# ("default") and cannot expose a shared-process, cross-workspace leak. This
+# section builds ONE shared app/client (one shared app.state) and switches
+# identity PER REQUEST via a request header, so two different tenants can
+# genuinely share the same process-wide override state under test.
+# ---------------------------------------------------------------------------
+
+
+class _HeaderWorkspaceIdentityMiddleware(BaseHTTPMiddleware):
+    """Builds an owner/admin ``AuthIdentity`` from the ``X-Test-Workspace``
+    request header. Distinct from ``_InjectIdentityMiddleware`` (fixed
+    identity baked in at app-creation time): this lets ONE app/client
+    instance simulate multiple tenants sharing one process-wide
+    ``app.state.rate_limit_overrides`` — required to prove F5's per-request,
+    per-workspace scoping rather than merely per-app scoping."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        workspace_id = request.headers.get("X-Test-Workspace")
+        if workspace_id:
+            request.state.identity = AuthIdentity(
+                user_id=f"u-{workspace_id}", workspace_id=workspace_id, roles=("owner", "admin")
+            )
+        return await call_next(request)
+
+
+def _make_shared_workspace_client(
+    tmp_path: Path, *, requests_per_window: int = 10, window_seconds: int = 60
+) -> TestClient:
+    config = _make_config(tmp_path)
+
+    foundry_yaml_path = config.paths.foundry_yaml
+    existing = load_yaml(foundry_yaml_path) or {}
+    if "foundry" not in existing:
+        existing["foundry"] = {}
+    auth: dict[str, Any] = dict(existing["foundry"].get("auth") or {})
+    auth["rbac_enforcement"] = "enabled"
+    auth["rate_limit"] = {
+        "enabled": True,
+        "requests_per_window": requests_per_window,
+        "window_seconds": window_seconds,
+    }
+    existing["foundry"]["auth"] = auth
+    dump_yaml(existing, foundry_yaml_path)
+    config = FoundryConfig(paths=FoundryPaths(root=config.paths.root))
+
+    app = create_app(config)
+    app.dependency_overrides[get_paths] = lambda: config.paths
+    app.dependency_overrides[_get_config] = lambda: config
+    app.add_middleware(_HeaderWorkspaceIdentityMiddleware)
+    return TestClient(app, raise_server_exceptions=True)
+
+
+class TestRateLimitConfigWorkspaceScoping:
+    """F5: app.state.rate_limit_overrides must be keyed by the caller's own
+    workspace_id — a workspace-local admin's PATCH must never change another
+    tenant's effective rate-limit budget, and must still fully apply to the
+    admin's own workspace."""
+
+    def test_workspace_b_override_does_not_change_workspace_a_config_read(self, tmp_path: Path) -> None:
+        client = _make_shared_workspace_client(tmp_path)
+        baseline = client.get("/api/admin/rate-limit-config", headers={"X-Test-Workspace": "ws-mine"}).json()
+
+        resp_b = client.patch(
+            "/api/admin/rate-limit-config",
+            json={"max_requests": 3},
+            headers={"X-Test-Workspace": "ws-other"},
+        )
+        assert resp_b.status_code == 200
+        assert resp_b.json()["max_requests"] == 3
+
+        after_a = client.get("/api/admin/rate-limit-config", headers={"X-Test-Workspace": "ws-mine"}).json()
+        assert after_a["max_requests"] == baseline["max_requests"]
+        assert after_a["max_requests"] != 3
+
+    def test_workspace_a_own_override_applies_to_workspace_a_config_read(self, tmp_path: Path) -> None:
+        client = _make_shared_workspace_client(tmp_path)
+        resp = client.patch(
+            "/api/admin/rate-limit-config",
+            json={"max_requests": 7},
+            headers={"X-Test-Workspace": "ws-mine"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["max_requests"] == 7
+
+        after = client.get("/api/admin/rate-limit-config", headers={"X-Test-Workspace": "ws-mine"}).json()
+        assert after["max_requests"] == 7
+
+    def test_workspace_b_override_does_not_lower_workspace_a_effective_429_threshold(
+        self, tmp_path: Path
+    ) -> None:
+        """The deeper proof: ws-other drastically lowering ITS OWN budget to 1
+        must not throttle ws-mine's requests at that same lowered threshold —
+        the actual cross-tenant availability defect F5 remediates. Pre-fix,
+        the flat override applied to every (user_id, route) bucket
+        regardless of workspace, so ws-mine's 2nd request here would 429."""
+
+        client = _make_shared_workspace_client(tmp_path)
+        resp = client.patch(
+            "/api/admin/rate-limit-config",
+            json={"max_requests": 1},
+            headers={"X-Test-Workspace": "ws-other"},
+        )
+        assert resp.status_code == 200
+
+        r1 = client.get("/api/admin/rbac-status", headers={"X-Test-Workspace": "ws-mine"})
+        r2 = client.get("/api/admin/rbac-status", headers={"X-Test-Workspace": "ws-mine"})
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+
+    def test_workspace_a_own_override_still_enforced_for_workspace_a(self, tmp_path: Path) -> None:
+        """Symmetric control: the per-workspace keying must not accidentally
+        stop enforcing a workspace's own override against its own requests."""
+
+        client = _make_shared_workspace_client(tmp_path)
+        resp = client.patch(
+            "/api/admin/rate-limit-config",
+            json={"max_requests": 1},
+            headers={"X-Test-Workspace": "ws-mine"},
+        )
+        assert resp.status_code == 200
+
+        r1 = client.get("/api/admin/rbac-status", headers={"X-Test-Workspace": "ws-mine"})
+        r2 = client.get("/api/admin/rbac-status", headers={"X-Test-Workspace": "ws-mine"})
+        assert r1.status_code == 200
+        assert r2.status_code == 429

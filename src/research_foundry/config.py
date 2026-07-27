@@ -9,6 +9,7 @@ CLI runs before all content files exist.
 from __future__ import annotations
 
 import enum
+import logging
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -18,6 +19,8 @@ from .errors import RFError
 from .frontmatter import load_md
 from .paths import FoundryPaths, distribution_root
 from .yamlio import load_yaml
+
+_logger = logging.getLogger(__name__)
 
 # Valid values for viewer.auth_mode (OQ-4 resolution).
 _VALID_AUTH_MODES = frozenset({"none", "token"})
@@ -140,6 +143,68 @@ def _is_loopback(bind_host: str) -> bool:
     )
 
 
+def _current_source_head_sha(git_dir: Path | None = None) -> str | None:
+    """Resolve the current source-tree HEAD commit SHA via a plain file-read.
+
+    DI-1 delta re-audit remediation (G2, ACT-406): reads ``<git_dir>/HEAD``
+    (default ``distribution_root() / ".git"`` — the checked-out source
+    repository, never a runtime workspace's ``FoundryPaths.root``, which is a
+    separate directory in split deployments). If ``HEAD`` is a symbolic ref
+    (``ref: refs/heads/<branch>``) this follows it one level by reading
+    ``<git_dir>/<ref>``, falling back to a ``packed-refs`` scan when the ref
+    has been packed (e.g. after ``git gc``) rather than left as a loose file.
+    A detached ``HEAD`` (the file itself holding a raw SHA) is returned
+    as-is.
+
+    This is a plain file-read — no subprocess is ever spawned. Returns
+    ``None`` when the SHA cannot be resolved by any of the above (missing
+    ``.git`` dir, missing ``HEAD`` file, dangling ref); callers are
+    responsible for treating that as fail-closed, this helper only reports.
+    """
+    resolved_git_dir = git_dir if git_dir is not None else (distribution_root() / ".git")
+    head_path = resolved_git_dir / "HEAD"
+    try:
+        head_content = head_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not head_content:
+        return None
+
+    if not head_content.startswith("ref:"):
+        # Detached HEAD — the file itself holds the raw SHA.
+        return head_content
+
+    ref = head_content.split(":", 1)[1].strip()
+    ref_path = resolved_git_dir / ref
+    try:
+        loose = ref_path.read_text(encoding="utf-8").strip()
+        if loose:
+            return loose
+    except OSError:
+        pass
+
+    # Fallback: the ref may have been packed (e.g. `git gc`) rather than left
+    # as a loose file under refs/.
+    packed_refs_path = resolved_git_dir / "packed-refs"
+    try:
+        for line in packed_refs_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("^"):
+                continue
+            parts = line.split(" ", 1)
+            if len(parts) == 2 and parts[1] == ref:
+                return parts[0]
+    except OSError:
+        pass
+
+    return None
+
+
+def _short(sha: str, length: int = 12) -> str:
+    """Truncate *sha* to *length* characters for compact error messages."""
+    return sha[:length]
+
+
 # Valid values for auth.provider (P5.1 canonical auth selector).
 # "clerk" is implemented in CLK-4.x with a dark-by-default precondition gate.
 # "oidc" is recognised vocabulary but not yet implemented — validated at
@@ -210,6 +275,13 @@ class FoundryConfig:
 
     paths: FoundryPaths
     _cache: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
+    # DI-1 delta re-audit remediation (G1): tracks whether the
+    # trusted_single_operator_posture startup warning has already fired for
+    # THIS config instance, so a long-lived FoundryConfig backing a running
+    # `rf serve` process (deployment_mode() is called many times per
+    # request/resolver, not just once) only ever warns/audits once per
+    # process launch — see _emit_trusted_single_operator_warning_once().
+    _deployment_mode_warned: bool = field(default=False, repr=False, compare=False)
 
     @classmethod
     def load(cls, start: str | Path | None = None) -> FoundryConfig:
@@ -918,16 +990,219 @@ class FoundryConfig:
             :meth:`deployment_mode_validate` for the fail-closed startup gate
             that requires a real, non-``"none"`` auth provider).
 
+        Resolution precedence (DI-1 delta re-audit remediation, G1;
+        Phase 5 "G1-precedence" hardening)
+        -------------------------------------------------------------
+        1. **Explicit multi_user.** If ``foundry.deployment_mode`` is
+           present and resolves to ``"multi_user"``, that value always
+           wins — unchanged from pre-Phase-5 behaviour.
+        2. **Explicit single_user on a public+auth bind — gated.** If
+           ``foundry.deployment_mode`` is present and resolves to
+           ``"single_user"`` AND :meth:`viewer_bind_host` is non-loopback
+           AND :meth:`is_auth_enabled` is ``True``: the explicit value is
+           honored ONLY when
+           :meth:`_trusted_single_operator_posture_declared` resolves
+           ``True`` (emits the existing one-time startup warning, same as
+           step 4 below). Otherwise this raises :class:`RFError` at load.
+           Without this gate an operator could write
+           ``deployment_mode: single_user`` in ``foundry.yaml`` and dodge
+           the step-5 inference below without ever declaring the escape
+           hatch — defeating the entire point of making the posture
+           declaration the ONLY way to keep ``single_user`` semantics on a
+           public+auth bind (Codex gpt-5.6-sol adversarial finding
+           "G1-precedence", 2026-07-27).
+        3. **Explicit single_user, otherwise.** Any other explicit
+           ``"single_user"`` (loopback bind, or no auth enabled) is honored
+           verbatim — unchanged. The separate non-loopback+no-auth
+           ``_bind_gate`` invariant enforced inside ``create_app`` (F1(2))
+           already refuses that combination regardless of
+           ``deployment_mode``.
+        4. **Escape hatch (no explicit value).** Else, if
+           :meth:`_trusted_single_operator_posture_declared` resolves
+           ``True`` (a fully-populated, conscious operator declaration —
+           see that method), returns ``"single_user"`` and emits a one-time
+           startup warning (never inferred silently).
+        5. **Inference.** Else, if :meth:`viewer_bind_host` is non-loopback
+           AND :meth:`auth_provider` is not ``"none"``, returns
+           ``"multi_user"`` — arming the FR-13 DI-1 acknowledgment gate for a
+           deployment that is public and authenticated but where the
+           operator never explicitly set ``deployment_mode`` (closing the
+           governance gap where such a deployment could run indefinitely
+           under ``single_user`` semantics and never trigger the intended
+           human sign-off).
+        6. **Default.** Else, ``"single_user"`` (unchanged).
+
+        A malformed ``auth.provider`` value never raises out of step 5 —
+        inference is skipped (falls through to the ``"single_user"``
+        default) so a config error surfaces from :meth:`auth_provider`
+        itself at its own call sites, not indirectly through this resolver.
+        Step 2's gate deliberately uses :meth:`is_auth_enabled` (which also
+        covers the legacy ``viewer.auth_mode=="token"`` path) rather than
+        step 5's narrower ``auth_provider() != "none"`` check — the
+        explicit-escape-hatch gate is meant to catch every bind/auth
+        combination an operator could plausibly declare ``single_user``
+        against, a deliberately broader net than the canonical-path-only
+        inference it is guarding.
+
         Raises:
-            ValueError: If the raw config value is not a recognised mode.
+            ValueError: If an explicitly-set ``foundry.deployment_mode``
+                value is not a recognised mode.
+            RFError: If the trusted-single-operator posture is
+                half-declared — see
+                :meth:`_trusted_single_operator_posture_declared` — or if
+                ``deployment_mode: single_user`` is explicit on a
+                non-loopback, auth-enabled bind without a fully-declared
+                posture (step 2 above).
         """
-        raw = str(self.foundry.get("deployment_mode", "single_user")).lower()
-        if raw not in _VALID_DEPLOYMENT_MODES:
-            raise ValueError(
-                f"deployment_mode={raw!r} is not valid; "
-                f"must be one of: {', '.join(sorted(_VALID_DEPLOYMENT_MODES))}"
+        explicit = self.foundry.get("deployment_mode")
+        if explicit is not None:
+            raw = str(explicit).lower()
+            if raw not in _VALID_DEPLOYMENT_MODES:
+                raise ValueError(
+                    f"deployment_mode={raw!r} is not valid; "
+                    f"must be one of: {', '.join(sorted(_VALID_DEPLOYMENT_MODES))}"
+                )
+            if raw == "single_user":
+                bind_host = self.viewer_bind_host()
+                if not _is_loopback(bind_host) and self.is_auth_enabled():
+                    if self._trusted_single_operator_posture_declared():
+                        self._emit_trusted_single_operator_warning_once()
+                        return raw
+                    raise RFError(
+                        "foundry.deployment_mode=single_user is set explicitly, but "
+                        f"viewer.bind_host={bind_host!r} is non-loopback and an auth "
+                        "mechanism is enabled -- this bind/auth combination would "
+                        "otherwise be inferred as multi_user (DI-1 delta re-audit "
+                        "G1). Declare foundry.trusted_single_operator_posture "
+                        "(declared=true with non-empty rationale/declared_at/"
+                        "declared_by) to keep single_user semantics explicitly, "
+                        "remove the explicit deployment_mode to allow inference, "
+                        "or set deployment_mode=multi_user."
+                    )
+            return raw
+
+        if self._trusted_single_operator_posture_declared():
+            self._emit_trusted_single_operator_warning_once()
+            return "single_user"
+
+        try:
+            bind_host = self.viewer_bind_host()
+            provider = self.auth_provider()
+        except ValueError:
+            # A malformed auth.provider (or similar) is not this method's
+            # concern to raise on — the operator will hit that error from
+            # auth_provider() itself wherever it is next called directly.
+            return "single_user"
+
+        if not _is_loopback(bind_host) and provider != "none":
+            return "multi_user"
+
+        return "single_user"
+
+    def trusted_single_operator_posture(self) -> dict[str, Any]:
+        """Return the raw ``foundry.trusted_single_operator_posture`` block.
+
+        DI-1 delta re-audit remediation (G1): the explicit escape-hatch that
+        lets an operator keep ``single_user`` semantics on a bind/auth
+        combination that would otherwise be *inferred* as ``multi_user`` by
+        :meth:`deployment_mode` — see that method's resolution precedence.
+        This accessor returns the block verbatim (never validated); use
+        :meth:`_trusted_single_operator_posture_declared` for the
+        validated, fail-closed resolution of whether the posture is
+        actually in effect.
+
+        Supported keys
+        ---------------
+        declared : bool
+            Must be exactly ``True`` to activate the posture at all.
+        rationale : str
+            Required, non-empty, when ``declared`` is ``True``.
+        declared_at : str
+            Required, non-empty, when ``declared`` is ``True`` (an ISO 8601
+            date or datetime is expected, but not parsed/validated as one —
+            this is a human-auditable free-text trail, not a machine gate).
+        declared_by : str
+            Required, non-empty, when ``declared`` is ``True``.
+        """
+        raw = self.foundry.get("trusted_single_operator_posture", {})
+        return raw if isinstance(raw, dict) else {}
+
+    def _trusted_single_operator_posture_declared(self) -> bool:
+        """Resolve whether the G1 trusted-single-operator escape hatch is active.
+
+        A conscious, auditable operator act — ``declared: true`` PLUS a
+        non-empty ``rationale``, ``declared_at``, and ``declared_by`` — is
+        required to activate the posture; it can never be inferred from any
+        other config value. A **half-declared** posture (``declared: true``
+        with any of the three fields missing or empty) is refused at load
+        time (fail-closed) rather than silently activating with blank
+        fields or silently falling through as if undeclared — an operator
+        who sets ``declared: true`` clearly intended to declare something,
+        so ambiguity there must surface loudly, not default away.
+
+        Returns:
+            ``False`` when ``declared`` is unset, ``False``, or any value
+            other than the literal ``True``. ``True`` only when fully
+            populated.
+
+        Raises:
+            RFError: If ``declared`` is ``True`` but one or more of
+                ``rationale``/``declared_at``/``declared_by`` is
+                missing/empty.
+        """
+        posture = self.trusted_single_operator_posture()
+        if posture.get("declared") is not True:
+            return False
+        missing = [
+            field_name
+            for field_name in ("rationale", "declared_at", "declared_by")
+            if not str(posture.get(field_name) or "").strip()
+        ]
+        if missing:
+            raise RFError(
+                "foundry.trusted_single_operator_posture.declared=true requires "
+                f"non-empty {', '.join(missing)} — a half-declared posture is "
+                "refused (fail-closed). Populate all of declared/rationale/"
+                "declared_at/declared_by together, or remove the "
+                "declaration block entirely."
             )
-        return raw
+        return True
+
+    def _emit_trusted_single_operator_warning_once(self) -> None:
+        """Emit the G1 escape-hatch startup warning exactly once per instance.
+
+        The posture must never be silently kept — every process launch that
+        resolves ``deployment_mode()`` via the escape hatch logs a WARNING
+        naming who declared it and why. ``deployment_mode()`` is called many
+        times per app-startup (each ``_deployment_mode_preset_default`` call
+        re-resolves it), so the warning is deduplicated on
+        ``self._deployment_mode_warned`` rather than firing on every call.
+
+        TODO(DI-1 delta re-audit G1): also publish an audit event here once
+        a ``mutation_type`` fitting an "operator declared a startup posture"
+        event exists in ``audit_service.MUTATION_TYPES``
+        (src/research_foundry/services/audit_service.py:83-98) — none of
+        the six reserved types fit, and adding one is a taxonomy/schema
+        decision out of this remediation's scope. Importing
+        ``audit_service`` from this module would also risk a circular
+        import today (``audit_service`` → ``api.auth.scope`` → ``config``);
+        that would need resolving first too. Until then this is a
+        warning-only control, not a persisted audit trail.
+        """
+        if self._deployment_mode_warned:
+            return
+        self._deployment_mode_warned = True
+        posture = self.trusted_single_operator_posture()
+        _logger.warning(
+            "deployment_mode: foundry.trusted_single_operator_posture is "
+            "declared — keeping single_user semantics on a bind/auth "
+            "combination that would otherwise be inferred as multi_user "
+            "(DI-1 delta re-audit G1). declared_by=%r declared_at=%r "
+            "rationale=%r",
+            posture.get("declared_by"),
+            posture.get("declared_at"),
+            posture.get("rationale"),
+        )
 
     def _deployment_mode_preset_default(self, knob: str, fallback: Any) -> Any:
         """Return the ``deployment_mode`` preset default for *knob*, else *fallback*.
@@ -981,13 +1256,32 @@ class FoundryConfig:
 
         Returns ``(accepted, detail)``. ``accepted`` is ``True`` only when
         the artifact at :meth:`_di1_audit_report_path` exists, is readable,
-        and its YAML frontmatter's ``status`` field is the literal string
-        ``"accepted"`` — set only by an explicit human sign-off (ACT-406;
-        Mode D — no agent may set this value itself). A **missing file** is
-        treated identically to ``status != "accepted"`` (fail-closed; never
-        "assume passed" just because there is nothing to disagree with).
-        ``detail`` names the concrete unmet reason for the startup-gate error
-        message; empty when ``accepted`` is ``True``.
+        its frontmatter declares an ``audited_head`` that matches the
+        CURRENT source-tree HEAD (G2 — see below), and its YAML frontmatter's
+        ``status`` field is the literal string ``"accepted"`` — set only by
+        an explicit human sign-off (ACT-406; Mode D — no agent may set this
+        value itself). A **missing file** is treated identically to
+        ``status != "accepted"`` (fail-closed; never "assume passed" just
+        because there is nothing to disagree with). ``detail`` names the
+        concrete unmet reason for the startup-gate error message; empty when
+        ``accepted`` is ``True``.
+
+        G2 (DI-1 delta re-audit remediation, 2026-07-26): the pre-G2 version
+        of this method did a pure literal ``status == "accepted"`` compare —
+        no timestamp, hash, or commit pin — so an audit doc authored against
+        an old revision passed indefinitely even after the codebase
+        materially changed underneath it. This method now additionally
+        requires the artifact to declare ``audited_head`` (the commit SHA
+        the audit was performed against) and compares it to the current
+        source-tree HEAD (:func:`_current_source_head_sha`, a plain
+        ``.git/HEAD`` file-read — no subprocess). Both directions fail
+        closed: an artifact with no ``audited_head`` at all is refused
+        (rather than "assume it's still fresh"), and an unresolvable current
+        HEAD is *also* refused (rather than "assume it still matches").
+        SHAs are compared case-insensitively as a common prefix over the
+        shorter of the two lengths (tolerating a short vs. full SHA in
+        either the artifact or the resolved HEAD), with a 7-character floor
+        below which a match is never accepted as meaningful.
         """
         path = self._di1_audit_report_path()
         if not path.exists():
@@ -996,6 +1290,26 @@ class FoundryConfig:
             meta, _ = load_md(path)
         except Exception as exc:  # noqa: BLE001 — malformed file is fail-closed too
             return False, f"DI-1 audit artifact at {path} could not be read: {exc}"
+
+        audited_head = meta.get("audited_head")
+        if not audited_head:
+            return False, (
+                "audited_head not declared in audit artifact — cannot verify "
+                f"freshness; audit format outdated at {path}"
+            )
+        current_head = _current_source_head_sha()
+        if not current_head:
+            return False, "cannot determine current HEAD to verify audit freshness"
+
+        audited_head_s = str(audited_head).strip().lower()
+        current_head_s = current_head.strip().lower()
+        compare_len = min(len(audited_head_s), len(current_head_s))
+        if compare_len < 7 or audited_head_s[:compare_len] != current_head_s[:compare_len]:
+            return False, (
+                f"audit is stale: audited_head={_short(audited_head_s)} != "
+                f"HEAD={_short(current_head_s)} at {path}"
+            )
+
         status = meta.get("status")
         if status != "accepted":
             return False, (

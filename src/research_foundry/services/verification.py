@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .. import RF_SCHEMA_VERSION
+from ..api.auth.provider import AuthIdentity
 from ..config import FoundryConfig
 from ..errors import ExitCode, RFError
 from ..frontmatter import load_md
@@ -336,7 +337,11 @@ def _index_source_cards(rp) -> dict[str, dict[str, Any]]:
 _IO_ERROR_SENTINEL_PREFIX = "_io_error_"
 
 
-def build_global_source_index(paths: FoundryPaths) -> dict[str, tuple[str, str]]:
+def build_global_source_index(
+    paths: FoundryPaths,
+    *,
+    identity: AuthIdentity | None = None,
+) -> dict[str, tuple[str, str]]:
     """Build a workspace-wide mapping: source_card_id -> (run_id, sensitivity).
 
     Mirrors the shape of _index_source_cards but iterates every run in the
@@ -361,6 +366,22 @@ def build_global_source_index(paths: FoundryPaths) -> dict[str, tuple[str, str]]
     dir), that run is included as a sentinel ("unknown", "restricted") rather
     than silently omitted — preserving the fail-closed contract from
     export_service.DEFAULT_THRESHOLD.
+
+    ``identity`` (F7(a), DI-1 delta re-audit) scopes the run iteration to
+    runs the caller may read — this closes the cross-run quote-match oracle
+    at :func:`check_report_body_sensitivity_global`, which previously echoed
+    a matching foreign run's ``source_card_id``/``run_id`` in its
+    ``locations`` whenever a caller's guessed body text happened to match a
+    *different workspace's* private source quote (an enumeration channel).
+    Runs are not physically partitioned by workspace — each carries its own
+    ``run.yaml["workspace_id"]`` — so this reuses
+    :func:`~research_foundry.services.export_service._run_read_allowed`
+    (the same DF-004 gate :func:`~research_foundry.services.export_service.export_run`
+    already applies) per run: a run failing that gate under active
+    enforcement is skipped entirely (never indexed, never a possible
+    ``locations`` leak), a ``public`` run is always included, and advisory
+    mode (or ``identity=None`` — single-operator-trust, the default) is
+    byte-identical to the pre-fix behavior of indexing every run.
     """
     index: dict[str, tuple[str, str]] = {}
     runs_dir = paths.runs
@@ -371,11 +392,31 @@ def build_global_source_index(paths: FoundryPaths) -> dict[str, tuple[str, str]]
     except OSError:
         return index
 
+    # Deferred import mirrors the existing cross-module private-helper
+    # convention this file already uses for `_anchor_text_hash` /
+    # `_normalize_anchor_text` (see check_anchor_hash_match below).
+    from .export_service import _run_read_allowed
+
     for run_yaml in run_yamls:
         run_dir = run_yaml.parent
         # Store the path relative to runs_dir so nested layouts resolve via
         # paths.runs / run_id / "sources" in consumers.
         run_id = str(run_dir.relative_to(runs_dir))
+
+        if identity is not None:
+            try:
+                run_meta = load_yaml(run_yaml)
+            except Exception:  # noqa: BLE001 - malformed run.yaml; fail closed below
+                run_meta = None
+            if not isinstance(run_meta, dict):
+                run_meta = {}
+            if not _run_read_allowed(paths, run_meta, run_id, identity):
+                # F7(a): foreign-workspace (or undecidable) run excluded from
+                # the index entirely — never a candidate for the leak scan,
+                # never surfaced in check_report_body_sensitivity_global's
+                # `locations`.
+                continue
+
         sources_dir = run_dir / "sources"
         if not sources_dir.exists():
             continue
@@ -1542,6 +1583,7 @@ def check_report_body_sensitivity(
     claim_links: list[dict[str, Any]] | None = None,
     source_run_id: str | None = None,
     sensitivity_threshold: str | None = None,
+    identity: AuthIdentity | None = None,
 ) -> CheckResult:
     """D13 #4 — a public/shared draft body must not embed a raw quote from a
     source whose sensitivity exceeds the resolved threshold (spec §11:
@@ -1562,6 +1604,22 @@ def check_report_body_sensitivity(
     author happened to attach a ``source_link`` to. An explicit link is still
     the common case and remains fully covered (its ``run_id`` is one of the
     reachable runs), but it is no longer a precondition for detection.
+
+    ``identity`` (F7(a), DI-1 delta re-audit MISSED-NEIGHBOR fix) gates each
+    *declared* run_id above through
+    :func:`~research_foundry.services.export_service._run_read_allowed` —
+    the same DF-004 gate :func:`build_global_source_index` already applies
+    to its workspace-wide scan. Without this, a draft that declares a
+    foreign workspace's run_id as its ``source_run_id`` (or via
+    ``source_links``/``claim_links``) would still have that run's
+    ``sources/`` read here, letting a caller's guessed body text match a
+    foreign run's private quote and surface that run/card in ``locations``
+    — a cross-run quote-match oracle on the per-run path even though the
+    global check was already scoped. A run failing the gate under active
+    enforcement is skipped entirely (never read, never a ``locations``
+    candidate); ``identity=None`` (the default) is byte-identical to the
+    pre-fix see-all behavior, so CLI callers that never pass ``identity``
+    are unaffected.
     """
 
     threshold = sensitivity_threshold or DEFAULT_THRESHOLD
@@ -1580,9 +1638,29 @@ def check_report_body_sensitivity(
         if rid:
             run_ids.add(rid)
 
+    # Deferred import mirrors the existing cross-module private-helper
+    # convention this file already uses (see build_global_source_index above).
+    from .export_service import _run_read_allowed
+
     leaks: list[str] = []
     for run_id in sorted(run_ids):
         rp = paths.run_paths(run_id)
+
+        if identity is not None:
+            try:
+                run_meta = load_yaml(rp.run_yaml)
+            except Exception:  # noqa: BLE001 - malformed/missing run.yaml; fail closed below
+                run_meta = None
+            if not isinstance(run_meta, dict):
+                run_meta = {}
+            if not _run_read_allowed(paths, run_meta, run_id, identity):
+                # F7(a): a declared source run this identity may not read
+                # (foreign workspace, or undecidable) is skipped entirely —
+                # never read, never a `locations` candidate — mirroring
+                # build_global_source_index's treatment so the per-run check
+                # cannot echo a cross-workspace quote match either.
+                continue
+
         sources_dir = rp.sources
         if not sources_dir.exists():
             continue
@@ -1736,6 +1814,7 @@ def verify_draft(
     *,
     known_claim_ids: set[str] | None = None,
     sensitivity_threshold: str | None = None,
+    identity: AuthIdentity | None = None,
 ) -> VerificationResult:
     """Run every D13 check against a Report Builder draft (spec §7/§8/§11).
 
@@ -1752,11 +1831,30 @@ def verify_draft(
     builder-draft verification share one result vocabulary; writes
     ``<draft_dir>/verification.yaml`` (a derived, recomputable artifact, not
     draft truth — see ``builder_service`` module docstring).
+
+    ``identity`` (F4, DI-1 delta re-audit) is forwarded into
+    :func:`~research_foundry.services.builder_service.load_draft`, which is
+    already fail-closed on a cross-workspace draft under active enforcement
+    (raises :class:`~research_foundry.errors.NotFoundError`). That single
+    forward closes both the read AND the subsequent
+    ``<draft_dir>/verification.yaml`` write below in one change: a foreign
+    draft never reaches the write because ``load_draft`` raises first.
+    ``identity=None`` (the default) is byte-identical to the pre-fix
+    behavior — the CLI callers (``rf report verify`` / ``rf report
+    publish-preview``) that do not pass ``identity`` are unaffected.
+
+    ``identity`` is also forwarded into :func:`build_global_source_index`
+    (already scoped, F7(a)) AND into :func:`check_report_body_sensitivity`
+    (F7(a) MISSED-NEIGHBOR fix) below — the per-run check declares its own
+    run_ids from the draft's ``source_run_id``/``source_links``/
+    ``claim_links`` independently of the global index, so it needed its own
+    identical gate to close the same cross-run quote-match oracle on that
+    path.
     """
 
     from .builder_service import load_draft  # deferred: breaks the import cycle
 
-    draft = load_draft(paths, report_draft_id)
+    draft = load_draft(paths, report_draft_id, identity=identity)
     blocks = draft.get("blocks") or []
     claim_links = draft.get("claim_links") or []
     source_links = draft.get("source_links") or []
@@ -1765,7 +1863,7 @@ def verify_draft(
         known_claim_ids = {cl["claim_id"] for cl in claim_links if cl.get("link_status") == "linked"}
 
     resolved_threshold = sensitivity_threshold or draft.get("sensitivity")
-    global_source_index = build_global_source_index(paths)
+    global_source_index = build_global_source_index(paths, identity=identity)
     checks = [
         check_paragraph_has_support(blocks),
         check_claim_tags_resolve(blocks, known_claim_ids),
@@ -1777,6 +1875,7 @@ def verify_draft(
             claim_links=claim_links,
             source_run_id=draft.get("source_run_id"),
             sensitivity_threshold=resolved_threshold,
+            identity=identity,
         ),
         check_report_body_sensitivity_global(
             paths,

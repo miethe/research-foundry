@@ -23,7 +23,10 @@ pytest.importorskip("mcp", reason="optional 'mcp' extra not installed (uv sync -
 from research_foundry.paths import FoundryPaths  # noqa: E402
 from research_foundry.services import claim_mapping, extraction  # noqa: E402
 from research_foundry.services.assertion_materialization import AssertionMaterializer  # noqa: E402
-from research_foundry.services.search_router import mcp_server  # noqa: E402
+from research_foundry.services.search_router import (
+    mcp_launcher,  # noqa: E402
+    mcp_server,  # noqa: E402
+)
 from research_foundry.services.search_router import router as router_module
 from research_foundry.services.search_router.providers.base import (  # noqa: E402
     ProviderResult,
@@ -31,6 +34,22 @@ from research_foundry.services.search_router.providers.base import (  # noqa: E4
 )
 from research_foundry.services.source_cards import ingest_source  # noqa: E402
 from research_foundry.yamlio import dump_yaml, load_yaml  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _reset_mcp_launcher_caches() -> Any:
+    """DI-1 F2: ``mcp_launcher`` caches the launch principal / sensitivity
+    ceiling once per process. Reset around every test in this module so a
+    test that sets ``RF_MCP_PRINCIPAL_*`` env vars (or relies on the
+    single-operator-trust default) never leaks its resolution into the next
+    test."""
+
+    mcp_launcher.reset_launch_principal_cache()
+    mcp_launcher.reset_sensitivity_ceiling_cache()
+    yield
+    mcp_launcher.reset_launch_principal_cache()
+    mcp_launcher.reset_sensitivity_ceiling_cache()
+
 
 # ---------------------------------------------------------------------------
 # Fake provider (offline-safe; mirrors the pattern in test_search_router_router.py)
@@ -245,16 +264,35 @@ def test_mode_preset_tool_also_passes_intent_and_task_node_id_through(
 def test_search_run_tool_identity_and_sensitivity_threshold_reach_catalog_only_selection(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The MCP wrapper marshals a plain-JSON ``identity`` mapping into an
-    ``AuthIdentity`` and forwards ``sensitivity_threshold`` straight through
-    to :func:`router.run_search` -- both reach the P2/P3 catalog seam intact,
-    selecting the real assertion with zero provider calls (mirrors
-    ``test_search_router_router.py``'s
-    ``test_cache_first_catalog_only_covered_selects_assertion_zero_provider_calls``,
-    but through the MCP transport instead of a direct Python call)."""
+    """DI-1 F2 remediation: a client-supplied ``identity`` payload is no
+    longer trusted verbatim -- it must agree with the server's launch
+    principal. This test declares a launch principal pinned to
+    ``workspace-a`` (via the ``RF_MCP_PRINCIPAL_*`` env vars
+    :func:`mcp_launcher.resolve_launch_principal` reads) so the same
+    catalog-only selection this test always proved (real assertion, zero
+    provider calls; mirrors ``test_search_router_router.py``'s
+    ``test_cache_first_catalog_only_covered_selects_assertion_zero_provider_calls``)
+    still works end-to-end through the MCP transport -- but now via a
+    server-trusted principal, not arbitrary client JSON.
+
+    Also opts in to a ``personal`` sensitivity ceiling via
+    ``foundry.mcp.sensitivity_threshold_max``: the shipped/canonical
+    ``foundry.yaml`` this fixture copies ships a deliberate fail-closed
+    ``viewer.sensitivity_threshold: public`` default (public-multiuser
+    P0/P1), which :func:`mcp_launcher.resolve_sensitivity_ceiling` now falls
+    back to -- an operator must explicitly opt into a wider ceiling for the
+    ``personal``-sensitivity assertion below to be selectable, exactly like
+    the existing ``viewer.sensitivity_threshold`` opt-in pattern."""
 
     monkeypatch.chdir(tmp_foundry.root)
     monkeypatch.setattr(router_module, "all_providers", lambda: {"brave": RaisingSpyProvider()})
+    monkeypatch.setenv("RF_MCP_PRINCIPAL_USER_ID", "alice")
+    monkeypatch.setenv("RF_MCP_PRINCIPAL_WORKSPACE_ID", "workspace-a")
+    monkeypatch.setenv("RF_MCP_PRINCIPAL_ROLES", "researcher")
+
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"]["mcp"] = {"sensitivity_threshold_max": "personal"}
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
 
     assertion_id = _materialize(
         tmp_foundry, "rf_run_carp52_mcp_covered", "workspace-a", "Quantum entanglement enables secure key distribution."
@@ -277,6 +315,52 @@ def test_search_run_tool_identity_and_sensitivity_threshold_reach_catalog_only_s
     assert retrieval["policy"] == "catalog_only"
     assert retrieval["selections"][0]["assertion_id"] == assertion_id
     assert retrieval["metrics"]["questions_covered"] == 1
+    assert result["metrics"]["queries_executed"] == 0
+    assert result["provider_chain"] == []
+
+
+def test_search_run_tool_client_identity_ignored_without_launch_principal(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DI-1 F2: the vulnerability this whole change closes. Without a
+    declared launch principal (single-operator-trust; no
+    ``RF_MCP_PRINCIPAL_*`` env vars, no ``foundry.mcp.principal`` config), a
+    client-declared ``identity`` -- even one naming a real workspace with a
+    real assertion in it -- must be IGNORED, not honored. Before the fix this
+    was the cross-workspace enumeration oracle (F2, CONFIRMED HIGH); after
+    it, this is byte-identical to the existing
+    ``..._without_identity_or_sensitivity_threshold_denies_closed`` test
+    below."""
+
+    monkeypatch.chdir(tmp_foundry.root)
+    monkeypatch.setattr(router_module, "all_providers", lambda: {"brave": RaisingSpyProvider()})
+    monkeypatch.delenv("RF_MCP_PRINCIPAL_USER_ID", raising=False)
+    monkeypatch.delenv("RF_MCP_PRINCIPAL_WORKSPACE_ID", raising=False)
+    monkeypatch.delenv("RF_MCP_PRINCIPAL_ROLES", raising=False)
+
+    _materialize(
+        tmp_foundry,
+        "rf_run_carp52_mcp_ignored_client_identity",
+        "workspace-a",
+        "Quantum entanglement enables secure key distribution.",
+    )
+
+    result = _call_tool(
+        "search_run",
+        {
+            "request": {
+                "query": "quantum entanglement",
+                "mode": "cache_first",
+                "retrieval": {"policy": "catalog_only"},
+            },
+            "identity": {"user_id": "eve", "workspace_id": "workspace-a", "roles": ["researcher"]},
+            "sensitivity_threshold": "personal",
+        },
+    )
+
+    retrieval = result["retrieval"]
+    assert retrieval["policy"] == "catalog_only"
+    assert retrieval["selections"][0]["assertion_id"] is None
     assert result["metrics"]["queries_executed"] == 0
     assert result["provider_chain"] == []
 

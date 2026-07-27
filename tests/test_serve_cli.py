@@ -157,6 +157,55 @@ class TestServeFailClosed:
 
 
 # ---------------------------------------------------------------------------
+# DI-1 delta re-audit remediation (F1(1), 2026-07-26)
+# ---------------------------------------------------------------------------
+
+
+class TestServeBindHostPropagation:
+    """``--bind-host`` must propagate into ``config.viewer["bind_host"]``
+    BEFORE ``create_app()`` is called — the CLI override block previously
+    mutated ``viewer["auth_mode"]``/``viewer["sensitivity_threshold"]``/
+    ``foundry["deployment_mode"]`` but omitted ``viewer["bind_host"]``, so
+    every isolation guard that reads ``config.viewer_bind_host()``
+    (``resolve_rbac_enforced``, ``resolve_workspace_isolation_enforced``,
+    ``config.py:843``'s fail-closed guard, ``scope.py``) saw the stale
+    loopback default regardless of the real bind address."""
+
+    def test_bind_host_flag_propagates_into_config_before_create_app(self, tmp_path):
+        root = _scaffold_workspace(tmp_path)
+        captured: dict = {}
+
+        import research_foundry.api.app as app_module
+
+        real_create_app = app_module.create_app
+
+        def _capturing_create_app(config):
+            captured["config"] = config
+            return real_create_app(config)
+
+        prev = Path.cwd()
+        env_patch = {**os.environ, "RF_SERVE_TOKEN": "valid-token-value"}
+        os.chdir(root)
+        try:
+            with patch.dict("os.environ", env_patch, clear=True):
+                with patch("research_foundry.api.app.create_app", _capturing_create_app):
+                    with patch("uvicorn.run", MagicMock()):
+                        result = runner.invoke(
+                            app,
+                            ["serve", "--bind-host", "0.0.0.0", "--auth-mode", "token"],
+                        )
+        finally:
+            os.chdir(prev)
+
+        assert result.exit_code == 0, f"serve failed unexpectedly: {result.output}"
+        assert "config" in captured, "create_app() was never invoked"
+        assert captured["config"].viewer_bind_host() == "0.0.0.0", (
+            "expected config.viewer_bind_host() to reflect the --bind-host "
+            f"CLI override, got {captured['config'].viewer_bind_host()!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # TEST-010  Core footprint isolation
 # ---------------------------------------------------------------------------
 
