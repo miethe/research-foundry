@@ -3292,6 +3292,693 @@
           }
         }
       }
+    },
+    "/api/knowledge/v1/search": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Frozen core knowledge search",
+        "description": "Frozen core ``search(query)`` (KMCP-1.2) -- exactly one input field.\n\nReturns the exact core ``SearchDTO``: ``{\"results\": [{id, title, url},\n...]}``, at most 10 items, each snippet-free. A policy-hidden or\ngenuinely absent match never distinguishably affects this result -- both\ncollapse to the same ``results: []``-shaped outcome, HTTP 200 (see\nmodule docstring's \"Safe denial\" section).",
+        "operationId": "get_knowledge_core_search_api_knowledge_v1_search_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "title": "Query"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Knowledge Core Search Api Knowledge V1 Search Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/v1/fetch/{knowledge_id}": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Frozen core knowledge fetch (local resource URL contract)",
+        "description": "Frozen core ``fetch(id)`` (KMCP-1.2) -- exactly one input field.\n\nReturns the exact core ``FetchDTO``: required ``id``/``title``/``text``/\n``url`` plus optional generic ``metadata``. This is the literal route\nevery ``local_resource_url`` (core or RF-extended) points back to (see\nmodule docstring's \"Local resource URL contract\" section). Every denial\ncause maps to the same generic 404 (see module docstring's \"Safe\ndenial\" section); the exception's own internal ``reason`` is never\nrendered.",
+        "operationId": "get_knowledge_core_fetch_api_knowledge_v1_fetch__knowledge_id__get",
+        "parameters": [
+          {
+            "name": "knowledge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Knowledge Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Knowledge Core Fetch Api Knowledge V1 Fetch  Knowledge Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/search": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "RF-extended knowledge search",
+        "description": "RF-extended ``rf_search`` (KMCP-FR-5) -- thin call to\n:meth:`knowledge_access.KnowledgeAccessService.search_extended`.\n\nAdds the optional ``kind`` allowlist (narrows, never widens, eligibility\n-- ``knowledge_access.eligible_kinds``), ``limit``/``cursor`` paging, and\na caller-carried, non-persisted RF activity receipt\n(``include_receipt=True`` always, for this route). Each result item\ncarries ``kind``/``snippet``/``rank``/``score``/``content_is_untrusted``\n-- every field the core ``search`` result intentionally omits (invariant\n5). Denial contract identical to core ``search`` (see module docstring's\n\"Safe denial\" section).",
+        "operationId": "get_knowledge_search_api_knowledge_search_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "title": "Query"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "parent_run_ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Run Ref"
+            }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Knowledge Search Api Knowledge Search Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/fetch/{knowledge_id}": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "RF-extended knowledge fetch",
+        "description": "RF-extended ``rf_fetch`` (KMCP-FR-5) -- thin call to\n:meth:`knowledge_access.KnowledgeAccessService.fetch_extended`.\n\nAdds cursor-based text paging, the typed per-kind ``rf_metadata`` bag,\n``original_source_url`` (when policy allows one), and a caller-carried\nreceipt (``include_receipt=True`` always). Denial contract identical to\ncore ``fetch`` -- see module docstring's \"Safe denial\" section.",
+        "operationId": "get_knowledge_fetch_api_knowledge_fetch__knowledge_id__get",
+        "parameters": [
+          {
+            "name": "knowledge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Knowledge Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "parent_run_ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Run Ref"
+            }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public).",
+              "title": "Sensitivity Threshold"
+            },
+            "description": "Override foundry.yaml viewer.sensitivity_threshold (default: public)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Knowledge Fetch Api Knowledge Fetch  Knowledge Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/source/{knowledge_id}": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Typed getter: source",
+        "description": "Typed getter scoped to the ``source`` kind (``rf_source_get`` parity).",
+        "operationId": "get_knowledge_source_api_knowledge_source__knowledge_id__get",
+        "parameters": [
+          {
+            "name": "knowledge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Knowledge Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "parent_run_ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Run Ref"
+            }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sensitivity Threshold"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Knowledge Source Api Knowledge Source  Knowledge Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/assertion/{knowledge_id}": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Typed getter: assertion",
+        "description": "Typed getter scoped to the ``assertion`` kind (``rf_assertion_get`` parity).",
+        "operationId": "get_knowledge_assertion_api_knowledge_assertion__knowledge_id__get",
+        "parameters": [
+          {
+            "name": "knowledge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Knowledge Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "parent_run_ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Run Ref"
+            }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sensitivity Threshold"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Knowledge Assertion Api Knowledge Assertion  Knowledge Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/report/{knowledge_id}": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Typed getter: report",
+        "description": "Typed getter addressing BOTH ``report_draft`` and ``report_final`` ids\n(KMCP-OQ-2 -- two distinct kinds, one getter name; ``rf_report_get`` parity).",
+        "operationId": "get_knowledge_report_api_knowledge_report__knowledge_id__get",
+        "parameters": [
+          {
+            "name": "knowledge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Knowledge Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "parent_run_ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Run Ref"
+            }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sensitivity Threshold"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Knowledge Report Api Knowledge Report  Knowledge Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/knowledge/run/{knowledge_id}": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Typed getter: run",
+        "description": "Typed getter scoped to the ``run`` kind (``rf_run_get`` parity).",
+        "operationId": "get_knowledge_run_api_knowledge_run__knowledge_id__get",
+        "parameters": [
+          {
+            "name": "knowledge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Knowledge Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "parent_run_ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Run Ref"
+            }
+          },
+          {
+            "name": "sensitivity_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sensitivity Threshold"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Knowledge Run Api Knowledge Run  Knowledge Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

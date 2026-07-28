@@ -1,0 +1,200 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/knowledge_activity_receipt.schema.yaml"
+title: Knowledge Activity Receipt
+description: >-
+  RF-only activity receipt for the RF Knowledge MCP (KMCP-OQ-4 resolution,
+  Part B of the P1 contract freeze); see
+  docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
+  ("Phase P1: Contract and Boundary Freeze", KMCP-1.3) and
+  .codex/worknotes/research-foundry-knowledge-mcp/decisions-block.md section 7
+  (KMCP-OQ-4).
+
+  CALLER-CARRIED, NEVER PERSISTED (invariant, `persisted` below is pinned
+  `const: false`): the Knowledge service computes this receipt per call and
+  returns it to the caller; the service itself never writes it to disk, a
+  database, a log, or any audit store. It is not a durable record and it
+  carries no authority of its own — it exists only so a caller can locally
+  correlate/debug one call, never so RF can reconstruct call history later.
+
+  RF-ONLY, NEVER PART OF THE FROZEN CORE (invariant 5): this shape never
+  appears on core `search`/`fetch` results (`SearchDTO`/`FetchDTO` stay
+  closed with no `receipt` field). It is reachable only through the
+  separately named RF extension slots reserved for it —
+  `rf_search_response.receipt` in knowledge_search_response.schema.yaml and
+  `knowledge_document_extended.receipt` in knowledge_document.schema.yaml —
+  both of which stay open (`additionalProperties: true`) placeholders rather
+  than a `$ref` into this file, because this repo's `SchemaRegistry` has no
+  cross-file `$ref` resolver (see tests/test_schema_validation.py's docstring
+  on `content_reuse_assessment`/`rights_record` enum identity checks, which
+  hit the same limitation). Wiring an actual receipt payload through those
+  two extension points and validating it against THIS schema is P3/P4
+  implementation work; this task freezes only the standalone contract.
+
+  NO DENIED MEMBERSHIP (KMCP-OQ-4 default, invariant 2/3): this schema has
+  no field for a total-candidate count, a denied/hidden count, a denied ID,
+  or any other signal that would let a caller infer the existence of a
+  record it could not see. `returned_ids` and `bounds` below describe ONLY
+  what was already visible and returned to the caller in the same response
+  this receipt accompanies — never anything about records filtered out by
+  policy (workspace/sensitivity/rights/lifecycle) upstream of this receipt
+  being generated.
+
+  NO FILESYSTEM PATH, NO DENIED ID (invariant 6): every identifier here is
+  the SAME opaque, authority-neutral `rfk:v1:<kind>:<opaque>` form used by
+  `knowledge_search_response.schema.yaml`/`knowledge_document.schema.yaml`
+  (byte-identical `$defs.opaque_knowledge_id` copy below — keep all three
+  copies in sync if this pattern ever changes); this schema is fully closed
+  (`additionalProperties: false` at every level, no open map anywhere), so
+  no field can ever carry a raw filesystem path, a database row ID, or a
+  denied/hidden identifier.
+
+  FIELDS (KMCP-OQ-4 default: "request/context hash, visible returned refs,
+  bounds/truncation, policy/schema version, and no denied membership"):
+    - `schema_version`/`type`: fixed discriminators for this receipt shape.
+    - `tool`: which of the eight frozen tools produced this receipt.
+    - `generated_at`: when the service computed the receipt (not a durable
+      timestamp of anything else).
+    - `persisted`: always `false` (see above).
+    - `request_context_hash`: a one-way SHA-256 hex digest over the
+      resolved, normalized request + policy context (tool, query/id,
+      validated filters, resolved workspace/identity, sensitivity ceiling,
+      policy_version) — a hash, never the literal values, and never a path
+      or denied ID.
+    - `policy_version`: the policy/schema version tag in effect (invariant 3
+      fixed order) when this receipt was generated.
+    - `returned_ids`: the exact set of opaque knowledge IDs actually
+      returned to the caller in the accompanying response (echo, not a
+      superset) — bounded to the same 50-item ceiling as `rf_search`.
+    - `bounds`: applied result/text bounds and whether truncation occurred,
+      scoped to what was returned; never a hidden/denied count.
+    - `correlation_ref`: optional echo of the caller-supplied
+      `parent_run_ref` hint (see `rf_search_request`/`rf_fetch_request` in
+      the sibling schemas) — carries no authority of its own.
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - type
+  - tool
+  - generated_at
+  - persisted
+  - request_context_hash
+  - policy_version
+  - returned_ids
+  - bounds
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: knowledge_activity_receipt
+  tool:
+    description: >-
+      Which of the eight frozen inventory tools (invariant/decisions-block
+      §0) produced this receipt. No other tool name is ever valid here.
+    enum:
+      - search
+      - fetch
+      - rf_search
+      - rf_fetch
+      - rf_source_get
+      - rf_assertion_get
+      - rf_report_get
+      - rf_run_get
+  generated_at:
+    description: When the Knowledge service computed this receipt.
+    type: string
+    format: date-time
+  persisted:
+    description: >-
+      Always `false` (caller-carried, non-persisted invariant — see file
+      header). No fixture, service, or transport may ever set this `true`.
+    const: false
+  request_context_hash:
+    description: >-
+      One-way SHA-256 hex digest (lowercase, 64 hex characters) over the
+      resolved, normalized request + policy context. Never the literal
+      query, filters, identity, or a path/denied ID — a hash only.
+    type: string
+    minLength: 64
+    maxLength: 64
+    pattern: "^[a-f0-9]{64}$"
+  policy_version:
+    description: >-
+      Policy/ruleset version tag in effect (invariant 3's fixed evaluation
+      order) when this receipt was generated. Free-form, service-defined
+      version string — not itself a path or identifier of any record.
+    type: string
+    minLength: 1
+    maxLength: 100
+  returned_ids:
+    description: >-
+      Exact echo of the opaque knowledge IDs actually returned to the caller
+      in the accompanying `search`/`fetch` response. Never a superset, never
+      a denied or hidden ID (invariant 6). Bounded to the same 50-item
+      ceiling as `rf_search_response.results` in
+      knowledge_search_response.schema.yaml.
+    type: array
+    uniqueItems: true
+    maxItems: 50
+    items:
+      $ref: "#/$defs/opaque_knowledge_id"
+  bounds:
+    description: >-
+      Applied result/text bounds and truncation state, scoped ONLY to what
+      was returned to the caller — never a total-candidate, denied, or
+      hidden count (KMCP-OQ-4 "no denied membership" default).
+    type: object
+    additionalProperties: false
+    required:
+      - results_returned
+      - results_max
+      - truncated
+    properties:
+      results_returned:
+        type: integer
+        minimum: 0
+        maximum: 50
+      results_max:
+        type: integer
+        minimum: 1
+        maximum: 50
+      text_bytes_returned:
+        description: >-
+          UTF-8 byte length of returned document text for a fetch-shaped
+          receipt; `null` for a search-shaped receipt with no fetched text.
+        type:
+          - integer
+          - "null"
+        minimum: 0
+      text_bytes_max:
+        description: >-
+          Operational byte cap in effect (KMCP-FR-10); `null` when not
+          applicable to this tool call.
+        type:
+          - integer
+          - "null"
+        minimum: 0
+      truncated:
+        type: boolean
+  correlation_ref:
+    description: >-
+      Optional echo of the caller-supplied `parent_run_ref` correlation hint
+      (see `rf_search_request`/`rf_fetch_request` in the sibling request
+      schemas). Not itself a receipt field with authority — carries no
+      policy weight and is never used to widen or narrow access.
+    type:
+      - string
+      - "null"
+    maxLength: 200
+$defs:
+  opaque_knowledge_id:
+    description: >-
+      Authority-neutral opaque knowledge ID (invariant 6). Byte-identical to
+      knowledge_search_response.schema.yaml's and knowledge_document.schema.yaml's
+      `$defs.opaque_knowledge_id` — keep all three copies in sync if this
+      pattern ever changes. Never a raw database row id, never a filesystem
+      path, never a denied/hidden id.
+    type: string
+    minLength: 1
+    maxLength: 200
+    pattern: "^rfk:v1:(source|assertion|report_draft|report_final|run):[A-Za-z0-9._~-]+$"

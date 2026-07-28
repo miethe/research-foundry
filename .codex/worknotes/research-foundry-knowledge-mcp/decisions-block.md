@@ -4,7 +4,7 @@ doc_type: decisions_block
 title: "Decisions Block: Research Foundry Knowledge MCP"
 description: "Tier 3 boundary, phase, risk, estimate, dependency, and model-routing decisions for a separate read-only RF knowledge service and local stdio MCP."
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-07-27
 feature_slug: research-foundry-knowledge-mcp
 estimated_points: "34"
 tier: 3
@@ -227,14 +227,200 @@ graph LR
 
 - **KMCP-OQ-1**: Enumerate every read path that can rebuild/create/migrate and freeze a
   common unavailable-on-absence contract. Default: reads never repair state.
+  - **Status: RESOLVED (P1, KMCP-1.1/1.2 scope).** Freeze the CONTRACT, not yet the full
+    enumeration: every knowledge read (core `search`/`fetch` and all `rf_*` tools) uses
+    existing catalog/assertion/report/run READ paths in an explicit non-rebuilding /
+    query-only mode; a missing or stale cache, index, or projection returns a typed
+    "unavailable" result — indistinguishable in shape from "hidden" — never a rebuild,
+    migration, schema creation, or WAL/journal write. This applies uniformly across
+    CLI/API/MCP transports (invariant 4, one service). Enumerating the concrete read
+    paths that currently lack this explicit mode (assertion cache rebuild, catalog
+    SQLite WAL/journal creation, etc.) is service-level work owned by P2
+    (KMCP-2.1..2.4); P1 freezes the contract ("reads never repair state") that P2 must
+    implement and P2's negative matrix (KMCP-2.4) must prove.
 - **KMCP-OQ-2**: Decide report authority. Default: `report_draft` and `run_final_report`
   remain distinct kinds with explicit IDs and projections.
+  - **Status: RESOLVED (P1, KMCP-1.2 scope, encoded in `schemas/knowledge_document.schema.yaml`
+    and `schemas/knowledge_search_response.schema.yaml`).** `report_draft` and
+    `report_final` (renamed from this section's earlier `run_final_report` label, for
+    symmetry with `report_draft` inside one shared `kind` enum) remain two DISTINCT
+    knowledge kinds — their own opaque-ID kind segment (`rfk:v1:report_draft:...` /
+    `rfk:v1:report_final:...`), their own explicit P3 projections (KMCP-3.3), and their
+    own IDs, never merged into one ambiguous "report" kind. `rf_report_get` addresses
+    both by their distinct ids; `rf_run_get` remains the separate run summary/detail
+    projection and is not a third report kind. P3 (KMCP-3.1..3.3) still implements four
+    DOMAIN adapters (source, assertion, report, run); the `kind` vocabulary frozen here
+    has five values because the report domain resolves to two kinds.
 - **KMCP-OQ-3**: Freeze loopback base and route version. Default: configured loopback
   `/api/knowledge/v1/...`, labeled local/non-canonical and explicitly not hosted-compatible.
+  - **Status: RESOLVED (P1, KMCP-1.3 URL scope, encoded in `schemas/knowledge_search_response.schema.yaml`
+    and `schemas/knowledge_document.schema.yaml` as `$defs.local_resource_url`).** Freeze
+    the route contract at `/api/knowledge/v1/fetch/<percent-encoded-opaque-id>` on a
+    configured loopback origin (`http://127.0.0.1:<port>`, `http://localhost:<port>`, or
+    `http://[::1]:<port>`); no other host or scheme validates. The route version segment
+    (`v1`) is independent of the opaque-ID version segment (also currently `v1` — see the
+    canonical-resource-urls shaping spec's open question on ID- vs route-version bumps);
+    one may change without the other. This is the SAME url returned by both `search`
+    result items and `fetch`'s document (self-referential fetch route — KMCP-3.4's
+    "search result fetches same resource"). Labeled local/non-canonical throughout;
+    never a durable citation. The REMOTE canonical HTTPS namespace remains deferred per
+    `research-foundry-knowledge-mcp-canonical-resource-urls.md` (unchanged, still
+    shaping/deferred by this resolution).
 - **KMCP-OQ-4**: Freeze activity receipt fields. Default: request/context hash, visible
   returned refs, bounds/truncation, policy/schema version, and no denied membership.
+  - **Status: RESOLVED (P1 Part B, encoded in `schemas/knowledge_activity_receipt.schema.yaml`).**
+    The receipt is RF-only (never reachable via a core `search`/`fetch` result), caller-carried,
+    and hard-pinned NON-PERSISTED (`persisted: const false` — the Knowledge service never
+    writes it to disk/DB/log/audit store). Frozen fields exactly match the default: a
+    64-hex-char SHA-256 `request_context_hash` (one-way, never the literal query/filters/
+    identity/path), `returned_ids` (exact echo of opaque IDs actually returned, capped at
+    50, never a superset), `bounds` (results_returned/results_max/text_bytes_returned/
+    text_bytes_max/truncated — scoped only to what was returned), `policy_version`
+    (invariant-3 policy/ruleset tag) and `schema_version`/`type` discriminators, plus
+    `tool` (one of the eight frozen tool names) and `generated_at`. It carries NO
+    total-candidate, denied, or hidden count, and NO filesystem path or denied ID
+    (closed root, no open map, at every nesting level) — the "no denied membership"
+    half of the default is enforced by absence, not by a field. `rf_search_response.receipt`
+    (knowledge_search_response.schema.yaml) and `knowledge_document_extended.receipt`
+    (knowledge_document.schema.yaml) remain open (`additionalProperties: true`)
+    placeholder slots rather than a `$ref` into this file — this repo's `SchemaRegistry`
+    has no cross-file `$ref` resolver (see `tests/test_schema_validation.py`'s
+    `content_reuse_assessment`/`rights_record` enum-identity test for the same
+    limitation) — so wiring an actual receipt payload through those two extension
+    points and validating it against `knowledge_activity_receipt.schema.yaml` is P3/P4
+    service-and-transport work; P1 Part B freezes only the standalone contract those
+    later phases must produce values against.
 
-## 8. Plan Skeleton Pointer
+> **Numbering note (P6 traceability pass, KMCP-6.x):** section 8 was never drafted in
+> this file — the numbering below intentionally continues from 9 rather than
+> renumbering, because P2/P3/P4/P5's own module docstrings and tests already cite
+> "decisions-block §9.1"/"§9.2"/"§9.3"/"§9.4"/"§10" by these exact numbers (14 files
+> as of P6). Renumbering this file would silently stale every one of those citations
+> without a matching source-wide edit, which is out of scope for a documentation-
+> numbering fix. Treat the gap as intentional, not an error to "correct."
+
+## 9. Process, Credential, and Inventory Boundary (KMCP-1.4)
+
+Freezes invariant 1 (separate process) and invariant 7 (process/credential bleed) into
+an explicit, testable inventory. P4 (`KMCP-4.1`/`KMCP-4.4`) implements and snapshots
+this exact boundary; P1 freezes the contract that snapshot must prove.
+
+### 9.1 Process, registry, entry point
+
+- Independent OS process `rf-knowledge-mcp`, a packaged entry point distinct from the
+  Search Router's `rf-mcp` and from any Operator/Hermes process. Own package
+  `research_foundry.knowledge_mcp` (`process.py`, `registry.py`, `settings.py`) — never
+  imported by, and never importing from, `research_foundry.search_router.*` or an
+  Operator/Hermes-adjacent module.
+- Own tool registry (`registry.py`) is the SOLE place any `rf-knowledge-mcp` tool name is
+  registered. It imports only from `research_foundry.services.knowledge_access` (the P2/P3
+  governed read service) and shared read-only substrate (`paths`, `schemas`, `yamlio`,
+  `ids`) — never a provider client, job runner, acquisition/import/writeback service, or
+  the Search Router's own registry module.
+- Own settings module (`settings.py`) resolves ONLY the read-only allowlist in §9.3; it
+  never reads a provider API key, OAuth/OIDC client secret, or Operator/Hermes credential
+  even if present in the process environment.
+
+### 9.2 Exact eight-tool inventory (frozen; restates §0 as the KMCP-1.4 inventory-test target)
+
+The registry MUST contain EXACTLY these eight tool names and no others:
+
+1. `search` (core)
+2. `fetch` (core)
+3. `rf_search`
+4. `rf_fetch`
+5. `rf_source_get`
+6. `rf_assertion_get`
+7. `rf_report_get`
+8. `rf_run_get`
+
+No acquisition, extraction, job, import, approval, bundle, provider, cache-build,
+telemetry-write, audit-write, persistence, writeback, or Search-Router-native
+(`web_search`, `fetch_url`, or any provider-specific) tool name may ever appear in this
+registry (Risk 4/Risk 7). `KMCP-4.4` snapshots this exact list as a negative-space guard.
+
+### 9.3 Settings and credential allowlist (invariant 1)
+
+**ALLOWED** in `rf-knowledge-mcp` settings/environment:
+
+- Foundry workspace root resolution (same `FoundryPaths.discover` mechanism already used
+  by the CLI/API — no new identity mechanism).
+- Loopback bind host/port used only to render `local_resource_url` values (KMCP-OQ-3) —
+  never to open a non-loopback listener (Risk 8).
+- Sensitivity ceiling / identity-resolution inputs already used by existing read services
+  (WKSP-304 row-level isolation pattern).
+- Logging level.
+
+**FORBIDDEN** — none of the following may be read, referenced, defaulted-to, or declared
+as an optional dependency by `rf-knowledge-mcp` settings, its environment, or its
+`pyproject.toml` extras:
+
+- Any Search Router / `rf-mcp` provider credential or env key (e.g. a Brave/SerpAPI/
+  Tavily/SearXNG search-provider secret or endpoint override).
+- Any Operator/Hermes credential or routing config (Hermes/AOS service tokens,
+  `RF_TOKEN_AGENT` — an API-transport concern, not a Knowledge-process concern — or any
+  model-routing provider API key).
+- Any writeback credential (MeatyWiki, SkillMeat, CCDash) or catalog-build/migration flag.
+- The Search Router's own registry/settings modules, or an Operator/Hermes registry module.
+
+### 9.4 Governed-read-only sharing (Risk 4/Risk 7 mitigation)
+
+The ONLY shared layer between `rf-knowledge-mcp` and any other RF surface is the existing,
+authoritative READ services (`catalog_service`, `assertion_catalog`, `export_service`,
+`builder_service` — P2/P3 scope). `rf-knowledge-mcp` never imports a mutator, a provider
+client, a job/queue module, or the Search Router's/Operator's own process, registry, or
+settings modules.
+
+## 10. Local/Remote Compatibility Gate (KMCP-1.5)
+
+- **Declaration (invariant 8):** the v1 local stdio Knowledge MCP is SCHEMA-ALIGNED ONLY
+  with the frozen core `search(query)`/`fetch(id)` contract (KMCP-1.2/1.3). It makes NO
+  OpenAI/ChatGPT (or any other hosted-client) compatibility claim, anywhere — not in code,
+  docs, `pyproject.toml`, tool descriptions, or this decisions block — because a hosted
+  client cannot reach a loopback-only resource URL (`local_resource_url`, KMCP-OQ-3) and no
+  remote transport is registered (P4 registers stdio only; Streamable HTTP/SSE/OAuth/
+  non-loopback listeners are explicitly absent).
+- **Deferred shaping specs (linked below; `status: deferred`/`maturity: shaping`, unchanged
+  by this task):**
+  - `docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-transport.md` —
+    remote MCP transport (Streamable HTTP lifecycle, session/OAuth, rate limits, incident
+    response).
+  - `docs/project_plans/design-specs/research-foundry-knowledge-mcp-canonical-resource-urls.md`
+    — a remotely reachable, owned-HTTPS canonical resource-URL namespace (vs. today's
+    loopback-only `local_resource_url`).
+  - `docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-cache-isolation.md`
+    — any remote/multi-tenant cache placed in front of Knowledge reads.
+  - `docs/project_plans/design-specs/reusable-assertion-ledger-shared-indexes.md` — any
+    shared/cross-workspace assertion index Knowledge search could draw on remotely.
+- **Explicit promotion gate (ALL of the following required before ANY compatibility
+  claim, local or remote):**
+  1. All four linked specs above move from `status: deferred` to an accepted, reviewed
+     design (each spec's own SPIKE/ADR gate, per its "Required ... before any
+     implementation" section) — no partial promotion; transport, canonical URL, cache
+     isolation, and shared-index isolation are each independently load-bearing for a safe
+     remote surface.
+  2. A reachable canonical HTTPS MCP endpoint exists (owned DNS, valid TLS, explicit
+     protocol version) per the remote-transport spec's "Required Remote Profile."
+  3. Canonical, non-loopback resource URLs are issued per the canonical-resource-urls
+     spec, and the local `local_resource_url` loopback form is never presented as
+     canonical in that profile.
+  4. The remote-cache-isolation spec's complete partition-key/invalidation model is
+     implemented and adversarially tested (cross-tenant probes) before any caching is
+     added in front of that remote endpoint.
+  5. A named security/privacy/workspace-owner sign-off (per the shared-indexes spec's
+     "Future SPIKE gates") is recorded for the specific remote profile being qualified.
+  6. Only after 1-5 land may documentation, tool descriptions, or `pyproject.toml`
+     metadata state ANY OpenAI/ChatGPT or other hosted-client compatibility claim — and
+     even then, scoped explicitly to the qualified remote profile, never implied for the
+     local stdio process.
+- **Negative-space guard (until promotion):** `rf-knowledge-mcp`'s stdio process, its
+  schemas, its CLI/API docs, and this decisions block must never contain "ChatGPT-
+  compatible", "OpenAI-compatible", or equivalent hosted-compatibility language without a
+  "deferred"/"not yet" qualifier attached. `KMCP-5.4`/`KMCP-6.8` own the negative fixture/
+  doc-scan proving this at their respective gates; P1 freezes the rule those later gates
+  enforce.
+
+## 11. Plan Skeleton Pointer
 
 - **PRD**: `docs/project_plans/PRDs/enhancements/research-foundry-knowledge-mcp-v1.md`
 - **Unified plan**: `docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md`

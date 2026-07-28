@@ -1,0 +1,221 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/knowledge_search_response.schema.yaml"
+title: Knowledge Search Response
+description: >-
+  Output schema family for the RF Knowledge MCP `search` tool (core
+  `SearchDTO`) and its separately named `rf_search` extension, plus the MCP
+  dual-encoding envelope that wraps every core DTO result. Part of the P1
+  contract freeze for KMCP-1.2 (exact core + RF DTOs) and the DTO/URL parts of
+  KMCP-1.3; see
+  docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md.
+
+  FROZEN CORE (invariant 5): the top-level schema in THIS file is the exact,
+  closed core `SearchDTO` — `additionalProperties: false`, exactly one
+  property `results`, and each item in `results` is exactly `{id, title,
+  url}` with NO `snippet` field and no other key. Search snippets, ranks,
+  scores, kinds, cursors, and receipts exist ONLY in the separately named
+  `$defs.rf_search_response` below (KMCP-FR-5); they never appear on the core
+  root or on a core result item.
+
+  DUAL ENCODING RULE (KMCP-1.3, header comment required by the P1 freeze):
+  every MCP result for a core tool call places the EXACT SAME core DTO
+  object (byte-for-byte the same value) in BOTH `structuredContent` AND
+  exactly one `content` block of `{"type": "text", "text": "<json>"}`, where
+  `text` is that DTO serialized with the repo's existing canonical-JSON
+  convention: `json.dumps(obj, ensure_ascii=False, separators=(",", ":"),
+  sort_keys=True)` (see src/research_foundry/assertion_identity.py's
+  `canonical_source_assertion_json`, reused here as the SAME algorithm rather
+  than inventing a second one). Parsing `content[0].text` MUST deep-equal
+  `structuredContent`; there is exactly one text block and no prose wrapper
+  around it. JSON Schema cannot express that cross-field string/object
+  equality by itself — this schema only pins the STRUCTURE (one text block,
+  matching shape); the equality itself is proven by test fixtures (KMCP-6.4),
+  not by this schema alone. See `$defs.dual_encoding_envelope` below for the
+  structural shape, and knowledge_document.schema.yaml for the identical rule
+  applied to `fetch`.
+
+  LOCAL RESOURCE URL CONTRACT (KMCP-1.3 URL freeze; resolves KMCP-OQ-3 —
+  full resolution recorded in decisions-block section 7): every `url` in this
+  file (core `results[].url` and RF `rf_search_response.results[].url`) is a
+  route-backed, non-canonical loopback reference of the exact form
+  `http(s)://<loopback-host>[:<port>]/api/knowledge/v1/fetch/<percent-encoded
+  opaque-knowledge-id>` — never a filesystem path, never a denied/hidden ID
+  (invariant 6), and never generated before policy evaluation completes
+  (invariant 3). It is the SAME URL `fetch`/`rf_fetch` would resolve for that
+  id (KMCP-3.4 "search result fetches same resource"); the route version
+  segment (`v1`) is independent of the opaque-ID version segment also
+  currently named `v1` (canonical-resource-urls design spec's open question)
+  and may change on its own schedule. This local URL is explicitly NOT a
+  durable public citation; see
+  docs/project_plans/design-specs/research-foundry-knowledge-mcp-canonical-resource-urls.md
+  (status: deferred/shaping) for the still-ungated remote/canonical profile.
+
+  See knowledge_search_request.schema.yaml's header for the shared
+  access/policy contract (KMCP-1.1) that governs every shape in this file.
+type: object
+additionalProperties: false
+required:
+  - results
+properties:
+  results:
+    type: array
+    maxItems: 10
+    items:
+      $ref: "#/$defs/core_search_result_item"
+$defs:
+  opaque_knowledge_id:
+    description: >-
+      Authority-neutral opaque knowledge ID (invariant 6). Exact form
+      `rfk:v1:<kind>:<opaque>` where `<kind>` is one of the five frozen
+      kinds (source, assertion, report_draft, report_final, run — OQ-2
+      resolution; see decisions-block section 7) and `<opaque>` is a
+      non-sequential, non-path-shaped local identifier. Never a raw
+      database row id, never a filesystem path. Byte-identical to
+      knowledge_document.schema.yaml's `$defs.opaque_knowledge_id` — keep
+      both copies in sync if this pattern ever changes.
+    type: string
+    minLength: 1
+    maxLength: 200
+    pattern: "^rfk:v1:(source|assertion|report_draft|report_final|run):[A-Za-z0-9._~-]+$"
+  local_resource_url:
+    description: >-
+      Loopback-only, route-backed, non-canonical resource URL (invariant 6;
+      KMCP-OQ-3 resolution). Byte-identical to knowledge_document.schema.yaml's
+      `$defs.local_resource_url` — keep both copies in sync if this pattern
+      ever changes. Never emitted for a denied or hidden id.
+    type: string
+    maxLength: 2048
+    pattern: "^https?://(127\\.0\\.0\\.1|localhost|\\[::1\\])(:[0-9]{1,5})?/api/knowledge/v1/fetch/[A-Za-z0-9%._~-]+$"
+  core_search_result_item:
+    description: >-
+      Frozen core SearchDTO result item. Exactly id/title/url — no snippet,
+      kind, rank, score, or receipt field is ever added here (invariant 5).
+    type: object
+    additionalProperties: false
+    required:
+      - id
+      - title
+      - url
+    properties:
+      id:
+        $ref: "#/$defs/opaque_knowledge_id"
+      title:
+        type: string
+        minLength: 1
+        maxLength: 300
+      url:
+        $ref: "#/$defs/local_resource_url"
+  rf_search_result_item:
+    description: >-
+      RF-extended search result item (separately named per KMCP-FR-5; never
+      an alias for `core_search_result_item`). Adds exactly the fields the
+      core intentionally omits: snippet, kind, rank, score, and the untrusted
+      marker.
+    type: object
+    additionalProperties: false
+    required:
+      - id
+      - title
+      - url
+      - kind
+      - content_is_untrusted
+    properties:
+      id:
+        $ref: "#/$defs/opaque_knowledge_id"
+      title:
+        type: string
+        minLength: 1
+        maxLength: 300
+      url:
+        $ref: "#/$defs/local_resource_url"
+      kind:
+        enum:
+          - source
+          - assertion
+          - report_draft
+          - report_final
+          - run
+      snippet:
+        type:
+          - string
+          - "null"
+        maxLength: 1000
+      content_is_untrusted:
+        description: >-
+          Always true (KMCP-FR-11): returned text is untrusted data, never
+          prompt/control framing.
+        const: true
+      rank:
+        type: integer
+        minimum: 0
+      score:
+        type:
+          - number
+          - "null"
+  rf_search_response:
+    description: >-
+      RF-extended `rf_search` output. Separately named from the frozen core
+      `SearchDTO` root above (KMCP-FR-5) — never merges filters, cursors, or
+      receipts back into the core shape.
+    type: object
+    additionalProperties: false
+    required:
+      - results
+    properties:
+      results:
+        type: array
+        maxItems: 50
+        items:
+          $ref: "#/$defs/rf_search_result_item"
+      next_cursor:
+        type:
+          - string
+          - "null"
+      truncated:
+        type: boolean
+      receipt:
+        description: >-
+          Placeholder slot for the caller-carried, non-persisted RF activity
+          receipt (KMCP-OQ-4). The full receipt shape is frozen separately in
+          `schemas/knowledge_activity_receipt.schema.yaml`, which this task
+          deliberately does NOT create (Part B). This field only reserves the
+          name and stays permissive until that schema lands; it never carries
+          denied-result membership (invariant 3).
+        type:
+          - object
+          - "null"
+        additionalProperties: true
+  dual_encoding_envelope:
+    description: >-
+      Structural shape of one MCP `search` tool result (see the file header's
+      "DUAL ENCODING RULE"). `structuredContent` is a `$ref` back to this
+      file's own root schema (the exact core SearchDTO) rather than a
+      duplicated copy, so the two can never drift apart.
+    type: object
+    additionalProperties: false
+    required:
+      - structuredContent
+      - content
+    properties:
+      structuredContent:
+        $ref: "#"
+      content:
+        type: array
+        minItems: 1
+        maxItems: 1
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - type
+            - text
+          properties:
+            type:
+              const: text
+            text:
+              description: >-
+                Deterministic canonical JSON of the identical object present
+                in `structuredContent` (see file header). Equality is proven
+                by test fixtures, not by this schema.
+              type: string
+              minLength: 1

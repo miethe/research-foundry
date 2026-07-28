@@ -5,7 +5,7 @@ schema_version: 2
 status: deferred
 maturity: shaping
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-07-27
 feature_slug: research-foundry-knowledge-mcp
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-knowledge-mcp-v1.md
 deferred_from: docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
@@ -49,6 +49,34 @@ ceiling, rights/allowed use, lifecycle/evaluation/freshness state, capability,
 query/ID, service/schema version, and projection generation. A cache key that
 omits any governing input can return another tenant's data or reveal membership
 through hit/miss timing, counts, cursors, or error differences.
+
+## Reconciled Against Local v1 (KMCP P1-P5)
+
+- **Shipped locally:** no cache of any kind sits in front of Knowledge reads.
+  `KnowledgeAccessService.search_core`/`fetch_core`/`search_extended`/
+  `fetch_extended` re-run policy (workspace/sensitivity/rights/lifecycle) and
+  re-read the governed catalog/assertion/export/builder services on every
+  call — P2's explicit query-only, non-rebuilding contract (KMCP-2.2/2.3/2.4's
+  write/provider spy matrix proves zero writes and zero persisted state
+  across repeat calls). The per-call activity receipt
+  (`RfKnowledgeSearchOutcome`/`rf_metadata` receipt fields) is caller-carried
+  and explicitly never persisted by the service (decisions-block §0). The
+  only process-local state that exists is the projector registry rebuilt
+  fresh on every `build_server()` invocation (`registry._bootstrap_projectors`)
+  — a binding, not a value cache — so there is no partition key,
+  invalidation path, TTL, or negative-cache behavior implemented to specify.
+- **Still deferred:** everything in "Required Isolation Model" and
+  "Invalidation and Deletion" above — there is no remote/shared cache to
+  define a partition key, encryption/key-custody, or a deletion SLA for,
+  because none is proposed for local v1.
+- **Promotion gate:** unchanged from "Promotion Gates" below — a
+  cache-specific threat model; proven tenant-partition completeness under
+  synthetic two-workspace tests; proven invalidation across replicas and
+  backups; demonstrated hidden/absent hit/miss timing equivalence; and
+  approved encryption/retention/incident-response ownership, together with
+  the remote-transport and canonical-URL specs (cache cannot promote alone)
+  — before any cache is added in front of a remote Knowledge endpoint
+  (decisions-block §10).
 
 ## Required Isolation Model
 

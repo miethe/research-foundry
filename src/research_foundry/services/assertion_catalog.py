@@ -43,6 +43,28 @@ class AssertionCatalogDenied(AssertionCatalogError):
         self.reason_code = reason_code
 
 
+class AssertionCatalogUnavailable(AssertionCatalogError):
+    """The derived assertion projection cannot be read without rebuilding it first.
+
+    Raised by the RF Knowledge MCP's non-rebuilding read path (KMCP-2.3:
+    :meth:`AssertionCatalog._records_read_only` and its ``*_read_only``
+    callers below) when a workspace's projection file is missing or
+    invalid. Distinct from :class:`AssertionCatalogDenied` (a policy/rights
+    denial evaluated over an actually-read projection) so a caller can tell
+    "nothing built yet" apart from "read and denied" — both still resolve to
+    the SAME no-existence-leak response shape at the transport boundary
+    (KMCP-OQ-1: "indistinguishable in shape from hidden"), but the
+    distinction lets the Knowledge service log/telemetry differently
+    without ever leaking it to a caller. Never raised by :meth:`_records`,
+    :meth:`search`, :meth:`packet`, or :meth:`lineage` — those existing,
+    rebuild-on-miss methods are completely unchanged.
+    """
+
+    def __init__(self, reason_code: str) -> None:
+        super().__init__(reason_code)
+        self.reason_code = reason_code
+
+
 @dataclass(frozen=True)
 class ProjectionReceipt:
     """Stable proof that a derived projection was rebuilt.
@@ -244,6 +266,128 @@ class AssertionCatalog:
             "denial_reason": None,
         }
 
+    # -- RF Knowledge MCP non-rebuilding read path (KMCP-2.3) ---------------
+    # Additive only — search/packet/lineage above are completely unchanged
+    # and keep their existing rebuild-on-miss behavior for every current
+    # caller. The three methods below are new siblings that a Knowledge read
+    # (P2/P3) must use instead: they NEVER call self.rebuild() as a side
+    # effect of a missing/invalid projection.
+
+    def search_read_only(
+        self,
+        *,
+        identity: AuthIdentity | None,
+        query: str | None = None,
+        lifecycle_state: str | None = None,
+        access_scope: str | None = None,
+        limit: int = _DEFAULT_PAGE_SIZE,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """Non-rebuilding sibling of :meth:`search` (KMCP-2.3, invariant 2).
+
+        Identical policy-before-match ordering and denial shape as
+        :meth:`search` (see that method's docstring) — the ONLY difference
+        is that a missing or workspace-key-mismatched projection never
+        triggers :meth:`rebuild` as a side effect; it instead returns the
+        same bounded, no-existence-leak :meth:`denied_payload` shape with
+        reason code ``"catalog_unavailable"`` (KMCP-OQ-1:
+        "indistinguishable in shape from hidden"). :meth:`search` itself is
+        completely unchanged for every existing caller.
+        """
+
+        if identity is None or not identity.workspace_id:
+            return self.denied_payload("workspace_context_missing")
+        if not 1 <= limit <= _MAX_PAGE_SIZE:
+            return self.denied_payload("invalid_page_size")
+        try:
+            records = self._records_read_only(identity.workspace_id)
+        except AssertionCatalogUnavailable:
+            return self.denied_payload("catalog_unavailable")
+        except AssertionCatalogDenied as exc:
+            return self.denied_payload(exc.reason_code)
+        except AssertionCatalogError as exc:
+            return self.denied_payload(str(exc))
+
+        # Rights metadata is policy context, not a presentation hint.  A
+        # partially unknown corpus must not expose counts/facets for its known
+        # subset, because that would turn missing policy into a derived signal.
+        for record in records:
+            decision = record["rights_decision"]
+            if not decision["allowed"]:
+                return self.denied_payload(str(decision["reason_code"]))
+        authorized = [record for record in records if record["lifecycle_state"] == "eligible"]
+        normalized_query = (query or "").casefold().strip()
+        filtered = [
+            record
+            for record in authorized
+            if (not lifecycle_state or record["lifecycle_state"] == lifecycle_state)
+            and (not access_scope or record["access_scope"] == access_scope)
+            and (not normalized_query or normalized_query in record["search_text"].casefold())
+        ]
+        filtered.sort(key=lambda record: record["assertion_id"])
+        if cursor is not None:
+            try:
+                after = _cursor_decode(cursor)
+            except AssertionCatalogError as exc:
+                return self.denied_payload(str(exc))
+            filtered = [record for record in filtered if record["assertion_id"] > after]
+
+        page = filtered[:limit]
+        next_cursor = _cursor_encode(page[-1]["assertion_id"]) if len(filtered) > limit else None
+        return {
+            "items": [self._summary(record) for record in page],
+            "next_cursor": next_cursor,
+            "facets": {
+                "lifecycle_states": sorted({record["lifecycle_state"] for record in authorized}),
+                "access_scopes": sorted({record["access_scope"] for record in authorized}),
+            },
+            "denial_reason": None,
+        }
+
+    def packet_read_only(
+        self, assertion_id: str, *, identity: AuthIdentity | None
+    ) -> dict[str, Any] | None:
+        """Non-rebuilding sibling of :meth:`packet` (KMCP-2.3, invariant 2).
+
+        Same policy-before-match ordering, denial
+        (:class:`AssertionCatalogDenied`), and existence-hiding contract as
+        :meth:`packet` — the only difference is that a missing or invalid
+        projection raises :class:`AssertionCatalogUnavailable` instead of
+        silently calling :meth:`rebuild`. :meth:`packet` itself is
+        completely unchanged for every existing caller.
+        """
+
+        if identity is None or not identity.workspace_id:
+            raise AssertionCatalogDenied("workspace_context_missing")
+        for record in self._records_read_only(identity.workspace_id):
+            if record["assertion_id"] != assertion_id:
+                continue
+            if not record["rights_decision"]["allowed"]:
+                raise AssertionCatalogDenied(str(record["rights_decision"]["reason_code"]))
+            return {key: value for key, value in record.items() if key != "search_text"}
+        return None
+
+    def lineage_read_only(
+        self, assertion_id: str, *, identity: AuthIdentity | None
+    ) -> dict[str, Any] | None:
+        """Non-rebuilding sibling of :meth:`lineage` (KMCP-2.3).
+
+        See :meth:`packet_read_only` for the rebuild-avoidance contract this
+        mirrors; :meth:`lineage` itself is unchanged.
+        """
+
+        packet = self.packet_read_only(assertion_id, identity=identity)
+        if packet is None:
+            return None
+        return {
+            "assertion_id": packet["assertion_id"],
+            "assertion_version": packet["assertion_version"],
+            "relationships": packet["relationships"],
+            "run_uses": packet["run_uses"],
+            "report_uses": packet["report_uses"],
+            "denial_reason": None,
+        }
+
     @staticmethod
     def denied_payload(reason_code: str) -> dict[str, Any]:
         return {
@@ -273,6 +417,28 @@ class AssertionCatalog:
         records = projection.get("records")
         if not isinstance(records, list) or not all(isinstance(record, dict) for record in records):
             raise AssertionCatalogError("projection_invalid")
+        return [dict(record) for record in records]
+
+    def _records_read_only(self, workspace_id: str) -> list[dict[str, Any]]:
+        """Non-rebuilding sibling of :meth:`_records` (KMCP-2.3, invariant 2).
+
+        Returns the SAME parsed record list :meth:`_records` would, but
+        NEVER calls :meth:`rebuild` when the projection file is missing —
+        it raises :class:`AssertionCatalogUnavailable` instead, so a
+        Knowledge read can never trigger a ledger rebuild (a filesystem
+        write) as a side effect of a lookup. :meth:`_records` is completely
+        unchanged for every existing caller.
+        """
+
+        path = self.projection_path(workspace_id)
+        if not path.exists():
+            raise AssertionCatalogUnavailable("projection_missing")
+        projection = _mapping(path)
+        if not projection or projection.get("workspace_key") != _workspace_key(workspace_id):
+            raise AssertionCatalogUnavailable("projection_invalid")
+        records = projection.get("records")
+        if not isinstance(records, list) or not all(isinstance(record, dict) for record in records):
+            raise AssertionCatalogUnavailable("projection_invalid")
         return [dict(record) for record in records]
 
     def _build_records(self, workspace_id: str) -> list[dict[str, Any]]:
@@ -394,5 +560,6 @@ __all__ = [
     "AssertionCatalog",
     "AssertionCatalogDenied",
     "AssertionCatalogError",
+    "AssertionCatalogUnavailable",
     "ProjectionReceipt",
 ]

@@ -1,0 +1,278 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/knowledge_document.schema.yaml"
+title: Knowledge Document
+description: >-
+  Request and result schema family for the RF Knowledge MCP `fetch` tool
+  (core `FetchDTO`, the "document") and its separately named `rf_fetch`
+  extension plus the four typed getters (`rf_source_get`, `rf_assertion_get`,
+  `rf_report_get`, `rf_run_get`), which all return the same RF-extended
+  document shape. Part of the P1 contract freeze for KMCP-1.2 (exact core +
+  RF DTOs) and the DTO/URL parts of KMCP-1.3; see
+  docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md.
+
+  FROZEN CORE (invariant 5): the top-level schema in THIS file is the exact,
+  closed core `FetchDTO` — `additionalProperties: false` with exactly the
+  properties `id`, `title`, `text`, `url` (all required) plus an OPTIONAL
+  `metadata` map. Core roots are CLOSED: no `cursor`, `page`, `receipt`,
+  `kind`, or any other required RF-specific field is ever added at this root
+  (KMCP-FR-3). The ONE deliberate exception is inside `metadata` itself,
+  which stays a generic, open `Record<string, unknown>` — arbitrary keys are
+  always valid there; `kind`, `truncated`, and `content_is_untrusted` are
+  common but never required and never an exhaustive list of allowed keys.
+  RF extension evolution (P2/P3/P4) may add fields to
+  `$defs.knowledge_document_extended` below; it may NEVER add a new required
+  root field here or close the `metadata` map (AC KMCP-5 resilience).
+
+  The core `fetch` INPUT is exactly `{id}` (`$defs.core_fetch_request`,
+  closed root, `additionalProperties: false`); the RF-extended `rf_fetch`
+  input additionally accepts an optional `cursor` for paged text and an
+  optional `parent_run_ref` receipt-correlation hint, in its own separately
+  named, still-closed `$defs.rf_fetch_request`.
+
+  DUAL ENCODING RULE (KMCP-1.3): identical to
+  knowledge_search_response.schema.yaml's header — every MCP result for the
+  core `fetch` tool places the exact same `FetchDTO` object in both
+  `structuredContent` and one canonical-JSON `content` text block (same
+  `json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)`
+  algorithm as `assertion_identity.canonical_source_assertion_json`). See
+  `$defs.dual_encoding_envelope` for the structural shape.
+
+  LOCAL RESOURCE URL CONTRACT (KMCP-1.3 URL freeze / KMCP-OQ-3 resolution):
+  `url` here is the SAME kind of route-backed, non-canonical loopback
+  reference as knowledge_search_response.schema.yaml's `results[].url` — it
+  is the document's own self-fetch route
+  (`http(s)://<loopback-host>[:<port>]/api/knowledge/v1/fetch/<percent-encoded
+  opaque-knowledge-id>`), never a filesystem path and never emitted for a
+  denied/hidden id (invariant 6). It is NOT the original public source
+  locator; a public locator, when policy allows exposing one at all, appears
+  only inside the separately named RF-extended `original_source_url` field
+  or inside the frozen core's open `metadata` map — never as this root's
+  `url`. See
+  docs/project_plans/design-specs/research-foundry-knowledge-mcp-canonical-resource-urls.md
+  (status: deferred/shaping) for the still-ungated remote/canonical profile.
+
+  KIND VOCABULARY (KMCP-OQ-2 resolution; see decisions-block section 7): P3
+  (KMCP-3.1..3.3) implements four DOMAIN adapters — source, assertion,
+  report, and run — but `report_draft` and `report_final` (the run-final
+  report) remain two DISTINCT `kind` values with their own opaque-ID kind
+  segment, never merged into one ambiguous "report" kind. `rf_report_get`
+  addresses both by their distinct ids; `rf_run_get` is the separate run
+  summary/detail projection, not a third report kind.
+
+  See knowledge_search_request.schema.yaml's header for the shared
+  access/policy contract (KMCP-1.1) that governs every shape in this file,
+  including safe denial: an unknown, hidden, cross-workspace, or
+  rights-denied `id` fails closed at the transport/tool-error level with no
+  distinguishing detail (KMCP-FR-15) rather than as a partial or
+  null-valued `FetchDTO` — this schema intentionally does not model a
+  fetch-error DTO shape.
+type: object
+additionalProperties: false
+required:
+  - id
+  - title
+  - text
+  - url
+properties:
+  id:
+    $ref: "#/$defs/opaque_knowledge_id"
+  title:
+    type: string
+    minLength: 1
+    maxLength: 300
+  text:
+    description: >-
+      Untrusted document text. This schema bounds it to 400000 Unicode
+      codepoints via `maxLength`; the v1 fixed operational cap is expressed
+      in UTF-8 BYTES (~200000 bytes) and is enforced server-side (P2/P3),
+      since JSON Schema `maxLength` counts codepoints, not bytes, and cannot
+      express a byte cap on its own (KMCP-FR-10).
+    type: string
+    maxLength: 400000
+  url:
+    $ref: "#/$defs/local_resource_url"
+  metadata:
+    description: >-
+      OPTIONAL generic key/value map (`Record<string, unknown>`). Arbitrary
+      keys are intentionally allowed inside this map — this is the ONE place
+      inside the frozen core `fetch` contract where invariant 5's "closed
+      root" rule does not restrict the map's own contents (the root
+      `FetchDTO` itself stays closed to exactly id/title/text/url/metadata).
+      Common (but never required, never exhaustive) keys observed in
+      practice: `kind`, `truncated`, `content_is_untrusted`. Do not add a new
+      required top-level `FetchDTO` field to satisfy a future need — extend
+      this map, or use the separately named
+      `$defs.knowledge_document_extended` shape instead.
+    type: object
+    additionalProperties: true
+    maxProperties: 50
+$defs:
+  opaque_knowledge_id:
+    description: >-
+      Authority-neutral opaque knowledge ID (invariant 6). Byte-identical to
+      knowledge_search_response.schema.yaml's `$defs.opaque_knowledge_id` —
+      keep both copies in sync if this pattern ever changes.
+    type: string
+    minLength: 1
+    maxLength: 200
+    pattern: "^rfk:v1:(source|assertion|report_draft|report_final|run):[A-Za-z0-9._~-]+$"
+  local_resource_url:
+    description: >-
+      Loopback-only, route-backed, non-canonical resource URL (invariant 6;
+      KMCP-OQ-3 resolution). Byte-identical to
+      knowledge_search_response.schema.yaml's `$defs.local_resource_url` —
+      keep both copies in sync if this pattern ever changes. Never emitted
+      for a denied or hidden id.
+    type: string
+    maxLength: 2048
+    pattern: "^https?://(127\\.0\\.0\\.1|localhost|\\[::1\\])(:[0-9]{1,5})?/api/knowledge/v1/fetch/[A-Za-z0-9%._~-]+$"
+  core_fetch_request:
+    description: >-
+      Frozen core `fetch` input. Exactly `id` — no cursor, page, or receipt
+      field (invariant 5, KMCP-FR-3).
+    type: object
+    additionalProperties: false
+    required:
+      - id
+    properties:
+      id:
+        $ref: "#/$defs/opaque_knowledge_id"
+  rf_fetch_request:
+    description: >-
+      RF-extended `rf_fetch` input (KMCP-FR-5). Structurally separate from
+      the frozen core request above — never validated as, or aliased to,
+      `core_fetch_request`.
+    type: object
+    additionalProperties: false
+    required:
+      - id
+    properties:
+      id:
+        $ref: "#/$defs/opaque_knowledge_id"
+      cursor:
+        description: Optional paging cursor for a large document's next text page.
+        type:
+          - string
+          - "null"
+      parent_run_ref:
+        description: >-
+          Optional caller-supplied correlation hint threaded into the
+          Part-B, caller-carried RF activity receipt (KMCP-OQ-4,
+          knowledge_activity_receipt.schema.yaml — deliberately NOT created
+          by this P1 task). Not itself a receipt and carries no authority.
+        type:
+          - string
+          - "null"
+  knowledge_document_extended:
+    description: >-
+      RF-extended document shape returned by `rf_fetch` and, single-result,
+      by the four typed getters (`rf_source_get`, `rf_assertion_get`,
+      `rf_report_get`, `rf_run_get` — KMCP-FR-5/KMCP-4.3). Separately named
+      from the frozen core `FetchDTO` root above; never merges its typed
+      fields back into that root. Concrete per-kind fields for source
+      trust/rights, assertion lineage/lifecycle, report draft/final
+      provenance, and run summaries are frozen in Phase P3
+      (KMCP-3.1..KMCP-3.3) inside `rf_metadata`; this P1 freeze only reserves
+      that name and keeps it open so P3 does not need to reopen this closed
+      root.
+    type: object
+    additionalProperties: false
+    required:
+      - id
+      - title
+      - url
+      - kind
+      - content_is_untrusted
+    properties:
+      id:
+        $ref: "#/$defs/opaque_knowledge_id"
+      title:
+        type: string
+        minLength: 1
+        maxLength: 300
+      url:
+        $ref: "#/$defs/local_resource_url"
+      kind:
+        enum:
+          - source
+          - assertion
+          - report_draft
+          - report_final
+          - run
+      text:
+        type:
+          - string
+          - "null"
+        maxLength: 400000
+      original_source_url:
+        description: >-
+          Public source locator, present only when policy allows exposing
+          one at all; always separate from the local/non-canonical `url`
+          above (Risk 5 in decisions-block section 3). Never a filesystem
+          path.
+        type:
+          - string
+          - "null"
+        pattern: "^https?://"
+      content_is_untrusted:
+        description: >-
+          Always true (KMCP-FR-11): returned text is untrusted data, never
+          prompt/control framing.
+        const: true
+      truncated:
+        type: boolean
+      next_cursor:
+        type:
+          - string
+          - "null"
+      rf_metadata:
+        description: >-
+          Typed, per-kind RF metadata bag. Concrete per-kind fields are
+          frozen in Phase P3 (KMCP-3.1..3.3); reserved and left open here.
+        type: object
+        additionalProperties: true
+      receipt:
+        description: >-
+          Same Part-B placeholder as
+          knowledge_search_response.schema.yaml's
+          `rf_search_response.receipt` — intentionally NOT the full
+          `knowledge_activity_receipt.schema.yaml` contract (KMCP-OQ-4, out
+          of this task's scope).
+        type:
+          - object
+          - "null"
+        additionalProperties: true
+  dual_encoding_envelope:
+    description: >-
+      Structural shape of one MCP `fetch` tool result (see the file header's
+      "DUAL ENCODING RULE"). `structuredContent` is a `$ref` back to this
+      file's own root schema (the exact core `FetchDTO`) rather than a
+      duplicated copy, so the two can never drift apart.
+    type: object
+    additionalProperties: false
+    required:
+      - structuredContent
+      - content
+    properties:
+      structuredContent:
+        $ref: "#"
+      content:
+        type: array
+        minItems: 1
+        maxItems: 1
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - type
+            - text
+          properties:
+            type:
+              const: text
+            text:
+              description: >-
+                Deterministic canonical JSON of the identical object present
+                in `structuredContent` (see file header). Equality is proven
+                by test fixtures, not by this schema.
+              type: string
+              minLength: 1

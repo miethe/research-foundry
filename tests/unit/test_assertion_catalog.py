@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from research_foundry.api.auth.provider import AuthIdentity
 from research_foundry.services import claim_mapping, extraction
 from research_foundry.services.assertion_catalog import AssertionCatalog
@@ -131,3 +133,81 @@ def test_legacy_workspace_without_assertions_stays_empty_and_valid(tmp_foundry) 
         "facets": {"lifecycle_states": [], "access_scopes": []},
         "denial_reason": None,
     }
+
+
+# ---------------------------------------------------------------------------
+# RF Knowledge MCP KMCP-2.3: non-rebuilding read path
+# ---------------------------------------------------------------------------
+
+
+def test_search_read_only_missing_projection_denies_without_rebuild(tmp_foundry) -> None:
+    """Unlike ``search`` (which silently rebuilds -- see the legacy-workspace test
+    above), ``search_read_only`` never writes a projection file for a workspace
+    that has never been materialized."""
+
+    from research_foundry.services.assertion_catalog import AssertionCatalogUnavailable
+
+    catalog = AssertionCatalog(tmp_foundry)
+    identity = AuthIdentity("legacy", "workspace-never-built", ("viewer",))
+    projection_path = catalog.projection_path(identity.workspace_id)
+    assert not projection_path.exists()
+
+    result = catalog.search_read_only(identity=identity)
+
+    assert result == AssertionCatalog.denied_payload("catalog_unavailable")
+    assert not projection_path.exists()
+    with pytest.raises(AssertionCatalogUnavailable):
+        catalog._records_read_only(identity.workspace_id)
+
+
+def test_packet_and_lineage_read_only_missing_projection_raise_without_rebuild(tmp_foundry) -> None:
+    from research_foundry.services.assertion_catalog import AssertionCatalogUnavailable
+
+    catalog = AssertionCatalog(tmp_foundry)
+    identity = AuthIdentity("legacy", "workspace-never-built-2", ("viewer",))
+    projection_path = catalog.projection_path(identity.workspace_id)
+
+    with pytest.raises(AssertionCatalogUnavailable):
+        catalog.packet_read_only("ast_does_not_exist", identity=identity)
+    assert not projection_path.exists()
+
+    with pytest.raises(AssertionCatalogUnavailable):
+        catalog.lineage_read_only("ast_does_not_exist", identity=identity)
+    assert not projection_path.exists()
+
+
+def test_read_only_methods_match_rebuilt_methods_when_projection_exists(tmp_foundry) -> None:
+    assertion_id = _materialize(
+        tmp_foundry, "rf_run_p4_readonly", "workspace-a", "The read-only seam sees 42 percent too."
+    )
+    catalog = AssertionCatalog(tmp_foundry)
+    identity = AuthIdentity("alice", "workspace-a", ("researcher",))
+    catalog.rebuild("workspace-a")
+
+    assert catalog.search_read_only(identity=identity, query="42") == catalog.search(
+        identity=identity, query="42"
+    )
+    assert catalog.packet_read_only(assertion_id, identity=identity) == catalog.packet(
+        assertion_id, identity=identity
+    )
+    assert catalog.lineage_read_only(assertion_id, identity=identity) == catalog.lineage(
+        assertion_id, identity=identity
+    )
+
+
+def test_read_only_rights_denial_matches_rebuilt_denial_shape(tmp_foundry) -> None:
+    """A policy/rights denial over an ALREADY-BUILT projection returns the same
+    bounded shape from both the rebuilding and non-rebuilding surfaces --
+    distinguishing "denied" from "unavailable" only via reason code, never shape."""
+
+    _materialize(tmp_foundry, "rf_run_p4_ro_rights", "workspace-a", "Missing rights must deny read-only too.")
+    catalog = AssertionCatalog(tmp_foundry)
+    edition_path = next((tmp_foundry.root / "assertion_ledger" / "workspaces").glob("*/sources/*/editions/*.yaml"))
+    edition = load_yaml(edition_path)
+    edition["metadata_extensions"].pop("allowed_use")
+    dump_yaml(edition, edition_path)
+    catalog.rebuild("workspace-a")
+
+    identity = AuthIdentity("alice", "workspace-a", ("viewer",))
+    assert catalog.search_read_only(identity=identity) == catalog.search(identity=identity)
+    assert catalog.search_read_only(identity=identity)["denial_reason"] == "rights_context_missing"

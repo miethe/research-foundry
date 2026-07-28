@@ -5,7 +5,7 @@ schema_version: 2
 status: deferred
 maturity: shaping
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-07-27
 feature_slug: research-foundry-knowledge-mcp
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-knowledge-mcp-v1.md
 deferred_from: docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
@@ -49,6 +49,35 @@ URL namespace also needs host ownership, TLS, versioning, migration, redirect,
 revocation, deletion, and cross-workspace no-leak semantics. Treating localhost
 or a mutable deployment hostname as canonical would create broken citations and
 could leak tenant membership.
+
+## Reconciled Against Local v1 (KMCP P1-P5)
+
+- **Shipped locally:** `knowledge_access.build_local_resource_url` builds one
+  fixed-shape URL, `http://127.0.0.1/api/knowledge/v1/fetch/<opaque-id>`
+  (`_LOCAL_ORIGIN` constant; `_LOCAL_URL_RE` anchored to
+  `127.0.0.1|localhost|[::1]` plus the exact `/api/knowledge/v1/fetch/<id>`
+  route segment), for every search-result item and every fetch document's
+  own `url`. Every emitted URL is validated against that same pattern before
+  being returned (`KnowledgeInvariantError("invalid_local_resource_url")` on
+  mismatch) and is documented in-code as loopback-only — never caller-
+  configurable to any other host, and never used to open a non-loopback
+  listener. Opaque knowledge IDs (`rfk:v1:<kind>:<opaque>`,
+  `parse_knowledge_id`) remain the authority-neutral lookup key independent
+  of the URL, exactly as this spec's "Decision" requires. There is no
+  owned-host, DNS, TLS, versioned-route, or redirect/migration/tombstone
+  implementation of any kind in local v1.
+- **Still deferred:** an owned-HTTPS host, DNS/TLS issuance, route/opaque-ID
+  version policy, and redirect/tombstone/deletion/migration semantics; every
+  test this spec's "Reachability and Security Tests" section lists (hosted-
+  client reachability, path traversal, host-header abuse, open redirect,
+  IPv4/IPv6 parity, etc.) has no remotely reachable surface to exercise yet.
+- **Promotion gate:** unchanged from "Promotion Gates" below — host/DNS/TLS
+  ownership and opaque-ID/version/redirect/deletion semantics approved; the
+  remote-transport and cache-isolation specs promoted alongside this one
+  (URLs cannot promote alone); live cross-client resolution to the same
+  governed identity `fetch(id)` returns proven with no cross-workspace
+  signal; and exact live-reachability evidence recorded before any hosted-
+  client compatibility claim (decisions-block §10).
 
 ## Candidate Canonical Form
 

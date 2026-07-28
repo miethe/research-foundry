@@ -157,6 +157,27 @@ class CatalogError(ExportError):
     """A catalog operation failed (unknown run, malformed artifact, ...)."""
 
 
+class CatalogUnavailable(CatalogError):
+    """The derived ``catalog.db`` cannot be queried without performing a write.
+
+    Raised by :func:`query_only_connection` / :func:`is_catalog_available`
+    (KMCP-2.2) when ``catalog.db`` is absent, a symlink, unreadable, or was
+    created by a different :data:`SCHEMA_VERSION` than this build expects.
+    This is the RF Knowledge MCP's invariant-2 ("reads never repair state")
+    boundary — read-only callers (the P2/P3 Knowledge service) must treat
+    this identically to "no matches" and MUST NOT fall back to
+    :func:`_connect`/:func:`rebuild_schema`/:func:`import_all` to repair it;
+    only an explicit ``rf catalog rebuild`` (an unchanged, deliberate write
+    path) may do that. Distinct from :class:`CatalogError` (a malformed run
+    export) so callers can tell "nothing built yet" apart from "a specific
+    run failed to export".
+    """
+
+    def __init__(self, reason_code: str) -> None:
+        super().__init__(reason_code)
+        self.reason_code = reason_code
+
+
 # ---------------------------------------------------------------------------
 # Connection + schema management
 # ---------------------------------------------------------------------------
@@ -356,6 +377,90 @@ def rebuild_schema(paths: FoundryPaths) -> None:
         except BaseException:
             conn.rollback()
             raise
+
+
+# ---------------------------------------------------------------------------
+# Query-only / read-only seam (RF Knowledge MCP KMCP-2.2)
+# ---------------------------------------------------------------------------
+# Additive only — every function above (``_connect``/``_db`` and everything
+# built on them: ``search``, ``get_item``, ``stats``, ``import_run``,
+# ``rebuild``, ``index_draft``, ...) is completely unchanged and keeps its
+# own lazy-create/migrate behavior for every existing caller (``rf catalog
+# ...``, the API routers, etc.). The functions below are a NEW, read-only
+# path for callers (the P2/P3 Knowledge service) that must never create,
+# migrate, or rebuild ``catalog.db`` as a side effect of a read.
+
+
+def _catalog_db_readable(paths: FoundryPaths) -> Path | None:
+    """Return ``catalog.db``'s path iff it exists as a plain, non-symlink file.
+
+    Never creates the parent directory or the file itself (contrast
+    :func:`_connect`, which does both unconditionally). Symlinks are
+    rejected outright (same "no symlink escape" defense used elsewhere in
+    this codebase, e.g. ``assertion_catalog``'s ``_build_records``) so a
+    read-only caller can never be pointed at an arbitrary file outside the
+    workspace.
+    """
+
+    db_path = paths.catalog_db
+    if db_path.is_symlink() or not db_path.is_file():
+        return None
+    return db_path
+
+
+@contextmanager
+def query_only_connection(paths: FoundryPaths) -> Iterator[sqlite3.Connection]:
+    """Open ``catalog.db`` in explicit read-only mode; never create/migrate/rebuild it.
+
+    KMCP invariant 2 ("reads never repair state"): raises
+    :class:`CatalogUnavailable` — rather than lazily creating the DB the way
+    every existing write-capable caller's :func:`_connect` does — when the
+    file is missing, a symlink, unreadable, or its ``PRAGMA user_version``
+    does not match :data:`SCHEMA_VERSION` (a stale or mid-migration DB is
+    treated as unavailable, never auto-migrated by a read).
+
+    The connection is opened via the sqlite3 URI ``mode=ro`` (an OS/VFS-level
+    write rejection) plus ``PRAGMA query_only = ON`` as defense in depth. It
+    never calls :func:`_ensure_schema`, :func:`_create_schema`, or any other
+    DDL/DML statement — SELECT only. This is a NEW, additive seam; every
+    existing caller keeps using :func:`_connect`/:func:`_db` unchanged.
+    """
+
+    db_path = _catalog_db_readable(paths)
+    if db_path is None:
+        raise CatalogUnavailable("catalog_missing")
+    uri = f"{db_path.resolve().as_uri()}?mode=ro"
+    try:
+        conn = sqlite3.connect(uri, uri=True)
+    except sqlite3.OperationalError as exc:
+        raise CatalogUnavailable("catalog_unreadable") from exc
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only = ON")
+        try:
+            (version,) = conn.execute("PRAGMA user_version").fetchone()
+        except sqlite3.DatabaseError as exc:
+            raise CatalogUnavailable("catalog_unreadable") from exc
+        if version != SCHEMA_VERSION:
+            raise CatalogUnavailable("catalog_schema_stale")
+        yield conn
+    finally:
+        conn.close()
+
+
+def is_catalog_available(paths: FoundryPaths) -> bool:
+    """Cheap availability probe — ``True`` iff :func:`query_only_connection` would succeed.
+
+    Never creates, migrates, or writes anything. Safe to call before every
+    Knowledge read to decide whether a catalog-backed kind is queryable at
+    all before delegating to a P3 projection.
+    """
+
+    try:
+        with query_only_connection(paths):
+            return True
+    except CatalogUnavailable:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -2118,6 +2223,9 @@ __all__ = [
     "SCHEMA_VERSION",
     "ITEM_TYPES",
     "CatalogError",
+    "CatalogUnavailable",
+    "query_only_connection",
+    "is_catalog_available",
     "rebuild_schema",
     "import_run",
     "import_all",

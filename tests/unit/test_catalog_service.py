@@ -1615,3 +1615,84 @@ def test_get_draft_index_advisory_mode_unchanged_by_phase4(
     assert not any(
         "workspace_scope_enforced_denial" in r.getMessage() for r in caplog.records
     )
+
+
+# ---------------------------------------------------------------------------
+# RF Knowledge MCP KMCP-2.2: query-only / read-only seam
+# ---------------------------------------------------------------------------
+
+
+def test_query_only_connection_missing_db_is_unavailable_without_writes(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """A never-created catalog.db reports unavailable and creates nothing on disk."""
+
+    assert svc.is_catalog_available(tmp_foundry) is False
+    assert not tmp_foundry.rf_cache.exists()
+    with pytest.raises(svc.CatalogUnavailable) as excinfo:
+        with svc.query_only_connection(tmp_foundry):
+            pass
+    assert excinfo.value.reason_code == "catalog_missing"
+    assert not tmp_foundry.rf_cache.exists()
+
+
+def test_query_only_connection_existing_db_queries_without_changing_files(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """An existing, current-schema DB is queryable read-only with zero file mutation."""
+
+    build_catalog_run(tmp_foundry)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+
+    assert svc.is_catalog_available(tmp_foundry) is True
+    mtime_before = tmp_foundry.catalog_db.stat().st_mtime_ns
+    with svc.query_only_connection(tmp_foundry) as conn:
+        (count,) = conn.execute("SELECT COUNT(*) FROM catalog_items").fetchone()
+        assert count > 0
+        with pytest.raises(sqlite3.OperationalError):
+            conn.execute("DELETE FROM catalog_items")
+    assert tmp_foundry.catalog_db.stat().st_mtime_ns == mtime_before
+
+
+def test_query_only_connection_stale_schema_is_unavailable_not_migrated(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """A stale ``user_version`` denies read-only access instead of dropping/recreating."""
+
+    build_catalog_run(tmp_foundry)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+
+    conn = sqlite3.connect(str(tmp_foundry.catalog_db))
+    conn.execute("PRAGMA user_version = 999")
+    conn.commit()
+    conn.close()
+
+    assert svc.is_catalog_available(tmp_foundry) is False
+    with pytest.raises(svc.CatalogUnavailable) as excinfo:
+        with svc.query_only_connection(tmp_foundry):
+            pass
+    assert excinfo.value.reason_code == "catalog_schema_stale"
+
+    # The stale version is untouched -- only a write-capable caller (_connect
+    # via svc.search/etc.) may drop + recreate it, never this read-only path.
+    raw = sqlite3.connect(str(tmp_foundry.catalog_db))
+    (version,) = raw.execute("PRAGMA user_version").fetchone()
+    raw.close()
+    assert version == 999
+
+
+def test_query_only_connection_rejects_symlinked_db(tmp_foundry: FoundryPaths, tmp_path) -> None:
+    """A symlinked ``catalog.db`` is treated as unavailable, never opened."""
+
+    build_catalog_run(tmp_foundry)
+    svc.import_run(tmp_foundry, "rf_run_catalog001")
+    real_db = tmp_path / "elsewhere.db"
+    real_db.write_bytes(tmp_foundry.catalog_db.read_bytes())
+    tmp_foundry.catalog_db.unlink()
+    tmp_foundry.catalog_db.symlink_to(real_db)
+
+    assert svc.is_catalog_available(tmp_foundry) is False
+    with pytest.raises(svc.CatalogUnavailable) as excinfo:
+        with svc.query_only_connection(tmp_foundry):
+            pass
+    assert excinfo.value.reason_code == "catalog_missing"

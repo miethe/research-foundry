@@ -187,6 +187,17 @@ in [the assertion-ledger guide](docs/user/assertion-ledger.md). Neither document
 authorizes private rollout, shared indexing, public promotion, or external
 writeback.
 
+### Knowledge MCP (Read-Only Local Surface)
+
+A separate, read-only `rf-knowledge-mcp` stdio process exposes governed reads over sources,
+assertions, reports, and runs through an exact `search(query)`/`fetch(id)` contract, plus
+RF-extended filtering/paging/typed-getter tools — with CLI (`rf knowledge ...`) and GET-only
+HTTP (`/api/knowledge/...`) parity over the same shared service. It never writes, rebuilds, or
+calls a paid provider. See the [user guide](docs/user/knowledge-mcp.md) for how to run it and
+the [architecture doc](docs/dev/architecture/knowledge-mcp.md) for the service/DTO/invariant
+design. It is **local, stdio-only, and schema-aligned only** in v1 — no remote transport, no
+canonical HTTPS namespace, and no OpenAI/ChatGPT compatibility claim.
+
 ### Serving Runs Live (Loopback API)
 
 Alternatively, run a local HTTP server to serve live run data without pre-exporting:

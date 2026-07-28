@@ -2398,6 +2398,11 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(agent_job_app, name="agent-job")
 
+    # ----- knowledge (KMCP-5.1: CLI parity for the RF Knowledge MCP) -----
+    from .cli.commands.knowledge import knowledge_app
+
+    app.add_typer(knowledge_app, name="knowledge")
+
     # ----- audit (public-multiuser-release Phase 5 — AUDIT-003/AUDIT-004) -----
     audit_app = typer.Typer(help="Audit log commands.")
 

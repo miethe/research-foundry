@@ -35,15 +35,19 @@ from research_foundry.schemas import SchemaRegistry, validate
 
 # The 37 artifact schemas shipped under ``schemas/`` (32 pre-existing + 5 added
 # by rights-entity-model-v1 P0-1..P0-4: content_reuse_assessment,
-# permission_record, rights_extension, rights_failure, rights_record). Kept
-# explicit so the parametrization itself documents the expected surface;
-# cross-checked against ``SchemaRegistry().names()`` in
-# ``test_registry_lists_all_schemas``.
+# permission_record, rights_extension, rights_failure, rights_record), plus 4
+# more added by research-foundry-knowledge-mcp-v1 P1 (KMCP-1.2/1.3 contract
+# freeze): knowledge_activity_receipt (Part B, KMCP-OQ-4), knowledge_document,
+# knowledge_search_request, knowledge_search_response. Kept explicit so the
+# parametrization itself documents the expected surface; cross-checked
+# against ``SchemaRegistry().names()`` in ``test_registry_lists_all_schemas``.
 EXPECTED_SCHEMA_NAMES: list[str] = [
     "arc_review_request", "assertion_evaluation", "assertion_lifecycle_event",
     "canonical_claim", "ccdash_event", "claim_ledger", "content_reuse_assessment",
     "evidence_bundle", "extraction_card", "foundry", "ibom", "inference_record",
-    "intenttree_node", "intenttree_update", "meatywiki_writeback", "notebooklm_update",
+    "intenttree_node", "intenttree_update", "knowledge_activity_receipt",
+    "knowledge_document", "knowledge_search_request", "knowledge_search_response",
+    "meatywiki_writeback", "notebooklm_update",
     "passage", "permission_record", "raw_idea", "report_draft", "report_frontmatter",
     "research_brief", "research_evidence_plan", "research_idea_backlog", "research_intent", "review_packet",
     "rights_extension", "rights_failure", "rights_record", "routing_decision",
@@ -145,6 +149,50 @@ def _valid(name: str) -> dict:
             "source_assertion_refs": [{"assertion_id": "ast_" + "a" * 64, "assertion_version": 1}],
             "reasoning": {"summary": "Derived from the source assertion.", "method": "reviewed synthesis"},
             "status": "active",
+        },
+        # required: schema_version, type, tool, generated_at, persisted,
+        # request_context_hash, policy_version, returned_ids, bounds (RF-only
+        # activity receipt, research-foundry-knowledge-mcp-v1 P1 Part B /
+        # KMCP-OQ-4). `persisted` is a hard-pinned `const: false`; no
+        # denied/hidden count, filesystem path, or denied ID ever appears
+        # here — see schemas/knowledge_activity_receipt.schema.yaml.
+        "knowledge_activity_receipt": {
+            "schema_version": "1.0",
+            "type": "knowledge_activity_receipt",
+            "tool": "search",
+            "generated_at": "2026-07-27T00:00:00Z",
+            "persisted": False,
+            "request_context_hash": "a" * 64,
+            "policy_version": "policy-order-v1",
+            "returned_ids": ["rfk:v1:assertion:demo"],
+            "bounds": {"results_returned": 1, "results_max": 10, "truncated": False},
+        },
+        # required: query (RF Knowledge MCP frozen core `search` input,
+        # research-foundry-knowledge-mcp-v1 P1 / KMCP-1.2). additionalProperties
+        # is false at this root — no filters/limit/cursor/receipt field belongs
+        # here; see schemas/knowledge_search_request.schema.yaml.
+        "knowledge_search_request": {
+            "query": "demo knowledge query",
+        },
+        # required: results (RF Knowledge MCP frozen core SearchDTO). Each
+        # result item is exactly id/title/url — no snippet.
+        "knowledge_search_response": {
+            "results": [
+                {
+                    "id": "rfk:v1:assertion:demo",
+                    "title": "Demo Result",
+                    "url": "http://127.0.0.1:7432/api/knowledge/v1/fetch/rfk%3Av1%3Aassertion%3Ademo",
+                },
+            ],
+        },
+        # required: id, title, text, url (RF Knowledge MCP frozen core
+        # FetchDTO/"document"); optional generic `metadata` map intentionally
+        # omitted here since it is never required.
+        "knowledge_document": {
+            "id": "rfk:v1:assertion:demo",
+            "title": "Demo Document",
+            "text": "Demo fetched body.",
+            "url": "http://127.0.0.1:7432/api/knowledge/v1/fetch/rfk%3Av1%3Aassertion%3Ademo",
         },
         # required: id, evidence_bundle_id
         "meatywiki_writeback": {
@@ -415,6 +463,13 @@ def _invalid(name: str) -> dict:
         "intenttree_node": "node_id",
         "intenttree_update": "run_id",
         "inference_record": "inference_id",
+        # RF Knowledge MCP frozen core DTOs (research-foundry-knowledge-mcp-v1
+        # P1 / KMCP-1.2) — dropping the sole/first required field triggers the
+        # closed-root `required` failure.
+        "knowledge_activity_receipt": "request_context_hash",
+        "knowledge_search_request": "query",
+        "knowledge_search_response": "results",
+        "knowledge_document": "text",
         "meatywiki_writeback": "id",
         "notebooklm_update": "run_id",
         "raw_idea": "id",

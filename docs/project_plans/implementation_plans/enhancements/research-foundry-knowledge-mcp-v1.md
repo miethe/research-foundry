@@ -33,6 +33,7 @@ related_documents:
   - docs/project_plans/design-specs/research-foundry-knowledge-mcp-canonical-resource-urls.md
   - docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-cache-isolation.md
   - docs/project_plans/design-specs/reusable-assertion-ledger-shared-indexes.md
+  - .claude/findings/research-foundry-knowledge-mcp-findings.md
 references:
   user_docs: []
   context: []
@@ -61,7 +62,7 @@ deferred_items_spec_refs:
   - docs/project_plans/design-specs/research-foundry-knowledge-mcp-canonical-resource-urls.md
   - docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-cache-isolation.md
   - docs/project_plans/design-specs/reusable-assertion-ledger-shared-indexes.md
-findings_doc_ref: null
+findings_doc_ref: .claude/findings/research-foundry-knowledge-mcp-findings.md
 charter_ref: null
 changelog_ref: null
 changelog_required: true
@@ -108,17 +109,21 @@ files_affected:
   - CHANGELOG.md
 open_questions:
   - id: KMCP-OQ-1
-    status: open
+    status: resolved
     question: "Freeze the explicit non-writing behavior for absent assertion/catalog projections."
+    resolution: "P1 (KMCP-1.1/1.2); enumeration + negative-matrix proof landed P2 (KMCP-2.4). See .codex/worknotes/research-foundry-knowledge-mcp/decisions-block.md sec 7."
   - id: KMCP-OQ-2
-    status: open
+    status: resolved
     question: "Freeze report kind semantics for run-final reports versus report drafts."
+    resolution: "P1 (KMCP-1.2); report_draft/report_final stay two distinct kinds, one rf_report_get getter. See decisions-block.md sec 7."
   - id: KMCP-OQ-3
-    status: open
+    status: resolved
     question: "Freeze the loopback resource base URL and route versioning contract."
+    resolution: "P1 (KMCP-1.3); /api/knowledge/v1/fetch/<id> loopback-only local_resource_url. See decisions-block.md sec 7."
   - id: KMCP-OQ-4
-    status: open
+    status: resolved
     question: "Freeze non-leaking activity-receipt fields and caller persistence ownership."
+    resolution: "P1 Part B (schemas/knowledge_activity_receipt.schema.yaml); wired through P3/P4/P5 transports. See decisions-block.md sec 7."
 wave_plan:
   serialization_barriers:
     - schemas/knowledge_search_request.schema.yaml

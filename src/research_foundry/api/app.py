@@ -33,6 +33,11 @@ Endpoints registered by this factory:
   GET  /api/catalog/items/{id}            — catalog item detail (→ fetchCatalogItem)
   POST /api/catalog/import/run/{run_id}   — (re)import one run into the catalog
   POST /api/catalog/import                — (re)import every discovered run
+  GET  /api/knowledge/v1/search               — frozen core knowledge search (KMCP-5.2)
+  GET  /api/knowledge/v1/fetch/{id}           — frozen core knowledge fetch (local resource URL contract)
+  GET  /api/knowledge/search                  — RF-extended knowledge search (kinds/limit/cursor/receipt)
+  GET  /api/knowledge/fetch/{id}              — RF-extended knowledge fetch (cursor/receipt/rf_metadata)
+  GET  /api/knowledge/{source,assertion,report,run}/{id} — typed getters (rf_*_get parity)
 
 Middleware stack (outermost → innermost):
   CORS → allowlist (optional) → auth (optional) → rate-limit (optional)
@@ -74,6 +79,7 @@ from .routers.assertions import router as assertions_router
 from .routers.audit import router as audit_router
 from .routers.auth_identity import router as auth_identity_router
 from .routers.catalog import router as catalog_router
+from .routers.knowledge import router as knowledge_router
 from .routers.reports import router as reports_router
 from .routers.runs import router as runs_router
 from .routers.writeback import router as writeback_router
@@ -468,6 +474,9 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # agents.enabled feature flag, since rf writeback is not an agent-job
     # surface. Gated per-route by require_role("owner", "admin") instead.
     app.include_router(writeback_router, prefix="/api", tags=["writeback"])
+    # Knowledge API (KMCP-5.2): GET-only parity for the RF Knowledge MCP.
+    # Unconditional — every route is a governed read; no feature flag needed.
+    app.include_router(knowledge_router, prefix="/api", tags=["knowledge"])
 
     return app
 

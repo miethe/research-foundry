@@ -11,6 +11,35 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Research Foundry Knowledge MCP — Governed, Read-Only Access to Sources/Assertions/Reports/Runs**
+
+- **New independent `rf-knowledge-mcp` stdio process (exact eight tools).** A packaged entry
+  point, separate from the Search Router's `rf-mcp`, exposes a frozen core `search(query)` /
+  `fetch(id)` contract (id/title/url search results; id/title/text/url/optional-metadata
+  fetch document; identical dual `structuredContent` + canonical-JSON `content` encoding) plus
+  six RF-extended tools — `rf_search`/`rf_fetch` (kind filters, cursor paging, a caller-carried
+  non-persisted activity receipt) and four typed getters (`rf_source_get`, `rf_assertion_get`,
+  `rf_report_get`, `rf_run_get`). Its own registry/settings modules admit no Search
+  Router/Operator/provider credential and register no non-stdio transport (Streamable
+  HTTP/SSE/OAuth refuse to start even if requested).
+- **New `KnowledgeAccessService` policy-first read layer.** Four non-writing projectors
+  (`source`, `assertion`, `report_draft`/`report_final`, `run`) resolve existing governed read
+  authorities (`catalog_service`, `assertion_catalog`, `builder_service`, `export_service`) into
+  allowlisted, bounded, opaque-ID-addressed documents — workspace/sensitivity/rights policy is
+  always applied before any snippet, count, cursor, URL, or receipt is derived, and a
+  denied/hidden/missing id is indistinguishable by response shape.
+- **`rf knowledge search/fetch/source-get/assertion-get/report-get/run-get` CLI**, and
+  GET-only `/api/knowledge/v1/search`, `/api/knowledge/v1/fetch/{id}`,
+  `/api/knowledge/{search,fetch,source,assertion,report,run}` HTTP routes — both thin parity
+  transports over the same service and DTOs (no POST/PUT/PATCH/DELETE route exists).
+- **Local, schema-aligned only — not remote-compatible.** Every returned URL is loopback-only
+  and non-canonical; there is no OpenAI/ChatGPT (or other hosted-connector) compatibility claim
+  for this local surface. `rf_assertion_get` denies by default through the stdio process and
+  the CLI (both run under local trust, which every assertion read requires a real identity to
+  clear) and can only succeed through the HTTP API with a resolved caller identity. See
+  [`docs/dev/architecture/knowledge-mcp.md`](docs/dev/architecture/knowledge-mcp.md) and
+  [`docs/user/knowledge-mcp.md`](docs/user/knowledge-mcp.md).
+
 #### **Claim Term Indexing — Deterministic Vocabulary/Usage-Role Index (`_term_index`)**
 
 - **Write-time term index attached to every claim.** `claim_mapping.build_claim_ledger` now

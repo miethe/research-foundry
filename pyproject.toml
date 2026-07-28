@@ -63,6 +63,15 @@ rf = "research_foundry.cli:app"
 # guard before delegating to mcp_server.build_server(). mcp_server.main()
 # still works too (delegates here) for .mcp.json's direct `python -m` launch.
 rf-mcp = "research_foundry.services.search_router.mcp_launcher:main"
+# Knowledge MCP server (stdio). Optional: requires the same `mcp` extra as
+# `rf-mcp` above. Without it the entrypoint raises a clear RuntimeError
+# pointing to the extra. An INDEPENDENT process/registry/settings boundary
+# from `rf-mcp` -- never imports from research_foundry.services.search_router.*
+# or an Operator/Hermes-adjacent module (KMCP-4.1, decisions-block §9.1).
+# Exposes exactly the governed, read-only research_foundry.services.
+# knowledge_access service over the frozen core `search(query)`/`fetch(id)`
+# contract (KMCP-1.2); registers no acquisition/writeback/provider tool.
+rf-knowledge-mcp = "research_foundry.knowledge_mcp.process:main"
 
 [build-system]
 requires = ["hatchling"]

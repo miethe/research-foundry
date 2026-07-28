@@ -1,0 +1,127 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/knowledge_search_request.schema.yaml"
+title: Knowledge Search Request
+description: >-
+  Input schema family for the RF Knowledge MCP `search` tool and its
+  separately named `rf_search` extension. Part of the P1 contract freeze for
+  KMCP-1.1 (access/policy contract) and KMCP-1.2 (exact core + RF DTOs); see
+  docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
+  ("Phase P1: Contract and Boundary Freeze") and
+  .codex/worknotes/research-foundry-knowledge-mcp/decisions-block.md.
+
+  FROZEN CORE (invariant 5): the top-level schema in THIS file is the exact,
+  closed core `search` input — `additionalProperties: false` with exactly one
+  allowed property, `query`. No filters, kinds, pagination, cursor, limit, or
+  receipt field may ever be added to this root; core roots are CLOSED. Every
+  RF extension (filters, kinds, paging, receipt-correlation hints) lives ONLY
+  under the separately named `$defs.rf_search_request` below — never merged
+  into this root and never aliased under the `search` tool name (KMCP-FR-5).
+
+  This file intentionally does NOT define the KnowledgeAccessContext object
+  (workspace/identity/sensitivity-ceiling). That context is resolved by the
+  calling transport (CLI/API/MCP) from caller identity, never accepted as a
+  field inside this request body — a caller cannot widen its own sensitivity
+  ceiling or workspace by adding a JSON field, which is exactly what
+  `additionalProperties: false` on both shapes below prevents.
+
+  ACCESS AND POLICY CONTRACT (KMCP-1.1 freeze, applies to every shape in this
+  file and to knowledge_search_response.schema.yaml / knowledge_document.schema.yaml):
+    - Local trust vs enforced identity: the local stdio transport (KMCP-4) runs
+      under the calling OS process's identity ("local trust", single caller,
+      no separate remote auth in v1); the CLI and GET-only HTTP API transports
+      resolve and enforce an explicit workspace/identity exactly like existing
+      RF read services (WKSP-304 row-level isolation) — v1 introduces no
+      weaker identity path for any transport.
+    - Sensitivity ceiling: the resolved KnowledgeAccessContext's sensitivity
+      ceiling (public/personal/work_sensitive/client_sensitive) is intersected
+      with existing workspace/source sensitivity gates; a request can never
+      widen it by any field in this schema.
+    - Allowed use/kinds: only the eight tools in the frozen inventory (`search`,
+      `fetch`, `rf_search`, `rf_fetch`, `rf_source_get`, `rf_assertion_get`,
+      `rf_report_get`, `rf_run_get`) may resolve a knowledge kind; kinds are
+      `source`, `assertion`, `report_draft`, `report_final`, `run` (OQ-2
+      resolution — see decisions-block section 7). No acquisition/writeback
+      kind exists.
+    - Policy order (invariant 3, fixed): identity/workspace -> sensitivity ->
+      rights/allowed-use -> lifecycle/freshness/evaluation -> capability, ALL
+      evaluated before any count, snippet, rank, cursor, URL, link, receipt,
+      or timing detail is derived. Hidden records never change any of those.
+    - Fixed core caps (this P1 freeze; enforced here via maxLength/maxItems,
+      not caller-configurable): `query` <= 512 chars for both core and RF
+      shapes; core `search` returns at most 10 results
+      (see knowledge_search_response.schema.yaml); RF `rf_search` returns at
+      most 50 results per page and accepts `limit` <= 50. Byte/text caps for
+      fetched documents are frozen in knowledge_document.schema.yaml.
+    - Safe denial: an empty-eligible-result search returns the same shape as
+      a search with zero hidden-but-existing matches (`results: []`); nothing
+      in this request/response family ever reveals whether a result was
+      absent or merely denied.
+type: object
+additionalProperties: false
+required:
+  - query
+properties:
+  query:
+    type: string
+    minLength: 1
+    maxLength: 512
+$defs:
+  rf_search_request:
+    description: >-
+      RF-extended `rf_search` input (KMCP-FR-5). Structurally separate from
+      the frozen core root above — never validated as, or aliased to, the
+      core `search` input. `query` is required exactly as in core; every
+      other property is an RF-only addition and this shape stays closed
+      (`additionalProperties: false`) at its own root even though the nested
+      `filters` bag stays open for forward-compatible, policy-enforced
+      service-defined filters (tightened in P2/P3, KMCP-2.x/3.x).
+    type: object
+    additionalProperties: false
+    required:
+      - query
+    properties:
+      query:
+        type: string
+        minLength: 1
+        maxLength: 512
+      kinds:
+        description: >-
+          Optional allowlist restricting which knowledge kinds are searched.
+          Omitting this searches every kind the caller's context is eligible
+          for; it never widens eligibility.
+        type: array
+        uniqueItems: true
+        items:
+          enum:
+            - source
+            - assertion
+            - report_draft
+            - report_final
+            - run
+      filters:
+        description: >-
+          Open, service-defined filter bag (e.g. workspace/rights/freshness
+          hints). Intentionally permissive at this P1 freeze; policy
+          evaluation (invariant 3) always applies server-side regardless of
+          what a filter requests, so a filter can narrow eligible results but
+          never widen them.
+        type: object
+        additionalProperties: true
+      limit:
+        type: integer
+        minimum: 1
+        maximum: 50
+      cursor:
+        type:
+          - string
+          - "null"
+      parent_run_ref:
+        description: >-
+          Optional caller-supplied correlation hint threaded into the
+          Part-B, caller-carried RF activity receipt (KMCP-OQ-4,
+          knowledge_activity_receipt.schema.yaml — deliberately NOT created
+          by this P1 task). This field is not itself a receipt and carries no
+          authority.
+        type:
+          - string
+          - "null"

@@ -5,7 +5,7 @@ schema_version: 2
 status: deferred
 maturity: shaping
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-07-27
 feature_slug: research-foundry-knowledge-mcp
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-knowledge-mcp-v1.md
 deferred_from: docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
@@ -48,6 +48,44 @@ authorization, session, revocation, rate-limit, origin, TLS, observability, and
 incident-response boundaries that stdio does not solve. Reusing local trust or
 provider/operator credentials would weaken workspace isolation and could place
 cost-bearing or mutating capabilities in the read-only process.
+
+## Reconciled Against Local v1 (KMCP P1-P5)
+
+- **Shipped locally:** `rf-knowledge-mcp` is an independent, stdio-only OS
+  process (`src/research_foundry/knowledge_mcp/{process,registry,settings}.py`)
+  built on FastMCP. `registry.build_server` constructs a `_StdioOnlyFastMCP`
+  subclass whose `sse_app`/`streamable_http_app`/`run_sse_async`/
+  `run_streamable_http_async` overrides unconditionally raise
+  `UnsupportedTransportError`, and whose `run()` override rejects any
+  `transport` value other than `None`/`"stdio"` (invariant 8, enforced at the
+  code level, not only by convention). `settings.py` resolves only the
+  workspace root (`RESEARCH_FOUNDRY_HOME`), an optional sensitivity ceiling
+  (`foundry.knowledge_mcp.sensitivity_threshold_max`), and a dedicated log
+  level (`RF_KNOWLEDGE_MCP_LOG_LEVEL`) — `ALLOWED_ENV_VARS` is the exhaustive,
+  code-declared allowlist; no OAuth/OIDC client, session store, or
+  provider/Operator credential is read, declared, or reachable from this
+  process (decisions-block §9.3). The P5 CLI (`rf knowledge ...`) and
+  GET-only local HTTP API (`/api/knowledge/...`) are additional thin local
+  transports over the same `KnowledgeAccessService`; neither introduces
+  Streamable HTTP/SSE for the Knowledge tool surface or any identity model
+  beyond the existing loopback-scoped RF API/CLI mechanism.
+- **Still deferred:** everything this spec's "Required Remote Profile" section
+  asks for — owned DNS/TLS, a reachable canonical HTTPS MCP endpoint,
+  Streamable HTTP session lifecycle, OAuth/OIDC authorization, remote rate
+  limiting, DNS-rebinding/origin defenses, and privacy-safe remote
+  audit/incident-response procedures. None of these exist in the local
+  process; the stdio-only guard above is an active code-level block against
+  ever adding them silently, not merely an absence.
+- **Promotion gate:** unchanged from "Promotion Gates" below — a reviewed
+  remote threat model; the canonical-URL and cache-isolation specs approved
+  alongside this one; process/import/credential separation from Search
+  Router and Operator MCP proven; the adversarial fixture matrix (two
+  workspace, hidden=missing, token expiry/revocation, wrong
+  audience/workspace, protocol error, retry, overload, process-loss) passed;
+  and live `search`/`fetch` DTO conformance demonstrated from an
+  owner-controlled canonical HTTPS endpoint — before any OpenAI/ChatGPT or
+  other hosted-client compatibility claim is made anywhere (decisions-block
+  §10).
 
 ## Required Remote Profile
 
