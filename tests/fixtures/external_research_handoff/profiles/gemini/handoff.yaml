@@ -1,0 +1,30 @@
+schema_name: external_research_handoff
+schema_version: '1.0'
+transport: directory
+producer_profile: gemini
+research_context:
+  research_question: null
+  task_context: gathered from an AI Overview response about API gateway rate limiting
+declared_sensitivity: personal
+created_at: '2026-07-26T00:00:00Z'
+content_roles:
+  report: platform_synthesis
+vendor_reference: {}
+members:
+- path: handoff.yaml
+  role: handoff_manifest
+  byte_length: 990
+  sha256: c7d8c1836cb99cd43f81b0e1d5945540cd92cdc393d4673d9f9cf99c8e055cd2
+- path: report.md
+  role: report
+  byte_length: 483
+  sha256: 585047a00083d6a8a621a011030f0137828fbb5b7f2032903e69a1aef9b53417
+- path: sources.yaml
+  role: sources
+  byte_length: 492
+  sha256: ce5197f5fdd3f2f92d8247b9a22ea64cf0bcfc7e7ae0c566b32429bd5628dec9
+- path: assertion_candidates.yaml
+  role: assertion_candidates
+  byte_length: 1075
+  sha256: 6aa21c178d064e12ff6a2e946df46e65080036f53318ebeb2e759a56e29068b5
+total_declared_bytes: 3040

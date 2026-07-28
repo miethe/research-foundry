@@ -1,53 +1,63 @@
 ---
-title: "Implementation Plan: External Research Report Interchange"
+title: 'Implementation Plan: External Research Report Interchange'
 schema_version: 2
 doc_type: implementation_plan
-status: draft
-created: 2026-07-18
-updated: 2026-07-18
+status: completed
+created: '2026-07-18'
+updated: '2026-07-28'
 feature_slug: external-research-report-interchange
 feature_version: v1
 tier: 3
 prd_ref: docs/project_plans/PRDs/enhancements/external-research-report-interchange-v1.md
 plan_ref: null
 human_brief_ref: docs/project_plans/human-briefs/external-research-report-interchange.md
-scope: "Define external_research_handoff/v1, stage platform synthesis and candidate evidence with immutable receipts, resolve citations through RFUP/RAL, quarantine incomplete material, and resume bounded large-report imports."
-effort_estimate: "38 pts bottom-up"
-architecture_summary: "Versioned hostile-input packet -> safe manifest/staging -> inert vendor-data normalization -> immutable receipts -> hard SSRF-safe pre-effect gate -> RFUP acquisition -> RAL edition/passage resolution -> quarantine or explicit verification promotion -> resumable CLI/provenance export."
+scope: Define external_research_handoff/v1, stage platform synthesis and candidate
+  evidence with immutable receipts, resolve citations through RFUP/RAL, quarantine
+  incomplete material, and resume bounded large-report imports.
+effort_estimate: 38 pts bottom-up
+architecture_summary: Versioned hostile-input packet -> safe manifest/staging -> inert
+  vendor-data normalization -> immutable receipts -> hard SSRF-safe pre-effect gate
+  -> RFUP acquisition -> RAL edition/passage resolution -> quarantine or explicit
+  verification promotion -> resumable CLI/provenance export.
 related_documents:
-  - docs/project_plans/PRDs/enhancements/external-research-report-interchange-v1.md
-  - docs/project_plans/human-briefs/external-research-report-interchange.md
-  - .codex/worknotes/external-research-report-interchange/decisions-block.md
-  - docs/project_plans/PRDs/enhancements/research-interchange-provenance-access-epic-v1.md
-  - .codex/plans/research-interchange-provenance-access-initiative-v1.md
-  - docs/project_plans/PRDs/enhancements/research-provenance-continuity-v1.md
-  - docs/project_plans/implementation_plans/enhancements/research-provenance-continuity-v1.md
-  - docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
-  - docs/project_plans/implementation_plans/features/reusable-assertion-ledger-v1.md
-  - docs/project_plans/PRDs/features/assertion-ledger-activation-v1.md
-  - docs/project_plans/implementation_plans/features/assertion-ledger-activation-v1.md
-  - docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
-  - docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md
-  - docs/project_plans/feature_contracts/features/intake-citation-adapters.md
+- docs/project_plans/PRDs/enhancements/external-research-report-interchange-v1.md
+- docs/project_plans/human-briefs/external-research-report-interchange.md
+- .codex/worknotes/external-research-report-interchange/decisions-block.md
+- docs/project_plans/PRDs/enhancements/research-interchange-provenance-access-epic-v1.md
+- .codex/plans/research-interchange-provenance-access-initiative-v1.md
+- docs/project_plans/PRDs/enhancements/research-provenance-continuity-v1.md
+- docs/project_plans/implementation_plans/enhancements/research-provenance-continuity-v1.md
+- docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
+- docs/project_plans/implementation_plans/features/reusable-assertion-ledger-v1.md
+- docs/project_plans/PRDs/features/assertion-ledger-activation-v1.md
+- docs/project_plans/implementation_plans/features/assertion-ledger-activation-v1.md
+- docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
+- docs/project_plans/implementation_plans/enhancements/rf-upstream-evidence-foundry-v1.md
+- docs/project_plans/feature_contracts/features/intake-citation-adapters.md
 references:
   user_docs: []
   context: []
   specs:
-    - .agents/skills/planning/references/ac-schema.md
-    - .agents/skills/planning/references/deferred-items-and-findings.md
-    - .claude/specs/changelog-spec.md
-    - schemas/source_card.schema.yaml
-    - schemas/source_edition.schema.yaml
-    - schemas/passage.schema.yaml
-    - schemas/source_assertion.schema.yaml
+  - .agents/skills/planning/references/ac-schema.md
+  - .agents/skills/planning/references/deferred-items-and-findings.md
+  - .claude/specs/changelog-spec.md
+  - schemas/source_card.schema.yaml
+  - schemas/source_edition.schema.yaml
+  - schemas/passage.schema.yaml
+  - schemas/source_assertion.schema.yaml
   related_prds:
-    - docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
-    - docs/project_plans/PRDs/features/assertion-ledger-activation-v1.md
-    - docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
+  - docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
+  - docs/project_plans/PRDs/features/assertion-ledger-activation-v1.md
+  - docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
 spike_ref: null
 adr_refs: []
-deferred_items_spec_refs: []
-findings_doc_ref: null
+deferred_items_spec_refs:
+- docs/project_plans/design-specs/external-research-provider-automation.md
+- docs/project_plans/design-specs/external-research-transport-containers.md
+- docs/project_plans/design-specs/external-research-citation-recovery.md
+- docs/project_plans/design-specs/external-research-public-interchange.md
+- docs/project_plans/design-specs/external-research-exactly-once-promotion.md
+findings_doc_ref: .claude/findings/external-research-report-interchange-findings.md
 charter_ref: null
 changelog_ref: null
 changelog_required: true
@@ -59,129 +69,160 @@ contributors: []
 priority: high
 risk_level: high
 category: enhancements
-tags: [implementation, planning, external-research, interchange, receipts, quarantine, resumability]
+tags:
+- implementation
+- planning
+- external-research
+- interchange
+- receipts
+- quarantine
+- resumability
 milestone: null
 commit_refs: []
 pr_refs: []
 files_affected:
-  - schemas/external_research_handoff.schema.yaml
-  - schemas/external_research_sources.schema.yaml
-  - schemas/external_assertion_candidates.schema.yaml
-  - schemas/external_research_import_receipt.schema.yaml
-  - schemas/external_research_import_checkpoint.schema.yaml
-  - templates/external_research_handoff/v1/
-  - src/research_foundry/services/external_research_interchange.py
-  - src/research_foundry/services/external_research_resolution.py
-  - src/research_foundry/services/source_cards.py
-  - src/research_foundry/services/assertion_registry.py
-  - src/research_foundry/services/export_service.py
-  - src/research_foundry/cli_commands.py
-  - tests/fixtures/external_research_handoff/
-  - tests/integration/test_external_research_interchange.py
+- schemas/external_research_handoff.schema.yaml
+- schemas/external_research_sources.schema.yaml
+- schemas/external_assertion_candidates.schema.yaml
+- schemas/external_research_import_receipt.schema.yaml
+- schemas/external_research_import_checkpoint.schema.yaml
+- templates/external_research_handoff/v1/
+- src/research_foundry/services/external_research_interchange.py
+- src/research_foundry/services/external_research_resolution.py
+- src/research_foundry/services/source_cards.py
+- src/research_foundry/services/assertion_registry.py
+- src/research_foundry/services/export_service.py
+- src/research_foundry/cli_commands.py
+- tests/fixtures/external_research_handoff/
+- tests/integration/test_external_research_interchange.py
 open_questions:
-  - id: ERI-OQ-1
-    status: open
-    question: "Confirm materialized-directory-only transport for v1."
-  - id: ERI-OQ-2
-    status: open
-    question: "Freeze packet/receipt identity inputs and safe exclusions."
-  - id: ERI-OQ-3
-    status: open
-    question: "Confirm staging-only behavior when target_run_id is absent."
-  - id: ERI-OQ-4
-    status: open
-    question: "Select conservative configurable member, byte, attachment, source, candidate, and batch limits."
+- id: ERI-OQ-1
+  status: resolved
+  question: Confirm materialized-directory-only transport for v1.
+  resolution: "Yes. v1 accepts only a materialized directory of regular files \u2014\
+    \ no archives, no remote transport, no symlinks, no special files."
+- id: ERI-OQ-2
+  status: resolved
+  question: Freeze packet/receipt identity inputs and safe exclusions.
+  resolution: 'packet_digest = SHA-256 over a canonically-sorted manifest of (declared
+    member relative path, byte length, member SHA-256); mtime, ownership/mode, absolute
+    paths and filesystem attributes are excluded. receipt_digest is two-branch after
+    audit finding #10/#20: accepted packets bind (packet_digest, workspace_id, target_run_id|null,
+    policy_digest, schema majors, action_manifest_digest, governance_policy_digest);
+    structurally blocked attempts use a separate rejected-attempt identity.'
+- id: ERI-OQ-3
+  status: resolved
+  question: Confirm staging-only behavior when target_run_id is absent.
+  resolution: "Yes. A null target_run_id is staging-only \u2014 no run creation and\
+    \ no run-local projection \u2014 and verified state is unreachable, enforced at\
+    \ runtime. source_cards.ingest_source() is hard run-scoped and is therefore not\
+    \ used on that path."
+- id: ERI-OQ-4
+  status: resolved
+  question: Select conservative configurable member, byte, attachment, source, candidate,
+    and batch limits.
+  resolution: 'Configurable, defaulting to: members <= 64; packet bytes <= 256 MiB;
+    single member bytes <= 64 MiB; attachments <= 32; sources <= 2000; candidates
+    <= 5000; batch size 100; redirect hops <= 3.'
 wave_plan:
   serialization_barriers:
+  - schemas/external_research_handoff.schema.yaml
+  - schemas/external_research_import_receipt.schema.yaml
+  - src/research_foundry/services/external_research_interchange.py
+  - src/research_foundry/services/source_cards.py
+  - src/research_foundry/services/assertion_registry.py
+  - src/research_foundry/cli_commands.py
+  - CHANGELOG.md
+  - README.md
+  phases:
+  - id: P1
+    depends_on:
+    - RPC-1.G
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    model: sonnet
+    effort: extended
+    files_affected:
     - schemas/external_research_handoff.schema.yaml
+    - schemas/external_research_sources.schema.yaml
+    - schemas/external_assertion_candidates.schema.yaml
     - schemas/external_research_import_receipt.schema.yaml
+    - schemas/external_research_import_checkpoint.schema.yaml
+    - schemas/external_research_acquisition_policy.schema.yaml
+  - id: P2
+    depends_on:
+    - P1
+    isolation: worktree
+    parallelizable: false
+    owner_skills: []
+    model: sonnet
+    effort: extended
+    files_affected:
     - src/research_foundry/services/external_research_interchange.py
+    - tests/unit/test_external_research_interchange.py
+  - id: P3
+    depends_on:
+    - P1
+    isolation: worktree
+    parallelizable: true
+    owner_skills: []
+    model: haiku
+    effort: adaptive
+    files_affected:
+    - templates/external_research_handoff/v1/
+    - tests/fixtures/external_research_handoff/
+  - id: P4
+    depends_on:
+    - P2
+    isolation: worktree
+    parallelizable: false
+    owner_skills: []
+    model: sonnet
+    effort: extended
+    files_affected:
+    - src/research_foundry/services/external_research_resolution.py
+    - src/research_foundry/services/source_acquisition_policy.py
     - src/research_foundry/services/source_cards.py
     - src/research_foundry/services/assertion_registry.py
+    - tests/integration/test_external_research_resolution.py
+  - id: P5
+    depends_on:
+    - P3
+    - P4
+    isolation: worktree
+    parallelizable: false
+    owner_skills: []
+    model: sonnet
+    effort: extended
+    files_affected:
+    - src/research_foundry/services/external_research_interchange.py
+    - src/research_foundry/services/export_service.py
     - src/research_foundry/cli_commands.py
-    - CHANGELOG.md
+    - tests/integration/test_external_research_interchange.py
+  - id: P6
+    depends_on:
+    - ERI-5.G
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    model: sonnet
+    effort: adaptive
+    files_affected:
+    - tests/fixtures/external_research_handoff/
+    - tests/integration/test_external_research_interchange.py
+    - docs/dev/architecture/external-research-handoff-contract.md
+    - docs/user/external-research-interchange.md
+    - .agents/skills/research-foundry/SKILL.md
     - README.md
-  phases:
-    - id: P1
-      depends_on: [RPC-1.G]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: extended
-      files_affected:
-        - schemas/external_research_handoff.schema.yaml
-        - schemas/external_research_sources.schema.yaml
-        - schemas/external_assertion_candidates.schema.yaml
-        - schemas/external_research_import_receipt.schema.yaml
-        - schemas/external_research_import_checkpoint.schema.yaml
-        - schemas/external_research_acquisition_policy.schema.yaml
-    - id: P2
-      depends_on: [P1]
-      isolation: worktree
-      parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: extended
-      files_affected:
-        - src/research_foundry/services/external_research_interchange.py
-        - tests/unit/test_external_research_interchange.py
-    - id: P3
-      depends_on: [P1]
-      isolation: worktree
-      parallelizable: true
-      owner_skills: []
-      model: haiku
-      effort: adaptive
-      files_affected:
-        - templates/external_research_handoff/v1/
-        - tests/fixtures/external_research_handoff/
-    - id: P4
-      depends_on: [P2]
-      isolation: worktree
-      parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: extended
-      files_affected:
-        - src/research_foundry/services/external_research_resolution.py
-        - src/research_foundry/services/source_acquisition_policy.py
-        - src/research_foundry/services/source_cards.py
-        - src/research_foundry/services/assertion_registry.py
-        - tests/integration/test_external_research_resolution.py
-    - id: P5
-      depends_on: [P3, P4]
-      isolation: worktree
-      parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: extended
-      files_affected:
-        - src/research_foundry/services/external_research_interchange.py
-        - src/research_foundry/services/export_service.py
-        - src/research_foundry/cli_commands.py
-        - tests/integration/test_external_research_interchange.py
-    - id: P6
-      depends_on: [ERI-5.G]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
-      files_affected:
-        - tests/fixtures/external_research_handoff/
-        - tests/integration/test_external_research_interchange.py
-        - docs/dev/architecture/external-research-handoff-contract.md
-        - docs/user/external-research-interchange.md
-        - .agents/skills/research-foundry/SKILL.md
-        - README.md
-        - CHANGELOG.md
+    - CHANGELOG.md
   waves:
-    - [P1]
-    - [P2, P3]
-    - [P4]
-    - [P5]
-    - [P6]
+  - - P1
+  - - P2
+    - P3
+  - - P4
+  - - P5
+  - - P6
 ---
 
 # Implementation Plan: External Research Report Interchange
@@ -241,6 +282,7 @@ Estimation rationale and the mandatory H1-H6 derivation live in the Human Brief.
 | ERI-DF-2 | design | Archive/remote transports add extraction, upload, auth, and path threats | Accepted threat model and concrete transfer requirement | `docs/project_plans/design-specs/external-research-transport-containers.md` |
 | ERI-DF-3 | research | Fuzzy matching cannot establish exact passage identity safely | Measured unresolved need plus labeled evaluation corpus | `docs/project_plans/design-specs/external-research-citation-recovery.md` |
 | ERI-DF-4 | policy | Public/cross-workspace exchange needs independent rights/sensitivity promotion | Rights review and tenant-safe resource identities | `docs/project_plans/design-specs/external-research-public-interchange.md` |
+| ERI-DF-5 | design | Full prepare/commit exactly-once promotion needs idempotency keys on downstream authorities ERI must not modify unilaterally (round-2 audit #5, PARTIAL) | Observed crash-in-window duplicate, downstream idempotency surface, or unattended import automation | `docs/project_plans/design-specs/external-research-exactly-once-promotion.md` |
 
 P6 task `ERI-6.4` authors each still-promotable shaping spec and appends it to `deferred_items_spec_refs`, or records why a row is not promoted. NotebookLM live qualification belongs to the initiative's dedicated refresh design spec and is not duplicated here.
 

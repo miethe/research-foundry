@@ -11,6 +11,36 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **External Research Report Interchange (ERI) — `rf intake external-report`**
+
+- **`rf intake external-report PACKET_DIR --workspace WS [--run ID] [--dry-run] [--resume] [--limit N] [--json]`**
+  imports a materialized-directory packet produced by an external research tool (ChatGPT Deep
+  Research, Perplexity, Gemini, NotebookLM, or a generic offline profile) into RF as one
+  `external_research_handoff/v1` packet. The vendor's synthesized report stays non-authoritative
+  `platform_synthesis` and is never used as a source-card, claim, or assertion input; every cited
+  source and candidate assertion is independently re-acquired and exact-passage-resolved through
+  RF's own existing acquisition/passage-binding/verification authorities — quarantined at an
+  honest, importer-computed completeness tier (`locator_only` / `source_resolved` /
+  `passage_resolved` / `verified`) until it earns promotion. Omitting `--run` is staging-only (no
+  run created, no run-local projection); `--dry-run` never mutates state; a large packet processes
+  in bounded, resumable batches (`--limit`, default 100) that converge to a byte-identical receipt
+  whether interrupted or run straight through.
+- **Hostile-input-safe by construction.** Packet inspection rejects traversal, symlinks, special
+  files, oversize members, and unsafe paths before any effect runs. A single actor owns the entire
+  HTTP acquisition lifecycle end to end — canonicalizes each locator exactly once, validates every
+  DNS answer and the connected peer against a forbidden-address policy (loopback/private/reserved/
+  link-local/metadata/IPv6 transition-prefix ranges), and never falls back to a weaker transport on
+  a failed check. Every packet field, including vendor extensions, remains inert data — never
+  promoted into a prompt, tool description, route, command, or filesystem path.
+- **No second evidence authority.** ERI introduces exactly one new authority — packet/receipt/
+  checkpoint identity and per-item quarantine bookkeeping. It defines no new source-edition,
+  passage, source-assertion, extraction, or citation-tuple authority; those remain owned by the
+  existing Reusable Assertion Ledger and RF's existing verification/materialization pipeline.
+- **Repository-ready; five producer-prompt profiles are offline-unvalidated.** All five profiles
+  (generic, ChatGPT, Perplexity, Gemini, NotebookLM) are fully tested against offline fixtures; none
+  has been run against a live vendor session as part of this feature. Full guide:
+  `docs/user/external-research-interchange.md`.
+
 #### **Research Foundry Knowledge MCP — Governed, Read-Only Access to Sources/Assertions/Reports/Runs**
 
 - **New independent `rf-knowledge-mcp` stdio process (exact eight tools).** A packaged entry

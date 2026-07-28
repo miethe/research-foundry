@@ -27,6 +27,7 @@ import os
 import re
 import sys
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -37,8 +38,9 @@ from .. import RF_SCHEMA_VERSION
 from ..config import FoundryConfig
 from ..errors import ExitCode, RFError
 from ..frontmatter import split_frontmatter
+from ..ids import now_iso
 from ..paths import FoundryPaths, RunPaths
-from ..yamlio import loads_yaml
+from ..yamlio import append_jsonl, loads_yaml
 
 # NOTE (serve-extra decoupling, FU-1 — same convention as
 # ``agent_job_service.py``): ``api.auth.provider`` module-imports
@@ -1094,6 +1096,67 @@ def _timeline(rp: RunPaths, *, run_id: str | None) -> list[dict[str, Any]]:
             f"malformed run trace: {exc}", run_id=run_id, artifact_path=rp.run_trace
         ) from exc
     return events
+
+
+# --- ERI-5.4: external report import provenance/export seam ------------------
+def record_external_report_import_activity(
+    paths: FoundryPaths,
+    run_id: str,
+    *,
+    receipt: Mapping[str, Any],
+    provenance_origin: str | None = None,
+) -> None:
+    """Append one safe, receipt-derived event to `run_id`'s EXISTING timeline
+    (``telemetry/run_trace.jsonl``) for an External Research Report
+    Interchange (ERI) import that named this run as its explicit target.
+
+    Mirrors the same best-effort ``_trace(rp, stage=..., **fields)`` idiom
+    already used by ``source_cards``/``writeback``/``verification``/
+    ``synthesis``/``extraction``/``claim_mapping``/``planning`` for every
+    other stage that appends to a run's timeline — this introduces no second
+    telemetry mechanism. Best-effort and silent on any failure (unknown
+    `run_id`, unreadable trace file, etc.): recording a provenance event must
+    never fail — or partially corrupt — an otherwise-successful import.
+
+    Every field written is safe per the contract's channel-by-channel
+    redaction matrix (§4.6): safe generated IDs (`receipt_id`,
+    `receipt_digest`, `packet_digest`), the closed-vocabulary `status` /
+    `block_reason` (packet family only), and aggregate `counts` — never
+    packet-derived free text, a resolved address, or the 14-code source/
+    citation/candidate reason-code vocabulary (`§4.3`'s `audit_ref`
+    indirection already keeps that off the receipt itself).
+
+    `provenance_origin` is an optional, nullable, OPAQUE reference — Research
+    Provenance Continuity's real `provenance_origin` schema does not exist on
+    this tree yet (contract §3.1); this never invents structure for it, and
+    carries through whatever a caller supplies (or ``None``) verbatim, same
+    as a safe generated ID.
+    """
+
+    try:
+        rp = resolve_run_paths(paths, run_id)
+        raw_counts = receipt.get("counts")
+        counts: Mapping[str, Any] = raw_counts if isinstance(raw_counts, Mapping) else {}
+        append_jsonl(
+            {
+                "stage": "external_report_import",
+                "ts": now_iso(),
+                "run_id": run_id,
+                "receipt_id": receipt.get("receipt_id"),
+                "receipt_digest": receipt.get("receipt_digest"),
+                "packet_digest": receipt.get("packet_digest"),
+                "workspace_id": receipt.get("workspace_id"),
+                "status": receipt.get("status"),
+                "block_reason": receipt.get("block_reason"),
+                "actions_total": counts.get("actions_total"),
+                "completed": counts.get("completed"),
+                "quarantined": counts.get("quarantined"),
+                "provenance_origin": provenance_origin,
+            },
+            rp.run_trace,
+        )
+    except Exception:  # noqa: BLE001 - best-effort telemetry, never fails the import
+        pass
 
 
 def _verification_block(rp: RunPaths, *, run_id: str | None) -> dict[str, Any]:

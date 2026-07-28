@@ -1,0 +1,18 @@
+# "completed" is a RECEIPT-only terminal status
+# (external_research_import_receipt.schema.yaml); it must never validate as
+# a checkpoint status.
+schema_version: "1.0"
+type: external_research_import_checkpoint
+checkpoint_id: "erc_000000000000000000000000000000000000000000000000000000000000000a"
+receipt_id_prospective: "erh_000000000000000000000000000000000000000000000000000000000000000a"
+packet_digest: "000000000000000000000000000000000000000000000000000000000000000b"
+workspace_id: ws_demo
+target_run_id: null
+status: completed
+cursor:
+  next_action_id: null
+  completed_count: 2
+  total_count: 2
+completed_action_digests: []
+pending_action_digest: null
+updated_at: "2026-07-26T12:05:00Z"

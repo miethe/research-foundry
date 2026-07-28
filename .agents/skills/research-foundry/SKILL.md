@@ -59,6 +59,7 @@ Match the operator's intent to the loop step, then the `rf` command.
 | Write back (wiki/skill/ccdash) | 18–20 | `rf writeback <run> --targets meatywiki,skillmeat,ccdash --require-review` | rf_governance_officer |
 | Propose / promote SkillBOM | 19 | `rf skillbom propose <run>` / `rf skillbom promote <cand> --reviewer …` | — |
 | Status / health / cost / redact / index | — | `rf status` · `rf doctor` · `rf cost <run>` · `rf redact <run> --target public` · `rf index rebuild` · `rf ccdash summarize --period daily` | — |
+| Import an external research report (ChatGPT/Perplexity/Gemini/NotebookLM/generic packet) | — | `rf intake external-report <packet_dir> --workspace <ws> [--run <run>] [--dry-run] [--resume] [--limit N] [--json]` | — |
 
 ## Claim-traceability discipline
 

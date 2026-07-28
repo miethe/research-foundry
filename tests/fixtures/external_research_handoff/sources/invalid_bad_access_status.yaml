@@ -1,0 +1,6 @@
+schema_name: external_research_sources
+schema_version: "1.0"
+sources:
+  - source_id: src_001
+    title: "Bad access_status value"
+    access_status: definitely_free

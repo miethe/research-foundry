@@ -1,0 +1,30 @@
+schema_name: external_research_handoff
+schema_version: '1.0'
+transport: directory
+producer_profile: perplexity
+research_context:
+  research_question: What is the difference between sliding window and token bucket rate limiting?
+  task_context: null
+declared_sensitivity: personal
+created_at: '2026-07-26T00:00:00Z'
+content_roles:
+  report: platform_synthesis
+vendor_reference: {}
+members:
+- path: handoff.yaml
+  role: handoff_manifest
+  byte_length: 1002
+  sha256: 7e2aba82da9af4f86694afe372503ea18f3ddc65ac47ecd9028b9098ac4a8477
+- path: report.md
+  role: report
+  byte_length: 479
+  sha256: 78a5d3d77d3854bdb5c268de3c389bb702d288b0bf95c47b58bea900ee6b76cf
+- path: sources.yaml
+  role: sources
+  byte_length: 866
+  sha256: 016b936f6f0a6d810991211a0e82dfd049b0a0c79656f5368395059992076a50
+- path: assertion_candidates.yaml
+  role: assertion_candidates
+  byte_length: 1102
+  sha256: fffc2eb84b261338ac1996a5685b97fc6d659b151d2be42a92b6f3feb7a21df1
+total_declared_bytes: 3449

@@ -1,0 +1,33 @@
+schema_name: external_research_sources
+schema_version: "1.0"
+sources:
+  - source_id: src_01
+    title: "Gateway Rate Limiting Design Proposal (uploaded doc)"
+    locator:
+      doi: null
+      url: null
+    publication_year: null
+    access_status: unknown
+    declared_metadata:
+      authors: []
+      publisher: null
+      accessed_at: null
+    extensions:
+      notebooklm:
+        profile_status: "offline-unvalidated"
+        footnote_index: 1
+  - source_id: src_02
+    title: "Sliding Window Alternative — Rejected Options Memo (uploaded doc)"
+    locator:
+      doi: null
+      url: null
+    publication_year: null
+    access_status: unknown
+    declared_metadata:
+      authors: []
+      publisher: null
+      accessed_at: null
+    extensions:
+      notebooklm:
+        profile_status: "offline-unvalidated"
+        footnote_index: 2

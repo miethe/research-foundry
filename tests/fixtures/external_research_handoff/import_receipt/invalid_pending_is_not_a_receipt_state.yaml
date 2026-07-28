@@ -1,0 +1,31 @@
+# pending is a CHECKPOINT-only state (external_research_import_checkpoint
+# .schema.yaml); it must never validate as a receipt status.
+schema_version: "1.0"
+type: external_research_import_receipt
+receipt_id: "erh_000000000000000000000000000000000000000000000000000000000000000a"
+receipt_digest: "000000000000000000000000000000000000000000000000000000000000aaaa"
+packet_digest: "000000000000000000000000000000000000000000000000000000000000bbbb"
+workspace_id: ws_demo
+target_run_id: null
+policy_digest: "000000000000000000000000000000000000000000000000000000000000cccc"
+governance_policy_digest: "000000000000000000000000000000000000000000000000000000000000dddd"
+schema_major_versions:
+  external_research_handoff: 1
+  external_research_sources: 1
+  external_assertion_candidates: 1
+  external_research_import_receipt: 1
+  external_research_import_checkpoint: 1
+  external_research_acquisition_policy: 1
+action_manifest_digest: "000000000000000000000000000000000000000000000000000000000000eeee"
+action_manifest_algorithm_version: "1"
+attempt_structural_summary: null
+importer_contract_version: "external_research_handoff/v1"
+status: pending
+block_reason: null
+actions: []
+counts:
+  actions_total: 0
+  completed: 0
+  quarantined: 0
+  by_completeness_tier: {}
+created_at: "2026-07-26T12:00:00Z"

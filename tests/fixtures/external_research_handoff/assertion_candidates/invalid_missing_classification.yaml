@@ -1,0 +1,6 @@
+schema_name: external_assertion_candidates
+schema_version: "1.0"
+candidates:
+  - candidate_id: cand_001
+    statement: "Missing the required classification field."
+    source_refs: ["src_001"]

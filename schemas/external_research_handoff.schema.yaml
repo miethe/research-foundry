@@ -1,0 +1,214 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/external_research_handoff.schema.yaml/v1"
+title: External Research Handoff Packet Manifest
+description: >-
+  Content of `handoff.yaml`, the required packet-manifest member of an
+  `external_research_handoff/v1` directory packet (PRD external-research-
+  report-interchange-v1 §6.1). v1 accepts ONLY a materialized directory of
+  regular files — no archive, no remote transport, no symlink, no special
+  file (frozen: ERI-OQ-1; see
+  docs/dev/architecture/external-research-handoff-contract.md §1.1).
+  `packet_digest` is computed by the importer over this manifest's
+  canonically-sorted member list (relative path, byte_length, sha256) plus
+  every accepted member's raw bytes (contract §1.2); it is never a field a
+  producer declares here. Every field on this document, including any
+  vendor/session reference, is untrusted producer-declared DATA. It may be
+  stored or displayed through bounded, escaped surfaces, but MUST NEVER be
+  promoted into a system/developer prompt, a tool or resource description, a
+  route/control value, an adapter/tool name, a command, a schema selector, a
+  filesystem path, or an execution argument. A string shaped like an
+  instruction override, tool call, or policy override remains inert data
+  regardless of how convincing it looks.
+type: object
+additionalProperties: false
+properties:
+  schema_name:
+    const: external_research_handoff
+  schema_version:
+    description: >-
+      Only "1.0" (the sole v1 major/minor pair) validates. An unknown major
+      version denies the whole packet before any effect
+      (unsupported_schema_version) rather than being coerced or guessed.
+    enum:
+      - "1.0"
+  transport:
+    description: >-
+      Frozen v1 boundary (ERI-OQ-1): a materialized directory of regular
+      files is the only supported transport. There is no archive or remote
+      transport member in v1 — any future transport layer is a separate,
+      later-scoped feature and does not reopen this contract.
+    const: directory
+  producer_profile:
+    enum:
+      - generic
+      - chatgpt
+      - perplexity
+      - gemini
+      - notebooklm
+  research_context:
+    type: object
+    additionalProperties: false
+    properties:
+      research_question:
+        type: [string, "null"]
+      task_context:
+        type: [string, "null"]
+    description: >-
+      Producer-declared, untrusted free text. Producer templates instruct the
+      operator to leave these null rather than invent context (PRD §6.6).
+  declared_sensitivity:
+    description: >-
+      Reuses the same sensitivity vocabulary as source_card.schema.yaml
+      (byte-identical literal enum; this repo's schema registry has no
+      cross-file $ref support, so the values are copied rather than shared)
+      — this schema mints no second sensitivity authority.
+    enum:
+      - public
+      - personal
+      - work_sensitive
+      - client_sensitive
+  created_at:
+    type: string
+    format: date-time
+  content_roles:
+    type: object
+    additionalProperties: false
+    required:
+      - report
+    properties:
+      report:
+        description: >-
+          report.md's content_role is fixed to platform_synthesis. It can
+          never enter a source-card, claim, or assertion writer (contract
+          §4.1) — never passed as content to ingest_source() or
+          AssertionRegistry.ingest(), never used to construct a claim_ledger
+          entry directly.
+        const: platform_synthesis
+  vendor_reference:
+    type: object
+    additionalProperties: true
+    description: >-
+      Opaque vendor/session reference data. Untrusted. MUST NEVER carry a
+      credential, bearer token, or filesystem path as remote identity
+      (PRD §6.1), and MUST NEVER be promoted into a prompt, tool/resource
+      description, route/control value, command, schema selector, or
+      execution argument.
+  members:
+    description: >-
+      Sorted, declared member inventory — the same relative paths, byte
+      lengths, and sha256 hashes the importer canonicalizes into
+      packet_digest (contract §1.2). handoff_manifest, report, sources, and
+      assertion_candidates must each appear EXACTLY ONCE (round-2 audit
+      finding #8: `minContains`-only left role cardinality ambiguous — a
+      duplicated required role let parsing keep the LAST same-role member's
+      content while action construction used the FIRST declared member's
+      path, misbinding an accepted record to another member's provenance);
+      activity and attachment members are optional. Member `path` values
+      MUST be in canonical POSIX form (no `.` segments, no `//`, no
+      trailing slash — alias spellings of the same on-disk file are
+      rejected outright) and MUST be unique across the whole array after
+      normalization (see the `path` property and this schema's
+      declared-shape limits below); `inspect_packet()` in
+      `external_research_interchange.py` enforces both at runtime
+      immediately after schema validation, rejecting violations with
+      reason `unsafe_member_path`, since neither canonical form nor a
+      general cross-item uniqueness-of-one-field constraint is
+      expressible in JSON Schema. Any accepted byte not listed here
+      fails closed (required_member_missing / unsafe_member_path) before any
+      effect. Bounded to 64 members total (ERI-OQ-4) and at most 32
+      attachment-role members.
+    type: array
+    minItems: 4
+    maxItems: 64
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - path
+        - role
+        - byte_length
+        - sha256
+      properties:
+        path:
+          description: >-
+            POSIX-style path relative to the packet root. Absolute paths,
+            path-traversal segments, and backslashes are rejected before any
+            effect (unsafe_member_path) — this is a schema-level shape check;
+            the runtime containment walk (openat-pinned, O_NOFOLLOW,
+            lstat-before-open, fstat-after-open) is Phase 2's responsibility,
+            not this schema's.
+          type: string
+          minLength: 1
+          pattern: "^[A-Za-z0-9_][A-Za-z0-9_./-]*$"
+          not:
+            pattern: '(^|/)\.\.(/|$)'
+        role:
+          enum:
+            - handoff_manifest
+            - report
+            - sources
+            - assertion_candidates
+            - activity
+            - attachment
+        byte_length:
+          type: integer
+          minimum: 0
+          maximum: 67108864
+        sha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+    allOf:
+      # Round-2 audit finding #8: each of these four roles must appear
+      # EXACTLY ONCE (minContains AND maxContains both 1) -- a duplicate
+      # declared role of the same kind is ambiguous provenance, not merely
+      # "at least satisfied".
+      - contains:
+          properties:
+            role:
+              const: handoff_manifest
+        minContains: 1
+        maxContains: 1
+      - contains:
+          properties:
+            role:
+              const: report
+        minContains: 1
+        maxContains: 1
+      - contains:
+          properties:
+            role:
+              const: sources
+        minContains: 1
+        maxContains: 1
+      - contains:
+          properties:
+            role:
+              const: assertion_candidates
+        minContains: 1
+        maxContains: 1
+      - contains:
+          properties:
+            role:
+              const: attachment
+        minContains: 0
+        maxContains: 32
+  total_declared_bytes:
+    description: >-
+      Echoed sum of every declared member's byte_length (ERI-OQ-4 total-
+      packet-bytes ceiling, 256 MiB default). Phase 2 re-derives and verifies
+      this against the members array at inspection time; the schema bounds
+      the declared value here so a limit_exceeded fixture is expressible at
+      this layer too.
+    type: integer
+    minimum: 0
+    maximum: 268435456
+required:
+  - schema_name
+  - schema_version
+  - transport
+  - producer_profile
+  - declared_sensitivity
+  - created_at
+  - content_roles
+  - members
+  - total_declared_bytes

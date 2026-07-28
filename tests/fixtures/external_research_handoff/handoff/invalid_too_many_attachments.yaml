@@ -1,0 +1,62 @@
+# Violates ERI-OQ-4: attachments bounded to <= 32 (maxContains) even though
+# total member count (4 required + 33 attachments = 37) stays under the 64
+# member ceiling.
+schema_name: external_research_handoff
+schema_version: "1.0"
+transport: directory
+producer_profile: generic
+declared_sensitivity: personal
+created_at: "2026-07-26T12:00:00Z"
+content_roles:
+  report: platform_synthesis
+members:
+  - path: handoff.yaml
+    role: handoff_manifest
+    byte_length: 512
+    sha256: "000000000000000000000000000000000000000000000000000000000000000a"
+  - path: report.md
+    role: report
+    byte_length: 2048
+    sha256: "000000000000000000000000000000000000000000000000000000000000000b"
+  - path: sources.yaml
+    role: sources
+    byte_length: 1024
+    sha256: "000000000000000000000000000000000000000000000000000000000000000c"
+  - path: assertion_candidates.yaml
+    role: assertion_candidates
+    byte_length: 1024
+    sha256: "000000000000000000000000000000000000000000000000000000000000000d"
+  - {path: "attachments/a01.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a02.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a03.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a04.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a05.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a06.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a07.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a08.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a09.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a10.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a11.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a12.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a13.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a14.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a15.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a16.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a17.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a18.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a19.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a20.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a21.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a22.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a23.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a24.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a25.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a26.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a27.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a28.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a29.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a30.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a31.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a32.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+  - {path: "attachments/a33.csv", role: attachment, byte_length: 1, sha256: "000000000000000000000000000000000000000000000000000000000000000f"}
+total_declared_bytes: 4629

@@ -1,0 +1,58 @@
+schema_name: external_assertion_candidates
+schema_version: "1.0"
+candidates:
+  - candidate_id: itp-diagnostic-thrombocytopenia
+    statement: "Primary ITP candidate pattern: isolated thrombocytopenia without other cytopenias or systemic illness."
+    value: 100
+    unit: "10*9/L"
+    direction: below
+    scope:
+      population: pediatric
+      qualifier_band: all
+    source_refs: ["src_01"]
+    relation: supports
+    classification: assertion
+    quote: null
+    selector: null
+    producer_confidence: null
+    extensions:
+      chatgpt:
+        vendor_citation_markers: ["citeturn21search1"]
+        source_citation_raw: "Braga 2013; DOI 10.5581/1516-8484.20130105 citeturn21search1"
+  - candidate_id: wbc-leukocytosis-infancy
+    statement: "Age-banded leukocytosis candidate: WBC above the CALIPER upper reference limit for infancy, inferred from the RI boundary rather than a stated disease cutoff."
+    value: 13.2
+    unit: "10*9/L"
+    direction: above
+    scope:
+      population: pediatric
+      qualifier_band: "0-<3y"
+    source_refs: ["src_02"]
+    relation: context
+    classification: inference
+    quote: null
+    selector: null
+    producer_confidence: null
+    extensions:
+      chatgpt:
+        vendor_citation_markers: ["citeturn2search1"]
+        source_citation_raw: "Tahmasebi 2020; DOI 10.1093/ajcp/aqaa059 citeturn2search1"
+  - candidate_id: eosinophilia-mild
+    statement: "Mild eosinophilia candidate band from an open-access pediatric cohort's absolute eosinophil count elevation."
+    value: null
+    unit: null
+    direction: between
+    scope:
+      population: pediatric
+      qualifier_band: all
+    source_refs: ["src_03"]
+    relation: supports
+    classification: assertion
+    quote: null
+    selector: null
+    producer_confidence: null
+    extensions:
+      chatgpt:
+        vendor_citation_markers: ["citeturn24search3"]
+        source_citation_raw: "Ness 2023; DOI 10.1016/j.jpeds.2022.09.048 citeturn24search3"
+        reported_range: "0.5-<1.5 10*9/L"

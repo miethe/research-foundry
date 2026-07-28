@@ -1,0 +1,9 @@
+schema_name: external_research_sources
+schema_version: "1.0"
+sources:
+  - title: "Missing its packet-local source_id"
+    locator:
+      doi: null
+      url: "https://example.test/articles/demo-001"
+    publication_year: 2024
+    access_status: open-access

@@ -1,0 +1,411 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/external_research_acquisition_policy.schema.yaml/v1"
+title: External Research Acquisition Policy
+description: >-
+  SSRF-safe acquisition policy configuration gating any network acquisition
+  triggered by external_research_handoff/v1 resolution (see
+  docs/dev/architecture/external-research-handoff-contract.md §4.2). Its
+  canonical serialization is the input to `policy_digest`, one of
+  external_research_import_receipt.schema.yaml's `receipt_digest` inputs.
+  Remediated per the gpt-5.6-sol P1 adversarial audit
+  (.claude/findings/eri-p1-contract-audit-gpt56.md, 2026-07-26): this policy
+  layer owns the COMPLETE HTTP lifecycle -- resolution, connection binding,
+  TLS, redirect-following, and response reading -- as a single integrated
+  actor (`transport_architecture`). No downstream extraction step is ever
+  handed the original URL to open a second, independent connection.
+  Acquisition cannot begin until a single-parse canonicalized locator
+  (`canonicalization`), scheme, host, EVERY DNS answer, EVERY redirect hop,
+  and the CONNECTED PEER pass this policy, in the fixed order the contract
+  states; a failed hop or check has NO transport fallback. Denial output is
+  a closed, safe reason-code vocabulary at the acquisition layer -- never
+  denied IDs, resolved addresses, text, or counts (contract §4.3) -- and the
+  specific reason differential never reaches an ordinary caller (contract
+  §4.3, audit finding #15). Every hard invariant below is pinned with
+  `const` so it is not independently configurable away -- only the numeric
+  ceilings (e.g. `redirects.max_hops`) and the additive
+  `ipv6_transition_policy.operator_configured_nat64_prefixes` list are
+  operator-tunable, and ceilings only downward from the frozen v1 maximum.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: external_research_acquisition_policy
+  allowed_schemes:
+    description: >-
+      Only explicitly configured HTTP(S) acquisition is permitted -- no
+      `file:`, no other scheme, no authority ambiguity (embedded credentials,
+      malformed hosts, userinfo-disguised hosts). See `canonicalization` for
+      the parse-time rules that make this evaluable exactly once.
+    type: array
+    minItems: 1
+    items:
+      enum:
+        - http
+        - https
+    uniqueItems: true
+  reject_embedded_credentials:
+    const: true
+    description: >-
+      Authority components carrying embedded userinfo/credentials are always
+      rejected; not independently configurable off. Superseded in strength
+      by `canonicalization.reject_userinfo`, which rejects ANY userinfo
+      component outright, not only credential-shaped ones (audit finding
+      #3); this field is retained for backward-readable intent.
+  canonicalization:
+    description: >-
+      Freezes URL canonicalization so the policy parser and the transport
+      layer can never disagree about the target (audit finding #3). Every
+      locator -- including every redirect hop's target -- passes through
+      this exact rule set exactly once before any policy decision.
+    type: object
+    additionalProperties: false
+    required:
+      - single_parse
+      - idna_normalization
+      - reject_userinfo
+      - reject_percent_encoded_host
+      - reject_ipv6_zone_ids
+      - reject_ambiguous_numeric_host
+      - strip_single_trailing_root_label_dot
+      - shared_authority_object_for_transport
+    properties:
+      single_parse:
+        const: true
+        description: >-
+          The locator is parsed exactly once by one strict URI
+          implementation; every subsequent policy step, and the transport
+          step (`transport_architecture`), consume that same parsed
+          authority object -- never a second, independently re-parsed copy.
+      idna_normalization:
+        const: true
+        description: >-
+          Non-ASCII hosts are normalized via IDNA/UTS-46 to their ASCII
+          A-label (punycode) form before any policy evaluation; hosts IDNA
+          processing marks disallowed or ambiguously mapped are rejected,
+          never "helpfully" coerced.
+      reject_userinfo:
+        const: true
+        description: >-
+          Any userinfo component in the authority (anything before an
+          unescaped `@`) is rejected outright -- not only when it "looks
+          like" embedded credentials.
+      reject_percent_encoded_host:
+        const: true
+        description: >-
+          A host component that requires percent-decoding to interpret is
+          rejected; hosts must already be in canonical unescaped form.
+      reject_ipv6_zone_ids:
+        const: true
+        description: >-
+          IPv6 zone/scope IDs (e.g. `fe80::1%eth0`) are rejected outright.
+      reject_ambiguous_numeric_host:
+        const: true
+        description: >-
+          Decimal, octal, or hex single-integer IPv4 encodings and any other
+          non-canonical numeric host form are rejected outright, never
+          normalized-and-accepted (parse-time restatement of
+          `forbidden_address_categories`' `encoded_or_obfuscated_host`).
+      strip_single_trailing_root_label_dot:
+        const: true
+        description: >-
+          Exactly one trailing root-label dot (`example.com.`) is stripped
+          as canonicalization; a host with more than one trailing dot is
+          rejected as ambiguous.
+      shared_authority_object_for_transport:
+        const: true
+        description: >-
+          The parsed, canonicalized authority object produced here is the
+          exact object the single acquisition actor
+          (`transport_architecture`) connects to -- transport never
+          re-derives host/port from the original locator string a second
+          time.
+  transport_architecture:
+    description: >-
+      Freezes the normative architecture: one actor owns the whole HTTP
+      lifecycle and hands already-acquired bytes downstream, never the URL
+      (audit findings #1, #2, #19).
+    type: object
+    additionalProperties: false
+    required:
+      - single_actor_owns_full_lifecycle
+      - hands_off_acquired_bytes_only
+      - environment_and_pac_proxies_disabled
+      - provider_delegated_fetch_allowed
+    properties:
+      single_actor_owns_full_lifecycle:
+        const: true
+        description: >-
+          One policy-owned client performs resolution, connection binding,
+          TLS, redirect-following, and response reading as a single
+          integrated operation (contract §4.2.0). The extraction step
+          (contract §4.2.9) is never handed the original URL to open a
+          second, independent connection.
+      hands_off_acquired_bytes_only:
+        const: true
+        description: >-
+          Downstream extraction receives already-acquired bytes plus
+          minimal validated response metadata (final status code,
+          content-type, declared length) -- never a URL or locator string
+          it could independently re-resolve.
+      environment_and_pac_proxies_disabled:
+        const: true
+        description: >-
+          Environment/system proxy configuration (HTTP_PROXY, HTTPS_PROXY,
+          NO_PROXY, PAC scripts) is explicitly disabled for this client; the
+          connected peer this policy validates is always the true
+          destination, never an intermediary.
+      provider_delegated_fetch_allowed:
+        const: false
+        description: >-
+          Provider-side URL fetching (a third-party extraction/search
+          provider independently resolving and fetching a URL on RF's
+          behalf) is prohibited for v1 acquisition unless a future policy
+          version proves an equivalent end-to-end pinned-address guarantee
+          for that provider; hard-pinned false until then.
+  forbidden_address_categories:
+    description: >-
+      Fixed, closed set -- always denied, never independently configurable
+      off. Includes cloud-metadata destinations (see `metadata_deny_set`),
+      encoded/obfuscated host tricks, IPv6 transition/translation prefixes
+      (see `ipv6_transition_policy`), and RFC 3879 deprecated IPv6
+      site-local addresses (`fec0::/10`, round-2 audit finding #10 --
+      neither `is_private` nor `is_reserved` under stdlib `ipaddress`, so it
+      is pinned as its own always-denied category rather than relying on a
+      broader check to happen to cover it).
+    const:
+      - loopback
+      - private
+      - reserved
+      - link_local
+      - multicast
+      - unspecified
+      - carrier_grade_nat
+      - benchmark_or_documentation
+      - cloud_metadata
+      - encoded_or_obfuscated_host
+      - ipv6_transition_or_translation
+      - ipv6_site_local
+  metadata_deny_set:
+    description: >-
+      Versioned, canonical hostname/IP deny-set for cloud-metadata endpoints
+      (audit finding #5) -- explicit membership, not an implementation-
+      defined category alone. Hard-pinned; not independently configurable
+      off. Operators MAY extend `forbidden_address_categories` behavior in a
+      future schema version but cannot remove entries from this list in v1.
+    const:
+      - "169.254.169.254"
+      - "fd00:ec2::254"
+      - "metadata.google.internal"
+      - "metadata.azure.com"
+      - "169.254.169.253"
+      - "100.100.100.200"
+    minItems: 1
+  metadata_deny_set_version:
+    const: "v1-2026-07-26"
+    description: >-
+      Version identifier for `metadata_deny_set`, bound into `policy_digest`
+      (contract §1.3) so a future addition or provider-range change is a
+      visible, versioned policy change rather than silent behavior drift.
+  special_purpose_address_registry_version:
+    const: "iana-special-purpose-2026-07-26"
+    description: >-
+      Snapshot identifier for the IANA IPv4/IPv6 Special-Purpose Address
+      Registries this policy's `forbidden_address_categories` implements,
+      bound into `policy_digest` for the same reason as
+      `metadata_deny_set_version`.
+  ipv6_transition_policy:
+    description: >-
+      Explicit coverage for IPv6 transition/translation addressing (audit
+      finding #4): a validator that only inspects the connected IPv6 peer
+      can be fooled by NAT64/DNS64, 6to4, Teredo, or IPv4-mapped/compatible
+      addresses that translate to a forbidden IPv4 destination after
+      connection.
+    type: object
+    additionalProperties: false
+    required:
+      - well_known_prefixes
+      - decode_and_validate_embedded_ipv4
+      - operator_configured_nat64_prefixes
+    properties:
+      well_known_prefixes:
+        description: >-
+          Always-forbidden IPv6 transition/translation prefixes. Hard-
+          pinned; not independently configurable off.
+        const:
+          - "64:ff9b::/96"
+          - "64:ff9b:1::/48"
+          - "2002::/16"
+          - "2001::/32"
+          - "::ffff:0:0/96"
+          - "::/96"
+      decode_and_validate_embedded_ipv4:
+        const: true
+        description: >-
+          Every address matching a transition/translation prefix has its
+          embedded IPv4 destination decoded and validated against
+          `forbidden_address_categories` in full -- a transition address
+          that looks globally routable at the IPv6 layer but decodes to a
+          forbidden IPv4 destination is denied identically to a direct
+          forbidden-IPv4 locator.
+      operator_configured_nat64_prefixes:
+        description: >-
+          Locally-configured NAT64 prefixes (e.g. a resolver-specific
+          NAT64 prefix used by this deployment's network) MAY be added
+          here -- additive only; cannot remove or narrow
+          `well_known_prefixes`. Round-2 audit finding #11: each entry
+          MUST already look like an IPv6 CIDR at the schema layer (the
+          `pattern` below); the runtime additionally enforces the entry
+          is a CANONICAL IPv6 network (no host bits set, e.g.
+          `2600:abcd:1234::1/96` is rejected) and fails the WHOLE policy
+          closed if any entry cannot be parsed -- a malformed prefix is
+          never silently discarded, which would otherwise leave this
+          deployment's real NAT64 route unenforced.
+        type: array
+        items:
+          type: string
+          pattern: "^[0-9a-fA-F:]+/[0-9]{1,3}$"
+        default: []
+  dns_policy:
+    type: object
+    additionalProperties: false
+    required:
+      - validate_every_answer
+      - bind_to_validated_address
+      - verify_connected_peer
+    properties:
+      validate_every_answer:
+        const: true
+        description: >-
+          Every DNS answer is validated against forbidden_address_categories
+          — not just the first. Any single forbidden answer denies the whole
+          locator; a mix of one public and one private answer denies, it
+          never "picks the public one."
+      bind_to_validated_address:
+        const: true
+      verify_connected_peer:
+        const: true
+        description: >-
+          The fixed required sequence is resolve -> validate every answer ->
+          bind -> verify the connected peer actually matches what was
+          validated. This closes the DNS-rebinding window; validating
+          answers but trusting whatever address the socket layer connects to
+          does not satisfy this gate.
+  redirects:
+    type: object
+    additionalProperties: false
+    required:
+      - max_hops
+      - revalidate_every_hop
+    properties:
+      max_hops:
+        description: >-
+          Configurable downward; frozen v1 ceiling is 3 (ERI-OQ-4).
+        type: integer
+        minimum: 0
+        maximum: 3
+        default: 3
+      revalidate_every_hop:
+        const: true
+        description: >-
+          Every hop re-runs the full canonicalization/scheme/host/DNS/
+          address/peer policy before being followed — a redirect target is
+          a new locator for policy purposes, never an extension of trust
+          from the hop that produced it.
+  transport_fallback_allowed:
+    const: false
+    description: >-
+      A failed policy check or failed hop never falls back to a different
+      transport, a weaker guarantee, a raw socket bypassing redirect
+      handling, a `file:` retry, or a cached/stale prior response. Hard-
+      pinned false; not configurable.
+  local_asset_carve_out:
+    description: >-
+      Redesigned per audit finding #13: a packet-originated string is never
+      resolved as an arbitrary filesystem path. Local assets resolve only
+      through one of two narrow, allowlisted sinks (contract §4.1a).
+    type: object
+    additionalProperties: false
+    required:
+      - packet_internal_attachment_resolution
+      - out_of_packet_requires_operator_grant
+      - operator_grant_binds_path_and_digest
+      - producer_supplied_locator_type_hint_ignored
+    properties:
+      packet_internal_attachment_resolution:
+        const: true
+        description: >-
+          A local asset referenced from inside a packet resolves ONLY via
+          an opaque `attachment_id` key lookup into the packet's own
+          already path-safety-checked, already-hashed accepted-member table
+          (contract §1.1/§1.2) -- never by re-parsing a fresh filesystem
+          path string taken from packet content at ingest time.
+      out_of_packet_requires_operator_grant:
+        const: true
+        description: >-
+          Any asset outside the packet's own manifest-declared members
+          requires a distinct, out-of-band operator grant issued outside
+          the untrusted packet; the packet itself can never name or trigger
+          access to it.
+      operator_grant_binds_path_and_digest:
+        const: true
+        description: >-
+          An operator grant binds one canonical absolute path to one
+          expected SHA-256 digest; the importer verifies the digest at open
+          time before use, closing the "relocating the packet resolves the
+          same digest to different bytes" attack.
+      producer_supplied_locator_type_hint_ignored:
+        const: true
+        description: >-
+          A packet-internal `locator_type`/route hint (e.g. a producer
+          claiming "local") never decides classification; classification is
+          decided solely by which pipeline receives the value --
+          attachment_id lookup vs URL policy evaluation (contract §4.1a
+          permitted-sinks rule).
+  denial:
+    description: >-
+      A denial carries exactly one reason code from the closed source/
+      citation reason-code families in the access-controlled audit record
+      only; the ordinary caller-visible surface carries none of the
+      differential below (contract §4.3, audit finding #15).
+    type: object
+    additionalProperties: false
+    required:
+      - leaks_denied_ids
+      - leaks_resolved_addresses
+      - leaks_text
+      - leaks_counts
+      - leaks_reason_code_differential
+    properties:
+      leaks_denied_ids:
+        const: false
+      leaks_resolved_addresses:
+        const: false
+      leaks_text:
+        const: false
+      leaks_counts:
+        const: false
+      leaks_reason_code_differential:
+        const: false
+        description: >-
+          The specific reason code (which of the 19 closed codes applied)
+          is never part of the ordinary caller-visible response -- only the
+          access-controlled audit record carries it (contract §4.3/§4.6).
+required:
+  - schema_version
+  - type
+  - allowed_schemes
+  - reject_embedded_credentials
+  - canonicalization
+  - transport_architecture
+  - forbidden_address_categories
+  - metadata_deny_set
+  - metadata_deny_set_version
+  - special_purpose_address_registry_version
+  - ipv6_transition_policy
+  - dns_policy
+  - redirects
+  - transport_fallback_allowed
+  - local_asset_carve_out
+  - denial

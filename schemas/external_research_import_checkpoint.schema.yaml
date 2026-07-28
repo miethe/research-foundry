@@ -1,0 +1,136 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/external_research_import_checkpoint.schema.yaml/v1"
+title: External Research Import Checkpoint
+description: >-
+  Resumable, mutable checkpoint for one in-progress
+  `external_research_handoff/v1` import, written atomically and SEPARATELY
+  from external_research_import_receipt.schema.yaml (contract §2.2: "A
+  receipt manifest and per-action effect receipts are immutable. Checkpoint
+  state is separate and atomically replaceable"). `pending` is the ONLY
+  in-progress checkpoint status — `completed`, `completed_with_quarantine`,
+  and `blocked` are terminal RECEIPT-only states and never appear here.
+  Cancellation always leaves a resumable `pending` checkpoint and never
+  publishes a false terminal receipt (PRD §6.7). Per PRD §6.7, "checkpoints
+  contain cursors and safe IDs only" — this schema carries no platform
+  synthesis, quote, secret, or source text field anywhere, by design.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: external_research_import_checkpoint
+  checkpoint_id:
+    type: string
+    pattern: "^erc_[a-f0-9]{64}$"
+  receipt_id_prospective:
+    description: >-
+      The receipt_id this checkpoint will publish under once every declared
+      action reaches a terminal outcome. The checkpoint is never a
+      substitute for, and never re-derives, the immutable terminal receipt.
+    type: string
+    pattern: "^erh_[a-f0-9]{64}$"
+  packet_digest:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  workspace_id:
+    type: string
+    minLength: 1
+  target_run_id:
+    type: [string, "null"]
+  status:
+    description: >-
+      `pending` is the only in-progress checkpoint state. `converged` marks
+      a checkpoint whose terminal receipt has already published; the
+      checkpoint remains as a resumability audit trail, never a second
+      source of terminal truth.
+    enum:
+      - pending
+      - converged
+  cursor:
+    type: object
+    additionalProperties: false
+    required:
+      - next_action_id
+      - completed_count
+      - total_count
+    properties:
+      next_action_id:
+        description: >-
+          The first incomplete action's ID; null once every declared action
+          is terminal (i.e. once status is `converged`).
+        type: [string, "null"]
+      completed_count:
+        type: integer
+        minimum: 0
+      total_count:
+        type: integer
+        minimum: 0
+  completed_action_digests:
+    description: >-
+      Safe IDs only — the effect_digest of every action already published
+      as an immutable effect receipt. Retry re-hashes the packet, revalidates
+      the exact action set, and never replays any digest listed here (PRD
+      §6.7).
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - action_id
+        - effect_digest
+      properties:
+        action_id:
+          type: string
+          minLength: 1
+        effect_digest:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+  pending_action_digest:
+    description: >-
+      Digest of the action in flight when this checkpoint was written, or
+      null when no action is currently in flight.
+    type: [string, "null"]
+    pattern: "^[a-f0-9]{64}$"
+  updated_at:
+    type: string
+    format: date-time
+required:
+  - schema_version
+  - type
+  - checkpoint_id
+  - receipt_id_prospective
+  - packet_digest
+  - workspace_id
+  - target_run_id
+  - status
+  - cursor
+  - completed_action_digests
+  - pending_action_digest
+  - updated_at
+allOf:
+  - if:
+      properties:
+        status:
+          const: pending
+      required:
+        - status
+    then:
+      properties:
+        cursor:
+          properties:
+            next_action_id:
+              not:
+                const: null
+  - if:
+      properties:
+        status:
+          const: converged
+      required:
+        - status
+    then:
+      properties:
+        cursor:
+          properties:
+            next_action_id:
+              const: null

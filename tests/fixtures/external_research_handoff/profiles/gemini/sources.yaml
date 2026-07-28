@@ -1,0 +1,18 @@
+schema_name: external_research_sources
+schema_version: "1.0"
+sources:
+  - source_id: src_01
+    title: "Rate Limiting Algorithms Overview — Cloud Provider Docs"
+    locator:
+      doi: null
+      url: "https://example.test/docs/rate-limiting-overview"
+    publication_year: null
+    access_status: unknown
+    declared_metadata:
+      authors: []
+      publisher: null
+      accessed_at: null
+    extensions:
+      gemini:
+        grounding_chip_index: 1
+        grounding_confidence: 0.81

@@ -1,0 +1,17 @@
+# status: converged requires cursor.next_action_id to be null — a converged
+# checkpoint still pointing at a "next" action contradicts convergence.
+schema_version: "1.0"
+type: external_research_import_checkpoint
+checkpoint_id: "erc_000000000000000000000000000000000000000000000000000000000000000a"
+receipt_id_prospective: "erh_000000000000000000000000000000000000000000000000000000000000000a"
+packet_digest: "000000000000000000000000000000000000000000000000000000000000000b"
+workspace_id: ws_demo
+target_run_id: null
+status: converged
+cursor:
+  next_action_id: cand_002
+  completed_count: 2
+  total_count: 2
+completed_action_digests: []
+pending_action_digest: null
+updated_at: "2026-07-26T12:05:00Z"

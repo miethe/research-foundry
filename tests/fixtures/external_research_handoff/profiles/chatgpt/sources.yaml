@@ -1,0 +1,45 @@
+schema_name: external_research_sources
+schema_version: "1.0"
+sources:
+  - source_id: src_01
+    title: "Braga JAP et al., Immune thrombocytopenia in childhood, Rev Bras Hematol Hemoter 2013"
+    locator:
+      doi: "10.5581/1516-8484.20130105"
+      url: null
+    publication_year: 2013
+    access_status: open-access
+    declared_metadata:
+      authors: ["Braga JAP"]
+      publisher: "Rev Bras Hematol Hemoter"
+      accessed_at: null
+    extensions:
+      chatgpt:
+        vendor_citation_markers: ["citeturn21search1", "citeturn12search6"]
+  - source_id: src_02
+    title: "Tahmasebi A et al., CALIPER pediatric hematology reference intervals, Am J Clin Pathol 2020"
+    locator:
+      doi: "10.1093/ajcp/aqaa059"
+      url: null
+    publication_year: 2020
+    access_status: open-access
+    declared_metadata:
+      authors: ["Tahmasebi A"]
+      publisher: "Am J Clin Pathol"
+      accessed_at: null
+    extensions:
+      chatgpt:
+        vendor_citation_markers: ["citeturn2search1", "citeturn7search0"]
+  - source_id: src_03
+    title: "Ness KD et al., pediatric eosinophilia cohort, J Pediatr 2023"
+    locator:
+      doi: "10.1016/j.jpeds.2022.09.048"
+      url: null
+    publication_year: 2023
+    access_status: open-access
+    declared_metadata:
+      authors: ["Ness KD"]
+      publisher: "J Pediatr"
+      accessed_at: null
+    extensions:
+      chatgpt:
+        vendor_citation_markers: ["citeturn24search3"]

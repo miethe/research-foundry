@@ -1,0 +1,10 @@
+# Violates HARD CONSTRAINT #2: producer-declared completeness/verified state
+# is not a field this schema exposes. additionalProperties:false on each
+# source record rejects any attempt to smuggle a computed/verified field.
+schema_name: external_research_sources
+schema_version: "1.0"
+sources:
+  - source_id: src_001
+    access_status: open-access
+    completeness_tier: verified
+    verified: true

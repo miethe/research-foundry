@@ -1,0 +1,39 @@
+schema_name: external_assertion_candidates
+schema_version: "1.0"
+candidates:
+  - candidate_id: cand_01
+    statement: "The internal gateway proposal favors a token-bucket limiter for burst tolerance, per the notebook's footnote [1]."
+    value: null
+    unit: null
+    direction: null
+    scope:
+      population: null
+      qualifier_band: null
+    source_refs: ["src_01"]
+    relation: supports
+    classification: assertion
+    quote: null
+    selector: null
+    producer_confidence: null
+    extensions:
+      notebooklm:
+        profile_status: "offline-unvalidated"
+        footnote_index: 1
+  - candidate_id: cand_02
+    statement: "A sliding-window approach was considered but rejected for implementation complexity, per the notebook's footnote [2]; this is the notebook's own characterization, not a confirmed direct quote."
+    value: null
+    unit: null
+    direction: null
+    scope:
+      population: null
+      qualifier_band: null
+    source_refs: ["src_02"]
+    relation: context
+    classification: inference
+    quote: null
+    selector: null
+    producer_confidence: null
+    extensions:
+      notebooklm:
+        profile_status: "offline-unvalidated"
+        footnote_index: 2

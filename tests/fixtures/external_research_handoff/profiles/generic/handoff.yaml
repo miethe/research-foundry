@@ -1,0 +1,31 @@
+schema_name: external_research_handoff
+schema_version: '1.0'
+transport: directory
+producer_profile: generic
+research_context:
+  research_question: 'Token bucket vs. sliding window: which rate-limiting algorithm bounds burst latency
+    better for a multi-tenant API gateway?'
+  task_context: null
+declared_sensitivity: personal
+created_at: '2026-07-26T00:00:00Z'
+content_roles:
+  report: platform_synthesis
+vendor_reference: {}
+members:
+- path: handoff.yaml
+  role: handoff_manifest
+  byte_length: 1044
+  sha256: 28d3ce6fe05d2b85d6c85fbe58c9d2906a99abcbe3bc2b7071e89bfcc071fec5
+- path: report.md
+  role: report
+  byte_length: 984
+  sha256: 4bb763c89404c4376ab72dc216109806a0e96fbd3960e1d683c3e49059622952
+- path: sources.yaml
+  role: sources
+  byte_length: 648
+  sha256: 2aad0a2f48ec24d6a9a85a64ffe4551aa0eeeadbde67244e1f75c5b4a1fd8c6a
+- path: assertion_candidates.yaml
+  role: assertion_candidates
+  byte_length: 1491
+  sha256: 34184160b94a57bf33ff19f1175ec31acec2050aeae49f1f2d50a7a4de65ee7b
+total_declared_bytes: 4167

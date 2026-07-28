@@ -1,0 +1,7 @@
+schema_name: external_assertion_candidates
+schema_version: "1.0"
+candidates:
+  - candidate_id: cand_001
+    statement: "classification must be one of assertion|inference|annotation."
+    source_refs: ["src_001"]
+    classification: verified_fact

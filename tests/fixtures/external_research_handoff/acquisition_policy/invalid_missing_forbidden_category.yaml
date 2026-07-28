@@ -1,0 +1,70 @@
+# forbidden_address_categories is a fixed, closed const set (all 11
+# categories including cloud_metadata). Dropping cloud_metadata here would
+# silently permit 169.254.169.254-class targets, so it must fail closed.
+schema_version: "1.0"
+type: external_research_acquisition_policy
+allowed_schemes: [https]
+reject_embedded_credentials: true
+canonicalization:
+  single_parse: true
+  idna_normalization: true
+  reject_userinfo: true
+  reject_percent_encoded_host: true
+  reject_ipv6_zone_ids: true
+  reject_ambiguous_numeric_host: true
+  strip_single_trailing_root_label_dot: true
+  shared_authority_object_for_transport: true
+transport_architecture:
+  single_actor_owns_full_lifecycle: true
+  hands_off_acquired_bytes_only: true
+  environment_and_pac_proxies_disabled: true
+  provider_delegated_fetch_allowed: false
+forbidden_address_categories:
+  - loopback
+  - private
+  - reserved
+  - link_local
+  - multicast
+  - unspecified
+  - carrier_grade_nat
+  - benchmark_or_documentation
+  - encoded_or_obfuscated_host
+  - ipv6_transition_or_translation
+metadata_deny_set:
+  - "169.254.169.254"
+  - "fd00:ec2::254"
+  - "metadata.google.internal"
+  - "metadata.azure.com"
+  - "169.254.169.253"
+  - "100.100.100.200"
+metadata_deny_set_version: "v1-2026-07-26"
+special_purpose_address_registry_version: "iana-special-purpose-2026-07-26"
+ipv6_transition_policy:
+  well_known_prefixes:
+    - "64:ff9b::/96"
+    - "64:ff9b:1::/48"
+    - "2002::/16"
+    - "2001::/32"
+    - "::ffff:0:0/96"
+    - "::/96"
+  decode_and_validate_embedded_ipv4: true
+  operator_configured_nat64_prefixes: []
+dns_policy:
+  validate_every_answer: true
+  bind_to_validated_address: true
+  verify_connected_peer: true
+redirects:
+  max_hops: 3
+  revalidate_every_hop: true
+transport_fallback_allowed: false
+local_asset_carve_out:
+  packet_internal_attachment_resolution: true
+  out_of_packet_requires_operator_grant: true
+  operator_grant_binds_path_and_digest: true
+  producer_supplied_locator_type_hint_ignored: true
+denial:
+  leaks_denied_ids: false
+  leaks_resolved_addresses: false
+  leaks_text: false
+  leaks_counts: false
+  leaks_reason_code_differential: false

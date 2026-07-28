@@ -44,7 +44,13 @@ from research_foundry.schemas import SchemaRegistry, validate
 EXPECTED_SCHEMA_NAMES: list[str] = [
     "arc_review_request", "assertion_evaluation", "assertion_lifecycle_event",
     "canonical_claim", "ccdash_event", "claim_ledger", "content_reuse_assessment",
-    "evidence_bundle", "extraction_card", "foundry", "ibom", "inference_record",
+    "evidence_bundle",
+    # external-research-report-interchange-v1 P1 contract freeze (ERI-1.1):
+    # 6 net-new schemas for the external_research_handoff/v1 packet contract.
+    "external_assertion_candidates", "external_research_acquisition_policy",
+    "external_research_handoff", "external_research_import_checkpoint",
+    "external_research_import_receipt", "external_research_sources",
+    "extraction_card", "foundry", "ibom", "inference_record",
     "intenttree_node", "intenttree_update", "knowledge_activity_receipt",
     "knowledge_document", "knowledge_search_request", "knowledge_search_response",
     "meatywiki_writeback", "notebooklm_update",
@@ -111,6 +117,160 @@ def _valid(name: str) -> dict:
             "id": "eb_demo",
             "intent_id": "intent_demo",
             "run_id": "run_demo",
+        },
+        # external-research-report-interchange-v1 P1 (ERI-1.1) — 6 net-new
+        # packet-contract schemas. Deeper coverage (golden/negative fixtures,
+        # completeness-tier/quarantine-vocabulary invariants) lives in
+        # tests/unit/test_external_research_schemas.py; these are the
+        # minimal-required-fields instances for registry-coverage parity.
+        "external_assertion_candidates": {
+            "schema_name": "external_assertion_candidates",
+            "schema_version": "1.0",
+            "candidates": [],
+        },
+        "external_research_acquisition_policy": {
+            "schema_version": "1.0",
+            "type": "external_research_acquisition_policy",
+            "allowed_schemes": ["https"],
+            "reject_embedded_credentials": True,
+            # gpt-5.6-sol P1 contract audit (2026-07-26) remediation: single-
+            # parse canonicalization + single-actor transport architecture
+            # are now frozen, required objects (contract §4.2.0-§4.2.2).
+            "canonicalization": {
+                "single_parse": True,
+                "idna_normalization": True,
+                "reject_userinfo": True,
+                "reject_percent_encoded_host": True,
+                "reject_ipv6_zone_ids": True,
+                "reject_ambiguous_numeric_host": True,
+                "strip_single_trailing_root_label_dot": True,
+                "shared_authority_object_for_transport": True,
+            },
+            "transport_architecture": {
+                "single_actor_owns_full_lifecycle": True,
+                "hands_off_acquired_bytes_only": True,
+                "environment_and_pac_proxies_disabled": True,
+                "provider_delegated_fetch_allowed": False,
+            },
+            "forbidden_address_categories": [
+                "loopback", "private", "reserved", "link_local", "multicast",
+                "unspecified", "carrier_grade_nat", "benchmark_or_documentation",
+                "cloud_metadata", "encoded_or_obfuscated_host",
+                "ipv6_transition_or_translation",
+                # round-2 audit finding #10: fec0::/10 IPv6 site-local.
+                "ipv6_site_local",
+            ],
+            # audit finding #5: versioned, explicit metadata deny-set.
+            "metadata_deny_set": [
+                "169.254.169.254", "fd00:ec2::254", "metadata.google.internal",
+                "metadata.azure.com", "169.254.169.253", "100.100.100.200",
+            ],
+            "metadata_deny_set_version": "v1-2026-07-26",
+            "special_purpose_address_registry_version": "iana-special-purpose-2026-07-26",
+            # audit finding #4: explicit IPv6 transition/translation coverage.
+            "ipv6_transition_policy": {
+                "well_known_prefixes": [
+                    "64:ff9b::/96", "64:ff9b:1::/48", "2002::/16", "2001::/32",
+                    "::ffff:0:0/96", "::/96",
+                ],
+                "decode_and_validate_embedded_ipv4": True,
+                "operator_configured_nat64_prefixes": [],
+            },
+            "dns_policy": {
+                "validate_every_answer": True,
+                "bind_to_validated_address": True,
+                "verify_connected_peer": True,
+            },
+            "redirects": {"max_hops": 3, "revalidate_every_hop": True},
+            "transport_fallback_allowed": False,
+            # audit finding #13: local-ingest redesigned around opaque
+            # attachment_id resolution + operator grants, not string-sniffing.
+            "local_asset_carve_out": {
+                "packet_internal_attachment_resolution": True,
+                "out_of_packet_requires_operator_grant": True,
+                "operator_grant_binds_path_and_digest": True,
+                "producer_supplied_locator_type_hint_ignored": True,
+            },
+            "denial": {
+                "leaks_denied_ids": False, "leaks_resolved_addresses": False,
+                "leaks_text": False, "leaks_counts": False,
+                "leaks_reason_code_differential": False,
+            },
+        },
+        "external_research_handoff": {
+            "schema_name": "external_research_handoff",
+            "schema_version": "1.0",
+            "transport": "directory",
+            "producer_profile": "generic",
+            "declared_sensitivity": "personal",
+            "created_at": "2026-07-26T12:00:00Z",
+            "content_roles": {"report": "platform_synthesis"},
+            "members": [
+                {"path": "handoff.yaml", "role": "handoff_manifest", "byte_length": 1, "sha256": "a" * 64},
+                {"path": "report.md", "role": "report", "byte_length": 1, "sha256": "a" * 64},
+                {"path": "sources.yaml", "role": "sources", "byte_length": 1, "sha256": "a" * 64},
+                {"path": "assertion_candidates.yaml", "role": "assertion_candidates", "byte_length": 1, "sha256": "a" * 64},
+            ],
+            "total_declared_bytes": 4,
+        },
+        "external_research_import_checkpoint": {
+            "schema_version": "1.0",
+            "type": "external_research_import_checkpoint",
+            "checkpoint_id": "erc_" + "a" * 64,
+            "receipt_id_prospective": "erh_" + "a" * 64,
+            "packet_digest": "a" * 64,
+            "workspace_id": "ws_demo",
+            "target_run_id": None,
+            "status": "converged",
+            "cursor": {"next_action_id": None, "completed_count": 0, "total_count": 0},
+            "completed_action_digests": [],
+            "pending_action_digest": None,
+            "updated_at": "2026-07-26T12:00:00Z",
+        },
+        "external_research_import_receipt": {
+            "schema_version": "1.0",
+            "type": "external_research_import_receipt",
+            "receipt_id": "erh_" + "a" * 64,
+            "receipt_digest": "a" * 64,
+            "packet_digest": "a" * 64,
+            "workspace_id": "ws_demo",
+            "target_run_id": None,
+            "policy_digest": "a" * 64,
+            # gpt-5.6-sol P1 contract audit (2026-07-26) remediation
+            # (findings #6, #9, #10, #20): governance_policy_digest and the
+            # action-manifest identity are now required receipt_digest
+            # inputs (contract §1.3/§1.3a); both are null only on a
+            # `blocked` receipt, non-null (as here, status: completed) on
+            # every other status.
+            "governance_policy_digest": "a" * 64,
+            "schema_major_versions": {
+                "external_research_handoff": 1,
+                "external_research_sources": 1,
+                "external_assertion_candidates": 1,
+                "external_research_import_receipt": 1,
+                "external_research_import_checkpoint": 1,
+                "external_research_acquisition_policy": 1,
+            },
+            "action_manifest_digest": "a" * 64,
+            "action_manifest_algorithm_version": "1",
+            "attempt_structural_summary": None,
+            "importer_contract_version": "external_research_handoff/v1",
+            "status": "completed",
+            "block_reason": None,
+            "actions": [],
+            # audit finding #15: by_reason_code removed — the specific
+            # reason-code vocabulary lives only in the access-controlled
+            # audit record an action's audit_ref resolves against.
+            "counts": {
+                "actions_total": 0, "completed": 0, "quarantined": 0,
+                "by_completeness_tier": {},
+            },
+            "created_at": "2026-07-26T12:00:00Z",
+        },
+        "external_research_sources": {
+            "schema_name": "external_research_sources",
+            "schema_version": "1.0",
+            "sources": [],
         },
         # required: id, source_card_id
         "extraction_card": {
@@ -457,6 +617,12 @@ def _invalid(name: str) -> dict:
         "ccdash_event": "event_id",
         "claim_ledger": "id",
         "evidence_bundle": "id",
+        "external_assertion_candidates": "schema_name",
+        "external_research_acquisition_policy": "allowed_schemes",
+        "external_research_handoff": "schema_name",
+        "external_research_import_checkpoint": "checkpoint_id",
+        "external_research_import_receipt": "receipt_id",
+        "external_research_sources": "schema_name",
         "extraction_card": "id",
         "foundry": "foundry",
         "ibom": "id",

@@ -1,0 +1,24 @@
+schema_name: external_research_sources
+schema_version: "1.0"
+sources:
+  - source_id: src_01
+    title: "Rate Limiting Techniques for Distributed Systems"
+    locator:
+      doi: null
+      url: "https://example.test/articles/rate-limiting-techniques"
+    publication_year: 2022
+    access_status: open-access
+    declared_metadata:
+      authors: ["J. Example"]
+      publisher: "Example Systems Journal"
+      accessed_at: "2026-07-20T00:00:00Z"
+    extensions: {}
+  - source_id: src_02
+    title: null
+    locator:
+      doi: null
+      url: null
+    publication_year: null
+    access_status: unknown
+    declared_metadata: {}
+    extensions: {}

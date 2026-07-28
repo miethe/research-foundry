@@ -1,0 +1,30 @@
+schema_name: external_research_handoff
+schema_version: '1.0'
+transport: directory
+producer_profile: chatgpt
+research_context:
+  research_question: null
+  task_context: null
+declared_sensitivity: personal
+created_at: '2026-07-26T00:00:00Z'
+content_roles:
+  report: platform_synthesis
+vendor_reference: {}
+members:
+- path: handoff.yaml
+  role: handoff_manifest
+  byte_length: 924
+  sha256: f3aee91dcdf0dc53369e585aea0eea30ff4eaa1699fdb622b558b20b72c0c29d
+- path: report.md
+  role: report
+  byte_length: 1105
+  sha256: ac94ea8bcda6978419c186f61592f2c73157b1cb3bb29599840bafe8f685b921
+- path: sources.yaml
+  role: sources
+  byte_length: 1426
+  sha256: 7e934799f6efeeb8fd02a86fe0322d5286a8e4e0f02086a93012df7e51e2f5f1
+- path: assertion_candidates.yaml
+  role: assertion_candidates
+  byte_length: 2001
+  sha256: 61e98d1d2f31f5cfa4cb45c34af19e826bbdfec1e46877c573ff1b8ae7fc5ff9
+total_declared_bytes: 5456

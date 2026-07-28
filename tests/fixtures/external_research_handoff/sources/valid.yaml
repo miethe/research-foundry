@@ -1,0 +1,25 @@
+schema_name: external_research_sources
+schema_version: "1.0"
+sources:
+  - source_id: src_001
+    title: "Pediatric hemoglobin reference intervals"
+    locator:
+      doi: "10.1000/demo.2026.001"
+      url: "https://example.test/articles/demo-001"
+    publication_year: 2024
+    access_status: open-access
+    declared_metadata:
+      authors: ["A. Researcher", "B. Researcher"]
+      publisher: "Demo Journal"
+      accessed_at: "2026-07-20T00:00:00Z"
+    extensions:
+      vendor_rank: 1
+  - source_id: src_002
+    title: null
+    locator:
+      doi: null
+      url: null
+    publication_year: null
+    access_status: unknown
+    declared_metadata: {}
+    extensions: {}

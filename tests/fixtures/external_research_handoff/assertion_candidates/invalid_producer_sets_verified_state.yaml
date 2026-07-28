@@ -1,0 +1,11 @@
+# Violates HARD CONSTRAINT #2: a candidate cannot self-declare verified
+# lineage. additionalProperties:false rejects the smuggled field.
+schema_name: external_assertion_candidates
+schema_version: "1.0"
+candidates:
+  - candidate_id: cand_001
+    statement: "Tries to self-promote to verified."
+    source_refs: ["src_001"]
+    classification: assertion
+    verified: true
+    completeness_tier: verified

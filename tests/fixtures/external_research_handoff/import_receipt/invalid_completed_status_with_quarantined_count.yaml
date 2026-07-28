@@ -1,0 +1,39 @@
+# contract §2.2: status "completed" means zero quarantined actions. A
+# nonzero counts.quarantined alongside status: completed is an impossible,
+# self-contradictory receipt.
+schema_version: "1.0"
+type: external_research_import_receipt
+receipt_id: "erh_000000000000000000000000000000000000000000000000000000000000000a"
+receipt_digest: "000000000000000000000000000000000000000000000000000000000000aaaa"
+packet_digest: "000000000000000000000000000000000000000000000000000000000000bbbb"
+workspace_id: ws_demo
+target_run_id: null
+policy_digest: "000000000000000000000000000000000000000000000000000000000000cccc"
+governance_policy_digest: "000000000000000000000000000000000000000000000000000000000000dddd"
+schema_major_versions:
+  external_research_handoff: 1
+  external_research_sources: 1
+  external_assertion_candidates: 1
+  external_research_import_receipt: 1
+  external_research_import_checkpoint: 1
+  external_research_acquisition_policy: 1
+action_manifest_digest: "000000000000000000000000000000000000000000000000000000000000eeee"
+action_manifest_algorithm_version: "1"
+attempt_structural_summary: null
+importer_contract_version: "external_research_handoff/v1"
+status: completed
+block_reason: null
+actions:
+  - action_id: "era_0000000000000000000000000000000000000000000000000000000000000002"
+    kind: candidate
+    outcome: quarantined
+    completeness_tier: locator_only
+    audit_ref: "0000000000000000000000000000000000000000000000000000000000009999"
+    effect_digest: "0000000000000000000000000000000000000000000000000000000000002222"
+counts:
+  actions_total: 1
+  completed: 0
+  quarantined: 1
+  by_completeness_tier:
+    locator_only: 1
+created_at: "2026-07-26T12:00:00Z"

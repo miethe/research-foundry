@@ -1,0 +1,110 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/external_research_sources.schema.yaml/v1"
+title: External Research Handoff — Sources Record Set
+description: >-
+  Content of `sources.yaml`, a required record-set member of an
+  `external_research_handoff/v1` directory packet (PRD external-research-
+  report-interchange-v1 §6.1). Every record here is producer-declared,
+  untrusted DATA describing one externally cited source; it carries no
+  computed or verified state. This schema defines no second source-edition,
+  passage, or source-assertion authority — resolution against
+  AssertionRegistry (RAL) and any resulting completeness tier are computed
+  by the importer and reported only on
+  external_research_import_receipt.schema.yaml, never written back into this
+  file. additionalProperties: false at every level means a producer (or a
+  compromised producer template) cannot smuggle a `verified`,
+  `completeness_tier`, or other computed/authoritative field into a record —
+  any such attempt fails closed. Every field, including `extensions`, is
+  untrusted data: it may be stored or displayed through bounded, escaped
+  surfaces, but MUST NEVER be promoted into a prompt, tool/resource
+  description, route/control value, command, schema selector, or execution
+  argument.
+type: object
+additionalProperties: false
+properties:
+  schema_name:
+    const: external_research_sources
+  schema_version:
+    enum:
+      - "1.0"
+  sources:
+    description: >-
+      Bounded to 2000 source records per packet (ERI-OQ-4). May be empty —
+      a packet with zero declared sources is a legal, if trivial, handoff.
+    type: array
+    maxItems: 2000
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - source_id
+        - access_status
+      properties:
+        source_id:
+          description: >-
+            Packet-local identifier, stable and unique within this packet
+            only — never a global Research Foundry identifier. Referenced
+            by external_assertion_candidates.schema.yaml's `source_refs`.
+            Untrusted producer-declared data.
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: "^[A-Za-z0-9_.:-]+$"
+        title:
+          type: [string, "null"]
+        locator:
+          type: object
+          additionalProperties: false
+          properties:
+            doi:
+              type: [string, "null"]
+            url:
+              type: [string, "null"]
+          description: >-
+            Producer-declared locator. Producer templates instruct the
+            operator to leave both null rather than invent a DOI/URL (PRD
+            §6.6) — a source with no locator is legal at this layer and is
+            the resolver's concern (invalid_locator quarantine), not a
+            schema violation. Locator acquisition and any network effect are
+            governed entirely by
+            external_research_acquisition_policy.schema.yaml at resolution
+            time; this field is never itself a route/control value.
+        publication_year:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 3000
+        access_status:
+          enum:
+            - open-access
+            - public-domain
+            - paywalled
+            - unknown
+        declared_metadata:
+          type: object
+          additionalProperties: false
+          properties:
+            authors:
+              type: array
+              items:
+                type: string
+            publisher:
+              type: [string, "null"]
+            accessed_at:
+              type: [string, "null"]
+              format: date-time
+          description: >-
+            Producer-declared hints only — non-authoritative. Never sets a
+            computed completeness tier or verified status; those exist
+            solely on the RF-computed import receipt, never on this record.
+        extensions:
+          type: object
+          additionalProperties: true
+          description: >-
+            Namespaced vendor-specific data. Untrusted inert data — stored
+            and displayed through bounded escaped surfaces only; never
+            promoted into a prompt, tool/resource description, route/control
+            value, command, schema selector, or execution argument.
+required:
+  - schema_name
+  - schema_version
+  - sources

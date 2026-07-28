@@ -1120,6 +1120,99 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         if r.intent_path:
             typer.echo(str(r.intent_path))
 
+    @intake_app.command("external-report")
+    def intake_external_report(
+        packet_dir: str = typer.Argument(
+            ..., help="Materialized directory of one external_research_handoff/v1 packet (directory-only transport)"
+        ),
+        workspace: str = typer.Option(..., "--workspace", help="Target workspace id (always required)"),
+        run: str | None = typer.Option(
+            None, "--run", help="Optional target run id; omitted means staging-only (no run created, no run-local projection)"
+        ),
+        dry_run: bool = typer.Option(
+            False, "--dry-run", help="Report the plan with zero canonical effects; never mutates state"
+        ),
+        resume: bool = typer.Option(
+            False,
+            "--resume",
+            help="Continue a pending import for this exact packet/workspace/target identity "
+            "(required whenever a prior call left one pending; a brand-new import never needs this)",
+        ),
+        limit: int = typer.Option(
+            100,
+            "--limit",
+            help="Max new actions to process this call (0 = unlimited); a large packet that hits "
+            "this limit stays pending -- re-run with --resume to continue",
+        ),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output (default: rich table)"),
+    ) -> None:
+        """Stage (and, with ``--run``, target-run-project) an external
+        research report packet (contract: external-research-handoff-contract.md).
+
+        A packet is a materialized directory produced by one of the five
+        offline producer profiles (generic/ChatGPT/Perplexity/Gemini/
+        NotebookLM) -- ``report.md`` stays non-authoritative
+        ``platform_synthesis``; every source/candidate is resolved through
+        RF's own existing acquisition/passage/verification authorities and
+        remains quarantined until exact resolution and verification permit
+        promotion.
+
+        Omitting ``--run`` is staging-only: no run is created and no
+        run-local projection is written. ``--dry-run`` never mutates
+        anything, including a target run's timeline. A large packet is
+        processed in bounded batches (``--limit``, default 100 new actions
+        per call) -- a call that hits the limit reports ``complete: false``
+        and a safe ``cursor``; re-run the same command with ``--resume`` to
+        continue from the first incomplete action. Machine (``--json``)
+        output carries only safe generated ids, counts, and the cursor --
+        never raw report/source/candidate text, resolved addresses, or
+        per-item denial reasons.
+        """
+
+        import json as _json
+
+        from .services.external_research_import import import_external_report
+
+        try:
+            outcome = import_external_report(
+                packet_dir,
+                workspace_id=workspace,
+                target_run_id=run,
+                dry_run=dry_run,
+                resume=resume,
+                limit=limit if limit > 0 else None,
+            )
+        except (RFError, ValueError) as e:
+            _fail(e)
+
+        payload = outcome.safe_dict()
+        if json_out:
+            typer.echo(_json.dumps(_stamp(payload), ensure_ascii=False, indent=2))
+        else:
+            title = "rf intake external-report"
+            if dry_run:
+                title += " (--dry-run)"
+            table = Table(title=title, show_header=False)
+            table.add_column("Field", style="bold")
+            table.add_column("Value")
+            for key, value in payload.items():
+                display = _json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+                table.add_row(key, display)
+            console.print(table)
+            if not outcome.complete:
+                console.print(
+                    "[yellow]pending[/yellow] -- re-run this command with --resume to continue"
+                )
+            elif outcome.status == "blocked":
+                console.print(f"[red]blocked[/red]: {outcome.block_reason}")
+            elif outcome.status == "completed_with_quarantine":
+                console.print("[yellow]completed with quarantine[/yellow] (expected for most real imports)")
+            else:
+                console.print("[green]completed[/green]")
+
+        if outcome.status == "blocked":
+            raise typer.Exit(int(ExitCode.SCHEMA))
+
     app.add_typer(intake_app, name="intake")
 
     # ----- notebooklm command group -----

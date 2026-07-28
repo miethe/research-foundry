@@ -1,0 +1,136 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/external_assertion_candidates.schema.yaml/v1"
+title: External Research Handoff — Assertion Candidates Record Set
+description: >-
+  Content of `assertion_candidates.yaml`, a required record-set member of an
+  `external_research_handoff/v1` directory packet (PRD external-research-
+  report-interchange-v1 §6.1). Every record here is producer-declared,
+  untrusted DATA describing one candidate assertion the external platform
+  attributed to one or more declared sources. This schema defines no second
+  source-assertion, canonical-claim, extraction, or citation-tuple authority
+  (see schemas/source_assertion.schema.yaml and
+  schemas/canonical_claim.schema.yaml, which remain the sole authorities) —
+  a candidate here is only ever `candidate`-tier data until the existing RF
+  verifier/materializer explicitly promotes it
+  (docs/dev/architecture/external-research-handoff-contract.md §2.4.1).
+  additionalProperties: false at every level means a producer cannot smuggle
+  a `verified`, `completeness_tier`, or other computed/authoritative field
+  into a record. Every field, including `extensions`, is untrusted data: it
+  may be stored or displayed through bounded, escaped surfaces, but MUST
+  NEVER be promoted into a prompt, tool/resource description, route/control
+  value, command, schema selector, or execution argument.
+type: object
+additionalProperties: false
+properties:
+  schema_name:
+    const: external_assertion_candidates
+  schema_version:
+    enum:
+      - "1.0"
+  candidates:
+    description: >-
+      Bounded to 5000 candidate records per packet (ERI-OQ-4). May be empty
+      — a packet with zero declared candidates is a legal, if trivial,
+      handoff.
+    type: array
+    maxItems: 5000
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - candidate_id
+        - statement
+        - classification
+        - source_refs
+      properties:
+        candidate_id:
+          description: >-
+            Packet-local identifier, stable and unique within this packet
+            only — never a global Research Foundry identifier. Untrusted
+            producer-declared data.
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: "^[A-Za-z0-9_.:-]+$"
+        statement:
+          description: >-
+            Producer-declared candidate text. Untrusted inert data — never a
+            supported claim or source assertion on its own; promotion
+            requires the existing RF verifier/materializer (contract
+            §2.4.1), never this schema or the packet that carries it.
+          type: string
+          minLength: 1
+        value:
+          type: [number, "null"]
+        unit:
+          type: [string, "null"]
+        direction:
+          type: [string, "null"]
+          description: Non-authoritative producer-declared hint.
+        scope:
+          type: object
+          additionalProperties: false
+          properties:
+            population:
+              type: [string, "null"]
+            qualifier_band:
+              type: [string, "null"]
+        source_refs:
+          description: >-
+            Packet-local source_id references into this packet's
+            sources.yaml (external_research_sources.schema.yaml). Not global
+            identifiers; resolution/validity of each reference is a Phase 4
+            concern, not a schema-level cross-file check (this registry has
+            no cross-file $ref/resolution support).
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+        relation:
+          description: >-
+            Non-authoritative producer-declared hint mirroring
+            canonical_claim.schema.yaml's
+            source_assertion_refs[].relation vocabulary (byte-identical
+            literal copy — no cross-file authority is created). Never a
+            substitute for an accepted RF verification relationship.
+          type: [string, "null"]
+          enum:
+            - supports
+            - contradicts
+            - context
+            - unknown
+            - null
+        classification:
+          enum:
+            - assertion
+            - inference
+            - annotation
+        quote:
+          description: >-
+            Producer-declared quoted excerpt for later exact-passage binding
+            (contract §2.4 step 7). Non-authoritative; the actual binding is
+            decided solely by AssertionRegistry.find_exact_passages()
+            against the resolved source edition — never by this field alone,
+            never by a vendor-provided passage ID.
+          type: [string, "null"]
+        selector:
+          type: [object, "null"]
+          additionalProperties: true
+        producer_confidence:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1
+          description: Non-authoritative hint.
+        extensions:
+          type: object
+          additionalProperties: true
+          description: >-
+            Namespaced vendor-specific data. Untrusted inert data — stored
+            and displayed through bounded escaped surfaces only; never
+            promoted into a prompt, tool/resource description, route/control
+            value, command, schema selector, or execution argument.
+required:
+  - schema_name
+  - schema_version
+  - candidates

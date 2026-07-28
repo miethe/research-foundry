@@ -1,0 +1,36 @@
+schema_name: external_assertion_candidates
+schema_version: "1.0"
+candidates:
+  - candidate_id: cand_001
+    statement: "Reference hemoglobin values differ by age band in the cited cohort."
+    value: 11.2
+    unit: "g/dL"
+    direction: "reference_range"
+    scope:
+      population: "pediatric"
+      qualifier_band: "6-24 months"
+    source_refs: ["src_001"]
+    relation: supports
+    classification: assertion
+    quote: "The cohort's mean hemoglobin was 11.2 g/dL."
+    selector:
+      kind: text_quote
+      value: "mean hemoglobin was 11.2 g/dL"
+    producer_confidence: 0.8
+    extensions:
+      vendor_rank: 1
+  - candidate_id: cand_002
+    statement: "Unresolved secondary observation with no numeric claim."
+    value: null
+    unit: null
+    direction: null
+    scope:
+      population: null
+      qualifier_band: null
+    source_refs: []
+    relation: null
+    classification: annotation
+    quote: null
+    selector: null
+    producer_confidence: null
+    extensions: {}

@@ -449,3 +449,30 @@ Workflows (`.claude/workflows/`): `notebooklm-sourcing`, `notebooklm-report`, `n
 Governance: writeback target `notebooklm` permits `personal`/`work_approved`/`client_approved`;
 `work_sensitive`/`client_sensitive` are review-gated. The claim ledger stays authoritative — NLM
 artifacts are never spliced into report bodies. Full design: `docs/projects/research-foundry/notebooklm-integration-plan.md`.
+
+### External Research Report Interchange (ERI)
+
+Import an externally-produced research report (ChatGPT Deep Research, Perplexity, Gemini,
+NotebookLM, or a generic offline packet) into RF as one directory-only, hostile-input-safe
+`external_research_handoff/v1` packet. The report itself stays non-authoritative
+`platform_synthesis`; every cited source and candidate assertion is resolved through RF's own
+existing acquisition/passage/verification authorities and remains quarantined until exact
+resolution and verification permit promotion — the packet is never a second evidence authority.
+
+```bash
+rf intake external-report ./packet-dir --workspace my-workspace --dry-run
+rf intake external-report ./packet-dir --workspace my-workspace [--run RUN_ID] [--resume] [--limit N] [--json]
+```
+
+- `--workspace` is always required; omitting `--run` is staging-only (no run created, no
+  run-local projection — the receipt is still a complete, truthful record of everything staging
+  could determine).
+- A large packet is processed in bounded batches (`--limit`, default 100 new actions per call); a
+  call that hits the limit reports `complete: false` and a safe cursor — re-run with `--resume`.
+- Machine (`--json`) output carries only safe generated ids, aggregate counts, and the cursor —
+  never raw report/source/candidate text, resolved network addresses, or a per-item denial reason.
+
+Full guide (packet layout, the five producer profiles, dry-run/import/resume, completeness tiers,
+quarantine, and troubleshooting): `docs/user/external-research-interchange.md`. Contract (identity,
+receipts, SSRF-safe acquisition policy, security/compatibility boundaries):
+`docs/dev/architecture/external-research-handoff-contract.md`.

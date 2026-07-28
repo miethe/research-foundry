@@ -1,0 +1,32 @@
+schema_name: external_research_sources
+schema_version: "1.0"
+sources:
+  - source_id: src_01
+    title: "Sliding Window Rate Limiting Explained"
+    locator:
+      doi: null
+      url: "https://example.test/blog/sliding-window"
+    publication_year: null
+    access_status: unknown
+    declared_metadata:
+      authors: []
+      publisher: null
+      accessed_at: null
+    extensions:
+      perplexity:
+        answer_citation_marker: "[1]"
+        rank: 1
+        relevance_score: 0.92
+        panel_snippet: "sliding window counters avoid the fixed-window edge-doubling effect"
+  - source_id: src_02
+    title: null
+    locator:
+      doi: null
+      url: "https://example.test/docs/token-bucket"
+    publication_year: null
+    access_status: unknown
+    declared_metadata: {}
+    extensions:
+      perplexity:
+        answer_citation_marker: "[2]"
+        rank: 2

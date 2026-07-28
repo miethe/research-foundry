@@ -1,0 +1,478 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/external_research_import_receipt.schema.yaml/v1"
+title: External Research Import Receipt
+description: >-
+  Immutable, RF-computed terminal receipt for one `external_research_handoff
+  /v1` import (docs/dev/architecture/external-research-handoff-contract.md
+  §1-§2, §4). This record is never producer-authored; the packet cannot set
+  any field here. Remediated per the gpt-5.6-sol P1 adversarial audit
+  (.claude/findings/eri-p1-contract-audit-gpt56.md, 2026-07-26):
+
+  `receipt_digest` has TWO status-conditioned branches (contract §1.3), both
+  using the same sha256-canonical-json-v1 generator as
+  source_assertion.identity.algorithm: for `completed`/
+  `completed_with_quarantine`, SHA-256 over the SEVEN-input object
+  (packet_digest, workspace_id, target_run_id-or-null, policy_digest,
+  schema_major_versions, action_manifest_digest, governance_policy_digest);
+  for `blocked` (structural validation failed before any accepted-member
+  manifest existed to hash), SHA-256 over a distinct SIX-input
+  rejected-attempt object (blocked flag, workspace_id, target_run_id-or-
+  null, policy_digest, schema_major_versions, governance_policy_digest,
+  block_reason, attempt_structural_summary) -- `packet_digest` and
+  `action_manifest_digest` are never inputs on this branch because no
+  accepted-member manifest exists yet to hash (audit finding #10).
+
+  `status` is a closed 3-member enum -- `pending` is NEVER a receipt state;
+  it exists only on the separate, mutable
+  external_research_import_checkpoint.schema.yaml (contract §2.2).
+
+  Per-action `reason_code` is REMOVED from this caller-visible schema (audit
+  finding #15): the specific 19-code vocabulary and any reason-differentiated
+  counts exist only in the access-controlled audit record (contract §4.6),
+  referenced here by an opaque `audit_ref`. `completeness_tier` stays fully
+  visible -- it is the item's own positive-progress state, needed for
+  downstream use (contract §2.1), not a cross-resource denial oracle.
+
+  This schema defines no second source-edition, passage, source-assertion,
+  or claim authority: `completeness_tier` mirrors PRD §6.3 exactly.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: external_research_import_receipt
+  receipt_id:
+    type: string
+    pattern: "^erh_[a-f0-9]{64}$"
+  receipt_digest:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  packet_digest:
+    description: >-
+      Null exactly when `status` is `blocked` (contract §1.3, audit finding
+      #10) -- pre-identity structural failure means no accepted-member
+      manifest exists to hash. Non-null (hex64) in every other case.
+    type: [string, "null"]
+    pattern: "^[a-f0-9]{64}$"
+  workspace_id:
+    type: string
+    minLength: 1
+  target_run_id:
+    description: >-
+      Null means staging-only: no run is created and no run-local projection
+      is written. The `verified` completeness tier is categorically
+      unreachable on any action when this is null (contract §1.4) — enforced
+      below.
+    type: [string, "null"]
+  policy_digest:
+    description: >-
+      sha256-canonical-json-v1 digest of the effective
+      external_research_acquisition_policy.schema.yaml configuration in
+      force when staging began, including its metadata_deny_set_version and
+      special_purpose_address_registry_version (contract §1.3, §4.2.4). One
+      of receipt_digest's inputs on both branches -- re-importing the same
+      packet under a changed policy computes a distinct receipt_digest,
+      never a silent reinterpretation of a previously-published receipt.
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  governance_policy_digest:
+    description: >-
+      sha256-canonical-json-v1 digest of the effective rights/sensitivity/
+      workspace-authorization governance ruleset in force at Step 0
+      (contract §2.4) -- the coarse caller/workspace authorization gate that
+      runs before structural validation. Always non-null: Step 0 runs, and
+      this digest is captured, on every import attempt regardless of
+      whether structural validation subsequently succeeds (audit finding
+      #9). One of receipt_digest's inputs on both branches. A revoked
+      caller replaying an old request is re-evaluated against the CURRENT
+      governance_policy_digest at read time (contract §1.6), independent of
+      what any stored receipt's own governance_policy_digest records.
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  schema_major_versions:
+    description: >-
+      Major versions of every schema external_research_handoff/v1 composes,
+      one of receipt_digest's inputs on both branches (contract §1.3).
+    type: object
+    additionalProperties: false
+    required:
+      - external_research_handoff
+      - external_research_sources
+      - external_assertion_candidates
+      - external_research_import_receipt
+      - external_research_import_checkpoint
+      - external_research_acquisition_policy
+    properties:
+      external_research_handoff:
+        type: integer
+        minimum: 1
+      external_research_sources:
+        type: integer
+        minimum: 1
+      external_assertion_candidates:
+        type: integer
+        minimum: 1
+      external_research_import_receipt:
+        type: integer
+        minimum: 1
+      external_research_import_checkpoint:
+        type: integer
+        minimum: 1
+      external_research_acquisition_policy:
+        type: integer
+        minimum: 1
+  action_manifest_digest:
+    description: >-
+      sha256-canonical-json-v1 digest of the canonical action manifest
+      (contract §1.3a, audit finding #6): a sorted array of
+      `{action_id, kind, member_path, record_digest}` entries, one per
+      declared item that actually ran, wrapped with
+      `action_manifest_algorithm_version`. Null exactly when `status` is
+      `blocked` (mirrors `packet_digest`'s nullability -- no actions exist
+      to manifest). Non-null (hex64) otherwise. Bound into receipt_digest so
+      a future importer/normalization algorithm change that alters derived
+      action structure for the SAME packet_digest produces a distinct
+      receipt_digest rather than silently reusing a prior identity.
+    type: [string, "null"]
+    pattern: "^[a-f0-9]{64}$"
+  action_manifest_algorithm_version:
+    description: >-
+      Version of the action-manifest derivation algorithm (contract §1.3a)
+      used to compute `action_manifest_digest`. Null exactly when `status`
+      is `blocked`; `"1"` (the only v1 value) otherwise.
+    enum:
+      - "1"
+      - null
+  attempt_structural_summary:
+    description: >-
+      Safely captured request metadata for the `blocked` rejected-attempt
+      identity branch (contract §1.3, audit finding #10) -- counts only,
+      computed via the same openat-pinned, symlink-rejecting directory walk
+      that inspects the packet (contract §1.1); counting stops/excludes at
+      the first rejected path component, so these counts never reveal
+      WHERE a structural failure occurred, only aggregate totals. Non-null
+      exactly when `status` is `blocked`; null otherwise.
+    type: [object, "null"]
+    additionalProperties: false
+    required:
+      - observed_member_count
+      - raw_bytes_total
+    properties:
+      observed_member_count:
+        type: integer
+        minimum: 0
+      raw_bytes_total:
+        type: integer
+        minimum: 0
+  importer_contract_version:
+    type: string
+    minLength: 1
+  status:
+    description: >-
+      Closed 3-member enum (contract §2.2). `completed`/
+      `completed_with_quarantine` both mean every declared action reached a
+      terminal outcome; `blocked` means packet-level structural validation
+      failed before any per-item action ran.
+    enum:
+      - completed
+      - completed_with_quarantine
+      - blocked
+  block_reason:
+    description: >-
+      Required non-null exactly when status is `blocked`; null in every
+      other case. Drawn from the packet reason-code family only (PRD §6.5) —
+      never a free-text message. Unlike per-action `reason_code` (removed;
+      see `audit_ref`), `block_reason` describes the submitted packet's own
+      structure back to its own submitter and is not a cross-workspace
+      existence oracle, so it stays directly visible.
+    type: [string, "null"]
+    enum:
+      - required_member_missing
+      - unsupported_schema_version
+      - unsafe_member_path
+      - member_digest_conflict
+      - limit_exceeded
+      - null
+  actions:
+    description: >-
+      One entry per declared source/candidate item that actually ran. Empty
+      when status is `blocked` (blocking happens strictly pre-effects; PRD
+      §6.5). `kind: source` items reach at most `source_resolved`;
+      `kind: candidate` items are the only ones that can reach
+      `passage_resolved`/`verified`, per contract §2.1's scoping note.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - action_id
+        - kind
+        - outcome
+        - completeness_tier
+        - audit_ref
+        - effect_digest
+      properties:
+        action_id:
+          description: >-
+            sha256-canonical-json-v1 digest, formula frozen at contract
+            §1.3a (audit finding #6): binds this action to exactly one
+            declaring packet member path + one validated record's content,
+            with an occurrence index disambiguating exact byte-identical
+            duplicate records. Stable across re-runs of the same packet by
+            the same algorithm version; immune to positional-reordering
+            confusion for non-duplicate records.
+          type: string
+          pattern: "^era_[a-f0-9]{64}$"
+        kind:
+          enum:
+            - source
+            - candidate
+        outcome:
+          description: >-
+            Per-item terminal outcome. There is no per-item "blocked" value
+            — a per-item failure quarantines; it never aborts unrelated
+            items (PRD §6.5).
+          enum:
+            - completed
+            - quarantined
+        completeness_tier:
+          enum:
+            - locator_only
+            - source_resolved
+            - passage_resolved
+            - verified
+            - null
+        audit_ref:
+          description: >-
+            Opaque reference (contract §4.6, audit finding #15) into the
+            access-controlled audit record holding this action's specific
+            reason code (the closed 19-code source/citation/candidate
+            vocabulary, PRD §6.5) and per-reason-code counts. Never itself a
+            reason code, never free text. Required non-null exactly when
+            `outcome` is `quarantined`; null when `completed`.
+          type: [string, "null"]
+          pattern: "^[a-f0-9]{64}$"
+        effect_digest:
+          description: >-
+            sha256-canonical-json-v1 digest, formula frozen at contract
+            §1.3a (audit finding #6): SHA-256 over
+            `{action_id, outcome, completeness_tier, canonical_refs}`, where
+            `canonical_refs` names the downstream canonical identifier(s)
+            this action produced or reused (e.g. source_edition_id,
+            passage_id, source_assertion reference) or is empty when none.
+            Binding `action_id` as the first hashed field means an effect
+            computed for one action can never be mistaken for another
+            action's effect.
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+      allOf:
+        - if:
+            properties:
+              kind:
+                const: source
+            required:
+              - kind
+          then:
+            properties:
+              completeness_tier:
+                enum:
+                  - locator_only
+                  - source_resolved
+                  - null
+        - if:
+            properties:
+              kind:
+                const: candidate
+            required:
+              - kind
+          then:
+            properties:
+              completeness_tier:
+                enum:
+                  - locator_only
+                  - source_resolved
+                  - passage_resolved
+                  - verified
+                  - null
+        - if:
+            properties:
+              outcome:
+                const: completed
+            required:
+              - outcome
+          then:
+            properties:
+              audit_ref:
+                const: null
+        - if:
+            properties:
+              outcome:
+                const: quarantined
+            required:
+              - outcome
+          then:
+            required:
+              - audit_ref
+            properties:
+              audit_ref:
+                not:
+                  const: null
+        - if:
+            properties:
+              completeness_tier:
+                const: verified
+            required:
+              - completeness_tier
+          then:
+            properties:
+              outcome:
+                const: completed
+  counts:
+    description: >-
+      `by_reason_code` is intentionally absent (audit finding #15): it would
+      leak an aggregate of the same per-item denial-cause differential that
+      `audit_ref` already hides. The remaining fields add no new leakage —
+      each is trivially re-derivable by a reader who already sees the full
+      `actions` array (`completed`/`quarantined`/`actions_total` by counting
+      `outcome`; `by_completeness_tier` by counting `completeness_tier`) —
+      so removing them would cost functionality without a security benefit.
+    type: object
+    additionalProperties: false
+    required:
+      - actions_total
+      - completed
+      - quarantined
+      - by_completeness_tier
+    properties:
+      actions_total:
+        type: integer
+        minimum: 0
+      completed:
+        type: integer
+        minimum: 0
+      quarantined:
+        type: integer
+        minimum: 0
+      by_completeness_tier:
+        type: object
+        additionalProperties:
+          type: integer
+          minimum: 0
+  created_at:
+    type: string
+    format: date-time
+required:
+  - schema_version
+  - type
+  - receipt_id
+  - receipt_digest
+  - packet_digest
+  - workspace_id
+  - target_run_id
+  - policy_digest
+  - governance_policy_digest
+  - schema_major_versions
+  - action_manifest_digest
+  - action_manifest_algorithm_version
+  - attempt_structural_summary
+  - importer_contract_version
+  - status
+  - block_reason
+  - actions
+  - counts
+  - created_at
+allOf:
+  # blocked <=> non-null block_reason and empty actions (contract §2.2: a
+  # blocked receipt has an empty resolved/quarantined action set because
+  # blocking happens strictly pre-effects).
+  - if:
+      properties:
+        status:
+          const: blocked
+      required:
+        - status
+    then:
+      required:
+        - block_reason
+      properties:
+        block_reason:
+          not:
+            const: null
+        actions:
+          maxItems: 0
+        packet_digest:
+          const: null
+        action_manifest_digest:
+          const: null
+        action_manifest_algorithm_version:
+          const: null
+        attempt_structural_summary:
+          not:
+            const: null
+  - if:
+      not:
+        properties:
+          status:
+            const: blocked
+        required:
+          - status
+    then:
+      properties:
+        block_reason:
+          const: null
+        packet_digest:
+          not:
+            const: null
+        action_manifest_digest:
+          not:
+            const: null
+        action_manifest_algorithm_version:
+          const: "1"
+        attempt_structural_summary:
+          const: null
+  # completed <=> zero quarantined actions; completed_with_quarantine <=> at
+  # least one quarantined action (contract §2.2, exact mutual-exclusion
+  # partition mirroring carp-contract-freeze's covered/residual pattern).
+  - if:
+      properties:
+        status:
+          const: completed
+      required:
+        - status
+    then:
+      properties:
+        counts:
+          properties:
+            quarantined:
+              const: 0
+  - if:
+      properties:
+        status:
+          const: completed_with_quarantine
+      required:
+        - status
+    then:
+      properties:
+        counts:
+          properties:
+            quarantined:
+              not:
+                const: 0
+  # target_run_id null (staging-only) => no action anywhere may report the
+  # verified tier (contract §1.4: "the verified completeness tier is
+  # categorically unreachable when target_run_id is null").
+  - if:
+      properties:
+        target_run_id:
+          const: null
+      required:
+        - target_run_id
+    then:
+      properties:
+        actions:
+          items:
+            properties:
+              completeness_tier:
+                not:
+                  const: verified

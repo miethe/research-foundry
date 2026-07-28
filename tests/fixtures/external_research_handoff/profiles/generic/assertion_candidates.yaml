@@ -1,0 +1,49 @@
+schema_name: external_assertion_candidates
+schema_version: "1.0"
+candidates:
+  - candidate_id: cand_01
+    statement: "Token-bucket limiters allow bursts up to the bucket size before throttling."
+    value: null
+    unit: null
+    direction: null
+    scope:
+      population: null
+      qualifier_band: null
+    source_refs: ["src_01"]
+    relation: supports
+    classification: assertion
+    quote: "the bucket size sets the maximum burst a client may send before being throttled"
+    selector:
+      kind: text_quote
+    producer_confidence: 0.7
+    extensions: {}
+  - candidate_id: cand_02
+    statement: "Sliding-window counters likely reduce fixed-window boundary bursts, inferred from the general shape of both algorithms rather than a stated benchmark."
+    value: null
+    unit: null
+    direction: null
+    scope:
+      population: null
+      qualifier_band: null
+    source_refs: ["src_01"]
+    relation: context
+    classification: inference
+    quote: null
+    selector: null
+    producer_confidence: 0.4
+    extensions: {}
+  - candidate_id: cand_03
+    statement: "Neither algorithm alone addresses cross-tenant fairness; this pass did not resolve multi-node shared-clock behavior and leaves it as an open gap."
+    value: null
+    unit: null
+    direction: null
+    scope:
+      population: null
+      qualifier_band: null
+    source_refs: []
+    relation: null
+    classification: annotation
+    quote: null
+    selector: null
+    producer_confidence: null
+    extensions: {}
