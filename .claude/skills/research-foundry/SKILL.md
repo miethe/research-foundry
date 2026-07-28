@@ -83,6 +83,7 @@ Match the operator's intent to the loop step, then the `rf` command.
 | Launch / stream / accept a web-driven agent job | — | `rf agent-job launch` · `rf agent-job list` · `rf agent-job stream <id>` · `rf agent-job accept <id>` · `rf agent-job status <id>` | — |
 | Audit log — list / show / health | — | `rf audit list` · `rf audit show <id>` · `rf audit health` | — |
 | Import an external research report (ChatGPT/Perplexity/Gemini/NotebookLM/generic packet) | — | `rf intake external-report <packet_dir> --workspace <ws> [--run <run>] [--dry-run] [--resume] [--limit N] [--json]` | — |
+| Recall what the corpus already holds (read-only Knowledge MCP) | — | `rf knowledge search <query> [--kind …]` · `rf knowledge fetch\|source-get\|report-get\|run-get <id>` | rf_knowledge_lookup |
 
 ### Command notes
 
@@ -97,6 +98,7 @@ Match the operator's intent to the loop step, then the `rf` command.
 - **`rf capture --backlog-idea-ref RIB-NNN`** links the captured idea to an entry in `backlog/research_idea_backlog.yaml`. The ref is validated before the idea is written. Run metadata `linked_projects`, `category`, and `tags` are populated on every run.
 - **`rf catalog` / `rf workspace` / `rf report draft` / `rf agent-job` / `rf audit`** are the web-platform surfaces added post-MVP (public multi-user release, `src/research_foundry/api/`, `src/research_foundry/cli/commands/agent_job.py`): catalog indexing, workspace row-level-isolation migration (WKSP-304), the report Builder/drafts workflow, web-driven agent-job launch (distinct from the CLI-orchestrated `rf swarm run`/discovery-agent paths in steps 7–9), and the append-only audit log. They sit alongside, not inside, the 21-step research loop — most are also reachable over HTTP via `rf serve`.
 - **`rf intake external-report`** (External Research Report Interchange, ERI) imports a materialized-directory packet from an external research tool. `report.md` stays non-authoritative `platform_synthesis` — it never becomes a source card, claim, or assertion; every cited source/candidate is independently re-acquired (SSRF-safe gate, no vendor-delegated fetch) and exact-passage-resolved through the existing Reusable Assertion Ledger before it can be promoted. Omitting `--run` is staging-only (no run created); `--dry-run` never mutates state; large packets batch and resume (`--limit`/`--resume`). Full guide: `docs/user/external-research-interchange.md`; contract: `docs/dev/architecture/external-research-handoff-contract.md`.
+- **`rf knowledge`** is read-only recall over the already-governed corpus — it is NOT `rf search`/`rf fetch` (Search Router: acquires new sources, mints source cards, writes, costs money). Its output is never evidence and never enters the claim ledger by being read. Full detail + gotchas: `.claude/skills/rf-knowledge/SKILL.md`; delegate bounded lookups to `rf_knowledge_lookup`.
 
 ## Claim-traceability discipline
 
