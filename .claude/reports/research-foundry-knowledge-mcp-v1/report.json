@@ -4,7 +4,7 @@
     "route": "feature",
     "title": "Research Foundry Knowledge MCP — Local Read-Only Knowledge Plane",
     "project": "research-foundry-knowledge-mcp-v1",
-    "revision": 1,
+    "revision": 2,
     "generated_from": {
       "repo": "/Users/miethe/dev/homelab/development/research-foundry",
       "ref": "main (local, not pushed)",
@@ -13,7 +13,7 @@
     "truth_status": "shipped",
     "generated_by": "delivery-report 0.1.0",
     "generated_at": "2026-07-28",
-    "scope_note": "Feature-completion report for the research-foundry-knowledge-mcp-v1 plan (Tier 3, 34 pts, phases P1–P6). Squash-merged to local main 1376e85; ERI (e76784b) later layered on top of the same branch.",
+    "scope_note": "Feature-completion report for the research-foundry-knowledge-mcp-v1 plan (Tier 3, 34 pts, phases P1–P6). Squash-merged to local main 1376e85; ERI (e76784b) later layered on top of the same branch. Interactive next-actions table with per-row copyable agent handoffs (command, paths, prompt): see the companion next-actions.html.",
     "constraints": "Research Foundry: Markdown/YAML is canonical and the claim ledger is authority. The Knowledge MCP is read-only, local/loopback-only, and schema-aligned-only — it is NOT OpenAI/ChatGPT compatible and has no remote/HTTPS transport. It must never write, hold provider credentials, or import the Search Router/Operator registries. RF main is local-only: do not push to origin without explicit approval. Agent-writable paths must never mint CLEARED_*/counsel_approved/attested rights values."
   },
   "report_policy": {
@@ -202,6 +202,40 @@
         "tracker": null,
         "trigger": "When AuthIdentity / resolve_workspace_isolation_active are relocated out of the research_foundry.api.* package.",
         "prompt": "Scope decoupling RF auth types (AuthIdentity, resolve_workspace_isolation_active) out of research_foundry.api.* into a neutral module with back-compat re-exports, so rf-knowledge-mcp imports under the mcp extra alone. Verify via the transitive-closure test that fastapi leaves sys.modules. Do not change auth behavior."
+      }
+    },
+    {
+      "title": "Integrate the Knowledge MCP into the full AOS",
+      "detail": "AOS subsystems (op, Hermes, node agents, MeatyWiki) don't yet know to use the new knowledge plane. Deploy rf-knowledge-mcp on rocket-fedora alongside existing services, register it in SERVICES.md + tool/model routing, and decide the loopback/stdio binding.",
+      "handoff": {
+        "command": "/op",
+        "repo": "/Users/miethe/dev/homelab/development/agentic_meta_dev",
+        "paths": [
+          "infra/agentic-node/SERVICES.md",
+          "infra/agentic-node/bootstrap-agentic-node.sh",
+          "docs/ARTIFACT-UPSTREAM-REGISTRY.md"
+        ],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": null,
+        "prompt": "Route integrating rf-knowledge-mcp into the AOS: deploy it on rocket-fedora as a systemd --user unit (ensure the serve extra per KMCP-F1), register it in SERVICES.md and tool routing so op/Hermes/node agents can query RF knowledge. Keep it loopback/stdio only; no remote exposure."
+      }
+    },
+    {
+      "title": "Add a skill/agent to make the Knowledge MCP usable in workflows",
+      "detail": "Eight tools + a CLI exist, but agents won't reach for them without guidance. Consider an rf-knowledge skill (when to search vs fetch, RF vs core tools, ID/URL semantics) and/or a knowledge-lookup subagent, or extend the research-foundry skill, so the plane is actually used.",
+      "handoff": {
+        "command": "/op",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "docs/user/knowledge-mcp.md",
+          "docs/dev/architecture/knowledge-mcp.md",
+          ".claude/skills/research-foundry/SKILL.md"
+        ],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": null,
+        "prompt": "Route deciding how to enable the Knowledge MCP for agents: weigh a new rf-knowledge skill vs a knowledge-lookup subagent vs extending the research-foundry skill. The deliverable must teach when to use search/fetch/rf_* and the eight tools. Read-only, local, schema-aligned-only."
       }
     },
     {
