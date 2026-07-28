@@ -193,9 +193,9 @@ list, invariants, or the Deferred / Do Not Say table must be reflected there and
 
 - `/Users/miethe/dev/homelab/development/research-foundry/docs/user/knowledge-mcp.md` — operator guide.
 - `/Users/miethe/dev/homelab/development/research-foundry/docs/dev/architecture/knowledge-mcp.md` — architecture, DTOs, invariants.
-- `/Users/miethe/dev/homelab/development/research-foundry/.claude/skills/rf-knowledge/references/tool-reference.md` — full tool + transport reference.
-- `/Users/miethe/dev/homelab/development/research-foundry/.claude/skills/rf-knowledge/references/gotchas.md` — full gotcha detail + claim-ledger bridge.
-- `/Users/miethe/dev/homelab/development/research-foundry/.claude/skills/rf-knowledge/SPEC.md` — capability contract, invariants, and change protocol.
-- `/Users/miethe/dev/homelab/development/research-foundry/.claude/skills/research-foundry/SKILL.md` — running a research run, acquiring new sources, the claim pipeline.
-- `/Users/miethe/dev/homelab/development/research-foundry/.claude/skills/research-foundry-swarm/SKILL.md` — workspace bootstrap + swarm orchestration companion.
-- `/Users/miethe/dev/homelab/development/research-foundry/.claude/agents/research/rf_knowledge_lookup.md` — bounded lookup subagent that isolates recall from the orchestrator's context.
+- `/Users/miethe/dev/homelab/development/research-foundry/.Codex/skills/rf-knowledge/references/tool-reference.md` — full tool + transport reference.
+- `/Users/miethe/dev/homelab/development/research-foundry/.Codex/skills/rf-knowledge/references/gotchas.md` — full gotcha detail + claim-ledger bridge.
+- `/Users/miethe/dev/homelab/development/research-foundry/.Codex/skills/rf-knowledge/SPEC.md` — capability contract, invariants, and change protocol.
+- `/Users/miethe/dev/homelab/development/research-foundry/.Codex/skills/research-foundry/SKILL.md` — running a research run, acquiring new sources, the claim pipeline.
+- `/Users/miethe/dev/homelab/development/research-foundry/.Codex/skills/research-foundry-swarm/SKILL.md` — workspace bootstrap + swarm orchestration companion.
+- `/Users/miethe/dev/homelab/development/research-foundry/.Codex/agents/research/rf_knowledge_lookup.md` — bounded lookup subagent that isolates recall from the orchestrator's context.
