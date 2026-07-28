@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; connect-src 'none'; media-src data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Research Foundry Knowledge MCP &#8212; Local Read-Only Knowledge Plane &mdash; Feature Report</title>
+<style>/* delivery-report &#8212; unified theme-aware stylesheet.
+ * Four-block token system (&#167;4 rule 2): :root light default, dark via media query,
+ * and explicit :root[data-theme=dark|light] so a viewer toggle wins both directions.
+ * Route chrome is scoped under body.route-feature / body.route-status; the handoff
+ * component, domain chips, media, and theme toggle are shared. */
+
+:root {
+  --paper:#f4f7f5; --paper-2:#ffffff; --rule:#d3ded9; --rule-hard:#b3c4be;
+  --ink:#0d1c1b; --ink-2:#354746; --muted:#6a7d79;
+  --accent:#0e6f68; --accent-dim:#d5e8e5; --know:#4a5486; --know-dim:#e2e5f2;
+  --crit:#a3302b; --crit-dim:#f6e0de; --warn:#8a5f05; --warn-dim:#f7ecd2;
+  --ok:#2f6d43; --ok-dim:#dcecdf; --idle:#8493a0; --idle-dim:#e6eaed;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --maxw: 1180px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:#0b1413; --paper-2:#111d1c; --rule:#233634; --rule-hard:#35504c;
+    --ink:#e7efec; --ink-2:#b3c5c1; --muted:#7d918d;
+    --accent:#4fc4b6; --accent-dim:#14312e; --know:#93a2e0; --know-dim:#1c2338;
+    --crit:#ef8078; --crit-dim:#371917; --warn:#d9a63c; --warn-dim:#33270e;
+    --ok:#74c68c; --ok-dim:#16301f; --idle:#7b8b95; --idle-dim:#1c2528;
+  }
+}
+:root[data-theme="dark"] {
+  --paper:#0b1413; --paper-2:#111d1c; --rule:#233634; --rule-hard:#35504c;
+  --ink:#e7efec; --ink-2:#b3c5c1; --muted:#7d918d;
+  --accent:#4fc4b6; --accent-dim:#14312e; --know:#93a2e0; --know-dim:#1c2338;
+  --crit:#ef8078; --crit-dim:#371917; --warn:#d9a63c; --warn-dim:#33270e;
+  --ok:#74c68c; --ok-dim:#16301f; --idle:#7b8b95; --idle-dim:#1c2528;
+}
+:root[data-theme="light"] {
+  --paper:#f4f7f5; --paper-2:#ffffff; --rule:#d3ded9; --rule-hard:#b3c4be;
+  --ink:#0d1c1b; --ink-2:#354746; --muted:#6a7d79;
+  --accent:#0e6f68; --accent-dim:#d5e8e5; --know:#4a5486; --know-dim:#e2e5f2;
+  --crit:#a3302b; --crit-dim:#f6e0de; --warn:#8a5f05; --warn-dim:#f7ecd2;
+  --ok:#2f6d43; --ok-dim:#dcecdf; --idle:#8493a0; --idle-dim:#e6eaed;
+}
+
+/* ---- base ---- */
+* { box-sizing: border-box; }
+body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans);
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+a { color:var(--accent); }
+button { font:inherit; }
+code { font-family:var(--mono); font-size:0.88em; background:var(--accent-dim); color:var(--ink);
+  padding:1px 5px; border-radius:3px; overflow-wrap:anywhere; }
+.muted { color:var(--muted); }
+.wrap { max-width:var(--maxw); margin:0 auto; padding:0 28px 100px; }
+
+/* ---- theme toggle (shared, &#167;4.2) ---- */
+.theme-toggle { position:fixed; top:14px; right:16px; z-index:50; font-family:var(--mono);
+  font-size:10px; letter-spacing:0.09em; text-transform:uppercase; font-weight:600;
+  padding:6px 11px; cursor:pointer; background:var(--paper-2); color:var(--ink);
+  border:1px solid var(--rule-hard); border-radius:2px; }
+.theme-toggle:hover { border-color:var(--accent); color:var(--accent); }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* ==================================================================== */
+/* STATUS ROUTES &#8212; program | phase | readiness (editorial, multi-item)   */
+/* ==================================================================== */
+.route-status .masthead { border-bottom:2px solid var(--ink); padding:46px 0 20px; margin-bottom:34px; }
+.route-status .eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:0.13em; text-transform:uppercase;
+  color:var(--accent); margin:0 0 14px; display:flex; flex-wrap:wrap; gap:8px 16px; align-items:baseline; }
+.route-status .eyebrow .sep { color:var(--rule-hard); }
+.route-status h1 { font-size:clamp(30px,4.4vw,47px); line-height:1.04; letter-spacing:-0.024em; font-weight:700;
+  margin:0 0 14px; text-wrap:balance; }
+.route-status .dek { font-size:17px; color:var(--ink-2); max-width:62ch; margin:0; }
+.route-status section { margin:52px 0 0; }
+.route-status h2 { font-size:12px; font-family:var(--mono); letter-spacing:0.13em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; margin:0 0 6px; padding-bottom:8px;
+  border-bottom:1px solid var(--rule); display:flex; justify-content:space-between; gap:16px; align-items:baseline; }
+.route-status h2 .h2-note { color:var(--rule-hard); letter-spacing:0.04em; text-transform:none; font-size:11px; }
+.route-status h3 { font-size:20px; letter-spacing:-0.015em; margin:26px 0 8px; font-weight:650; text-wrap:balance; }
+.route-status p { margin:0 0 14px; max-width:72ch; }
+
+.vitals { display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr)); gap:1px;
+  background:var(--rule); border:1px solid var(--rule); margin:22px 0 0; }
+.vital { background:var(--paper-2); padding:15px 16px 14px; }
+.vital .k { font-family:var(--mono); font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
+  color:var(--muted); margin-bottom:7px; }
+.vital .v { font-family:var(--mono); font-size:26px; font-weight:600; line-height:1;
+  letter-spacing:-0.02em; font-variant-numeric:tabular-nums; }
+.vital .sub { font-size:12px; color:var(--muted); margin-top:6px; line-height:1.35; }
+.vital .measured { font-family:var(--mono); font-size:10px; color:var(--rule-hard); margin-top:6px; line-height:1.4; }
+.vital.is-crit .v { color:var(--crit); }
+.vital.is-warn .v { color:var(--warn); }
+.vital.is-ok .v { color:var(--ok); }
+
+.callout { border:1px solid var(--rule); border-left:4px solid var(--muted); background:var(--paper-2);
+  padding:18px 20px; margin:22px 0; }
+.callout.crit { border-left-color:var(--crit); background:var(--crit-dim); }
+.callout.warn { border-left-color:var(--warn); background:var(--warn-dim); }
+.callout.fix  { border-left-color:var(--accent); background:var(--accent-dim); }
+.callout .ct { font-family:var(--mono); font-size:11px; letter-spacing:0.11em; text-transform:uppercase;
+  font-weight:600; margin-bottom:8px; }
+.callout.crit .ct { color:var(--crit); }
+.callout.warn .ct { color:var(--warn); }
+.callout.fix  .ct { color:var(--accent); }
+.callout p:last-child { margin-bottom:0; }
+.callout details.ns { border-top-color:var(--rule-hard); }
+
+.scroller { overflow-x:auto; border:1px solid var(--rule); background:var(--paper-2); margin:22px 0 10px; }
+table.flow { border-collapse:collapse; width:100%; min-width:760px; font-size:13px; }
+table.flow th, table.flow td { border-bottom:1px solid var(--rule); padding:0; }
+table.flow thead th { font-family:var(--mono); font-size:10px; letter-spacing:0.07em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; text-align:center; padding:10px 4px 9px;
+  border-bottom:1px solid var(--rule-hard); white-space:nowrap; }
+table.flow thead th.rowhead { text-align:left; padding-left:14px; min-width:190px; }
+table.flow th.rowhead { text-align:left; padding:9px 10px 9px 14px; font-weight:550; font-size:13px;
+  color:var(--ink); white-space:nowrap; }
+table.flow th.rowhead .tag { display:block; font-family:var(--mono); font-size:10px; letter-spacing:0.06em;
+  color:var(--muted); text-transform:uppercase; margin-top:1px; }
+td.cell { text-align:center; vertical-align:middle; padding:6px 3px; }
+.dot { display:inline-flex; align-items:center; justify-content:center; width:30px; height:22px;
+  border-radius:2px; font-family:var(--mono); font-size:11px; font-variant-numeric:tabular-nums; font-weight:600; }
+.d1 { background:color-mix(in srgb, var(--accent) 34%, transparent); color:var(--ink); }
+.d2 { background:color-mix(in srgb, var(--accent) 58%, transparent); color:var(--ink); }
+.d3 { background:var(--accent); color:var(--paper); }
+@media (prefers-color-scheme: dark) { .d3 { color:#06201e; } }
+:root[data-theme="dark"] .d3 { color:#06201e; }
+:root[data-theme="light"] .d3 { color:var(--paper); }
+td.cell.empty::after { content:"\00B7"; color:var(--rule-hard); font-family:var(--mono); }
+.legend { display:flex; flex-wrap:wrap; gap:6px 20px; font-family:var(--mono); font-size:10.5px;
+  letter-spacing:0.05em; text-transform:uppercase; color:var(--muted); margin-bottom:26px; }
+.legend span { display:inline-flex; align-items:center; gap:6px; }
+.swatch { width:13px; height:13px; border-radius:2px; display:inline-block; }
+
+.tracks { display:grid; grid-template-columns:1fr 1fr; gap:26px; margin-top:22px; }
+@media (max-width:900px) { .tracks { grid-template-columns:1fr; } }
+.track-h { font-family:var(--mono); font-size:11px; letter-spacing:0.11em; text-transform:uppercase;
+  color:var(--ink); font-weight:600; padding-bottom:8px; border-bottom:1px solid var(--rule-hard); }
+.track-h em { font-style:normal; color:var(--muted); font-weight:400; letter-spacing:0.04em; }
+.step { display:grid; grid-template-columns:66px 1fr; gap:14px; border-bottom:1px solid var(--rule);
+  padding:13px 14px 13px 12px; border-left:4px solid var(--idle); background:var(--paper-2); }
+.step.s-done { border-left-color:var(--ok); }
+.step.s-part { border-left-color:var(--accent); }
+.step.s-blocked { border-left-color:var(--warn); }
+.step.s-none { border-left-color:var(--rule-hard); }
+.step .code { font-family:var(--mono); font-size:15px; font-weight:700; letter-spacing:-0.01em;
+  color:var(--ink); line-height:1.4; }
+.step .code small { display:block; font-size:9.5px; font-weight:600; letter-spacing:0.09em;
+  text-transform:uppercase; margin-top:3px; }
+.s-done .code small { color:var(--ok); }
+.s-part .code small { color:var(--accent); }
+.s-blocked .code small { color:var(--warn); }
+.s-none .code small { color:var(--idle); }
+.step .body { font-size:13.5px; line-height:1.5; }
+.step .body .ev { display:block; font-family:var(--mono); font-size:11px; color:var(--muted);
+  margin-top:5px; line-height:1.45; }
+.step .body .domline { margin-bottom:6px; }
+.step .body > .doms { display:flex; margin-bottom:6px; }
+.here { background:var(--accent); color:var(--paper); padding:9px 14px; font-family:var(--mono);
+  font-size:11px; letter-spacing:0.13em; text-transform:uppercase; font-weight:700;
+  display:flex; justify-content:space-between; gap:10px; align-items:center; margin-top:14px; }
+@media (prefers-color-scheme: dark) { .here { color:#06201e; } }
+:root[data-theme="dark"] .here { color:#06201e; }
+:root[data-theme="light"] .here { color:var(--paper); }
+
+table.data { border-collapse:collapse; width:100%; min-width:820px; font-size:13.5px; }
+table.data th { font-family:var(--mono); font-size:10px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; text-align:left; padding:10px 14px;
+  border-bottom:1px solid var(--rule-hard); white-space:nowrap; }
+table.data td { padding:11px 14px; border-bottom:1px solid var(--rule); vertical-align:top; line-height:1.45; }
+table.data tr:last-child td { border-bottom:none; }
+table.data td.nowrap { white-space:nowrap; }
+table.data td .doms { display:flex; max-width:150px; }
+.route-status .pill { display:inline-block; font-family:var(--mono); font-size:10px; letter-spacing:0.07em;
+  text-transform:uppercase; font-weight:600; padding:3px 8px; border-radius:2px; white-space:nowrap; }
+.p-ok { background:var(--ok-dim); color:var(--ok); }
+.p-part { background:var(--accent-dim); color:var(--accent); }
+.p-none { background:var(--idle-dim); color:var(--idle); }
+.p-blocked { background:var(--warn-dim); color:var(--warn); }
+.p-crit { background:var(--crit-dim); color:var(--crit); }
+.p-deferred { background:var(--know-dim); color:var(--know); }
+.route-status footer { margin-top:56px; padding-top:20px; border-top:1px solid var(--rule);
+  font-size:12px; color:var(--muted); line-height:1.6; }
+.route-status footer strong { color:var(--ink-2); }
+
+/* ==================================================================== */
+/* FEATURE ROUTE &#8212; retrospective single feature (token-based, both themes)*/
+/* ==================================================================== */
+.route-feature .shell { width:min(var(--maxw), calc(100% - 36px)); margin:0 auto; }
+.route-feature .hero { padding:64px 0 40px; border-bottom:2px solid var(--ink); }
+.route-feature .hero .eyebrow { color:var(--accent); font-family:var(--mono); font-size:11px; font-weight:600;
+  letter-spacing:0.13em; text-transform:uppercase; }
+.route-feature h1 { max-width:900px; margin:14px 0 14px; font-size:clamp(30px,5vw,52px); line-height:1.04;
+  letter-spacing:-0.03em; font-weight:700; text-wrap:balance; }
+.route-feature .lede { max-width:820px; margin:0; color:var(--ink-2); font-size:clamp(16px,2vw,20px); }
+.route-feature .meta { display:flex; flex-wrap:wrap; gap:9px; margin-top:26px; }
+.route-feature .pill { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--rule-hard);
+  border-radius:2px; padding:5px 10px; background:var(--paper-2); color:var(--ink-2);
+  font-family:var(--mono); font-size:11px; letter-spacing:0.04em; }
+.route-feature .pill.verified, .status.passed, .status.resolved, .status.shipped { border-color:var(--ok); color:var(--ok); }
+.route-feature .pill.draft, .status.failed, .status.open { border-color:var(--crit); color:var(--crit); }
+.route-feature .pill.partial, .status.unverified, .status.deferred, .status.not_executed, .status.owner_data_absent,
+  .status.accepted { border-color:var(--warn); color:var(--warn); }
+.draft-banner { margin-top:22px; padding:12px 16px; border:1px solid var(--crit); border-left:4px solid var(--crit);
+  background:var(--crit-dim); color:var(--crit); font-weight:700; font-family:var(--mono); font-size:12px;
+  letter-spacing:0.04em; text-transform:uppercase; }
+.route-feature .layout { display:grid; grid-template-columns:210px minmax(0,1fr); gap:44px; padding:34px 0 72px; }
+.route-feature .toc { position:sticky; top:20px; align-self:start; border:1px solid var(--rule);
+  background:var(--paper-2); padding:16px; }
+.route-feature .toc strong { display:block; margin-bottom:9px; font-family:var(--mono); font-size:10px;
+  letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); }
+.route-feature .toc a { display:block; padding:6px 0; color:var(--ink-2); text-decoration:none; font-size:13.5px; }
+.route-feature .toc a:hover { color:var(--accent); }
+.route-feature main { min-width:0; }
+.route-feature section { scroll-margin-top:22px; padding:34px 0; border-bottom:1px solid var(--rule); }
+.route-feature section:first-child { padding-top:0; }
+.route-feature h2 { margin:0 0 18px; font-size:clamp(22px,3vw,32px); letter-spacing:-0.02em; font-weight:680; }
+.route-feature h3 { margin:0 0 8px; font-size:16px; font-weight:650; }
+.route-feature p { margin:0 0 14px; max-width:74ch; }
+.split { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
+.card { border:1px solid var(--rule); background:var(--paper-2); padding:19px 20px; }
+.card.accent { border-top:3px solid var(--know); }
+.card p:last-child { margin-bottom:0; }
+.beneficiary { color:var(--know); font-family:var(--mono); font-size:10px; font-weight:600;
+  letter-spacing:0.08em; text-transform:uppercase; margin-bottom:6px; }
+.list { margin:0; padding-left:1.25rem; }
+.list li { margin:8px 0; }
+.change { display:grid; grid-template-columns:minmax(140px,.35fr) 1fr; gap:18px; padding:19px 0;
+  border-top:1px solid var(--rule); }
+.change:first-child { border-top:0; }
+.area { color:var(--accent); font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:0.04em; }
+.technical { margin-top:9px; color:var(--muted); font-size:13px; }
+.refs { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+.ref { border-radius:2px; padding:3px 8px; background:var(--idle-dim); color:var(--ink-2);
+  text-decoration:none; font:600 11px var(--mono); }
+.ref:hover { color:var(--accent); }
+.status { display:inline-block; margin-bottom:10px; border:1px solid var(--rule-hard); border-radius:2px;
+  padding:3px 8px; font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; }
+.validation { width:100%; border-collapse:collapse; font-size:13.5px; }
+.validation th, .validation td { padding:13px 12px; border-bottom:1px solid var(--rule); text-align:left; vertical-align:top; }
+.validation th { color:var(--muted); font-family:var(--mono); font-size:10px; letter-spacing:0.08em; text-transform:uppercase; }
+.visual-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; }
+.visual { overflow:hidden; border:1px solid var(--rule); background:var(--paper-2); }
+.visual img { display:block; width:100%; height:auto; max-height:720px; object-fit:contain; }
+.visual figcaption { padding:12px 15px; color:var(--muted); font-size:12px; border-top:1px solid var(--rule); }
+.visual-label { color:var(--know); font-family:var(--mono); font-weight:600; text-transform:uppercase; letter-spacing:0.08em; }
+.chart, .diagram { overflow-x:auto; border:1px solid var(--rule); padding:16px; background:var(--paper-2); }
+.chart svg, .diagram svg { display:block; min-width:640px; width:100%; height:auto; }
+.timeline { position:relative; margin-left:8px; padding-left:25px; border-left:2px solid var(--rule-hard); }
+.moment { position:relative; padding:0 0 22px; }
+.moment::before { content:""; position:absolute; left:-32px; top:5px; width:11px; height:11px; border-radius:50%;
+  background:var(--accent); box-shadow:0 0 0 4px var(--paper); }
+.moment strong { display:block; }
+.evidence { display:grid; grid-template-columns:110px 1fr; gap:14px; padding:14px 0; border-top:1px solid var(--rule); }
+.evidence:first-child { border-top:0; }
+.evidence-id { color:var(--accent); font:600 12px var(--mono); }
+.evidence-meta { color:var(--muted); font-size:13px; }
+.toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-top:20px; }
+.btn { cursor:pointer; border:1px solid var(--rule-hard); border-radius:2px; padding:7px 11px;
+  background:var(--paper-2); color:var(--ink); font-family:var(--mono); font-size:11px; letter-spacing:0.04em; }
+.btn:hover { border-color:var(--accent); color:var(--accent); }
+.route-feature footer { padding:26px 0 50px; color:var(--muted); font-size:12px; }
+@media (max-width:780px) {
+  .route-feature .layout { grid-template-columns:1fr; }
+  .route-feature .toc { position:static; }
+  .split { grid-template-columns:1fr; }
+  .change { grid-template-columns:1fr; gap:6px; }
+  .validation { display:block; overflow-x:auto; }
+}
+
+/* ==================================================================== */
+/* SHARED &#8212; domain chips + handoff copy component + code-copy            */
+/* ==================================================================== */
+.doms { display:inline-flex; flex-wrap:wrap; gap:4px; vertical-align:middle; }
+.dom { font-family:var(--mono); font-size:9.5px; letter-spacing:0.09em; text-transform:uppercase;
+  font-weight:600; padding:2px 6px; border-radius:2px; white-space:nowrap;
+  border:1px solid currentColor; line-height:1.5; }
+.dom-build { color:var(--accent); }
+.dom-know  { color:var(--know); }
+.dom-gov   { color:var(--warn); }
+
+details.ns { margin-top:10px; border-top:1px dashed var(--rule); }
+details.ns > summary { cursor:pointer; list-style:none; padding:7px 0 0; font-family:var(--mono);
+  font-size:10px; letter-spacing:0.11em; text-transform:uppercase; color:var(--accent);
+  font-weight:600; display:flex; align-items:center; gap:7px; user-select:none; }
+details.ns > summary::-webkit-details-marker { display:none; }
+details.ns > summary::before { content:"\25B8"; display:inline-block; transition:transform 0.14s ease; font-size:11px; }
+details.ns[open] > summary::before { transform:rotate(90deg); }
+details.ns > summary:hover { color:var(--ink); }
+details.ns.human > summary { color:var(--warn); }
+.ns-body { margin-top:9px; border:1px solid var(--rule); background:var(--paper);
+  padding:12px 13px 11px; display:grid; gap:9px; }
+.route-feature .ns-body, td .ns-body { background:var(--paper-2); }
+.ns-row { display:grid; grid-template-columns:90px 1fr; gap:10px; align-items:baseline; }
+.ns-row .kk { font-family:var(--mono); font-size:9.5px; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; }
+.ns-row .vv { font-family:var(--mono); font-size:11.5px; line-height:1.6; word-break:break-word; }
+.ns-row .vv .cmd { color:var(--accent); font-weight:600; }
+.ns-row .vv .cmd.human { color:var(--warn); }
+.ns-row .vv .idc { display:inline-block; background:var(--idle-dim); color:var(--ink-2);
+  padding:0 4px; border-radius:2px; margin:0 3px 3px 0; }
+.ns-row .vv .gate { background:var(--warn-dim); color:var(--warn); }
+.ns-row .vv .miss { color:var(--crit); }
+.ns-prompt { font-family:var(--mono); font-size:11.5px; line-height:1.6; color:var(--ink-2);
+  background:var(--paper-2); border-left:2px solid var(--rule-hard); padding:9px 11px;
+  white-space:pre-wrap; margin:0; }
+.ns-foot { display:flex; justify-content:flex-end; gap:8px; }
+.copy-btn { font-family:var(--mono); font-size:10px; letter-spacing:0.09em; text-transform:uppercase;
+  font-weight:600; padding:5px 11px; cursor:pointer; background:var(--accent); color:var(--paper-2);
+  border:1px solid var(--accent); border-radius:2px; transition:background 0.12s ease, color 0.12s ease; }
+@media (prefers-color-scheme: dark) { .copy-btn { color:#06201e; } }
+:root[data-theme="dark"] .copy-btn { color:#06201e; }
+:root[data-theme="light"] .copy-btn { color:var(--paper-2); }
+.copy-btn:hover { background:transparent; color:var(--accent); }
+.copy-btn.done { background:var(--ok); border-color:var(--ok); color:var(--paper-2); }
+.ns-payload { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:pre; }
+.ns-fallback { width:100%; min-height:150px; font-family:var(--mono); font-size:11px; line-height:1.55;
+  background:var(--paper-2); color:var(--ink); border:1px solid var(--accent); border-radius:2px;
+  padding:9px 11px; resize:vertical; white-space:pre; }
+
+/* per-<code> inline copy (feature route, &#167;7.4) */
+.copyable { cursor:pointer; border-bottom:1px dotted var(--rule-hard); }
+.copyable:hover { background:var(--accent-dim); }
+.copyable.done { background:var(--ok-dim); }
+
+figure { margin:26px 0; }
+figure img { width:100%; height:auto; display:block; border:1px solid var(--rule-hard); }
+figcaption { font-family:var(--mono); font-size:11px; color:var(--muted); line-height:1.5; margin-top:9px;
+  padding-left:10px; border-left:2px solid var(--rule-hard); max-width:78ch; }
+figcaption b { color:var(--ink-2); font-weight:600; }
+
+/* ==================================================================== */
+/* DOSSIER ROUTE &#8212; the living per-feature record (rides route-status)     */
+/* stage timeline + open-question panel + decision log; shares masthead,   */
+/* vitals, items table, corrections, handoff, and theming with route-status*/
+/* ==================================================================== */
+.route-dossier .dossier-meta { display:flex; flex-wrap:wrap; gap:9px; margin:16px 0 0; align-items:center; }
+.route-dossier .tstat { font-family:var(--mono); font-size:10px; letter-spacing:0.08em; text-transform:uppercase;
+  font-weight:600; padding:4px 9px; border-radius:2px; border:1px solid currentColor; }
+.route-dossier .tstat.is-ok { color:var(--ok); }
+.route-dossier .tstat.is-warn { color:var(--warn); }
+.route-dossier .tstat.is-crit { color:var(--crit); }
+.route-dossier .rev-chip { font-family:var(--mono); font-size:10px; letter-spacing:0.06em; text-transform:uppercase;
+  color:var(--muted); border:1px solid var(--rule-hard); border-radius:2px; padding:4px 9px; }
+
+/* stage timeline &#8212; the heart */
+.route-dossier .stage-tools { display:flex; justify-content:flex-end; margin:16px 0 0; }
+.route-dossier .stages { list-style:none; margin:12px 0 0; padding:0; display:grid; gap:1px;
+  background:var(--rule); border:1px solid var(--rule); }
+.route-dossier .stage { display:grid; grid-template-columns:96px minmax(0,1fr); gap:16px; background:var(--paper-2);
+  padding:15px 16px; border-left:4px solid var(--idle); }
+.route-dossier .stage.st-done { border-left-color:var(--ok); }
+.route-dossier .stage.st-active { border-left-color:var(--accent); background:var(--accent-dim); }
+.route-dossier .stage.st-pending { border-left-color:var(--rule-hard); }
+.route-dossier .stage.st-blocked { border-left-color:var(--warn); }
+.route-dossier .stage-rail { font-family:var(--mono); }
+.route-dossier .stage-kind { display:block; font-size:12px; font-weight:700; letter-spacing:-0.01em;
+  color:var(--ink); text-transform:capitalize; }
+.route-dossier .stage-state { display:block; font-size:9.5px; font-weight:600; letter-spacing:0.09em;
+  text-transform:uppercase; margin-top:3px; color:var(--idle); }
+.route-dossier .st-done .stage-state { color:var(--ok); }
+.route-dossier .st-active .stage-state { color:var(--accent); }
+.route-dossier .st-blocked .stage-state { color:var(--warn); }
+.route-dossier .stage-main { min-width:0; }
+.route-dossier .stage-head { display:flex; flex-wrap:wrap; gap:10px; align-items:baseline; }
+.route-dossier .stage-head h3 { margin:0; font-size:17px; font-weight:650; letter-spacing:-0.01em; }
+.route-dossier .stage-time { font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-top:5px;
+  display:flex; flex-wrap:wrap; gap:12px; }
+.route-dossier .stage-outcome { margin:8px 0 0; font-size:14px; }
+.route-dossier .stage-dev { color:var(--warn); font-size:13px; margin:6px 0 0; }
+.route-dossier details.stage-narr { margin-top:9px; }
+.route-dossier details.stage-narr > summary { cursor:pointer; list-style:none; font-family:var(--mono);
+  font-size:10px; letter-spacing:0.11em; text-transform:uppercase; color:var(--accent); font-weight:600;
+  display:flex; align-items:center; gap:7px; user-select:none; }
+.route-dossier details.stage-narr > summary::-webkit-details-marker { display:none; }
+.route-dossier details.stage-narr > summary::before { content:"\25B8"; display:inline-block; transition:transform 0.14s ease; }
+.route-dossier details.stage-narr[open] > summary::before { transform:rotate(90deg); }
+.route-dossier details.stage-narr p { margin:9px 0 0; font-size:13.5px; max-width:74ch; }
+.route-dossier .stage-shots { display:flex; flex-wrap:wrap; gap:12px; margin:12px 0 0; }
+.route-dossier .stage-shot { margin:0; max-width:300px; }
+.route-dossier .stage-shot img { width:100%; height:auto; display:block; border:1px solid var(--rule-hard); }
+.route-dossier .stage-shot figcaption { font-family:var(--mono); font-size:10.5px; color:var(--muted);
+  margin-top:6px; padding-left:8px; border-left:2px solid var(--rule-hard); }
+.route-dossier .stage-commits { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.route-dossier .stage .refs { margin-top:10px; }
+@media (max-width:640px) { .route-dossier .stage { grid-template-columns:1fr; gap:8px; } }
+
+/* open-question cards &#8212; blocking first */
+.route-dossier .oq-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; margin-top:22px; }
+.route-dossier .oq { border:1px solid var(--rule); border-left:4px solid var(--muted); background:var(--paper-2);
+  padding:15px 16px; }
+.route-dossier .oq.is-blocking { border-left-color:var(--crit); }
+.route-dossier .oq.oq-answered, .route-dossier .oq.oq-resolved { border-left-color:var(--ok); }
+.route-dossier .oq.oq-superseded { border-left-color:var(--idle); opacity:0.82; }
+.route-dossier .oq-head { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+.route-dossier .oq-id { font-family:var(--mono); font-size:11px; font-weight:700; color:var(--ink); }
+.route-dossier .oq-status { font-family:var(--mono); font-size:9.5px; letter-spacing:0.08em; text-transform:uppercase;
+  font-weight:600; padding:2px 7px; border-radius:2px; border:1px solid currentColor; }
+.route-dossier .oq-status.oq-open { color:var(--crit); }
+.route-dossier .oq-status.oq-answered, .route-dossier .oq-status.oq-resolved { color:var(--ok); }
+.route-dossier .oq-status.oq-superseded { color:var(--idle); }
+.route-dossier .oq-block { font-family:var(--mono); font-size:9px; letter-spacing:0.09em; text-transform:uppercase;
+  font-weight:700; color:var(--crit); background:var(--crit-dim); padding:2px 7px; border-radius:2px; }
+.route-dossier .oq-raised { margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--muted); }
+.route-dossier .oq-q { margin:0 0 8px; font-size:14.5px; font-weight:600; max-width:none; }
+.route-dossier .oq-ctx { margin:0 0 8px; font-size:13px; color:var(--ink-2); max-width:none; }
+.route-dossier .oq-ans, .route-dossier .oq-chan { margin-top:10px; padding-top:9px; border-top:1px solid var(--rule); }
+.route-dossier .oq-ans p { margin:5px 0 0; font-size:13.5px; max-width:none; }
+.route-dossier .oq-k { font-family:var(--mono); font-size:9.5px; letter-spacing:0.09em; text-transform:uppercase;
+  font-weight:600; color:var(--muted); }
+.route-dossier .oq-chan span:last-child { display:block; margin-top:4px; font-size:12.5px; color:var(--ink-2); }
+
+/* decision log */
+.route-dossier .dec-log { display:grid; gap:12px; margin-top:22px; }
+.route-dossier .dec { border:1px solid var(--rule); background:var(--paper-2); padding:14px 16px;
+  border-left:4px solid var(--know); }
+.route-dossier .dec-head { display:flex; flex-wrap:wrap; gap:10px; align-items:baseline; margin-bottom:6px; }
+.route-dossier .dec-id { font-family:var(--mono); font-size:11px; font-weight:700; color:var(--know); }
+.route-dossier .dec-meta { font-family:var(--mono); font-size:10.5px; color:var(--muted); }
+.route-dossier .dec-what { margin:0; font-size:14.5px; font-weight:600; max-width:none; }
+.route-dossier .dec-why, .route-dossier .dec-alts { margin:8px 0 0; font-size:13px; color:var(--ink-2); max-width:none; }
+.route-dossier .dec-answers { margin:8px 0 0; font-size:12.5px; max-width:none; }
+.route-dossier .dec .refs { margin-top:10px; }
+.route-dossier .stages + .stage-tools { margin-top:0; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition:none !important; }
+  html { scroll-behavior:auto; }
+}
+@media print {
+  .theme-toggle, .toolbar, .route-feature .toc, .stage-tools { display:none; }
+  body { background:#fff; color:#111; }
+  .card, .visual, .chart, .diagram, .callout, .step, .stage, .oq, .dec { break-inside:avoid; }
+}
+</style>
+</head>
+<body class="dr route-feature">
+<button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+<header class="hero"><div class="shell">
+  <div class="eyebrow">Feature report &middot; research-foundry-knowledge-mcp-v1</div>
+  <h1>Research Foundry Knowledge MCP &#8212; Local Read-Only Knowledge Plane</h1>
+  <p class="lede" data-summary>Research Foundry now has a local, read-only Knowledge MCP: a governed way for local AI agents and tools to search and fetch RF&#x27;s own knowledge &#8212; sources, assertions, reports, and runs &#8212; through a standard Model Context Protocol surface, plus matching CLI and read-only HTTP routes. Every read passes an access-policy gate before any data is projected, hidden records are indistinguishable from missing ones, and a negative-matrix test suite proves reads cause zero writes and zero provider calls. The plan shipped all six phases (P1&#8211;P6) and squash-merged to local main as 1376e85; 433 focused tests, ruff, and mypy are green as of this report, with karen and task-completion-validator gates approved during execution. This v1 is deliberately schema-aligned-only (stdio + loopback), NOT OpenAI/ChatGPT compatible and with no remote transport. One dependency-hygiene finding (KMCP-F1) is documented and deferred, and the work is on local main only &#8212; not yet pushed to origin.</p>
+  <div class="meta">
+    <span class="pill shipped">shipped</span>
+    <span class="pill">report required</span>
+    <span class="pill">2026-07-28</span>
+  </div>
+  
+  <div class="toolbar"><button class="btn" data-copy-summary>Copy summary</button><button class="btn" data-print>Print / save PDF</button></div>
+</div></header>
+<div class="shell layout">
+  <nav class="toc" aria-label="Report sections"><strong>Contents</strong><a href="#overview">Overview</a><a href="#value">Value</a><a href="#changes">What changed</a><a href="#visuals">Visuals</a><a href="#findings">Findings</a><a href="#validation">Validation</a><a href="#risks">Residual truth</a><a href="#evidence">Evidence</a></nav>
+  <main>
+    <section id="overview"><h2>What was delivered</h2><div class="split"><article class="card"><h3>The problem</h3><p>RF&#x27;s knowledge lived behind files, a catalog database, and an assertion ledger with no safe, uniform way for an agent or external tool to ask &#x27;what does Research Foundry know about X?&#x27; Anything wanting to read RF knowledge had to reach directly into files or the database &#8212; which risks accidental writes, index rebuilds, cross-workspace leakage, and exposure of raw paths or secrets. There was no policy-gated, read-only, contract-stable retrieval surface.</p></article><article class="card"><h3>The solution</h3><p>A single policy-first KnowledgeAccessService fronts four governed projectors (source, assertion, report, run) and a search/fetch composer, exposed through three read-only transports that all return the same governed shape: an independent stdio MCP process (rf-knowledge-mcp) with exactly eight tools, an rf knowledge CLI, and GET-only /api/knowledge routes. The core search{query} and fetch{id} contracts are frozen; RF-specific snippets, paging, filters, and receipts live under separately named rf_* tools so the core contract stays stable. IDs are opaque (rfk:v1:&lt;kind&gt;:&lt;opaque&gt;) and URLs are loopback-only and explicitly non-canonical.</p></article></div></section>
+    <section id="value"><h2>Value added</h2><div class="cards"><article class="card accent"><div class="beneficiary">For Local AI agents, assistants, and RF-adjacent tooling</div><h3>Governed local knowledge retrieval for agents</h3><p>Local AI agents and tools can now search and fetch RF sources, assertions, reports, and runs through a standard MCP search/fetch (plus RF-extended tools) without touching files or the database directly.</p><span class="doms"><span class="dom dom-build">MCP</span><span class="dom dom-build">Knowledge</span></span><div class="refs"><a class="ref" href="#evidence-pytest">pytest</a><a class="ref" href="#evidence-arch_doc">arch_doc</a></div></article><article class="card accent"><div class="beneficiary">For Operators and governance owners</div><h3>Policy-before-derivation, no-leak reads</h3><p>Every read resolves access policy before any projection runs: missing, cross-workspace, and rights-denied records reveal no derived fields, hidden is indistinguishable from missing, and no raw paths or secret fields are ever emitted.</p><span class="doms"><span class="dom dom-gov">Governance</span><span class="dom dom-build">Knowledge</span></span><div class="refs"><a class="ref" href="#evidence-readonly_test">readonly_test</a><a class="ref" href="#evidence-plan">plan</a></div></article><article class="card accent"><div class="beneficiary">For Operators running untrusted or autonomous agents</div><h3>Read means read &#8212; proven zero mutation</h3><p>A negative matrix spies on cache/index/run/source/audit/telemetry/provider/write functions and snapshots the fixture tree and DB: every core and RF read causes zero writes and zero provider calls, so any agent can be pointed at it safely.</p><span class="doms"><span class="dom dom-gov">Governance</span><span class="dom dom-build">MCP</span></span><div class="refs"><a class="ref" href="#evidence-readonly_test">readonly_test</a></div></article><article class="card accent"><div class="beneficiary">For Integrators and future maintainers</div><h3>Contract stability across four surfaces</h3><p>Frozen core DTOs and dual structuredContent + canonical-JSON encoding mean service, CLI, GET API, and MCP return contract-equivalent payloads; RF extensions are quarantined under rf_* names so integrators&#x27; core calls don&#x27;t break.</p><span class="doms"><span class="dom dom-build">Contracts</span><span class="dom dom-build">API</span></span><div class="refs"><a class="ref" href="#evidence-parity_test">parity_test</a><a class="ref" href="#evidence-plan">plan</a></div></article></div></section>
+    <section id="changes"><h2>What changed</h2><article class="change"><div class="area">MCP process</div><div><p>A new standalone program, rf-knowledge-mcp, that speaks the Model Context Protocol over stdio and offers exactly eight read tools.</p><p class="technical">Technical detail: Independent OS process with its own registry/settings/credential allowlist and a lazy FastMCP import. Tools: search, fetch, rf_search, rf_fetch, rf_source_get, rf_assertion_get, rf_report_get, rf_run_get. Entry point rf-knowledge-mcp = research_foundry.knowledge_mcp.process:main. Inventory + transport lock asserts no Streamable HTTP/SSE/OAuth/non-loopback options.</p><div class="refs"><a class="ref" href="#evidence-tree">tree</a><a class="ref" href="#evidence-readonly_test">readonly_test</a></div></div></article><article class="change"><div class="area">Access service + projectors</div><div><p>A policy-first knowledge service that turns raw RF data into safe, governed answers for four kinds of knowledge.</p><p class="technical">Technical detail: services/knowledge_access.py: KnowledgeAccessService + source/assertion/report/run KindProjectors + a search/fetch composer. Report/run projection routes through the DI-1-hardened builder/export gates. Read-only, non-rebuilding seams were added to catalog_service.py (query_only_connection / is_catalog_available) and assertion_catalog.py (search/packet/lineage read-only).</p><div class="refs"><a class="ref" href="#evidence-tree">tree</a><a class="ref" href="#evidence-plan">plan</a></div></div></article><article class="change"><div class="area">CLI + HTTP parity</div><div><p>You can reach the same knowledge from the rf command line and from read-only web routes, not just from MCP.</p><p class="technical">Technical detail: rf knowledge {search,fetch,source-get,assertion-get,report-get,run-get} (Typer, JSON-default for automation) and GET-only /api/knowledge/* routes with regenerated openapi.json. A parity test proves normalized service/CLI/API/MCP outputs match.</p><div class="refs"><a class="ref" href="#evidence-parity_test">parity_test</a><a class="ref" href="#evidence-user_doc">user_doc</a></div></div></article><article class="change"><div class="area">Schemas + docs</div><div><p>Four frozen data contracts and a full set of docs describe exactly what the surface returns and its deliberate local-only limits.</p><p class="technical">Technical detail: schemas/knowledge_{search_request,search_response,document,activity_receipt}.schema.yaml; architecture + user docs; README split and CHANGELOG entry; four remote/shared shaping specs reconciled as explicitly deferred with promotion gates.</p><div class="refs"><a class="ref" href="#evidence-arch_doc">arch_doc</a><a class="ref" href="#evidence-decisions">decisions</a></div></div></article><h3>Key points</h3><ul class="list"><li>Local + loopback only, schema-aligned only &#8212; this v1 is NOT OpenAI/ChatGPT compatible and has no remote/HTTPS transport (all deferred to four linked shaping specs).</li><li>Read = no writes, enforced by policy and proven by a negative-matrix + transitive-closure test suite.</li><li>Exactly eight MCP tools; the core search{query}/fetch{id} contract is frozen and RF extensions are isolated under rf_* names.</li><li>Squash-merged to local main 1376e85 (44 files, +11,095/-18); NOT pushed to origin &#8212; RF main is local-only by convention.</li><li>One deferred finding (KMCP-F1): the process transitively needs the serve extra; scoped precisely, not an AC violation.</li></ul></section>
+    <section id="visuals"><h2>Visual explanation</h2><div class="visual-grid"></div><div class="chart"><svg viewBox="0 0 900 390" role="img" aria-label="Before and after metrics"><style>.m-label{fill:currentColor;font:600 14px system-ui}.m-value{fill:gray;font:12px system-ui}.m-before{fill:gray}.m-after{fill:#38bdf8}</style><text class="m-label" x="0" y="39">MCP tools exposed</text><rect class="m-before" x="250" y="24" width="2.0" height="22" rx="5"/><text class="m-value" x="260.0" y="40">before 0 tools</text><rect class="m-after" x="250" y="54" width="560.0" height="22" rx="5"/><text class="m-value" x="818.0" y="70">after 8 tools</text><text class="m-label" x="0" y="123">Governed knowledge kinds</text><rect class="m-before" x="250" y="108" width="2.0" height="22" rx="5"/><text class="m-value" x="260.0" y="124">before 0 kinds</text><rect class="m-after" x="250" y="138" width="560.0" height="22" rx="5"/><text class="m-value" x="818.0" y="154">after 4 kinds</text><text class="m-label" x="0" y="207">Frozen schemas</text><rect class="m-before" x="250" y="192" width="2.0" height="22" rx="5"/><text class="m-value" x="260.0" y="208">before 0 schemas</text><rect class="m-after" x="250" y="222" width="560.0" height="22" rx="5"/><text class="m-value" x="818.0" y="238">after 4 schemas</text><text class="m-label" x="0" y="291">Read transports (MCP/CLI/API)</text><rect class="m-before" x="250" y="276" width="2.0" height="22" rx="5"/><text class="m-value" x="260.0" y="292">before 0 surfaces</text><rect class="m-after" x="250" y="306" width="560.0" height="22" rx="5"/><text class="m-value" x="818.0" y="322">after 3 surfaces</text></svg></div><div class="diagram"><h3>Knowledge MCP read path</h3><svg viewBox="0 0 880 250" role="img" aria-label="Knowledge MCP read path"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="gray"/></marker></defs><style>.d-box{fill:none;stroke:#38bdf8;stroke-width:2}.d-title{fill:currentColor;font:700 14px system-ui}.d-detail{fill:gray;font:12px system-ui}.d-edge{stroke:gray;stroke-width:2;marker-end:url(#arrow)}.d-elabel{fill:gray;font:11px system-ui}</style><line class="d-edge" x1="210.0" y1="116.0" x2="241.0" y2="132.0"/><text class="d-elabel" x="230.0" y="116.0" text-anchor="middle">read {query|id}</text><line class="d-edge" x1="420.0" y1="132.0" x2="451.0" y2="116.0"/><text class="d-elabel" x="440.0" y="116.0" text-anchor="middle">authorize</text><line class="d-edge" x1="630.0" y1="116.0" x2="661.0" y2="132.0"/><text class="d-elabel" x="650.0" y="116.0" text-anchor="middle">project</text><rect class="d-box" x="40.0" y="70.0" width="170" height="92" rx="13"/><text class="d-title" x="55.0" y="104.0">stdio MCP / CLI / GET API</text><text class="d-detail" x="55.0" y="130.0">search + fetch (+ rf_*)</text><rect class="d-box" x="250.0" y="86.0" width="170" height="92" rx="13"/><text class="d-title" x="265.0" y="120.0">KnowledgeAccessService</text><text class="d-detail" x="265.0" y="146.0">policy before derivation</text><rect class="d-box" x="460.0" y="70.0" width="170" height="92" rx="13"/><text class="d-title" x="475.0" y="104.0">4 projectors</text><text class="d-detail" x="475.0" y="130.0">source / assertion / report / run</text><rect class="d-box" x="670.0" y="86.0" width="170" height="92" rx="13"/><text class="d-title" x="685.0" y="120.0">Governed DTO</text><text class="d-detail" x="685.0" y="146.0">opaque IDs, loopback URLs</text></svg><p class="muted">One policy-first service fans out to four governed projectors and is exposed identically across three read-only transports.</p></div><div class="card"><strong>No visual included.</strong><p class="muted">No product UI ships with this feature &#8212; it is a stdio MCP + CLI + read-only API surface. The read-path diagram and the pasted test/lint output are the most faithful evidence; a screenshot would add nothing verifiable.</p></div><h3>Delivery timeline</h3><div class="timeline"><div class="moment"><strong>Evidence locked</strong><span class="muted">Confirmed 1376e85 on local main, re-ran the focused suite (433 green), ruff + mypy clean, and existence-checked every referenced path.</span></div><div class="moment"><strong>Delivered P1&#8211;P6</strong><span class="muted">Contracts &#8594; core service &#8594; projectors &#8594; stdio process &#8594; CLI/API parity &#8594; hardening, each gated by karen or task-completion-validator.</span></div><div class="moment"><strong>Merged local</strong><span class="muted">Squash-merged to local main 1376e85; worktree and branch removed. Push to origin remains a separate gated action.</span></div></div></section>
+    <section id="findings"><h2>Findings</h2><div class="cards"><article class="card"><span class="status deferred">deferred</span><h3>KMCP-F1 &#8212; rf-knowledge-mcp transitively requires the serve extra (fastapi), not only mcp</h3><p>Importing research_foundry.knowledge_mcp.process pulls fastapi/starlette/uvicorn into sys.modules via two module-level imports in knowledge_access.py (AuthIdentity and the load-bearing resolve_workspace_isolation_active), both routed through api/__init__.py&#x27;s unconditional fastapi probe. A purely mechanical TYPE_CHECKING move fixes only half; a full fix would relocate auth types out of research_foundry.api.* &#8212; a structural change touching catalog/builder/AgentJob call sites, out of scope for a P6 hardening pass.</p><p class="muted">Impact: An operator installing only research-foundry[mcp] (no serve) hits ModuleNotFoundError: fastapi at import time rather than the hand-written missing-SDK message. AC KMCP-1&#x27;s actual forbidden set (Search Router/Operator registries, provider creds, mutators) remains genuinely absent &#8212; verified by the transitive-closure test &#8212; so this is a dependency-hygiene gap, not an AC violation or regression.</p><span class="doms"><span class="dom dom-gov">Governance</span><span class="dom dom-build">MCP</span></span><div class="refs"><a class="ref" href="#evidence-findings">findings</a><a class="ref" href="#evidence-readonly_test">readonly_test</a></div></article><article class="card"><span class="status resolved">resolved</span><h3>Remote/OpenAI-ChatGPT compatibility is deliberately out of scope for v1</h3><p>The local profile is declared schema-aligned-only. A local-profile truth gate labels loopback URLs non-canonical across CLI/API/docs and rejects remote config; docs and schemas carry no OpenAI/ChatGPT compatibility claim. Remote Streamable HTTP/OAuth, canonical HTTPS URLs, remote cache isolation, and shared/vector/graph retrieval are each linked to a shaping spec with explicit promotion evidence gates.</p><p class="muted">Impact: Integrators must treat this as a local plane only. Any &#x27;ChatGPT connector&#x27;-style use requires the deferred remote transport + canonical-URL work (KMCP-DF-1/DF-2) to land first with its own review.</p><span class="doms"><span class="dom dom-build">Contracts</span><span class="dom dom-gov">Governance</span></span><div class="refs"><a class="ref" href="#evidence-plan">plan</a><a class="ref" href="#evidence-decisions">decisions</a></div></article></div></section>
+    <section id="validation"><h2>How completion was verified</h2><table class="validation"><thead><tr><th>Status</th><th>Check and result</th><th>Command</th><th>Evidence</th></tr></thead><tbody><tr><td><span class="status passed">passed</span><br><span class="muted">by self</span></td><td><strong>Focused knowledge test suite</strong><br><span class="muted">433 tests: 0 failures, 0 errors, 0 skipped (JUnit XML, current run 2026-07-28).</span></td><td><code class="copyable">.venv/bin/python -m pytest --junitxml tests/unit/test_knowledge_access.py tests/test_knowledge_mcp_process.py tests/api/test_knowledge_api.py tests/integration/test_knowledge_parity.py tests/test_knowledge_cli.py tests/test_knowledge_mcp_offline_import.py tests/unit/test_knowledge_mcp_{settings,registry}.py tests/test_schema_validation.py</code></td><td><div class="refs"><a class="ref" href="#evidence-pytest">pytest</a></div></td></tr><tr><td><span class="status passed">passed</span><br><span class="muted">by self</span></td><td><strong>Zero-mutation / read-only inventory</strong><br><span class="muted">Every core and RF read causes zero writes/provider calls; the process import graph excludes Search Router/Operator registries and provider creds (fastapi presence is documented in KMCP-F1).</span></td><td><code class="copyable">pytest tests/test_knowledge_mcp_process.py (negative matrix + full-process transitive-closure test)</code></td><td><div class="refs"><a class="ref" href="#evidence-readonly_test">readonly_test</a></div></td></tr><tr><td><span class="status passed">passed</span><br><span class="muted">by self</span></td><td><strong>Static analysis (ruff + mypy)</strong><br><span class="muted">ruff: All checks passed. mypy: Success, no issues found in 5 source files (current run 2026-07-28).</span></td><td><code class="copyable">.venv/bin/ruff check &lt;knowledge surface&gt; &amp;&amp; .venv/bin/mypy src/research_foundry/knowledge_mcp/ src/research_foundry/services/knowledge_access.py --ignore-missing-imports</code></td><td><div class="refs"><a class="ref" href="#evidence-lint">lint</a></div></td></tr><tr><td><span class="status passed">passed</span><br><span class="muted">by delegated</span></td><td><strong>Reviewer gates (execution-time)</strong><br><span class="muted">karen APPROVED the P1/P3/P6 gate trees; task-completion-validator APPROVED P2/P4/P5. Delegated during execution against each phase&#x27;s exact tree.</span></td><td><code class="copyable">karen (Mode E) on P1/P3/P6; task-completion-validator on P2/P4/P5</code></td><td><div class="refs"><a class="ref" href="#evidence-reviewers">reviewers</a></div></td></tr><tr><td><span class="status passed">passed</span><br><span class="muted">by self</span></td><td><strong>Git integration state</strong><br><span class="muted">Squash-merged to local main as 1376e85 (44 files, +11,095/-18), on top of DI-1 base 2bf6895; NOT pushed to origin. No leftover knowledge-mcp branch or worktree.</span></td><td><code class="copyable">git show --stat 1376e85 ; git log --oneline main</code></td><td><div class="refs"><a class="ref" href="#evidence-tree">tree</a></div></td></tr></tbody></table></section>
+    <section id="risks"><h2>Residual truth</h2><div class="split"><article class="card"><h3>Risks and limitations</h3><ul class="list"><li>Work is on local main only (1376e85) and NOT pushed to origin &#8212; any deploy that pulls from origin would be stale until pushed.</li><li>KMCP-F1: an operator installing only research-foundry[mcp] (without serve) will hit a raw fastapi ImportError instead of the hand-written missing-SDK message.</li><li>Local schema-aligned-only: treating this as an OpenAI/ChatGPT connector or remote endpoint is unsupported and would bypass the deferred remote-transport review.</li></ul></article><article class="card"><h3>Follow-ups</h3><ul class="list"><li><strong>KMCP-F1 &#8212; decouple auth types from research_foundry.api.* so rf-knowledge-mcp drops the serve extra</strong> &mdash; Relocate AuthIdentity and resolve_workspace_isolation_active to a neutral non-FastAPI module (api.auth.* re-exporting for back-compat) so the process imports under [mcp] alone.<details class="ns"><summary>Next step</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd">/plan-feature</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">.claude/findings/research-foundry-knowledge-mcp-findings.md<br />src/research_foundry/services/knowledge_access.py</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">KMCP-F1</span></span></div><div class="ns-row"><span class="kk">Trigger</span><span class="vv">When AuthIdentity / resolve_workspace_isolation_active are relocated out of the research_foundry.api.* package.</span></div><p class="ns-prompt">Scope decoupling RF auth types (AuthIdentity, resolve_workspace_isolation_active) out of research_foundry.api.* into a neutral module with back-compat re-exports, so rf-knowledge-mcp imports under the mcp extra alone. Verify via the transitive-closure test that fastapi leaves sys.modules. Do not change auth behavior.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">/plan-feature
+
+Task: KMCP-F1 &#8212; decouple auth types from research_foundry.api.* so rf-knowledge-mcp drops the serve extra
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - .claude/findings/research-foundry-knowledge-mcp-findings.md
+  - src/research_foundry/services/knowledge_access.py
+
+Requirement IDs: KMCP-F1
+Re-entry trigger: When AuthIdentity / resolve_workspace_isolation_active are relocated out of the research_foundry.api.* package.
+
+Prompt:
+Scope decoupling RF auth types (AuthIdentity, resolve_workspace_isolation_active) out of research_foundry.api.* into a neutral module with back-compat re-exports, so rf-knowledge-mcp imports under the mcp extra alone. Verify via the transitive-closure test that fastapi leaves sys.modules. Do not change auth behavior.
+
+Constraints: Research Foundry: Markdown/YAML is canonical and the claim ledger is authority. The Knowledge MCP is read-only, local/loopback-only, and schema-aligned-only &#8212; it is NOT OpenAI/ChatGPT compatible and has no remote/HTTPS transport. It must never write, hold provider credentials, or import the Search Router/Operator registries. RF main is local-only: do not push to origin without explicit approval. Agent-writable paths must never mint CLEARED_*/counsel_approved/attested rights values.</pre></div></details></li><li><strong>KMCP-DF-1 &#8212; remote Streamable HTTP + OAuth transport design</strong> &mdash; Remote identity/session/threat design (auth, rate-limit, revocation, workspace + transport review) before any non-loopback transport.<details class="ns"><summary>Next step</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd">/plan-feature</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-transport.md<br />docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">KMCP-DF-1</span></span></div><div class="ns-row"><span class="kk">Trigger</span><span class="vv">Auth, rate-limit, revocation, workspace, and transport review accepted.</span></div><p class="ns-prompt">Promote the remote-transport shaping spec into a plan: design Streamable HTTP + OAuth identity/session/threat model for rf-knowledge-mcp. Keep local stdio unchanged and schema-aligned-only. Nothing remote ships until the transport review is accepted.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">/plan-feature
+
+Task: KMCP-DF-1 &#8212; remote Streamable HTTP + OAuth transport design
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-transport.md
+  - docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
+
+Requirement IDs: KMCP-DF-1
+Re-entry trigger: Auth, rate-limit, revocation, workspace, and transport review accepted.
+
+Prompt:
+Promote the remote-transport shaping spec into a plan: design Streamable HTTP + OAuth identity/session/threat model for rf-knowledge-mcp. Keep local stdio unchanged and schema-aligned-only. Nothing remote ships until the transport review is accepted.
+
+Constraints: Research Foundry: Markdown/YAML is canonical and the claim ledger is authority. The Knowledge MCP is read-only, local/loopback-only, and schema-aligned-only &#8212; it is NOT OpenAI/ChatGPT compatible and has no remote/HTTPS transport. It must never write, hold provider credentials, or import the Search Router/Operator registries. RF main is local-only: do not push to origin without explicit approval. Agent-writable paths must never mint CLEARED_*/counsel_approved/attested rights values.</pre></div></details></li><li><strong>KMCP-DF-2 &#8212; canonical public HTTPS resource URLs</strong> &mdash; Canonical URL ADR, host ownership, redirect/version policy, and live reachability &#8212; required before URLs can be non-loopback/canonical.<details class="ns"><summary>Next step</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd">/plan-feature</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">docs/project_plans/design-specs/research-foundry-knowledge-mcp-canonical-resource-urls.md<br />docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">KMCP-DF-2</span></span></div><div class="ns-row"><span class="kk">Trigger</span><span class="vv">Canonical URL ADR, host ownership, redirect/version policy, and live reachability resolved.</span></div><p class="ns-prompt">Promote the canonical-resource-URL shaping spec: author the ADR for public HTTPS resource namespace, host ownership, redirect/version policy, and reachability. Until it lands, keep all Knowledge MCP URLs loopback-only and explicitly non-canonical.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">/plan-feature
+
+Task: KMCP-DF-2 &#8212; canonical public HTTPS resource URLs
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - docs/project_plans/design-specs/research-foundry-knowledge-mcp-canonical-resource-urls.md
+  - docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
+
+Requirement IDs: KMCP-DF-2
+Re-entry trigger: Canonical URL ADR, host ownership, redirect/version policy, and live reachability resolved.
+
+Prompt:
+Promote the canonical-resource-URL shaping spec: author the ADR for public HTTPS resource namespace, host ownership, redirect/version policy, and reachability. Until it lands, keep all Knowledge MCP URLs loopback-only and explicitly non-canonical.
+
+Constraints: Research Foundry: Markdown/YAML is canonical and the claim ledger is authority. The Knowledge MCP is read-only, local/loopback-only, and schema-aligned-only &#8212; it is NOT OpenAI/ChatGPT compatible and has no remote/HTTPS transport. It must never write, hold provider credentials, or import the Search Router/Operator registries. RF main is local-only: do not push to origin without explicit approval. Agent-writable paths must never mint CLEARED_*/counsel_approved/attested rights values.</pre></div></details></li><li><strong>KMCP-DF-3 &#8212; remote cache isolation threat model</strong> &mdash; Partition, invalidation, timing, backup, and deletion threat model to prevent a remote cache leaking tenant membership/timing.<details class="ns"><summary>Next step</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd">/plan-feature</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-cache-isolation.md<br />docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">KMCP-DF-3</span></span></div><div class="ns-row"><span class="kk">Trigger</span><span class="vv">Partition, invalidation, timing, backup, and deletion threat model passes.</span></div><p class="ns-prompt">Promote the remote-cache-isolation shaping spec into a threat model: partitioning, invalidation, timing side-channels, backup, and deletion for any remote cache. Gate on it before enabling remote caching; local v1 has no shared cache.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">/plan-feature
+
+Task: KMCP-DF-3 &#8212; remote cache isolation threat model
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-cache-isolation.md
+  - docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
+
+Requirement IDs: KMCP-DF-3
+Re-entry trigger: Partition, invalidation, timing, backup, and deletion threat model passes.
+
+Prompt:
+Promote the remote-cache-isolation shaping spec into a threat model: partitioning, invalidation, timing side-channels, backup, and deletion for any remote cache. Gate on it before enabling remote caching; local v1 has no shared cache.
+
+Constraints: Research Foundry: Markdown/YAML is canonical and the claim ledger is authority. The Knowledge MCP is read-only, local/loopback-only, and schema-aligned-only &#8212; it is NOT OpenAI/ChatGPT compatible and has no remote/HTTPS transport. It must never write, hold provider credentials, or import the Search Router/Operator registries. RF main is local-only: do not push to origin without explicit approval. Agent-writable paths must never mint CLEARED_*/counsel_approved/attested rights values.</pre></div></details></li><li><strong>KMCP-DF-4 &#8212; shared / vector / graph retrieval</strong> &mdash; Shared indexes are outside RAL private lexical v1; needs separate evidence/quality evaluation and isolation approval.<details class="ns"><summary>Next step</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd">/plan-feature</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">docs/project_plans/design-specs/reusable-assertion-ledger-shared-indexes.md<br />docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">KMCP-DF-4</span></span></div><div class="ns-row"><span class="kk">Trigger</span><span class="vv">Separate evidence/quality evaluation and isolation approval complete.</span></div><p class="ns-prompt">Promote the shared-indexes shaping spec: evaluate shared/vector/graph retrieval quality and isolation for the assertion ledger, distinct from the private lexical v1. Requires its own evidence + isolation approval before implementation.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">/plan-feature
+
+Task: KMCP-DF-4 &#8212; shared / vector / graph retrieval
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - docs/project_plans/design-specs/reusable-assertion-ledger-shared-indexes.md
+  - docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
+
+Requirement IDs: KMCP-DF-4
+Re-entry trigger: Separate evidence/quality evaluation and isolation approval complete.
+
+Prompt:
+Promote the shared-indexes shaping spec: evaluate shared/vector/graph retrieval quality and isolation for the assertion ledger, distinct from the private lexical v1. Requires its own evidence + isolation approval before implementation.
+
+Constraints: Research Foundry: Markdown/YAML is canonical and the claim ledger is authority. The Knowledge MCP is read-only, local/loopback-only, and schema-aligned-only &#8212; it is NOT OpenAI/ChatGPT compatible and has no remote/HTTPS transport. It must never write, hold provider credentials, or import the Search Router/Operator registries. RF main is local-only: do not push to origin without explicit approval. Agent-writable paths must never mint CLEARED_*/counsel_approved/attested rights values.</pre></div></details></li><li><strong>KMCP-DF-5 &#8212; Operator MCP (mutation + cost-bearing tools)</strong> &mdash; Mutations and cost-bearing tools require a different policy posture &#8212; a separate Operator MCP plan, gated on stable read IDs.<details class="ns"><summary>Next step</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd">/plan-feature</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md<br />docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md</span></div><div class="ns-row"><span class="kk">IDs</span><span class="vv"><span class="idc">KMCP-DF-5</span></span></div><div class="ns-row"><span class="kk">Trigger</span><span class="vv">Operator MCP plan approved and read IDs stable.</span></div><p class="ns-prompt">Advance the Operator MCP PRD: design the mutation + cost-bearing tool surface under its own stricter policy posture, separate from the read-only Knowledge MCP. Do not add any mutator to rf-knowledge-mcp; reads must stay write-free.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">/plan-feature
+
+Task: KMCP-DF-5 &#8212; Operator MCP (mutation + cost-bearing tools)
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
+  - docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
+
+Requirement IDs: KMCP-DF-5
+Re-entry trigger: Operator MCP plan approved and read IDs stable.
+
+Prompt:
+Advance the Operator MCP PRD: design the mutation + cost-bearing tool surface under its own stricter policy posture, separate from the read-only Knowledge MCP. Do not add any mutator to rf-knowledge-mcp; reads must stay write-free.
+
+Constraints: Research Foundry: Markdown/YAML is canonical and the claim ledger is authority. The Knowledge MCP is read-only, local/loopback-only, and schema-aligned-only &#8212; it is NOT OpenAI/ChatGPT compatible and has no remote/HTTPS transport. It must never write, hold provider credentials, or import the Search Router/Operator registries. RF main is local-only: do not push to origin without explicit approval. Agent-writable paths must never mint CLEARED_*/counsel_approved/attested rights values.</pre></div></details></li><li><strong>Make rf-knowledge-mcp reachable to local agents (on-node deploy + client registration)</strong> &mdash; Register the stdio server in agent client configs and, if desired, install it on the agentic node so local agents can use it. Human/config action &#8212; no single agent command.<details class="ns human"><summary>Human action</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd human">human decision &mdash; no agent path</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">docs/user/knowledge-mcp.md<br />docs/dev/architecture/knowledge-mcp.md</span></div><p class="ns-prompt">human decision &#8212; register rf-knowledge-mcp (stdio) in the relevant MCP client config(s) per docs/user/knowledge-mcp.md, ensuring the serve extra is installed (KMCP-F1). Optionally deploy to rocket-fedora. Keep it loopback/stdio only; no remote exposure.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">human decision -- no agent path
+
+Task: Make rf-knowledge-mcp reachable to local agents (on-node deploy + client registration)
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - docs/user/knowledge-mcp.md
+  - docs/dev/architecture/knowledge-mcp.md
+
+
+Prompt:
+human decision &#8212; register rf-knowledge-mcp (stdio) in the relevant MCP client config(s) per docs/user/knowledge-mcp.md, ensuring the serve extra is installed (KMCP-F1). Optionally deploy to rocket-fedora. Keep it loopback/stdio only; no remote exposure.
+
+Constraints: Research Foundry: Markdown/YAML is canonical and the claim ledger is authority. The Knowledge MCP is read-only, local/loopback-only, and schema-aligned-only &#8212; it is NOT OpenAI/ChatGPT compatible and has no remote/HTTPS transport. It must never write, hold provider credentials, or import the Search Router/Operator registries. RF main is local-only: do not push to origin without explicit approval. Agent-writable paths must never mint CLEARED_*/counsel_approved/attested rights values.</pre></div></details></li><li><strong>Push local main to origin (gated)</strong> &mdash; 1376e85 (and the ERI commit above it) are local-only. Pushing is an explicit, owner-gated action per RF convention; required before any origin-pulling deploy.<details class="ns human"><summary>Human action</summary><div class="ns-body"><div class="ns-row"><span class="kk">Command</span><span class="vv"><span class="cmd human">human decision &mdash; no agent path</span></span></div><div class="ns-row"><span class="kk">Repo</span><span class="vv">/Users/miethe/dev/homelab/development/research-foundry</span></div><div class="ns-row"><span class="kk">Paths</span><span class="vv">.claude/rules/git-workflow.md</span></div><p class="ns-prompt">human decision &#8212; decide whether to push local main (1376e85 + e76784b) to origin. Per RF git-workflow, push is a separate gated action; confirm the data-plane split and unrelated tree dirt before pushing.</p><div class="ns-foot"><button class="copy-btn" type="button">Copy handoff</button></div><pre class="ns-payload">human decision -- no agent path
+
+Task: Push local main to origin (gated)
+Repo: /Users/miethe/dev/homelab/development/research-foundry
+
+Paths:
+  - .claude/rules/git-workflow.md
+
+
+Prompt:
+human decision &#8212; decide whether to push local main (1376e85 + e76784b) to origin. Per RF git-workflow, push is a separate gated action; confirm the data-plane split and unrelated tree dirt before pushing.
+
+Constraints: Research Foundry: Markdown/YAML is canonical and the claim ledger is authority. The Knowledge MCP is read-only, local/loopback-only, and schema-aligned-only &#8212; it is NOT OpenAI/ChatGPT compatible and has no remote/HTTPS transport. It must never write, hold provider credentials, or import the Search Router/Operator registries. RF main is local-only: do not push to origin without explicit approval. Agent-writable paths must never mint CLEARED_*/counsel_approved/attested rights values.</pre></div></details></li></ul></article></div><p class="muted">Scope note: Feature-completion report for the research-foundry-knowledge-mcp-v1 plan (Tier 3, 34 pts, phases P1&#8211;P6). Squash-merged to local main 1376e85; ERI (e76784b) later layered on top of the same branch.</p></section>
+    <section id="evidence"><h2>Evidence index</h2><article class="evidence" id="evidence-tree"><div class="evidence-id">tree</div><div><strong>Squash commit on local main (44 files, +11,095/-18)</strong><div class="evidence-meta">tree</div></div></article><article class="evidence" id="evidence-pytest"><div class="evidence-id">pytest</div><div><strong>Focused knowledge suite &#8212; 433 passed, 0 fail/error/skip (JUnit XML, 2026-07-28)</strong><div class="evidence-meta">test</div></div></article><article class="evidence" id="evidence-readonly_test"><div class="evidence-id">readonly_test</div><div><strong>Zero-mutation negative matrix + full-process transitive-closure test</strong><div class="evidence-meta">test &middot; <code>tests/test_knowledge_mcp_process.py</code></div></div></article><article class="evidence" id="evidence-parity_test"><div class="evidence-id">parity_test</div><div><strong>Cross-transport parity test (service/CLI/API/MCP)</strong><div class="evidence-meta">test &middot; <code>tests/integration/test_knowledge_parity.py</code></div></div></article><article class="evidence" id="evidence-lint"><div class="evidence-id">lint</div><div><strong>ruff (All checks passed) + mypy (Success, 5 files), 2026-07-28</strong><div class="evidence-meta">test</div></div></article><article class="evidence" id="evidence-plan"><div class="evidence-id">plan</div><div><strong>Knowledge MCP implementation plan (Tier 3, P1&#8211;P6, AC KMCP-1..6, deferrals KMCP-DF-1..5)</strong><div class="evidence-meta">plan &middot; <code>docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md</code></div></div></article><article class="evidence" id="evidence-findings"><div class="evidence-id">findings</div><div><strong>KMCP-F1 finding (serve-extra transitive dependency)</strong><div class="evidence-meta">other &middot; <code>.claude/findings/research-foundry-knowledge-mcp-findings.md</code></div></div></article><article class="evidence" id="evidence-arch_doc"><div class="evidence-id">arch_doc</div><div><strong>Architecture doc &#8212; Knowledge MCP</strong><div class="evidence-meta">other &middot; <code>docs/dev/architecture/knowledge-mcp.md</code></div></div></article><article class="evidence" id="evidence-user_doc"><div class="evidence-id">user_doc</div><div><strong>User doc &#8212; Knowledge MCP</strong><div class="evidence-meta">other &middot; <code>docs/user/knowledge-mcp.md</code></div></div></article><article class="evidence" id="evidence-decisions"><div class="evidence-id">decisions</div><div><strong>Decisions block (contract resolutions, remote-compat reconciliation)</strong><div class="evidence-meta">other &middot; <code>.codex/worknotes/research-foundry-knowledge-mcp/decisions-block.md</code></div></div></article><article class="evidence" id="evidence-reviewers"><div class="evidence-id">reviewers</div><div><strong>Execution-time reviewer verdicts &#8212; karen (P1/P3/P6) + task-completion-validator (P2/P4/P5)</strong><div class="evidence-meta">other</div></div></article></section>
+  </main>
+</div>
+<footer><div class="shell">Generated by delivery-report 0.1.0 at 2026-07-28. Source manifest remains canonical.</div></footer>
+<script>/* delivery-report client behaviour. ASCII-only (Appendix C pitfall 1: entities do not
+ * decode inside <script>). No external calls; pure DOM. */
+(function () {
+  "use strict";
+
+  /* ---- theme toggle: a viewer choice that wins over the media query (Sec 4.2) ---- */
+  var root = document.documentElement;
+  var toggle = document.querySelector(".theme-toggle");
+  function currentMode() {
+    var set = root.getAttribute("data-theme");
+    if (set) return set;
+    return (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+  }
+  function paintToggle() {
+    if (!toggle) return;
+    var next = currentMode() === "dark" ? "light" : "dark";
+    toggle.textContent = next === "dark" ? "Dark" : "Light";
+    toggle.setAttribute("aria-label", "Switch to " + next + " theme");
+  }
+  if (toggle) {
+    toggle.addEventListener("click", function () {
+      root.setAttribute("data-theme", currentMode() === "dark" ? "light" : "dark");
+      paintToggle();
+    });
+    paintToggle();
+  }
+
+  /* ---- feature-route toolbar: copy summary + print ---- */
+  var copySummary = document.querySelector("[data-copy-summary]");
+  if (copySummary) {
+    copySummary.addEventListener("click", function () {
+      var lede = document.querySelector("[data-summary]");
+      if (lede) writeText(lede.textContent.trim() + "\n", copySummary, "Copied");
+    });
+  }
+  var printBtn = document.querySelector("[data-print]");
+  if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
+
+  /* ---- dossier route: expand / collapse every stage narrative at once ---- */
+  var expander = document.querySelector("[data-expand-stages]");
+  if (expander) {
+    expander.addEventListener("click", function () {
+      var narrs = document.querySelectorAll(".stage-narr");
+      var anyClosed = false;
+      for (var i = 0; i < narrs.length; i++) { if (!narrs[i].open) { anyClosed = true; break; } }
+      for (var j = 0; j < narrs.length; j++) { narrs[j].open = anyClosed; }
+      expander.textContent = anyClosed ? "Collapse all" : "Expand all";
+    });
+  }
+
+  /* ---- per-<code> inline copy (feature route, Sec 7.4) ---- */
+  document.addEventListener("click", function (ev) {
+    var c = ev.target && ev.target.closest ? ev.target.closest("code.copyable") : null;
+    if (!c) return;
+    writeText(c.textContent, c, null, function () {
+      c.classList.add("done");
+      window.setTimeout(function () { c.classList.remove("done"); }, 1200);
+    });
+  });
+
+  /* ---- handoff copy component: three-tier degrade path.
+   * The settled/guard race is load-bearing: Chrome can leave writeText's promise
+   * permanently pending when the click carries no user activation. ---- */
+  function fallbackCopy(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", "");
+    ta.style.position = "fixed"; ta.style.top = "-1000px";
+    document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+  function revealForManualCopy(body, text) {
+    var existing = body.querySelector(".ns-fallback");
+    if (existing) { existing.focus(); existing.select(); return; }
+    var ta = document.createElement("textarea");
+    ta.className = "ns-fallback";
+    ta.value = text;
+    ta.setAttribute("aria-label", "Handoff text - select and copy manually");
+    body.insertBefore(ta, body.querySelector(".ns-foot"));
+    ta.focus(); ta.select();
+  }
+  function flash(btn, label) {
+    if (!btn.getAttribute("data-label")) btn.setAttribute("data-label", btn.textContent);
+    btn.textContent = label; btn.classList.add("done");
+    window.setTimeout(function () {
+      btn.textContent = btn.getAttribute("data-label");
+      btn.classList.remove("done");
+    }, 1600);
+  }
+  /* Shared writer used by summary + inline-code copy (single tier + fallback). */
+  function writeText(text, btn, okLabel, onOk) {
+    function done() { if (onOk) onOk(); else if (btn && okLabel) flash(btn, okLabel); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      var settled = false;
+      var guard = window.setTimeout(function () {
+        if (!settled) { settled = true; if (fallbackCopy(text)) done(); }
+      }, 1200);
+      navigator.clipboard.writeText(text).then(
+        function () { if (settled) return; settled = true; window.clearTimeout(guard); done(); },
+        function () { if (settled) return; settled = true; window.clearTimeout(guard); if (fallbackCopy(text)) done(); }
+      );
+    } else if (fallbackCopy(text)) { done(); }
+  }
+
+  document.addEventListener("click", function (ev) {
+    var btn = ev.target && ev.target.closest ? ev.target.closest(".copy-btn") : null;
+    if (!btn) return;
+    var body = btn.closest(".ns-body");
+    var payload = body ? body.querySelector(".ns-payload") : null;
+    if (!payload) return;
+    var text = payload.textContent.replace(/^\s+/, "").replace(/\s+$/, "") + "\n";
+    function degrade() {
+      if (fallbackCopy(text)) { flash(btn, "Copied"); return; }
+      revealForManualCopy(body, text);
+      flash(btn, "Copy manually");
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      var settled = false;
+      var guard = window.setTimeout(function () {
+        if (!settled) { settled = true; degrade(); }
+      }, 1200);
+      navigator.clipboard.writeText(text).then(
+        function () { if (settled) return; settled = true; window.clearTimeout(guard); flash(btn, "Copied"); },
+        function () { if (settled) return; settled = true; window.clearTimeout(guard); degrade(); }
+      );
+    } else {
+      degrade();
+    }
+  });
+})();
+</script>
+</body>
+</html>

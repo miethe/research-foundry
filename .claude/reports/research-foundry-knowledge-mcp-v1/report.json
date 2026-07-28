@@ -1,0 +1,337 @@
+{
+  "schema_version": "1.0",
+  "report": {
+    "route": "feature",
+    "title": "Research Foundry Knowledge MCP — Local Read-Only Knowledge Plane",
+    "project": "research-foundry-knowledge-mcp-v1",
+    "revision": 1,
+    "generated_from": {
+      "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+      "ref": "main (local, not pushed)",
+      "commit": "1376e85"
+    },
+    "truth_status": "shipped",
+    "generated_by": "delivery-report 0.1.0",
+    "generated_at": "2026-07-28",
+    "scope_note": "Feature-completion report for the research-foundry-knowledge-mcp-v1 plan (Tier 3, 34 pts, phases P1–P6). Squash-merged to local main 1376e85; ERI (e76784b) later layered on top of the same branch.",
+    "constraints": "Research Foundry: Markdown/YAML is canonical and the claim ledger is authority. The Knowledge MCP is read-only, local/loopback-only, and schema-aligned-only — it is NOT OpenAI/ChatGPT compatible and has no remote/HTTPS transport. It must never write, hold provider credentials, or import the Search Router/Operator registries. RF main is local-only: do not push to origin without explicit approval. Agent-writable paths must never mint CLEARED_*/counsel_approved/attested rights values."
+  },
+  "report_policy": {
+    "tier_system": "dev-execution",
+    "tier": 3,
+    "estimated_points": 34,
+    "explicit_request": true,
+    "required": true,
+    "signals": ["tier3", "multi-phase", "explicit-request"]
+  },
+  "executive_summary": "Research Foundry now has a local, read-only Knowledge MCP: a governed way for local AI agents and tools to search and fetch RF's own knowledge — sources, assertions, reports, and runs — through a standard Model Context Protocol surface, plus matching CLI and read-only HTTP routes. Every read passes an access-policy gate before any data is projected, hidden records are indistinguishable from missing ones, and a negative-matrix test suite proves reads cause zero writes and zero provider calls. The plan shipped all six phases (P1–P6) and squash-merged to local main as 1376e85; 433 focused tests, ruff, and mypy are green as of this report, with karen and task-completion-validator gates approved during execution. This v1 is deliberately schema-aligned-only (stdio + loopback), NOT OpenAI/ChatGPT compatible and with no remote transport. One dependency-hygiene finding (KMCP-F1) is documented and deferred, and the work is on local main only — not yet pushed to origin.",
+  "problem": "RF's knowledge lived behind files, a catalog database, and an assertion ledger with no safe, uniform way for an agent or external tool to ask 'what does Research Foundry know about X?' Anything wanting to read RF knowledge had to reach directly into files or the database — which risks accidental writes, index rebuilds, cross-workspace leakage, and exposure of raw paths or secrets. There was no policy-gated, read-only, contract-stable retrieval surface.",
+  "solution": "A single policy-first KnowledgeAccessService fronts four governed projectors (source, assertion, report, run) and a search/fetch composer, exposed through three read-only transports that all return the same governed shape: an independent stdio MCP process (rf-knowledge-mcp) with exactly eight tools, an rf knowledge CLI, and GET-only /api/knowledge routes. The core search{query} and fetch{id} contracts are frozen; RF-specific snippets, paging, filters, and receipts live under separately named rf_* tools so the core contract stays stable. IDs are opaque (rfk:v1:<kind>:<opaque>) and URLs are loopback-only and explicitly non-canonical.",
+  "value_adds": [
+    {
+      "title": "Governed local knowledge retrieval for agents",
+      "detail": "Local AI agents and tools can now search and fetch RF sources, assertions, reports, and runs through a standard MCP search/fetch (plus RF-extended tools) without touching files or the database directly.",
+      "beneficiary": "Local AI agents, assistants, and RF-adjacent tooling",
+      "domains": ["MCP", "Knowledge"],
+      "evidence_refs": ["pytest", "arch_doc"]
+    },
+    {
+      "title": "Policy-before-derivation, no-leak reads",
+      "detail": "Every read resolves access policy before any projection runs: missing, cross-workspace, and rights-denied records reveal no derived fields, hidden is indistinguishable from missing, and no raw paths or secret fields are ever emitted.",
+      "beneficiary": "Operators and governance owners",
+      "domains": ["Governance", "Knowledge"],
+      "evidence_refs": ["readonly_test", "plan"]
+    },
+    {
+      "title": "Read means read — proven zero mutation",
+      "detail": "A negative matrix spies on cache/index/run/source/audit/telemetry/provider/write functions and snapshots the fixture tree and DB: every core and RF read causes zero writes and zero provider calls, so any agent can be pointed at it safely.",
+      "beneficiary": "Operators running untrusted or autonomous agents",
+      "domains": ["Governance", "MCP"],
+      "evidence_refs": ["readonly_test"]
+    },
+    {
+      "title": "Contract stability across four surfaces",
+      "detail": "Frozen core DTOs and dual structuredContent + canonical-JSON encoding mean service, CLI, GET API, and MCP return contract-equivalent payloads; RF extensions are quarantined under rf_* names so integrators' core calls don't break.",
+      "beneficiary": "Integrators and future maintainers",
+      "domains": ["Contracts", "API"],
+      "evidence_refs": ["parity_test", "plan"]
+    }
+  ],
+  "changes": [
+    {
+      "area": "MCP process",
+      "plain_english": "A new standalone program, rf-knowledge-mcp, that speaks the Model Context Protocol over stdio and offers exactly eight read tools.",
+      "technical_detail": "Independent OS process with its own registry/settings/credential allowlist and a lazy FastMCP import. Tools: search, fetch, rf_search, rf_fetch, rf_source_get, rf_assertion_get, rf_report_get, rf_run_get. Entry point rf-knowledge-mcp = research_foundry.knowledge_mcp.process:main. Inventory + transport lock asserts no Streamable HTTP/SSE/OAuth/non-loopback options.",
+      "evidence_refs": ["tree", "readonly_test"]
+    },
+    {
+      "area": "Access service + projectors",
+      "plain_english": "A policy-first knowledge service that turns raw RF data into safe, governed answers for four kinds of knowledge.",
+      "technical_detail": "services/knowledge_access.py: KnowledgeAccessService + source/assertion/report/run KindProjectors + a search/fetch composer. Report/run projection routes through the DI-1-hardened builder/export gates. Read-only, non-rebuilding seams were added to catalog_service.py (query_only_connection / is_catalog_available) and assertion_catalog.py (search/packet/lineage read-only).",
+      "evidence_refs": ["tree", "plan"]
+    },
+    {
+      "area": "CLI + HTTP parity",
+      "plain_english": "You can reach the same knowledge from the rf command line and from read-only web routes, not just from MCP.",
+      "technical_detail": "rf knowledge {search,fetch,source-get,assertion-get,report-get,run-get} (Typer, JSON-default for automation) and GET-only /api/knowledge/* routes with regenerated openapi.json. A parity test proves normalized service/CLI/API/MCP outputs match.",
+      "evidence_refs": ["parity_test", "user_doc"]
+    },
+    {
+      "area": "Schemas + docs",
+      "plain_english": "Four frozen data contracts and a full set of docs describe exactly what the surface returns and its deliberate local-only limits.",
+      "technical_detail": "schemas/knowledge_{search_request,search_response,document,activity_receipt}.schema.yaml; architecture + user docs; README split and CHANGELOG entry; four remote/shared shaping specs reconciled as explicitly deferred with promotion gates.",
+      "evidence_refs": ["arch_doc", "decisions"]
+    }
+  ],
+  "key_points": [
+    "Local + loopback only, schema-aligned only — this v1 is NOT OpenAI/ChatGPT compatible and has no remote/HTTPS transport (all deferred to four linked shaping specs).",
+    "Read = no writes, enforced by policy and proven by a negative-matrix + transitive-closure test suite.",
+    "Exactly eight MCP tools; the core search{query}/fetch{id} contract is frozen and RF extensions are isolated under rf_* names.",
+    "Squash-merged to local main 1376e85 (44 files, +11,095/-18); NOT pushed to origin — RF main is local-only by convention.",
+    "One deferred finding (KMCP-F1): the process transitively needs the serve extra; scoped precisely, not an AC violation."
+  ],
+  "findings": [
+    {
+      "title": "KMCP-F1 — rf-knowledge-mcp transitively requires the serve extra (fastapi), not only mcp",
+      "detail": "Importing research_foundry.knowledge_mcp.process pulls fastapi/starlette/uvicorn into sys.modules via two module-level imports in knowledge_access.py (AuthIdentity and the load-bearing resolve_workspace_isolation_active), both routed through api/__init__.py's unconditional fastapi probe. A purely mechanical TYPE_CHECKING move fixes only half; a full fix would relocate auth types out of research_foundry.api.* — a structural change touching catalog/builder/AgentJob call sites, out of scope for a P6 hardening pass.",
+      "impact": "An operator installing only research-foundry[mcp] (no serve) hits ModuleNotFoundError: fastapi at import time rather than the hand-written missing-SDK message. AC KMCP-1's actual forbidden set (Search Router/Operator registries, provider creds, mutators) remains genuinely absent — verified by the transitive-closure test — so this is a dependency-hygiene gap, not an AC violation or regression.",
+      "status": "deferred",
+      "domains": ["Governance", "MCP"],
+      "evidence_refs": ["findings", "readonly_test"]
+    },
+    {
+      "title": "Remote/OpenAI-ChatGPT compatibility is deliberately out of scope for v1",
+      "detail": "The local profile is declared schema-aligned-only. A local-profile truth gate labels loopback URLs non-canonical across CLI/API/docs and rejects remote config; docs and schemas carry no OpenAI/ChatGPT compatibility claim. Remote Streamable HTTP/OAuth, canonical HTTPS URLs, remote cache isolation, and shared/vector/graph retrieval are each linked to a shaping spec with explicit promotion evidence gates.",
+      "impact": "Integrators must treat this as a local plane only. Any 'ChatGPT connector'-style use requires the deferred remote transport + canonical-URL work (KMCP-DF-1/DF-2) to land first with its own review.",
+      "status": "resolved",
+      "domains": ["Contracts", "Governance"],
+      "evidence_refs": ["plan", "decisions"]
+    }
+  ],
+  "validation": [
+    {
+      "name": "Focused knowledge test suite",
+      "command": ".venv/bin/python -m pytest --junitxml tests/unit/test_knowledge_access.py tests/test_knowledge_mcp_process.py tests/api/test_knowledge_api.py tests/integration/test_knowledge_parity.py tests/test_knowledge_cli.py tests/test_knowledge_mcp_offline_import.py tests/unit/test_knowledge_mcp_{settings,registry}.py tests/test_schema_validation.py",
+      "result": "433 tests: 0 failures, 0 errors, 0 skipped (JUnit XML, current run 2026-07-28).",
+      "status": "passed",
+      "verified_by": "self",
+      "evidence_ref": "pytest"
+    },
+    {
+      "name": "Zero-mutation / read-only inventory",
+      "command": "pytest tests/test_knowledge_mcp_process.py (negative matrix + full-process transitive-closure test)",
+      "result": "Every core and RF read causes zero writes/provider calls; the process import graph excludes Search Router/Operator registries and provider creds (fastapi presence is documented in KMCP-F1).",
+      "status": "passed",
+      "verified_by": "self",
+      "evidence_ref": "readonly_test"
+    },
+    {
+      "name": "Static analysis (ruff + mypy)",
+      "command": ".venv/bin/ruff check <knowledge surface> && .venv/bin/mypy src/research_foundry/knowledge_mcp/ src/research_foundry/services/knowledge_access.py --ignore-missing-imports",
+      "result": "ruff: All checks passed. mypy: Success, no issues found in 5 source files (current run 2026-07-28).",
+      "status": "passed",
+      "verified_by": "self",
+      "evidence_ref": "lint"
+    },
+    {
+      "name": "Reviewer gates (execution-time)",
+      "command": "karen (Mode E) on P1/P3/P6; task-completion-validator on P2/P4/P5",
+      "result": "karen APPROVED the P1/P3/P6 gate trees; task-completion-validator APPROVED P2/P4/P5. Delegated during execution against each phase's exact tree.",
+      "status": "passed",
+      "verified_by": "delegated",
+      "evidence_ref": "reviewers"
+    },
+    {
+      "name": "Git integration state",
+      "command": "git show --stat 1376e85 ; git log --oneline main",
+      "result": "Squash-merged to local main as 1376e85 (44 files, +11,095/-18), on top of DI-1 base 2bf6895; NOT pushed to origin. No leftover knowledge-mcp branch or worktree.",
+      "status": "passed",
+      "verified_by": "self",
+      "evidence_ref": "tree"
+    }
+  ],
+  "metrics": [
+    { "label": "MCP tools exposed", "before": 0, "after": 8, "unit": "tools", "direction": "higher", "evidence_ref": "readonly_test" },
+    { "label": "Governed knowledge kinds", "before": 0, "after": 4, "unit": "kinds", "direction": "higher", "evidence_ref": "plan" },
+    { "label": "Frozen schemas", "before": 0, "after": 4, "unit": "schemas", "direction": "higher", "evidence_ref": "arch_doc" },
+    { "label": "Read transports (MCP/CLI/API)", "before": 0, "after": 3, "unit": "surfaces", "direction": "higher", "evidence_ref": "parity_test" }
+  ],
+  "timeline": [
+    { "label": "Evidence locked", "detail": "Confirmed 1376e85 on local main, re-ran the focused suite (433 green), ruff + mypy clean, and existence-checked every referenced path." },
+    { "label": "Delivered P1–P6", "detail": "Contracts → core service → projectors → stdio process → CLI/API parity → hardening, each gated by karen or task-completion-validator." },
+    { "label": "Merged local", "detail": "Squash-merged to local main 1376e85; worktree and branch removed. Push to origin remains a separate gated action." }
+  ],
+  "diagrams": [
+    {
+      "title": "Knowledge MCP read path",
+      "type": "flow",
+      "caption": "One policy-first service fans out to four governed projectors and is exposed identically across three read-only transports.",
+      "nodes": [
+        { "id": "transports", "label": "stdio MCP / CLI / GET API", "detail": "search + fetch (+ rf_*)" },
+        { "id": "policy", "label": "KnowledgeAccessService", "detail": "policy before derivation" },
+        { "id": "projectors", "label": "4 projectors", "detail": "source / assertion / report / run" },
+        { "id": "dto", "label": "Governed DTO", "detail": "opaque IDs, loopback URLs" }
+      ],
+      "edges": [
+        { "from": "transports", "to": "policy", "label": "read {query|id}" },
+        { "from": "policy", "to": "projectors", "label": "authorize" },
+        { "from": "projectors", "to": "dto", "label": "project" }
+      ]
+    }
+  ],
+  "media": [],
+  "no_visual_reason": "No product UI ships with this feature — it is a stdio MCP + CLI + read-only API surface. The read-path diagram and the pasted test/lint output are the most faithful evidence; a screenshot would add nothing verifiable.",
+  "risks": [
+    "Work is on local main only (1376e85) and NOT pushed to origin — any deploy that pulls from origin would be stale until pushed.",
+    "KMCP-F1: an operator installing only research-foundry[mcp] (without serve) will hit a raw fastapi ImportError instead of the hand-written missing-SDK message.",
+    "Local schema-aligned-only: treating this as an OpenAI/ChatGPT connector or remote endpoint is unsupported and would bypass the deferred remote-transport review."
+  ],
+  "followups": [
+    {
+      "title": "KMCP-F1 — decouple auth types from research_foundry.api.* so rf-knowledge-mcp drops the serve extra",
+      "detail": "Relocate AuthIdentity and resolve_workspace_isolation_active to a neutral non-FastAPI module (api.auth.* re-exporting for back-compat) so the process imports under [mcp] alone.",
+      "handoff": {
+        "command": "/plan-feature",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          ".claude/findings/research-foundry-knowledge-mcp-findings.md",
+          "src/research_foundry/services/knowledge_access.py"
+        ],
+        "requirement_ids": ["KMCP-F1"],
+        "gates": [],
+        "tracker": null,
+        "trigger": "When AuthIdentity / resolve_workspace_isolation_active are relocated out of the research_foundry.api.* package.",
+        "prompt": "Scope decoupling RF auth types (AuthIdentity, resolve_workspace_isolation_active) out of research_foundry.api.* into a neutral module with back-compat re-exports, so rf-knowledge-mcp imports under the mcp extra alone. Verify via the transitive-closure test that fastapi leaves sys.modules. Do not change auth behavior."
+      }
+    },
+    {
+      "title": "KMCP-DF-1 — remote Streamable HTTP + OAuth transport design",
+      "detail": "Remote identity/session/threat design (auth, rate-limit, revocation, workspace + transport review) before any non-loopback transport.",
+      "handoff": {
+        "command": "/plan-feature",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-transport.md",
+          "docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md"
+        ],
+        "requirement_ids": ["KMCP-DF-1"],
+        "gates": [],
+        "tracker": null,
+        "trigger": "Auth, rate-limit, revocation, workspace, and transport review accepted.",
+        "prompt": "Promote the remote-transport shaping spec into a plan: design Streamable HTTP + OAuth identity/session/threat model for rf-knowledge-mcp. Keep local stdio unchanged and schema-aligned-only. Nothing remote ships until the transport review is accepted."
+      }
+    },
+    {
+      "title": "KMCP-DF-2 — canonical public HTTPS resource URLs",
+      "detail": "Canonical URL ADR, host ownership, redirect/version policy, and live reachability — required before URLs can be non-loopback/canonical.",
+      "handoff": {
+        "command": "/plan-feature",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "docs/project_plans/design-specs/research-foundry-knowledge-mcp-canonical-resource-urls.md",
+          "docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md"
+        ],
+        "requirement_ids": ["KMCP-DF-2"],
+        "gates": [],
+        "tracker": null,
+        "trigger": "Canonical URL ADR, host ownership, redirect/version policy, and live reachability resolved.",
+        "prompt": "Promote the canonical-resource-URL shaping spec: author the ADR for public HTTPS resource namespace, host ownership, redirect/version policy, and reachability. Until it lands, keep all Knowledge MCP URLs loopback-only and explicitly non-canonical."
+      }
+    },
+    {
+      "title": "KMCP-DF-3 — remote cache isolation threat model",
+      "detail": "Partition, invalidation, timing, backup, and deletion threat model to prevent a remote cache leaking tenant membership/timing.",
+      "handoff": {
+        "command": "/plan-feature",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "docs/project_plans/design-specs/research-foundry-knowledge-mcp-remote-cache-isolation.md",
+          "docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md"
+        ],
+        "requirement_ids": ["KMCP-DF-3"],
+        "gates": [],
+        "tracker": null,
+        "trigger": "Partition, invalidation, timing, backup, and deletion threat model passes.",
+        "prompt": "Promote the remote-cache-isolation shaping spec into a threat model: partitioning, invalidation, timing side-channels, backup, and deletion for any remote cache. Gate on it before enabling remote caching; local v1 has no shared cache."
+      }
+    },
+    {
+      "title": "KMCP-DF-4 — shared / vector / graph retrieval",
+      "detail": "Shared indexes are outside RAL private lexical v1; needs separate evidence/quality evaluation and isolation approval.",
+      "handoff": {
+        "command": "/plan-feature",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "docs/project_plans/design-specs/reusable-assertion-ledger-shared-indexes.md",
+          "docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md"
+        ],
+        "requirement_ids": ["KMCP-DF-4"],
+        "gates": [],
+        "tracker": null,
+        "trigger": "Separate evidence/quality evaluation and isolation approval complete.",
+        "prompt": "Promote the shared-indexes shaping spec: evaluate shared/vector/graph retrieval quality and isolation for the assertion ledger, distinct from the private lexical v1. Requires its own evidence + isolation approval before implementation."
+      }
+    },
+    {
+      "title": "KMCP-DF-5 — Operator MCP (mutation + cost-bearing tools)",
+      "detail": "Mutations and cost-bearing tools require a different policy posture — a separate Operator MCP plan, gated on stable read IDs.",
+      "handoff": {
+        "command": "/plan-feature",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md",
+          "docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md"
+        ],
+        "requirement_ids": ["KMCP-DF-5"],
+        "gates": [],
+        "tracker": null,
+        "trigger": "Operator MCP plan approved and read IDs stable.",
+        "prompt": "Advance the Operator MCP PRD: design the mutation + cost-bearing tool surface under its own stricter policy posture, separate from the read-only Knowledge MCP. Do not add any mutator to rf-knowledge-mcp; reads must stay write-free."
+      }
+    },
+    {
+      "title": "Make rf-knowledge-mcp reachable to local agents (on-node deploy + client registration)",
+      "detail": "Register the stdio server in agent client configs and, if desired, install it on the agentic node so local agents can use it. Human/config action — no single agent command.",
+      "handoff": {
+        "command": null,
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "docs/user/knowledge-mcp.md",
+          "docs/dev/architecture/knowledge-mcp.md"
+        ],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": null,
+        "prompt": "human decision — register rf-knowledge-mcp (stdio) in the relevant MCP client config(s) per docs/user/knowledge-mcp.md, ensuring the serve extra is installed (KMCP-F1). Optionally deploy to rocket-fedora. Keep it loopback/stdio only; no remote exposure."
+      }
+    },
+    {
+      "title": "Push local main to origin (gated)",
+      "detail": "1376e85 (and the ERI commit above it) are local-only. Pushing is an explicit, owner-gated action per RF convention; required before any origin-pulling deploy.",
+      "handoff": {
+        "command": null,
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          ".claude/rules/git-workflow.md"
+        ],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": null,
+        "prompt": "human decision — decide whether to push local main (1376e85 + e76784b) to origin. Per RF git-workflow, push is a separate gated action; confirm the data-plane split and unrelated tree dirt before pushing."
+      }
+    }
+  ],
+  "evidence": [
+    { "id": "tree", "label": "Squash commit on local main (44 files, +11,095/-18)", "kind": "tree" },
+    { "id": "pytest", "label": "Focused knowledge suite — 433 passed, 0 fail/error/skip (JUnit XML, 2026-07-28)", "kind": "test" },
+    { "id": "readonly_test", "label": "Zero-mutation negative matrix + full-process transitive-closure test", "kind": "test", "path": "tests/test_knowledge_mcp_process.py" },
+    { "id": "parity_test", "label": "Cross-transport parity test (service/CLI/API/MCP)", "kind": "test", "path": "tests/integration/test_knowledge_parity.py" },
+    { "id": "lint", "label": "ruff (All checks passed) + mypy (Success, 5 files), 2026-07-28", "kind": "test" },
+    { "id": "plan", "label": "Knowledge MCP implementation plan (Tier 3, P1–P6, AC KMCP-1..6, deferrals KMCP-DF-1..5)", "kind": "plan", "path": "docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md" },
+    { "id": "findings", "label": "KMCP-F1 finding (serve-extra transitive dependency)", "kind": "other", "path": ".claude/findings/research-foundry-knowledge-mcp-findings.md" },
+    { "id": "arch_doc", "label": "Architecture doc — Knowledge MCP", "kind": "other", "path": "docs/dev/architecture/knowledge-mcp.md" },
+    { "id": "user_doc", "label": "User doc — Knowledge MCP", "kind": "other", "path": "docs/user/knowledge-mcp.md" },
+    { "id": "decisions", "label": "Decisions block (contract resolutions, remote-compat reconciliation)", "kind": "other", "path": ".codex/worknotes/research-foundry-knowledge-mcp/decisions-block.md" },
+    { "id": "reviewers", "label": "Execution-time reviewer verdicts — karen (P1/P3/P6) + task-completion-validator (P2/P4/P5)", "kind": "other" }
+  ]
+}
