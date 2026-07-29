@@ -59,7 +59,7 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-EXPORT_SCHEMA_VERSION = "1.7"
+EXPORT_SCHEMA_VERSION = "1.8"
 
 AOS_CORRELATION_FIELDS = (
     "aos_run_uuid",
@@ -661,10 +661,77 @@ def _resolve_source(
     return resolved
 
 
+def _claim_provenance_lineage(
+    paths: FoundryPaths | None, workspace_id: str | None, persistent_references: Mapping[str, Any] | None
+) -> dict[str, Any] | None:
+    """RPC-5.2: best-effort, read-only provenance/lineage enrichment for one
+    claim's cited source_assertion, via the SAME governed catalog reader
+    ``api/routers/assertions.py`` uses
+    (:meth:`~.assertion_catalog.AssertionCatalog.packet_read_only`).
+
+    Lazily imports ``AuthIdentity``/``AssertionCatalog`` -- mirroring
+    :func:`_run_read_allowed`'s own lazy-import convention above -- so the
+    deterministic, zero-network export spine never requires the ``[serve]``
+    extra merely to import this module. Returns ``None`` (never raises) for
+    a legacy claim with no ``source_assertion_id``, an unbuilt/denied catalog
+    projection, or any unexpected failure: provenance enrichment degrades
+    silently, it never blocks or corrupts export. ``packet_read_only`` is
+    used deliberately (never :meth:`~.assertion_catalog.AssertionCatalog.packet`)
+    so an export never triggers a projection rebuild as a side effect.
+    """
+
+    if paths is None or not workspace_id or not isinstance(persistent_references, Mapping):
+        return None
+    assertion_id = persistent_references.get("source_assertion_id")
+    assertion_version = persistent_references.get("assertion_version")
+    if not isinstance(assertion_id, str) or not isinstance(assertion_version, int):
+        return None
+    try:
+        from ..api.auth.provider import AuthIdentity
+        from .assertion_catalog import AssertionCatalog
+
+        identity = AuthIdentity(user_id="rf-export", workspace_id=workspace_id, roles=("export",))
+        packet = AssertionCatalog(paths).packet_read_only(assertion_id, identity=identity)
+    except Exception:  # noqa: BLE001 - enrichment is best-effort, never fatal to export
+        return None
+    if packet is None or packet.get("assertion_version") != assertion_version:
+        return None
+    report_uses = packet.get("report_uses") or []
+    inference_lineage = packet.get("inference_lineage") or []
+    canonical_claim_lineage = packet.get("canonical_claim_lineage") or []
+    search_activity_ids = packet.get("search_activity_ids") or []
+    run_facets = packet.get("run_facets")
+    if not isinstance(run_facets, dict):
+        run_facets = {}
+    # A non-empty `run_facets` dict whose every value is `None` (a run used
+    # this assertion, but that run has no resolvable origin) carries no real
+    # signal -- an empty-CONTENT check, not a truthy-container check, decides
+    # whether this block is worth attaching at all.
+    has_content = bool(
+        report_uses
+        or inference_lineage
+        or canonical_claim_lineage
+        or search_activity_ids
+        or any(value is not None for value in run_facets.values())
+    )
+    if not has_content:
+        return None
+    return {
+        "report_uses": report_uses,
+        "inference_lineage": inference_lineage,
+        "canonical_claim_lineage": canonical_claim_lineage,
+        "run_facets": run_facets,
+        "search_activity_ids": search_activity_ids,
+    }
+
+
 def _build_claims(
     ledger: dict[str, Any],
     cards: dict[str, dict[str, Any]],
     threshold_rank: int,
+    *,
+    paths: FoundryPaths | None = None,
+    workspace_id: str | None = None,
 ) -> list[dict[str, Any]]:
     claims_out: list[dict[str, Any]] = []
     for claim in ledger.get("claims") or []:
@@ -693,7 +760,16 @@ def _build_claims(
         # Persistent references are additive. Never manufacture IDs for legacy
         # claim ledgers; omission remains the assertion-ledger-absent signal.
         if "persistent_references" in claim:
-            claim_out["persistent_references"] = claim.get("persistent_references")
+            persistent_references = claim.get("persistent_references")
+            claim_out["persistent_references"] = persistent_references
+            # RPC-5.2 (schema 1.8): additive, read-only provenance/lineage
+            # enrichment. Omitted entirely (never an empty-shaped key) when
+            # unavailable -- mirrors `_term_index`'s own omit-when-absent
+            # convention immediately below, so a legacy claim/export keeps
+            # its EXACT prior key set (AC RPC-5 resilience clause).
+            provenance_lineage = _claim_provenance_lineage(paths, workspace_id, persistent_references)
+            if provenance_lineage is not None:
+                claim_out["_provenance_lineage"] = provenance_lineage
         # _term_index (schema 1.7, TASK-2.1) is additive and non-authoritative
         # (services/term_index.py, D8): copied forward verbatim, never
         # recomputed or validated here. Omitted entirely when claim-map found
@@ -1127,10 +1203,14 @@ def record_external_report_import_activity(
     indirection already keeps that off the receipt itself).
 
     `provenance_origin` is an optional, nullable, OPAQUE reference — Research
-    Provenance Continuity's real `provenance_origin` schema does not exist on
-    this tree yet (contract §3.1); this never invents structure for it, and
-    carries through whatever a caller supplies (or ``None``) verbatim, same
-    as a safe generated ID.
+    Provenance Continuity's `provenance_origin` schema
+    (`schemas/provenance_origin.schema.yaml`, `services/provenance_envelope.py`)
+    has since shipped on this tree, but this function still never resolves,
+    dereferences, or validates the value against it: it carries through
+    whatever a caller supplies (or ``None``) verbatim, same as a safe
+    generated ID — no different than before that schema existed. Opaque by
+    design (contract §3.1's channel-by-channel redaction matrix), not by
+    the schema's absence.
     """
 
     try:
@@ -1282,7 +1362,9 @@ def export_run(
     ledger = _load_yaml_dict(rp.claim_ledger, run_id=run_id)
     cards = _load_source_cards(rp, run_id=run_id)
 
-    claims = _build_claims(ledger, cards, threshold_rank)
+    claims = _build_claims(
+        ledger, cards, threshold_rank, paths=paths, workspace_id=run_meta.get("workspace_id")
+    )
     governance = dict(bundle.get("governance") or {})
     # AC-4: thread allowed_writebacks and requires_human_review from run.yaml
     # governance block (not the evidence_bundle) so per-run governance policy

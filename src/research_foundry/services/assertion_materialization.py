@@ -11,11 +11,12 @@ edition, and exact passage all bind to one another.
 from __future__ import annotations
 
 import copy
+import fcntl
 import json
 import os
 import re
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -27,6 +28,7 @@ from ..assertion_identity import (
     source_assertion_fingerprint,
     source_assertion_id,
 )
+from ..config import FoundryConfig
 from ..frontmatter import load_md
 from ..paths import FoundryPaths
 from ..schemas import SchemaRegistry
@@ -45,6 +47,16 @@ _OBSERVATION_ID_RE = re.compile(r"^obs_[a-f0-9]{64}$")
 _EVALUATION_ID_RE = re.compile(r"^aev_[a-f0-9]{64}$")
 _AUDIT_ID_RE = re.compile(r"^aud_[a-f0-9]{64}$")
 _GENERATION_ID_RE = re.compile(r"^mat_[a-f0-9]{64}$")
+# RPC F11 gate-reversal seam (research-provenance-continuity, P4/RPC-4.2):
+# validates an inference_id supplied to _commit_persistent_reference() below --
+# never used to relax _DEFERRED_REFERENCE_FIELDS/_reject_deferred_references,
+# which stay exactly as strict as before for _prepare_one's fresh-candidate
+# intake path (contract freeze doc §17.2).
+_INFERENCE_ID_RE = re.compile(r"^inf_[a-f0-9]{64}$")
+# RPC F11 gate-reversal seam (research-provenance-continuity, P4/RPC-4.3):
+# validates a canonical_claim_id supplied to _commit_persistent_reference()
+# below -- same non-relaxation guarantee as _INFERENCE_ID_RE above.
+_CANONICAL_CLAIM_ID_RE = re.compile(r"^ccl_[a-f0-9]{64}$")
 _KNOWN_QUALIFIERS = {
     "modality",
     "negation",
@@ -72,6 +84,39 @@ class MaterializationConflict(MaterializationError):
 
 class MaterializationInterrupted(RuntimeError):
     """Test-only interruption before the publication pointer is replaced."""
+
+
+class InferenceReferenceConflict(MaterializationError):
+    """A claim_ledger row's inference reference cannot be committed as requested.
+
+    Raised by the private :func:`_commit_persistent_reference`/
+    :func:`_commit_persistent_reference_locked` -- the F11 gate-reversal
+    SECOND, SEPARATE write path (contract freeze doc §17.1/§17.2), reachable
+    ONLY from ``AssertionInferenceMaterializer.materialize_inference`` (T4-1
+    fix-cycle 2: this write path is no longer public). Never raised by
+    ``_prepare_one``'s fresh-candidate intake path, which keeps rejecting any
+    candidate that already carries a non-null
+    ``inference_id``/``canonical_claim_id``/``canonical_claim_version`` via
+    the unmodified ``_reject_deferred_references``/``_DEFERRED_REFERENCE_FIELDS``
+    gate above.
+    """
+
+
+class CanonicalClaimReferenceConflict(MaterializationError):
+    """A claim_ledger row's canonical-claim reference cannot be committed as requested.
+
+    Raised by the private :func:`_commit_persistent_reference`/
+    :func:`_commit_persistent_reference_locked` -- the F11 gate-reversal
+    SECOND, SEPARATE write path for ``canonical_claim_id``/``canonical_claim_version``
+    (contract freeze doc §17.1/§17.2/§17.3), reachable ONLY from
+    ``CanonicalClaimMaterializer.publish_canonical_claim`` (T4-1 fix-cycle 2:
+    this write path is no longer public), mirroring
+    :class:`InferenceReferenceConflict` exactly. Never raised by
+    ``_prepare_one``'s fresh-candidate intake path, which keeps rejecting any
+    candidate that already carries a non-null ``canonical_claim_id``/
+    ``canonical_claim_version``/``inference_id`` via the unmodified
+    ``_reject_deferred_references``/``_DEFERRED_REFERENCE_FIELDS`` gate above.
+    """
 
 
 class _Abstain(MaterializationError):
@@ -824,13 +869,648 @@ def materialize_run(
     return AssertionMaterializer(workspace_id=workspace_id, paths=paths).materialize_run(run_id)
 
 
+# ---------------------------------------------------------------------------
+# F11 gate-reversal contract (research-provenance-continuity, P4/RPC-4.2-4.4):
+# the SOLE second write path for claim_ledger.persistent_references -- never a
+# loosening of _reject_deferred_references/_DEFERRED_REFERENCE_FIELDS above,
+# which stay exactly as strict as before this seam existed for every existing
+# call site (_prepare_one, _apply_claim_references).
+#
+# T4-1 fix-cycle 2 (gpt-5.6-terra audit, contract freeze doc §17.1/§17.2/§17.7/
+# §17.8): the ORIGINAL round-1 shape of this seam (public `apply_*_reference`
+# functions accepting an arbitrary target id + a caller-supplied
+# `recheck() -> bool` callback) let an external caller commit a reference to a
+# target that never existed, in a run it does not own, by simply passing
+# `lambda: True`. This module now exposes NO public entry point here at all:
+# `_commit_persistent_reference` (below) is private, reachable ONLY from
+# `AssertionInferenceMaterializer.materialize_inference` /
+# `CanonicalClaimMaterializer.publish_canonical_claim`, and independently
+# (re)enforces every one of contract §17.1's six preconditions itself, under
+# the per-run lock, from freshly-reloaded on-disk state -- never merely
+# trusting a boolean the caller computed. The `_TargetKindSpec` each caller
+# supplies closes over that caller's OWN validated path/schema conventions
+# (record_path, manifest_path, digest formula, transitive-support shape) --
+# it carries no security decision itself, only kind-specific arithmetic
+# (T4-4: the ONE shared locked target-validation routine both target kinds
+# use, via `_recheck_transitive_support` below, eliminating the inference
+# path's prior generic `partial_write_rejected` collapse and the drift
+# between the two services' typed outcomes).
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _TargetKindSpec:
+    """Kind-specific arithmetic the shared, locked commit routine needs.
+
+    Every field is a pure function or a frozen storage-path convention closed
+    over the CALLING materializer's own already-validated `self.root` --
+    never a boolean "trust me" callback. The shared routine
+    (`_commit_persistent_reference_locked`) performs every security-relevant
+    check itself (existence, ownership, lifecycle, capability flags,
+    generation CAS, commit-proof recompute) using these only to compute
+    kind-specific values (a version_digest formula, a storage path) it has no
+    business hard-coding for both `inference_record` and `canonical_claim`
+    shapes in one place.
+    """
+
+    kind: str  # "inference_record" | "canonical_claim"
+    #: SOL-33: the ``SchemaRegistry`` schema name to re-validate the
+    #: freshly-reloaded target record against at commit time -- see
+    #: ``_commit_persistent_reference_locked``'s Precondition 1.
+    schema_name: str  # "inference_record" | "canonical_claim"
+    id_field: str  # "inference_id" | "canonical_claim_id"
+    version_field: str  # "inference_version" | "canonical_claim_version"
+    manifest_type: str
+    conflict_cls: type[MaterializationError]
+    interrupted_cls: type[RuntimeError]
+    record_path: Callable[[str, int], Path]
+    manifest_path: Callable[[], Path]
+    recompute_version_digest: Callable[[Mapping[str, Any]], str]
+    is_state_active: Callable[[Mapping[str, Any]], bool]
+    source_assertion_refs_of: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]]]
+    inference_refs_of: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]]]
+    support_refs_digest_of: Callable[[Mapping[str, Any]], str]
+    requires_canonical_claims_capability: bool
+
+
+def compute_commit_proof_digest(
+    *,
+    claim_id: str,
+    row_sources: Sequence[Mapping[str, Any]],
+    row_conclusion_text: str,
+    target_kind: str,
+    target_id: str,
+    target_version: int,
+    target_version_digest: str,
+    support_refs_digest: str,
+) -> str:
+    """Contract §17.8 item 2's exact seven-field commit-proof digest.
+
+    Owned by this module per contract freeze doc §17.9 design note N3 ("the
+    SEPARATE claim_ledger.persistent_references SECOND write path ... and
+    §17.8's commit-proof digest ... is owned by services/assertion_materialization.py").
+    Re-exported from ``assertion_inference`` for backward compatibility (it
+    previously lived there); ``canonical_claim_materialization`` imports it
+    from here directly.
+    """
+
+    payload = {
+        "claim_id": claim_id,
+        "row_material": {
+            "sources": [dict(source) for source in row_sources],
+            "conclusion_text": row_conclusion_text,
+        },
+        "target_kind": target_kind,
+        "target_id": target_id,
+        "target_version": target_version,
+        "target_version_digest": target_version_digest,
+        "support_refs_digest": support_refs_digest,
+    }
+    return _canonical_digest(payload)
+
+
+def _record_fingerprint(record_id: str) -> str:
+    """The record's stable identity fingerprint: its own id hash, no prefix."""
+
+    _, _, tail = record_id.partition("_")
+    return tail or record_id
+
+
+def _lookup_workspace_record(
+    root: Path, subdir: str, record_id: object, id_pattern: re.Pattern[str]
+) -> dict[str, Any] | None:
+    if not isinstance(record_id, str) or not id_pattern.fullmatch(record_id):
+        return None
+    path = root / subdir / f"{record_id}.yaml"
+    if not path.is_file():
+        return None
+    data = load_yaml(path)
+    return data if isinstance(data, dict) else None
+
+
+def _recheck_transitive_support(
+    *,
+    root: Path,
+    source_assertion_refs: Sequence[Mapping[str, Any]],
+    inference_refs: Sequence[Mapping[str, Any]] = (),
+    stale_inference_ids: frozenset[str] = frozenset(),
+) -> str | None:
+    """T4-4: the ONE shared transitive support-lifecycle recheck both target
+    kinds use (contract §17.1 item 6) -- canonical -> its inferences -> their
+    OWN source_assertion_refs, never just the target's immediate refs.
+    Returns a typed skip code, or ``None`` if every transitively-named source
+    assertion is still `lifecycle_state: eligible` and every transitively-
+    named inference is still `status: active`.
+
+    F18 (RPC-6.G / N7): an inference's raw, on-disk ``status`` never flips to
+    stale -- P6 records that as a durable effect receipt instead
+    (``assertion_impact.collect_stale_object_ids``), never a record mutation.
+    ``stale_inference_ids`` is that lane's effective-status verdict, computed
+    ONCE per commit attempt by the caller (never per-ref here) and belt-and-
+    suspenders alongside the raw ``status`` check: either one failing is
+    ``stale_support``.
+
+    F19 (RPC-6.G validator, Karen K-1, HIGH): a directly-cited source
+    assertion has the SAME blindness -- its raw ``assertions/<id>.yaml``
+    record's ``lifecycle_state`` never flips to ``blocked`` either; the
+    authoritative boundary lives in the separate
+    ``lifecycle_policy/<assertion_id>.yaml`` artifact (see
+    ``AssertionImpactReconciler.reconcile``). Every ref is additionally
+    checked against ``assertion_impact.effective_source_assertion_lifecycle_state``
+    -- a policy-blocked assertion, or one whose policy artifact is present
+    but fails to validate (K-2: fail closed, never silently un-blocked), is
+    ``stale_support`` too.
+    """
+
+    # Lazy import: assertion_impact.py imports `_referenced_target_ids` from
+    # this module at module scope, so a module-level import here would be
+    # circular (same reason the caller below lazily imports
+    # `collect_stale_object_ids`).
+    from .assertion_impact import effective_source_assertion_lifecycle_state
+
+    for ref in source_assertion_refs:
+        assertion_id = ref.get("assertion_id") if isinstance(ref, Mapping) else None
+        assertion_version = ref.get("assertion_version") if isinstance(ref, Mapping) else None
+        assertion = _lookup_workspace_record(root, "assertions", assertion_id, _ASSERTION_ID_RE)
+        if (
+            assertion is None
+            or assertion.get("assertion_version") != assertion_version
+            or assertion.get("lifecycle_state") != "eligible"
+        ):
+            return "stale_support"
+        if (
+            isinstance(assertion_id, str)
+            and effective_source_assertion_lifecycle_state(root=root, assertion_id=assertion_id) != "eligible"
+        ):
+            return "stale_support"
+    for ref in inference_refs:
+        inference_id = ref.get("inference_id") if isinstance(ref, Mapping) else None
+        inference_version = ref.get("inference_version") if isinstance(ref, Mapping) else None
+        inference = _lookup_workspace_record(root, "inferences", inference_id, _INFERENCE_ID_RE)
+        if (
+            inference is None
+            or inference.get("inference_version") != inference_version
+            or inference.get("status") != "active"
+            or (isinstance(inference_id, str) and inference_id in stale_inference_ids)
+        ):
+            return "stale_support"
+        nested_refs = inference.get("source_assertion_refs")
+        nested_code = _recheck_transitive_support(
+            root=root,
+            source_assertion_refs=nested_refs if isinstance(nested_refs, list) else [],
+            stale_inference_ids=stale_inference_ids,
+        )
+        if nested_code:
+            return nested_code
+    return None
+
+
+def _load_manifest_entries(manifest_path: Path) -> dict[tuple[Any, Any], dict[str, Any]]:
+    if not manifest_path.exists():
+        return {}
+    manifest = load_yaml(manifest_path)
+    entries = manifest.get("entries") if isinstance(manifest, Mapping) else None
+    result: dict[tuple[Any, Any], dict[str, Any]] = {}
+    if isinstance(entries, list):
+        for entry in entries:
+            if isinstance(entry, Mapping):
+                result[(entry.get("record_id"), entry.get("version"))] = dict(entry)
+    return result
+
+
+def _ensure_target_manifest_entry(
+    manifest_path: Path,
+    *,
+    manifest_type: str,
+    record_kind: str,
+    record_id: str,
+    version: int,
+    version_digest: str,
+) -> None:
+    """Contract §17.7a: write the generation-manifest entry.
+
+    T4-3 fix: this is now called ONLY from `_commit_persistent_reference_locked`,
+    immediately before the claim-ledger reference write, under the SAME
+    per-run lock -- never at record-promotion time (the prior bug: a
+    promotion-time write left a manifest entry recovery trusted even when no
+    claim-ledger commit had ever been attempted for it).
+    """
+
+    manifest = load_yaml(manifest_path) if manifest_path.exists() else None
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("entries"), list):
+        manifest = {"schema_version": 1, "type": manifest_type, "entries": []}
+    entries = manifest["entries"]
+    key = (record_id, version)
+    for entry in entries:
+        if (entry.get("record_id"), entry.get("version")) == key:
+            return
+    entries.append(
+        {
+            "record_kind": record_kind,
+            "record_id": record_id,
+            "version": version,
+            "version_digest": version_digest,
+            "fingerprint": _record_fingerprint(record_id),
+        }
+    )
+    _atomic_dump(manifest, manifest_path)
+
+
+def _referenced_target_ids(
+    paths: FoundryPaths, *, workspace_id: str, record_kind: str
+) -> set[tuple[str, int]]:
+    """T4-3: the recovery authority is the CURRENT claim-ledger generation
+    pointer, across every run this workspace owns -- never a private
+    per-record-kind manifest file consulted in isolation. A `(record_id,
+    version)` pair is authoritative/citable iff it is reachable from some
+    run's CURRENT `.claim_ledger_published.yaml` generation snapshot; a
+    promoted record not reachable this way is quarantine-eligible on
+    recovery, even if a private manifest file happens to also name it.
+    """
+
+    referenced: set[tuple[str, int]] = set()
+    runs_root = paths.runs
+    if not runs_root.is_dir():
+        return referenced
+    for run_dir in sorted(runs_root.iterdir()):
+        if not run_dir.is_dir():
+            continue
+        run_id = run_dir.name
+        run_paths = paths.run_paths(run_id)
+        if not run_paths.run_yaml.exists():
+            continue
+        run_doc = load_yaml(run_paths.run_yaml)
+        if not isinstance(run_doc, Mapping) or run_doc.get("workspace_id") != workspace_id:
+            continue
+        pointer_path = run_paths.claims / ".claim_ledger_published.yaml"
+        if not pointer_path.exists():
+            continue
+        pointer = load_yaml(pointer_path)
+        generation_id = pointer.get("generation_id") if isinstance(pointer, Mapping) else None
+        if not isinstance(generation_id, str):
+            continue
+        generation_path = run_paths.claims / ".claim_ledger_generations" / f"{generation_id}.yaml"
+        if not generation_path.exists():
+            continue
+        generation = load_yaml(generation_path)
+        snapshot = generation.get("persistent_references_snapshot") if isinstance(generation, Mapping) else None
+        if not isinstance(snapshot, list):
+            continue
+        for row in snapshot:
+            manifest_entries = row.get("manifest_entries") if isinstance(row, Mapping) else None
+            if not isinstance(manifest_entries, list):
+                continue
+            for entry in manifest_entries:
+                if not isinstance(entry, Mapping) or entry.get("record_kind") != record_kind:
+                    continue
+                record_id = entry.get("record_id")
+                version = entry.get("version")
+                if isinstance(record_id, str) and isinstance(version, int):
+                    referenced.add((record_id, version))
+    return referenced
+
+
+def _claim_ledger_generation_snapshot(root: Path, ledger: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The claim rows this generation's CAS/commit-proof covers (§17.7 step 4).
+
+    T4-3: each row's snapshot entry now embeds `manifest_entries` -- the
+    §17.7a manifest-entry-shaped block(s) for whichever inference_record/
+    canonical_claim this row references, read from the per-kind manifest
+    files under ``root`` -- so the claim-ledger generation itself is what
+    recovery (`_referenced_target_ids`) consults as the SOLE authority,
+    never a private per-record-kind manifest in isolation.
+    """
+
+    inference_manifest = _load_manifest_entries(root / "inferences" / ".generation_manifest.yaml")
+    canonical_manifest = _load_manifest_entries(root / "canonical_claims" / ".generation_manifest.yaml")
+    snapshot: list[dict[str, Any]] = []
+    for claim in ledger.get("claims") or []:
+        if not isinstance(claim, Mapping):
+            continue
+        refs = claim.get("persistent_references")
+        if not isinstance(refs, Mapping) or not (refs.get("inference_id") or refs.get("canonical_claim_id")):
+            continue
+        manifest_entries: list[dict[str, Any]] = []
+        inference_id = refs.get("inference_id")
+        if isinstance(inference_id, str):
+            entry = inference_manifest.get((inference_id, refs.get("inference_version")))
+            if entry is not None:
+                manifest_entries.append(entry)
+        canonical_claim_id = refs.get("canonical_claim_id")
+        if isinstance(canonical_claim_id, str):
+            entry = canonical_manifest.get((canonical_claim_id, refs.get("canonical_claim_version")))
+            if entry is not None:
+                manifest_entries.append(entry)
+        snapshot.append(
+            {
+                "claim_id": claim.get("claim_id"),
+                "persistent_references": dict(refs),
+                "manifest_entries": manifest_entries,
+            }
+        )
+    return snapshot
+
+
+def _publish_claim_ledger_generation(
+    paths: FoundryPaths, run_id: str, ledger: Mapping[str, Any], commit_proof_digest: str, *, root: Path
+) -> str:
+    """Contract §17.7 step 4: content-addressed generation pointer + snapshot.
+
+    Idempotent: recomputing over identical `persistent_references` content
+    reproduces the same ``generation_id`` and is a no-op re-publish, never a
+    spurious "change" (the same reason ``AssertionCatalog.rebuild()``'s own
+    ``catalog_generation_id`` is content-addressed, not a counter).
+    """
+
+    run_paths = paths.run_paths(run_id)
+    snapshot = _claim_ledger_generation_snapshot(root, ledger)
+    generation_id = f"clg_{_canonical_digest({'run_id': run_id, 'persistent_references_snapshot': snapshot})}"
+    generations_dir = run_paths.claims / ".claim_ledger_generations"
+    generation_path = generations_dir / f"{generation_id}.yaml"
+    if not generation_path.exists():
+        _atomic_dump(
+            {
+                "schema_version": "1.0",
+                "type": "claim_ledger_generation",
+                "run_id": run_id,
+                "generation_id": generation_id,
+                "persistent_references_snapshot": snapshot,
+                "commit_proof_digest": commit_proof_digest,
+            },
+            generation_path,
+        )
+    pointer_path = run_paths.claims / ".claim_ledger_published.yaml"
+    _atomic_dump(
+        {
+            "schema_version": 1,
+            "type": "claim_ledger_generation_pointer",
+            "run_id": run_id,
+            "generation_id": generation_id,
+        },
+        pointer_path,
+    )
+    return generation_id
+
+
+def _read_claim_ledger_generation_pointer(paths: FoundryPaths, run_id: str) -> str | None:
+    """T4-2: the expected generation, captured by the caller BEFORE the lock
+    (at resolution time) so the locked commit can CAS against it below."""
+
+    pointer_path = paths.run_paths(run_id).claims / ".claim_ledger_published.yaml"
+    if not pointer_path.exists():
+        return None
+    pointer = load_yaml(pointer_path)
+    generation_id = pointer.get("generation_id") if isinstance(pointer, Mapping) else None
+    return generation_id if isinstance(generation_id, str) else None
+
+
+def _commit_persistent_reference(
+    *,
+    paths: FoundryPaths,
+    run_id: str,
+    claim_id: str,
+    caller_workspace_id: str,
+    target: _TargetKindSpec,
+    target_id: str,
+    target_version: int,
+    expected_generation_id: str | None,
+    caller_commit_proof_digest: str,
+    _interrupt_after_manifest: bool = False,
+    _interrupt_after_ledger: bool = False,
+) -> str:
+    """The SOLE, private, lock-serialized entry point for a
+    ``claim_ledger.persistent_references`` write (F11 second write path,
+    T4-1 fix-cycle 2). Reachable ONLY from
+    ``AssertionInferenceMaterializer.materialize_inference`` /
+    ``CanonicalClaimMaterializer.publish_canonical_claim`` -- never public,
+    never satisfiable by a caller-controlled boolean. See
+    :func:`_commit_persistent_reference_locked` for the six-precondition
+    enforcement this performs under the per-run lock.
+    """
+
+    run_paths = paths.run_paths(run_id)
+    run_paths.claims.mkdir(parents=True, exist_ok=True)
+    lock_path = run_paths.claims / ".claim_ledger.lock"
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        return _commit_persistent_reference_locked(
+            paths=paths,
+            run_id=run_id,
+            claim_id=claim_id,
+            caller_workspace_id=caller_workspace_id,
+            target=target,
+            target_id=target_id,
+            target_version=target_version,
+            expected_generation_id=expected_generation_id,
+            caller_commit_proof_digest=caller_commit_proof_digest,
+            _interrupt_after_manifest=_interrupt_after_manifest,
+            _interrupt_after_ledger=_interrupt_after_ledger,
+        )
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
+
+
+def _commit_persistent_reference_locked(
+    *,
+    paths: FoundryPaths,
+    run_id: str,
+    claim_id: str,
+    caller_workspace_id: str,
+    target: _TargetKindSpec,
+    target_id: str,
+    target_version: int,
+    expected_generation_id: str | None,
+    caller_commit_proof_digest: str,
+    _interrupt_after_manifest: bool,
+    _interrupt_after_ledger: bool,
+) -> str:
+    """Independently (re)enforces EVERY one of contract §17.1's six
+    preconditions, under the per-run lock, from freshly-reloaded on-disk
+    state -- T4-1's exact fix (no precondition is delegated to the caller).
+    """
+
+    conflict_cls = target.conflict_cls
+    run_paths = paths.run_paths(run_id)
+
+    # Precondition 2/SOL-14(a): run ownership derives from run.yaml's OWN
+    # workspace_id, never the caller's resolved workspace alone.
+    if not run_paths.run.exists() or not run_paths.claim_ledger.exists():
+        raise conflict_cls("missing_run_or_claim_ledger")
+    run_doc = load_yaml(run_paths.run_yaml) if run_paths.run_yaml.exists() else None
+    if not isinstance(run_doc, Mapping) or run_doc.get("workspace_id") != caller_workspace_id:
+        raise conflict_cls("run_mapping_revoked")
+
+    ledger = load_yaml(run_paths.claim_ledger)
+    if not isinstance(ledger, dict) or not isinstance(ledger.get("claims"), list):
+        raise conflict_cls("invalid_claim_ledger")
+    claim = next(
+        (item for item in ledger["claims"] if isinstance(item, dict) and item.get("claim_id") == claim_id),
+        None,
+    )
+    if claim is None:
+        raise conflict_cls("claim_mapping_changed_before_publication")
+
+    root = AssertionRegistry(workspace_id=caller_workspace_id, paths=paths).root
+
+    # Precondition 5: no re-triggering an already-satisfied reference.
+    existing = claim.get("persistent_references")
+    existing = dict(existing) if isinstance(existing, Mapping) else {}
+    existing_id = existing.get(target.id_field)
+    existing_version = existing.get(target.version_field)
+    if existing_id is not None or existing_version is not None:
+        if existing_id == target_id and existing_version == target_version:
+            # Idempotent replay (§17.1 item 5): re-publish the generation
+            # pointer in case a prior attempt crashed between the ledger
+            # write and the pointer publish -- never a silent overwrite.
+            return _publish_claim_ledger_generation(
+                paths, run_id, ledger, caller_commit_proof_digest, root=root
+            )
+        raise conflict_cls("replay_conflict")
+
+    # Precondition 1: record-before-reference -- the target MUST already
+    # exist, on disk, at its frozen canonical content-addressed path. T4-1's
+    # exact repro (an arbitrary, never-materialized id) is rejected here.
+    record_path = target.record_path(target_id, target_version)
+    if not record_path.is_file():
+        raise conflict_cls("partial_write_rejected")
+    record = load_yaml(record_path)
+    if not isinstance(record, dict):
+        raise conflict_cls("partial_write_rejected")
+
+    # SOL-33: contract §17.1 precondition 1 requires the target to be FULLY
+    # schema-valid at commit time, not merely present-and-dict-shaped.
+    # Initial creation validates the kind-specific schema once
+    # (assertion_inference.py / canonical_claim_materialization.py), but a
+    # direct on-disk mutation of a field the version_digest formula does NOT
+    # cover (e.g. `type`/`schema_version`) is self-consistent under the
+    # digest recompute below in isolation -- it would otherwise be sealed
+    # into the claim ledger as an authoritative reference the first time a
+    # (possibly different) claim commits against this exact record. Re-run
+    # here, against the SAME freshly-reloaded record every other
+    # precondition below already trusts, independently of whatever the
+    # caller's own `_promote` may or may not have already checked.
+    schemas = SchemaRegistry(schemas_dir=paths.schemas)
+    if not schemas.validate(record, target.schema_name).ok:
+        raise conflict_cls("partial_write_rejected")
+
+    # Precondition 3/6 (T4-4): the target's own state, and its recomputed
+    # version_digest -- never trusting the record's own stored digest field
+    # in isolation (§17.7a reader rule).
+    if not target.is_state_active(record):
+        raise conflict_cls("stale_support")
+    recomputed_digest = target.recompute_version_digest(record)
+    existing_manifest_entry = _load_manifest_entries(target.manifest_path()).get((target_id, target_version))
+    if existing_manifest_entry is not None and existing_manifest_entry.get("version_digest") != recomputed_digest:
+        # §17.7a: a record REACHABLE FROM a generation manifest must match
+        # its manifest entry -- a mismatch here is tamper-evidence, fail closed.
+        raise conflict_cls("partial_write_rejected")
+
+    # Precondition 6 (T4-4): transitive support-assertion/inference lifecycle,
+    # rechecked NOW -- canonical -> its inferences -> their OWN
+    # source_assertion_refs, one shared routine for both target kinds.
+    # F18: P6's mark_stale effect-receipt verdict is computed ONCE per commit
+    # attempt (never per-ref) -- lazy import to avoid a circular import with
+    # assertion_impact.py, which imports `_referenced_target_ids` from this
+    # module at module scope.
+    from .assertion_impact import ImpactOperationError, collect_stale_object_ids
+
+    # K-2 (Karen Wave-3 gate, MEDIUM): `strict=True` here is the COMMIT-path
+    # posture -- a present-but-invalid impact-operations receipt anywhere in
+    # this workspace is governance-critical corruption, so this commit fails
+    # closed rather than risk silently treating the exact object it concerns
+    # as "not stale". The P5 catalog's read-path call stays `strict=False`
+    # (degrade-per-record with a logged warning).
+    try:
+        stale_object_ids = collect_stale_object_ids(paths=paths, workspace_id=caller_workspace_id, strict=True)
+    except ImpactOperationError:
+        raise conflict_cls("stale_support") from None
+    stale_code = _recheck_transitive_support(
+        root=root,
+        source_assertion_refs=target.source_assertion_refs_of(record),
+        inference_refs=target.inference_refs_of(record),
+        stale_inference_ids=stale_object_ids.get("inference", frozenset()),
+    )
+    if stale_code:
+        raise conflict_cls(stale_code)
+
+    # Precondition 6: resolved capability flags, rechecked NOW, not merely at
+    # initial resolution.
+    capabilities = FoundryConfig(paths=paths).assertion_ledger_capabilities()
+    if not capabilities.ledger_write_allowed:
+        raise conflict_cls("ledger_write_disabled")
+    if target.requires_canonical_claims_capability and not capabilities.canonical_claims_allowed:
+        raise conflict_cls("canonical_claims_disabled")
+
+    # T4-2: generation CAS -- re-read the CURRENT pointer under the lock and
+    # compare to what the caller's resolution was originally prepared
+    # against; a mismatch means someone else committed to this row's
+    # generation since the caller last read it.
+    pointer_path = run_paths.claims / ".claim_ledger_published.yaml"
+    current_pointer = load_yaml(pointer_path) if pointer_path.exists() else None
+    current_generation_id = current_pointer.get("generation_id") if isinstance(current_pointer, Mapping) else None
+    if current_generation_id != expected_generation_id:
+        raise conflict_cls("partial_write_rejected")
+
+    # T4-2/§17.8: RECOMPUTE the seven-field commit proof from this locked,
+    # freshly-reloaded state and compare to the caller's own computed value
+    # -- never merely persist a caller-supplied digest unchecked.
+    # `support_refs_digest_of` is kind-specific (contract §17.8's ONLY worked
+    # vector uses an inference_record target's bare source_assertion_refs
+    # list; canonical claims bind BOTH support kinds together, a documented
+    # design decision) -- both formulas are owned by the CALLING module that
+    # already mints them at resolution time, never re-invented here.
+    support_refs_digest = target.support_refs_digest_of(record)
+    recomputed_commit_proof = compute_commit_proof_digest(
+        claim_id=claim_id,
+        row_sources=claim.get("sources") or [],
+        row_conclusion_text=str(claim.get("text") or ""),
+        target_kind=target.kind,
+        target_id=target_id,
+        target_version=target_version,
+        target_version_digest=recomputed_digest,
+        support_refs_digest=support_refs_digest,
+    )
+    if recomputed_commit_proof != caller_commit_proof_digest:
+        raise conflict_cls("partial_write_rejected")
+
+    # All six preconditions independently hold. T4-3: the manifest entry is
+    # written HERE, under this SAME lock, immediately before the claim-ledger
+    # reference -- never earlier at promotion time (the prior bug: a crash
+    # after a promotion-time manifest write but before ANY ledger commit left
+    # a manifest entry recovery trusted with no reference ever written).
+    _ensure_target_manifest_entry(
+        target.manifest_path(),
+        manifest_type=target.manifest_type,
+        record_kind=target.kind,
+        record_id=target_id,
+        version=target_version,
+        version_digest=recomputed_digest,
+    )
+    if _interrupt_after_manifest:
+        raise target.interrupted_cls("interrupted after manifest entry, before claim ledger write")
+
+    existing[target.id_field] = target_id
+    existing[target.version_field] = target_version
+    claim["persistent_references"] = existing
+    _atomic_dump(ledger, run_paths.claim_ledger)
+    if _interrupt_after_ledger:
+        raise target.interrupted_cls("interrupted after claim ledger write, before pointer publish")
+
+    return _publish_claim_ledger_generation(paths, run_id, ledger, recomputed_commit_proof, root=root)
+
+
 __all__ = [
     "AbstainedClaim",
     "AssertionMaterializer",
+    "CanonicalClaimReferenceConflict",
+    "InferenceReferenceConflict",
     "MaterializationConflict",
     "MaterializationError",
     "MaterializationInterrupted",
     "MaterializationResult",
     "ReplayResult",
+    "compute_commit_proof_digest",
     "materialize_run",
 ]

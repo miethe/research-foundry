@@ -1018,6 +1018,113 @@
         }
       }
     },
+    "/api/assertions/activities": {
+      "get": {
+        "tags": [
+          "assertions"
+        ],
+        "summary": "List governed research-run activities",
+        "description": "List the caller's workspace-scoped research-run activities (RPC-5.3).\n\nA ``search_only`` activity with no planned run and no linked assertion\n(e.g. a zero-match search) has no OTHER governed HTTP surface -- an\nevidence packet's ``search_activity_ids`` only names an activity once its\nreceipt has selected at least one assertion version. This route reuses\n``research_run_discovery.ResearchRunDiscovery`` verbatim, so listing stays\nworkspace-isolated and applies the SAME run-visibility gate a\n``planned_run`` row already gets in a packet's ``run_facets``. Missing\nworkspace context degrades to the SAME typed-empty shape\n``/assertions/search`` uses -- never a 4xx that would distinguish\n\"no workspace\" from \"empty workspace\".",
+        "operationId": "list_research_activities_api_assertions_activities_get",
+        "parameters": [
+          {
+            "name": "activity_kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "planned_run",
+                    "search_only"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Activity Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchActivityListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assertions/activities/{envelope_id}": {
+      "get": {
+        "tags": [
+          "assertions"
+        ],
+        "summary": "Fetch one governed research-run activity",
+        "description": "Fetch one activity's exact envelope/receipt pair (RPC-5.3/5.4).\n\nMissing workspace context, an unknown ``envelope_id``, a cross-workspace\n``envelope_id``, and a denied run-scope gate all resolve to the identical\n404/``not_authorized_or_not_found`` shape -- mirroring\n``ResearchRunDiscoveryDenied``'s own no-existence-leak contract rather\nthan inventing a second, more informative denial here.",
+        "operationId": "get_research_activity_api_assertions_activities__envelope_id__get",
+        "parameters": [
+          {
+            "name": "envelope_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Envelope Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchActivityDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Activity not found or denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertionImpactReasonResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/assertions/{assertion_id}": {
       "get": {
         "tags": [
@@ -4478,6 +4585,42 @@
             "type": "array",
             "title": "Report Uses"
           },
+          "inference_lineage": {
+            "items": {
+              "$ref": "#/components/schemas/InferenceLineageEntry"
+            },
+            "type": "array",
+            "title": "Inference Lineage"
+          },
+          "canonical_claim_lineage": {
+            "items": {
+              "$ref": "#/components/schemas/CanonicalClaimLineageEntry"
+            },
+            "type": "array",
+            "title": "Canonical Claim Lineage"
+          },
+          "run_facets": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Run Facets"
+          },
+          "search_activity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Search Activity Ids"
+          },
           "denial_reason": {
             "anyOf": [
               {
@@ -4576,6 +4719,42 @@
           "rights_decision"
         ],
         "title": "AssertionSummary"
+      },
+      "CanonicalClaimLineageEntry": {
+        "properties": {
+          "canonical_claim_id": {
+            "type": "string",
+            "title": "Canonical Claim Id"
+          },
+          "canonical_claim_version": {
+            "type": "integer",
+            "title": "Canonical Claim Version"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "report_uses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Report Uses"
+          }
+        },
+        "type": "object",
+        "required": [
+          "canonical_claim_id",
+          "canonical_claim_version"
+        ],
+        "title": "CanonicalClaimLineageEntry"
       },
       "CreateDraftBody": {
         "properties": {
@@ -4839,6 +5018,42 @@
             },
             "type": "array",
             "title": "Report Uses"
+          },
+          "inference_lineage": {
+            "items": {
+              "$ref": "#/components/schemas/InferenceLineageEntry"
+            },
+            "type": "array",
+            "title": "Inference Lineage"
+          },
+          "canonical_claim_lineage": {
+            "items": {
+              "$ref": "#/components/schemas/CanonicalClaimLineageEntry"
+            },
+            "type": "array",
+            "title": "Canonical Claim Lineage"
+          },
+          "run_facets": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Run Facets"
+          },
+          "search_activity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Search Activity Ids"
           }
         },
         "type": "object",
@@ -4940,6 +5155,42 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "InferenceLineageEntry": {
+        "properties": {
+          "inference_id": {
+            "type": "string",
+            "title": "Inference Id"
+          },
+          "inference_version": {
+            "type": "integer",
+            "title": "Inference Version"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "report_uses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Report Uses"
+          }
+        },
+        "type": "object",
+        "required": [
+          "inference_id",
+          "inference_version"
+        ],
+        "title": "InferenceLineageEntry"
       },
       "LaunchRunRequest": {
         "properties": {
@@ -5157,6 +5408,127 @@
           "block_ids"
         ],
         "title": "ReorderBlocksBody"
+      },
+      "ResearchActivityDetail": {
+        "properties": {
+          "envelope": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Envelope"
+          },
+          "receipt": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt"
+          }
+        },
+        "type": "object",
+        "required": [
+          "envelope",
+          "receipt"
+        ],
+        "title": "ResearchActivityDetail",
+        "description": "RPC-5.3/5.4: exact envelope/receipt round trip for one activity."
+      },
+      "ResearchActivityListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchActivitySummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "denial_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denial Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor",
+          "denial_reason"
+        ],
+        "title": "ResearchActivityListResponse"
+      },
+      "ResearchActivitySummary": {
+        "properties": {
+          "envelope_id": {
+            "type": "string",
+            "title": "Envelope Id"
+          },
+          "activity_kind": {
+            "type": "string",
+            "title": "Activity Kind"
+          },
+          "activity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity Id"
+          },
+          "planned_run_ref": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Run Ref"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          }
+        },
+        "type": "object",
+        "required": [
+          "envelope_id",
+          "activity_kind"
+        ],
+        "title": "ResearchActivitySummary",
+        "description": "RPC-5.3: one row of ``ResearchRunDiscovery.list_activities``'s output.\n\nMirrors that service's own ``_summary`` shape verbatim -- no fabricated\n``run_id`` on a ``search_only`` row (RPC-FR-2)."
       },
       "RightsDecision": {
         "properties": {

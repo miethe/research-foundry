@@ -1,0 +1,475 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/report_assertion_use.schema.yaml/v1"
+title: Report Assertion Use
+description: >-
+  Immutable record binding ONE verified report revision to ONE exact
+  source-assertion, inference, or canonical-claim reference it cites.
+  Published only after the citing report revision passes verification
+  (RPC-OQ-2 -- verification gates report-use, never inference). `use_id` is
+  the opaque token that fills the frozen `report_uses: list[str]` element
+  slot on `assertion_catalog`'s `EvidencePacket`/`AssertionLineage` responses
+  (F4) -- the element TYPE stays `str`; this schema defines the shape of
+  what that string opaquely names. A report revision with N cited
+  persistent refs (across assertion/inference/canonical-claim) publishes N
+  separate report_assertion_use records, one per cited ref, never one
+  record aggregating multiple refs.
+
+  SOL round 1 (gate RPC-1.G): every inactive family/ref arm on `report_ref`
+  and `cited_ref` is now EXPLICITLY REQUIRED (present, `null` when inactive)
+  rather than merely nullable -- SOL-9's canonical-normalization fix, so two
+  writers of the same logical report-use can never produce two different
+  byte encodings (one omitting an inactive arm, one nulling it) that hash to
+  two different `use_id`s. `rights_snapshot` now reuses the FULL frozen
+  `source_assertion.schema.yaml`'s `rights_summary` mirror shape,
+  byte-identical field-for-field including the link-before-assert guard
+  (SOL-10), and is itself bound into `identity.material_fields` (SOL-10).
+
+  SOL round 2 (gate RPC-1.G, SOL-1/22 REOPENED): `created_at` now JOINS
+  `identity.material_fields`. Round 1 deliberately excluded it (to make
+  writer retries idempotent no-ops regardless of wall-clock timing), but
+  that also meant `created_at` could be silently mutated in place on an
+  already-persisted record with no fingerprint-detectable change -- a
+  whole-record integrity gap. This is closed WITHOUT reintroducing the
+  retry-fragility round 1 was avoiding, by fixing `created_at`'s SEMANTICS
+  rather than merely its schema type: `created_at` on this schema is the
+  DETERMINISTIC verification-pass timestamp for the cited report revision
+  (the instant `verify_report`/`_verify_draft` returned its pass result for
+  THIS exact `report_content_digest`) -- never a per-write-attempt
+  wall-clock stamp. Every writer publishing `report_assertion_use` records
+  for the SAME verified revision reads and supplies the SAME `created_at`
+  value (the one verification pass's own timestamp), so replay/retry still
+  converges on the identical `use_id`; a record whose `created_at` differs
+  from every other honest attempt is either citing a DIFFERENT (re-)
+  verification pass (a genuinely new, independent revision-adjacent fact)
+  or has been tampered with -- both cases now correctly mint or reveal a
+  different `use_id`/fingerprint instead of silently succeeding. See freeze
+  doc §13.5's round-2 revision for the full replay-safety argument and a
+  worked before/after vector.
+
+  SOL round 2 (gate RPC-1.G, SOL-10/21 REOPENED): `rights_snapshot` no
+  longer carries its OWN `required` list. Round 1 required
+  `[mirror_of_record_id, mirror_derived_at, mirror_is_authoritative]`, but
+  `source_assertion.schema.yaml`'s own `rights_summary` (the block this
+  schema claims to mirror byte-identically) requires NONE of its
+  sub-fields -- a legitimately shipped, valid source `rights_summary: {}}`
+  therefore could not be copied verbatim into a snapshot, contradicting the
+  "byte-identical" claim. `rights_snapshot` now has NO `required` sub-field
+  list either, matching the source subschema's permissiveness exactly: any
+  value that validates as a `source_assertion.rights_summary` (including
+  `{}`) is guaranteed to validate as a `rights_snapshot` too. See freeze doc
+  §13.4's round-2 revision for the canonical-normalization-before-hashing
+  rule this change requires (so two sources that are semantically identical
+  but stored with different shorthand -- `{}` vs the fully-spelled
+  all-"unknown" form -- still contribute the SAME bytes to
+  `identity.fingerprint`).
+
+  SOL round 3 (gate RPC-1.G, SOL-10 REOPENED): `rights_snapshot.rights_triage_failure.detail`
+  no longer carries `minLength: 1` -- round 2's blank-string audit
+  over-applied hardening to a MIRRORED field (the source subschema this
+  field copies has never constrained `detail`'s length), which meant a
+  legitimately shipped source `rights_triage_failure.detail: ""` could not
+  be copied here verbatim, contradicting this schema's own "byte-identical
+  mirror" claim. See freeze doc §13.4's round-3 revision.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: report_assertion_use
+  use_id:
+    description: >-
+      Opaque, content-derived identifier: `rau_` followed by `identity.fingerprint`
+      below. This is exactly what a caller places into a
+      `report_uses: list[str]` element (F4).
+    type: string
+    pattern: "^rau_[a-f0-9]{64}$"
+  workspace_id:
+    type: string
+    minLength: 1
+  report_ref:
+    description: >-
+      Identifies the exact report revision this use record is bound to
+      (RPC-OQ-1 -- binds BOTH a content digest and a stable revision-id
+      handle). Two report identity families exist in this codebase today
+      (`ids.py`'s `report_id()` for the classic run-final report flow, and
+      `report_draft.schema.yaml`'s `report_draft_id`/`revisions[].report_version_id`
+      for the Report Builder); `report_family` names which one owns this
+      reference so a reader never has to guess from ID shape alone. SOL-9:
+      `report_id` and `report_draft_id` are BOTH always explicitly present
+      (never omitted) -- the inactive family's field is always the literal
+      `null`, never an omitted key, so exactly one canonical byte encoding
+      exists per logical report-use regardless of which writer produced it.
+    type: object
+    additionalProperties: false
+    required: [report_family, report_id, report_draft_id, report_content_digest, report_revision_id]
+    properties:
+      report_family:
+        enum: [run_report, report_draft]
+      report_id:
+        description: >-
+          Non-null only when report_family is run_report (the
+          ids.py::report_id() value); explicitly `null` (never omitted,
+          SOL-9) when report_family is report_draft.
+        type: [string, "null"]
+        minLength: 1
+      report_draft_id:
+        description: >-
+          Non-null only when report_family is report_draft (the
+          report_draft.schema.yaml::report_draft_id value); explicitly
+          `null` (never omitted, SOL-9) when report_family is run_report.
+        type: [string, "null"]
+        minLength: 1
+      report_content_digest:
+        description: >-
+          SHA-256 over the exact report body bytes verification actually
+          ran against (the classic report file's rendered body for
+          `run_report`; the exported markdown for a `report_draft` revision).
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      report_revision_id:
+        description: >-
+          A stable handle other records/UIs can reference without
+          re-hashing content (RPC-OQ-1's second half of the dual binding).
+          For `report_family: report_draft` this MUST echo the exact
+          existing `revisions[].report_version_id` value verbatim -- it is
+          NOT reformatted or reminted here (no `pattern` constraint applies
+          to this family since `report_draft.schema.yaml` itself places
+          none on `report_version_id`). For `report_family: run_report`
+          SOL-9 FREEZES the exact formula NOW (superseding open item
+          RPC-1.3.a): `report_revision_id = "rrv_" + sha256-canonical-json-v1`
+          over the canonical payload `{report_id, report_content_digest}`
+          (same convention as `assertion_identity.py`, i.e.
+          `json.dumps({"report_id": report_id, "report_content_digest":
+          report_content_digest}, ensure_ascii=False, separators=(",", ":"),
+          sort_keys=True)` then `sha256(...).hexdigest()`, prefixed `rrv_`)
+          -- see freeze doc §13.1 for a worked test vector. This is
+          deterministic and content-addressed: re-verifying the identical
+          report body reproduces the identical `report_revision_id`;
+          editing the body (a new `report_content_digest`) always mints a
+          new, independent `report_revision_id` for the new revision.
+        type: string
+        minLength: 1
+    allOf:
+      - if:
+          properties: {report_family: {const: run_report}}
+          required: [report_family]
+        then:
+          properties:
+            report_id: {type: string}
+            report_draft_id: {const: null}
+            report_revision_id: {pattern: "^rrv_[a-f0-9]{64}$"}
+          required: [report_id]
+      - if:
+          properties: {report_family: {const: report_draft}}
+          required: [report_family]
+        then:
+          properties:
+            report_draft_id: {type: string}
+            report_id: {const: null}
+          required: [report_draft_id]
+  cited_ref:
+    description: >-
+      Exactly one persistent reference cited by this report revision, typed
+      by `ref_kind` (mirrors `canonical_claim.schema.yaml`'s
+      `source_assertion_refs[].relation` typed-partition convention). Never
+      a bare untyped string -- AC RPC-4's "forbid inference/source
+      conflation" applies here too: a use record naming a `source_assertion`
+      never silently also implies its dependent inference/canonical-claim,
+      and vice versa. SOL-9: all six id/version fields are ALWAYS explicitly
+      present (never omitted) -- the two inactive kinds' four fields are
+      always the literal `null`, never omitted keys, so exactly one
+      canonical byte encoding exists per logical cited-ref.
+    type: object
+    additionalProperties: false
+    required: [ref_kind, assertion_id, assertion_version, inference_id, inference_version, canonical_claim_id, canonical_claim_version]
+    properties:
+      ref_kind:
+        enum: [source_assertion, inference, canonical_claim]
+      assertion_id:
+        type: [string, "null"]
+        pattern: "^ast_[a-f0-9]{64}$"
+      assertion_version:
+        type: [integer, "null"]
+        minimum: 1
+      inference_id:
+        type: [string, "null"]
+      inference_version:
+        type: [integer, "null"]
+        minimum: 1
+      canonical_claim_id:
+        type: [string, "null"]
+      canonical_claim_version:
+        type: [integer, "null"]
+        minimum: 1
+    allOf:
+      - if:
+          properties: {ref_kind: {const: source_assertion}}
+          required: [ref_kind]
+        then:
+          properties:
+            assertion_id: {type: string}
+            assertion_version: {type: integer}
+            inference_id: {const: null}
+            inference_version: {const: null}
+            canonical_claim_id: {const: null}
+            canonical_claim_version: {const: null}
+          required: [assertion_id, assertion_version]
+      - if:
+          properties: {ref_kind: {const: inference}}
+          required: [ref_kind]
+        then:
+          properties:
+            inference_id: {type: string}
+            inference_version: {type: integer}
+            assertion_id: {const: null}
+            assertion_version: {const: null}
+            canonical_claim_id: {const: null}
+            canonical_claim_version: {const: null}
+          required: [inference_id, inference_version]
+      - if:
+          properties: {ref_kind: {const: canonical_claim}}
+          required: [ref_kind]
+        then:
+          properties:
+            canonical_claim_id: {type: string}
+            canonical_claim_version: {type: integer}
+            assertion_id: {const: null}
+            assertion_version: {const: null}
+            inference_id: {const: null}
+            inference_version: {const: null}
+          required: [canonical_claim_id, canonical_claim_version]
+  rights_snapshot:
+    description: >-
+      Denormalized, NON-AUTHORITATIVE snapshot of `cited_ref`'s rights state
+      at use-time. SOL-10: this is now the FULL, byte-identical field shape
+      to `source_assertion.schema.yaml`'s `rights_summary` block (every
+      sub-field, the same `mirror_is_authoritative: false` invariant, and
+      the same link-before-assert `allOf` guard) -- not a folded subset.
+      This block is a COPY, never an independent determination: it is
+      populated ONLY from an already-existing `rights_summary`/
+      aggregated-fold value (see freeze doc §13.4 rights-snapshot rule) and
+      MUST NEVER itself promote `clearance_status`/`review_status` to a
+      `CLEARED_*`/`counsel_approved`/`attested` value that was not already
+      present on a contributing record -- this schema lives on an
+      agent-writable path (guard rule `no_agent_cleared_rights_value`). Now
+      MATERIAL to `identity.fingerprint` below (SOL-10): a report-use's
+      rights posture at the moment of citation is itself an immutable fact
+      of that use, not a mutable annotation, so substituting it must change
+      `use_id`.
+
+      SOL round 2 (SOL-10/21 REOPENED): NO top-level `required` list on this
+      object (round 1 had one; removed here) -- `source_assertion.rights_summary`
+      itself requires none of its sub-fields, so this snapshot must not
+      either, or a legitimately shipped, valid source `rights_summary: {}}`
+      could not be copied here verbatim. Any value valid against
+      `source_assertion.schema.yaml`'s `rights_summary` subschema (including
+      `{}`) is therefore ALSO valid here by construction. The identity
+      fingerprint over this field, however, is computed from the CANONICAL
+      NORMALIZATION of whatever shorthand was actually stored, never the raw
+      stored bytes directly: every absent sub-field (including every absent
+      key inside the nested `restrictions` object) is expanded to its
+      schema-documented default (`null` for `mirror_of_record_id`/
+      `mirror_derived_at`; `false` for `mirror_is_authoritative`; `[]` for
+      the three `*_ids` arrays; `"unknown"` for `copyright_status`/
+      `access_basis`/`review_status`/every `restrictions.*` sub-field;
+      `"UNKNOWN"` for `clearance_status`; `null` for `rights_triage_failure`)
+      BEFORE the object is fed into `identity.fingerprint`'s canonical JSON.
+      This guarantees two sources that are semantically identical but
+      stored with different shorthand (`{}` vs the fully-spelled
+      all-"unknown" form) contribute IDENTICAL bytes to the fingerprint --
+      "so equal sources hash equally" (freeze doc §13.4 has a worked
+      before/after digest showing this equality).
+    type: object
+    additionalProperties: false
+    properties:
+      mirror_of_record_id:
+        type:
+          - string
+          - "null"
+      mirror_derived_at:
+        type:
+          - string
+          - "null"
+        format: date-time
+      # Hard governance invariant: this mirror can NEVER be treated as an
+      # authoritative rights determination. Only rights_record /
+      # content_reuse_assessment / permission_record are authoritative.
+      mirror_is_authoritative:
+        const: false
+      # Link-before-assert invariant (enforced by the `allOf`/`if`/`then`
+      # below): non-empty whenever ANY status/restriction field below is set
+      # to something other than its "unknown" sentinel. Byte-identical to
+      # source_assertion.schema.yaml's rights_summary (SOL-10).
+      rights_record_ids:
+        type: array
+        default: []
+        items:
+          type: string
+      reuse_assessment_ids:
+        type: array
+        default: []
+        items:
+          type: string
+      permission_record_ids:
+        type: array
+        default: []
+        items:
+          type: string
+      copyright_status:
+        enum: [copyrighted, open_license, public_domain, us_federal_government_work, mixed_or_third_party, unknown]
+        default: unknown
+      access_basis:
+        enum: [public_web, open_repository, personal_subscription, institutional_subscription, purchased_copy, licensed_api, direct_permission, author_provided_copy, government_source, partner_confidential, data_use_agreement, other, unknown]
+        default: unknown
+      restrictions:
+        type: object
+        additionalProperties: false
+        properties:
+          incorporation_into_other_products: {enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown], default: unknown}
+          adaptation: {enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown], default: unknown}
+          commercial_use: {enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown], default: unknown}
+          redistribution: {enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown], default: unknown}
+          bulk_retrieval: {enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown], default: unknown}
+          model_training: {enum: [allowed, allowed_with_conditions, prohibited, not_addressed, unknown], default: unknown}
+      clearance_status:
+        enum: [CLEARED_OPEN_LICENSE, CLEARED_PUBLIC_DOMAIN, CLEARED_FACTS_ONLY, CLEARED_PERMISSION, INTERNAL_ONLY, LOCAL_VALIDATION_ONLY, LEGAL_REVIEW_REQUIRED, PERMISSION_REQUIRED, CONTRACT_RESTRICTED, PROHIBITED, UNKNOWN]
+        default: UNKNOWN
+      review_status:
+        enum: [agent_triage_only, human_reviewed, legal_review_required_before_commercial_use, counsel_approved, counsel_rejected, expired, unknown]
+        default: unknown
+      rights_triage_failure:
+        description: >-
+          SOL-10: ported byte-identical from source_assertion.schema.yaml's
+          rights_summary -- a capture-time rights-triage classification
+          failure recorded as a typed, queryable structural failure rather
+          than a silent absence. Populated ONLY when the classification
+          step raised and capture degraded to the all-"unknown" default;
+          `null` on a successful classification. Deliberately excluded from
+          the link-before-assert `allOf` below (a failure record never
+          asserts a substantive rights posture).
+
+          SOL round 3 (RC-5, SOL-10 REOPENED): `detail` no longer carries
+          `minLength: 1`. Round 2's blank-string-hardening audit (SOL-7/24)
+          added `minLength: 1` here, but `detail` is a MIRRORED field --
+          `source_assertion.schema.yaml`'s own `rights_summary.rights_triage_failure.detail`
+          has NEVER carried a `minLength` constraint, so a legitimately
+          shipped source record with `detail: ""` could not be copied here
+          verbatim, directly contradicting the "byte-identical mirror"
+          claim this schema makes (the round-3 accepted counterexample).
+          Blank-string hardening is the correct rule for RPC-MINTED
+          (non-mirrored) fields only -- see freeze doc §13.4's round-3
+          revision for the full rule and re-verification.
+        type:
+          - object
+          - "null"
+        additionalProperties: false
+        required:
+          - reason
+          - detail
+          - attempted_at
+        properties:
+          reason:
+            enum:
+              - classification_error
+          detail:
+            type: string
+          attempted_at:
+            type: string
+            format: date-time
+    allOf:
+      - if:
+          anyOf:
+            - required: [copyright_status]
+              properties:
+                copyright_status:
+                  not:
+                    const: unknown
+            - required: [access_basis]
+              properties:
+                access_basis:
+                  not:
+                    const: unknown
+            - required: [clearance_status]
+              properties:
+                clearance_status:
+                  not:
+                    const: UNKNOWN
+            - required: [review_status]
+              properties:
+                review_status:
+                  not:
+                    const: unknown
+            - required: [restrictions]
+              properties:
+                restrictions:
+                  anyOf:
+                    - required: [incorporation_into_other_products]
+                      properties:
+                        incorporation_into_other_products:
+                          not: {const: unknown}
+                    - required: [adaptation]
+                      properties:
+                        adaptation:
+                          not: {const: unknown}
+                    - required: [commercial_use]
+                      properties:
+                        commercial_use:
+                          not: {const: unknown}
+                    - required: [redistribution]
+                      properties:
+                        redistribution:
+                          not: {const: unknown}
+                    - required: [bulk_retrieval]
+                      properties:
+                        bulk_retrieval:
+                          not: {const: unknown}
+                    - required: [model_training]
+                      properties:
+                        model_training:
+                          not: {const: unknown}
+        then:
+          required:
+            - rights_record_ids
+          properties:
+            rights_record_ids:
+              minItems: 1
+  created_at:
+    description: >-
+      SOL round 2 (SOL-1/22): the DETERMINISTIC verification-pass timestamp
+      for the cited report revision (`verify_report`/`_verify_draft`'s own
+      pass instant for this exact `report_content_digest`) -- never a
+      per-write-attempt wall-clock stamp. Now MATERIAL to
+      `identity.fingerprint` below (joins `material_fields`): because the
+      value is deterministic per verified revision, every honest
+      writer/retry publishing for the SAME revision supplies the identical
+      value and still converges on the identical `use_id` (replay-safety is
+      preserved); a differing value means either a genuinely different
+      verification pass or tampering, and now correctly changes `use_id`
+      instead of silently succeeding. See freeze doc §13.5's round-2
+      revision.
+    type: string
+    format: date-time
+  identity:
+    type: object
+    additionalProperties: false
+    required: [algorithm, fingerprint, material_fields]
+    properties:
+      algorithm:
+        const: sha256-canonical-json-v1
+      fingerprint:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      material_fields:
+        type: array
+        const: [workspace_id, report_ref, cited_ref, rights_snapshot, created_at]
+required:
+  - schema_version
+  - type
+  - use_id
+  - workspace_id
+  - report_ref
+  - cited_ref
+  - rights_snapshot
+  - created_at
+  - identity

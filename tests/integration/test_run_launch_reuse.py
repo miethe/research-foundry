@@ -816,3 +816,49 @@ def test_launch_run_selected_ref_round_trips_byte_exact_through_export(tmp_found
     assert exported_selection["assertion_id"] == plan_question["selected_assertion_ref"]["assertion_id"]
     assert exported_selection["assertion_version"] == plan_question["selected_assertion_ref"]["assertion_version"]
     assert exported_selection["coverage_state"] == "covered"
+
+
+# ---------------------------------------------------------------------------
+# RPC-2.3: activity_ref passthrough (narrow additive hook on launch_run)
+# ---------------------------------------------------------------------------
+
+
+def test_launch_run_activity_ref_absent_is_byte_identical_to_before(tmp_foundry) -> None:
+    """AC RPC-8: omitting ``activity_ref`` (no prior caller could ever supply
+    it) is byte-identical to pre-RPC-2.3 ``launch_run`` behavior -- the field
+    is simply ``None`` on the result and nothing else changes."""
+
+    intent_id = _write_carp_intent(
+        tmp_foundry,
+        intent_id="intent_rpc23_activity_ref_absent",
+        primary_questions=["A run launched with no activity_ref at all"],
+    )
+    result = launch_run(intent_id=intent_id, paths=tmp_foundry)
+    assert result.activity_ref is None
+    run_doc = load_yaml(tmp_foundry.run_paths(result.run_id).run / "run.yaml")
+    # No new key leaks onto run.yaml -- activity_ref is a pure in-memory
+    # result field, never persisted (mirrors reuse_decision's own contract).
+    assert "activity_ref" not in run_doc
+
+
+def test_launch_run_threads_activity_ref_opaquely_without_persisting_it(tmp_foundry) -> None:
+    """A caller-supplied ``activity_ref`` round-trips onto
+    ``LaunchRunResult.activity_ref`` verbatim, is never inspected/validated,
+    and is never written to ``run.yaml`` (RPC-2.3's opaque-passthrough
+    contract, same additive style as ``reuse_decision``)."""
+
+    intent_id = _write_carp_intent(
+        tmp_foundry,
+        intent_id="intent_rpc23_activity_ref_present",
+        primary_questions=["A run launched with a supplied activity_ref"],
+    )
+    supplied_ref = {
+        "envelope_id": f"rre_{'a' * 64}",
+        "activity_id": f"sar_{'b' * 64}",
+    }
+    result = launch_run(intent_id=intent_id, paths=tmp_foundry, activity_ref=supplied_ref)
+    assert result.activity_ref == supplied_ref
+    # Not the same object identity requirement -- just value equality; the
+    # important invariant is that the value is not mutated or re-derived.
+    run_doc = load_yaml(tmp_foundry.run_paths(result.run_id).run / "run.yaml")
+    assert "activity_ref" not in run_doc

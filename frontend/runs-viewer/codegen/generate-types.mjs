@@ -69,6 +69,8 @@ const ASSERTION_COMPONENTS = [
   "AssertionSummary",
   "AssertionFacets",
   "AssertionSearchResponse",
+  "InferenceLineageEntry",
+  "CanonicalClaimLineageEntry",
   "EvidencePacket",
   "AssertionLineage",
   "AssertionImpactAction",

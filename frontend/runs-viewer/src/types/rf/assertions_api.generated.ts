@@ -34,6 +34,20 @@ export interface AssertionSearchResponse {
   denial_reason: string | null;
 }
 
+export interface InferenceLineageEntry {
+  inference_id: string;
+  inference_version: number;
+  status?: string | null;
+  report_uses?: Array<string>;
+}
+
+export interface CanonicalClaimLineageEntry {
+  canonical_claim_id: string;
+  canonical_claim_version: number;
+  state?: string | null;
+  report_uses?: Array<string>;
+}
+
 export interface EvidencePacket {
   packet_version: string;
   assertion_id: string;
@@ -50,6 +64,10 @@ export interface EvidencePacket {
   relationships: Array<Record<string, unknown>>;
   run_uses: Array<string>;
   report_uses: Array<string>;
+  inference_lineage?: Array<InferenceLineageEntry>;
+  canonical_claim_lineage?: Array<CanonicalClaimLineageEntry>;
+  run_facets?: Record<string, Record<string, unknown> | null>;
+  search_activity_ids?: Array<string>;
 }
 
 export interface AssertionLineage {
@@ -58,6 +76,10 @@ export interface AssertionLineage {
   relationships: Array<Record<string, unknown>>;
   run_uses: Array<string>;
   report_uses: Array<string>;
+  inference_lineage?: Array<InferenceLineageEntry>;
+  canonical_claim_lineage?: Array<CanonicalClaimLineageEntry>;
+  run_facets?: Record<string, Record<string, unknown> | null>;
+  search_activity_ids?: Array<string>;
   denial_reason: string | null;
 }
 

@@ -1,0 +1,468 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/research_run_envelope.schema.yaml/v1"
+title: Research Run Envelope
+description: >-
+  Canonical planned/search-run activity envelope (RPC-FR-2). Exactly one
+  envelope exists per accepted search or research activity, whether or not
+  that activity ever becomes -- or already has -- a planned research run.
+  This schema is the identity/linkage layer: durable envelope identity, the
+  activity's kind, and optional references to a planned run, a canonical
+  origin, and/or an AOS project/intent/knowledge object. The exact
+  query/purpose/provider/site/corpus/filter/time scope and the terminal
+  selection/denial/degraded/empty outcome live on the paired,
+  separately-versioned `schemas/search_activity_receipt.schema.yaml` record
+  this envelope references by `activity_id` -- this schema never duplicates
+  that content.
+
+  Findings F10 (naming interoperability): `parent_run_ref` below adopts
+  C4's shipped field name verbatim rather than inventing a distinct name for
+  the same "caller-supplied correlation hint pointing at a prior run"
+  concept already shipped on `knowledge_search_request.schema.yaml` /
+  `knowledge_document.schema.yaml` and echoed on
+  `knowledge_activity_receipt.schema.yaml`'s `correlation_ref`. It is a
+  DIFFERENT concept from `planned_run_ref` (this activity's own downstream
+  planned run, RPC's native concept) -- see
+  `docs/dev/architecture/research-provenance-contract-freeze.md` for the
+  full field-by-field mapping.
+
+  SOL round 1 (gate RPC-1.G, SOL-2): `envelope_id` is content-bound to
+  `identity.fingerprint` (same treatment as `provenance_origin.origin_id`)
+  so no envelope field can be substituted post-hoc without changing the
+  identifier. Cross-record equality with the owning
+  `search_activity_receipt` (`workspace_id`, `activity_kind`, `request_id`,
+  `activity_id`, and the reciprocal `envelope_ref`) is a normative,
+  service-enforced rule -- see the freeze doc §5.
+
+  SOL round 2 (gate RPC-1.G, SOL-2/16 REOPENED): cross-record equality alone
+  does not prove which SPECIFIC receipt an envelope's `activity_id` names --
+  two different, independently hash-correct receipts could each satisfy the
+  equality rule against the same envelope by construction, since nothing
+  bound the envelope's own identity to the receipt's actual content. This
+  revision adds `receipt_commitment`: `null` at planned-envelope-creation,
+  set EXACTLY ONCE (write-once) to the owning receipt's own
+  `identity.fingerprint` at receipt-publication time. Because
+  `receipt_commitment` names the receipt's full-outcome-payload fingerprint
+  (not merely its `activity_id` string), no OTHER receipt -- however
+  otherwise valid -- can satisfy this binding; only the receipt this
+  envelope actually committed to can. `receipt_commitment` is EXCLUDED from
+  `identity.material_fields` (it does not exist at envelope-creation time,
+  and including it would make the envelope/receipt identities mutually
+  dependent -- the same circularity `activity_id`'s exclusion already
+  avoids, §5.1a). The write-once transition is instead proven by a NEW
+  `version_digest` (whole-record integrity digest, sha256-canonical-json-v1
+  over every envelope field at the CURRENT `envelope_version`, including
+  `receipt_commitment` and `envelope_version` itself): a legitimate
+  transition from `envelope_version: 1, receipt_commitment: null` to
+  `envelope_version: 2, receipt_commitment: <fingerprint>` produces a
+  DIFFERENT `version_digest` at each version (both versions retained on
+  disk as separate immutable files, sharing the SAME `envelope_id` --
+  `envelope_version`/`receipt_commitment` are deliberately excluded from
+  `identity.material_fields`, so `envelope_id` never changes across this one
+  permitted mutation). See freeze doc §5.1 rule 9 and §5.1b.
+
+  SOL round 3 (gate RPC-1.G, SOL-2/16/22 REOPENED as UNSOUND -- pairing
+  protocol redesigned with strict ordering, no circularity). Round 2 let a
+  version-1 envelope already carry a real, resolved `activity_id` at
+  creation time -- which made the documented HONEST v2 pair itself fail the
+  §5.3 check-5 equality (the receipt names envelope version 1; the check
+  compared against whichever version was currently being read). Fixed:
+  **v1 is planning-time-only and carries NO receipt-linkage fields at
+  all** -- `activity_id` and `receipt_commitment` are both structurally
+  ABSENT (never merely `null`) when `envelope_version: 1`, enforced by the
+  `allOf` partition below. **v2 is written exactly once, atomically, at
+  receipt-publication time**, and is the FIRST envelope record to carry
+  `activity_id` + `receipt_commitment` together (both required, non-null).
+  `envelope_id` stays the v1-derived, version-invariant identifier for both
+  versions (`identity.material_fields` is UNCHANGED, still excludes both
+  fields -- no second, circular `identity.fingerprint` is introduced). The
+  owning receipt's own `envelope_ref.envelope_version` is now a fixed
+  LITERAL `1` (see `search_activity_receipt.schema.yaml`), never "whichever
+  version currently exists" -- so an honest v2 pair now satisfies §5.3
+  check 5 unconditionally. `version_digest`'s formula is UNCHANGED (every
+  field at the current version, including `activity_id`/
+  `receipt_commitment`/`envelope_version`) -- this is what "v2's own
+  fingerprint covers the commitment" means concretely: NOT a second
+  `identity.fingerprint` (which stays circularity-free by construction),
+  but `version_digest`, which differs at v2 from v1 precisely because
+  `activity_id`/`receipt_commitment` newly exist there. A NEW,
+  service-enforced byte-equality rule (freeze doc §5.1b) additionally
+  requires v2's `identity.material_fields` payload to byte-equal the SAME
+  payload retained on v1's own immutable file -- a separate, complementary
+  invariant from the manifest-rooted check (freeze doc §17.7a, RC-2) that
+  is what actually closes the receipt-substitution attack. See freeze doc
+  §5.1a/§5.1b/§5.3/§17.7a for the full mechanism, storage layout, and the
+  re-run substitution-attack evidence.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: research_run_envelope
+  envelope_id:
+    description: >-
+      NORMATIVE (SOL-2): MUST equal `"rre_" + identity.fingerprint` below --
+      same content-binding convention as `provenance_origin.origin_id`.
+    type: string
+    pattern: "^rre_[a-f0-9]{64}$"
+  envelope_version:
+    description: >-
+      SOL round 3 (RC-1): exactly TWO legitimate values exist under this
+      contract's redesigned pairing protocol -- `1` (planning-time, no
+      receipt-linkage fields) and `2` (receipt-publication-time, the ONE
+      permitted post-creation mutation, written atomically once). No third
+      version is authorized by this schema.
+    type: integer
+    minimum: 1
+    maximum: 2
+  workspace_id:
+    type: string
+    minLength: 1
+  activity_kind:
+    description: >-
+      `planned_run` when this activity produced (or is bound to) a research
+      run; `search_only` when it is a standalone search/discovery activity
+      that never became a planned run. Both kinds are first-class and
+      equally discoverable (RPC-FR-2's "search-only activity remains valid
+      and discoverable when no planned run exists"). SOL-3: this exact
+      two-member enum (`planned_run`/`search_only`) is the single literal
+      vocabulary shared verbatim with
+      `search_activity_receipt.schema.yaml`'s own `activity_kind` field --
+      no second, differently-spelled vocabulary exists anywhere in this
+      contract.
+    enum:
+      - planned_run
+      - search_only
+  request_id:
+    description: >-
+      Correlates back to `search_request.schema.yaml`'s `request_id` when
+      the caller supplied one. Read-only correlation -- this schema does not
+      require or amend `search_request.schema.yaml` to carry this field.
+    type:
+      - string
+      - "null"
+  activity_id:
+    description: >-
+      Foreign key into the paired
+      `schemas/search_activity_receipt.schema.yaml` record for this
+      activity. Every envelope has exactly one owning receipt. That
+      receipt's own `activity_id` is itself content-bound (SOL-2) to the
+      receipt's full outcome payload -- this field is a copy of that
+      already-computed value, not a second independent identity.
+
+      SOL round 3 (RC-1, redesigned pairing protocol): structurally ABSENT
+      (not merely `null`) when `envelope_version: 1` -- a planning-time
+      envelope does not yet know its receipt. REQUIRED, non-null, when
+      `envelope_version: 2` -- written in the SAME atomic step as
+      `receipt_commitment`, at receipt-publication time. Normatively (P2
+      writer, `services/provenance_envelope.py`): MUST equal
+      `"sar_" + receipt_commitment` on every v2 record -- this
+      self-consistency rule ties `activity_id` to the SAME commitment value
+      `version_digest` already covers, so the two fields can never honestly
+      diverge. See the `allOf` partition below and freeze doc §5.1a/§5.1b.
+    type: string
+    pattern: "^sar_[a-f0-9]{64}$"
+  planned_run_ref:
+    description: >-
+      RPC's own, optional reference to the planned research run this
+      activity produced or is bound to. `null` for a `search_only` activity
+      (never fabricated -- RPC-FR-4's "no synthetic backfill IDs"); required
+      non-null for a `planned_run` activity. See the `allOf` partition below.
+    type:
+      - object
+      - "null"
+    additionalProperties: false
+    required:
+      - run_id
+    properties:
+      run_id:
+        type: string
+        minLength: 1
+  parent_run_ref:
+    description: >-
+      Adopts C4's shipped field name verbatim (findings F10) for the same
+      "caller-supplied correlation hint pointing at a prior run" concept
+      already shipped on `knowledge_search_request.schema.yaml` /
+      `knowledge_document.schema.yaml` and echoed on
+      `knowledge_activity_receipt.schema.yaml`'s `correlation_ref`. Optional,
+      opaque, carries no authority of its own -- same "hint only" contract
+      as the C4 field it mirrors; never used to widen or narrow access.
+    type:
+      - string
+      - "null"
+    minLength: 1
+    maxLength: 200
+  origin_ref:
+    description: >-
+      Optional reference to this activity's canonical
+      `provenance_origin.schema.yaml` record (RPC-FR-1), when one applies
+      (e.g. a search-only activity whose query itself originated from an
+      imported artifact). `null` when no origin record applies to this
+      activity.
+    type:
+      - object
+      - "null"
+    additionalProperties: false
+    required:
+      - origin_id
+      - origin_version
+    properties:
+      origin_id:
+        type: string
+        pattern: "^pvo_[a-f0-9]{64}$"
+      origin_version:
+        type: integer
+        minimum: 1
+  aos_refs:
+    description: >-
+      Optional, opaque AOS (Agentic OS) project/intent/knowledge references
+      (RPC-FR-2, AC RPC-7). Round trip as opaque identifiers only -- this
+      schema never resolves, dereferences, loads, or copies the referenced
+      AOS payload, and these refs are never provenance authority in their
+      own right. SOL-6: the canonical absence shape is TOP-LEVEL OMISSION of
+      this whole field -- `aos_refs` is intentionally NOT in `required`
+      below, so a caller that never supplies AOS context need not write
+      `aos_refs: null` either (both omission and explicit `null` are valid
+      and equivalent; omission is canonical). When present and non-null,
+      every populated sub-field MUST be a non-blank string (`minLength: 1`)
+      -- an empty string is never a valid "present but empty" ref. This
+      document deliberately does NOT add a per-kind regex `pattern` for
+      `project_ref`/`intent_ref`/`knowledge_ref` (SOL-6 asked for one "if
+      cheap"): no shipped AOS ref ID convention exists anywhere in this
+      repo today to freeze against (the `aos:proj:...`-shaped strings in
+      this schema's own examples are illustrative, not a convention any AOS
+      service has committed to) -- inventing a regex here would freeze a
+      format this document has no authority over. A malformed (wrong type,
+      too long, or blank-string) ref fails schema validation directly. A
+      cross-workspace ref is denied or omitted by the writing service
+      without an existence signal (AC RPC-7 resilience) -- see
+      `docs/dev/architecture/research-provenance-contract-freeze.md`. This
+      is the SOLE authoritative location for AOS refs on this activity;
+      `search_activity_receipt.schema.yaml` never duplicates these fields.
+
+      SOL round 2 (SOL-6/22 REOPENED): `aos_refs` is now normalized to
+      EXACTLY ONE valid encoding of "no refs supplied" -- top-level OMISSION
+      (or the equivalent explicit top-level `null`, which the fingerprint
+      computation already treats identically via `record.get(...)`, §4.1
+      rule 7). `{}` and a partial-null object (e.g. `{"project_ref": null}`
+      with the other two keys omitted) were BOTH schema-valid in round 1 and
+      each minted a DIFFERENT `envelope_id` for what is semantically the
+      IDENTICAL "no AOS context supplied" fact -- a substitution/multiple-
+      encoding hole. Closed two ways: (1) `minProperties: 1` on this object
+      (only applies when `aos_refs` is present as an object, never to the
+      `null` variant) rejects `{}` outright; (2) each of
+      `project_ref`/`intent_ref`/`knowledge_ref` is no longer nullable -- a
+      caller that has no value for one of the three sub-refs OMITS that key
+      entirely rather than setting it to `null`, so a "partial" ref can never
+      be encoded two different ways either (present-but-null vs omitted).
+      Exactly one canonical byte encoding remains per logical AOS-refs state,
+      whether "no refs at all" (omit the whole field) or "these N specific
+      refs, and no others" (an object naming only the N populated keys).
+    type:
+      - object
+      - "null"
+    additionalProperties: false
+    minProperties: 1
+    properties:
+      project_ref:
+        type: string
+        minLength: 1
+        maxLength: 200
+      intent_ref:
+        type: string
+        minLength: 1
+        maxLength: 200
+      knowledge_ref:
+        type: string
+        minLength: 1
+        maxLength: 200
+  created_at:
+    type: string
+    format: date-time
+  receipt_commitment:
+    description: >-
+      SOL-2/16 (round 2). Set EXACTLY ONCE, write-once, to the owning
+      `search_activity_receipt`'s own `identity.fingerprint` at
+      receipt-publication time -- this is recorded via an `envelope_version`
+      bump (both the pre-commitment and post-commitment versions are
+      retained on disk as separate immutable files sharing the same
+      `envelope_id`; see freeze doc §5.1b). Because this field names the
+      receipt's FULL outcome-payload fingerprint (not merely its
+      `activity_id` string, which is already an exact copy of that same
+      fingerprint prefixed `sar_`), a writer/reader verifying
+      `envelope.receipt_commitment == receipt.identity.fingerprint`
+      cryptographically pins the pairing to the one specific receipt whose
+      content produced that fingerprint. Deliberately EXCLUDED from
+      `identity.material_fields` below (it does not exist at
+      envelope-creation time and would otherwise make envelope/receipt
+      identity mutually dependent, the same circularity `activity_id`'s
+      exclusion already avoids).
+
+      SOL round 3 (RC-1, redesigned pairing protocol): structurally ABSENT
+      (not merely `null`) when `envelope_version: 1` -- "no receipt fields"
+      at planning time. REQUIRED, non-null, when `envelope_version: 2`,
+      written in the SAME atomic step as `activity_id`. Cross-record
+      equality alone (a same-content receipt with a recomputed commitment)
+      is NOT what closes the substitution attack -- an attacker who
+      controls both files can always recompute a self-consistent pair. The
+      closing mechanism is the generation-manifest entry recorded ONCE, at
+      LEGITIMATE promotion time (freeze doc §17.7a, RC-2): a reader compares
+      the CURRENTLY-STORED `version_digest` against the manifest's entry for
+      `(envelope_id, envelope_version: 2)`, not merely against the record's
+      own self-consistency. See the `allOf` partition below and freeze doc
+      §5.1a/§5.1b/§17.7a.
+    type:
+      - string
+      - "null"
+    pattern: "^[a-f0-9]{64}$"
+  version_digest:
+    description: >-
+      SOL-1/22 (round 2), OPTIONAL, additive. Whole-record integrity digest
+      -- `sha256-canonical-json-v1` over EVERY envelope field at the CURRENT
+      `envelope_version` (`envelope_id`, `envelope_version`, `workspace_id`,
+      `activity_kind`, `request_id`, `activity_id`, `planned_run_ref`,
+      `parent_run_ref`, `origin_ref`, `aos_refs`, `created_at`,
+      `receipt_commitment` -- everything except `identity`/`version_digest`
+      themselves). Unlike `identity.fingerprint` (which deliberately excludes
+      `envelope_version`/`receipt_commitment` so `envelope_id` stays stable
+      across the one permitted post-creation mutation, freeze doc §5.1b),
+      `version_digest` covers those two fields too: a version bump that is
+      not accompanied by a freshly recomputed `version_digest` is
+      detectable as tampering by any reader that recomputes and compares.
+      Legacy absence (a record written before this field existed) is
+      tolerated read-only -- readers/replay MUST validate `version_digest`
+      when present, never require it retroactively. See freeze doc §5.1b
+      for the P4 writer obligation and the P7 verifying task.
+    type:
+      - string
+      - "null"
+    pattern: "^[a-f0-9]{64}$"
+  identity:
+    description: >-
+      SOL-2 content-binding treatment (same convention as
+      `provenance_origin.identity`): binds `envelope_id` to exactly the
+      material fields listed below via
+      `src/research_foundry/assertion_identity.py`'s shipped
+      `sha256-canonical-json-v1` canonicalization. NORMATIVE: `envelope_id`
+      MUST equal `"rre_" + fingerprint`. `activity_id` is deliberately
+      EXCLUDED from `material_fields` (see freeze doc §5.1a "identity
+      computation order"): `activity_id` names the sibling
+      `search_activity_receipt` record, whose own identity in turn binds
+      `envelope_ref` (this envelope's id+version) -- including `activity_id`
+      in THIS fingerprint would make the two records' identities mutually
+      dependent with no valid computation order. The envelope/receipt
+      cross-reference is instead verified by the service-layer cross-record
+      equality rule (`envelope.activity_id == receipt.activity_id` AND
+      `receipt.envelope_ref == {envelope_id, envelope_version: 1}`, the
+      SECOND element a fixed literal per SOL round 3 -- see
+      `search_activity_receipt.schema.yaml`), never by hash inclusion:
+      substituting `activity_id` alone, with every other field unchanged,
+      does NOT change `envelope_id` under this exclusion by construction.
+      That substitution is instead caught by the cross-record equality
+      check: a mismatched `activity_id` fails to resolve to a receipt whose
+      own `envelope_ref` points back at this exact `envelope_id`, which the
+      writing/reading service MUST verify on every read and every write
+      (freeze doc §5.3) -- this is a service-enforced invariant, not a
+      schema-enforced one, exactly like `provenance_origin` fixture (d)'s
+      tamper-detection-is-a-service-check pattern. `identity.material_fields`
+      is UNCHANGED across `envelope_version: 1` and `2` (SOL round 3, RC-1)
+      -- `envelope_id` and `identity.fingerprint` are therefore
+      version-invariant; the version-2-only commitment fields are proven by
+      `version_digest` instead (see that field's own description and
+      freeze doc §5.1b).
+    type: object
+    additionalProperties: false
+    required:
+      - algorithm
+      - fingerprint
+      - material_fields
+    properties:
+      algorithm:
+        const: sha256-canonical-json-v1
+      fingerprint:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      material_fields:
+        type: array
+        const:
+          - workspace_id
+          - activity_kind
+          - request_id
+          - planned_run_ref
+          - parent_run_ref
+          - origin_ref
+          - aos_refs
+          - created_at
+required:
+  - schema_version
+  - type
+  - envelope_id
+  - envelope_version
+  - workspace_id
+  - activity_kind
+  - planned_run_ref
+  - parent_run_ref
+  - origin_ref
+  - created_at
+  - identity
+allOf:
+  # Exact partition: planned_run <=> non-null planned_run_ref;
+  # search_only <=> null planned_run_ref. No gap, no overlap, never a
+  # fabricated run_id on the search_only side.
+  - if:
+      properties:
+        activity_kind:
+          const: planned_run
+      required:
+        - activity_kind
+    then:
+      required:
+        - planned_run_ref
+      properties:
+        planned_run_ref:
+          type: object
+  - if:
+      properties:
+        activity_kind:
+          const: search_only
+      required:
+        - activity_kind
+    then:
+      properties:
+        planned_run_ref:
+          const: null
+  # SOL round 3 (RC-1, redesigned pairing protocol): v1 is planning-time
+  # only and carries NO receipt-linkage fields at all -- `activity_id` and
+  # `receipt_commitment` must be structurally ABSENT (never merely `null`)
+  # at envelope_version 1. v2 is written exactly once, atomically, at
+  # receipt-publication time, and is the FIRST record to carry both fields
+  # together (required, non-null). This is the ONLY legitimate
+  # envelope_version transition this schema authorizes.
+  - if:
+      properties:
+        envelope_version:
+          const: 1
+      required:
+        - envelope_version
+    then:
+      not:
+        anyOf:
+          - required: [activity_id]
+          - required: [receipt_commitment]
+  - if:
+      properties:
+        envelope_version:
+          const: 2
+      required:
+        - envelope_version
+    then:
+      required:
+        - activity_id
+        - receipt_commitment
+      properties:
+        activity_id:
+          not:
+            const: null
+        receipt_commitment:
+          not:
+            const: null

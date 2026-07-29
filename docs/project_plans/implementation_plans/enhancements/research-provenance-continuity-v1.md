@@ -1,55 +1,64 @@
 ---
-title: "Implementation Plan: Research Provenance Continuity"
+title: 'Implementation Plan: Research Provenance Continuity'
 schema_version: 2
 doc_type: implementation_plan
-status: draft
-created: 2026-07-18
-updated: 2026-07-18
+status: completed
+created: '2026-07-18'
+updated: '2026-07-28'
 feature_slug: research-provenance-continuity
 feature_version: v1
 tier: 3
 prd_ref: docs/project_plans/PRDs/enhancements/research-provenance-continuity-v1.md
 plan_ref: null
 human_brief_ref: docs/project_plans/human-briefs/research-provenance-continuity.md
-scope: "Add canonical origin and planned/search-run envelopes, discoverable search-only activity, immutable activity/selection/report-use receipts, optional AOS references, typed inference/canonical-claim materialization, governed projections, and lifecycle reconciliation without replacing RAL, activation, RFUP, or retrieval-selection behavior."
-effort_estimate: "40 pts bottom-up"
-architecture_summary: "File-canonical origin/run/activity/use/inference/canonical-claim records; rebuildable facets and read projections; exact-tree P1 serialization gate; existing impact manifest/receipt integration."
+scope: Add canonical origin and planned/search-run envelopes, discoverable search-only
+  activity, immutable activity/selection/report-use receipts, optional AOS references,
+  typed inference/canonical-claim materialization, governed projections, and lifecycle
+  reconciliation without replacing RAL, activation, RFUP, or retrieval-selection behavior.
+effort_estimate: 40 pts bottom-up
+architecture_summary: File-canonical origin/run/activity/use/inference/canonical-claim
+  records; rebuildable facets and read projections; exact-tree P1 serialization gate;
+  existing impact manifest/receipt integration.
 related_documents:
-  - docs/project_plans/PRDs/enhancements/research-provenance-continuity-v1.md
-  - docs/project_plans/human-briefs/research-provenance-continuity.md
-  - .codex/worknotes/research-provenance-continuity/decisions-block.md
-  - docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
-  - docs/project_plans/implementation_plans/features/reusable-assertion-ledger-v1.md
-  - docs/project_plans/PRDs/features/assertion-ledger-activation-v1.md
-  - docs/project_plans/implementation_plans/features/assertion-ledger-activation-v1.md
-  - docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
-  - docs/project_plans/PRDs/enhancements/catalog-assisted-research-planning-v1.md
-  - docs/project_plans/implementation_plans/enhancements/catalog-assisted-research-planning-v1.md
-  - docs/project_plans/PRDs/enhancements/external-research-report-interchange-v1.md
-  - docs/project_plans/implementation_plans/enhancements/external-research-report-interchange-v1.md
-  - .codex/plans/research-interchange-provenance-access-initiative-v1.md
+- docs/project_plans/PRDs/enhancements/research-provenance-continuity-v1.md
+- docs/project_plans/human-briefs/research-provenance-continuity.md
+- .codex/worknotes/research-provenance-continuity/decisions-block.md
+- docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
+- docs/project_plans/implementation_plans/features/reusable-assertion-ledger-v1.md
+- docs/project_plans/PRDs/features/assertion-ledger-activation-v1.md
+- docs/project_plans/implementation_plans/features/assertion-ledger-activation-v1.md
+- docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
+- docs/project_plans/PRDs/enhancements/catalog-assisted-research-planning-v1.md
+- docs/project_plans/implementation_plans/enhancements/catalog-assisted-research-planning-v1.md
+- docs/project_plans/PRDs/enhancements/external-research-report-interchange-v1.md
+- docs/project_plans/implementation_plans/enhancements/external-research-report-interchange-v1.md
+- .codex/plans/research-interchange-provenance-access-initiative-v1.md
 references:
   user_docs: []
   context: []
   specs:
-    - .agents/skills/planning/references/ac-schema.md
-    - .agents/skills/planning/references/deferred-items-and-findings.md
-    - .claude/specs/changelog-spec.md
-    - schemas/provenance_origin.schema.yaml
-    - schemas/research_run_envelope.schema.yaml
-    - schemas/search_activity_receipt.schema.yaml
-    - schemas/source_assertion.schema.yaml
-    - schemas/inference_record.schema.yaml
-    - schemas/canonical_claim.schema.yaml
-    - schemas/assertion_lifecycle_event.schema.yaml
+  - .agents/skills/planning/references/ac-schema.md
+  - .agents/skills/planning/references/deferred-items-and-findings.md
+  - .claude/specs/changelog-spec.md
+  - schemas/provenance_origin.schema.yaml
+  - schemas/research_run_envelope.schema.yaml
+  - schemas/search_activity_receipt.schema.yaml
+  - schemas/source_assertion.schema.yaml
+  - schemas/inference_record.schema.yaml
+  - schemas/canonical_claim.schema.yaml
+  - schemas/assertion_lifecycle_event.schema.yaml
   related_prds:
-    - docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
-    - docs/project_plans/PRDs/features/assertion-ledger-activation-v1.md
-    - docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
+  - docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md
+  - docs/project_plans/PRDs/features/assertion-ledger-activation-v1.md
+  - docs/project_plans/PRDs/enhancements/rf-upstream-evidence-foundry-v1.md
 spike_ref: null
 adr_refs: []
-deferred_items_spec_refs: []
-findings_doc_ref: null
+deferred_items_spec_refs:
+- docs/project_plans/design-specs/research-provenance-historical-report-reconstruction.md
+- docs/project_plans/design-specs/research-provenance-report-transclusion.md
+- docs/project_plans/design-specs/research-provenance-public-export.md
+- docs/project_plans/design-specs/research-provenance-derived-graph.md
+findings_doc_ref: .claude/findings/research-provenance-continuity-findings.md
 charter_ref: null
 changelog_ref: null
 changelog_required: true
@@ -61,146 +70,168 @@ contributors: []
 priority: high
 risk_level: high
 category: enhancements
-tags: [implementation, planning, provenance, assertion-ledger, report-lineage, inference, lifecycle]
+tags:
+- implementation
+- planning
+- provenance
+- assertion-ledger
+- report-lineage
+- inference
+- lifecycle
 milestone: null
 commit_refs: []
 pr_refs: []
 files_affected:
+- schemas/provenance_origin.schema.yaml
+- schemas/research_run_envelope.schema.yaml
+- schemas/search_activity_receipt.schema.yaml
+- schemas/search_request.schema.yaml
+- schemas/search_run.schema.yaml
+- schemas/report_assertion_use.schema.yaml
+- schemas/inference_record.schema.yaml
+- schemas/canonical_claim.schema.yaml
+- src/research_foundry/services/provenance_envelope.py
+- src/research_foundry/services/research_run_discovery.py
+- src/research_foundry/services/assertion_materialization.py
+- src/research_foundry/services/assertion_catalog.py
+- src/research_foundry/services/assertion_impact.py
+- src/research_foundry/services/synthesis.py
+- src/research_foundry/services/verification.py
+- src/research_foundry/services/export_service.py
+- src/research_foundry/services/run_launch.py
+- src/research_foundry/api/routers/assertions.py
+- src/research_foundry/api/openapi.json
+open_questions:
+- id: RPC-OQ-1
+  status: open
+  question: Bind report use to report digest, report revision ID, or both?
+- id: RPC-OQ-2
+  status: open
+  question: Prepare inference/report-use records before verification and publish after
+    pass, or create only after verification?
+- id: RPC-OQ-3
+  status: open
+  question: Which legacy search_request/search_run fields remain compatibility aliases
+    after the canonical nested envelopes freeze?
+wave_plan:
+  serialization_barriers:
   - schemas/provenance_origin.schema.yaml
   - schemas/research_run_envelope.schema.yaml
   - schemas/search_activity_receipt.schema.yaml
-  - schemas/search_request.schema.yaml
-  - schemas/search_run.schema.yaml
-  - schemas/report_assertion_use.schema.yaml
   - schemas/inference_record.schema.yaml
   - schemas/canonical_claim.schema.yaml
-  - src/research_foundry/services/provenance_envelope.py
-  - src/research_foundry/services/research_run_discovery.py
-  - src/research_foundry/services/assertion_materialization.py
   - src/research_foundry/services/assertion_catalog.py
   - src/research_foundry/services/assertion_impact.py
-  - src/research_foundry/services/synthesis.py
-  - src/research_foundry/services/verification.py
-  - src/research_foundry/services/export_service.py
-  - src/research_foundry/services/run_launch.py
-  - src/research_foundry/api/routers/assertions.py
   - src/research_foundry/api/openapi.json
-open_questions:
-  - id: RPC-OQ-1
-    status: open
-    question: "Bind report use to report digest, report revision ID, or both?"
-  - id: RPC-OQ-2
-    status: open
-    question: "Prepare inference/report-use records before verification and publish after pass, or create only after verification?"
-  - id: RPC-OQ-3
-    status: open
-    question: "Which legacy search_request/search_run fields remain compatibility aliases after the canonical nested envelopes freeze?"
-wave_plan:
-  serialization_barriers:
+  phases:
+  - id: P1
+    depends_on: []
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    model: sonnet
+    effort: extended
+    files_affected:
     - schemas/provenance_origin.schema.yaml
     - schemas/research_run_envelope.schema.yaml
     - schemas/search_activity_receipt.schema.yaml
+    - schemas/search_request.schema.yaml
+    - schemas/search_run.schema.yaml
     - schemas/inference_record.schema.yaml
     - schemas/canonical_claim.schema.yaml
+  - id: P2
+    depends_on:
+    - RPC-1.G
+    isolation: worktree
+    parallelizable: true
+    owner_skills: []
+    model: sonnet
+    effort: extended
+    files_affected:
+    - src/research_foundry/services/provenance_envelope.py
+    - src/research_foundry/services/research_run_discovery.py
+    - src/research_foundry/services/run_launch.py
+  - id: P3
+    depends_on:
+    - RPC-1.G
+    isolation: worktree
+    parallelizable: true
+    owner_skills: []
+    model: sonnet
+    effort: adaptive
+    files_affected:
+    - schemas/report_assertion_use.schema.yaml
+    - src/research_foundry/services/assertion_report_use.py
+    - src/research_foundry/services/synthesis.py
+    - src/research_foundry/services/verification.py
+  - id: P4
+    depends_on:
+    - RPC-1.G
+    isolation: worktree
+    parallelizable: true
+    owner_skills: []
+    model: sonnet
+    effort: extended
+    files_affected:
+    - schemas/inference_record.schema.yaml
+    - schemas/canonical_claim.schema.yaml
+    - src/research_foundry/services/assertion_inference.py
+    - src/research_foundry/services/canonical_claim_materialization.py
+    - src/research_foundry/services/assertion_materialization.py
+  - id: P5
+    depends_on:
+    - P2
+    - P3
+    - P4
+    isolation: worktree
+    parallelizable: true
+    owner_skills: []
+    model: sonnet
+    effort: adaptive
+    files_affected:
     - src/research_foundry/services/assertion_catalog.py
-    - src/research_foundry/services/assertion_impact.py
+    - src/research_foundry/services/research_run_discovery.py
+    - src/research_foundry/services/export_service.py
+    - src/research_foundry/api/routers/assertions.py
     - src/research_foundry/api/openapi.json
-  phases:
-    - id: P1
-      depends_on: []
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: extended
-      files_affected:
-        - schemas/provenance_origin.schema.yaml
-        - schemas/research_run_envelope.schema.yaml
-        - schemas/search_activity_receipt.schema.yaml
-        - schemas/search_request.schema.yaml
-        - schemas/search_run.schema.yaml
-        - schemas/inference_record.schema.yaml
-        - schemas/canonical_claim.schema.yaml
-    - id: P2
-      depends_on: [RPC-1.G]
-      isolation: worktree
-      parallelizable: true
-      owner_skills: []
-      model: sonnet
-      effort: extended
-      files_affected:
-        - src/research_foundry/services/provenance_envelope.py
-        - src/research_foundry/services/research_run_discovery.py
-        - src/research_foundry/services/run_launch.py
-    - id: P3
-      depends_on: [RPC-1.G]
-      isolation: worktree
-      parallelizable: true
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
-      files_affected:
-        - schemas/report_assertion_use.schema.yaml
-        - src/research_foundry/services/assertion_report_use.py
-        - src/research_foundry/services/synthesis.py
-        - src/research_foundry/services/verification.py
-    - id: P4
-      depends_on: [RPC-1.G]
-      isolation: worktree
-      parallelizable: true
-      owner_skills: []
-      model: sonnet
-      effort: extended
-      files_affected:
-        - schemas/inference_record.schema.yaml
-        - schemas/canonical_claim.schema.yaml
-        - src/research_foundry/services/assertion_inference.py
-        - src/research_foundry/services/canonical_claim_materialization.py
-        - src/research_foundry/services/assertion_materialization.py
-    - id: P5
-      depends_on: [P2, P3, P4]
-      isolation: worktree
-      parallelizable: true
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
-      files_affected:
-        - src/research_foundry/services/assertion_catalog.py
-        - src/research_foundry/services/research_run_discovery.py
-        - src/research_foundry/services/export_service.py
-        - src/research_foundry/api/routers/assertions.py
-        - src/research_foundry/api/openapi.json
-    - id: P6
-      depends_on: [P3, P4]
-      isolation: worktree
-      parallelizable: true
-      owner_skills: []
-      model: sonnet
-      effort: extended
-      files_affected:
-        - src/research_foundry/services/assertion_impact.py
-    - id: P7
-      depends_on: [P5, P6]
-      isolation: shared
-      parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
-      files_affected:
-        - tests/unit/test_assertion_report_use.py
-        - tests/unit/test_assertion_inference.py
-        - tests/unit/test_provenance_envelope.py
-        - tests/integration/test_research_run_discovery.py
-        - tests/unit/test_assertion_catalog.py
-        - tests/integration/test_assertions_api.py
-        - tests/integration/test_assertion_reuse.py
-        - docs/dev/guides/research-provenance-continuity.md
-        - CHANGELOG.md
+  - id: P6
+    depends_on:
+    - P3
+    - P4
+    isolation: worktree
+    parallelizable: true
+    owner_skills: []
+    model: sonnet
+    effort: extended
+    files_affected:
+    - src/research_foundry/services/assertion_impact.py
+  - id: P7
+    depends_on:
+    - P5
+    - P6
+    isolation: shared
+    parallelizable: false
+    owner_skills: []
+    model: sonnet
+    effort: adaptive
+    files_affected:
+    - tests/unit/test_assertion_report_use.py
+    - tests/unit/test_assertion_inference.py
+    - tests/unit/test_provenance_envelope.py
+    - tests/integration/test_research_run_discovery.py
+    - tests/unit/test_assertion_catalog.py
+    - tests/integration/test_assertions_api.py
+    - tests/integration/test_assertion_reuse.py
+    - docs/dev/guides/research-provenance-continuity.md
+    - CHANGELOG.md
   waves:
-    - [P1]
-    - [P2, P3, P4]
-    - [P5, P6]
-    - [P7]
+  - - P1
+  - - P2
+    - P3
+    - P4
+  - - P5
+    - P6
+  - - P7
 ---
 
 # Implementation Plan: Research Provenance Continuity

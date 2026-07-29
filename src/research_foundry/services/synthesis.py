@@ -280,6 +280,13 @@ def synthesize_report(
         if isinstance(intent, dict) and intent.get("title")
         else f"Research report for {run_id}"
     )
+    # RPC-3.2 (freeze doc §13.1, run_report family): this exact `rid` value is
+    # what `verification.py::verify_report` later reads back from the report's
+    # own front matter (`front["report_id"]`, below) and threads into
+    # `assertion_report_use.build_report_ref`/`report_revision_id_for_run_report`
+    # once this revision passes verification -- report-use identity for this
+    # family is keyed off the ID minted here, never re-derived or reformatted.
+    # No behavior change: this comment documents an existing dependency.
     rid = report_id(slugify(str(title_seed)))
 
     front: dict[str, Any] = {

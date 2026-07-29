@@ -8,6 +8,18 @@ from pathlib import Path
 
 import pytest
 
+from research_foundry.frontmatter import dump_md, load_md
+from research_foundry.services import claim_mapping, export_service, extraction
+from research_foundry.services.assertion_materialization import (
+    AssertionMaterializer,
+    InferenceReferenceConflict,
+    MaterializationConflict,
+    MaterializationInterrupted,
+)
+from research_foundry.services.assertion_workspace import resolve_or_deny
+from research_foundry.services.source_cards import ingest_source
+from research_foundry.yamlio import dump_yaml, load_yaml
+
 # P1.5-03 (phase-1-5-extraction-contract-fix.md): reuse P1's shared
 # dual-workspace isolation fixture rather than re-deriving an equivalent
 # two-workspace AssertionRegistry pair (P1-03: "do not duplicate the fixture
@@ -15,21 +27,13 @@ import pytest
 # how pytest discovers it here -- no conftest.py promotion needed. Both names
 # are used only as pytest fixture references (by name, in test signatures),
 # which static import-usage analysis cannot see -- hence the targeted noqas.
+from tests.unit.test_assertion_inference import (
+    _setup_run_with_two_supported_claims,  # noqa: F401
+)
 from tests.unit.test_assertion_workspace_isolation import (
     dual_workspace_registries,  # noqa: F401
     guarded_ingest,
 )
-
-from research_foundry.frontmatter import dump_md, load_md
-from research_foundry.services import claim_mapping, export_service, extraction
-from research_foundry.services.assertion_materialization import (
-    AssertionMaterializer,
-    MaterializationConflict,
-    MaterializationInterrupted,
-)
-from research_foundry.services.assertion_workspace import resolve_or_deny
-from research_foundry.services.source_cards import ingest_source
-from research_foundry.yamlio import dump_yaml, load_yaml
 
 
 def _setup_run(tmp_foundry, run_id: str, *, content: str = "The measured result was 42 percent."):
@@ -586,3 +590,268 @@ def test_legacy_and_enriched_export_shapes_preserve_local_claim_semantics(tmp_fo
     for key in ("claim_id", "text", "sources", "report_locations", "inference_basis"):
         assert exported[key] == legacy[key]
     assert exported["persistent_references"] == enriched["claims"][0]["persistent_references"]
+
+
+# ---------------------------------------------------------------------------
+# gpt-5.6-terra fix-cycle 2 (rpc-terra-p4-findings.md T4-1, BLOCKER) -- the
+# F11 second write path (`apply_inference_reference`/
+# `apply_canonical_claim_reference`) accepted an ARBITRARY target id plus a
+# caller-supplied `recheck() -> bool` callback, enforcing only two of
+# contract §17.1's six preconditions. Fixed: both public functions are
+# REMOVED (no rename-only fig leaf); the SOLE write path is now the private,
+# shared `_commit_persistent_reference` -- reachable ONLY from
+# `AssertionInferenceMaterializer.materialize_inference` /
+# `CanonicalClaimMaterializer.publish_canonical_claim`, which supply a
+# `_TargetKindSpec` carrying no security decision (pure kind-specific
+# arithmetic only) -- every precondition is (re)enforced independently,
+# inside the lock, by the shared routine itself.
+# ---------------------------------------------------------------------------
+
+
+def test_t4_1_apply_reference_functions_removed_from_public_api() -> None:
+    """T4-1 closure: the terra repro's exact target functions no longer
+    exist under this module -- there is no public, arbitrary-id +
+    trusted-callback entry point left to import, let alone call."""
+
+    import research_foundry.services.assertion_materialization as mod
+
+    assert not hasattr(mod, "apply_inference_reference")
+    assert not hasattr(mod, "apply_canonical_claim_reference")
+    assert "apply_inference_reference" not in mod.__all__
+    assert "apply_canonical_claim_reference" not in mod.__all__
+
+
+def test_t4_1_repro_bogus_target_rejected_even_via_direct_private_call(tmp_foundry) -> None:
+    """T4-1 closure, defense-in-depth: even calling the PRIVATE shared commit
+    routine directly with the exact terra repro shape -- an arbitrary,
+    never-materialized target id, naming a real claim row in a real run --
+    is rejected. There is no ``recheck=lambda: True`` parameter left to
+    satisfy; the routine independently reloads the target from disk itself
+    and finds nothing there.
+    """
+
+    from research_foundry.services.assertion_materialization import (
+        _commit_persistent_reference,
+        _TargetKindSpec,
+    )
+
+    run_id = "rf_run_f11_bypass"
+    _setup_run_with_two_supported_claims(tmp_foundry, run_id)
+    bogus_inference_id = "inf_" + "0" * 64
+
+    # A _TargetKindSpec an external caller could plausibly assemble --
+    # closures pointing at paths/formulas, never a boolean "trust me".
+    target = _TargetKindSpec(
+        kind="inference_record",
+        schema_name="inference_record",
+        id_field="inference_id",
+        version_field="inference_version",
+        manifest_type="inference_generation_manifest",
+        conflict_cls=InferenceReferenceConflict,
+        interrupted_cls=RuntimeError,
+        record_path=lambda rid, _v: tmp_foundry.root
+        / "assertion_ledger"
+        / "workspaces"
+        / "does-not-exist"
+        / "inferences"
+        / f"{rid}.yaml",
+        manifest_path=lambda: tmp_foundry.root / "assertion_ledger" / "nowhere.yaml",
+        recompute_version_digest=lambda _record: "0" * 64,
+        is_state_active=lambda _record: True,
+        source_assertion_refs_of=lambda _record: [],
+        inference_refs_of=lambda _record: (),
+        support_refs_digest_of=lambda _record: "0" * 64,
+        requires_canonical_claims_capability=False,
+    )
+
+    with pytest.raises(InferenceReferenceConflict, match="partial_write_rejected"):
+        _commit_persistent_reference(
+            paths=tmp_foundry,
+            run_id=run_id,
+            claim_id="clm_001",
+            caller_workspace_id="workspace-a",
+            target=target,
+            target_id=bogus_inference_id,
+            target_version=1,
+            expected_generation_id=None,
+            caller_commit_proof_digest="0" * 64,
+        )
+
+    row = next(c for c in _ledger(tmp_foundry, run_id)["claims"] if c["claim_id"] == "clm_001")
+    assert row.get("persistent_references") is None or not row["persistent_references"].get("inference_id")
+    assert not (tmp_foundry.run_paths(run_id).claims / ".claim_ledger_published.yaml").exists()
+
+
+# ---------------------------------------------------------------------------
+# SOL-33 (HIGH, gate-blocking) -- the shared, locked commit routine's own
+# Precondition 1 must independently re-run FULL kind-specific schema
+# validation against the freshly-reloaded on-disk target record, not merely
+# existence + raw state + the partial `version_digest` recompute. A field the
+# version_digest formula does not cover (e.g. `type`) can be mutated directly
+# on disk and stays self-consistent under the digest check alone -- only a
+# real schema rerun catches it.
+# ---------------------------------------------------------------------------
+
+
+def test_sol33_locked_commit_reruns_full_schema_validation_on_reload(tmp_foundry) -> None:
+    """A REAL, legitimately-promoted+committed inference record, tampered
+    directly on disk (``type`` changed -- NOT a ``version_digest`` material
+    field, so the digest recompute alone stays consistent), must be rejected
+    when a SECOND, fresh claim row commits a reference against it -- calling
+    the shared private routine directly (mirroring the existing T4-1 test's
+    style) with an otherwise fully legitimate, correctly-computed commit
+    proof so only the NEW schema gate can be what fails this call."""
+
+    import json
+
+    from research_foundry.services.assertion_inference import (
+        AssertionInferenceMaterializer,
+        compute_inference_version_digest,
+    )
+    from research_foundry.services.assertion_materialization import (
+        _commit_persistent_reference,
+        _read_claim_ledger_generation_pointer,
+        _TargetKindSpec,
+        compute_commit_proof_digest,
+    )
+    from tests.unit.test_assertion_inference import _append_inference_claim
+
+    run_id = "rf_run_sol33_schema_reload"
+    _setup_run_with_two_supported_claims(tmp_foundry, run_id)
+
+    inf_claim_id = _append_inference_claim(tmp_foundry, run_id, from_claims=["clm_001"])
+    inferencer = AssertionInferenceMaterializer(workspace_id="workspace-a", paths=tmp_foundry)
+    inf_result = inferencer.materialize_inference(run_id, inf_claim_id, producer="agent-research-1")
+    assert inf_result.status == "materialized"
+
+    record_path = inferencer._inference_path(inf_result.inference_id)
+    record = load_yaml(record_path)
+    # Mutate a field version_digest does NOT cover -- self-consistency (the
+    # digest recompute) stays intact; only a schema rerun rejects this.
+    record["type"] = "not_an_inference_record"
+    dump_yaml(record, record_path)
+    assert (
+        compute_inference_version_digest(
+            record["conclusion"],
+            record["source_assertion_refs"],
+            record["reasoning"],
+            record["status"],
+            record["inference_version"],
+        )
+        == record["version_digest"]
+    )
+
+    def _support_refs_digest(rec: dict) -> str:
+        payload = json.dumps(
+            rec.get("source_assertion_refs") or [],
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        return sha256(payload.encode("utf-8")).hexdigest()
+
+    target = _TargetKindSpec(
+        kind="inference_record",
+        schema_name="inference_record",
+        id_field="inference_id",
+        version_field="inference_version",
+        manifest_type="inference_generation_manifest",
+        conflict_cls=InferenceReferenceConflict,
+        interrupted_cls=RuntimeError,
+        record_path=lambda rid, _v: inferencer._inference_path(rid),
+        manifest_path=inferencer._manifest_path,
+        recompute_version_digest=lambda rec: compute_inference_version_digest(
+            str(rec.get("conclusion") or ""),
+            rec.get("source_assertion_refs") or [],
+            rec.get("reasoning") or {},
+            str(rec.get("status") or ""),
+            int(rec.get("inference_version") or 0),
+        ),
+        is_state_active=lambda rec: rec.get("status") == "active",
+        source_assertion_refs_of=lambda rec: rec.get("source_assertion_refs") or [],
+        inference_refs_of=lambda _rec: (),
+        support_refs_digest_of=_support_refs_digest,
+        requires_canonical_claims_capability=False,
+    )
+
+    ledger = _ledger(tmp_foundry, run_id)
+    clm_002 = next(c for c in ledger["claims"] if c["claim_id"] == "clm_002")
+    commit_proof_digest = compute_commit_proof_digest(
+        claim_id="clm_002",
+        row_sources=clm_002.get("sources") or [],
+        row_conclusion_text=str(clm_002.get("text") or ""),
+        target_kind="inference_record",
+        target_id=inf_result.inference_id,
+        target_version=1,
+        target_version_digest=record["version_digest"],
+        support_refs_digest=_support_refs_digest(record),
+    )
+    expected_generation_id = _read_claim_ledger_generation_pointer(tmp_foundry, run_id)
+
+    with pytest.raises(InferenceReferenceConflict, match="partial_write_rejected"):
+        _commit_persistent_reference(
+            paths=tmp_foundry,
+            run_id=run_id,
+            claim_id="clm_002",
+            caller_workspace_id="workspace-a",
+            target=target,
+            target_id=inf_result.inference_id,
+            target_version=1,
+            expected_generation_id=expected_generation_id,
+            caller_commit_proof_digest=commit_proof_digest,
+        )
+
+    row = next(c for c in _ledger(tmp_foundry, run_id)["claims"] if c["claim_id"] == "clm_002")
+    assert row.get("persistent_references") is None or not row["persistent_references"].get(
+        "inference_id"
+    )
+
+
+# ---------------------------------------------------------------------------
+# F18 (RPC-6.G validator, N7) -- `_recheck_transitive_support` must consult
+# P6's effective-status verdict, not merely a record's raw, never-mutated
+# `status` field. Full end-to-end proof (a real `reconcile()` -> completed
+# `mark_stale` effect blocking a real `publish_canonical_claim` commit) lives
+# in `tests/unit/test_canonical_claim_materialization.py` (same shared
+# `_commit_persistent_reference_locked` routine); this is the fast, direct
+# unit pin on the helper's own new parameter, owned by this module.
+# ---------------------------------------------------------------------------
+
+
+def test_recheck_transitive_support_stale_inference_ids_overrides_active_status(tmp_foundry) -> None:
+    """Belt-and-suspenders: an inference record's own on-disk ``status`` stays
+    ``"active"`` (P6 never mutates it in place, N7) -- naming its id in
+    ``stale_inference_ids`` (the impact lane's effective-status verdict, see
+    ``assertion_impact.collect_stale_object_ids``) must still yield
+    ``stale_support``, exactly as a raw ``status`` flip would have."""
+
+    from research_foundry.services.assertion_materialization import _recheck_transitive_support
+    from research_foundry.services.assertion_registry import AssertionRegistry
+
+    root = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry).root
+    inference_id = "inf_" + "1" * 64
+    dump_yaml(
+        {
+            "inference_id": inference_id,
+            "inference_version": 1,
+            "status": "active",
+            "source_assertion_refs": [],
+        },
+        root / "inferences" / f"{inference_id}.yaml",
+    )
+    inference_ref = {"inference_id": inference_id, "inference_version": 1}
+
+    # Raw status alone (the "belt"): still "active" on disk, so this passes.
+    assert _recheck_transitive_support(root=root, source_assertion_refs=[], inference_refs=[inference_ref]) is None
+
+    # Naming it P6-marked-stale (the "suspenders"): rejected regardless of
+    # the untouched on-disk `status`.
+    assert (
+        _recheck_transitive_support(
+            root=root,
+            source_assertion_refs=[],
+            inference_refs=[inference_ref],
+            stale_inference_ids=frozenset({inference_id}),
+        )
+        == "stale_support"
+    )

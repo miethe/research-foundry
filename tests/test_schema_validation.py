@@ -54,9 +54,14 @@ EXPECTED_SCHEMA_NAMES: list[str] = [
     "intenttree_node", "intenttree_update", "knowledge_activity_receipt",
     "knowledge_document", "knowledge_search_request", "knowledge_search_response",
     "meatywiki_writeback", "notebooklm_update",
-    "passage", "permission_record", "raw_idea", "report_draft", "report_frontmatter",
-    "research_brief", "research_evidence_plan", "research_idea_backlog", "research_intent", "review_packet",
+    "passage", "permission_record",
+    # research-provenance-continuity-v1 P1 contract freeze (RPC-1.G):
+    # 4 net-new schemas for the canonical provenance layer.
+    "provenance_origin", "raw_idea", "report_assertion_use", "report_draft", "report_frontmatter",
+    "research_brief", "research_evidence_plan", "research_idea_backlog", "research_intent",
+    "research_run_envelope", "review_packet",
     "rights_extension", "rights_failure", "rights_record", "routing_decision",
+    "search_activity_receipt",
     "search_request", "search_run", "skillbom_candidate", "source_assertion",
     "source_card", "source_edition", "swarm_plan", "term_vocab", "tool_profile",
 ]
@@ -492,6 +497,140 @@ def _valid(name: str) -> dict:
             "id": "brave_search_v1",
             "provider": "brave",
         },
+        # research-provenance-continuity-v1 P1 contract freeze (RPC-1.G) — 4
+        # net-new schemas for the canonical provenance layer. Fingerprint/
+        # digest fields below are structurally-valid 64-hex placeholders
+        # only (JSON Schema cannot itself recompute a real fingerprint); the
+        # cross-record content-binding invariants documented in each schema
+        # are service-layer checks, not JSON-Schema-enforced ones.
+        "provenance_origin": {
+            "schema_version": "1.0",
+            "type": "provenance_origin",
+            "origin_id": "pvo_" + "a" * 64,
+            "origin_version": 1,
+            "workspace_id": "ws_demo",
+            # Non-import method so `external_receipt_ref` may be null (the
+            # `allOf` partition forbids a non-null value for any kind other
+            # than "import").
+            "method": {"kind": "capture"},
+            "producer": {"producer_type": "agent"},
+            "source_kind": "web_page",
+            "locator": None,
+            "content_digest": None,
+            "external_receipt_ref": None,
+            "parent_origin_refs": [],
+            "created_at": "2026-07-28T00:00:00Z",
+            "identity": {
+                "algorithm": "sha256-canonical-json-v1",
+                "fingerprint": "a" * 64,
+                "material_fields": [
+                    "origin_version", "workspace_id", "method", "producer",
+                    "source_kind", "locator", "content_digest",
+                    "external_receipt_ref", "parent_origin_refs", "created_at",
+                ],
+            },
+        },
+        # v1 (planning-time) shape: `activity_id`/`receipt_commitment` are
+        # structurally ABSENT, never merely null, at envelope_version 1.
+        # `activity_kind: search_only` keeps `planned_run_ref` a simple
+        # `null` per the allOf partition (no run_id object to build).
+        "research_run_envelope": {
+            "schema_version": "1.0",
+            "type": "research_run_envelope",
+            "envelope_id": "rre_" + "a" * 64,
+            "envelope_version": 1,
+            "workspace_id": "ws_demo",
+            "activity_kind": "search_only",
+            "planned_run_ref": None,
+            "parent_run_ref": None,
+            "origin_ref": None,
+            "created_at": "2026-07-28T00:00:00Z",
+            "identity": {
+                "algorithm": "sha256-canonical-json-v1",
+                "fingerprint": "a" * 64,
+                "material_fields": [
+                    "workspace_id", "activity_kind", "request_id",
+                    "planned_run_ref", "parent_run_ref", "origin_ref",
+                    "aos_refs", "created_at",
+                ],
+            },
+        },
+        # `denied` outcome arm: the simplest of the five disjoint terminal
+        # outcomes to satisfy (every candidate-derived field is null; only
+        # `denial_reason` is non-null).
+        "search_activity_receipt": {
+            "schema_version": "1.0",
+            "type": "search_activity_receipt",
+            "activity_id": "sar_" + "a" * 64,
+            "workspace_id": "ws_demo",
+            "activity_kind": "search_only",
+            "request_id": None,
+            "query": "demo query",
+            "purpose": None,
+            "scope": {"provider": None, "site": None, "corpus": None},
+            "candidate_set_digest": None,
+            "selected_evidence_versions": [],
+            "selection_receipt": {
+                "outcome": "denied",
+                "source": None,
+                "catalog_generation_id": None,
+                "decided_at": None,
+                "denial_reason": "not_authorized_or_not_found",
+                "degraded_reason": None,
+                "fallback_reason": None,
+            },
+            "envelope_ref": {
+                "envelope_id": "rre_" + "a" * 64,
+                "envelope_version": 1,
+            },
+            "created_at": "2026-07-28T00:00:00Z",
+            "identity": {
+                "algorithm": "sha256-canonical-json-v1",
+                "fingerprint": "a" * 64,
+                "material_fields": [
+                    "workspace_id", "activity_kind", "request_id", "query",
+                    "purpose", "scope", "candidate_set_digest",
+                    "selected_evidence_versions", "selection_receipt",
+                    "envelope_ref", "created_at",
+                ],
+            },
+        },
+        # `report_family: run_report` + `ref_kind: source_assertion` arms;
+        # every inactive family/ref field explicitly null (never omitted,
+        # per SOL-9's canonical-normalization rule). `rights_snapshot: {}`
+        # is valid since round 2 dropped its top-level `required` list.
+        "report_assertion_use": {
+            "schema_version": "1.0",
+            "type": "report_assertion_use",
+            "use_id": "rau_" + "a" * 64,
+            "workspace_id": "ws_demo",
+            "report_ref": {
+                "report_family": "run_report",
+                "report_id": "report_demo",
+                "report_draft_id": None,
+                "report_content_digest": "a" * 64,
+                "report_revision_id": "rrv_" + "a" * 64,
+            },
+            "cited_ref": {
+                "ref_kind": "source_assertion",
+                "assertion_id": "ast_" + "a" * 64,
+                "assertion_version": 1,
+                "inference_id": None,
+                "inference_version": None,
+                "canonical_claim_id": None,
+                "canonical_claim_version": None,
+            },
+            "rights_snapshot": {},
+            "created_at": "2026-07-28T00:00:00Z",
+            "identity": {
+                "algorithm": "sha256-canonical-json-v1",
+                "fingerprint": "a" * 64,
+                "material_fields": [
+                    "workspace_id", "report_ref", "cited_ref",
+                    "rights_snapshot", "created_at",
+                ],
+            },
+        },
         # rights-entity-model-v1 (P0-1..P0-4) — minimal instances for the 5
         # new substrate schemas; see dedicated §9-adjudication fixture tests
         # elsewhere in this file (and tests/test_rights_record_schema_fixtures.py
@@ -652,6 +791,11 @@ def _invalid(name: str) -> dict:
         "source_assertion": "assertion_id",
         "source_edition": "source_edition_id",
         "passage": "passage_id",
+        # research-provenance-continuity-v1 P1 contract freeze (RPC-1.G)
+        "provenance_origin": "origin_id",
+        "research_run_envelope": "envelope_id",
+        "search_activity_receipt": "activity_id",
+        "report_assertion_use": "use_id",
         "swarm_plan": "id",
         "term_vocab": "vocabulary_version",
         "tool_profile": "id",
@@ -682,6 +826,56 @@ def test_invalid_instance_fails(name: str) -> None:
     result = validate(_invalid(name), name)
     assert not result.ok, f"expected {name} invalid instance to fail validation"
     assert result.errors, f"expected non-empty errors for invalid {name} instance"
+
+
+def test_report_assertion_use_cited_ref_active_kind_with_a_second_family_field_set_fails() -> None:
+    """RPC-7.16 (report-use half, freeze doc §17.9): ``cited_ref``'s per-
+    ``ref_kind`` if/then requires the two INACTIVE families' id/version pair
+    fields to be explicitly ``null`` -- an instance naming ``ref_kind:
+    inference`` (with its own id/version pair correctly set) that ALSO sets
+    ``assertion_id`` (an inactive-family field) must fail validation. This
+    is the schema-level enforcement of the atomic-pair rule for the
+    report-use family; the generic ``test_invalid_instance_fails`` above
+    only removes a required top-level field and never exercises this
+    specific conditional."""
+
+    instance = _valid("report_assertion_use")
+    instance["cited_ref"] = {
+        "ref_kind": "inference",
+        "inference_id": "inf_" + "a" * 64,
+        "inference_version": 1,
+        "assertion_id": "ast_" + "b" * 64,  # inactive family, must be null
+        "assertion_version": None,
+        "canonical_claim_id": None,
+        "canonical_claim_version": None,
+    }
+
+    result = validate(instance, "report_assertion_use")
+    assert not result.ok, "expected a second active family field to fail the ref_kind conditional"
+    assert result.errors
+
+
+def test_report_assertion_use_cited_ref_active_kind_missing_own_pair_field_fails() -> None:
+    """RPC-7.16 (report-use half): the mirror case -- ``ref_kind:
+    canonical_claim`` with its OWN ``canonical_claim_version`` left absent/
+    null is exactly the partial-pair shape the atomic-pair rule forbids, and
+    must fail validation rather than silently accept a half-written
+    reference."""
+
+    instance = _valid("report_assertion_use")
+    instance["cited_ref"] = {
+        "ref_kind": "canonical_claim",
+        "canonical_claim_id": "ccl_" + "a" * 64,
+        "canonical_claim_version": None,  # partial pair: id present, version absent
+        "assertion_id": None,
+        "assertion_version": None,
+        "inference_id": None,
+        "inference_version": None,
+    }
+
+    result = validate(instance, "report_assertion_use")
+    assert not result.ok, "expected a partial (id-only) pair to fail the ref_kind conditional"
+    assert result.errors
 
 
 def test_registry_lists_all_schemas() -> None:

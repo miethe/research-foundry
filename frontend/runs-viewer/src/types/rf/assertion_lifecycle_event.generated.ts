@@ -40,6 +40,24 @@ export type AssertionLifecycleEvent = (
         to?: "tombstoned";
       };
     }
+  | {
+      transition?: {
+        from?: "active";
+        to?: "stale";
+      };
+    }
+  | {
+      transition?: {
+        from?: "active";
+        to?: "invalidated";
+      };
+    }
+  | {
+      transition?: {
+        from?: "active";
+        to?: "tombstoned";
+      };
+    }
 ) & {
   [k: string]: any;
 } & {
@@ -56,7 +74,10 @@ export type AssertionLifecycleEvent = (
     version: number;
   };
   transition: {
-    from: "eligible" | "stale" | "invalidated" | "tombstoned";
+    /**
+     * RPC SOL-15a additive amendment (research-provenance-continuity P1): `active` widens this enum for `target.kind: inference_record` events only (see the `allOf` conditional below) -- an inference's own status vocabulary (`inference_record.schema.yaml`'s `status`) starts at `active`, never `eligible` (that word is `source_assertion`/`source_edition`/`passage`'s starting state, a DIFFERENT concept). Before this amendment a direct `target.kind: inference_record` event transitioning `active -> stale`/`active -> invalidated`/`active -> tombstoned` had no valid `from` value to name -- a provable, narrow gap. Pure enum widening: every event instance valid under the prior four-member enum remains valid.
+     */
+    from: "eligible" | "active" | "stale" | "invalidated" | "tombstoned";
     to: "stale" | "invalidated" | "tombstoned";
   };
   authoritative_action?: "block_reuse";

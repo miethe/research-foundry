@@ -45,7 +45,50 @@ properties:
       producer:
         type: [string, "null"]
   status:
-    enum: [active, stale, invalidated]
+    # RPC-1.4 additive amendment (research-provenance-continuity P1, F2):
+    # `tombstoned` added for parity with the ALREADY-SHIPPED
+    # `assertion_lifecycle_event.schema.yaml`'s `target.kind` enum, which
+    # already includes `inference_record` alongside a `transition.to` enum
+    # of `[stale, invalidated, tombstoned]` (and `cause: manual_tombstone`).
+    # Before this amendment a direct `target.kind: inference_record`
+    # lifecycle event transitioning `to: tombstoned` had no corresponding
+    # status value to land in on this schema -- a provable, narrow gap.
+    # Purely additive (enum widening): every inference_record instance
+    # valid under the prior 3-member enum remains valid; no property was
+    # added, removed, renamed, or narrowed, and `$id .../v1` /
+    # `schema_version: const "1.0"` are unchanged per this repo's existing
+    # additive-amendment convention (see source_assertion.schema.yaml's
+    # P2-2/P4 history). `canonical_claim.schema.yaml` is deliberately NOT
+    # given a parallel amendment here -- see
+    # docs/dev/architecture/research-provenance-contract-freeze.md Part 2
+    # F13 section for why its state machine does not map onto this same
+    # eligible/stale/invalidated/tombstoned vocabulary at all today.
+    enum: [active, stale, invalidated, tombstoned]
+  version_digest:
+    # RPC-1.4 additive field (research-provenance-continuity P1, SOL-12/18,
+    # round 2; WIDENED round 3, SOL-25/26/RC-2). OPTIONAL, additive,
+    # service-internal integrity value -- NOT part of `inference_id`'s own
+    # identity (freeze doc §15.2 item 2, which covers only {conclusion,
+    # source_assertion_refs, reasoning}).
+    # `sha256-canonical-json-v1` over {conclusion, source_assertion_refs,
+    # reasoning, status, inference_version} at the CURRENT `inference_version`
+    # -- widening the identity-scoped payload with `status` (round 2) so a
+    # status change (e.g. a lifecycle event landing `active -> stale`,
+    # §16.4) is itself provable without altering the stable `inference_id`,
+    # and (round 3, RC-2) with `inference_version` itself -- SOL-26's
+    # accepted attack: the round-2 formula omitted the version integer, so
+    # `inference_version` could change (e.g. `1 -> 999`) with NO digest
+    # change. A P4 writer under this contract MUST populate it on every
+    # record it writes; a reader/replay path MUST validate it when present;
+    # legacy absence is tolerated read-only. The generation-manifest entry
+    # recorded at promotion time (freeze doc §17.7a, RC-2) is the
+    # tamper-evidence ROOT this digest is checked against on read/replay --
+    # not merely the record's own stored field. See freeze doc §15.2/§17.7a
+    # for the worked test vector and the P7 verifying task.
+    type:
+      - string
+      - "null"
+    pattern: "^[a-f0-9]{64}$"
 required:
   - schema_version
   - type

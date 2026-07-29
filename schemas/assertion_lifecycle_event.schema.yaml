@@ -42,7 +42,20 @@ properties:
     required: [from, to]
     properties:
       from:
-        enum: [eligible, stale, invalidated, tombstoned]
+        description: >-
+          RPC SOL-15a additive amendment (research-provenance-continuity
+          P1): `active` widens this enum for `target.kind: inference_record`
+          events only (see the `allOf` conditional below) -- an inference's
+          own status vocabulary (`inference_record.schema.yaml`'s `status`)
+          starts at `active`, never `eligible` (that word is
+          `source_assertion`/`source_edition`/`passage`'s starting state,
+          a DIFFERENT concept). Before this amendment a direct
+          `target.kind: inference_record` event transitioning `active ->
+          stale`/`active -> invalidated`/`active -> tombstoned` had no valid
+          `from` value to name -- a provable, narrow gap. Pure enum
+          widening: every event instance valid under the prior four-member
+          enum remains valid.
+        enum: [eligible, active, stale, invalidated, tombstoned]
       to:
         enum: [stale, invalidated, tombstoned]
   authoritative_action:
@@ -100,6 +113,30 @@ allOf:
             properties:
               from: {const: invalidated}
               to: {const: tombstoned}
+      # RPC SOL-15a additive arms: an inference_record's own status
+      # vocabulary (active/stale/invalidated/tombstoned) starts at
+      # `active`, not `eligible` -- these three arms are the
+      # inference-record-only analogue of the three `eligible -> *` arms
+      # above. Restricted to `target.kind: inference_record` by the
+      # conditional immediately below (never valid for
+      # source_edition/passage/source_assertion, whose vocabulary keeps
+      # `eligible` as its sole starting state, and never valid for
+      # canonical_claim per freeze doc §17.5's deliberate non-widening).
+      - properties:
+          transition:
+            properties:
+              from: {const: active}
+              to: {const: stale}
+      - properties:
+          transition:
+            properties:
+              from: {const: active}
+              to: {const: invalidated}
+      - properties:
+          transition:
+            properties:
+              from: {const: active}
+              to: {const: tombstoned}
   - if:
       properties:
         transition:
@@ -116,3 +153,50 @@ allOf:
             properties:
               action: {const: block_reuse}
             required: [action]
+  - if:
+      # SOL-15a: `from: active` is exclusively an inference_record concept.
+      properties:
+        transition:
+          properties:
+            from: {const: active}
+      required: [transition]
+    then:
+      properties:
+        target:
+          properties:
+            kind: {const: inference_record}
+          required: [kind]
+      required: [target]
+  # SOL-15 (round 2, REOPENED): `from: eligible` is exclusively a concept of
+  # the three target kinds whose OWN lifecycle vocabulary actually starts at
+  # "eligible" (source_edition/passage/source_assertion). Before this
+  # conditional, `target.kind: canonical_claim` and `target.kind:
+  # inference_record` combined with `transition.from: eligible` were BOTH
+  # schema-valid (a pre-existing baseline gap this contract's SOL-15a
+  # amendment made newly visible by scoping `active` correctly but leaving
+  # `eligible` unscoped) -- yet neither target's own status vocabulary
+  # (`inference_record.status`: active/stale/invalidated/tombstoned, §16.2;
+  # `canonical_claim.state`: proposed/reviewed/active/split/superseded/
+  # rolled_back, §17.5) has ever included "eligible" as a possible value, so
+  # such an event could never describe a real transition either target
+  # actually makes. Verified for this fix cycle: zero extant
+  # `assertion_lifecycle_event` instances anywhere in this repo target
+  # `canonical_claim`/`inference_record` with `transition.from: eligible`
+  # (nothing to invalidate). This narrows the schema (a documented,
+  # justified deviation from strict non-narrowing -- see freeze doc §22
+  # round-2 changelog) rather than widening it, because the combination it
+  # forbids was never a legitimate, satisfiable instance of either target's
+  # own frozen vocabulary in the first place.
+  - if:
+      properties:
+        transition:
+          properties:
+            from: {const: eligible}
+      required: [transition]
+    then:
+      properties:
+        target:
+          properties:
+            kind: {enum: [source_edition, passage, source_assertion]}
+          required: [kind]
+      required: [target]

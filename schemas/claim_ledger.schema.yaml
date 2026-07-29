@@ -103,6 +103,47 @@ properties:
               minimum: 1
             inference_id:
               type: [string, "null"]
+            inference_version:
+              type: [integer, "null"]
+              minimum: 1
+              description: >-
+                RPC SOL-11 additive amendment (F17, research-provenance-continuity
+                P1). Optional companion to inference_id, mirroring the
+                existing canonical_claim_id+canonical_claim_version pair.
+
+                SOL-17 (round 2, REVERTED the round-1 schema conditional):
+                round 1 added a schema-level `allOf` requiring
+                inference_version whenever inference_id was non-null. That
+                conditional REJECTED a baseline-valid legacy instance
+                (`{persistent_references: {inference_id: "legacy-inf"}}` with
+                no version field at all) -- exactly the pre-existing,
+                version-absent reference shape this repo's own read paths
+                must keep tolerating (RPC-DF-1/AC RPC-3's "legacy_unresolved"
+                resilience framing applies here too). A shipped-schema
+                amendment MUST stay additive against every baseline-valid
+                instance, not merely against instances this document itself
+                invented -- the round-1 conditional broke that. No schema
+                conditional remains here as of round 2: `inference_version`
+                is a plain optional integer, exactly like
+                `canonical_claim_version`'s own field before any pairing
+                rule existed.
+
+                The atomic-pair rule (inference_id + inference_version
+                written together or not at all) is now a WRITER-LEVEL MUST
+                instead of a schema-level conditional -- enforced by P4's
+                `persistent_references` write path (freeze doc §17.1 item 4)
+                and verified by the P7 gate task RPC-7.16 (freeze doc
+                §17.9), never by this schema. Read semantics for a row
+                carrying inference_id with no inference_version (whether a
+                genuinely pre-P4 legacy row, or a row a non-conforming
+                writer produced): a reader MUST treat the reference as
+                AMBIGUOUS-VERSION, never resolve it to "the latest"
+                inference_version implicitly, and MUST report it using the
+                same `legacy_unresolved`-class typed skip AC RPC-3 already
+                names for a missing/absent persistent reference (freeze doc
+                §13.6 example (e)) -- an inference_id without a version is
+                not usable as an exact persistent reference, but it is not a
+                validation failure either.
         report_locations:
           type: array
           items:

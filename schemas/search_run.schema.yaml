@@ -129,6 +129,24 @@ properties:
           - "null"
       mirror_is_authoritative:
         const: false
+      activity_id:
+        description: >
+          RPC (research-provenance-continuity) additive field (P1 contract
+          freeze; CARP §4.2 row 4, "Seams P2 must add" note). Optional
+          reference to this run's canonical
+          schemas/search_activity_receipt.schema.yaml record. Once a P2/P5
+          writer populates this field, it becomes the AUTHORITATIVE
+          selection-provenance reference for this run and `selections`
+          below is superseded (the mirror pattern was a stopgap for the
+          period before a canonical activity envelope existed) --
+          `selections` is NEVER removed or backfilled retroactively
+          (AC RPC-8 legacy compatibility): a run written before this field
+          existed, or by a caller that never populates it, remains fully
+          valid and readable with `activity_id: null`.
+        type:
+          - string
+          - "null"
+        pattern: "^sar_[a-f0-9]{64}$"
       selections:
         type: array
         items:
@@ -195,6 +213,26 @@ properties:
               minimum: 0
         additionalProperties: false
     additionalProperties: false
+    allOf:
+      # RPC SOL-8: once a P2/P5 writer populates activity_id, it is the
+      # AUTHORITATIVE selection-provenance reference for this run and the
+      # legacy `selections[]` mirror MUST be empty or omitted -- a run never
+      # carries both an authoritative activity_id reference and the
+      # non-authoritative per-question mirror it superseded. A run written
+      # before activity_id existed, or by a caller that never populates it
+      # (activity_id null/absent), is completely unaffected: `selections[]`
+      # keeps its full pre-existing shape and meaning (AC RPC-8).
+      - if:
+          properties:
+            activity_id:
+              not:
+                type: "null"
+          required:
+            - activity_id
+        then:
+          properties:
+            selections:
+              maxItems: 0
 required:
   - run_id
   - request

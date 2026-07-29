@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from ...paths import FoundryPaths
 from ...services.assertion_catalog import AssertionCatalog, AssertionCatalogDenied
 from ...services.assertion_impact import AssertionImpactReadDenied, AssertionImpactReader
+from ...services.research_run_discovery import ResearchRunDiscovery, ResearchRunDiscoveryDenied
 from .runs import get_paths
 
 router = APIRouter()
@@ -45,6 +46,20 @@ class AssertionSearchResponse(BaseModel):
     denial_reason: str | None
 
 
+class InferenceLineageEntry(BaseModel):
+    inference_id: str
+    inference_version: int
+    status: str | None = None
+    report_uses: list[str] = Field(default_factory=list)
+
+
+class CanonicalClaimLineageEntry(BaseModel):
+    canonical_claim_id: str
+    canonical_claim_version: int
+    state: str | None = None
+    report_uses: list[str] = Field(default_factory=list)
+
+
 class EvidencePacket(BaseModel):
     packet_version: str
     assertion_id: str
@@ -64,6 +79,14 @@ class EvidencePacket(BaseModel):
     relationships: list[dict[str, Any]]
     run_uses: list[str]
     report_uses: list[str]
+    # RPC-5.2: additive activity/lineage projections (AC RPC-5). A legacy
+    # assertion with no inference/canonical-claim/report-use/origin activity
+    # simply has empty optional values here -- never an omitted key (AC
+    # RPC-5 resilience: "legacy records expose empty optional fields").
+    inference_lineage: list[InferenceLineageEntry] = Field(default_factory=list)
+    canonical_claim_lineage: list[CanonicalClaimLineageEntry] = Field(default_factory=list)
+    run_facets: dict[str, dict[str, Any] | None] = Field(default_factory=dict)
+    search_activity_ids: list[str] = Field(default_factory=list)
 
 
 class AssertionLineage(BaseModel):
@@ -72,6 +95,10 @@ class AssertionLineage(BaseModel):
     relationships: list[dict[str, Any]]
     run_uses: list[str]
     report_uses: list[str]
+    inference_lineage: list[InferenceLineageEntry] = Field(default_factory=list)
+    canonical_claim_lineage: list[CanonicalClaimLineageEntry] = Field(default_factory=list)
+    run_facets: dict[str, dict[str, Any] | None] = Field(default_factory=dict)
+    search_activity_ids: list[str] = Field(default_factory=list)
     denial_reason: str | None
 
 
@@ -111,12 +138,43 @@ class AssertionImpactReasonResponse(BaseModel):
     detail: AssertionImpactReasonDetail
 
 
+class ResearchActivitySummary(BaseModel):
+    """RPC-5.3: one row of ``ResearchRunDiscovery.list_activities``'s output.
+
+    Mirrors that service's own ``_summary`` shape verbatim -- no fabricated
+    ``run_id`` on a ``search_only`` row (RPC-FR-2).
+    """
+
+    envelope_id: str
+    activity_kind: str
+    activity_id: str | None = None
+    planned_run_ref: dict[str, Any] | None = None
+    outcome: str | None = None
+
+
+class ResearchActivityListResponse(BaseModel):
+    items: list[ResearchActivitySummary]
+    next_cursor: str | None
+    denial_reason: str | None
+
+
+class ResearchActivityDetail(BaseModel):
+    """RPC-5.3/5.4: exact envelope/receipt round trip for one activity."""
+
+    envelope: dict[str, Any]
+    receipt: dict[str, Any] | None
+
+
 def _catalog(paths: FoundryPaths) -> AssertionCatalog:
     return AssertionCatalog(paths)
 
 
 def _impact_reader(paths: FoundryPaths) -> AssertionImpactReader:
     return AssertionImpactReader(paths)
+
+
+def _discovery(paths: FoundryPaths, workspace_id: str) -> ResearchRunDiscovery:
+    return ResearchRunDiscovery(workspace_id=workspace_id, paths=paths)
 
 
 def _denial(exc: AssertionCatalogDenied) -> HTTPException:
@@ -208,6 +266,68 @@ def get_assertion_impact(
     if summary is None:
         raise _impact_unavailable()
     return summary
+
+
+@router.get(
+    "/assertions/activities",
+    response_model=ResearchActivityListResponse,
+    summary="List governed research-run activities",
+)
+def list_research_activities(
+    request: Request,
+    activity_kind: Literal["planned_run", "search_only"] | None = Query(None),
+    paths: FoundryPaths = _PATHS_DEP,
+) -> dict[str, Any]:
+    """List the caller's workspace-scoped research-run activities (RPC-5.3).
+
+    A ``search_only`` activity with no planned run and no linked assertion
+    (e.g. a zero-match search) has no OTHER governed HTTP surface -- an
+    evidence packet's ``search_activity_ids`` only names an activity once its
+    receipt has selected at least one assertion version. This route reuses
+    ``research_run_discovery.ResearchRunDiscovery`` verbatim, so listing stays
+    workspace-isolated and applies the SAME run-visibility gate a
+    ``planned_run`` row already gets in a packet's ``run_facets``. Missing
+    workspace context degrades to the SAME typed-empty shape
+    ``/assertions/search`` uses -- never a 4xx that would distinguish
+    "no workspace" from "empty workspace".
+    """
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or not identity.workspace_id:
+        return ResearchRunDiscovery.denied_payload("workspace_context_missing")
+    discovery = _discovery(paths, identity.workspace_id)
+    return discovery.list_activities(activity_kind=activity_kind, identity=identity)
+
+
+@router.get(
+    "/assertions/activities/{envelope_id}",
+    response_model=ResearchActivityDetail,
+    responses={404: {"model": AssertionImpactReasonResponse, "description": "Activity not found or denied"}},
+    summary="Fetch one governed research-run activity",
+)
+def get_research_activity(
+    envelope_id: str,
+    request: Request,
+    paths: FoundryPaths = _PATHS_DEP,
+) -> dict[str, Any]:
+    """Fetch one activity's exact envelope/receipt pair (RPC-5.3/5.4).
+
+    Missing workspace context, an unknown ``envelope_id``, a cross-workspace
+    ``envelope_id``, and a denied run-scope gate all resolve to the identical
+    404/``not_authorized_or_not_found`` shape -- mirroring
+    ``ResearchRunDiscoveryDenied``'s own no-existence-leak contract rather
+    than inventing a second, more informative denial here.
+    """
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or not identity.workspace_id:
+        raise HTTPException(status_code=404, detail={"reason_code": "workspace_context_missing"})
+    discovery = _discovery(paths, identity.workspace_id)
+    try:
+        record = discovery.fetch_activity(envelope_id, identity=identity)
+    except ResearchRunDiscoveryDenied as exc:
+        raise HTTPException(status_code=404, detail={"reason_code": exc.reason_code}) from exc
+    return {"envelope": record.envelope, "receipt": record.receipt}
 
 
 @router.get("/assertions/{assertion_id}", response_model=EvidencePacket, summary="Get a governed evidence packet")

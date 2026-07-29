@@ -57,6 +57,11 @@ class LaunchRunResult:
     ``evidence_plan_ref`` and ``retrieval_summary`` (CARP-5.1) are forwarded
     unmodified from :class:`~.planning.PlanResult` -- both ``None`` unless
     ``retrieval_policy`` was active for this launch.
+
+    ``activity_ref`` (RPC-2.3) is an opaque passthrough of whatever the
+    caller supplied via :func:`launch_run`'s own ``activity_ref`` parameter
+    -- see that parameter's docstring. ``None`` unless a caller explicitly
+    supplied one; never populated, inspected, or derived by this module.
     """
 
     run_id: str
@@ -69,6 +74,7 @@ class LaunchRunResult:
     reuse_decision: ReuseDecision | None = None
     evidence_plan_ref: str | None = None
     retrieval_summary: dict[str, Any] | None = None
+    activity_ref: Mapping[str, Any] | None = None
 
 
 def retrieve_first_reuse_decision(
@@ -131,6 +137,7 @@ def launch_run(
     identity: AuthIdentity | None = None,
     retrieval_policy: str | None = None,
     retrieval_limits: Mapping[str, Any] | None = None,
+    activity_ref: Mapping[str, Any] | None = None,
     paths: FoundryPaths | None = None,
 ) -> LaunchRunResult:
     """Scaffold and register a new run (scaffold + register only).
@@ -163,6 +170,22 @@ def launch_run(
     ``identity``). ``retrieval_policy=None`` (the default) is byte-identical
     to the pre-CARP behavior: ``plan_run`` treats it as ``"disabled"`` and
     builds no evidence plan.
+
+    ``activity_ref`` (RPC-2.3,
+    ``docs/dev/architecture/research-provenance-contract-freeze.md``) is an
+    opaque passthrough, same "never inspected here" style as ``identity``/
+    ``retrieval_policy`` above -- but it is NOT forwarded to ``plan_run`` or
+    written to ``run.yaml``. When a caller already holds a
+    ``research_run_envelope``/``search_activity_receipt`` reference (e.g.
+    ``{"envelope_id": ..., "activity_id": ...}``) for the activity that
+    produced this run's selected evidence, supplying it here threads that
+    reference straight onto :class:`LaunchRunResult.activity_ref` -- a pure
+    in-memory result field, the same additive style ``reuse_decision``
+    already uses (mirrors ``retrieve_first_reuse_decision``'s own precedent:
+    a P2/C2/C3-adjacent seam reachable through this result without widening
+    ``plan_run``'s own contract). ``activity_ref=None`` (the default) is
+    byte-identical to pre-RPC-2.3 behavior (AC RPC-8): no prior caller could
+    ever supply this, so omitting it changes nothing.
 
     Does NOT spawn, drive, or poll the Path B discovery swarm (Decision #1) --
     this is the deterministic scaffold+register chain only.
@@ -249,6 +272,7 @@ def launch_run(
         reuse_decision=reuse_decision,
         evidence_plan_ref=plan_result.evidence_plan_ref,
         retrieval_summary=plan_result.retrieval_summary,
+        activity_ref=activity_ref,
     )
 
 

@@ -1,0 +1,315 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/provenance_origin.schema.yaml/v1"
+title: Provenance Origin
+description: >-
+  Canonical, immutable origin identity for a research artifact (a source, a
+  search/research activity, or an agent-derived synthesis) recording HOW the
+  artifact entered Research Foundry: the acquisition/import/capture/
+  generation method, producer/tool, source kind, and content locator/digest
+  (RPC-FR-1). This is a SEPARATE record from `source_assertion.schema.yaml`
+  (findings F14) -- it never adds fields to, is embedded on, or supersedes
+  the Rights-frozen `source_assertion` schema, which has no
+  `origin`/`external_origin` field and must not gain one here. Every
+  flattened origin field surfaced anywhere else (catalog rows, facets,
+  projections) is a rebuildable, non-authoritative derivation of exactly one
+  canonical `provenance_origin` record -- see "Rebuildable facet rules"
+  below and `docs/dev/architecture/research-provenance-contract-freeze.md`.
+
+  SOL round 1 (gate RPC-1.G, SOL-1): `origin_id` is normatively bound to
+  `"pvo_" + identity.fingerprint` -- a P2 writer MUST NOT mint an `origin_id`
+  that does not equal that exact value (mirrors
+  `assertion_identity.py::source_assertion_id`'s already-shipped convention
+  for `source_assertion.schema.yaml`). `identity.material_fields` covers
+  EVERY immutable provenance fact on this record (not a subset) so no
+  material fact can be substituted without changing the fingerprint -- see
+  `identity.material_fields` below.
+
+  SOL round 2 (gate RPC-1.G, SOL-1 REOPENED): `origin_version` is now ITSELF
+  a material field. Round 1 left `origin_version` outside
+  `identity.material_fields`, so a record could have its `origin_version`
+  changed (e.g. `1` -> `999`) with every other field, and therefore the
+  fingerprint/`origin_id`, held constant -- a version bump was "free" and
+  unproven. Folding `origin_version` into the material payload closes this:
+  ANY change to `origin_version` now necessarily changes `identity.fingerprint`
+  and therefore `origin_id` too. Consequence (deliberate, documented): unlike
+  `source_assertion`'s `{stable id, incrementing version, per-version digest}`
+  pattern, `provenance_origin` has NO stable identity that survives a version
+  bump -- a `provenance_origin` record is immutable AT a specific
+  `(origin_id, origin_version)` pair, full stop; there is no legitimate
+  in-place "amend this origin to version 2" operation. A writer that
+  believes an origin needs revising mints an entirely new, independently
+  content-addressed record (new `origin_id`, because `origin_version`
+  changed); it never edits an existing `origin_id`'s file. This is safe
+  because no P2 write path exists yet that relies on origin_id staying
+  stable across an origin_version change (verified for this fix cycle: zero
+  extant `provenance_origin` instances exist anywhere in this repo).
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: provenance_origin
+  origin_id:
+    description: >-
+      Primary opaque identity for this origin record. This EXACT string
+      value is the valid structured value for the reserved, currently-opaque
+      `provenance_origin: str | None` parameter on
+      `export_service.py::record_external_report_import_activity` (findings
+      F6): a caller holding a real `provenance_origin` record passes its
+      `origin_id` through that seam unchanged. `export_service.py` does not
+      need to import or validate this schema to accept the value -- the
+      parameter stays a plain opaque string, and this field's shape (a
+      simple, non-nested string) is what makes that true. NORMATIVE (SOL-1):
+      MUST equal `"pvo_" + identity.fingerprint` below -- a P2 writer that
+      mints any other value produces an invalid record even though this
+      schema, in isolation, cannot itself recompute the hash to reject it
+      (the same class of service-layer check
+      `assertion_identity.py::validate_source_assertion_identity` already
+      performs for `source_assertion.schema.yaml`).
+    type: string
+    pattern: "^pvo_[a-f0-9]{64}$"
+  origin_version:
+    type: integer
+    minimum: 1
+  workspace_id:
+    description: The workspace this origin record is scoped to. Never inferred from a parent ref.
+    type: string
+    minLength: 1
+  method:
+    description: >-
+      Closed classification of how this artifact entered Research Foundry.
+      `kind` names the coarse method family (RPC-FR-1's "acquisition/import/
+      capture/generation"); `mechanism` is an optional, free-form,
+      service-defined detail string for audit/debugging (e.g. a provider or
+      tool name) -- advisory only, never a substitute for `kind`, and never
+      itself load-bearing for any resilience rule below.
+    type: object
+    additionalProperties: false
+    required:
+      - kind
+    properties:
+      kind:
+        enum:
+          - acquisition
+          - import
+          - capture
+          - generation
+      mechanism:
+        type:
+          - string
+          - "null"
+        minLength: 1
+        maxLength: 200
+  producer:
+    description: >-
+      Who or what produced/acquired this artifact -- an agent, a service, a
+      human operator, or an external system. Independent from rights
+      attribution (see `source_assertion.schema.yaml`'s `rights_summary` for
+      that axis, which this field never duplicates or aliases). MATERIAL to
+      `identity` below (SOL-1): substituting the producer/tool of an origin
+      without changing its `fingerprint` is exactly the substitution attack
+      this field's inclusion in `material_fields` closes.
+    type: object
+    additionalProperties: false
+    required:
+      - producer_type
+    properties:
+      producer_type:
+        enum:
+          - agent
+          - service
+          - human
+          - external_system
+          - unknown
+      producer_id:
+        type:
+          - string
+          - "null"
+        minLength: 1
+      tool:
+        type:
+          - string
+          - "null"
+        minLength: 1
+      tool_version:
+        type:
+          - string
+          - "null"
+        minLength: 1
+  source_kind:
+    description: >-
+      What KIND of source this origin describes -- an axis independent from
+      `method.kind` (a `web_page` may be acquired via `acquisition` OR
+      `import`; do not derive one field from the other). `other` is an
+      explicit open extension point, not a closed domain-specific list.
+    enum:
+      - web_page
+      - document
+      - api_response
+      - dataset
+      - external_report
+      - agent_synthesis
+      - manual_note
+      - other
+  locator:
+    description: >-
+      A stable external locator for the original content (a URL, a
+      content-addressed file reference, an API endpoint), when one exists.
+      `null` when there is none -- e.g. an `agent_synthesis` origin with no
+      single external location.
+    type:
+      - string
+      - "null"
+    minLength: 1
+    maxLength: 4096
+  content_digest:
+    description: >-
+      sha256 hex digest of the original acquired/imported/captured/generated
+      content, when a stable snapshot exists to digest. Same "digest, never
+      raw content" convention as every other digest field in this schema
+      family (e.g. `source_assertion.schema.yaml`'s `assertion_text_sha256`).
+      `null` when no stable content snapshot exists (e.g. a live,
+      non-snapshotted API response, or a locator-only origin).
+    type:
+      - string
+      - "null"
+    pattern: "^[a-f0-9]{64}$"
+  external_receipt_ref:
+    description: >-
+      Linkage to the ERI (External Research Report Interchange) lane's
+      persisted authority (findings F5/F6). Populated ONLY when this
+      origin's `method.kind == import` AND the import went through the ERI
+      pipeline; `null` for every other origin, including non-ERI imports.
+      `external_research_import_receipt.schema.yaml`
+      (`schemas/external_research_import_receipt.schema.yaml`) remains the
+      SOLE authority for that lane's receipt content -- this field is a
+      reference to it, never a duplicate, mirror, or supersession of its
+      fields. MATERIAL to `identity` below (SOL-1): without this field an
+      import could be re-pointed at a different ERI receipt with no
+      fingerprint change.
+    type:
+      - object
+      - "null"
+    additionalProperties: false
+    required:
+      - receipt_id
+      - receipt_digest
+    properties:
+      receipt_id:
+        type: string
+        pattern: "^erh_[a-f0-9]{64}$"
+      receipt_digest:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+  parent_origin_refs:
+    description: >-
+      Zero or more prior `provenance_origin` records this origin was derived
+      from (e.g. an `agent_synthesis` origin whose inputs were themselves
+      RF-acquired artifacts). Empty array for a root origin with no
+      antecedent. A parent ref naming a nonexistent origin, a malformed
+      `origin_id`, or an origin in a different workspace fails the WRITE
+      closed (never silently dropped, never silently accepted) -- see
+      resilience rules in
+      `docs/dev/architecture/research-provenance-contract-freeze.md`.
+      MATERIAL to `identity` below (SOL-1): without this field a child
+      origin's parent lineage could be silently re-pointed at a different
+      antecedent with no fingerprint change.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - origin_id
+        - origin_version
+      properties:
+        origin_id:
+          type: string
+          pattern: "^pvo_[a-f0-9]{64}$"
+        origin_version:
+          type: integer
+          minimum: 1
+  created_at:
+    description: >-
+      MATERIAL to `identity` below (SOL-1): a timestamp is an immutable
+      provenance fact for this record (WHEN it entered Research Foundry),
+      not a mutable audit annotation -- excluding it would let a caller
+      backdate/forward-date an origin without changing its fingerprint.
+    type: string
+    format: date-time
+  identity:
+    description: >-
+      Deterministic identity proof, same `sha256-canonical-json-v1`
+      convention as `source_assertion.schema.yaml`'s `identity` block (see
+      `src/research_foundry/assertion_identity.py` for the shipped
+      canonicalization: `json.dumps(payload, ensure_ascii=False,
+      separators=(",", ":"), sort_keys=True)` then `sha256(...).hexdigest()`)
+      -- binds `origin_id` to EXACTLY the material fields listed below
+      (SOL-1: every immutable provenance fact on this record, not a subset)
+      so two independently-computed origin records for the same real-world
+      acquisition converge on the same `origin_id`, and so a tampered origin
+      (any material field changed without a new `origin_version`) is
+      detectable by fingerprint mismatch. NORMATIVE: `origin_id` MUST equal
+      `"pvo_" + fingerprint`; a P2 writer that produces a record where they
+      differ is producing an invalid instance of this contract even though
+      JSON Schema alone cannot recompute the hash to reject it at parse time.
+    type: object
+    additionalProperties: false
+    required:
+      - algorithm
+      - fingerprint
+      - material_fields
+    properties:
+      algorithm:
+        const: sha256-canonical-json-v1
+      fingerprint:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      material_fields:
+        type: array
+        const:
+          - origin_version
+          - workspace_id
+          - method
+          - producer
+          - source_kind
+          - locator
+          - content_digest
+          - external_receipt_ref
+          - parent_origin_refs
+          - created_at
+required:
+  - schema_version
+  - type
+  - origin_id
+  - origin_version
+  - workspace_id
+  - method
+  - producer
+  - source_kind
+  - locator
+  - content_digest
+  - external_receipt_ref
+  - parent_origin_refs
+  - created_at
+  - identity
+allOf:
+  # Findings F5/F6: only an `import`-kind origin may ever carry a non-null
+  # external_receipt_ref; every other method.kind is structurally forbidden
+  # from referencing the ERI lane's receipt (an import-only linkage, not a
+  # general-purpose cross-reference slot).
+  - if:
+      not:
+        properties:
+          method:
+            properties:
+              kind:
+                const: import
+            required:
+              - kind
+        required:
+          - method
+    then:
+      properties:
+        external_receipt_ref:
+          const: null

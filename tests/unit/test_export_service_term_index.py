@@ -37,8 +37,8 @@ def _plant_term_index_on_clm_001(rp, term_index: dict) -> None:
 def test_schema_version_bumped_to_1_7(tmp_foundry: FoundryPaths) -> None:
     build_run(tmp_foundry, "rf_run_ti_ver")
     data = svc.export_run(tmp_foundry, "rf_run_ti_ver")
-    assert svc.EXPORT_SCHEMA_VERSION == "1.7"
-    assert data["schema_version"] == "1.7"
+    assert svc.EXPORT_SCHEMA_VERSION == "1.8"
+    assert data["schema_version"] == "1.8"
 
 
 # --------------------------------------------------------------------------
@@ -123,7 +123,7 @@ def test_1_6_shaped_consumer_parses_1_7_output_without_error(
     _plant_term_index_on_clm_001(rp, _SAMPLE_TERM_INDEX)
 
     data = svc.export_run(tmp_foundry, "rf_run_ti_compat")
-    assert data["schema_version"] == "1.7"
+    assert data["schema_version"] == "1.8"
 
     # Simulate a 1.6-shaped consumer: project each claim down to the key set
     # it knows about, ignoring anything unrecognized (the frontend's actual
@@ -158,6 +158,6 @@ def test_term_index_round_trips_through_export_to_file(
     out = svc.export_to_file(tmp_foundry, "rf_run_ti_roundtrip")
     written = json.loads(out.read_text(encoding="utf-8"))
 
-    assert written["schema_version"] == "1.7"
+    assert written["schema_version"] == "1.8"
     clm = next(c for c in written["claims"] if c["claim_id"] == "clm_001")
     assert clm["_term_index"] == _SAMPLE_TERM_INDEX

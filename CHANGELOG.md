@@ -11,6 +11,37 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Research Provenance Continuity (RPC) — canonical origin/run/activity, report-use, inference, and canonical-claim provenance layer**
+
+- **New canonical origin, run/activity envelope, and durable activity receipt records**
+  (`provenance_origin`, `research_run_envelope`, `search_activity_receipt` schemas;
+  `ProvenanceEnvelopeStore` in `services/provenance_envelope.py`). Every origin and activity is
+  content-addressed and tamper-evident on read; a `search_only` activity (including a zero-match
+  search) is now a first-class, listable/fetchable record with no fabricated `run_id`. Governed,
+  read-only discovery is exposed via `ResearchRunDiscovery` and two new API routes,
+  `GET /assertions/activities` and `GET /assertions/activities/{envelope_id}`.
+- **Immutable report-use records** binding a report revision to the exact assertion/inference/
+  canonical-claim versions it cited (`report_assertion_use` schema; `ReportAssertionUseService` in
+  `services/assertion_report_use.py`). A report whose citations do not resolve to a real persistent
+  reference mints no record — no synthetic or backfilled reference is ever created.
+- **Separate, typed inference and canonical-claim materialization** (`AssertionInferenceMaterializer`,
+  `CanonicalClaimMaterializer`). Inference bases resolve automatically from a claim's own
+  ledger-recorded basis; a canonical claim's support set must always be explicitly named by the
+  caller (`explicit_request=True`) and is never inferred or auto-merged. Both stay fully separate
+  from source assertions and from each other.
+- **Additive governed read/export surface (export schema 1.8).** Evidence packets and export bundles
+  gain optional `inference_lineage`, `canonical_claim_lineage`, and `search_activity_ids` fields;
+  legacy packets and bundles are unaffected. Generated frontend types
+  (`assertions_api.generated.ts`) updated to match.
+- **Durable, content-addressed staleness propagation for the existing lifecycle-reconciliation
+  path.** A source-assertion block now propagates to dependent inference/canonical-claim/report-use
+  records as an effect receipt (`impact_effects/<event_id>/<digest>.yaml`) rather than mutating any
+  immutable record in place; catalog lineage and commit-time rechecks now consult the effective
+  (policy-aware) state rather than a record's raw, never-mutated status field.
+- **Governance unchanged: all new flags default off, DI-1 stays BLOCKED.** No deployment-enabling
+  flag flips as part of this feature. Full guide: `docs/dev/guides/research-provenance-continuity.md`.
+  Frozen contract: `docs/dev/architecture/research-provenance-contract-freeze.md`.
+
 #### **External Research Report Interchange (ERI) — `rf intake external-report`**
 
 - **`rf intake external-report PACKET_DIR --workspace WS [--run ID] [--dry-run] [--resume] [--limit N] [--json]`**

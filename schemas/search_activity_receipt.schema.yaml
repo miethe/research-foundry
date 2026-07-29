@@ -1,0 +1,637 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/search_activity_receipt.schema.yaml/v1"
+title: Search Activity Receipt
+description: >-
+  Durable, immutable, file-canonical record of ONE search or research
+  activity's exact query/purpose/scope and its terminal
+  selected/empty/denied/degraded/fallback outcome (RPC-FR-3). This is the
+  canonical authority that `docs/dev/architecture/carp-contract-freeze.md`
+  §4.2's rebase table names as the migration destination for
+  `research_evidence_plan.schema.yaml`'s selection-provenance fields, and
+  the record `schemas/research_run_envelope.schema.yaml`'s `activity_id`
+  references. Covers both `planned_run` and `search_only` activity kinds
+  identically -- a search-only receipt is listable and fetchable through
+  governed discovery with no planned run and no fabricated identifier
+  (RPC-FR-2/FR-3).
+
+  DISTINCT FROM `knowledge_activity_receipt.schema.yaml` (findings F9): that
+  schema is caller-carried and pinned `persisted: const false` -- the
+  Knowledge service computes it per call and returns it to the caller, but
+  never writes it anywhere; it exists only so a Knowledge MCP caller can
+  locally correlate/debug one call. THIS schema is the opposite: Research
+  Foundry computes and durably persists it exactly once per `activity_id`,
+  under workspace-scoped ledger storage, and it is the record
+  `research_run_discovery.py` reads back to make search-only activity
+  discoverable and to answer lineage reads. The two schemas intentionally
+  share no fields and no identity space (`sar_...` here vs `rfk:v1:...`
+  there) -- one is a receipt FOR a read call, the other is a receipt OF a
+  search/research activity itself; do not conflate them, and do not read one
+  as a substitute for the other.
+
+  AOS project/intent/knowledge refs (RPC-1.2 scope) are NOT duplicated here:
+  they live solely on `research_run_envelope.schema.yaml`'s `aos_refs` (that
+  envelope's own `activity_id` links back to this receipt) -- one
+  authoritative location per fact, the same principle CARP's contract freeze
+  applies to selection provenance (§4.1).
+
+  SOL round 1 (gate RPC-1.G): `activity_id` is content-bound to
+  `identity.fingerprint` over the FULL outcome payload, including
+  `candidate_set_digest`/`selected_evidence_versions`/`selection_receipt`
+  (SOL-2) -- a receipt is written once, atomically, after the terminal
+  outcome is known, and its identity binds that outcome, not just the
+  request-facing fields. `activity_kind` uses the literal `planned_run`
+  (SOL-3, matching `research_run_envelope.schema.yaml` byte-for-byte -- the
+  prior `planned` literal here was a same-concept spelling mismatch that
+  made every planned envelope/receipt pair schema-invalid under the
+  documented equality check). The terminal-outcome partition is a complete,
+  disjoint five-member set (`selected`/`empty`/`denied`/`degraded`/
+  `fallback`, SOL-7) with exact null/non-null rules per outcome (SOL-4/7).
+  `selected_evidence_versions[]` entries optionally carry `question_id` +
+  a per-question `decided_at` so CARP's §4.2 per-question rebase loses no
+  membership information (SOL-8).
+
+  SOL round 3 (gate RPC-1.G, SOL-2/16/22 REOPENED as UNSOUND): the owning
+  `research_run_envelope.schema.yaml`'s pairing protocol is redesigned with
+  strict ordering -- a receipt always references the envelope at
+  `envelope_version: 1` (see `envelope_ref.envelope_version` below), never
+  a version the receipt's own publication might have raced. See freeze doc
+  §5.1a/§5.1b/§5.3/§17.7a for the full mechanism.
+type: object
+additionalProperties: false
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: search_activity_receipt
+  activity_id:
+    description: >-
+      NORMATIVE (SOL-2): MUST equal `"sar_" + identity.fingerprint` below --
+      same content-binding convention as `provenance_origin.origin_id`,
+      computed over this receipt's own full outcome payload.
+    type: string
+    pattern: "^sar_[a-f0-9]{64}$"
+  workspace_id:
+    type: string
+    minLength: 1
+  activity_kind:
+    description: >-
+      Mirrors the owning `research_run_envelope.schema.yaml`'s
+      `activity_kind` (kept as a byte-identical copy on this record so the
+      receipt is independently readable without dereferencing the envelope
+      first; a mismatch between an envelope and its receipt is a write-time
+      integrity defect, never resolved by preferring one side silently).
+      SOL-3: uses the EXACT SAME two-member literal vocabulary as
+      `research_run_envelope.activity_kind` -- `planned_run`/`search_only`,
+      never a differently-spelled `planned`.
+    enum:
+      - planned_run
+      - search_only
+  request_id:
+    type:
+      - string
+      - "null"
+  query:
+    description: The exact, non-derived query text supplied for this activity. Never inferred or reconstructed.
+    type: string
+    minLength: 1
+  purpose:
+    type:
+      - string
+      - "null"
+    minLength: 1
+  scope:
+    description: >-
+      Exact provider/site/corpus/filter/time scope supplied for this
+      activity (RPC-FR-3). Every sub-field preserves the supplied value
+      verbatim -- this schema never infers provider/site/corpus scope from
+      returned result text.
+    type: object
+    additionalProperties: false
+    required:
+      - provider
+      - site
+      - corpus
+    properties:
+      provider:
+        type:
+          - string
+          - "null"
+        minLength: 1
+      site:
+        type:
+          - string
+          - "null"
+        minLength: 1
+      corpus:
+        type:
+          - string
+          - "null"
+        minLength: 1
+      filters:
+        description: Open, service-defined filter bag. Never widens access -- policy evaluation always applies server-side regardless of what a filter requests.
+        type: object
+        additionalProperties: true
+      time_window:
+        type: object
+        additionalProperties: false
+        properties:
+          from:
+            type:
+              - string
+              - "null"
+            format: date-time
+          to:
+            type:
+              - string
+              - "null"
+            format: date-time
+  candidate_set_digest:
+    description: >-
+      sha256 digest identifying the candidate-set/corpus-generation state
+      this activity was evaluated against (never a filesystem path).
+      Generalizes `research_evidence_plan.schema.yaml`'s
+      `catalog_receipt.catalog_generation_id` (CARP §4.2 row 3) to any
+      provider/site/corpus, not catalog-only. Non-null exactly when a
+      candidate set was actually evaluated (`selected`/`empty`/`degraded`/
+      `fallback` outcomes); `null` exactly when
+      `selection_receipt.outcome == denied` (zero candidate-derived fields
+      on denial -- mirrors CARP-1.2's "one denial shape" rule verbatim,
+      SOL-4).
+    type:
+      - string
+      - "null"
+    pattern: "^[a-f0-9]{64}$"
+  selected_evidence_versions:
+    description: >-
+      Migration destination of `research_evidence_plan.schema.yaml`'s
+      `questions[].selected_assertion_ref` (CARP §4.2 row 1): exact
+      `assertion_id` + `assertion_version` pairs actually selected for this
+      activity. Empty on a denied or fully-residual/empty activity; the
+      exact selected set (never a superset, never a candidate that was
+      merely evaluated) when `selection_receipt.outcome` is `selected` or
+      `fallback`. SOL-8: each entry optionally carries `question_id` and a
+      per-question `decided_at` so a CARP-style per-question evidence plan
+      rebasing onto this single activity-level array does not lose which
+      question selected which version, or when -- an activity that never
+      had question-scoped structure (a bare search-only query) simply omits
+      both on every entry, exactly as today.
+
+      SOL round 2 (SOL-8/23 REOPENED): `question_id`/`decided_at` were BOTH
+      still optional with no enforcement, so a CARP-rebased entry could
+      silently drop them (flattening away exactly the per-question
+      membership SOL-8 was meant to preserve) and no reader could tell.
+      `selection_origin` is a new, per-entry discriminator: `catalog_planning`
+      names an entry whose selection came from a CARP evidence-plan rebase
+      (this activity-level array standing in for a per-question selection) --
+      such an entry MUST carry non-null `question_id` AND `decided_at`
+      (enforced by the `allOf` conditional below). `search` (or the field
+      omitted entirely, the default for every plain, non-question-scoped
+      activity) never requires either -- "plain search selections stay valid
+      without them" is preserved verbatim. Purely additive: an entry that
+      omits `selection_origin` is unaffected by the new conditional and
+      byte-identical to a round-1 entry.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - assertion_id
+        - assertion_version
+      properties:
+        assertion_id:
+          type: string
+          pattern: "^ast_[a-f0-9]{64}$"
+        assertion_version:
+          type: integer
+          minimum: 1
+        question_id:
+          description: >-
+            Optional (SOL-8). When this activity's selection was made
+            per-question (a CARP evidence-plan rebase), names the exact
+            question this entry answers -- never inferred, never a shared
+            value across entries that answer different questions. REQUIRED
+            non-null when `selection_origin: catalog_planning` (SOL-8/23).
+          type:
+            - string
+            - "null"
+          minLength: 1
+        decided_at:
+          description: >-
+            Optional (SOL-8) per-question decision timestamp, independent
+            from `selection_receipt.decided_at`'s activity-level timestamp
+            -- a multi-question activity's individual selections may not
+            all have completed at the exact same instant. REQUIRED non-null
+            when `selection_origin: catalog_planning` (SOL-8/23).
+          type:
+            - string
+            - "null"
+          format: date-time
+        selection_origin:
+          description: >-
+            SOL-8/23, OPTIONAL, additive. `catalog_planning` marks an entry
+            carrying a CARP-rebased, per-question selection (see the `allOf`
+            below for the resulting `question_id`/`decided_at` requirement).
+            `search` marks a plain, non-question-scoped selection -- the
+            same as omitting this field entirely, kept as an explicit value
+            for writers that prefer to always state it. Omission is the
+            legacy-compatible default and behaves exactly like `search`.
+          enum:
+            - catalog_planning
+            - search
+      allOf:
+        - if:
+            properties:
+              selection_origin:
+                const: catalog_planning
+            required:
+              - selection_origin
+          then:
+            properties:
+              question_id:
+                not:
+                  const: null
+              decided_at:
+                not:
+                  const: null
+            required:
+              - question_id
+              - decided_at
+  selection_receipt:
+    description: >-
+      Migration destination of `research_evidence_plan.schema.yaml`'s
+      `questions[].retrieval_receipt` (CARP §4.2 row 2), generalized from
+      catalog-only to provider-agnostic. CARP's receipt is catalog-only
+      (`source` always the literal `"catalog"`); this schema WIDENS `source`
+      to any provider/site/corpus a search/research activity actually used.
+      Rebasing a CARP fixture onto this schema is the identity narrowing
+      (source == "catalog"), never a widening of CARP's own shape (CARP-1.4
+      "normative substitution" clause). SOL-7: `outcome` is a complete,
+      disjoint five-member partition; every outcome's exact null/non-null
+      field rules are enforced by the `allOf` blocks below, not left to
+      convention.
+    type: object
+    additionalProperties: false
+    required:
+      - outcome
+      - source
+      - catalog_generation_id
+      - decided_at
+      - denial_reason
+      - degraded_reason
+      - fallback_reason
+    properties:
+      outcome:
+        description: >-
+          Terminal outcome for this activity's candidate selection. Exactly
+          one of five disjoint values (SOL-7):
+          `selected`: at least one candidate was selected.
+          `empty`: the activity was AUTHORIZED and a candidate set WAS
+          evaluated, but it contained zero matching candidates (mirrors
+          CARP's own `catalog_empty` -- an authorized empty result is never
+          conflated with a denial).
+          `denied`: a fail-closed denial occurred before any candidate could
+          be evaluated (workspace/identity/rights/catalog denial) -- zero
+          candidate-derived fields anywhere on this receipt (SOL-4).
+          `degraded`: a selection was made, but under a documented degraded
+          condition (e.g. a fallback provider or diminished confidence) --
+          `selected_evidence_versions` MAY be empty (a degraded activity
+          that still found nothing usable) or non-empty.
+          `fallback`: a `catalog_then_discovery`-style provider fallback ran
+          after a catalog-only residual result, per CARP-1.1's `disabled` /
+          `catalog_only` / `catalog_then_discovery` policy vocabulary, AND
+          that fallback found at least one candidate (SOL-7's disjointness
+          rule: a fallback attempt that finds nothing is reported as
+          `empty`, not `fallback` -- `fallback` names a successful
+          provider-fallback outcome, never an attempted-but-empty one).
+        enum:
+          - selected
+          - empty
+          - denied
+          - degraded
+          - fallback
+      source:
+        description: >-
+          Which provider/site/corpus/catalog produced the selection.
+          `null` exactly when `outcome == denied` (no source to name,
+          SOL-4); non-null for every other outcome (including `empty` --
+          the candidate set WAS evaluated against a named source, it was
+          just empty). SOL-7/24 (round 2): required non-null exactly when
+          `outcome != denied` (see the `allOf` outcome partition below);
+          `minLength: 1` closes a blank-string bypass -- a `source: ""`
+          previously satisfied the "non-null" checks in the outcome `allOf`
+          blocks while disclosing nothing, an equivalent-to-null value the
+          schema failed to reject.
+        type:
+          - string
+          - "null"
+        minLength: 1
+      catalog_generation_id:
+        description: >-
+          `null` exactly when `outcome == denied` (SOL-4: no corpus-derived
+          field, including this one, ever leaks on a denial).
+        type:
+          - string
+          - "null"
+        minLength: 1
+      decided_at:
+        description: >-
+          `null` exactly when `outcome == denied` (SOL-4: a denial has no
+          decision instant to disclose beyond the fact of the denial
+          itself).
+        type:
+          - string
+          - "null"
+        format: date-time
+      denial_reason:
+        description: >-
+          Closed, single-value public denial reason (SOL-4): the ONE
+          generic code covering resource-not-found, unauthorized, and
+          cross-workspace denial -- deliberately uninformative, so a denied
+          receipt can never be used to distinguish those three cases from
+          one another. Required non-null exactly when `outcome == denied`;
+          `null` otherwise.
+          `workspace_context_missing`
+          (`assertion_workspace.resolve_or_deny`'s own reason code) NEVER
+          appears here: a pre-workspace-resolution denial is ephemeral
+          (SOL-5) and produces no durable receipt at all -- every value
+          this field can ever hold describes a denial that occurred AFTER
+          workspace resolution succeeded.
+        enum:
+          - not_authorized_or_not_found
+          - null
+      degraded_reason:
+        description: >-
+          Required non-null exactly when `outcome == degraded`; `null`
+          otherwise. SOL-7/24 (round 2): `minLength: 1` closes a
+          `degraded_reason: ""` blank-string bypass of the "non-null"
+          outcome-arm check below.
+        type:
+          - string
+          - "null"
+        minLength: 1
+      fallback_reason:
+        description: >-
+          SOL-7: required non-null exactly when `outcome == fallback`
+          (closing the gap where the doc previously claimed a reason was
+          "required" but no field enforced it); `null` otherwise. Kept as
+          its own field, distinct from `degraded_reason`, so a receipt never
+          has to overload one reason field across two different outcome
+          meanings. SOL-7/24 (round 2): `minLength: 1` closes a
+          `fallback_reason: ""` blank-string bypass of the "non-null"
+          outcome-arm check below.
+        type:
+          - string
+          - "null"
+        minLength: 1
+  envelope_ref:
+    description: >-
+      Back-reference to the owning `research_run_envelope.schema.yaml`
+      record (`envelope_id` + `envelope_version`). Every receipt has exactly
+      one owning envelope; the envelope's own `activity_id` is the forward
+      pointer to this receipt. SOL-2: the writing service MUST verify
+      cross-record equality on every write -- `workspace_id`,
+      `activity_kind`, and `request_id` on this receipt MUST equal the
+      values on the referenced envelope, and the envelope's own
+      `activity_id` MUST equal THIS receipt's `activity_id` -- before
+      either record is considered durably paired (see freeze doc §5.3).
+
+      SOL round 3 (RC-1, redesigned pairing protocol): `envelope_version` is
+      now a fixed LITERAL `1`, never "whichever envelope version currently
+      exists." A receipt is computed and published while the envelope it
+      references is STILL at version 1 (planning-time; §5.1a step 2 requires
+      only that `envelope_id` already exist, not that a receipt-commitment
+      has landed) -- the envelope's later, one-time promotion to version 2
+      (carrying `activity_id` + `receipt_commitment`) never requires this
+      already-fixed reference to be rewritten. This closes the round-3
+      UNSOUND finding: previously this field's value was compared against
+      whichever envelope version a reader currently held, so the documented
+      HONEST post-commitment (v2) pair failed the §5.3 check-5 equality;
+      pinning this field to the literal `1` makes an honest v2 pair pass
+      unconditionally.
+    type: object
+    additionalProperties: false
+    required:
+      - envelope_id
+      - envelope_version
+    properties:
+      envelope_id:
+        type: string
+        pattern: "^rre_[a-f0-9]{64}$"
+      envelope_version:
+        const: 1
+  created_at:
+    type: string
+    format: date-time
+  identity:
+    description: >-
+      SOL-2 content-binding treatment (same convention as
+      `provenance_origin.identity`): binds `activity_id` to exactly the
+      material fields listed below, INCLUDING the full outcome payload
+      (`candidate_set_digest`/`selected_evidence_versions`/
+      `selection_receipt`) so no part of the outcome -- not just the
+      request-facing fields -- can be substituted post-hoc without changing
+      the identifier. Uses
+      `src/research_foundry/assertion_identity.py`'s shipped
+      `sha256-canonical-json-v1` canonicalization. NORMATIVE: `activity_id`
+      MUST equal `"sar_" + fingerprint`.
+    type: object
+    additionalProperties: false
+    required:
+      - algorithm
+      - fingerprint
+      - material_fields
+    properties:
+      algorithm:
+        const: sha256-canonical-json-v1
+      fingerprint:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      material_fields:
+        type: array
+        const:
+          - workspace_id
+          - activity_kind
+          - request_id
+          - query
+          - purpose
+          - scope
+          - candidate_set_digest
+          - selected_evidence_versions
+          - selection_receipt
+          - envelope_ref
+          - created_at
+required:
+  - schema_version
+  - type
+  - activity_id
+  - workspace_id
+  - activity_kind
+  - request_id
+  - query
+  - purpose
+  - scope
+  - candidate_set_digest
+  - selected_evidence_versions
+  - selection_receipt
+  - envelope_ref
+  - created_at
+  - identity
+allOf:
+  # SOL-4/SOL-7: complete, disjoint five-outcome partition. Every branch
+  # states EVERY cross-field null/non-null rule for its outcome; no field
+  # is left unconstrained by convention alone.
+  - if:
+      properties:
+        selection_receipt:
+          properties:
+            outcome:
+              const: denied
+          required:
+            - outcome
+      required:
+        - selection_receipt
+    then:
+      properties:
+        candidate_set_digest:
+          const: null
+        selected_evidence_versions:
+          maxItems: 0
+        selection_receipt:
+          properties:
+            source:
+              const: null
+            catalog_generation_id:
+              const: null
+            decided_at:
+              const: null
+            denial_reason:
+              not:
+                const: null
+            degraded_reason:
+              const: null
+            fallback_reason:
+              const: null
+  - if:
+      properties:
+        selection_receipt:
+          properties:
+            outcome:
+              const: selected
+          required:
+            - outcome
+      required:
+        - selection_receipt
+    then:
+      properties:
+        candidate_set_digest:
+          not:
+            const: null
+        selected_evidence_versions:
+          minItems: 1
+        selection_receipt:
+          properties:
+            source:
+              not:
+                const: null
+            decided_at:
+              not:
+                const: null
+            denial_reason:
+              const: null
+            degraded_reason:
+              const: null
+            fallback_reason:
+              const: null
+  - if:
+      properties:
+        selection_receipt:
+          properties:
+            outcome:
+              const: empty
+          required:
+            - outcome
+      required:
+        - selection_receipt
+    then:
+      properties:
+        candidate_set_digest:
+          not:
+            const: null
+        selected_evidence_versions:
+          maxItems: 0
+        selection_receipt:
+          properties:
+            source:
+              not:
+                const: null
+            decided_at:
+              not:
+                const: null
+            denial_reason:
+              const: null
+            degraded_reason:
+              const: null
+            fallback_reason:
+              const: null
+  - if:
+      properties:
+        selection_receipt:
+          properties:
+            outcome:
+              const: degraded
+          required:
+            - outcome
+      required:
+        - selection_receipt
+    then:
+      properties:
+        candidate_set_digest:
+          not:
+            const: null
+        selection_receipt:
+          properties:
+            source:
+              not:
+                const: null
+            decided_at:
+              not:
+                const: null
+            denial_reason:
+              const: null
+            degraded_reason:
+              not:
+                const: null
+            fallback_reason:
+              const: null
+  - if:
+      properties:
+        selection_receipt:
+          properties:
+            outcome:
+              const: fallback
+          required:
+            - outcome
+      required:
+        - selection_receipt
+    then:
+      properties:
+        candidate_set_digest:
+          not:
+            const: null
+        selected_evidence_versions:
+          minItems: 1
+        selection_receipt:
+          properties:
+            source:
+              not:
+                const: null
+            decided_at:
+              not:
+                const: null
+            denial_reason:
+              const: null
+            degraded_reason:
+              const: null
+            fallback_reason:
+              not:
+                const: null

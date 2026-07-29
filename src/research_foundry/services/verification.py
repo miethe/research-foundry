@@ -24,6 +24,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -1404,6 +1405,121 @@ def verify_report(
         try:
             dump_yaml(ledger, lpath)
         except Exception:  # noqa: BLE001 - never fail verification on a write error
+            pass
+
+    # --- RPC-3.2: publish report_assertion_use records (freeze doc §13,
+    # AC RPC-3) for the run_report family only, and only after verification
+    # passes (RPC-OQ-2/§13.2 -- a failed or not-yet-attempted verification
+    # creates zero records). Additive, narrow hook: when `report_id` is
+    # absent from front matter (a report predating this field, or any
+    # non-run_report flow) this is a complete no-op, and any failure here
+    # (missing workspace context, unresolvable refs, storage error) is
+    # swallowed the same way the ledger-update write above already is --
+    # report-use publication must never change verify_report's own pass/fail
+    # decision or raise out of this function (AC RPC-8: legacy behavior is
+    # byte-identical when the new inputs are absent).
+    #
+    # T3-4: `body` was parsed from `rpath` once, at the very top of this
+    # function, before any of the checks above ran -- a concurrent editor
+    # could have rewritten `rpath` on disk since then. `report_path=rpath`
+    # below hands the publish call site a live handle to re-read the file
+    # RIGHT NOW, immediately before any report-use write, and skip
+    # publication outright on a digest mismatch (freeze doc §13.5) instead
+    # of trusting the stale in-memory `body` bytes still match what is
+    # currently on disk.
+    if passed and frontmatter_ok and rpath is not None and front.get("report_id"):
+        try:
+            from .assertion_report_use import (
+                ReportAssertionUseService,
+                attest_verification_pass,
+                build_report_ref,
+                publish_report_assertion_uses_for_report,
+            )
+
+            run_meta = load_yaml(rp.run_yaml) if rp.run_yaml.exists() else {}
+            run_meta = run_meta if isinstance(run_meta, dict) else {}
+            cited_claim_ids = set(report_tag_ids)
+            cited_claims = [c for c in claims if c.get("claim_id") in cited_claim_ids]
+            report_content_digest = sha256(body.encode("utf-8")).hexdigest()
+
+            # T3-4 TOCTOU pre-check (freeze doc §13.5), kept explicit and
+            # durable here: re-read `rpath` RIGHT NOW, immediately before
+            # `attest_verification_pass` below. `attest_verification_pass`
+            # (SOL-35 reopened closure) ALSO independently re-reads and
+            # refuses on any mismatch -- but it raises, and this whole hook
+            # is wrapped in a broad `except Exception: pass` (report-use
+            # publication must never change `verify_report`'s own pass/fail
+            # decision or raise out of this function). Without this
+            # pre-check, a body mutated between the pass decision and this
+            # point would be caught by `attest_verification_pass` but the
+            # failure would be invisible -- no durable trace at all, unlike
+            # every other report-use publication failure this hook already
+            # records. Recording the SAME outcome marker
+            # `publish_report_assertion_uses_for_report`'s own (separate,
+            # later) TOCTOU re-check writes for its own attest->publish
+            # window keeps this failure mode auditable and retryable rather
+            # than silently swallowed.
+            try:
+                _, current_body_now = load_md(rpath)
+                current_digest_now: str | None = sha256(current_body_now.encode("utf-8")).hexdigest()
+            except Exception:  # noqa: BLE001 - unreadable now is "cannot compare", not a crash
+                current_digest_now = None
+            if current_digest_now != report_content_digest:
+                report_ref = build_report_ref(
+                    report_id=front["report_id"], report_content_digest=report_content_digest
+                )
+                reason = (
+                    "report_body_unreadable_since_verification"
+                    if current_digest_now is None
+                    else "report_body_changed_since_verification"
+                )
+                status = "skipped_unreadable" if current_digest_now is None else "skipped_digest_mismatch"
+                outcome_workspace_id = run_meta.get("workspace_id")
+                try:
+                    if isinstance(outcome_workspace_id, str):
+                        ReportAssertionUseService(
+                            workspace_id=outcome_workspace_id, paths=paths
+                        ).record_publication_outcome(
+                            report_ref["report_revision_id"],
+                            status=status,
+                            reason=reason,
+                            generated_at=str(record["generated_at"]),
+                        )
+                except Exception:  # noqa: BLE001 - the marker itself must never mask this skip
+                    pass
+            else:
+                # SOL-35 (reopened, re-closed): THIS is the ONE place in the
+                # whole system permitted to durably WRITE the
+                # verification-pass attestation -- reached only because
+                # `passed` (this function's own decision, above) was True,
+                # AND the pre-check above just confirmed the report body is
+                # still exactly what was verified.
+                # `attest_verification_pass` independently re-reads
+                # `report_path=rpath` right now and refuses unless the
+                # recomputed digest matches `report_content_digest` -- a
+                # caller can no longer mint this attestation merely by
+                # asserting a digest value.
+                # `publish_report_assertion_uses_for_report` below can no
+                # longer create this anchor itself; it only consumes the
+                # one written here.
+                attest_verification_pass(
+                    workspace_id=run_meta.get("workspace_id"),
+                    report_id=front["report_id"],
+                    report_content_digest=report_content_digest,
+                    verified_at=str(record["generated_at"]),
+                    report_path=rpath,
+                    paths=paths,
+                )
+                publish_report_assertion_uses_for_report(
+                    workspace_id=run_meta.get("workspace_id"),
+                    report_id=front["report_id"],
+                    report_content_digest=report_content_digest,
+                    verification_passed_at=str(record["generated_at"]),
+                    claims=cited_claims,
+                    paths=paths,
+                    report_path=rpath,
+                )
+        except Exception:  # noqa: BLE001 - never fail verification on report-use publication
             pass
 
     _trace(rp, stage="verify", run_id=run_id, exit_code=exit_code, passed=passed)

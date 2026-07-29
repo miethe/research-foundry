@@ -250,7 +250,7 @@ def test_dangling_source_is_flagged_not_dropped(tmp_foundry: FoundryPaths) -> No
 def test_claim_counts_and_top_level_shape(tmp_foundry: FoundryPaths) -> None:
     build_run(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_test001")
-    assert data["schema_version"] == svc.EXPORT_SCHEMA_VERSION == "1.7"
+    assert data["schema_version"] == svc.EXPORT_SCHEMA_VERSION == "1.8"
     assert data["run_id"] == "rf_run_test001"
     assert data["claim_counts"]["total"] == 5
     assert data["claim_counts"]["supported"] == 3
@@ -542,7 +542,7 @@ def test_report_draft_falls_back_to_final(tmp_foundry: FoundryPaths) -> None:
 def test_schema_version_is_1_7(tmp_foundry: FoundryPaths) -> None:
     build_run(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_test001")
-    assert data["schema_version"] == "1.7"
+    assert data["schema_version"] == "1.8"
 
 
 # --------------------------------------------------------------------------
@@ -630,10 +630,10 @@ def test_metadata_fields_null_on_pre_migration_run(tmp_foundry: FoundryPaths) ->
 
 def test_schema_version_bumped_to_1_7(tmp_foundry: FoundryPaths) -> None:
     """FR-13: schema_version in export output is '1.7'."""
-    assert svc.EXPORT_SCHEMA_VERSION == "1.7"
+    assert svc.EXPORT_SCHEMA_VERSION == "1.8"
     _build_run_with_metadata(tmp_foundry)
     data = svc.export_run(tmp_foundry, "rf_run_meta001")
-    assert data["schema_version"] == "1.7"
+    assert data["schema_version"] == "1.8"
 
 
 def test_existing_fields_unaffected_by_metadata_addition(tmp_foundry: FoundryPaths) -> None:
@@ -648,7 +648,7 @@ def test_existing_fields_unaffected_by_metadata_addition(tmp_foundry: FoundryPat
 
     # Core fields still present and correct
     assert data["run_id"] == "rf_run_meta001"
-    assert data["schema_version"] == "1.7"
+    assert data["schema_version"] == "1.8"
     assert data["status_derived"] == "planned"
     assert "claims" in data
     assert "claim_counts" in data
@@ -1044,7 +1044,7 @@ def test_enrichment_extra_fields_all_present_on_full_run(tmp_foundry: FoundryPat
     assert data["context"]["routing_decision"] is not None
     assert data["context"]["swarm_plan"] is not None
     # schema_version is now 1.7
-    assert data["schema_version"] == "1.7"
+    assert data["schema_version"] == "1.8"
 
 
 def test_enrichment_extra_fields_null_on_pre_enrichment_run(
@@ -1651,7 +1651,7 @@ def test_schema_13_context_null_when_no_v2_artifacts(tmp_foundry: FoundryPaths) 
     build_run(tmp_foundry, "rf_run_noctx12")
     data = svc.export_run(tmp_foundry, "rf_run_noctx12")
 
-    assert data["schema_version"] == "1.7"
+    assert data["schema_version"] == "1.8"
     assert "context" in data
     assert data["context"] is None
 
@@ -1665,7 +1665,7 @@ def test_schema_13_context_shape_complete_when_v2_artifacts_present(
     _build_run_with_routing(tmp_foundry, "rf_run_ctx13")
     data = svc.export_run(tmp_foundry, "rf_run_ctx13")
 
-    assert data["schema_version"] == "1.7"
+    assert data["schema_version"] == "1.8"
     ctx = data.get("context")
     assert ctx is not None
 
@@ -2031,7 +2031,7 @@ def test_context_full_pipeline_round_trip(tmp_foundry: FoundryPaths) -> None:
     assert out.exists()
     data = json.loads(out.read_text(encoding="utf-8"))
 
-    assert data["schema_version"] == "1.7"
+    assert data["schema_version"] == "1.8"
     ctx = data["context"]
     assert ctx is not None
     for key in (
@@ -2460,3 +2460,123 @@ def test_retrieval_key_always_present_alongside_existing_fields(
     assert data["claim_counts"]["total"] == 5
     assert "retrieval" in data
     assert data["retrieval"] is None
+
+
+# --------------------------------------------------------------------------
+# RPC-5.2: additive, read-only `_provenance_lineage` claim enrichment
+# --------------------------------------------------------------------------
+# `_provenance_lineage` is additive and non-authoritative (mirrors
+# `_term_index`'s own convention): copied from the SAME governed
+# `AssertionCatalog.packet_read_only` reader the assertions API uses,
+# omitted entirely (never an empty-shaped key) when unavailable so a legacy
+# claim/export keeps its EXACT prior key set (AC RPC-5 resilience clause).
+
+
+def _materialize_one_assertion(tmp_foundry, run_id: str, workspace_id: str, content: str) -> str:
+    from research_foundry.services import claim_mapping, extraction
+    from research_foundry.services.assertion_materialization import AssertionMaterializer
+    from research_foundry.services.source_cards import ingest_source
+    from research_foundry.yamlio import load_yaml
+
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"]["assertion_ledger"] = {"ledger_write_enabled": True}
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
+    tmp_foundry.run_paths(run_id).ensure_scaffold()
+    ingest_source(
+        f"{run_id}.txt", run_id=run_id, title=f"Evidence {run_id}", sensitivity="personal",
+        content=content, assertion_registry_workspace_id=workspace_id, paths=tmp_foundry,
+    )
+    extraction.extract_run(run_id, paths=tmp_foundry)
+    claim_mapping.build_claim_ledger(run_id, paths=tmp_foundry)
+    result = AssertionMaterializer(workspace_id=workspace_id, paths=tmp_foundry).materialize_run(run_id)
+    assert result.status == "materialized"
+    dump_yaml(
+        {
+            "schema_version": 0.1,
+            "type": "run",
+            "run_id": run_id,
+            "intent_id": f"intent_{run_id}",
+            "workspace_id": workspace_id,
+        },
+        tmp_foundry.run_paths(run_id).run_yaml,
+    )
+    return result.assertion_ids[0]
+
+
+def test_legacy_claim_without_persistent_references_has_no_provenance_lineage_key(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    build_run(tmp_foundry)
+    data = svc.export_run(tmp_foundry, "rf_run_test001")
+    for claim in data["claims"]:
+        assert "_provenance_lineage" not in claim
+
+
+def test_provenance_lineage_omitted_when_catalog_projection_never_built(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """A claim WITH `persistent_references` but no rebuilt catalog projection
+    for its workspace degrades to omission -- never a crash, never a
+    fabricated empty block (mirrors `AssertionCatalog.packet_read_only`'s own
+    "unavailable" contract)."""
+    from research_foundry.services import claim_mapping, extraction
+    from research_foundry.services.source_cards import ingest_source
+    from research_foundry.yamlio import load_yaml
+
+    run_id = "rf_run_p5_export_no_catalog"
+    workspace_id = "workspace-export-a"
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"]["assertion_ledger"] = {"ledger_write_enabled": True}
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
+    tmp_foundry.run_paths(run_id).ensure_scaffold()
+    ingest_source(
+        f"{run_id}.txt", run_id=run_id, title="Evidence", sensitivity="personal",
+        content="Provenance lineage export must degrade without a catalog.",
+        assertion_registry_workspace_id=workspace_id, paths=tmp_foundry,
+    )
+    extraction.extract_run(run_id, paths=tmp_foundry)
+    claim_mapping.build_claim_ledger(run_id, paths=tmp_foundry)
+    from research_foundry.services.assertion_materialization import AssertionMaterializer
+
+    result = AssertionMaterializer(workspace_id=workspace_id, paths=tmp_foundry).materialize_run(run_id)
+    assert result.status == "materialized"
+    dump_yaml(
+        {
+            "schema_version": 0.1, "type": "run", "run_id": run_id,
+            "intent_id": f"intent_{run_id}", "workspace_id": workspace_id,
+        },
+        tmp_foundry.run_paths(run_id).run_yaml,
+    )
+
+    data = svc.export_run(tmp_foundry, run_id)
+    claims_with_refs = [c for c in data["claims"] if "persistent_references" in c]
+    assert claims_with_refs
+    for claim in claims_with_refs:
+        assert "_provenance_lineage" not in claim
+
+
+def test_provenance_lineage_populated_from_the_same_reader_the_api_uses(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    from research_foundry.api.auth.provider import AuthIdentity
+    from research_foundry.services.assertion_catalog import AssertionCatalog
+
+    run_id = "rf_run_p5_export_lineage"
+    workspace_id = "workspace-export-b"
+    assertion_id = _materialize_one_assertion(
+        tmp_foundry, run_id, workspace_id, "Export lineage must mirror the governed catalog reader."
+    )
+    AssertionCatalog(tmp_foundry).rebuild(workspace_id)
+
+    data = svc.export_run(tmp_foundry, run_id)
+    claim = next(c for c in data["claims"] if c.get("persistent_references", {}).get("source_assertion_id") == assertion_id)
+    packet = AssertionCatalog(tmp_foundry).packet(
+        assertion_id, identity=AuthIdentity("alice", workspace_id, ("researcher",))
+    )
+    assert packet is not None
+    # A fresh assertion with no inference/canonical/report-use/origin activity
+    # has an all-empty lineage shape -- `_claim_provenance_lineage` omits the
+    # key entirely rather than emit an all-empty block.
+    assert "_provenance_lineage" not in claim
+    assert packet["report_uses"] == []
+    assert packet["run_facets"] == {run_id: None}

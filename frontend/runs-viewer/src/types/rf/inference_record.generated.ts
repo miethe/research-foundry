@@ -27,5 +27,6 @@ export interface InferenceRecord {
     method: string;
     producer?: string | null;
   };
-  status: "active" | "stale" | "invalidated";
+  status: "active" | "stale" | "invalidated" | "tombstoned";
+  version_digest?: string | null;
 }
