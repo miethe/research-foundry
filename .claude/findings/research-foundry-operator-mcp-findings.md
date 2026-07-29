@@ -158,3 +158,72 @@ enum smuggling resistance) — but H7 introduced a NEW fail-open in the same fam
 | NEW-12 | LOW-MED | `consume_confirmation` has no binding precondition — public, takes only `(record, operation_id)`; nothing requires the caller to have obtained an `accepted` verification for the same ctx+token first. The H5 fix made it merely *look* self-sufficient. | :1089-1124 | fixed |
 | NEW-13 | LOW | Every `internal_error` is silent and retryable-forever. No `logging` import anywhere. A malformed `config/governance.yaml` becomes a clean `internal_error, retryable=True` with zero telemetry — a genuine bug hidden behind a policy denial, plus a retry loop on a deterministic failure. | :148-166 | fixed |
 | NEW-14 | LOW | Hygiene: `consume_confirmation` :1120 `dict(record)` is a shallow copy (returned record shares `actor`/`targets` with input); `_STAGE_NAMES` :765-771 duplicates `_POLICY_STAGES` ordering in a parallel structure that can drift. | :1120, :765-771 | fixed |
+
+---
+
+## FIND-P1-R3 — OPM-1.G consolidated final gate: CHANGES_REQUESTED (round 3)
+
+Source: consolidated security + validation gate on exact tree `f1bfa39`.
+Status: **OPEN — this is the first work item for the next session.**
+
+### Round-2 verification result: PASSED (empirical)
+
+The reviewer ran a **15-mutation matrix**, reverting each round-2 fix individually and confirming
+a purpose-built test fails for each. No mutation produced zero failures; M15 (pristine restore)
+returned 105 passed, verifying the harness itself. **All 14 round-2 findings are genuinely closed
+and regression-detecting** — including `test_audit_health_..._blocks_when_unhealthy`, empirically
+confirmed as genuinely new and genuinely failing on revert. Round-1's evidence-integrity defect
+(M7) is remediated; all claimed counts reproduce exactly (105 / 38 / 255).
+
+### ⚠ METHODOLOGY TRAP — read before any future scratch-tree testing
+
+`pyproject.toml` sets `[tool.pytest.ini_options] pythonpath = ["src"]`, which pytest inserts
+**ahead of** the `PYTHONPATH` env var. A mutation sweep against a scratch copy therefore silently
+tests the REAL worktree source and reports false negatives ("no test detects this defect").
+The first sweep in this review hit exactly that and nearly produced a wrong conclusion.
+
+Correct procedure: `--override-ini="pythonpath=<scratch>/src"`, mirror `config/`, `schemas/`,
+`templates/` into the scratch root (`distribution_root()` resolves via `parents[2]`), purge stale
+`__pycache__`, and always establish a baseline first. A `python -c "import ...; print(__file__)"`
+sanity check is **NOT sufficient** — it exercises the env var pytest then overrides.
+
+**Consequence:** the plan's documented validation command prefix `PYTHONPATH=$PWD/src` is
+**decorative**. It happens to point at the same tree so existing counts are valid, but it provides
+no isolation guarantee. Consider correcting the plan's Validation Strategy section.
+
+### BLOCKING — fix in this order
+
+| ID | Sev | Finding | Required fix | Status |
+|---|---|---|---|---|
+| NEW-23 | HIGH | **Serve-extra import boundary claim is false.** `import operator_mcp_policy` fails without `fastapi`/`uvicorn` installed — breaking the local-stdio topology P5 explicitly declares. Same false-authoritativeness class as NEW-2. | Break the transitive import so the policy module imports cleanly in a base install; add a test that imports it with the serve extra absent. | open |
+| NEW-18 | HIGH | **`PolicyContext.identity` is caller-supplied.** Decisions-block Risk 1 is rated *critical* ("no default workspace on mutation"; configured-local identity only) and its mitigation here is prose, not shape — a caller can hand in an identity rather than having it derived. | Make identity derivation structural: resolve inside the policy module from configured local config, or make the caller-supplied path impossible to reach from the public API. | open |
+| NEW-22 | HIGH | **`researcher` granted agent-job-class operations** that `api/auth/rbac.py` reserves for owner/admin. The written justification is factually wrong. Gives FIND-P1-B a concrete security dimension — it is no longer a style question. | Align the role grants with `rbac.py`'s convention, or justify the divergence with an accurate rationale. Karen adjudicates. | open |
+| NEW-20 | MED-HIGH | **`denial_reason_code` is an open string** despite both the receipt schema and the completion note claiming a closed enum. False-authoritativeness (same class as NEW-2 / NEW-23). | Close the enum in schema and code; add a negative fixture. | open |
+| NEW-21 | MED | **`audit_delivery.detail` accepts raw tracebacks**; its natural producer is `str(exc)`. Violates AC OPM-7's bounded/redacted requirement. | Apply the same `_SAFE_MESSAGES` / redact-then-cap treatment used for the error envelope. | open |
+| NEW-19 | MED | **Audit-health is permanently bricked after the first failed probe**, with an unachievable `retryable=True`. The NEW-3 fix overcorrected. | Allow recovery — re-probe on a later call rather than latching the failure. | open |
+
+### NON-BLOCKING
+
+NEW-15, NEW-16, NEW-17, NEW-24, NEW-25 plus documentation nits. Reviewer's stated fix order places
+them after the six blocking items. **Detail was not captured into the orchestrator's context** —
+re-derive by re-running the consolidated gate, or by asking the reviewer agent to re-emit only the
+non-blocking rows. Do not treat their absence here as "no findings".
+
+### Standing caution
+
+`schemas/operator_mcp_receipt.schema.yaml` had **never been adversarially attacked** before this
+pass — rounds 1 and 2 both targeted `operator_mcp_policy.py` and the error schema. NEW-20 and
+NEW-21 came from its first real review. Treat the receipt schema as **still under-reviewed**;
+do not assume it is now clean.
+
+### Queued explicitly for Karen (not yet run)
+
+1. **PART C ratification** of the `governance.py` serialization-barrier write. Reviewer recommends
+   **accept with conditions**: it is a provable no-op for the shipped config, restores
+   `redact_payload`'s own documented "additional" contract, and is strictly fail-closed.
+2. **FIND-P1-B** — the net-new `_MUTATION_ROLES`/`_READ_ROLES` primitive, now carrying NEW-22's
+   concrete privilege-escalation dimension.
+3. The **`governance.preflight()` deviation** from decisions-block line 30.
+
+Karen was deliberately NOT run at this pause: with six blocking findings open, the OPM-1.G gate
+cannot pass, and a Karen pass would only re-report them at Opus cost.
