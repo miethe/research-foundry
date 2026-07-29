@@ -1097,3 +1097,81 @@ DoD requires each non-blocking item FIXED or EXPLICITLY DEFERRED WITH A REASON. 
 
 Net: **FIX 7** (NB-1, 3, 6, 7, 8, 9, 10) · **DEFER 3 with named owners and entry gates** (NB-2 → P5;
 NB-4, NB-11 → P2) · **SUPERSEDED 1** (NB-5) · **7 carried** (R5-NB-*).
+
+---
+
+## FIND-P1-CLOSEOUT — OPM-1.G closed by OWNER ACCEPTANCE (2026-07-29)
+
+> ⚠ **This is NOT a gate `APPROVED` verdict.** The last machine verdict on OPM-1.G is
+> **`CHANGES_REQUESTED` (round 5, `FIND-P1-R5`)**. P1 is being closed by an explicit **human owner
+> decision** to defer the round-6 re-gate and accept the current tree so P2 can proceed. Anyone reading
+> this later should not treat P1 as gate-approved — it is **owner-accepted with a deferred re-gate and
+> named residual risk**.
+
+**Accepted tree:** `fce17e1` on branch `worktree-operator-mcp-v1` (draft PR #7, base main `65d658d`).
+Working tree clean. NOT merged to main.
+
+### Owner approvals recorded
+
+| # | Item | Decision |
+|---|---|---|
+| 1 | **Round-6 consolidated security re-gate** | **DEFERRED** by owner decision. The four round-5 blocking findings (R5-BLOCK-1…4) were remediated in `fce17e1` and each independently re-probed by the orchestrator, but the resulting tree was **never adversarially re-attacked**. Recorded as `OPM-DF-regate` below. |
+| 2 | **`governance.py` serialization-barrier write** (Karen Adjudication 1, condition 3 — the one item no agent could close) | **ACKNOWLEDGED by the integration owner.** A reviewer could ratify the write's content; only the declared file owner can waive the ownership barrier. That waiver is hereby given. Conditions 1 (correct the false "provable no-op" claim) and 2 (accept the duplicate-match-count cosmetic) were already discharged — see the inline correction in `FIND-P1-R3` and Karen Adjudication 1. |
+| 3 | **`audit_service.py` / `api/auth/{provider,scope}.py` / `config.py` writes** (NEW-23) | **ACKNOWLEDGED.** Karen ratified these unconditionally on the merits (verified same-class-object re-export; WKSP-304 behaviour byte-identical). Owner waiver of the `audit_service.py` ownership barrier given here for completeness. |
+| 4 | **P1 acceptance / P2 unblock** | **GRANTED.** OPM-1.1–1.4 are implemented and validated; P2 may proceed against this contract. |
+
+### Residual risk explicitly accepted
+
+The owner is accepting these knowingly. They are not defects being hidden — they are open items with
+named owners.
+
+1. **`OPM-DF-regate` — the round-6 re-gate.** `fce17e1` closed four blockers and seven non-blocking
+   items and has not been re-attacked. Every prior round found new defects *adjacent to* correct fixes
+   (R3's fixes produced 4 of R4's 9; R4's produced 4 of R5's 4). The base rate says a round 6 would
+   likely find **1–3 further findings, most probably in `operator_mcp_receipt.schema.yaml`.**
+2. **`operator_mcp_receipt.schema.yaml` is the highest residual-risk surface.** It has yielded a finding
+   in **every single round it was examined** (NEW-20, NEW-21, BLOCK-2, BLOCK-3, R5-BLOCK-1, R5-BLOCK-3).
+   The round-5 remediation performed the recommended systematic per-`$def` × per-property sweep, but that
+   sweep is itself un-reviewed. **P2 should treat this schema as still under-reviewed.**
+3. **NB-7 coverage gap (the one P2 must plan around).** An autouse fixture monkeypatches
+   `policy.resolve_operator_identity` for the whole policy test module — the exact seam that IS NEW-18
+   Layer 3 — so ~100 tests exercise the equality-commitment half and never real derivation. Real
+   derivation is covered by only a handful of tests. **P2's first live run against a real workspace will
+   be the first substantial exercise of identity derivation.** Budget for it.
+4. **NB-9 availability tradeoff (introduced deliberately).** NEW-19's unconditional audit probe performs
+   INSERT+SELECT+DELETE on the authorization hot path, ≥2× per operation. Under the concurrency DUR-1
+   contemplates, SQLite write-lock contention can surface as a spurious `audit_unhealthy` denial.
+   Security-safe (fail-closed, and `retryable=True` is now honest) but an availability regression.
+5. **Zero production callers.** P1 is a contract-freeze phase by design; the surface has never been
+   exercised by a real transport. Correct for the phase, but it means "works" is unproven end-to-end.
+6. **Deferred non-blocking items** carry named owners: **NB-2 → P5** (`check_tool_name` has zero callers;
+   must ship with an artifact that FAILS if unwired), **NB-4, NB-11 → P2**, **`OPM-DF-preflight` → P2**
+   (`governance.preflight()` is named in the frozen contract but never invoked — decisions-block line 30
+   amended to say so), **R5-NB-1…7 → P2 triage**.
+
+### P2 entry conditions (carried forward, not optional)
+
+- Treat `operator_mcp_receipt.schema.yaml` as under-reviewed; re-attack before building durable
+  persistence on it.
+- Wire `governance.preflight()` at the run layer with a failing-if-unwired artifact (`OPM-DF-preflight`).
+- Exercise real identity derivation early (NB-7).
+- Per the plan's revised gate structure, **P2's gate is security-with-AC-mandate, then Karen** — do not
+  substitute a validator; durability/atomicity is a security property and a validator will approve a
+  read-then-write CAS.
+- **Adopt the process change below before P2 execution begins.**
+
+### The process change P2 must adopt (highest-leverage item from this phase)
+
+**Mutation verification belongs in the FIX step, not the next REVIEW round.** A remediation is not
+submitted until each fix has been **reverted in place, shown to break a NAMED test, and restored**.
+Rounds 4 and 5 of this gate exist almost entirely because closure was asserted rather than demonstrated
+(BLOCK-4: a correct fix shipped with four purpose-built tests, all four of which PASSED on revert).
+
+Captured through the Signal→System pipeline for the pre-P2 optimization pass:
+
+| Field | Value |
+|---|---|
+| `op story` record (use this) | **`806e4667-acd6-4ec4-9883-130ae95ec08a`** — status `backlog`, project `research-foundry`, domains `review-gates, agent-orchestration, process, security-review, test-quality` |
+| Superseded duplicate (ignore) | `8ff0255b-0b0e-4e4f-8864-f6d2a82e2d1f` — status `hold`, untitled (captured before frontmatter was added) |
+| AAR source of truth | `.claude/worknotes/observations/2026-07.md` on branch `worktree-operator-mcp-v1` |
+| Cross-session memory | `~/.claude/projects/-Users-miethe-dev-homelab-development-research-foundry/memory/operator-mcp-p1-gate-economics.md` |

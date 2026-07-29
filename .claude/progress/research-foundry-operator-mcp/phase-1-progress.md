@@ -5,7 +5,7 @@ doc_type: progress
 prd: research-foundry-operator-mcp
 feature_slug: research-foundry-operator-mcp
 phase: 1
-status: blocked
+status: completed
 created: '2026-07-28'
 updated: '2026-07-29'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
@@ -15,6 +15,8 @@ commit_refs:
 - f1bfa39
 - f16059f
 - e4c76b9
+- d43a1ff
+- fce17e1
 pr_refs:
 - '7'
 owners:
@@ -132,3 +134,32 @@ decisions-block line 30).
 **Process lesson (Karen, for `op story capture`):** move mutation verification into the FIX step, not
 the next REVIEW round. A remediation is not submitted until each fix has been reverted and shown to
 break a named test. Rounds 4 and 5 exist largely because closure was asserted rather than demonstrated.
+
+---
+
+## CLOSEOUT — OPM-1.G closed by OWNER ACCEPTANCE (2026-07-29)
+
+`status` is now `completed`. **To be precise about what that means: OPM-1.G was NOT gate-APPROVED.**
+The last machine verdict is `CHANGES_REQUESTED` (round 5). P1 is closed by an explicit **human owner
+decision** to defer the round-6 re-gate and accept tree `fce17e1` so P2 can proceed. Full record:
+`FIND-P1-CLOSEOUT` in `.claude/findings/research-foundry-operator-mcp-findings.md`.
+
+**Owner approvals recorded:** round-6 re-gate DEFERRED (`OPM-DF-regate`); `governance.py`
+serialization-barrier write ACKNOWLEDGED by the integration owner (Karen Adjudication 1 condition 3 —
+the one item no agent could close); `audit_service.py` / auth-package / `config.py` writes
+ACKNOWLEDGED; P1 accepted and P2 unblocked.
+
+**Residual risk accepted (named, not hidden):** the round-6 re-gate is deferred and `fce17e1` was never
+adversarially re-attacked (base rate suggests 1–3 further findings); `operator_mcp_receipt.schema.yaml`
+has yielded a finding in EVERY round it was examined and its final systematic sweep is itself
+un-reviewed — treat as still under-reviewed; NB-7 means ~100 tests patch the identity-derivation seam,
+so P2's first live run is the first substantial exercise of real derivation; NB-9 is a deliberate
+availability tradeoff (unconditional audit probe → possible spurious `audit_unhealthy` under
+contention); P1 has zero production callers by design.
+
+**Carried to later phases:** NB-2 → P5 (with a failing-if-unwired artifact); NB-4, NB-11,
+`OPM-DF-preflight`, R5-NB-1…7 → P2.
+
+**P2 must adopt before execution:** mutation verification moves INTO the fix step — a remediation is not
+submitted until each fix has been reverted in place and shown to break a NAMED test. Pre-P2 optimization
+handoff: `op story` record **`806e4667-acd6-4ec4-9883-130ae95ec08a`**.
