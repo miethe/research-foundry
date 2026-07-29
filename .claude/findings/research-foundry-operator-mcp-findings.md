@@ -195,12 +195,12 @@ no isolation guarantee. Consider correcting the plan's Validation Strategy secti
 
 | ID | Sev | Finding | Required fix | Status |
 |---|---|---|---|---|
-| NEW-23 | HIGH | **Serve-extra import boundary claim is false.** `import operator_mcp_policy` fails without `fastapi`/`uvicorn` installed — breaking the local-stdio topology P5 explicitly declares. Same false-authoritativeness class as NEW-2. | Break the transitive import so the policy module imports cleanly in a base install; add a test that imports it with the serve extra absent. | open |
-| NEW-18 | HIGH | **`PolicyContext.identity` is caller-supplied.** Decisions-block Risk 1 is rated *critical* ("no default workspace on mutation"; configured-local identity only) and its mitigation here is prose, not shape — a caller can hand in an identity rather than having it derived. | Make identity derivation structural: resolve inside the policy module from configured local config, or make the caller-supplied path impossible to reach from the public API. | open |
-| NEW-22 | HIGH | **`researcher` granted agent-job-class operations** that `api/auth/rbac.py` reserves for owner/admin. The written justification is factually wrong. Gives FIND-P1-B a concrete security dimension — it is no longer a style question. | Align the role grants with `rbac.py`'s convention, or justify the divergence with an accurate rationale. Karen adjudicates. | open |
-| NEW-20 | MED-HIGH | **`denial_reason_code` is an open string** despite both the receipt schema and the completion note claiming a closed enum. False-authoritativeness (same class as NEW-2 / NEW-23). | Close the enum in schema and code; add a negative fixture. | open |
-| NEW-21 | MED | **`audit_delivery.detail` accepts raw tracebacks**; its natural producer is `str(exc)`. Violates AC OPM-7's bounded/redacted requirement. | Apply the same `_SAFE_MESSAGES` / redact-then-cap treatment used for the error envelope. | open |
-| NEW-19 | MED | **Audit-health is permanently bricked after the first failed probe**, with an unachievable `retryable=True`. The NEW-3 fix overcorrected. | Allow recovery — re-probe on a later call rather than latching the failure. | open |
+| NEW-23 | HIGH | **Serve-extra import boundary claim is false.** `import operator_mcp_policy` fails without `fastapi`/`uvicorn` installed — breaking the local-stdio topology P5 explicitly declares. Same false-authoritativeness class as NEW-2. | Break the transitive import so the policy module imports cleanly in a base install; add a test that imports it with the serve extra absent. | fixed |
+| NEW-18 | HIGH | **`PolicyContext.identity` is caller-supplied.** Decisions-block Risk 1 is rated *critical* ("no default workspace on mutation"; configured-local identity only) and its mitigation here is prose, not shape — a caller can hand in an identity rather than having it derived. | Make identity derivation structural: resolve inside the policy module from configured local config, or make the caller-supplied path impossible to reach from the public API. | fixed |
+| NEW-22 | HIGH | **`researcher` granted agent-job-class operations** that `api/auth/rbac.py` reserves for owner/admin. The written justification is factually wrong. Gives FIND-P1-B a concrete security dimension — it is no longer a style question. | Align the role grants with `rbac.py`'s convention, or justify the divergence with an accurate rationale. Karen adjudicates. | fixed |
+| NEW-20 | MED-HIGH | **`denial_reason_code` is an open string** despite both the receipt schema and the completion note claiming a closed enum. False-authoritativeness (same class as NEW-2 / NEW-23). | Close the enum in schema and code; add a negative fixture. | fixed |
+| NEW-21 | MED | **`audit_delivery.detail` accepts raw tracebacks**; its natural producer is `str(exc)`. Violates AC OPM-7's bounded/redacted requirement. | Apply the same `_SAFE_MESSAGES` / redact-then-cap treatment used for the error envelope. | fixed |
+| NEW-19 | MED | **Audit-health is permanently bricked after the first failed probe**, with an unachievable `retryable=True`. The NEW-3 fix overcorrected. | Allow recovery — re-probe on a later call rather than latching the failure. | fixed |
 
 ### NON-BLOCKING
 
@@ -227,3 +227,113 @@ do not assume it is now clean.
 
 Karen was deliberately NOT run at this pause: with six blocking findings open, the OPM-1.G gate
 cannot pass, and a Karen pass would only re-report them at Opus cost.
+
+---
+
+## FIND-P1-R3-CLOSURE — round-3 remediation (all six blocking findings closed)
+
+Status: **all six BLOCKING findings above are `fixed`.** Each carries at least one test that fails
+when the fix is reverted. Fixed in the reviewer's mandated order.
+
+### NEW-23 — serve-extra import boundary
+
+Root-caused to a two-link chain, not the single link the finding named:
+`operator_mcp_policy` → `services/audit_service.py` (`from research_foundry.api.auth.provider import
+AuthIdentity`) → `api/__init__.py` (eager `import fastapi`). A second, independent link was found
+during the fix: `audit_service` also imported `resolve_workspace_isolation_active` from
+`api/auth/scope.py`.
+
+**A LAYER BELOW the finding text.** Fixing only the import would have been a false close:
+`resolve_operator_identity()` CONSTRUCTS an `AuthIdentity` at runtime, and `api/auth/provider.py`
+module-imports `starlette`. A base install would therefore have imported cleanly and then failed on
+first real use. Empirically confirmed under a `sys.meta_path` blocker before and after.
+
+Fix: `AuthIdentity` relocated to the serve-free `research_foundry/auth_identity.py`;
+`api/auth/provider.py` re-exports **that exact class object** (never a redefinition), so all ~487
+existing references and every `isinstance` check are unchanged. `resolve_workspace_isolation_active`
+moved to `config.py` with the same re-export treatment. `operator_mcp_policy` now imports
+`AuthIdentity` at module level — deliberately NOT under `TYPE_CHECKING` — so the serve-gated path
+cannot silently return. The module docstring's previous claim (which asserted the old
+TYPE_CHECKING+lazy arrangement achieved the boundary) was factually wrong and has been rewritten.
+
+Test: `tests/unit/test_operator_mcp_serve_extra_boundary.py` — asserts BOTH import AND runtime
+identity construction in a **subprocess** with fastapi/uvicorn/starlette blocked (a subprocess is
+required; the rest of the suite imports fastapi and would mask the failure).
+
+### NEW-18 — structural identity derivation
+
+Fixed in three layers, because closing only the constructor would leave the layer below open:
+1. `PolicyContext.identity` is now `field(init=False, default=None)` — the public constructor cannot
+   accept an identity at all (raises `TypeError`).
+2. `PolicyContext.for_configured_operator(...)` is the sole sanctioned constructor that populates it,
+   always from `resolve_operator_identity(paths, config=config)`. It exposes no identity parameter.
+3. `_check_identity_and_rbac` **re-derives** the identity from config and makes the authorization
+   decision entirely from the derived value. `ctx.identity` participates only as an equality
+   commitment: a mismatch denies `identity_denied` with no distinguishing detail.
+
+All 22 `__all__` symbols were enumerated. `mint_confirmation` is the one residual: it has no `paths`
+parameter and embeds `ctx.identity` into the minted record's `actor` block, so a forged context can
+be minted — but the record is inert, because `authorize_operation` always re-runs `evaluate_policy`
+(which denies at `rbac`) before the confirmation stage is reached. Pinned by a dedicated test.
+**Flagged for the gate to adjudicate** rather than asserted as safe.
+
+Independently verified by the orchestrator (not merely self-reported): constructor injection rejected;
+a wholesale forged identity denied; a *role-escalation-only* forgery (same user/workspace, extra
+roles) denied; and absent config denied.
+
+### NEW-22 — role grants aligned with rbac.py
+
+`ROLE_PERMISSIONS["researcher"]` in `api/auth/rbac.py` explicitly excludes `agent_job:launch`, and
+that module's forward-compat note requires `Depends(require_role("owner","admin"))` on every
+agent-job mutation route. `_MUTATION_ROLES` granted `researcher` every mutating kind uniformly,
+including the agent-job-class kinds `swarm.start`, `job.cancel`, `job.resume`.
+
+**A SECOND divergence in the same table, not named by the finding:** `_READ_ROLES` granted `viewer`,
+while rbac.py sets `"viewer": set()` (zero permissions) and marks `run:read` as not granted to viewer.
+The comment annotating that set claimed it "mirrors rbac.py's viewer-has-zero-permissions convention"
+— the stated rationale contradicted its own code. This is the same false-authoritativeness class as
+NEW-2/NEW-20/NEW-23. Both are fixed and the justification text rewritten accurately.
+
+Fix shape: replaced the two-way read/mutate split with an **exhaustive** `_OPERATION_ROLES` map
+(kind → required roles) plus an import-time completeness check. A permissive default was the
+fail-open class that recurred every round; adding a new `OPERATION_KINDS` member without classifying
+it now raises at import instead of silently inheriting the researcher-inclusive grant. The stage also
+denies rather than falling through if a kind is somehow unclassified.
+
+`test_rbac_allows_viewer_for_read_only_job_status` **pinned the unsafe behaviour** and was INVERTED
+(not weakened) per the standing rule.
+
+### NEW-20 — denial_reason_code enum closed
+
+`schemas/operator_mcp_receipt.schema.yaml` declared `type: [string, "null"], maxLength: 64` while its
+own description and the completion note both claimed a closed enum. Now a closed 17-member enum plus
+`null` (which the `allOf` requires for `completed`/`canceled`). Negative fixtures for a bogus code and
+for a near-miss (`guard_blocked_extra`) — the latter is exactly what an open 64-char string accepted.
+A drift guard pins the schema enum to `operator_mcp_policy.CLOSED_REASON_CODES` in both directions.
+
+### NEW-21 — audit_delivery.detail bounded and redacted
+
+The field was an unguarded `type: string, maxLength: 500` whose natural producer is `str(exc)`. It now
+carries the SAME negative traceback pattern as `operator_mcp_error`'s `message`/`detail`, and a new
+public producer `build_audit_delivery()` routes `detail` through the identical
+`redact_payload` → traceback-strip → cap pipeline as the error envelope. A test feeds a REAL
+`traceback.format_exc()` through the builder and asserts the result still validates — pinning that the
+code-side pipeline and the schema-side guard agree.
+
+### NEW-19 — audit-health latch removed (both directions)
+
+The NEW-3 fix probed only when `last_probe_at is None`, then trusted the persisted row forever. That
+latched **both** ways: a failed probe denied permanently (making the advertised `retryable=True`
+unachievable), and — the half the finding did not name — a successful probe meant a store that
+degraded *later* was never re-checked, relocating the very "healthy forever" fail-open NEW-3 set out
+to close.
+
+Fix: run the live `health_check` probe unconditionally on every confirmation-requiring call. This
+stage is reached only for privileged/mutating kinds (`job.status` returns earlier), the probe is a
+cheap idempotent local write-then-read, and it removes any dependence on `get_health_state`'s
+"assume healthy until proven otherwise" default — a fail-open shape that should not be read on an
+authorization path at all. Four tests: denial, recovery (proving `retryable=True` is now achievable),
+post-healthy degradation, and non-reliance on the assume-healthy default.
+
+`test_audit_unhealthy_blocks_mutating_operation` asserted the stage "must deny WITHOUT re-probing" —
+it pinned the defect. Rewritten against the live probe.

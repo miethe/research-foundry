@@ -33,6 +33,17 @@ operation_id/receipt_ref for `not_found`), NEW-11 (revoked status is
 non-retryable), NEW-12 (`consume_confirmation` optional ctx-binding
 precondition), NEW-13 (internal_error is now logged, redacted), NEW-14
 (deep copy on consume; colocated stage names).
+
+Also covers the security-review round 3 fix cycle (FIND-P1-R3): NEW-18
+(`PolicyContext.identity` is `init=False`; `PolicyContext.for_configured_operator`
+is the sole sanctioned constructor; `_check_identity_and_rbac` re-derives
+identity from config and never trusts `ctx.identity`). Since `identity` is
+no longer a public constructor field, this module drives identity
+resolution for every test via the `_default_operator_identity` autouse
+fixture below (which monkeypatches `policy.resolve_operator_identity`) --
+tests needing a non-default identity re-patch it themselves; the identity-
+resolution unit tests immediately below bypass the patch by calling
+`_REAL_RESOLVE_OPERATOR_IDENTITY` directly.
 """
 
 from __future__ import annotations
@@ -59,6 +70,13 @@ _IDENTITY = AuthIdentity("alice", "ws-mine", ("owner",))
 _IDENTITY_OTHER_WORKSPACE = AuthIdentity("bob", "ws-other", ("owner",))
 _VIEWER_IDENTITY = AuthIdentity("carol", "ws-mine", ("viewer",))
 
+# NEW-18: captured at import time, BEFORE the `_default_operator_identity`
+# autouse fixture below ever runs -- lets the identity-resolution unit
+# tests in the next section exercise the REAL `resolve_operator_identity`
+# implementation directly, independent of whatever `policy.resolve_operator_identity`
+# is monkeypatched to for every other test in this module.
+_REAL_RESOLVE_OPERATOR_IDENTITY = policy.resolve_operator_identity
+
 
 def _write_operator_identity(paths: FoundryPaths, *, user_id: str, workspace_id: str, roles: list[str]) -> None:
     data: dict[str, Any] = load_yaml(paths.foundry_yaml) or {}
@@ -69,19 +87,63 @@ def _write_operator_identity(paths: FoundryPaths, *, user_id: str, workspace_id:
     dump_yaml(data, paths.foundry_yaml)
 
 
+@pytest.fixture(autouse=True)
+def _default_operator_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NEW-18: `PolicyContext.identity` has no public constructor field
+    anymore -- `PolicyContext.for_configured_operator` (which `_basic_ctx`
+    below calls) and `_check_identity_and_rbac` both resolve identity by
+    calling `policy.resolve_operator_identity`. Patch that ONE seam to
+    `_IDENTITY` by default so the ~100 tests in this module that don't care
+    about identity resolution specifically keep working without each
+    writing a `foundry.yaml` identity block. Tests that need a DIFFERENT
+    resolved identity (`_VIEWER_IDENTITY`, `_IDENTITY_OTHER_WORKSPACE`, or
+    none at all) call `monkeypatch.setattr(policy, "resolve_operator_identity",
+    lambda *a, **kw: ...)` themselves -- a plain re-patch of the same
+    attribute, restored to its ORIGINAL (pre-fixture) value at teardown
+    either way. The identity-resolution unit tests immediately below
+    bypass this fixture entirely via `_REAL_RESOLVE_OPERATOR_IDENTITY`."""
+
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+
+
+def _forge_identity(ctx: policy.PolicyContext, identity: AuthIdentity | None) -> policy.PolicyContext:
+    """Test-only helper simulating an attacker who bypasses
+    `PolicyContext.for_configured_operator` (the sole sanctioned
+    construction path, NEW-18 Layer 2) and forces an arbitrary `identity`
+    directly onto an already-built, frozen `PolicyContext` via
+    `object.__setattr__` -- the ONLY way `identity` can be set post-
+    construction now that it is `init=False` (Layer 1). `dataclasses.replace`
+    cannot do this: passing `identity` in its `changes` raises `TypeError`
+    (a `field(init=False, ...)` field cannot be specified to `replace()`),
+    so it is called here with NO changes purely to obtain an independent
+    copy without mutating the caller's original `ctx` in place."""
+
+    forged = dataclasses.replace(ctx)
+    object.__setattr__(forged, "identity", identity)
+    return forged
+
+
 def _basic_ctx(**overrides: Any) -> policy.PolicyContext:
-    """Build a `PolicyContext`. `sensitivity_ceiling` defaults to the
-    loosest label (`client_sensitive`) so existing guard/preflight/
-    confirmation tests are unaffected by the H7 ceiling gate unless they
-    explicitly opt into testing it. When `targets` is supplied and
-    `resolved_target_workspaces` is not explicitly overridden, it is
-    auto-filled to match `identity.workspace_id` for every target (H3
-    requires a same-length entry per target; tests that specifically
-    exercise the wrong-workspace/absent-target gate pass an explicit
-    override)."""
+    """Build a `PolicyContext` via `PolicyContext.for_configured_operator`
+    (NEW-18 -- the sole sanctioned constructor). `sensitivity_ceiling`
+    defaults to the loosest label (`client_sensitive`) so existing guard/
+    preflight/confirmation tests are unaffected by the H7 ceiling gate
+    unless they explicitly opt into testing it. When `targets` is supplied
+    and `resolved_target_workspaces` is not explicitly overridden, it is
+    auto-filled to match whatever `policy.resolve_operator_identity`
+    currently resolves to (H3 requires a same-length entry per target;
+    tests that specifically exercise the wrong-workspace/absent-target gate
+    pass an explicit override).
+
+    NEW-18: `identity` is NOT an accepted override -- there is no public
+    identity-injection door left on `PolicyContext` to pass one through.
+    Whichever identity a built context resolves to is controlled entirely
+    by whatever `policy.resolve_operator_identity` currently resolves to
+    (see `_default_operator_identity` above); a test wanting a different
+    identity monkeypatches that function itself BEFORE calling this
+    helper."""
 
     fields: dict[str, Any] = {
-        "identity": _IDENTITY,
         "operation_kind": "run.plan",
         "idempotency_key": "idem-1",
         "targets": (),
@@ -91,10 +153,10 @@ def _basic_ctx(**overrides: Any) -> policy.PolicyContext:
     fields.update(overrides)
     targets = fields.get("targets") or ()
     if targets and "resolved_target_workspaces" not in overrides:
-        identity = fields.get("identity")
+        identity = policy.resolve_operator_identity()
         workspace = identity.workspace_id if identity is not None else None
         fields["resolved_target_workspaces"] = tuple(workspace for _ in targets)
-    return policy.PolicyContext(**fields)
+    return policy.PolicyContext.for_configured_operator(**fields)
 
 
 def _run_targets() -> tuple[policy.TargetRef, ...]:
@@ -107,7 +169,7 @@ def _run_targets() -> tuple[policy.TargetRef, ...]:
 
 
 def test_resolve_operator_identity_missing_block_returns_none(tmp_foundry: FoundryPaths) -> None:
-    assert policy.resolve_operator_identity(tmp_foundry) is None
+    assert _REAL_RESOLVE_OPERATOR_IDENTITY(tmp_foundry) is None
 
 
 def test_resolve_operator_identity_incomplete_block_returns_none(tmp_foundry: FoundryPaths) -> None:
@@ -115,7 +177,7 @@ def test_resolve_operator_identity_incomplete_block_returns_none(tmp_foundry: Fo
     data.setdefault("foundry", {})
     data["foundry"]["operator_mcp"] = {"identity": {"user_id": "alice"}}  # missing workspace_id/roles
     dump_yaml(data, tmp_foundry.foundry_yaml)
-    assert policy.resolve_operator_identity(tmp_foundry) is None
+    assert _REAL_RESOLVE_OPERATOR_IDENTITY(tmp_foundry) is None
 
 
 def test_resolve_operator_identity_roles_not_list_returns_none(tmp_foundry: FoundryPaths) -> None:
@@ -125,12 +187,12 @@ def test_resolve_operator_identity_roles_not_list_returns_none(tmp_foundry: Foun
         "identity": {"user_id": "alice", "workspace_id": "default", "roles": "owner"}
     }
     dump_yaml(data, tmp_foundry.foundry_yaml)
-    assert policy.resolve_operator_identity(tmp_foundry) is None
+    assert _REAL_RESOLVE_OPERATOR_IDENTITY(tmp_foundry) is None
 
 
 def test_resolve_operator_identity_valid_block_resolves(tmp_foundry: FoundryPaths) -> None:
     _write_operator_identity(tmp_foundry, user_id="alice", workspace_id="default", roles=["owner"])
-    identity = policy.resolve_operator_identity(tmp_foundry)
+    identity = _REAL_RESOLVE_OPERATOR_IDENTITY(tmp_foundry)
     assert identity is not None
     assert identity.user_id == "alice"
     assert identity.workspace_id == "default"
@@ -217,7 +279,6 @@ def test_context_requires_effective_sensitivity_and_ceiling_no_default() -> None
     # positional/keyword argument), not a silently-permissive fallback.
     with pytest.raises(TypeError):
         policy.PolicyContext(
-            identity=_IDENTITY,
             operation_kind="run.plan",
             idempotency_key="idem-1",
         )  # type: ignore[call-arg]
@@ -226,7 +287,6 @@ def test_context_requires_effective_sensitivity_and_ceiling_no_default() -> None
 def test_context_rejects_target_count_mismatch_with_resolved_workspaces() -> None:
     with pytest.raises(ValueError):
         policy.PolicyContext(
-            identity=_IDENTITY,
             operation_kind="run.plan",
             idempotency_key="idem-1",
             effective_sensitivity="public",
@@ -234,6 +294,140 @@ def test_context_rejects_target_count_mismatch_with_resolved_workspaces() -> Non
             targets=_run_targets(),
             resolved_target_workspaces=(),  # missing entry -- H3
         )
+
+
+# ---------------------------------------------------------------------------
+# NEW-18 (security review round 3): PolicyContext.identity has no public
+# constructor field -- for_configured_operator is the sole sanctioned way
+# to obtain a context with a populated identity, and _check_identity_and_rbac
+# never trusts ctx.identity for the authorization decision regardless.
+# ---------------------------------------------------------------------------
+
+
+def test_policy_context_rejects_identity_kwarg() -> None:
+    """Layer 1: `identity` is `init=False` -- the public constructor cannot
+    ACCEPT an `identity=` keyword at all, let alone honor one. This is the
+    test that fails if Layer 1 is ever reverted (e.g. `identity` regains a
+    plain `init=True` field)."""
+    with pytest.raises(TypeError):
+        policy.PolicyContext(
+            identity=_IDENTITY,  # type: ignore[call-arg]
+            operation_kind="run.plan",
+            idempotency_key="idem-1",
+            effective_sensitivity="public",
+            sensitivity_ceiling="client_sensitive",
+        )
+
+
+def test_bare_construction_identity_defaults_to_none() -> None:
+    ctx = policy.PolicyContext(
+        operation_kind="run.plan",
+        idempotency_key="idem-1",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+    )
+    assert ctx.identity is None
+
+
+def test_for_configured_operator_populates_identity_from_config(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Layer 2: the ONE sanctioned constructor populates `identity` from
+    `resolve_operator_identity` -- proven here against the REAL
+    implementation (bypassing the module's default test patch) so this test
+    fails if `for_configured_operator` stops calling it, or calls something
+    else instead."""
+    monkeypatch.setattr(policy, "resolve_operator_identity", _REAL_RESOLVE_OPERATOR_IDENTITY)
+
+    # Before any identity is configured, the factory faithfully carries
+    # `None` through rather than substituting a permissive default.
+    ctx_none = policy.PolicyContext.for_configured_operator(
+        operation_kind="run.plan",
+        idempotency_key="idem-1",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        paths=tmp_foundry,
+    )
+    assert ctx_none.identity is None
+
+    _write_operator_identity(tmp_foundry, user_id="alice", workspace_id="ws-mine", roles=["owner"])
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="run.plan",
+        idempotency_key="idem-1",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        paths=tmp_foundry,
+    )
+    assert ctx.identity == _IDENTITY
+
+
+def test_layer3_denies_forged_identity_forced_via_setattr(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Layer 3 -- the actual guard: a forged `identity` forced onto an
+    already-built context via `object.__setattr__` (simulating a caller
+    that bypasses `for_configured_operator` entirely) is DENIED by BOTH
+    `evaluate_policy` and `authorize_operation` with `identity_denied`,
+    never authorized against the forged value. This is the test that fails
+    if Layer 3 is ever reverted to trusting `ctx.identity` directly."""
+    ctx = _basic_ctx(targets=_run_targets())
+    forged = _forge_identity(ctx, AuthIdentity("mallory", "ws-mine", ("owner",)))
+    assert forged.identity != ctx.identity
+
+    decision = policy.evaluate_policy(forged, paths=tmp_foundry)
+    assert decision.denied
+    assert decision.stage == "rbac"
+    assert decision.reason_code == "identity_denied"
+
+    issued = policy.mint_confirmation(forged)
+    exec_decision = policy.authorize_operation(
+        forged, confirmation_record=issued.record, presented_token=issued.token, paths=tmp_foundry
+    )
+    assert exec_decision.denied
+    assert exec_decision.stage == "rbac"
+    assert exec_decision.reason_code == "identity_denied"
+
+    # A forged identity that happens to be `None` is likewise never treated
+    # as "skip the check" -- it re-derives and evaluates on the REAL
+    # (configured) identity exactly as a bare, un-forged `ctx.identity is
+    # None` context would.
+    forged_none = _forge_identity(ctx, None)
+    decision_none = policy.evaluate_policy(forged_none, paths=tmp_foundry)
+    assert decision_none.allowed
+
+
+def test_forged_identity_cannot_produce_an_authorized_mint_confirmation(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """`mint_confirmation` has no `paths` parameter and cannot re-derive
+    identity itself, so it embeds a forged `ctx.identity` into the minted
+    record's `actor` block verbatim -- proving that record IS mintable.
+    What must NOT be possible is using that record to complete an
+    `authorize_operation` that returns `allowed=True`: `authorize_operation`
+    always re-runs `evaluate_policy` first, whose `rbac` stage independently
+    re-derives identity and denies the forgery before the confirmation
+    stage is ever reached, regardless of what the record's `actor` block
+    claims or whether the presented token/record binds correctly to it."""
+    ctx = _basic_ctx(targets=_run_targets())
+    forged = _forge_identity(ctx, AuthIdentity("mallory", "ws-mine", ("owner",)))
+
+    # The forged confirmation mints successfully (mint_confirmation cannot
+    # detect the forgery on its own) and its actor block reflects the
+    # forged identity, not the real configured one.
+    issued = policy.mint_confirmation(forged)
+    assert issued.record["actor"]["user_id"] == "mallory"
+
+    # Even presenting the SAME forged ctx/token/record combination back to
+    # authorize_operation -- the only way execution could proceed -- is
+    # denied at the rbac stage, never reaching (let alone passing) the
+    # confirmation stage the minted record would otherwise satisfy.
+    decision = policy.authorize_operation(
+        forged, confirmation_record=issued.record, presented_token=issued.token, paths=tmp_foundry
+    )
+    assert decision.denied
+    assert decision.allowed is False
+    assert decision.stage == "rbac"
+    assert decision.reason_code == "identity_denied"
 
 
 def test_context_rejects_non_json_primitive_input_payload() -> None:
@@ -361,8 +555,11 @@ def test_check_tool_name_rejects_unknown_and_wildcard() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_missing_identity_denied_with_identity_denied_code(tmp_foundry: FoundryPaths) -> None:
-    ctx = _basic_ctx(identity=None, targets=_run_targets())
+def test_missing_identity_denied_with_identity_denied_code(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: None)
+    ctx = _basic_ctx(targets=_run_targets(), resolved_target_workspaces=(None,))
     decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
     assert decision.denied
     assert decision.stage == "rbac"
@@ -375,20 +572,93 @@ def test_matching_resolved_target_workspace_is_not_denied(tmp_foundry: FoundryPa
     assert decision.allowed
 
 
-def test_rbac_denies_insufficient_role_for_mutating_kind(tmp_foundry: FoundryPaths) -> None:
-    ctx = _basic_ctx(identity=_VIEWER_IDENTITY)
+def test_rbac_denies_insufficient_role_for_mutating_kind(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _VIEWER_IDENTITY)
+    ctx = _basic_ctx()
     decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
     assert decision.denied
     assert decision.stage == "rbac"
     assert decision.reason_code == "rbac_denied"
 
 
-def test_rbac_allows_viewer_for_read_only_job_status(tmp_foundry: FoundryPaths) -> None:
-    ctx = _basic_ctx(
-        identity=_VIEWER_IDENTITY, operation_kind="job.status", targets=(policy.TargetRef("agent_job", "aj_1"),)
-    )
+def test_rbac_denies_viewer_for_read_only_job_status(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NEW-22: INVERTED from `test_rbac_allows_viewer_for_read_only_job_status`.
+
+    That test pinned behaviour that contradicted `api/auth/rbac.py`, which is
+    the single source of truth for role grants: it sets `"viewer": set()`
+    (zero permissions) and marks `run:read` as NOT granted to viewer. The old
+    `_READ_ROLES` nevertheless included `viewer`, and this test asserted that
+    divergence was correct. Per the standing rule "never pin unsafe behaviour
+    with a test", the assertion is inverted rather than the fix weakened.
+    """
+
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _VIEWER_IDENTITY)
+    ctx = _basic_ctx(operation_kind="job.status", targets=(policy.TargetRef("agent_job", "aj_1"),))
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.denied
+    assert decision.stage == "rbac"
+    assert decision.reason_code == "rbac_denied"
+
+
+def test_rbac_allows_reviewer_for_read_only_job_status(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The read grant still admits `reviewer`, which rbac.py DOES give
+    `run:read`. This pins that NEW-22 narrowed `_READ_ROLES` by exactly one
+    role (`viewer`) rather than collapsing it to owner/admin."""
+
+    reviewer = AuthIdentity("dave", "ws-mine", ("reviewer",))
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: reviewer)
+    ctx = _basic_ctx(operation_kind="job.status", targets=(policy.TargetRef("agent_job", "aj_1"),))
     decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
     assert decision.allowed
+
+
+def test_rbac_denies_researcher_for_agent_job_class_kinds(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NEW-22 core: `swarm.start`/`job.cancel`/`job.resume` are
+    `agent_job:launch`-class actions. rbac.py withholds `agent_job:launch`
+    from `researcher` explicitly, so the Operator MCP surface must too."""
+
+    researcher = AuthIdentity("erin", "ws-mine", ("researcher",))
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: researcher)
+    for kind, targets in (
+        ("swarm.start", (policy.TargetRef("run", "run_1"),)),
+        ("job.cancel", (policy.TargetRef("agent_job", "aj_1"),)),
+        ("job.resume", (policy.TargetRef("agent_job", "aj_1"),)),
+    ):
+        ctx = _basic_ctx(operation_kind=kind, targets=targets)
+        decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+        assert decision.denied, f"{kind} must deny researcher"
+        assert decision.stage == "rbac"
+        assert decision.reason_code == "rbac_denied"
+
+
+def test_rbac_still_allows_researcher_for_non_agent_job_mutations(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NEW-22 must not over-correct: researcher keeps the catalog/report-class
+    mutations rbac.py DOES grant it (`catalog:create`/`update`,
+    `report:create`/`update`)."""
+
+    researcher = AuthIdentity("erin", "ws-mine", ("researcher",))
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: researcher)
+    ctx = _basic_ctx(operation_kind="run.plan")
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.allowed
+
+
+def test_every_operation_kind_has_an_explicit_role_classification() -> None:
+    """Fail-closed invariant: a new `OPERATION_KINDS` member must be classified
+    in `_OPERATION_ROLES`, never silently inherit the researcher-inclusive
+    mutation grant."""
+
+    assert set(policy.OPERATION_KINDS) == set(policy._OPERATION_ROLES)
 
 
 # ---------------------------------------------------------------------------
@@ -396,26 +666,108 @@ def test_rbac_allows_viewer_for_read_only_job_status(tmp_foundry: FoundryPaths) 
 # ---------------------------------------------------------------------------
 
 
-def test_audit_unhealthy_blocks_mutating_operation(
-    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Already-probed + unhealthy: `get_health_state` reports a real prior
-    probe (`last_probe_at` set) that came back unhealthy -- `_check_audit_health`
-    takes the cheap "already probed" branch and must deny without
-    re-probing."""
-    already_probed_unhealthy = audit_service.AuditHealth(
+def _unhealthy_probe(_paths: FoundryPaths) -> audit_service.AuditHealth:
+    return audit_service.AuditHealth(
         healthy=False,
         last_probe_at="2026-01-01T00:00:00Z",
         last_success_at=None,
         error_detail="simulated",
     )
-    monkeypatch.setattr(audit_service, "get_health_state", lambda paths: already_probed_unhealthy)
+
+
+def _healthy_probe(_paths: FoundryPaths) -> audit_service.AuditHealth:
+    return audit_service.AuditHealth(
+        healthy=True,
+        last_probe_at="2026-01-01T00:00:01Z",
+        last_success_at="2026-01-01T00:00:01Z",
+        error_detail=None,
+    )
+
+
+def test_audit_unhealthy_blocks_mutating_operation(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A LIVE probe that comes back unhealthy denies the mutating operation.
+
+    NEW-19: this test previously seeded a persisted `get_health_state` row and
+    asserted the stage "must deny WITHOUT re-probing" -- i.e. it pinned the
+    very latching behaviour NEW-19 identifies as the defect. Rewritten to
+    drive the real probe instead; the recovery test below pins the behaviour
+    the old assertion made impossible.
+    """
+
+    monkeypatch.setattr(audit_service, "health_check", _unhealthy_probe)
     ctx = _basic_ctx(targets=_run_targets())
     decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
     assert decision.denied
     assert decision.stage == "audit_health"
     assert decision.reason_code == "audit_unhealthy"
     assert decision.retryable is True
+
+
+def test_audit_health_recovers_after_a_failed_probe(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NEW-19 core: `retryable=True` must be ACHIEVABLE.
+
+    Previously the first failed probe latched `healthy=False` into the
+    persisted row and the stage never re-probed, so a caller honouring
+    `retryable=True` could retry forever and never succeed. A later call must
+    now re-probe and pass once the audit store recovers.
+    """
+
+    ctx = _basic_ctx(targets=_run_targets())
+
+    monkeypatch.setattr(audit_service, "health_check", _unhealthy_probe)
+    first = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert first.denied
+    assert first.reason_code == "audit_unhealthy"
+    assert first.retryable is True
+
+    # The audit store comes back. The very next call must observe it.
+    monkeypatch.setattr(audit_service, "health_check", _healthy_probe)
+    second = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert second.allowed, "retryable=True was unachievable -- the failure latched"
+
+
+def test_audit_health_degradation_after_a_healthy_probe_is_detected(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The symmetric half of the latch: a store that degrades AFTER a healthy
+    probe must be caught. The old "probe once, then trust the row forever"
+    shape would have kept authorizing indefinitely."""
+
+    ctx = _basic_ctx(targets=_run_targets())
+
+    monkeypatch.setattr(audit_service, "health_check", _healthy_probe)
+    assert policy.evaluate_policy(ctx, paths=tmp_foundry).allowed
+
+    monkeypatch.setattr(audit_service, "health_check", _unhealthy_probe)
+    degraded = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert degraded.denied, "a store that degraded after a healthy probe was never re-checked"
+    assert degraded.reason_code == "audit_unhealthy"
+
+
+def test_audit_health_does_not_read_the_assume_healthy_persisted_default(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`get_health_state` returns `healthy=True` when no probe has ever run
+    ("assume healthy until proven otherwise"). That fail-open default must not
+    be reachable from the authorization path at all: even if it reports
+    healthy, a failing live probe still denies."""
+
+    monkeypatch.setattr(
+        audit_service,
+        "get_health_state",
+        lambda paths: audit_service.AuditHealth(
+            healthy=True, last_probe_at=None, last_success_at=None, error_detail=None
+        ),
+    )
+    monkeypatch.setattr(audit_service, "health_check", _unhealthy_probe)
+    ctx = _basic_ctx(targets=_run_targets())
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.denied
+    assert decision.reason_code == "audit_unhealthy"
 
 
 def test_audit_unhealthy_does_not_block_job_status(
@@ -596,11 +948,15 @@ def test_wrong_workspace_above_ceiling_and_genuinely_missing_target_share_one_de
         assert "detail" not in envelope
 
 
-def test_identity_denied_reserved_strictly_for_missing_identity(tmp_foundry: FoundryPaths) -> None:
+def test_identity_denied_reserved_strictly_for_missing_identity(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: None)
     missing_identity_decision = policy.evaluate_policy(
-        _basic_ctx(identity=None, targets=_run_targets(), resolved_target_workspaces=(None,)),
+        _basic_ctx(targets=_run_targets(), resolved_target_workspaces=(None,)),
         paths=tmp_foundry,
     )
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
     wrong_workspace_decision = policy.evaluate_policy(
         _basic_ctx(targets=_run_targets(), resolved_target_workspaces=("ws-other",)), paths=tmp_foundry
     )
@@ -664,19 +1020,20 @@ def test_preflight_passes_when_required_target_present(tmp_foundry: FoundryPaths
 
 
 def test_stage_order_is_capability_before_rbac_before_audit_health_before_guard_before_preflight(
-    tmp_foundry: FoundryPaths,
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A request that would fail EVERY stage must fail at the FIRST one
     (capability) -- proves the fixed order, not just that each stage works
     in isolation."""
 
-    ctx = _basic_ctx(identity=None, operation_kind="shell.exec")
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: None)
+    ctx = _basic_ctx(operation_kind="shell.exec")
     decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
     assert decision.stage == "capability"
     assert decision.reason_code == "operation_unknown"
 
     # Fix capability, still fails at rbac (identity missing) before audit/guard/preflight.
-    ctx2 = _basic_ctx(identity=None, operation_kind="swarm.start", targets=())
+    ctx2 = _basic_ctx(operation_kind="swarm.start", targets=())
     decision2 = policy.evaluate_policy(ctx2, paths=tmp_foundry)
     assert decision2.stage == "rbac"
 
@@ -781,8 +1138,9 @@ def test_evaluate_policy_internal_error_is_logged_without_leaking_exception_text
 # ---------------------------------------------------------------------------
 
 
-def test_mint_confirmation_requires_identity() -> None:
-    ctx = _basic_ctx(identity=None)
+def test_mint_confirmation_requires_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: None)
+    ctx = _basic_ctx()
     with pytest.raises(ValueError):
         policy.mint_confirmation(ctx)
 
@@ -855,7 +1213,7 @@ def test_verify_confirmation_revoked_status_denies_non_retryable_not_expired() -
         lambda ctx: dataclasses.replace(ctx, policy_snapshot_version="policy-order-v2"),
         lambda ctx: dataclasses.replace(ctx, effective_sensitivity="work_sensitive"),
         lambda ctx: dataclasses.replace(ctx, targets=(policy.TargetRef("run", "run_other"),)),
-        lambda ctx: dataclasses.replace(ctx, identity=_IDENTITY_OTHER_WORKSPACE),
+        lambda ctx: _forge_identity(ctx, _IDENTITY_OTHER_WORKSPACE),
         lambda ctx: dataclasses.replace(ctx, input_payload={"changed": True}),
     ],
     ids=["idempotency_key", "operation_kind", "policy_snapshot_version", "effective_sensitivity", "targets", "actor_workspace", "input_payload"],
@@ -1149,8 +1507,7 @@ def test_consume_confirmation_optional_ctx_binding_denies_mismatch() -> None:
 
 
 def test_mint_confirmation_rejects_unknown_operation_kind() -> None:
-    ctx = policy.PolicyContext(
-        identity=_IDENTITY,
+    ctx = policy.PolicyContext.for_configured_operator(
         operation_kind="shell.exec",
         idempotency_key="idem-1",
         effective_sensitivity="public",
@@ -1161,8 +1518,7 @@ def test_mint_confirmation_rejects_unknown_operation_kind() -> None:
 
 
 def test_mint_confirmation_rejects_unknown_target_kind() -> None:
-    ctx = policy.PolicyContext(
-        identity=_IDENTITY,
+    ctx = policy.PolicyContext.for_configured_operator(
         operation_kind="run.plan",
         idempotency_key="idem-1",
         effective_sensitivity="public",
@@ -1203,7 +1559,9 @@ def test_mint_confirmation_unexpected_failure_raises_sanitized_runtime_error(
 
 
 def test_bindings_match_returns_false_when_identity_is_none() -> None:
-    ctx = _basic_ctx(identity=None, targets=_run_targets(), resolved_target_workspaces=(None,))
+    ctx = _forge_identity(
+        _basic_ctx(targets=_run_targets(), resolved_target_workspaces=(None,)), None
+    )
     # A confirmation minted for a REAL identity, presented against a ctx
     # whose identity is None, must never spuriously match via a vacuous
     # {} == {} actor comparison.
@@ -1378,8 +1736,11 @@ def test_every_closed_reason_code_has_a_real_producer(
             _basic_ctx(targets=(policy.TargetRef("filesystem_path", "/x"),)), paths=tmp_foundry
         ).reason_code
     )
-    produced.add(policy.evaluate_policy(_basic_ctx(identity=None), paths=tmp_foundry).reason_code)
-    produced.add(policy.evaluate_policy(_basic_ctx(identity=_VIEWER_IDENTITY), paths=tmp_foundry).reason_code)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: None)
+    produced.add(policy.evaluate_policy(_basic_ctx(), paths=tmp_foundry).reason_code)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _VIEWER_IDENTITY)
+    produced.add(policy.evaluate_policy(_basic_ctx(), paths=tmp_foundry).reason_code)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
     produced.add(
         policy.evaluate_policy(
             _basic_ctx(targets=_run_targets(), resolved_target_workspaces=("ws-other",)), paths=tmp_foundry
@@ -1418,18 +1779,14 @@ def test_every_closed_reason_code_has_a_real_producer(
         policy.evaluate_policy(_basic_ctx(operation_kind="swarm.start", targets=()), paths=tmp_foundry).reason_code
     )
     with pytest.MonkeyPatch.context() as mp:
-        # NEW-3: `tmp_foundry` may already have been probed by an earlier
-        # call in this same test (self-healing on first mutating call) --
-        # monkeypatch `get_health_state` directly (the "already probed,
-        # unhealthy" branch) rather than `health_check`, so this producer
-        # is independent of prior probe state.
-        mp.setattr(
-            audit_service,
-            "get_health_state",
-            lambda paths: audit_service.AuditHealth(
-                healthy=False, last_probe_at="2026-01-01T00:00:00Z", last_success_at=None, error_detail="x"
-            ),
-        )
+        # NEW-19: the audit-health stage now runs a LIVE probe on every
+        # confirmation-requiring call rather than latching a persisted row,
+        # so `health_check` is the producer to drive here. (This previously
+        # patched `get_health_state` to reach the "already probed, unhealthy"
+        # branch -- a branch that no longer exists, because trusting it was
+        # the defect.) Patching the probe is also inherently independent of
+        # prior probe state, which was the original reason for the detour.
+        mp.setattr(audit_service, "health_check", _unhealthy_probe)
         produced.add(
             policy.evaluate_policy(_basic_ctx(targets=_run_targets()), paths=tmp_foundry).reason_code
         )

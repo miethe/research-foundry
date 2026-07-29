@@ -8,7 +8,9 @@ This module is the SOLE owner of:
   ``tests/unit/test_operator_mcp_policy.py``'s schema round-trip check);
 * trusted local actor/workspace identity resolution (OPM-OQ-1): an explicit
   ``foundry.operator_mcp.identity`` config block, never a caller-supplied
-  workspace, never a request-body default;
+  workspace, never a request-body default -- STRUCTURALLY enforced as of
+  NEW-18 (security review round 3), not merely by convention: see "Identity
+  is structurally non-forgeable" below;
 * the FIXED policy check order (decisions-block invariant, this plan's
   instructions): ``capability -> RBAC -> audit-health -> guard -> preflight
   -> confirmation binding`` -- :func:`evaluate_policy` runs the first five
@@ -169,14 +171,80 @@ pass every test in this phase while still permitting two concurrent callers
 presenting the same token to both observe `status == "issued"` and both
 win. This paragraph is the frozen acceptance bar for P2's closeout.
 
-**Serve-extra import boundary**: :class:`~research_foundry.api.auth.provider.AuthIdentity`
-is imported only under ``TYPE_CHECKING`` for annotations and lazily inside
-:func:`resolve_operator_identity` at call time -- mirrors
-``agent_job_service.py``'s own documented reason (``api.auth.provider``
-module-imports ``starlette``, a ``[serve]``-tier dependency, so a
-module-level import here would make this policy module -- usable from a
-plain local stdio process with no HTTP server running -- hard-require the
-``serve`` extra just to import).
+**Serve-extra import boundary** (NEW-23): this module -- usable from a plain
+local stdio process with no HTTP server running -- must both IMPORT and
+FUNCTION in a base install without the ``[serve]`` extra.  The previous
+TYPE_CHECKING-plus-lazy-import arrangement documented here did NOT achieve
+that, in two independent ways:
+
+1. ``services.audit_service`` (a module-level import below) itself imported
+   ``api.auth.provider``, so importing this module raised ``ImportError``
+   regardless of how careful *this* file was; and
+2. :func:`resolve_operator_identity` CONSTRUCTS an
+   :class:`~research_foundry.auth_identity.AuthIdentity` at runtime, so even
+   a clean import would still have failed on first real use -- the lazy
+   import merely moved the failure later.
+
+Both are now fixed structurally: :class:`AuthIdentity` lives in the
+serve-free :mod:`research_foundry.auth_identity` (``api.auth.provider``
+re-exports that exact class object, so all existing imports and
+``isinstance`` checks are unaffected), and this module imports it at top
+level -- deliberately NOT under ``TYPE_CHECKING`` -- so the serve-gated path
+cannot silently return.  ``tests/unit/test_operator_mcp_serve_extra_boundary.py``
+pins both halves in a subprocess with fastapi/uvicorn/starlette blocked.
+
+**Identity is structurally non-forgeable (NEW-18, security review round
+3)**: round 2 left ``PolicyContext.identity`` as an ordinary caller-supplied
+constructor field on a frozen dataclass -- the decisions-block rated this
+*critical* ("no default workspace on mutation"; configured-local identity
+ONLY), but the mitigation was PROSE, not SHAPE: any caller could construct
+``PolicyContext(identity=AuthIdentity("attacker", "any-ws", ("owner",)),
+...)`` directly and ``_check_identity_and_rbac`` would authorize against it.
+Three layers close this, matching in severity what a single ``identity:
+AuthIdentity | None`` field previously tried to guarantee alone:
+
+1. **Layer 1 (shape)**: ``identity`` is now ``field(init=False,
+   default=None)`` -- ``PolicyContext(...)`` can no longer ACCEPT an
+   ``identity=`` keyword at all; every context starts with ``identity is
+   None`` until something populates it via ``object.__setattr__`` (the
+   dataclass stays frozen).
+2. **Layer 2 (the one sanctioned constructor)**: :meth:`PolicyContext.for_configured_operator`
+   is the ONLY public way to obtain a context whose ``identity`` is
+   populated -- it builds the instance from every OTHER field, then calls
+   :func:`resolve_operator_identity` and installs the result. It cannot be
+   asked to install a caller-supplied identity; there is no parameter for
+   one.
+3. **Layer 3 (the layer BELOW -- the actual guard)**: even Layer 2 is
+   defense in depth, not the primary guard, because a frozen dataclass can
+   still be tampered with via ``object.__setattr__`` by anything with
+   direct Python access to an already-built instance.
+   :func:`_check_identity_and_rbac` -- the sole function that turns identity
+   into an authorization decision -- therefore NEVER reads ``ctx.identity``
+   as an input to that decision. It calls :func:`resolve_operator_identity`
+   itself, fresh, on every evaluation, and uses ONLY that derived value for
+   the workspace/RBAC checks below. ``ctx.identity`` participates only as an
+   EQUALITY COMMITMENT: if it is not ``None`` and disagrees with the derived
+   identity, that state is only reachable by bypassing Layer 2, and it is
+   denied ``identity_denied`` -- the SAME code and message as a wholly
+   missing identity, never a distinguishing detail (H6's no-existence-leak
+   convention extended to this case: an attacker forcing a value onto
+   ``ctx.identity`` learns nothing about whether it was "close" to correct).
+
+The net property: **no value forced onto ``ctx.identity``, by any means, can
+ever grant more than the identity already configured in
+``foundry.operator_mcp.identity`` would grant on its own** -- at best a
+forged value exactly matches configured truth (in which case nothing was
+actually forged), and at worst Layer 3 denies it outright. This also means
+:func:`mint_confirmation` -- which still reads ``ctx.identity`` directly to
+populate a confirmation record's ``actor`` block, and does NOT itself
+re-derive identity (it has no ``paths`` parameter and is documented as
+callable only after an already-successful :func:`evaluate_policy`) -- cannot
+be used to mint an identity-forged confirmation that later authorizes
+anything: :func:`authorize_operation` always re-runs :func:`evaluate_policy`
+first, so a forged ``ctx.identity`` is caught at the ``rbac`` stage BEFORE
+the confirmation stage is ever reached, regardless of what the minted
+record's ``actor`` block says. A confirmation minted against a forged
+context is syntactically valid but semantically inert.
 
 **Zero overlap with the read-only Knowledge MCP** (decisions-block section
 0, invariant 6): the eight ``rf-knowledge-mcp`` tool names (``search``,
@@ -202,16 +270,22 @@ import re
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Literal, Mapping
+from typing import Any, Literal, Mapping
 
+from research_foundry.auth_identity import AuthIdentity
 from research_foundry.config import FoundryConfig
 from research_foundry.errors import ExitCode
 from research_foundry.paths import FoundryPaths
 from research_foundry.services import audit_service, governance
 from research_foundry.services.export_service import SENSITIVITY_ORDER
 
-if TYPE_CHECKING:
-    from research_foundry.api.auth.provider import AuthIdentity
+# NEW-23: `AuthIdentity` is imported at module level from the serve-free
+# `research_foundry.auth_identity`, NOT from `api.auth.provider` (which drags
+# in the `[serve]` extra via `api/__init__.py`). It is a plain top-level
+# import rather than a TYPE_CHECKING/lazy one precisely so this module cannot
+# silently regress to the serve-gated path: `resolve_operator_identity()`
+# CONSTRUCTS an AuthIdentity at runtime, so a type-only import would let the
+# module import cleanly in a base install and then fail on first real use.
 
 # NEW-13: internal_error was previously silent (zero telemetry) -- a
 # malformed config/governance.yaml or a database error becomes a clean
@@ -247,6 +321,8 @@ __all__ = [
     "verify_confirmation",
     "consume_confirmation",
     "build_error",
+    "AUDIT_DELIVERY_STATUSES",
+    "build_audit_delivery",
 ]
 
 # ---------------------------------------------------------------------------
@@ -380,11 +456,65 @@ _REQUIRED_TARGET_KINDS: dict[str, frozenset[str]] = {
     "writeback.preview": frozenset({"evidence_bundle"}),
 }
 
-# RBAC: mutating kinds require a "write-capable" role; the sole read kind
-# (job.status) requires only SOME assigned role (mirrors rbac.py's
-# viewer-has-zero-permissions convention: an empty roles tuple still denies).
+# RBAC: role grants are aligned with `api/auth/rbac.py`'s `ROLE_PERMISSIONS`
+# matrix, which is the single source of truth for what each role may do.
+#
+# NEW-22 (security review round 3) corrected TWO divergences here. The comment
+# this replaces was factually wrong about both -- it asserted the read grant
+# "mirrors rbac.py's viewer-has-zero-permissions convention" while the set it
+# annotated did the opposite:
+#
+#  1. Agent-job-class kinds (`swarm.start`, `job.cancel`, `job.resume`) are
+#     `agent_job:launch`-class actions. rbac.py grants `agent_job:launch` to
+#     owner/admin ONLY -- `researcher` is explicitly excluded there
+#     ("# agent_job:launch NOT granted to researcher") and its forward-compat
+#     note requires `Depends(require_role("owner", "admin"))` on EVERY
+#     agent-job mutation route. Granting `researcher` these kinds was a
+#     privilege escalation relative to the HTTP surface's own rule.
+#     (`swarm.start` targets a `run`, not an `agent_job`, so this class cannot
+#     be derived from `_REQUIRED_TARGET_KINDS` -- it is launch-class by what it
+#     DOES, not by what it points at.)
+#  2. The read kind (`job.status`) granted `viewer`. rbac.py sets
+#     `"viewer": set()` -- zero permissions -- and marks `run:read` as NOT
+#     granted to viewer. Including `viewer` therefore contradicted the very
+#     convention the old comment cited.
+_AGENT_JOB_ROLES: frozenset[str] = frozenset({"owner", "admin"})
 _MUTATION_ROLES: frozenset[str] = frozenset({"owner", "admin", "researcher"})
-_READ_ROLES: frozenset[str] = frozenset({"owner", "admin", "researcher", "reviewer", "viewer"})
+_READ_ROLES: frozenset[str] = frozenset({"owner", "admin", "researcher", "reviewer"})
+
+#: EXHAUSTIVE operation-kind -> required-roles map. Deliberately exhaustive
+#: rather than "default to `_MUTATION_ROLES`": a permissive default is exactly
+#: the fail-open class that recurred through every prior review round. Adding a
+#: new member to `OPERATION_KINDS` without classifying it here raises at import
+#: time (see the completeness check below) instead of silently inheriting the
+#: researcher-inclusive grant.
+_OPERATION_ROLES: dict[str, frozenset[str]] = {
+    "run.plan": _MUTATION_ROLES,
+    "swarm.start": _AGENT_JOB_ROLES,
+    "job.status": _READ_ROLES,
+    "job.cancel": _AGENT_JOB_ROLES,
+    "job.resume": _AGENT_JOB_ROLES,
+    "external_report.import": _MUTATION_ROLES,
+    "source.ingest": _MUTATION_ROLES,
+    "run.extract": _MUTATION_ROLES,
+    "run.claim_map": _MUTATION_ROLES,
+    "run.synthesize": _MUTATION_ROLES,
+    "run.verify": _MUTATION_ROLES,
+    "run.bundle": _MUTATION_ROLES,
+    # `writeback.preview` is a PREVIEW, not `report:publish` (which rbac.py
+    # withholds from researcher). It additionally passes the same
+    # `*_writeback_requires_review` guard rules as every other writeback, so
+    # researcher-initiated previews still cannot self-approve.
+    "writeback.preview": _MUTATION_ROLES,
+}
+
+_ALL_OPERATION_KINDS: set[str] = set(OPERATION_KINDS)
+_UNCLASSIFIED_OPERATION_KINDS: set[str] = _ALL_OPERATION_KINDS - set(_OPERATION_ROLES)
+if _UNCLASSIFIED_OPERATION_KINDS:  # pragma: no cover - import-time invariant
+    raise RuntimeError(
+        "operator_mcp_policy: every OPERATION_KINDS member must have an explicit "
+        f"_OPERATION_ROLES entry; unclassified: {sorted(_UNCLASSIFIED_OPERATION_KINDS)!r}"
+    )
 
 _TRACEBACK_LIKE = re.compile(r'(?i)traceback|site-packages|File "[^"]*", line \d+')
 _ERROR_MESSAGE_MAX = 300
@@ -511,9 +641,18 @@ class PolicyContext:
     `no_mixed_personal_work_bundle` block-severity rules to fire through this
     contract exactly as they do for run-level guard checks -- REUSE, not a
     fork, of `governance.guard_check`.
+
+    NEW-18 (security review round 3): `identity` is `init=False` -- there is
+    NO public way to construct a `PolicyContext` with a caller-supplied
+    identity. Use :meth:`for_configured_operator`, the ONE sanctioned
+    construction path, which populates it from :func:`resolve_operator_identity`.
+    See the module docstring's "Identity is structurally non-forgeable"
+    paragraph for the full three-layer rationale, including why even THIS
+    field being unforgeable is defense in depth rather than the primary
+    guard (`_check_identity_and_rbac` never trusts this field either way).
     """
 
-    identity: "AuthIdentity | None"
+    identity: "AuthIdentity | None" = field(init=False, default=None)
     operation_kind: str
     idempotency_key: str
     effective_sensitivity: str
@@ -600,6 +739,69 @@ class PolicyContext:
 
     def canonical_digest(self) -> str:
         return hashlib.sha256(self.canonical_json().encode("utf-8")).hexdigest()
+
+    @classmethod
+    def for_configured_operator(
+        cls,
+        *,
+        operation_kind: str,
+        idempotency_key: str,
+        effective_sensitivity: str,
+        sensitivity_ceiling: str,
+        targets: tuple["TargetRef", ...] = (),
+        input_payload: Mapping[str, Any] | None = None,
+        policy_snapshot_version: str = "policy-order-v1",
+        resolved_target_workspaces: tuple[str | None, ...] = (),
+        writeback_targets: tuple[str, ...] = (),
+        model_provider: str | None = None,
+        source_sensitivities: tuple[str, ...] = (),
+        paths: "FoundryPaths | None" = None,
+        config: "FoundryConfig | None" = None,
+    ) -> "PolicyContext":
+        """THE one sanctioned way to construct a `PolicyContext` with a
+        populated `identity` (NEW-18 Layer 2, security review round 3).
+
+        Every keyword argument is identical to this dataclass's own fields
+        MINUS `identity` (which cannot be supplied here, or anywhere else --
+        Layer 1: `identity` is `init=False`) PLUS `paths`/`config`, threaded
+        straight through to :func:`resolve_operator_identity`. There is
+        deliberately no parameter that lets a caller pass an identity
+        through this factory.
+
+        This does NOT itself run any policy stage -- callers still call
+        :func:`evaluate_policy`/:func:`authorize_operation` afterward exactly
+        as before. It exists ONLY to close the public identity-injection
+        door: the `identity` on the returned instance is always whatever
+        `resolve_operator_identity(paths, config=config)` resolves right
+        now (including `None` when no/incomplete config block exists) --
+        never a caller-supplied value, by construction.
+
+        NEW-18 Layer 3 note: even this factory is defense in depth, not the
+        primary guard -- :func:`_check_identity_and_rbac` (the actual
+        authorization stage) independently RE-DERIVES identity from config
+        and never trusts whatever ends up on `ctx.identity`, so a
+        `PolicyContext` built any other way (e.g. `object.__setattr__`
+        directly on an already-built instance) still cannot be authorized
+        against a forged identity. See the module docstring's "Identity is
+        structurally non-forgeable" paragraph.
+        """
+
+        instance = cls(
+            operation_kind=operation_kind,
+            idempotency_key=idempotency_key,
+            effective_sensitivity=effective_sensitivity,
+            sensitivity_ceiling=sensitivity_ceiling,
+            targets=targets,
+            input_payload=input_payload if input_payload is not None else {},
+            policy_snapshot_version=policy_snapshot_version,
+            resolved_target_workspaces=resolved_target_workspaces,
+            writeback_targets=writeback_targets,
+            model_provider=model_provider,
+            source_sensitivities=source_sensitivities,
+        )
+        identity = resolve_operator_identity(paths, config=config)
+        object.__setattr__(instance, "identity", identity)
+        return instance
 
 
 @dataclass(frozen=True)
@@ -712,8 +914,6 @@ def resolve_operator_identity(
     if not isinstance(roles, list):
         return None
 
-    from research_foundry.api.auth.provider import AuthIdentity  # lazy: see module docstring
-
     return AuthIdentity(
         user_id=user_id, workspace_id=workspace_id, roles=tuple(str(r) for r in roles)
     )
@@ -811,9 +1011,29 @@ def _check_capability(ctx: PolicyContext, _paths: FoundryPaths) -> PolicyDecisio
     return PolicyDecision(True, "capability")
 
 
-def _check_identity_and_rbac(ctx: PolicyContext, _paths: FoundryPaths) -> PolicyDecision:
-    identity = ctx.identity
-    if identity is None or not identity.user_id or not identity.workspace_id:
+def _check_identity_and_rbac(ctx: PolicyContext, paths: FoundryPaths) -> PolicyDecision:
+    # NEW-18 (Layer 3, "the layer below" -- security review round 3): this
+    # is the ONLY function that turns identity into an authorization
+    # decision, and it NEVER trusts `ctx.identity` for that decision. Layers
+    # 1/2 (identity is `init=False`; `PolicyContext.for_configured_operator`
+    # is the sole public constructor that populates it) already close the
+    # ordinary injection door, but a frozen dataclass instance can still be
+    # tampered with via `object.__setattr__` by anything with direct Python
+    # access to it. The decision is therefore computed ENTIRELY from a
+    # FRESH `resolve_operator_identity` call against configured local
+    # config -- `ctx.identity` participates only as an equality commitment
+    # checked below, never as an input to what gets authorized.
+    identity = resolve_operator_identity(paths)
+    if identity is None:
+        return PolicyDecision(False, "rbac", "identity_denied", retryable=False)
+    if ctx.identity is not None and ctx.identity != identity:
+        # `ctx.identity` disagrees with the freshly-derived, configured
+        # identity -- reachable only by bypassing `for_configured_operator`
+        # (e.g. `object.__setattr__` on an already-built, frozen instance).
+        # Fail closed with the SAME reason code as a wholly missing
+        # identity, and no distinguishing detail (H6's no-existence-leak
+        # convention extended here: an attacker forcing a value onto
+        # `ctx.identity` must learn nothing about how close it was).
         return PolicyDecision(False, "rbac", "identity_denied", retryable=False)
 
     # H3/H6: every declared target's resolved owning workspace MUST match
@@ -826,7 +1046,13 @@ def _check_identity_and_rbac(ctx: PolicyContext, _paths: FoundryPaths) -> Policy
         if owning_workspace is None or owning_workspace != identity.workspace_id:
             return PolicyDecision(False, "rbac", "not_found", retryable=False)
 
-    required_roles = _READ_ROLES if ctx.operation_kind in CONFIRMATION_NOT_REQUIRED_KINDS else _MUTATION_ROLES
+    # NEW-22: per-kind grants from the EXHAUSTIVE `_OPERATION_ROLES` map, never
+    # a two-way read/mutate split with a permissive default. An unclassified
+    # kind is impossible at import time, but if one ever reaches here it denies
+    # rather than falling through to the researcher-inclusive set.
+    required_roles = _OPERATION_ROLES.get(ctx.operation_kind)
+    if required_roles is None:
+        return PolicyDecision(False, "rbac", "rbac_denied", retryable=False)
     if not set(identity.roles) & required_roles:
         return PolicyDecision(False, "rbac", "rbac_denied", retryable=False)
     return PolicyDecision(True, "rbac")
@@ -850,9 +1076,32 @@ def _check_audit_health(ctx: PolicyContext, paths: FoundryPaths) -> PolicyDecisi
     # overwhelmingly common case) self-heals silently on its own first
     # mutating call; a genuinely degraded audit store is now caught on that
     # SAME first call instead of never.
-    state = audit_service.get_health_state(paths)
-    if state.last_probe_at is None:
-        state = audit_service.health_check(paths)
+    # NEW-19 (security review round 3): the round-2 NEW-3 fix OVERCORRECTED.
+    # It probed only when `last_probe_at is None`, then trusted the persisted
+    # row forever after. That latched in BOTH directions:
+    #
+    #   * once a probe failed, every later call reused the stored
+    #     `healthy=False` and never re-probed -- so the operation was
+    #     permanently denied and the `retryable=True` this branch returns was
+    #     UNACHIEVABLE (the caller could retry forever and never recover, even
+    #     after the audit store came back); and
+    #   * symmetrically, once a probe succeeded the stored `healthy=True` was
+    #     reused forever, so a store that degraded AFTER that first probe was
+    #     never caught -- the same "healthy forever" fail-open NEW-3 set out
+    #     to close, merely relocated from "never probed" to "probed once".
+    #
+    # `health_check` is a cheap, idempotent, never-raising write-then-read
+    # probe against the local audit store, and this stage is reached only for
+    # confirmation-requiring (privileged/mutating) kinds -- `job.status`, the
+    # sole read kind, returned above. Probing unconditionally on each such
+    # call therefore costs one small local upsert on an operation that is
+    # about to launch a swarm/agent job, and in exchange removes the latch in
+    # both directions: recovery is detected on the very next call (making
+    # `retryable=True` honest), and degradation is detected immediately rather
+    # than never. It also removes any dependence on `get_health_state`'s
+    # "assume healthy until proven otherwise" default, which is a fail-open
+    # shape we should not be reading from on an authorization path at all.
+    state = audit_service.health_check(paths)
     if not state.healthy:
         return PolicyDecision(False, "audit_health", "audit_unhealthy", retryable=True)
     return PolicyDecision(True, "audit_health")
@@ -1086,6 +1335,18 @@ def mint_confirmation(ctx: PolicyContext, *, now: datetime | None = None) -> Con
     member of :data:`TARGET_KINDS` (finding L3 defense-in-depth -- mint is
     never reachable without a resolved identity/valid enums in the real
     call flow, but this guards against a programming-error direct call).
+
+    NEW-18 note: this function has no `paths` parameter and therefore
+    cannot re-derive identity the way :func:`_check_identity_and_rbac` does
+    -- it embeds whatever `ctx.identity` currently holds into the minted
+    record's `actor` block verbatim. This is safe DESPITE that, not because
+    `ctx.identity` is trusted here: :func:`authorize_operation` always
+    re-runs :func:`evaluate_policy` (whose `rbac` stage independently
+    re-derives and validates identity) BEFORE it ever reaches the
+    confirmation stage that would consume a record minted here. A record
+    minted against a `ctx` carrying a forged identity is therefore
+    syntactically valid but semantically inert -- it can never back an
+    `authorize_operation` call that returns `allowed=True`.
 
     `now` is a TEST-ONLY clock-injection seam (finding M2) -- P2/P5 MUST
     NEVER thread a caller-/request-supplied timestamp through it; doing so
@@ -1474,6 +1735,65 @@ def build_error(
         "receipt_ref": receipt_ref,
         "occurred_at": _iso_utc(moment),
     }
+    if safe_detail:
+        payload["detail"] = safe_detail
+    return payload
+
+
+#: Closed `audit_delivery.status` vocabulary (mirrors `$defs.audit_delivery`
+#: in the receipt schema).
+AUDIT_DELIVERY_STATUSES: frozenset[str] = frozenset({"delivered", "degraded", "unavailable"})
+
+#: `$defs.audit_delivery.audit_event_id` bound in the receipt schema.
+_AUDIT_EVENT_ID_MAX = 128
+
+
+def build_audit_delivery(
+    status: str,
+    *,
+    audit_event_id: str | None = None,
+    detail: str | None = None,
+    config: FoundryConfig | None = None,
+) -> dict[str, Any]:
+    """Build a schema-valid `audit_delivery` block with a BOUNDED, REDACTED
+    `detail` (finding NEW-21, security review round 3).
+
+    `audit_delivery.detail` describes a failed/degraded audit write, so its
+    natural producer is `str(exc)` -- which is exactly how a raw traceback,
+    a `site-packages` path, or a secret embedded in an exception message
+    reaches a durable receipt. That violates AC OPM-7's bounded/redacted
+    requirement, and the schema previously declared the field as a plain
+    `type: string, maxLength: 500` with no guard at all.
+
+    This routes `detail` through the SAME pipeline the error envelope uses --
+    :func:`_redact_and_bound`, i.e. `governance.redact_payload` then the
+    `_TRACEBACK_LIKE` strip then the `_ERROR_DETAIL_MAX` cap -- so a caller
+    that passes `str(exc)` still cannot land unredacted text in a receipt.
+    The receipt schema additionally carries the same negative traceback
+    pattern as `operator_mcp_error`'s `message`/`detail`, so a producer that
+    bypasses this helper fails validation rather than succeeding quietly.
+
+    Raises `ValueError` for an unknown `status` or an over-long
+    `audit_event_id` (both are caller programming errors, and this module's
+    convention -- see :func:`build_error` -- is to fail loudly on them rather
+    than emit a silently-malformed payload).
+    """
+
+    if status not in AUDIT_DELIVERY_STATUSES:
+        raise ValueError(f"unknown audit_delivery status: {status!r}")
+    if audit_event_id is not None:
+        if not isinstance(audit_event_id, str):
+            raise ValueError("audit_event_id must be a string or None")
+        if len(audit_event_id) > _AUDIT_EVENT_ID_MAX:
+            raise ValueError(
+                f"audit_event_id exceeds the schema bound of {_AUDIT_EVENT_ID_MAX} characters"
+            )
+
+    payload: dict[str, Any] = {
+        "status": status,
+        "audit_event_id": audit_event_id,
+    }
+    safe_detail = _redact_and_bound(detail, config=config)
     if safe_detail:
         payload["detail"] = safe_detail
     return payload

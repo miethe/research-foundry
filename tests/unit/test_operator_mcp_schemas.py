@@ -265,6 +265,114 @@ def test_receipt_terminal_completed_forbids_reason_code() -> None:
     assert _errors("operator_mcp_receipt", instance)
 
 
+def test_audit_delivery_detail_rejects_a_raw_traceback() -> None:
+    """NEW-21: `audit_delivery.detail`'s natural producer is `str(exc)`, and
+    the field previously carried no traceback guard at all. A raw traceback
+    must now fail validation."""
+
+    instance = _valid_terminal_receipt(status="denied", denial_reason_code="internal_error")
+    instance["audit_delivery"] = {
+        "status": "unavailable",
+        "audit_event_id": None,
+        "detail": 'Traceback (most recent call last):\n  File "/x/y.py", line 12, in write\n    raise OSError',
+    }
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_audit_delivery_detail_rejects_site_packages_path() -> None:
+    """The guard mirrors the error envelope's, which also blocks
+    `site-packages` paths (filesystem-layout disclosure)."""
+
+    instance = _valid_terminal_receipt(status="denied", denial_reason_code="internal_error")
+    instance["audit_delivery"] = {
+        "status": "degraded",
+        "audit_event_id": None,
+        "detail": "failed in /opt/venv/lib/python3.14/site-packages/foo/bar.py",
+    }
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_audit_delivery_builder_output_validates_even_for_a_real_traceback() -> None:
+    """The producer half of NEW-21: `build_audit_delivery()` must redact a
+    genuine traceback so the result still validates against the tightened
+    schema. This pins that the code-side pipeline and the schema-side guard
+    agree -- if they diverged, this test fails."""
+
+    import traceback as _traceback
+
+    from research_foundry.services.operator_mcp_policy import build_audit_delivery
+
+    try:
+        raise OSError("audit store unreachable at /var/secrets/db.sock")
+    except OSError:
+        raw = _traceback.format_exc()
+
+    assert "Traceback" in raw, "precondition: the raw text really is a traceback"
+
+    block = build_audit_delivery("unavailable", audit_event_id=None, detail=raw)
+    instance = _valid_terminal_receipt(status="denied", denial_reason_code="internal_error")
+    instance["audit_delivery"] = block
+    assert not _errors("operator_mcp_receipt", instance), block
+
+
+def test_audit_delivery_builder_rejects_unknown_status_and_overlong_event_id() -> None:
+    """Fail-loud on caller programming errors rather than emitting a
+    silently-malformed block (same convention as `build_error`)."""
+
+    import pytest as _pytest
+
+    from research_foundry.services.operator_mcp_policy import build_audit_delivery
+
+    with _pytest.raises(ValueError):
+        build_audit_delivery("totally_unknown_status")
+    with _pytest.raises(ValueError):
+        build_audit_delivery("delivered", audit_event_id="x" * 129)
+
+
+def test_receipt_denial_reason_code_rejects_value_outside_closed_enum() -> None:
+    """NEW-20 negative fixture: `denial_reason_code` was declared as an OPEN
+    string (`type: [string, "null"]`, `maxLength: 64`) while both the schema
+    description and the phase completion note claimed a closed enum. An
+    arbitrary code must now be REJECTED."""
+
+    instance = _valid_terminal_receipt(status="denied", denial_reason_code="totally_made_up_code")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_denial_reason_code_rejects_near_miss_of_a_real_code() -> None:
+    """A near-miss (valid code with a suffix) must also be rejected -- this is
+    what an open `maxLength: 64` string would have silently accepted."""
+
+    instance = _valid_terminal_receipt(status="denied", denial_reason_code="guard_blocked_extra")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_denial_reason_code_enum_matches_code_closed_reason_codes() -> None:
+    """Drift guard: the schema's closed enum and
+    `operator_mcp_policy.CLOSED_REASON_CODES` are duplicated by value, so pin
+    them to each other. If someone adds a reason code in one place only, this
+    fails instead of silently reopening the vocabulary."""
+
+    from research_foundry.services.operator_mcp_policy import CLOSED_REASON_CODES
+
+    schema = SchemaRegistry().get("operator_mcp_receipt")
+    terminal = schema["$defs"]["terminal_receipt"]["properties"]["denial_reason_code"]
+    schema_codes = {c for c in terminal["enum"] if c is not None}
+    assert None in terminal["enum"], "null must remain a member (completed/canceled require it)"
+    assert schema_codes == set(CLOSED_REASON_CODES)
+
+
+def test_receipt_every_closed_reason_code_is_accepted() -> None:
+    """The enum must not be narrower than the code's vocabulary either -- every
+    real reason code has to validate on a denied receipt."""
+
+    from research_foundry.services.operator_mcp_policy import CLOSED_REASON_CODES
+
+    for code in sorted(CLOSED_REASON_CODES):
+        instance = _valid_terminal_receipt(status="denied", denial_reason_code=code)
+        assert not _errors("operator_mcp_receipt", instance), f"{code} should validate"
+
+
 def test_receipt_checkpoint_converged_requires_null_next_action_index() -> None:
     instance = _valid_checkpoint(status="converged")  # next_action_index still 1, non_cancelable still False-ok but index wrong
     assert _errors("operator_mcp_receipt", instance)

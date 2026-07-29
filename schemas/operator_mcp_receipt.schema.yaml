@@ -76,8 +76,22 @@ $defs:
         type: [string, "null"]
         maxLength: 128
       detail:
+        description: >-
+          Optional bounded, redacted supplementary detail about the audit
+          delivery attempt -- never a stack trace, secret, or unrestricted
+          path. NEW-21 (security review round 3): this was previously an
+          unguarded `type: string, maxLength: 500`, while its natural
+          producer is `str(exc)` from a failed audit write -- which violates
+          AC OPM-7's bounded/redacted requirement. It now carries the SAME
+          traceback guard as `operator_mcp_error.schema.yaml`'s `message`
+          and `detail`. Producers MUST route through
+          `operator_mcp_policy.build_audit_delivery()`, which applies the
+          same `redact_payload` -> traceback-strip -> cap pipeline as the
+          error envelope.
         type: string
         maxLength: 500
+        not:
+          pattern: "(?i)traceback|site-packages|File \"[^\"]*\", line \\d+"
   operation_receipt:
     type: object
     additionalProperties: false
@@ -355,8 +369,33 @@ $defs:
           Populated only when status is `denied`/`failed`; drawn from the
           SAME closed enum as operator_mcp_error.schema.yaml's reason_code
           (duplicated by value; see module description).
-        type: [string, "null"]
-        maxLength: 64
+          NEW-20 (security review round 3): this was previously declared
+          `type: [string, "null"]` with `maxLength: 64` -- an OPEN string --
+          while both this description and the phase completion note asserted
+          it was a closed enum. The declaration now matches the claim. `null`
+          is a member because the `allOf` below requires exactly that for
+          `completed`/`canceled` and forbids it for `denied`/`failed`.
+          `tests/unit/test_operator_mcp_schemas.py` pins this enum against
+          `operator_mcp_policy.CLOSED_REASON_CODES` so the two cannot drift.
+        enum:
+          - identity_denied
+          - rbac_denied
+          - audit_unhealthy
+          - guard_blocked
+          - guard_review_required
+          - preflight_failed
+          - operation_unknown
+          - tool_unknown
+          - target_invalid
+          - confirmation_missing
+          - confirmation_expired
+          - confirmation_replayed
+          - confirmation_mismatch
+          - idempotency_conflict
+          - not_found
+          - payload_too_large
+          - internal_error
+          - null
       audit_delivery:
         $ref: "#/$defs/audit_delivery"
       completed_at:
