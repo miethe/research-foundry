@@ -2,9 +2,9 @@
 title: "Implementation Plan: Research Foundry Operator MCP"
 schema_version: 2
 doc_type: implementation_plan
-status: draft
+status: in_progress
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-07-29
 feature_slug: research-foundry-operator-mcp
 feature_version: v1
 tier: 3
@@ -15,6 +15,7 @@ scope: "Build a local-stdio-only governed operator MCP with identity-bound prefl
 effort_estimate: "29 pts bottom-up"
 architecture_summary: "FastMCP stdio adapter -> trusted local identity/workspace/sensitivity resolution -> governance preflight -> bound confirmation -> immutable operation manifest -> AgentJob-backed attempts -> closed canonical-service adapters -> effect/checkpoint/terminal receipts; Knowledge MCP stays read-only and separate."
 related_documents:
+  - docs/project_plans/human-briefs/operator-mcp-p1-execution-retro.md
   - docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
   - docs/project_plans/human-briefs/research-foundry-operator-mcp.md
   - .codex/worknotes/research-foundry-operator-mcp/decisions-block.md
@@ -51,7 +52,7 @@ references:
 spike_ref: null
 adr_refs: []
 deferred_items_spec_refs: []
-findings_doc_ref: null
+findings_doc_ref: .claude/findings/research-foundry-operator-mcp-findings.md
 charter_ref: null
 changelog_ref: null
 changelog_required: true
@@ -63,10 +64,10 @@ contributors: []
 priority: high
 risk_level: high
 category: enhancements
-tags: [implementation, mcp, operator, governance, jobs, receipts, local-stdio]
+tags: [implementation, mcp, operator, governance, jobs, receipts, local-stdio, retro-remediated, gate-economics]
 milestone: null
-commit_refs: []
-pr_refs: []
+commit_refs: [41bcafb, f1bfa39, 725faba, 61c3691]
+pr_refs: ["https://github.com/miethe/research-foundry/pull/7"]
 files_affected:
   - schemas/operator_mcp_operation.schema.yaml
   - schemas/operator_mcp_confirmation.schema.yaml
@@ -116,6 +117,8 @@ wave_plan:
       owner_skills: []
       model: sonnet
       effort: extended
+      gate_lens: [security, validator, karen]
+      gate_shared_with: null
       files_affected:
         - schemas/operator_mcp_operation.schema.yaml
         - schemas/operator_mcp_confirmation.schema.yaml
@@ -129,6 +132,8 @@ wave_plan:
       owner_skills: []
       model: sonnet
       effort: extended
+      gate_lens: [security, karen]
+      gate_shared_with: null
       files_affected:
         - src/research_foundry/services/operator_operation_service.py
         - src/research_foundry/services/agent_job_service.py
@@ -141,6 +146,8 @@ wave_plan:
       owner_skills: []
       model: sonnet
       effort: adaptive
+      gate_lens: [validator]
+      gate_shared_with: null
       files_affected:
         - src/research_foundry/services/swarm_service.py
         - src/research_foundry/services/operator_tool_adapters.py
@@ -152,6 +159,8 @@ wave_plan:
       owner_skills: []
       model: sonnet
       effort: extended
+      gate_lens: [validator]
+      gate_shared_with: P3
       files_affected:
         - src/research_foundry/services/operator_tool_adapters.py
         - src/research_foundry/services/external_research_import.py
@@ -168,6 +177,8 @@ wave_plan:
       owner_skills: []
       model: sonnet
       effort: extended
+      gate_lens: [security, validator]
+      gate_shared_with: null
       files_affected:
         - src/research_foundry/operator_mcp/__init__.py
         - src/research_foundry/operator_mcp/server.py
@@ -181,6 +192,8 @@ wave_plan:
       owner_skills: []
       model: sonnet
       effort: adaptive
+      gate_lens: [validator, karen-final-tree-only]
+      gate_shared_with: null
       files_affected:
         - tests/unit/test_operator_mcp_policy.py
         - tests/unit/test_operator_operation_service.py
@@ -225,6 +238,20 @@ contract consumed by the next. No progress files are created with this draft.
 Execution begins only after parent/child dependency gates are approved and the
 artifact tracker initializes phase progress.
 
+## Execution Status (as of 2026-07-29)
+
+- **Branch/worktree**: `worktree-operator-mcp-v1`, worktree `.claude/worktrees/operator-mcp-v1`, based on
+  main `65d658d`, draft PR [#7](https://github.com/miethe/research-foundry/pull/7).
+- **P1**: complete-as-implemented (4 of 29 pts). **`OPM-1.G` is NOT APPROVED — 6 blocking findings are
+  open** in `FIND-P1-R3` of the findings ledger. Karen has not been run. This is deliberate: the gate
+  cannot pass with blocking findings open.
+- **Not merged to main.** Merging one of six phases would fragment the plan into six main commits and
+  put an uncalled authorization module on main whose own gate has not passed.
+- **P2–P6**: not started. P1's actual cost was ~2.4M tokens / ~3.5h wall; naive extrapolation to the
+  full 29 points is 10M+ tokens, which is why the gate structure below was revised.
+- **Read before resuming**: `docs/project_plans/human-briefs/operator-mcp-p1-execution-retro.md` §4
+  (recommendations) and §5 (traps discovered).
+
 ## Implementation Strategy
 
 ### Architecture sequence
@@ -265,15 +292,37 @@ If an external gate is absent, the dependent phase stays pending; no temporary d
 
 | Phase | Title | Estimate | Target subagent(s) | Model | Effort | Gate |
 |---|---|---:|---|---|---|---|
-| P1 | Contract, Identity, and Confirmation | 4 pts | backend-architect, api-designer | sonnet | extended | Security + validator + Karen exact-tree gate |
-| P2 | Durable Operation Coordinator | 5 pts | python-backend-engineer | sonnet | extended | Validator + karen |
-| P3 | Run Planning and Swarm Adapters | 5 pts | python-backend-engineer | sonnet | adaptive | Validator |
-| P4 | Import and Research-Stage Adapters | 5 pts | python-backend-engineer, api-designer | sonnet | extended | Validator + karen |
-| P5 | Stdio Server and Writeback Preview | 6 pts | python-backend-engineer, api-designer | sonnet | extended | Security + validator |
-| P6 | Hardening, Docs, Exact-Tree Review | 4 pts | validation implementer, docs agents, reviewers | sonnet/haiku/opus | adaptive/extended | Validator then karen |
+| P1 | Contract, Identity, and Confirmation | 4 pts | backend-architect, api-designer | sonnet | extended | Security + validator + Karen exact-tree gate (OPM-1.G — OPEN) |
+| P2 | Durable Operation Coordinator | 5 pts | python-backend-engineer | sonnet | extended | Security (AC-mandated), then Karen |
+| P3 | Run Planning and Swarm Adapters | 5 pts | python-backend-engineer | sonnet | adaptive | Validator only |
+| P4 | Import and Research-Stage Adapters | 5 pts | python-backend-engineer, api-designer | sonnet | extended | Shared gate with P3 (validator) |
+| P5 | Stdio Server and Writeback Preview | 6 pts | python-backend-engineer, api-designer | sonnet | extended | Security + validator (unchanged — do not cut) |
+| P6 | Hardening, Docs, Exact-Tree Review | 4 pts | validation implementer, docs agents, reviewers | sonnet/haiku/opus | adaptive/extended | Validator; Karen on the final tree only |
 | **Total** | — | **29 pts** | — | — | — | — |
 
 > H1-H6 details live in the linked Human Brief. The estimate excludes remote transport, live writeback, arbitrary execution, approval UI, schedules, and hosted/public qualification.
+
+### Revised gate structure (post-P1 retro)
+
+**This section SUPERSEDES the plan's original uniform per-phase gate assignments above and
+elsewhere in this document.** Where any other section of this plan still lists a phase's gate as
+the original assignment, the table below is authoritative.
+
+The P1 review record (three rounds, ~2.4M tokens) showed reviewer lenses are not fungible: the
+validator approved a critical authorization-bypass bug **twice**, while the security lens found
+every actual defect. Running both lenses in parallel every round on every phase bought one lens's
+worth of defect-finding at two lenses' cost.
+
+| Phase | Original gates | Revised gate | Rationale |
+|---|---|---|---|
+| P2 | validator + karen | **security-with-AC-mandate**, then karen | Durability/atomicity is a security property; a validator will approve a read-then-write CAS |
+| P3 | validator | validator only | Mechanical extraction; unchanged |
+| P4 | validator + karen | **shared gate with P3** | Both wrap the same files; serialized for file-ownership, not review, reasons |
+| P5 | security + validator | **unchanged — do not cut** | Writeback-preview negative proof is the second-highest-risk surface after P1 |
+| P6 | validator then karen | validator, then karen on the **final tree only** | Karen's per-phase passes duplicate the final one |
+
+Net effect: ~4 fewer Opus review passes across P2–P6. **Do not cut security on P1/P5 or Karen on
+the final tree — that is where the defects were. Cut duplicate lenses, not distinct ones.**
 
 ## Deferred Items & In-Flight Findings Policy
 
@@ -285,6 +334,7 @@ If an external gate is absent, the dependent phase stays pending; no temporary d
 | OPM-DF-2 | external mutation | Preview safety does not authorize downstream effects or compensation | Target-specific approval/idempotency/rollback design and owner-held canary plan | docs/project_plans/design-specs/operator-mcp-live-writeback.md |
 | OPM-DF-3 | scope | Arbitrary shell/files/provider/adapter/plugin/schedules violate closed-tool design | Named measured use case with canonical governed service | N/A — explicit non-goal until a concrete capability is named |
 | OPM-DF-4 | operations | Public/hosted qualification requires owner identity, private data, deployment, monitoring, and incident response | Separate release plan and owner authorization | N/A — operational gate, not a code design spec |
+| OPM-DF-5 | scope | P6 docs + deferred shaping specs are the only gate-free descope | Owner elects to cut scope to fit budget | follow-up plan (docs + OPM-DF-1/OPM-DF-2 shaping specs) |
 
 P6 authors the two named design specs at `maturity: shaping` and appends their paths
 to `deferred_items_spec_refs`. No progress artifact is created by this plan draft.
@@ -296,6 +346,35 @@ as AgentJob records being unsuitable for deterministic operations—create
 `.claude/findings/research-foundry-operator-mcp-findings.md`, link it here, and stop the
 affected phase for targeted design/re-estimation rather than inventing a parallel
 job authority.
+
+## Implementer Defect-Class Checklist (mandatory)
+
+Every implementer prompt dispatched for P2–P6 MUST carry this checklist verbatim. It costs nothing
+and attacks the two-cycle fix problem at its source: P1's three review rounds found the same
+defect classes repeatedly, and the fix cycle itself introduced new instances of them while
+"closing" prior findings.
+
+1. **No fail-open defaults.** No permissive default on a security-relevant field, no
+   `None`-means-skip, no unknown-label fallback that grants rather than denies. Check the
+   *producer* of a value, not just the field — NEW-4 survived round 1 because the field default was
+   removed while the function producing it still returned `"public"`.
+2. **Fix the layer below.** After hardening a symbol, enumerate its delegates, callers, and
+   siblings in `__all__` and ask whether reaching for any of them yields the unsafe behavior. This
+   is what found the critical defect in round 2: the fix hardened `authorize_operation` while its
+   delegate `verify_confirmation` still reported the replay as an accept, and the new docstring
+   steered callers to the weaker door.
+3. **Never pin unsafe behavior with a test.** If a test asserts current behavior and the current
+   behavior is wrong, the test is wrong — say so and invert it. Three round-2 defects were pinned
+   as correct by tests the fix cycle itself wrote.
+4. **Never fabricate a validation transcript.** Paste real output or report the failure. A
+   fabricated transcript was caught in round 1.
+
+### Cheap pre-gate before the expensive lens
+
+A focused ~30k-token fail-open / layer-below sweep on Sonnet runs BEFORE any Opus reviewer is
+dispatched. It catches the obvious items in the checklist above at roughly 1/5 the cost of the full
+lens; only what survives the sweep escalates to the full reviewer. This is an addition to the
+reviewer gates below, not a replacement for them.
 
 ## Phase Breakdown
 
@@ -319,6 +398,10 @@ job authority.
 - Security reviewer verifies authorization-before-lookup and token binding.
 - `task-completion-validator` then Karen approve the same exact schemas/examples/threat-matrix tree.
 - No effect adapter or MCP server exists yet.
+- **Status (2026-07-29): `OPM-1.G` is NOT APPROVED — 6 blocking findings open in `FIND-P1-R3`.**
+  `schemas/operator_mcp_receipt.schema.yaml` was never adversarially attacked until round 3 (rounds
+  1 and 2 both targeted `operator_mcp_policy.py` and the error schema); two of the six blocking
+  findings came from its first real review. Treat it as still under-reviewed.
 
 ### Phase P2: Durable Operation Coordinator
 
@@ -326,9 +409,17 @@ job authority.
 **Integration owner**: python-backend-engineer.
 **Exit state**: stable operation manifests coordinate AgentJob attempts and converge through retry/cancel/resume.
 
+**Inherited P1 obligations (frozen — DUR-1)**: consumption is a compare-and-swap on `status` from
+exactly `issued` to `consumed`, in the SAME durable transaction as the operation-manifest write,
+under an exclusive single-writer lock (SQLite `BEGIN IMMEDIATE`, or `O_EXCL` create-then-atomic-
+rename). A CAS observing any other status MUST route to exact-replay/idempotency-conflict and MUST
+NOT execute. P1's `consume_confirmation` is a pure function — real atomicity is P2's job, and **a
+read-then-write implementation passes every P1 test and is still wrong**. This requirement is
+folded into `OPM-2.1`'s acceptance criteria below.
+
 | Task ID | Task | Description | Acceptance criteria | Estimate | Subagent | Model | Effort | Dependencies |
 |---|---|---|---|---:|---|---|---|---|---|
-| OPM-2.1 | Immutable operation store | Atomically persist canonical operation/action manifests, input/policy digests, token-consumption proof, workspace, sensitivity, and target refs under confined local state. | Exact manifest replay resolves same operation; changed manifest conflicts | 1.5 pts | python-backend-engineer | sonnet | extended | OPM-1.G |
+| OPM-2.1 | Immutable operation store | Atomically persist canonical operation/action manifests, input/policy digests, token-consumption proof, workspace, sensitivity, and target refs under confined local state. | Exact manifest replay resolves same operation; changed manifest conflicts; **consumption CAS on `status` (`issued`→`consumed`) occurs in the same durable transaction as the manifest write, under an exclusive single-writer lock; any other observed status routes to exact-replay/idempotency-conflict and does not execute** | 1.5 pts | python-backend-engineer | sonnet | extended | OPM-1.G |
 | OPM-2.2 | AgentJob attempt adapter | Reuse create/load/events/artifacts/status/poll/terminate/cleanup with identity scoping; link attempts to operation id; do not expose `accept_job`. | Legacy AgentJob reads pass; wrong-workspace attempts are indistinguishable from missing | 1.5 pts | python-backend-engineer | sonnet | extended | OPM-2.1 |
 | OPM-2.3 | Effect/checkpoint/terminal receipts | Persist immutable action/effect receipts and separate atomic checkpoints; reconcile counts/digests into one terminal receipt; link supplemental audit event/disposition. | Truncated/extra/duplicate/reordered/mismatched receipt fixtures deny | 1 pt | python-backend-engineer, data-layer-expert | sonnet | extended | OPM-2.2 |
 | OPM-2.4 | Cancel and resume state machine | Persist cancellation request, honor safe points, mark non-cancelable atomic sections, resume first incomplete action under fresh policy/confirmation and new attempt. | H3 ten-scenario matrix converges with uninterrupted effects | 1 pt | python-backend-engineer | sonnet | extended | OPM-2.3 |
@@ -337,7 +428,9 @@ job authority.
 
 - Process-loss, exact-retry, conflict, cancel, resume, policy-change, and reconciliation fixtures pass.
 - Operation receipt is primary; audit-service failure is explicit and cannot erase effect truth.
-- `task-completion-validator` and `karen` approve the exact lifecycle candidate.
+- **Revised gate (post-P1 retro):** a security reviewer carrying an explicit AC-mapping mandate
+  reviews the exact lifecycle candidate, then Karen approves. Durability/atomicity is a security
+  property, and a validator alone will approve a read-then-write compare-and-swap.
 
 ### Phase P3: Run Planning and Swarm Adapters
 
@@ -376,7 +469,10 @@ job authority.
 
 - External Interchange exact-tree dependency is recorded.
 - Verification-denial, stage-missing, wrong-workspace, sensitivity, timeout, cancel, and resume cases pass.
-- `task-completion-validator` and `karen` approve the integrated mutation milestone.
+- **Revised gate (post-P1 retro): SHARED with P3.** P3 and P4 both wrap the same adapter files
+  (`operator_tool_adapters.py`, `swarm_service.py`) and are serialized for file-ownership reasons,
+  not review reasons — one `task-completion-validator` review covers both integrated milestones.
+  The separate `karen` pass for P4 is removed.
 
 ### Phase P5: Stdio Server and Writeback Preview
 
@@ -384,12 +480,16 @@ job authority.
 **Integration owner**: python-backend-engineer.
 **Exit state**: optional local stdio server exposes only approved tools, bounded outputs, and non-executing writeback preview.
 
+**Inherited P1 obligation**: `check_tool_name()` has zero callers by design. Calling it at the
+transport boundary is a frozen P5 obligation, folded into `OPM-5.4`'s acceptance criteria below
+(the transport boundary is where limits and error mapping are enforced).
+
 | Task ID | Task | Description | Acceptance criteria | Estimate | Subagent | Model | Effort | Dependencies |
 |---|---|---|---|---:|---|---|---|---|---|
 | OPM-5.1 | FastMCP server scaffold | Add lazy optional MCP import, `build_server()`, stdio `main()`, explicit server identity/version, and no-effect startup. | Base import works without SDK; missing SDK prints one install hint | 1.5 pts | python-backend-engineer | sonnet | adaptive | P4 |
 | OPM-5.2 | Closed tool registry | Register §6.1 tools with versioned schemas, bounded inputs/results, operation adapter delegation, and tool-introspection fixture. | Exact inventory; no Knowledge MCP duplicates or wildcard execution | 1 pt | api-designer, python-backend-engineer | sonnet | extended | OPM-5.1, KMCP-1.G |
 | OPM-5.3 | Pure writeback preview | Add `preview_writeback()` that validates bundle/targets/policy and writes only a staged operation preview; never call live writeback, clients, or mirror paths. | Network/client/mirror spies remain zero; preview reason codes schema-valid | 1.5 pts | python-backend-engineer | sonnet | extended | OPM-5.2 |
-| OPM-5.4 | Limits and error mapping | Enforce input/action/event/result/error size caps, runtime/cost limits, redaction, retryable reason codes, and no-existence-leak mapping at transport boundary. | Oversize/internal-error/wrong-workspace fixtures return bounded safe envelopes | 1 pt | api-designer | sonnet | extended | OPM-5.2 |
+| OPM-5.4 | Limits and error mapping | Enforce input/action/event/result/error size caps, runtime/cost limits, redaction, retryable reason codes, no-existence-leak mapping, **and `check_tool_name()` invocation** at the transport boundary. | Oversize/internal-error/wrong-workspace fixtures return bounded safe envelopes; **`check_tool_name()` is exercised on every tool dispatch at the transport boundary** | 1 pt | api-designer | sonnet | extended | OPM-5.2 |
 | OPM-5.5 | Packaging and entrypoint | Reuse/add optional `mcp` extra and package entrypoint without auto-start, daemon, listener, or network probe. | Wheel/editable install and module entrypoint tests pass | 0.5 pt | python-backend-engineer | sonnet | adaptive | OPM-5.1 |
 | OPM-5.6 | P5 safety gate | Static source/call-path review plus runtime spies prove no HTTP route, live writeback, agent-job accept, shell, subprocess, arbitrary path, or integration client in registered tools. | Security reviewer and validator approve exact registry/call path | 0.5 pt | senior-code-reviewer, task-completion-validator | sonnet | extended | OPM-5.3..5.5 |
 
@@ -398,6 +498,8 @@ job authority.
 - Tool inventory matches PRD exactly and remains separate from Knowledge MCP.
 - Preview-only negative proof includes static and runtime evidence.
 - `task-completion-validator` approves; any registry change requires rerun.
+- **Unchanged — do not cut.** Security + validator remain both required for this phase; the
+  writeback-preview negative proof is the second-highest-risk surface after P1.
 
 ### Phase P6: Hardening, Documentation, and Exact-Tree Review
 
@@ -415,8 +517,17 @@ job authority.
 | OPM-6.6 | Import/stage seam gate | Run ERI import plus ingest/extract/claim-map/synthesize/verify/bundle prerequisite/receipt matrix. | AC OPM-5 evidenced | 0.25 pt | validation implementer | sonnet | adaptive | OPM-6.1 |
 | OPM-6.7 | Preview-only gate | Run target/sensitivity/degraded cases with network/client/mirror spies and call-path scan. | AC OPM-6 evidenced; zero external/mirror effects | 0.25 pt | validation implementer, senior-code-reviewer | sonnet | extended | OPM-6.1 |
 | OPM-6.8 | Transport/error gate | Test missing SDK, startup, bounded inputs/events/errors, redaction, and base-package/CLI compatibility. | AC OPM-7 evidenced | 0.25 pt | validation implementer | sonnet | adaptive | OPM-6.1 |
-| OPM-6.9 | Docs, CHANGELOG, deferred specs | Write user setup/operation guide, architecture/governance doc, `[Unreleased]` entry, remote-transport and live-writeback shaping specs; populate refs. | Docs match exact tool inventory and do not claim live qualification | 0.5 pt | documentation-writer, changelog-generator | haiku | adaptive | OPM-6.2..6.8 |
+| OPM-6.9 **(descope candidate)** | Docs, CHANGELOG, deferred specs | Write user setup/operation guide, architecture/governance doc, `[Unreleased]` entry, remote-transport and live-writeback shaping specs; populate refs. | Docs match exact tool inventory and do not claim live qualification | 0.5 pt | documentation-writer, changelog-generator | haiku | adaptive | OPM-6.2..6.8 |
 | OPM-6.10 | Final exact-tree review | Run focused/full gates, duplicate-authority scan, docs/link validation, task-completion validator, then karen. | Tier 3 approval recorded on exact current tree | 0.25 pt | task-completion-validator, karen | opus | extended | OPM-6.9 |
+
+**Quality gate**:
+
+- **Revised gate (post-P1 retro):** `task-completion-validator` reviews the exact final tree, then
+  Karen reviews the **final tree only** (`OPM-6.10`). Karen's per-phase passes (P2, P4) duplicated
+  this final one; no separate per-phase Karen pass is run for P6.
+- **Descope candidate (`OPM-6.9`):** docs plus the two deferred shaping specs (OPM-DF-1, OPM-DF-2)
+  can move to a follow-up without reducing security coverage. This is the only scope cut available
+  in this plan that does not touch a gate.
 
 ## Structured Acceptance-Criteria Verification
 
@@ -509,6 +620,7 @@ job authority.
 | Live writeback reachability | Pure preview seam and absent execute tool | Call-path scan and client/network/mirror spies | Disable preview; retain staged preview/receipt |
 | Audit delivery failure | Audit-health preflight + primary receipt | Receipt `audit_delivery` and health checks | Block new confirmations until healthy; preserve effects/receipt |
 | Optional dependency breakage | Lazy MCP import | Base package and missing-SDK tests | Remove/disable optional entrypoint |
+| Green suite over a real defect | Adversarial pass mandatory on every security-relevant phase; defect-class checklist in implementer prompts | Re-attack the fix, not just the symbol; mutation matrix proves revert-detection | Reopen the phase gate; never treat a passing suite as gate evidence |
 
 Rollback never deletes run artifacts, source cards, extraction cards, claim ledgers,
 reports, bundles, import receipts, operation manifests, effect receipts, audit events,
@@ -542,7 +654,24 @@ flake8 src/research_foundry --select=E9,F63,F7,F82
 Exact test filenames must be reconciled against the current tree at execution; a
 missing planned file is not evidence of a pass. No owner/private corpus, remote
 transport, live writeback, deployment, or release test is implied by repository
-fixtures.
+fixtures. Pre-existing and not to be chased: `tests/test_verification_pediatric_cds.py` and
+`tests/test_verification_seam001_gate_composition.py` fail to COLLECT under `-k` filtering
+(sibling `import test_claim_verifier`); present on base `65d658d`.
+
+### Scratch-tree and mutation-testing isolation (pythonpath trap)
+
+`pyproject.toml` sets `[tool.pytest.ini_options] pythonpath = ["src"]`, which pytest inserts AHEAD
+of the `PYTHONPATH` env var. A mutation sweep run against a scratch copy therefore silently tests
+the REAL worktree source and reports false negatives ("no test detects this defect"). The round-3
+reviewer hit this and nearly published a wrong conclusion.
+
+- Correct form: `--override-ini="pythonpath=<scratch>/src"`; mirror `config/`, `schemas/`, and
+  `templates/` into the scratch root (`distribution_root()` resolves via `parents[2]`); purge stale
+  `__pycache__`; always take a baseline first.
+- `python -c "import x; print(x.__file__)"` is NOT a sufficient check — it exercises the env var
+  that pytest then overrides.
+- Any `PYTHONPATH=$PWD/src` prefix is decorative and provides no isolation; do not treat it as
+  evidence of a scratch-tree run.
 
 ### Contract and negative-proof gates
 
@@ -571,9 +700,32 @@ transport and live writeback `deferred`, and owner/private qualification
 ## Reviewer Gates and Execution Handoff
 
 - `task-completion-validator` reviews each phase against the exact current tree.
-- `karen` reviews P2 lifecycle, P4 integrated effects, and final feature candidate.
-- Security review is mandatory for P1 identity/confirmation and P5 preview-negative proof.
+- `karen` reviews P1 (exact-tree), P2 lifecycle (post-security), and the final feature candidate
+  (`OPM-6.10`, final tree only) — see "Revised gate structure (post-P1 retro)" above; the P4 pass is
+  removed (shared gate with P3).
+- Security review is mandatory for P1 identity/confirmation, P2 durability/atomicity (AC-mandated),
+  and P5 preview-negative proof. **Do not cut security on P1/P5 or Karen on the final tree.**
 - A material fix, schema change, tool-registry change, generated artifact, receipt change, or docs/evidence update invalidates prior exact-tree approval.
 - The integration owner serializes writes to `agent_job_service.py`, `agent_job_schemas.py`, `governance.py`, `audit_service.py`, `writeback.py`, operation registry, and server registry.
 - Phase progress is initialized only after this plan and its external entry gates are approved; this package creates no progress files now.
 - Implementation approval, metadata closeout, repository readiness, owner-held canary, deployment, release, remote authorization, and live writeback authorization are separate truths.
+- **Reviewers write findings to disk.** Mode-E reviewers are granted write access to the findings
+  ledger `.claude/findings/research-foundry-operator-mcp-findings.md` ONLY (no source, no tests).
+  The ledger must not round-trip through the orchestrator's context — this saves ~8k output per
+  round and removes a transcription-fidelity risk.
+- **Codex is unavailable for this workstream.** `codex exec` refused the adversarial
+  security-audit framing under its safety classifier after burning a long reasoning trace. This is
+  a policy refusal on their side, not a config problem — do not retry the cross-model security lens
+  here. (Separately: pipe prompts via stdin, not as an argument; the arg form hangs waiting on
+  stdin.)
+- **Do not use phase-owner agents.** They cannot reliably dispatch nested `Task()` in this
+  environment, which historically caused them to implement directly or emit false passes. Dispatch
+  implementers directly — this worked cleanly for P1.
+- **Independently re-run the suite after every agent.** It costs ~2k tokens and is how a
+  fabricated validation transcript was contradicted with real evidence. A reviewer's or
+  implementer's self-reported test output is not evidence.
+- **Open scope deviation queued for Karen:** `src/research_foundry/services/governance.py` was
+  modified in round 2 (config `secret_patterns` now UNIONs with built-ins rather than replacing
+  them). It is a declared serialization-barrier file outside P1's phase ownership. The change is
+  strictly strengthening — config can only add detection surface. Reviewer recommends
+  accept-with-conditions; adjudication is queued for Karen.
