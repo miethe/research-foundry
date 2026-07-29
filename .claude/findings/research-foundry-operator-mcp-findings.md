@@ -221,6 +221,14 @@ do not assume it is now clean.
 1. **PART C ratification** of the `governance.py` serialization-barrier write. Reviewer recommends
    **accept with conditions**: it is a provable no-op for the shipped config, restores
    `redact_payload`'s own documented "additional" contract, and is strictly fail-closed.
+   > ⚠ **CORRECTED at the round-5 Karen adjudication — see `FIND-P1-KAREN` below.** Two of those
+   > three grounds hold; **"provable no-op for the shipped config" is FALSE**. The shipped config's
+   > regex escaping differs from the built-in literals for three patterns, so the union yields 25
+   > entries rather than 22 and `scan_secrets` now returns DUPLICATE hits (a flagged file reports
+   > "2 match(es)" where it reported 1). Detection outcomes and gate decisions are unchanged, so the
+   > severity is LOW — but the claim as written is an over-claim of exactly the false-authoritativeness
+   > class this workstream keeps producing, and it was propagated verbatim into the round-3 closure
+   > section before being caught.
 2. **FIND-P1-B** — the net-new `_MUTATION_ROLES`/`_READ_ROLES` primitive, now carrying NEW-22's
    concrete privilege-escalation dimension.
 3. The **`governance.preflight()` deviation** from decisions-block line 30.
@@ -789,3 +797,303 @@ pre-existing on `main` and were excluded.
 - The plan's documented validation prefix `PYTHONPATH=$PWD/src` remains decorative (pytest's
   `pythonpath = ["src"]` ini setting is inserted ahead of it). All mutation work this round was done
   **in place** in the worktree and restored with `git checkout --`, avoiding the trap entirely.
+
+---
+
+## FIND-P1-R5 — OPM-1.G consolidated final gate, round 5: **CHANGES_REQUESTED**
+
+Source: consolidated security + validation re-attack on exact tree `e4c76b9` (branch
+`worktree-operator-mcp-v1`, working tree clean). Round-4 remediation alone: `git show e4c76b9`.
+
+**Verdict: CHANGES_REQUESTED.** All nine round-4 blocking findings (BLOCK-1 … BLOCK-9) are
+**genuinely closed**, and eight of the nine are **empirically regression-detecting** under in-place
+mutation. This is the first round in which every claimed closure held up — including BLOCK-4, whose
+round-4 closure evidence was invalid and is now valid (all three latch-sensitive tests fail
+standalone). However the round-4 remediation introduced or left **four blocking defects**, three of
+them in the same two recurring classes as every prior round: fix-the-layer-below (the sibling field /
+sibling `$def` next to the one that was fixed) and false authoritativeness (a new prose claim that
+the new code does not satisfy).
+
+### Round-4 closure re-verdicts (empirical, in-place mutation, tree restored + verified clean after each)
+
+Baseline on pristine `e4c76b9`: `pytest tests/unit/test_operator_mcp_policy.py tests/unit/test_operator_mcp_schemas.py tests/unit/test_operator_mcp_serve_extra_boundary.py -q` → **EXIT=0**, 177 collected (121 / 54 / 2), zero FAILED. Final re-run after the whole sweep → **EXIT=0** (harness + restore both proven).
+
+| ID | Verdict | Mutation evidence |
+|---|---|---|
+| **BLOCK-1** audit_delivery detail | **CLOSED, regression-detecting** | Three independent mutations, all DETECTED (exit 1). M1a `_PATH_LIKE` → never-matching → `test_build_error_scrubs_bare_path_shaped_detail_with_no_traceback_framing`. M1b drop the unknown-`detail_code` guard + fall through as free text → `test_audit_delivery_builder_rejects_unknown_detail_code`. M1c revert wholesale replacement → per-match `sub` → `test_build_error_scrubs_bare_path_shaped_detail_with_no_traceback_framing`. The vocabulary is genuinely CLOSED: `build_audit_delivery(status, *, audit_event_id=None, detail_code=None)` — passing `detail=` raises `TypeError`, an unknown `detail_code` raises `ValueError`, there is **no fail-open default**. All 15 `status` × `{None + 4 detail_codes}` combinations emit blocks that validate inside a `terminal_receipt` with `errors: []`. `build_error`'s legitimate detail path is NOT broken: both internal `_check_preflight` detail strings pass through unmodified. **But see R5-BLOCK-1 and R5-NB-1/NB-2 — the field next to it, and the denylist itself.** |
+| **BLOCK-2** `action_receipt.reason_code` enum | **CLOSED for the value domain, regression-detecting** | M2 (reopen to `type: [string,"null"] maxLength: 64`) → exit 1, three tests fail including the now-bidirectional drift guard `test_receipt_denial_reason_code_enum_matches_code_closed_reason_codes`. Golden instance + two negative fixtures added; `action_receipt` is no longer zero-coverage. **But the presence coupling was not closed — see R5-BLOCK-3.** |
+| **BLOCK-3** terminal denied requires reason code | **CLOSED, regression-detecting** | M3 (delete `required: [denial_reason_code]` from the `denied`/`failed` `then` branch) → exit 1, `test_receipt_terminal_denied_requires_reason_code_key_to_be_present`. |
+| **BLOCK-4** audit-health latch closure evidence | **CLOSED, regression-detecting — evidence now VALID** | M4 (reintroduce the pre-NEW-19 `get_health_state` + probe-only-if-never-probed latch) → exit 1. Critically, and unlike round 4: **three tests now fail STANDALONE, one pytest invocation each** — `test_audit_health_recovers_after_a_failed_probe`, `test_audit_health_degradation_after_a_healthy_probe_is_detected`, `test_audit_health_does_not_read_the_assume_healthy_persisted_default` — with meaningful assertion messages, no isolation/ordering dependence. The `_persist_health_row` sqlite helper added this round is what fixes it: the fakes now persist a row, so a reintroduced latch makes `get_health_state().last_probe_at` non-`None` and the latch branch engages. `test_every_closed_reason_code_has_a_real_producer` also fails (collateral). The four tests that are correctly latch-insensitive (`..._blocks_mutating_operation`, `..._does_not_block_job_status`, the two `..._never_probed_...`) return exit 0, as they should. |
+| **BLOCK-5** stale audit-health docstring | **CLOSED (verified by reading; no mutation possible — prose)** | `operator_mcp_policy.py:65-92` now describes LIVE, UNCONDITIONAL probing and correctly attributes "probe on demand exactly once per workspace" to round 2 as **superseded**. `:60-63` states this module has **no** call sites for `get_health_state` (`grep` confirms: only prose at `:61` and `:1101`). `:56-58` drops the "read-only" claim and states `health_check` is a write-then-read-then-delete probe. All three false claims corrected. **Residual: R5-NB-5.** |
+| **BLOCK-6** `mint_confirmation` identity derivation | **CLOSED, regression-detecting** | M6a (delete derive+compare, build `actor` from `ctx.identity`) → exit 1, `test_mint_confirmation_rejects_a_forged_identity`. M6b (derive but never compare) → exit 1, same test — so the **comparison itself** is pinned, not merely the actor's source. Empirically: a forged `ctx.identity` (`AuthIdentity("mallory","ws-evil",("owner",))` via `object.__setattr__`) now raises `ValueError` at mint; an authentic record + forged ctx yields `verify → confirmation_mismatch` and `consume → None`. **But see R5-BLOCK-2, R5-BLOCK-4, R5-NB-4 and R5-NB-7.** |
+| **BLOCK-7** `writeback.preview` fail-closed | **CLOSED, regression-detecting** | M7 (delete the branch) → exit 1, `test_writeback_preview_with_empty_writeback_targets_denies_at_preflight`. Empirically `writeback_targets=()` → `PolicyDecision(allowed=False, stage='preflight', reason_code='preflight_failed')`; `writeback_targets=('meatywiki',)` → allowed. **Stage placement is sound but cosmetically inverted**: `_POLICY_STAGES` order is `capability → rbac → audit_health → guard → preflight`, so `_check_guard` still runs FIRST and passes vacuously on the empty tuple (`_check_guard(ctx_a)` → `allowed=True`) before `_check_preflight` denies one stage later. Not bypassable — both are private, and the only path reaching `_check_guard` is `evaluate_policy`'s loop, which always continues to `_check_preflight`. **`model_provider` / `source_sensitivities` — the other two omission channels BLOCK-7 named — were addressed by option (b), narrowing the claim rather than populating them**: `PolicyContext`'s docstring (`:766-779`) now states they are ADVISORY ONLY and explicitly retracts the "fire exactly as they do for run-level guard checks" over-claim, and the `_OPERATION_ROLES` comment (`:596-603`) now rests researcher eligibility on the rbac.py axis alone. That satisfies the required fix as written. |
+| **BLOCK-8** `build_error` forces `detail` for `not_found` | **CLOSED, regression-detecting** | M8 (delete `safe_detail = None`) → exit 1, `test_build_error_forces_null_detail_for_not_found_regardless_of_caller`. Empirically `build_error(PolicyDecision(False,'rbac','not_found'), operation_id=…, receipt_ref='r1', detail='run rn_abc123 is owned by workspace ws_other')` returns `operation_id=None`, `receipt_ref=None`, and **no `detail` key**. Correctly scoped: the same `detail` survives verbatim on `identity_denied`, as intended. |
+| **BLOCK-9** DUR-1 binding predicate + required `ctx` | **CLOSED — shape half regression-detecting, prose half unpinned** | Shape: `consume_confirmation(record, *, operation_id, ctx: PolicyContext, now=None)` — `ctx` has **no default**. M9a (make it optional + skip `_bindings_match`) → exit 1, `test_consume_confirmation_ctx_binding_denies_mismatch`. Every call site passes one; the sole omission is a deliberate `pytest.raises(TypeError)` negative at `test_operator_mcp_policy.py:1692`. Prose: the binding predicate (b) IS folded into the frozen DUR-1 text in **both** locations — module docstring `:189-194` and `schemas/operator_mcp_confirmation.schema.yaml:74-78` — verified by direct read. **However M9b (delete clause (b) from the schema's frozen text) → EXIT 0, NOT DETECTED.** No test pins any frozen schema `description` text; see R5-NB-3. |
+
+### BLOCKING
+
+| ID | Sev | Finding | Location | Concrete failing scenario | Required fix |
+|---|---|---|---|---|---|
+| **R5-BLOCK-1** | **MED-HIGH** | **BLOCK-1 closed `audit_delivery.detail` and left its sibling `audit_event_id` — on the SAME `$def`, in the SAME commit — an unconstrained free-text field that durably records absolute paths and tracebacks.** This is BLOCK-2's exact shape (sibling field, one property over) applied to BLOCK-1's `$def`. The receipt schema's module description asserts "No field here ever carries a stack trace, environment variable, secret, or unrestricted filesystem path" — the same claim BLOCK-1 already found false once, still false. | `schemas/operator_mcp_receipt.schema.yaml:53-54` (the false claim), `:75-77` (`audit_event_id`), `:180-198` (`action_id`, `attempt_ref`), `:122-125` (`workspace_id`); `operator_mcp_policy.py:2031-2037` (`build_audit_delivery` length/type-checks `audit_event_id` but never redacts it) | **Empirically verified.** `build_audit_delivery("degraded", audit_event_id="/Users/alice/.config/research-foundry/serve.env")` emits the path **verbatim** and the embedding `terminal_receipt` validates with `errors: []`. Same for `audit_event_id='Traceback (most recent call last): File "/x.py", line 1'` — validates, verbatim. `audit_event_id`'s only constraints are `type: [string,"null"]` and `maxLength: 128`; the `not: pattern` guard added by BLOCK-1 is attached to `detail` **only**. The tell is inside the same file: `effect_receipt.effect_ref` — the structurally identical "opaque canonical reference" concept — **is** pattern-constrained (`^[A-Za-z0-9_\-:.]+$`, which excludes `/`), while `audit_event_id`, `action_id`, `attempt_ref` and `workspace_id` are not. `attempt_ref`'s own description says "never a filesystem path" with nothing enforcing it. | Apply `effect_ref`'s pattern (or at minimum the `not: pattern` guard) to `audit_event_id`, `attempt_ref`, and `action_id`; route `audit_event_id` through `_redact_and_bound` in `build_audit_delivery`; add a negative fixture for a path-shaped `audit_event_id`; and correct or qualify the module description's blanket claim at `:53-54`. |
+| **R5-BLOCK-2** | **MED** | **The BLOCK-6 fix added a new raiser OUTSIDE `mint_confirmation`'s exception boundary — reopening NEW-8's own defect, in the function NEW-8 was raised against.** `mint_confirmation`'s docstring states: "Everything AFTER them is wrapped: any UNEXPECTED exception during minting is re-raised as a plain `RuntimeError('internal_error during confirmation minting')` with NO caller-supplied text". The new `resolve_operator_identity(paths)` call is **before** the `try:`, so it is not wrapped. False-authoritativeness + fix-the-layer-below. | `operator_mcp_policy.py:1563` (the derive call) vs `:1572` (`try:`); docstring claim `:1525-1540` | **Empirically verified.** With a malformed `foundry.yaml`, `mint_confirmation(ctx, paths=paths)` propagates a raw `yaml.parser.ParserError` uncaught — traceback frames `operator_mcp_policy.py:1563 → :1037 (resolve_operator_identity) → config.py:292 → yamlio.py:51`. The escaping message embeds **the malformed file's content verbatim**: `'while parsing a block mapping\n  in "<unicode string>", line 2, column 3:\n      operator_mcp:\n      ^\nexpected <block end>...\n       bad_indent: [unclosed'`. A tab-indentation variant escapes as a raw `yaml.scanner.ScannerError` carrying `\toperator_mcp:`. Neither is converted to the documented `RuntimeError`. (The absolute path is not leaked — PyYAML labels the stream `"<unicode string>"` — but the file *content* is, and AC OPM-7's requirement is about exception text reaching a caller at all.) `grep` confirms `mint_confirmation` has **zero production callers**, so nothing handles this today. | Move the `resolve_operator_identity` derive call INSIDE the `try:` (keeping the deliberate `ValueError` guards outside it), or wrap it in its own `try/except Exception -> RuntimeError("internal_error during confirmation minting") from None`. Add a test asserting a malformed `foundry.yaml` yields no raw `yaml.*` exception from `mint_confirmation`. Then correct the `:1525-1540` claim. |
+| **R5-BLOCK-3** | **MED** | **BLOCK-3's `if/then` remedy was applied to `terminal_receipt` and not to `action_receipt` — the sibling `$def` that BLOCK-2 edited in the very same commit.** `action_receipt.reason_code`'s value domain is now closed (BLOCK-2) but its **presence** is coupled to `status` by description only, in **both** directions. `terminal_receipt` has both `allOf` branches; `action_receipt` has none. | `schemas/operator_mcp_receipt.schema.yaml:159-237` (`action_receipt`, no `allOf` at all) vs `:438-469` (`terminal_receipt`'s two branches); the unenforced claim is at `:206-207` ("Populated when `status` is `failed`/`skipped`") | **Empirically verified** with the schemas test's own `_errors()` helper: (B) `action_receipt` with `status: "failed"` and `reason_code` **entirely absent** → `errors: []`, validates — the exact hole BLOCK-3 closed one `$def` below. (D) `status: "completed"` **with** `reason_code: "guard_blocked"` → `errors: []`, validates — a completed action carrying a denial cause, which `terminal_receipt` explicitly forbids via `const: null`. (E) `status: "skipped"`, no reason code → validates. Control (F) `reason_code: "totally_bogus"` → correctly rejected, confirming BLOCK-2's enum is live. | Add the two `allOf` branches to `action_receipt` mirroring `terminal_receipt:438-469` — `if status in [failed, skipped] then required: [reason_code]` + `not: {const: null}`, and `if status == completed then reason_code: {const: null}`. Add negative fixtures for both directions. |
+| **R5-BLOCK-4** | **MED** | **The BLOCK-6 fix turned NB-8's latent inconsistency into a hard, guaranteed failure on a second call site — and `mint_confirmation` has no way to avoid it.** `PolicyContext.for_configured_operator` accepts and threads `config=` (`resolve_operator_identity(paths, config=config)`); the new `mint_confirmation` derive call drops it (`resolve_operator_identity(paths)`), and `mint_confirmation` has **no `config` parameter at all**. Because round 4 made disagreement fatal, any caller using the documented `config=` seam is now hard-broken at mint. In a contract-freeze phase this bakes a trap parameter into the API P2 builds against. | `operator_mcp_policy.py:938` (threads `config`), `:1162` (`_check_identity_and_rbac` drops it — pre-existing NB-8), `:1563` (new mint derive, drops it), `:1486-1488` (signature has no `config`) | **Empirically verified.** A ctx built as `for_configured_operator(paths=A, config=FoundryConfig(paths=B))` then passed to `mint_confirmation(ctx, paths=A)` now raises `ValueError: mint_confirmation requires ctx.identity to match the identity resolved from configured local config …` where round 3 succeeded. `inspect.signature(mint_confirmation)` → `(ctx, *, paths=None, now=None)`. Fail-closed, so not a vulnerability — but it is a behaviour regression introduced by this round's fix, and it means the "derive fresh from configured local config" story is only correct for callers that never inject config. | Thread `config` through `mint_confirmation` (and `_check_identity_and_rbac`, closing NB-8 at the same time) so all three derivation sites agree; OR remove `config=` from `for_configured_operator` so the divergent seam does not exist. Add a test covering the config-injecting path end to end. |
+
+### NON-BLOCKING (new this round)
+
+| ID | Sev | Finding | Location |
+|---|---|---|---|
+| R5-NB-1 | LOW-MED | **`_PATH_LIKE` is an eight-prefix denylist, not an "absolute filesystem path" guard.** Of twelve probe strings, five absolute paths passed through `_redact_and_bound` **verbatim**: `/usr/local/share/foundry/rbac.db`, `/srv/foundry/rbac.db`, `/Library/Application Support/foundry/secret.key`, `/mnt/data/foundry/audit.db`, `/app/config/foundry.yaml`; the relative `.rf_state/rbac.db` also passes. `/Users/`, `/home/`, `C:\` are caught. The prescribed BLOCK-1 fix was implemented verbatim (plus `/tmp/` and `/root/`), so this is not a failure to remediate — but `build_error`'s docstring, `_PATH_LIKE`'s own comment and both schemas describe it as an absolute-path guard, which over-states an eight-prefix denylist. Impact is bounded: `audit_delivery.detail` is now closed-vocabulary, and P1's only internal `detail` producer is `_check_preflight`'s closed enum text — the exposure is P2-supplied `build_error(detail=…)`. | `operator_mcp_policy.py:627`, `:1854-1879`, `:1897-1901` |
+| R5-NB-2 | LOW-MED | **The schema-side "defense-in-depth" `not: pattern` is strictly weaker than the code-side primary guard**, at three sites. Code `_PATH_LIKE` includes `[A-Za-z]:\\`; the schema patterns do not. Empirically `"[Errno 13] Permission denied: 'C:\\Users\\alice\\.config\\rf\\serve.env'"` → code matches (`True`), schema **validates** (`False`). No drift guard pins code↔schema pattern parity, in contrast to the reason-code enum, which does have a bidirectional one. | `schemas/operator_mcp_receipt.schema.yaml:100`; `schemas/operator_mcp_error.schema.yaml:90`, `:109` |
+| R5-NB-3 | LOW-MED | **The frozen DUR-1 contract text is pinned by no test in either location.** M9b (delete the entire BINDING CHECK clause (b) from the schema's frozen predicate) → **exit 0**, zero failures. Grepping both test files for `DUR-1` / `BINDING CHECK` / `compare-and-swap` yields one hit, in a test docstring, not an assertion. Every round's frozen normative text — the thing P2's closeout is graded against — is freely deletable. Recommend a text-presence assertion over the module docstring and the schema description. | `tests/unit/test_operator_mcp_policy.py`, `tests/unit/test_operator_mcp_schemas.py` (absence) |
+| R5-NB-4 | LOW-MED | **BLOCK-6's closure coverage is thinner than it reads — same shape as BLOCK-4, though not invalidating.** The autouse fixture monkeypatches `policy.resolve_operator_identity` module-wide to a constant lambda, and `test_mint_confirmation_rejects_a_forged_identity` does not restore the real function — so the new derive call resolves to the fixture constant and the "derives from **real configured local config**" half is never exercised. The *comparison* is genuinely pinned (M6a and M6b both DETECTED), so the closure holds; but a `mint_confirmation` test using `_REAL_RESOLVE_OPERATOR_IDENTITY` plus a `tmp_foundry` identity block is the missing evidence. | `tests/unit/test_operator_mcp_policy.py:90-106`, `:406` |
+| R5-NB-5 | LOW | **BLOCK-5's stale prose survives inside the function it was about.** The module docstring was correctly rewritten, but `_check_audit_health`'s own inline comment still narrates the superseded round-2 behaviour in the present tense — "PROBE ON DEMAND exactly once per workspace: read the persisted state first (cheap); only when it has NEVER been probed … run a REAL live probe" — immediately above code that probes unconditionally. The NEW-19 correction follows it, so a careful reader recovers, but the first paragraph reads as current. | `operator_mcp_policy.py:1203-1214` |
+| R5-NB-6 | LOW | **`detail_code` is unconstrained by `status`.** All 3 × 4 combinations validate, including `status='delivered'` with `detail_code='write_failed'` — a "delivered" audit disposition carrying a failure explanation. The closed vocabulary bounds the *text* but not its *coherence with the status it accompanies*. | `operator_mcp_policy.py:1983-2049`; `schemas/operator_mcp_receipt.schema.yaml:63-100` |
+| R5-NB-7 | LOW-MED | **The whole-module identity claim has an unstated precondition.** `:324-327` asserts that no value forced onto `ctx.identity` "through any of the three exported confirmation-lifecycle functions, can ever produce, verify, or consume a confirmation whose durable content diverges" from configured truth. That holds for an **authentic** record (verified: authentic record + forged ctx → `confirmation_mismatch` / `None`). It does not hold once the record is also fabricated: with a hand-built record whose `actor` is the forgery and a matching forged ctx, `verify_confirmation` returns `outcome='accepted'`, `PolicyDecision(allowed=True, stage='confirmation')`, and `consume_confirmation` returns a fully `consumed` record carrying `actor.user_id='mallory'`, `workspace_id='ws-evil'`. Neither function re-derives identity; `_bindings_match` compares two attacker-controlled sides. Under BLOCK-6's own accepted threat model (`object.__setattr__`, i.e. in-process access), fabricating a dict is no harder than forging a field. `authorize_operation` correctly denies (`stage='rbac'`, `identity_denied`). The claim should state its precondition — records MUST originate from `mint_confirmation` or P2's durable store — rather than asserting the property unconditionally. | `operator_mcp_policy.py:324-327`, `:1615-1639`, `:1642-1761`, `:1764-1826` |
+
+### NON-BLOCKING carried forward from round 4
+
+| ID | Status | Evidence |
+|---|---|---|
+| NB-1 `input_payload` has no SIZE bound | **STILL OPEN** | `:1116` is count-only. Empirically 32 keys × 300 KB = **9,600,086 bytes accepted** (`allowed=True, stage='capability'`); 100,000 nested keys also accepted. Comment at `:509` still calls the in-code enforcement "what actually protects every caller today". |
+| NB-2 `check_tool_name` has zero callers | **STILL OPEN** | `:1091`, `:397`. Only non-`src` hits are tests. The docstring self-declares it. |
+| NB-3 `(?i)` is not ECMA-262 | **STILL OPEN** | The same three sites as R5-NB-2. |
+| NB-4 public `now=` clock seam | **STILL OPEN** | `:1384`, `:1487`, `:1647`, `:1769` — all four still in `__all__`. |
+| NB-5 `consume_confirmation`'s optional `ctx` | **FIXED** | `:1764-1770`, no default. See BLOCK-9. |
+| NB-6 serve-extra test blocks hard-coded modules | **STILL OPEN** | `tests/unit/test_operator_mcp_serve_extra_boundary.py:42` still `{"fastapi","uvicorn","starlette"}`; still only two tests, neither running `evaluate_policy`/`mint_confirmation` under the blocker. (`pyproject` `serve = ["fastapi>=0.111","uvicorn[standard]>=0.29"]` — `starlette` is transitive, so the hard-coded set drifts in the safe direction here.) |
+| NB-7 module-wide autouse identity monkeypatch | **STILL OPEN — materially worse** | Now also blinds the new BLOCK-6 mint derive. See R5-NB-4. |
+| NB-8 `config` not threaded to `_check_identity_and_rbac` | **STILL OPEN + escalated** | Round 4 added a second config-blind derive site and made disagreement fatal. See R5-BLOCK-4. |
+| NB-9 audit-probe write amplification | **STILL OPEN (by design)** | `:1240` unconditional. Measured 1 probe per `evaluate_policy` and 1 per `authorize_operation` → **2 write-then-read-then-delete cycles per mint→execute flow**. |
+| NB-10 one-directional `_OPERATION_ROLES` completeness check | **STILL OPEN (partially mitigated in a test)** | `:608` still only `OPERATION_KINDS ⊆ keys`. A bidirectional key-set assertion exists at `tests/unit/test_operator_mcp_policy.py:660` but predates round 4; non-empty values and `roles ∈ rbac.ROLE_PERMISSIONS` remain unasserted (`ROLE_PERMISSIONS` appears in this module only in a prose comment at `:539`, never imported). |
+| NB-11 two receipt-shape gaps | **STILL OPEN (both halves)** | `checkpoint` (`:278-322`) still has no `workspace_id` under `additionalProperties: false`; `operation_receipt.status` (`:147`) still admits `denied` with no reason field anywhere in the `$def`. |
+
+### Validation transcript (real, as run — exit codes captured without an intervening pipe)
+
+```
+$ cd /Users/miethe/dev/homelab/development/research-foundry/.claude/worktrees/operator-mcp-v1
+
+# A) targeted operator-mcp unit suites
+$ .venv/bin/python -m pytest tests/unit/test_operator_mcp_policy.py \
+    tests/unit/test_operator_mcp_schemas.py \
+    tests/unit/test_operator_mcp_serve_extra_boundary.py -q --tb=no -rf
+EXIT=0
+ANSI-stripped `grep -c FAILED` = 0
+........................................................................ [ 40%]
+........................................................................ [ 81%]
+.................................                                        [100%]
+$ ... --collect-only -q | tail -3
+tests/unit/test_operator_mcp_policy.py: 121
+tests/unit/test_operator_mcp_schemas.py: 54
+tests/unit/test_operator_mcp_serve_extra_boundary.py: 2      # 177 total
+
+# B) full suite minus the two known-collection-error files
+$ .venv/bin/python -m pytest tests/ -q --tb=no -rf \
+    --ignore=tests/test_verification_pediatric_cds.py \
+    --ignore=tests/test_verification_seam001_gate_composition.py
+EXIT=1
+ANSI-stripped `grep -c FAILED` = 16   # byte-identical set to round 4; zero in operator-mcp files
+
+# D) flake8, errors-only (this project's CLAUDE.md convention)
+$ .venv/bin/python -m flake8 src/research_foundry/services/operator_mcp_policy.py \
+    --select=E9,F63,F7,F82
+EXIT=0   (no output)
+
+# E) all four operator schemas parse
+$ .venv/bin/python -c "import yaml,glob;[print(f,'OK' if yaml.safe_load(open(f)) else 'EMPTY') for f in sorted(glob.glob('schemas/operator_mcp_*.schema.yaml'))]"
+EXIT=0
+schemas/operator_mcp_confirmation.schema.yaml OK
+schemas/operator_mcp_error.schema.yaml OK
+schemas/operator_mcp_operation.schema.yaml OK
+schemas/operator_mcp_receipt.schema.yaml OK
+
+# F) tree state (before, during and after the 12-mutation sweep)
+$ git status --porcelain
+(empty)
+$ git log --oneline -1
+e4c76b9 fix(operator-mcp): close all nine OPM-1.G round-4 blocking findings
+```
+
+The 16 full-suite failures match the pre-existing set verified identical at pre-change commit
+`15101a4` — **zero regressions**. All mutation work was done **in place** and restored with
+`git checkout --`, with `git status --porcelain` verified empty between every mutation, avoiding the
+`pythonpath = ["src"]` scratch-tree trap entirely.
+
+### Standing cautions carried forward
+
+- **This is the first round where every claimed closure held.** Nine of nine closed; eight of nine
+  empirically regression-detecting (BLOCK-5 is prose-only, verified by reading; BLOCK-9's prose half
+  is unpinned — R5-NB-3). BLOCK-4's previously-invalid closure evidence is now valid and holds under
+  per-test isolation. The `_persist_health_row` pattern is the right fix and should be the template
+  whenever a test fakes a function whose side effect is the thing under test.
+- **Two of the four recurring classes recurred again**: fix-the-layer-below (R5-BLOCK-1 sibling
+  field, R5-BLOCK-3 sibling `$def` — both inside the very `$def`/file the round-4 commit edited) and
+  false authoritativeness (R5-BLOCK-1's schema claim, R5-BLOCK-2's docstring claim, R5-NB-1's
+  "absolute path" framing, R5-NB-7's whole-module claim). Fail-open-by-omission and
+  unsafe-behaviour-pinned-by-a-test did **not** recur. **Every new blocking finding this round is in
+  a field, a `$def`, or a line adjacent to one that was correctly fixed** — the fixes themselves are
+  sound.
+- **`schemas/operator_mcp_receipt.schema.yaml` has now yielded a finding in every round it has been
+  examined** (NEW-20, NEW-21, BLOCK-1, BLOCK-2, BLOCK-3, NB-11, and now R5-BLOCK-1 and R5-BLOCK-3).
+  Recommend a systematic per-`$def` × per-property sweep — enumerate every property in all five
+  `$defs` and classify each as closed-enum / patterned / bounded-open / unconstrained — rather than
+  another finding-driven pass.
+- **The `mint_confirmation` boundary should be re-adjudicated once more** after R5-BLOCK-2 and
+  R5-BLOCK-4 are fixed: it is the one exported function that is neither `PolicyDecision`-shaped nor
+  fully wrapped, has zero production callers, and has now been the locus of a finding in three
+  consecutive rounds (NEW-8, BLOCK-6, R5-BLOCK-2/R5-BLOCK-4).
+- The plan's documented validation prefix `PYTHONPATH=$PWD/src` remains **decorative** (pytest's
+  `pythonpath = ["src"]` ini setting is inserted ahead of it). Unchanged from round 4.
+
+### OPM-1.G verdict
+
+**CHANGES_REQUESTED.** Four blocking findings: R5-BLOCK-1 (MED-HIGH), R5-BLOCK-2 (MED), R5-BLOCK-3
+(MED), R5-BLOCK-4 (MED). Seven new non-blocking (R5-NB-1 … R5-NB-7) plus ten carried forward
+(NB-1, NB-2, NB-3, NB-4, NB-6, NB-7, NB-8, NB-9, NB-10, NB-11; NB-5 fixed) = seventeen non-blocking.
+All nine round-4 blocking findings are closed and none should be reopened. Recommended fix order:
+R5-BLOCK-2 (smallest, and it is an exception-boundary regression), then R5-BLOCK-4 (same function,
+same call), then R5-BLOCK-3 and R5-BLOCK-1 (both schema-only, both in the same file, best done as
+one pass together with the systematic per-`$def` sweep recommended above).
+
+---
+
+## FIND-P1-R4-CLOSURE — round-4 remediation record (commit `e4c76b9`)
+
+Round 4 (`FIND-P1-R4`) returned CHANGES_REQUESTED with nine blocking findings. All nine were
+remediated in `e4c76b9`. **The round-5 gate independently re-verified all nine as CLOSED**, and eight
+of nine as regression-detecting under in-place mutation. This section exists because round 4 got no
+closure section at the time — the closure lived only in `git log`, which Karen correctly flagged as a
+ledger/reality mismatch.
+
+| ID | Round-5 re-verdict | Evidence |
+|---|---|---|
+| BLOCK-1 | CLOSED, regression-detecting | 3 mutations, all exit 1. Vocabulary genuinely closed (`detail=` → `TypeError`; unknown `detail_code` → `ValueError`; no fail-open default). All 15 status×detail_code blocks validate. `build_error`'s legitimate path unbroken. |
+| BLOCK-2 | CLOSED for the value domain, regression-detecting | M2 → 3 tests fail, including the bidirectional drift guard. **Presence coupling was NOT closed** → reopened as R5-BLOCK-3. |
+| BLOCK-3 | CLOSED, regression-detecting | M3 → exit 1. Applied to `terminal_receipt` only → sibling gap reopened as R5-BLOCK-3. |
+| BLOCK-4 | CLOSED, **evidence now valid** | Three latch-sensitive tests fail STANDALONE, one invocation each. The `_persist_health_row` sqlite helper is what fixed the hollow evidence. |
+| BLOCK-5 | CLOSED (prose) | All three false docstring claims corrected; `get_health_state` confirmed to have zero call sites. |
+| BLOCK-6 | CLOSED, regression-detecting | M6a AND M6b both detected — the comparison itself is pinned, not merely the actor's source. |
+| BLOCK-7 | CLOSED, regression-detecting | M7 → exit 1. `model_provider`/`source_sensitivities` addressed by narrowing the claim (the permitted option), not by populating them. |
+| BLOCK-8 | CLOSED, regression-detecting | M8 → exit 1; correctly scoped — `detail` still survives on `identity_denied`. |
+| BLOCK-9 | CLOSED; **one evidence gap** | Shape half regression-detecting (M9a → exit 1). Binding predicate IS in both frozen texts, but **M9b (deleting it from the schema) → exit 0, NOT DETECTED** — no test pins frozen-contract prose anywhere. Tracked for the round-5 remediation. |
+
+**Orchestrator note on evidence standard.** The `e4c76b9` commit message stated the nine were
+"independently re-verified by the orchestrator with adversarial probes". That is accurate but was
+NOT equivalent to a per-finding revert-and-confirm-failure record: BLOCK-4 was verified by true
+in-place mutation, the other eight behaviourally. Karen flagged this as the same evidentiary standard
+that had already failed once (BLOCK-4 itself). The round-5 gate has since supplied the missing
+mutation matrix (11 of 12 detected; M9b the sole gap), which is what makes this closure section
+trustworthy rather than self-asserted.
+
+---
+
+## FIND-P1-KAREN — final adjudication verdicts (round 5, tree `e4c76b9`)
+
+Karen ran read-only against `e4c76b9`. Overall: **FIX-REQUIRED** — "the code has earned a pass; the
+evidence has not."
+
+### Adjudication 1 — `governance.py` serialization-barrier write: **RATIFY WITH CONDITIONS**
+
+Of the three round-3 grounds: (b) restoration of `redact_payload`'s documented "additional" contract
+**holds** (its own docstring says *additional*; the pre-change code replaced rather than added), and
+(c) strictly fail-closed **holds** (`merged = list(_BUILTIN_SECRET_PATTERNS)` then append-if-absent —
+config can only GROW the detection surface).
+
+(a) "provable no-op for the shipped config" is **FALSE**. Three shipped patterns differ from the
+built-in literals only in escaping (`['\"]` in the Python literal vs `['"]` in YAML). They are
+regex-equivalent, so detection outcomes and gate decisions are identical — but the merged list is 25,
+not 22, and `scan_secrets` returns duplicates; `scan_paths` interpolates `len(hits)`, so a flagged
+file now reports "2 match(es)" where it reported 1. Non-gating (`if hits:` is truthiness), no test
+asserts exact counts. Severity **LOW**.
+
+CONDITIONS: (1) correct the claim wherever recorded — done, see the inline correction in
+`FIND-P1-R3`'s Karen queue above; (2) dedupe the merged list on compiled-pattern equivalence OR
+explicitly accept the duplicate-count cosmetic — **accepted as cosmetic**, deliberately not fixed, to
+avoid touching a serialization-barrier file again for a non-gating count; (3) **OUTSTANDING — requires
+the human integration owner**: a reviewer can ratify the CONTENT of a barrier-file write, but only the
+declared file owner can waive the OWNERSHIP barrier. That acknowledgement is not something any agent
+in this loop can supply.
+
+### Adjudication 2 — FIND-P1-B, the net-new `_OPERATION_ROLES` primitive: **ACCEPT, with a required drift guard**
+
+Delegation to `api/auth/rbac.py` is genuinely infeasible as a direct import: `rbac.py:91` imports
+fastapi at module level, and NEW-23 requires `operator_mcp_policy` to import in a base install. Karen
+noted the inverted form IS feasible (relocate `ROLE_PERMISSIONS` to a serve-free module and re-export,
+exactly as was done for `AuthIdentity` and `resolve_workspace_isolation_active`) but explicitly did NOT
+require it — a 13-entry map does not justify relocating a security-critical matrix at the tail of a
+five-round gate.
+
+REQUIRED instead: the alignment must stop being a comment. Today it is one prose line with zero
+mechanical linkage, and NEW-22 already found two real privilege escalations in this map. A test
+asserting per-kind alignment against `ROLE_PERMISSIONS` is feasible today (tests run WITH the serve
+extra, so a test may import both modules even though the module may not). **Tracked into the round-5
+remediation as Part C.**
+
+**FIND-P1-B is hereby RESOLVED** (superseding its `open — carry to Karen` status): the primitive is
+accepted; the drift guard is the condition.
+
+### Adjudication 3 — `governance.preflight()` deviation: **ACCEPT DEVIATION, AMEND THE DECISIONS BLOCK**
+
+`guard_check()` is genuinely wired (`_check_guard` calls `governance.guard_check`). `preflight()` is
+NOT — `_check_preflight` is a locally-defined operation-shape check. The deviation is substantively
+correct: `governance.preflight(intent, ibom, routing, profile)` consumes run-scoped artifacts that do
+not exist at authorization time, so calling it would mean passing empty dicts for a vacuous pass —
+fail-open-by-omission, the class BLOCK-7 was raised on.
+
+The naming is the real defect: the stage is named `preflight`, the reason code is `preflight_failed`,
+and the frozen decisions block says `governance.preflight()` runs. A P2 author would reasonably believe
+a governance gate fires that does not exist. **Decisions-block line 30 amended** (see
+`.codex/worknotes/research-foundry-operator-mcp/decisions-block.md`), and the P2 obligation
+(`OPM-DF-preflight`) recorded there: P2 MUST wire it once a run exists, with an artifact that fails if
+unwired.
+
+### Adjudication 4 — NEW-23 serialization-barrier + auth-package writes: **RATIFY (unconditional)**
+
+Verified empirically by Karen: `AuthIdentity` resolves to the SAME class object
+(`0x95b11dc10`) via `auth_identity`, `api.auth.provider`, `api.auth.rbac` and `services.audit_service`
+— so `isinstance` across all ~487 references is unchanged, not merely "probably compatible". Exactly
+one definition of each relocated symbol exists in the tree. Both re-exports are in the re-exporting
+module's `__all__`. `scope.py`'s removed imports have no dangling references. The relocated
+`resolve_workspace_isolation_active` body is identical, so WKSP-304 isolation behaviour is byte-identical
+for `catalog_service`, `builder_service`, `AgentJobService` and `audit_service`. Textbook pure relocation.
+
+### Karen's process finding (the durable lesson)
+
+Four points, five rounds, ~2.4M+ tokens. The gate is not malfunctioning — it has found genuine defects
+every round, including two real privilege escalations. The **loop shape** is what malfunctions: each
+round fixes findings and ASSERTS closure; the next round discovers the closure evidence was hollow and
+generates a fresh finding set from the remediation itself.
+
+**The fix is one process change: move mutation verification into the FIX step, not the next REVIEW
+round.** A remediation is not submitted until each fix has been reverted and shown to break a named
+test. That alone would have collapsed rounds 4 and 5 into round 3. This generalises well beyond this
+phase and should be pushed through `op story capture`.
+
+---
+
+## NB TRIAGE — explicit disposition of every non-blocking finding
+
+DoD requires each non-blocking item FIXED or EXPLICITLY DEFERRED WITH A REASON. No silent drops.
+
+> **On NEW-15 / NEW-16 / NEW-17 / NEW-24 / NEW-25:** their original text was never captured and the
+> round-3 reviewer's context is gone. The round-4 gate stated plainly that the original wording is
+> **not recoverable** and supplied an independently re-derived set (NB-1…NB-11) at the same severity
+> band rather than fabricating a reconstruction. That judgement is accepted and recorded here as-is;
+> the NB-n set below is the authoritative non-blocking record for P1.
+
+| ID | Disposition | Reason |
+|---|---|---|
+| NB-1 `input_payload` has no byte bound | **FIX** (round-5 remediation) | `payload_too_large` has shape producers but none for size; 32 keys × 300 KB passes every check, is SHA-256'd and embedded in a durable confirmation. |
+| NB-2 `check_tool_name` has zero callers | **DEFER to P5**, with an entry gate | The transport boundary it guards is P5's; no server exists in P1 to wire it to. Deferring is correct, but it MUST ship as a P5 acceptance criterion with an artifact that fails if unwired — otherwise it is the same "promised gate that never runs" shape as Adjudication 3. |
+| NB-3 `(?i)` is not ECMA-262 | **FIX** (round-5 remediation) | Real portability hole with a security consequence: BLOCK-1 proved the schema `not.pattern` is load-bearing, and a validator that cannot compile a `pattern` commonly SKIPS the keyword, silently deleting the defence. These schemas carry public `$id`s. |
+| NB-4 public `now=` clock seam | **DEFER to P2** | Documented; closing it removes a seam four exported functions rely on for testing. The abuse it enables (P2 threading a request-supplied timestamp) is a P2 review item. Recorded as a P2 acceptance criterion. |
+| NB-5 `consume_confirmation` optional `ctx` | **SUPERSEDED** | Fixed by BLOCK-9 — `ctx` is now a required keyword argument. |
+| NB-6 serve-extra test blocks 3 hard-coded names | **FIX** (round-5 remediation) | Blocked set is hard-coded rather than derived from `pyproject.toml`'s `[serve]` extra, and the test never runs a policy stage under the blocker — so a serve-gated import reachable only from `evaluate_policy` would still pass. |
+| NB-7 autouse fixture patches the NEW-18 Layer-3 seam | **FIX (test-only)** (round-5 remediation) | Not a defect — the property was confirmed empirically — but ~100 tests exercise only the equality-commitment half, never real derivation. P2 would otherwise be the first real exercise of identity derivation. |
+| NB-8 `_check_identity_and_rbac` ignores `config` | **FIX** (round-5 remediation) | Same root cause as R5-BLOCK-4: the factory derives with `config=`, the authorization stage derives without it, so a caller passing a custom `config` gets a context that always denies. Fail-closed, but a silent alignment trap. Fixed once for all three derivation sites. |
+| NB-9 audit-probe write amplification | **FIX (bounded) + DOCUMENT** (round-5 remediation) | Self-inflicted by NEW-19's unconditional probe: INSERT+SELECT+DELETE on the authorization hot path, ≥2× per operation. Under the concurrency DUR-1 contemplates, SQLite write-lock CONTENTION is reported identically to genuine unhealth → spurious `audit_unhealthy`. Security-safe (fail-closed; `retryable=True` is now honest) but an availability regression that must be named, not left implied. |
+| NB-10 completeness check is one-directional | **FIX** (round-5 remediation) | Cheap hygiene: assert set EQUALITY (catching a stale entry after a rename), non-empty role sets, known role names. |
+| NB-11 receipt-shape gaps | **DEFER to P2**, named | `checkpoint` lacks `workspace_id` (relevant under WKSP-304) and `operation_receipt.status: denied` has no reason field. Both are P2 persistence-shape decisions — P2 owns the durable store. Recorded as a named P2 entry-gate item, not silently dropped. |
+| R5-NB-1 … R5-NB-7 | **CARRIED** | Seven further non-blocking items raised by the round-5 gate; see `FIND-P1-R5`. Triaged with the round-5 remediation. |
+
+Net: **FIX 7** (NB-1, 3, 6, 7, 8, 9, 10) · **DEFER 3 with named owners and entry gates** (NB-2 → P5;
+NB-4, NB-11 → P2) · **SUPERSEDED 1** (NB-5) · **7 carried** (R5-NB-*).

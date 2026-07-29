@@ -7,11 +7,16 @@ feature_slug: research-foundry-operator-mcp
 phase: 1
 status: blocked
 created: '2026-07-28'
-updated: '2026-07-28'
+updated: '2026-07-29'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
 plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
-commit_refs: []
-pr_refs: []
+commit_refs:
+- 41bcafb
+- f1bfa39
+- f16059f
+- e4c76b9
+pr_refs:
+- '7'
 owners:
 - backend-architect
 contributors:
@@ -92,3 +97,38 @@ progress: 80
 | OPM-1.G | Tier-3 contract gate | task-completion-validator then Karen APPROVE the same exact tree; material changes invalidate both verdicts | gate |
 
 Quality gate (per plan): OPM-OQ-1..4 resolved or defaults explicitly approved; security reviewer verifies authorization-before-lookup and token binding; `task-completion-validator` then Karen approve the same exact schemas/examples/threat-matrix tree; no effect adapter or MCP server exists yet.
+
+---
+
+## OPM-1.G gate history (as of 2026-07-29)
+
+`status` remains **blocked**: OPM-1.G has not been APPROVED. Tasks OPM-1.1–1.4 are implemented; the
+gate is what is outstanding.
+
+| Round | Verdict | Blocking findings | Remediation commit |
+|---|---|---|---|
+| R1 | CHANGES_REQUESTED | 6 | (round-1/2 cycle) |
+| R2 | CHANGES_REQUESTED | 13 | `f1bfa39` |
+| R3 | CHANGES_REQUESTED | 6 (NEW-18/19/20/21/22/23) | `f16059f` |
+| R4 | CHANGES_REQUESTED | 9 (BLOCK-1…9) | `e4c76b9` |
+| R5 | CHANGES_REQUESTED | 4 (R5-BLOCK-1…4) | in flight |
+| Karen | FIX-REQUIRED | 4 adjudications returned (1 ratify, 2 ratify/accept-with-conditions, 1 amend) | see `FIND-P1-KAREN` |
+
+**Round-5 state.** All nine round-4 findings independently re-verified CLOSED, eight of nine
+mutation-verified as regression-detecting. The four new findings are each ADJACENT to a fix made
+correctly — the recurring "the field next to the one that was fixed" shape. Blocking-finding count is
+trending down (6 → 9 → 4).
+
+**Karen's outstanding item that no agent can close:** Adjudication 1 condition (3) requires the human
+**integration owner's acknowledgement** of the `governance.py` serialization-barrier write. A reviewer
+can ratify the content of a barrier-file write; only the declared file owner can waive the ownership
+barrier. This is a human sign-off, not an agent task.
+
+**Deferred with named owners** (from the NB triage in the findings ledger): NB-2 → P5 entry gate
+(`check_tool_name` must be wired with an artifact that fails if unwired); NB-4, NB-11 → P2;
+`OPM-DF-preflight` → P2 (`governance.preflight()` must be wired once a run exists — see the amended
+decisions-block line 30).
+
+**Process lesson (Karen, for `op story capture`):** move mutation verification into the FIX step, not
+the next REVIEW round. A remediation is not submitted until each fix has been reverted and shown to
+break a named test. Rounds 4 and 5 exist largely because closure was asserted rather than demonstrated.
