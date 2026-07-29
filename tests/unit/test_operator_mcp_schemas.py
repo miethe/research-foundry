@@ -172,6 +172,48 @@ def test_confirmation_rejects_additional_properties() -> None:
 
 
 # ---------------------------------------------------------------------------
+# R5-NB-3 / Part B: pin the frozen DUR-1 contract text (schema half).
+# ---------------------------------------------------------------------------
+
+#: R5-NB-3 (round 5, fixed): round 5's mutation sweep found that DELETING the
+#: entire BINDING CHECK clause (b) from this schema's frozen DUR-1
+#: description -- the exact prose P2's closeout is graded against -- was NOT
+#: DETECTED by any test: exit 0, zero failures. No test anywhere pinned this
+#: frozen normative text; grepping both operator-mcp test files for `DUR-1`/
+#: `BINDING CHECK`/`compare-and-swap` found one hit, in a docstring, not an
+#: assertion. This asserts the REQUIRED PREDICATE CLAUSES are present --
+#: deliberately NOT a byte-for-byte text comparison, which would be brittle
+#: to ordinary copy-edits that don't change the normative content -- so
+#: silently weakening (deleting a clause, softening "MUST" to "should",
+#: dropping the compare-and-swap framing) fails this test while a harmless
+#: rewording does not.
+_DUR1_REQUIRED_CLAUSES: tuple[str, ...] = (
+    "compare-and-swap",
+    "GUARDED BY",
+    "CLAMPED-EXPIRY CHECK",
+    "BINDING CHECK",
+    "byte-identical",
+    "MUST NOT execute",
+)
+
+
+def test_confirmation_schema_pins_the_frozen_dur1_binding_predicate() -> None:
+    """R5-NB-3 (schema half): M9b (deleting the schema-side BINDING CHECK
+    clause) previously went undetected -- see `_DUR1_REQUIRED_CLAUSES`'s
+    docstring above. The mirrored module-docstring half is pinned by
+    `test_operator_mcp_policy.py::test_dur1_binding_predicate_is_pinned_in_module_docstring`."""
+
+    schema = SchemaRegistry().get("operator_mcp_confirmation")
+    description = schema.get("description", "")
+    assert description, "operator_mcp_confirmation.schema.yaml lost its top-level description"
+    for clause in _DUR1_REQUIRED_CLAUSES:
+        assert clause in description, (
+            f"DUR-1 predicate clause missing from the confirmation schema's "
+            f"description: {clause!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # operator_mcp_receipt.schema.yaml (discriminated union)
 # ---------------------------------------------------------------------------
 
@@ -288,6 +330,65 @@ def test_receipt_action_reason_code_rejects_near_miss_of_a_real_code() -> None:
     assert _errors("operator_mcp_receipt", instance)
 
 
+def test_receipt_action_receipt_failed_requires_reason_code_key_to_be_present() -> None:
+    """R5-BLOCK-3 (round 5 gate): `action_receipt` had NO presence coupling
+    between `status` and `reason_code` at all -- `status: failed` with
+    `reason_code` entirely ABSENT validated, sidestepping BLOCK-2's closed
+    enum exactly the way BLOCK-3 (round 4) closed for the sibling
+    `terminal_receipt.denial_reason_code` one `$def` below. Mirrors
+    `test_receipt_terminal_denied_requires_reason_code_key_to_be_present`."""
+
+    instance = _valid_action_receipt(status="failed")  # reason_code absent
+    assert "reason_code" not in instance
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_action_receipt_skipped_requires_reason_code_key_to_be_present() -> None:
+    instance = _valid_action_receipt(status="skipped")  # reason_code absent
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_action_receipt_failed_with_null_reason_code_rejected() -> None:
+    """The presence-key case above cannot distinguish "absent" from "present
+    and null" (dropping a key is not the same JSON Schema condition as the
+    key being present with value `null`) -- this pins the null-value case
+    specifically, mirroring `test_receipt_terminal_denied_requires_reason_code`."""
+
+    instance = _valid_action_receipt(status="failed", reason_code=None)
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_action_receipt_failed_with_reason_code_passes() -> None:
+    instance = _valid_action_receipt(status="failed", reason_code="rbac_denied")
+    assert not _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_action_receipt_completed_forbids_reason_code() -> None:
+    """R5-BLOCK-3: the other direction -- `status: completed` with a
+    NON-NULL `reason_code` (a "completed" action carrying a denial cause)
+    previously validated too, the exact shape `terminal_receipt`'s own
+    `completed`/`canceled` branch already forbade."""
+
+    instance = _valid_action_receipt(status="completed", reason_code="guard_blocked")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_action_receipt_completed_with_absent_reason_code_still_passes() -> None:
+    """`reason_code` is NOT in `action_receipt`'s top-level `required` list
+    (unlike `terminal_receipt.denial_reason_code`, which is required and
+    nullable) -- the common case of a completed action with no reason_code
+    key at all must keep validating after the R5-BLOCK-3 fix."""
+
+    instance = _valid_action_receipt(status="completed")
+    assert "reason_code" not in instance
+    assert not _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_action_receipt_completed_with_null_reason_code_passes() -> None:
+    instance = _valid_action_receipt(status="completed", reason_code=None)
+    assert not _errors("operator_mcp_receipt", instance)
+
+
 def test_receipt_rejects_unknown_kind_discriminator() -> None:
     instance = _valid_operation_receipt(kind="not_a_real_kind")
     assert _errors("operator_mcp_receipt", instance)
@@ -368,6 +469,114 @@ def test_audit_delivery_detail_rejects_absolute_filesystem_path() -> None:
         "audit_event_id": None,
         "detail": "audit store unreachable at /var/secrets/db.sock",
     }
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_audit_delivery_audit_event_id_rejects_absolute_filesystem_path() -> None:
+    """R5-BLOCK-1 (round 5 gate): `audit_event_id` is `detail`'s SIBLING
+    property, one property over, and previously carried NO pattern guard at
+    all -- the exact BLOCK-1 shape recurring one field later. A bare
+    absolute path with no traceback framing (real `str(exc)` shape) must
+    now be rejected, mirroring `test_audit_delivery_detail_rejects_absolute_filesystem_path`."""
+
+    instance = _valid_terminal_receipt(status="denied", denial_reason_code="internal_error")
+    instance["audit_delivery"] = {
+        "status": "unavailable",
+        "audit_event_id": "/var/secrets/db.sock",
+    }
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_audit_delivery_audit_event_id_rejects_raw_traceback() -> None:
+    instance = _valid_terminal_receipt(status="denied", denial_reason_code="internal_error")
+    instance["audit_delivery"] = {
+        "status": "unavailable",
+        "audit_event_id": 'Traceback (most recent call last):\n  File "/x/y.py", line 1',
+    }
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_audit_delivery_audit_event_id_null_still_passes() -> None:
+    """Regression check for the JSON-Schema `not: {pattern: ...}` gotcha
+    this fix hit: applying a bare `not: {pattern: ...}` to a NULLABLE field
+    incorrectly rejects `null` itself (`pattern` is vacuously satisfied by a
+    non-string instance, so `not` of that inverts to a rejection) -- the
+    guard here MUST include `type: string` inside the `not` sub-schema so a
+    genuinely absent/null `audit_event_id` (a normal, common case) keeps
+    validating."""
+
+    instance = _valid_terminal_receipt(status="completed")
+    instance["audit_delivery"] = {"status": "delivered", "audit_event_id": None}
+    assert not _errors("operator_mcp_receipt", instance)
+
+
+def test_audit_delivery_audit_event_id_genuine_uuid_passes() -> None:
+    instance = _valid_terminal_receipt(status="completed")
+    instance["audit_delivery"] = {
+        "status": "delivered",
+        "audit_event_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    }
+    assert not _errors("operator_mcp_receipt", instance)
+
+
+def test_audit_delivery_builder_redacts_path_shaped_audit_event_id() -> None:
+    """R5-BLOCK-1: code-level closure companion to the schema-level negative
+    fixtures above -- `build_audit_delivery` now routes `audit_event_id`
+    through the same `_redact_and_bound` pass `detail` uses, so a caller
+    that passes a path-shaped `audit_event_id` gets the SAME safe marker
+    back, never the raw path."""
+
+    from research_foundry.services.operator_mcp_policy import build_audit_delivery
+
+    unsafe_id = "/var/secrets/db.sock"
+    block = build_audit_delivery("unavailable", audit_event_id=unsafe_id)
+    assert block["audit_event_id"] != unsafe_id
+    assert "/var/secrets/db.sock" not in (block["audit_event_id"] or "")
+
+    instance = _valid_terminal_receipt(status="denied", denial_reason_code="internal_error")
+    instance["audit_delivery"] = block
+    assert not _errors("operator_mcp_receipt", instance), block
+
+
+def test_receipt_operation_receipt_workspace_id_rejects_path_shaped_value() -> None:
+    """R5-BLOCK-1: `workspace_id` (`operation_receipt` and its identically-
+    shaped sibling `terminal_receipt.workspace_id`) previously had no
+    pattern guard at all."""
+
+    instance = _valid_operation_receipt(workspace_id="/etc/passwd")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_terminal_receipt_workspace_id_rejects_path_shaped_value() -> None:
+    instance = _valid_terminal_receipt(workspace_id="/etc/passwd")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_action_receipt_action_id_rejects_path_shaped_value() -> None:
+    """R5-BLOCK-1: `action_id` appears in BOTH `action_receipt` and
+    `effect_receipt` with the identical open-string shape -- both siblings
+    need the same fix."""
+
+    instance = _valid_action_receipt(action_id="/home/bob/.ssh/id_ed25519")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_effect_receipt_action_id_rejects_path_shaped_value() -> None:
+    instance = {
+        "schema_version": "1.0",
+        "kind": "effect_receipt",
+        "operation_id": f"opm_{_SHA}",
+        "action_id": "/home/bob/.ssh/id_ed25519",
+        "effect_kind": "source_card_created",
+        "effect_digest": _SHA,
+        "effect_ref": "run_demo",
+        "generated_at": "2026-07-28T00:00:00Z",
+    }
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_action_receipt_attempt_ref_rejects_path_shaped_value() -> None:
+    instance = _valid_action_receipt(attempt_ref="/opt/agent/state/attempt.log")
     assert _errors("operator_mcp_receipt", instance)
 
 

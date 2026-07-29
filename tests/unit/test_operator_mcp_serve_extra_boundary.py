@@ -29,34 +29,66 @@ regression.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import tempfile
 import textwrap
 from pathlib import Path
 
-_BLOCKER_PREAMBLE = textwrap.dedent(
-    """
-    import sys
-
-    _BLOCKED = {"fastapi", "uvicorn", "starlette"}
-
-    class _Blocker:
-        def find_spec(self, name, path=None, target=None):
-            if name.split(".")[0] in _BLOCKED:
-                raise ImportError(f"BLOCKED (test boundary): {name}")
-            return None
-
-    sys.meta_path.insert(0, _Blocker())
-    """
-)
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _run_blocked(script: str) -> subprocess.CompletedProcess[str]:
-    """Run `script` in a fresh subprocess with fastapi/uvicorn/starlette blocked."""
+def _serve_extra_package_names() -> set[str]:
+    """NB-6 (round 5, fixed): derive the serve-extra blocklist from
+    `pyproject.toml`'s own `[project.optional-dependencies].serve` list
+    rather than a hard-coded, driftable duplicate -- if a package is ever
+    added to (or removed from) that extra, this test boundary now follows
+    it automatically instead of silently going stale.
 
-    src_root = str(Path(__file__).resolve().parents[2] / "src")
-    full_script = _BLOCKER_PREAMBLE + "\n" + script
+    `starlette` is added explicitly, unconditionally: it is fastapi's
+    TRANSITIVE dependency, never `research-foundry`'s own declared `serve`
+    extra, so it cannot be derived from `pyproject.toml` at all -- this
+    comment is the record of why it stays hard-coded."""
+
+    try:
+        import tomllib  # Python 3.11+
+    except ModuleNotFoundError:  # pragma: no cover - matches this repo's documented
+        import tomli as tomllib  # type: ignore[no-redef]  # < 3.11 fallback convention
+
+    with (_REPO_ROOT / "pyproject.toml").open("rb") as fh:
+        data = tomllib.load(fh)
+    serve_deps = data["project"]["optional-dependencies"]["serve"]
+    names = {re.split(r"[\[<>=!~; ]", dep, maxsplit=1)[0].strip() for dep in serve_deps}
+    return names | {"starlette"}
+
+
+_BLOCKED: set[str] = _serve_extra_package_names()
+
+
+def _blocker_preamble(blocked: set[str]) -> str:
+    return textwrap.dedent(
+        f"""
+        import sys
+
+        _BLOCKED = {blocked!r}
+
+        class _Blocker:
+            def find_spec(self, name, path=None, target=None):
+                if name.split(".")[0] in _BLOCKED:
+                    raise ImportError(f"BLOCKED (test boundary): {{name}}")
+                return None
+
+        sys.meta_path.insert(0, _Blocker())
+        """
+    )
+
+
+def _run_blocked(script: str, blocked: set[str] = _BLOCKED) -> subprocess.CompletedProcess[str]:
+    """Run `script` in a fresh subprocess with the serve-extra packages blocked."""
+
+    src_root = str(_REPO_ROOT / "src")
+    full_script = _blocker_preamble(blocked) + "\n" + script
     return subprocess.run(
         [sys.executable, "-c", full_script],
         capture_output=True,
@@ -133,3 +165,71 @@ def test_resolve_operator_identity_constructs_authidentity_without_serve_extra()
             f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
         )
         assert "IDENTITY_OK" in result.stdout
+
+
+def test_evaluate_policy_and_mint_confirmation_run_without_serve_extra() -> None:
+    """NB-6 (round 5, fixed): tests (a)/(b) above only exercise IMPORT and
+    identity CONSTRUCTION -- neither runs an actual POLICY STAGE under the
+    blocker. `evaluate_policy` (capability -> rbac -> audit_health -> guard
+    -> preflight) additionally touches `governance.guard_check` and
+    `audit_service.health_check`, and `mint_confirmation` re-derives
+    identity a second time and computes a canonical digest -- if either
+    accidentally imported something serve-gated on this path, tests (a)/(b)
+    alone would not catch it. Builds the same substrate
+    `tests/conftest.py::tmp_foundry` builds (schemas/config/templates copied
+    from the distribution root), since this runs in a bare subprocess with
+    no access to that fixture."""
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "fdry"
+        script = textwrap.dedent(
+            f"""
+            import shutil
+            from pathlib import Path
+
+            from research_foundry.paths import FoundryPaths, distribution_root
+            from research_foundry.yamlio import dump_yaml, load_yaml
+            from research_foundry.services import operator_mcp_policy as policy
+
+            root = Path({str(root)!r})
+            root.mkdir(parents=True)
+            dist = distribution_root()
+            for sub in ("schemas", "config", "templates"):
+                src = dist / sub
+                if src.exists():
+                    shutil.copytree(src, root / sub)
+            shutil.copyfile(dist / "foundry.yaml", root / "foundry.yaml")
+            for d in ("inbox/raw_ideas", "runs", "registries"):
+                (root / d).mkdir(parents=True, exist_ok=True)
+
+            data = load_yaml(root / "foundry.yaml") or {{}}
+            data.setdefault("foundry", {{}})
+            data["foundry"]["operator_mcp"] = {{
+                "identity": {{"user_id": "alice", "workspace_id": "ws-mine", "roles": ["owner"]}}
+            }}
+            dump_yaml(data, root / "foundry.yaml")
+
+            paths = FoundryPaths(root=root)
+            ctx = policy.PolicyContext.for_configured_operator(
+                operation_kind="run.plan",
+                idempotency_key="idem-1",
+                effective_sensitivity="public",
+                sensitivity_ceiling="client_sensitive",
+                paths=paths,
+            )
+            assert ctx.identity is not None, "expected a populated identity, got None"
+
+            decision = policy.evaluate_policy(ctx, paths=paths)
+            assert decision.allowed, decision
+
+            issued = policy.mint_confirmation(ctx, paths=paths)
+            assert issued.record["status"] == "issued"
+            print("POLICY_OK")
+            """
+        )
+        result = _run_blocked(script)
+        assert result.returncode == 0, (
+            f"a policy stage raised under the serve-extra blocker.\n"
+            f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
+        )
+        assert "POLICY_OK" in result.stdout

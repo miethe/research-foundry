@@ -50,8 +50,29 @@ description: >-
   `reason_code` (duplicated by value, not `$ref`, per this repo's
   no-cross-file-`$ref`-resolver limitation -- see
   `knowledge_activity_receipt.schema.yaml`'s docstring for the identical
-  convention). No field here ever carries a stack trace, environment
-  variable, secret, or unrestricted filesystem path.
+  convention).
+
+  R5-BLOCK-1 (round 5 gate) NARROWS a prior over-claim here: this
+  description previously stated, unconditionally, "No field here ever
+  carries a stack trace, environment variable, secret, or unrestricted
+  filesystem path" -- true of `audit_delivery.detail` (closed-vocabulary,
+  BLOCK-1 round 4) but empirically FALSE of its sibling
+  `audit_delivery.audit_event_id`, which validated a bare absolute
+  filesystem path or a raw traceback VERBATIM. Every open (non-enum,
+  non-pattern-closed) string field below now carries the SAME
+  `not: pattern` traceback-/absolute-path-shaped guard `detail` uses
+  (`audit_event_id`, `action_receipt.action_id`, `action_receipt.attempt_ref`,
+  `effect_receipt.action_id`, `operation_receipt.workspace_id`,
+  `terminal_receipt.workspace_id`) -- see the per-`$def`/per-property matrix
+  in `.claude/findings/research-foundry-operator-mcp-findings.md`, section
+  FIND-P1-R5, for which fields were reviewed and why each was (or was not)
+  changed. This is a defense-in-depth SCHEMA-level guard against a
+  producer bug; P1 has no code-level producer for most of these fields at
+  all yet (P2's `operator_operation_service.py` is the durable-persistence
+  owner -- see above), so it does not by itself prove no caller-influenced
+  content can ever reach them, only that a well-formed producer's output
+  which DOES leak one is now rejected at the schema boundary rather than
+  silently accepted.
 type: object
 oneOf:
   - $ref: "#/$defs/operation_receipt"
@@ -73,8 +94,34 @@ $defs:
           - degraded
           - unavailable
       audit_event_id:
+        description: >-
+          Opaque audit-event identifier -- `audit_service.health_check`'s
+          real producer always supplies a UUID4, never caller-influenced
+          text. R5-BLOCK-1 (round 5 gate): this field is `detail`'s SIBLING
+          property on this SAME `$def`, one property over, and previously
+          carried NO pattern guard at all -- a path- or traceback-shaped
+          value validated verbatim (the exact BLOCK-1 shape, one field
+          later). Guarded the same way `detail` is below, and
+          `operator_mcp_policy.build_audit_delivery` now routes it through
+          the same `_redact_and_bound` pass as `detail` (defense in depth --
+          a no-op for the genuine UUID producer).
         type: [string, "null"]
         maxLength: 128
+        not:
+          # NOTE: `type: string` is REQUIRED inside this `not` sub-schema --
+          # `pattern` alone does not constrain a non-string instance (it is
+          # vacuously satisfied), so a bare `not: {pattern: ...}` on a
+          # NULLABLE field would incorrectly REJECT `null` itself (`{pattern:
+          # ...}` "passes" on `null` since the keyword does not apply, so
+          # `not` of that pass is a fail). Caught empirically: the existing
+          # `audit_delivery` golden/negative fixtures in
+          # `tests/unit/test_operator_mcp_schemas.py` use `audit_event_id:
+          # None`, which failed validation until this `type: string` was
+          # added. `detail`/every other `not: pattern` field in this file is
+          # `type: string` only (never nullable), so this is the only site
+          # that needs it.
+          type: string
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
       detail:
         description: >-
           Optional bounded, CLOSED-VOCABULARY supplementary detail about the
@@ -94,10 +141,22 @@ $defs:
           The `not.pattern` below is retained as defense-in-depth against a
           producer that bypasses the helper entirely; it now also flags
           absolute-path-shaped text, mirroring `operator_mcp_error.schema.yaml`.
+          NB-3 (round 5, fixed): the pattern below previously opened with a
+          Python-only `(?i)` inline case-insensitivity flag -- not valid
+          ECMA-262 (the syntax JSON Schema 2020-12 specifies for `pattern`),
+          and a validator that cannot compile an ECMA-262 `pattern` commonly
+          SKIPS the keyword rather than erroring, silently disabling this
+          guard. Rewritten below with explicit character classes
+          (`[Tt]raceback`, `[Ss]ite-[Pp]ackages`, `[Ff]ile`) instead, with
+          IDENTICAL matching behavior. R5-NB-2 (round 5, deferred, fixed
+          opportunistically while rewriting this exact string): the code
+          side's `_PATH_LIKE` also matches a Windows drive-letter path
+          (`[A-Za-z]:\\`); this schema-level guard did not, until now --
+          added below for parity.
         type: string
         maxLength: 500
         not:
-          pattern: "(?i)traceback|site-packages|File \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/"
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
   operation_receipt:
     type: object
     additionalProperties: false
@@ -120,9 +179,20 @@ $defs:
         type: string
         pattern: "^opm_[a-f0-9]{64}$"
       workspace_id:
+        description: >-
+          R5-BLOCK-1 (round 5 gate): open string, no pattern, until now --
+          the same shape `audit_delivery.audit_event_id` and
+          `action_receipt.attempt_ref` were flagged for. No P1 code
+          constructs this receipt kind yet (P2's
+          `operator_operation_service.py` is the owner); guarded here as
+          the same schema-level defense in depth against a future producer
+          bug, mirroring `terminal_receipt.workspace_id` (identical field,
+          same fix, same reasoning).
         type: string
         minLength: 1
         maxLength: 128
+        not:
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
       operation_kind:
         enum:
           - run.plan
@@ -178,9 +248,15 @@ $defs:
         type: string
         pattern: "^opm_[a-f0-9]{64}$"
       action_id:
+        description: >-
+          R5-BLOCK-1 (round 5 gate): open string, no pattern, until now --
+          guarded the same way `attempt_ref` immediately below is (and the
+          identically-named `effect_receipt.action_id`).
         type: string
         minLength: 1
         maxLength: 128
+        not:
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
       action_index:
         type: integer
         minimum: 0
@@ -192,10 +268,14 @@ $defs:
       attempt_ref:
         description: >-
           Opaque AgentJob attempt identifier (OPM-2.2 reuse) -- never a
-          filesystem path.
+          filesystem path. R5-BLOCK-1 (round 5 gate): that "never" was
+          previously prose only, with zero schema enforcement -- guarded
+          below the same way `audit_delivery.audit_event_id`/`detail` are.
         type: string
         minLength: 1
         maxLength: 128
+        not:
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
       started_at:
         type: string
         format: date-time
@@ -235,6 +315,44 @@ $defs:
           - null
       retryable:
         type: boolean
+    allOf:
+      - if:
+          properties:
+            status:
+              enum: [failed, skipped]
+          required:
+            - status
+        then:
+          # R5-BLOCK-3 (round 5 gate): BLOCK-3 (round 4 gate) added this
+          # exact `if`/`then` pattern to `terminal_receipt` only --
+          # `action_receipt` (edited in the SAME round-4 commit, for
+          # BLOCK-2's enum fix) was left with NO presence coupling at all:
+          # `status: failed` with `reason_code` entirely ABSENT validated,
+          # sidestepping BLOCK-2's closed enum exactly the way BLOCK-3
+          # closed for `terminal_receipt` one `$def` below.
+          required:
+            - reason_code
+          properties:
+            reason_code:
+              not:
+                const: null
+      - if:
+          properties:
+            status:
+              const: completed
+          required:
+            - status
+        then:
+          # R5-BLOCK-3: the other direction -- `status: completed` with a
+          # NON-NULL `reason_code` (a "completed" action carrying a denial
+          # cause) previously validated too. `reason_code` is not in this
+          # `$def`'s top-level `required` list (unlike
+          # `terminal_receipt.denial_reason_code`), so this only constrains
+          # the value WHEN PRESENT -- an absent `reason_code` for a
+          # completed action (the common case) still validates.
+          properties:
+            reason_code:
+              const: null
   effect_receipt:
     type: object
     additionalProperties: false
@@ -256,9 +374,14 @@ $defs:
         type: string
         pattern: "^opm_[a-f0-9]{64}$"
       action_id:
+        description: >-
+          R5-BLOCK-1 (round 5 gate): identically-named sibling of
+          `action_receipt.action_id` -- same open-string shape, same fix.
         type: string
         minLength: 1
         maxLength: 128
+        not:
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
       effect_kind:
         description: Bounded, open descriptive label -- see module description.
         type: string
@@ -358,9 +481,15 @@ $defs:
         type: string
         pattern: "^opm_[a-f0-9]{64}$"
       workspace_id:
+        description: >-
+          R5-BLOCK-1 (round 5 gate): identically-named sibling of
+          `operation_receipt.workspace_id` -- same open-string shape, same
+          fix, same reasoning.
         type: string
         minLength: 1
         maxLength: 128
+        not:
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
       operation_kind:
         enum:
           - run.plan

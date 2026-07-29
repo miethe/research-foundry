@@ -87,7 +87,7 @@ properties:
     minLength: 1
     maxLength: 300
     not:
-      pattern: "(?i)traceback|site-packages|File \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/"
+      pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
   retryable:
     type: boolean
   operation_id:
@@ -106,7 +106,7 @@ properties:
     type: string
     maxLength: 500
     not:
-      pattern: "(?i)traceback|site-packages|File \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/"
+      pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
   occurred_at:
     type: string
     format: date-time

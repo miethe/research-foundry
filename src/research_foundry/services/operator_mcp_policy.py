@@ -326,6 +326,28 @@ of the three exported confirmation-lifecycle functions, can ever produce,
 verify, or consume a confirmation whose durable content diverges from what
 the actually-configured local identity would produce on its own.
 
+**R5-BLOCK-2/R5-BLOCK-4 (round 5 gate)**: round 4's ``mint_confirmation``
+fix above introduced two adjacent defects in the same edit. First, the new
+``resolve_operator_identity(paths)`` derive call sat OUTSIDE
+``mint_confirmation``'s exception boundary, so a malformed
+``foundry.yaml`` propagated a raw ``yaml.*`` exception embedding the
+malformed file's content verbatim -- reopening NEW-8 in the very function
+NEW-8 was raised against. It is now wrapped in its own
+``try/except Exception -> RuntimeError("internal_error during confirmation
+minting")`` boundary (see :func:`mint_confirmation`'s own docstring).
+Second, ``PolicyContext.for_configured_operator`` accepted and threaded a
+``config: FoundryConfig | None`` parameter that neither
+``_check_identity_and_rbac`` nor the new ``mint_confirmation`` derive call
+accepted -- a caller using that documented seam could construct a ``ctx``
+whose ``identity`` was resolved against one config while
+``mint_confirmation`` re-derived against another, making every mint
+HARD-FAIL. ``config`` is now REMOVED from ``for_configured_operator``
+(P1 has zero production callers of it) rather than threaded to the other
+two sites, so the three identity-derivation call sites in this module --
+``for_configured_operator``, ``_check_identity_and_rbac``, and
+``mint_confirmation`` -- always call ``resolve_operator_identity(paths)``
+with no ``config`` override and therefore cannot disagree.
+
 **Zero overlap with the read-only Knowledge MCP** (decisions-block section
 0, invariant 6): the eight ``rf-knowledge-mcp`` tool names (``search``,
 ``fetch``, ``rf_search``, ``rf_fetch``, ``rf_source_get``,
@@ -510,6 +532,23 @@ CONFIRMATION_TTL: timedelta = timedelta(minutes=5)
 # today.
 _MAX_TARGETS = 20
 _MAX_INPUT_PAYLOAD_PROPERTIES = 32
+#: NB-1 (round 5, non-blocking, fixed): `_MAX_INPUT_PAYLOAD_PROPERTIES` bounds
+#: the top-level KEY COUNT only -- a small number of properties can still
+#: carry an effectively unbounded total byte size (round 5's empirical
+#: repro: 32 properties x 300 KB each = 9,600,086 bytes, accepted). This
+#: bounds the CANONICAL JSON serialization of the whole payload -- checked
+#: here (`_check_capability`, a runtime `PolicyDecision`-producing stage),
+#: never in `PolicyContext.__post_init__` (which only ever raises a bare
+#: `ValueError` for STRUCTURAL malformation a well-formed caller could never
+#: produce -- NaN, non-Mapping -- not for a legitimately oversized request a
+#: real caller's payload could hit). Enforcing it in `__post_init__` instead
+#: would misclassify every oversized request as `internal_error` (via
+#: `evaluate_policy`'s H8 exception boundary, which never sees a
+#: construction-time raise anyway -- the context is built by the CALLER,
+#: before `evaluate_policy` is ever invoked) rather than the correct,
+#: retryable-false `payload_too_large` this stage produces for every other
+#: envelope bound.
+_MAX_INPUT_PAYLOAD_BYTES = 65_536
 _TARGET_REF_MAX_LENGTH = 256
 _TARGET_REF_PATTERN = re.compile(r"^[A-Za-z0-9_\-:.]+$")
 _IDEMPOTENCY_KEY_MAX_LENGTH = 128
@@ -604,13 +643,59 @@ _OPERATION_ROLES: dict[str, frozenset[str]] = {
     "writeback.preview": _MUTATION_ROLES,
 }
 
+#: NB-10 (round 5, fixed): the known role vocabulary `_OPERATION_ROLES`'
+#: values are drawn from. This module deliberately does NOT import
+#: `api.auth.rbac` at module level (NEW-23, the serve-extra import
+#: boundary) -- `rbac.ROLE_PERMISSIONS`' key set is therefore not directly
+#: importable here, so this is a local, hand-kept mirror of its five role
+#: names. `tests/unit/test_operator_mcp_policy.py`'s
+#: `test_operation_roles_align_with_rbac_permissions` (Part C, round 5)
+#: imports `rbac` directly, in the TEST only, and mechanically checks every
+#: `_OPERATION_ROLES` entry against `rbac.ROLE_PERMISSIONS` itself -- THAT
+#: is the drift guard; this frozenset only bounds what a role NAME may be,
+#: not what it GRANTS.
+_KNOWN_ROLE_NAMES: frozenset[str] = frozenset({"owner", "admin", "researcher", "reviewer", "viewer"})
+
 _ALL_OPERATION_KINDS: set[str] = set(OPERATION_KINDS)
-_UNCLASSIFIED_OPERATION_KINDS: set[str] = _ALL_OPERATION_KINDS - set(_OPERATION_ROLES)
-if _UNCLASSIFIED_OPERATION_KINDS:  # pragma: no cover - import-time invariant
+_OPERATION_ROLES_KEYS: set[str] = set(_OPERATION_ROLES)
+if _ALL_OPERATION_KINDS != _OPERATION_ROLES_KEYS:  # pragma: no cover - import-time invariant
+    # NB-10 (round 5, fixed): this was previously a ONE-DIRECTIONAL
+    # `OPERATION_KINDS - _OPERATION_ROLES` check -- an `_OPERATION_ROLES`
+    # entry for a kind that had since been REMOVED from `OPERATION_KINDS`
+    # (a stale/orphaned classification) would silently pass. Full set
+    # equality catches both directions.
     raise RuntimeError(
-        "operator_mcp_policy: every OPERATION_KINDS member must have an explicit "
-        f"_OPERATION_ROLES entry; unclassified: {sorted(_UNCLASSIFIED_OPERATION_KINDS)!r}"
+        "operator_mcp_policy: OPERATION_KINDS and _OPERATION_ROLES must classify "
+        f"the exact same set; missing={sorted(_ALL_OPERATION_KINDS - _OPERATION_ROLES_KEYS)!r} "
+        f"orphaned={sorted(_OPERATION_ROLES_KEYS - _ALL_OPERATION_KINDS)!r}"
     )
+def _validate_operation_roles(table: Mapping[str, frozenset[str]]) -> None:
+    """Import-time invariant: every classification is non-empty and names only
+    known roles.
+
+    NB-10 (round 5): kept as a FUNCTION rather than a module-level `for` loop so
+    the loop variables do not leak into module scope (a trailing
+    `del _kind, _roles` was flagged as a possibly-unbound delete, and would have
+    turned a hypothetically-empty table into a confusing NameError at import
+    instead of the explicit RuntimeError intended here).
+    """
+
+    for kind, roles in table.items():
+        if not roles:
+            raise RuntimeError(
+                f"operator_mcp_policy: _OPERATION_ROLES[{kind!r}] is empty -- an empty "
+                "role set denies every identity unconditionally, which is never the intent "
+                "of an explicit classification (use a real, non-empty role set)"
+            )
+        if not roles <= _KNOWN_ROLE_NAMES:
+            raise RuntimeError(
+                f"operator_mcp_policy: _OPERATION_ROLES[{kind!r}] names unknown role(s) "
+                f"{sorted(roles - _KNOWN_ROLE_NAMES)!r} -- update _KNOWN_ROLE_NAMES if this "
+                "is a genuine new role, never silently accept an unrecognized name"
+            )
+
+
+_validate_operation_roles(_OPERATION_ROLES)
 
 _TRACEBACK_LIKE = re.compile(r'(?i)traceback|site-packages|File "[^"]*", line \d+')
 #: BLOCK-1 (round 4 gate): an ABSOLUTE FILESYSTEM PATH pattern, added
@@ -636,6 +721,11 @@ _ERROR_DETAIL_MAX = 500
 
 _IDENTITY_CONFIG_SECTION = "operator_mcp"
 _IDENTITY_CONFIG_KEY = "identity"
+
+#: NB-9: heuristic-only markers used SOLELY to classify (never to change the
+#: outcome of) an `audit_unhealthy` denial for telemetry -- see
+#: `_check_audit_health`'s docstring/comment.
+_AUDIT_CONTENTION_MARKERS: tuple[str, ...] = ("locked", "busy")
 
 _JSON_PRIMITIVE_MAX_DEPTH = 32
 
@@ -892,25 +982,43 @@ class PolicyContext:
         model_provider: str | None = None,
         source_sensitivities: tuple[str, ...] = (),
         paths: "FoundryPaths | None" = None,
-        config: "FoundryConfig | None" = None,
     ) -> "PolicyContext":
         """THE one sanctioned way to construct a `PolicyContext` with a
         populated `identity` (NEW-18 Layer 2, security review round 3).
 
         Every keyword argument is identical to this dataclass's own fields
         MINUS `identity` (which cannot be supplied here, or anywhere else --
-        Layer 1: `identity` is `init=False`) PLUS `paths`/`config`, threaded
-        straight through to :func:`resolve_operator_identity`. There is
-        deliberately no parameter that lets a caller pass an identity
-        through this factory.
+        Layer 1: `identity` is `init=False`) PLUS `paths`, threaded straight
+        through to :func:`resolve_operator_identity`. There is deliberately
+        no parameter that lets a caller pass an identity through this
+        factory.
 
         This does NOT itself run any policy stage -- callers still call
         :func:`evaluate_policy`/:func:`authorize_operation` afterward exactly
         as before. It exists ONLY to close the public identity-injection
         door: the `identity` on the returned instance is always whatever
-        `resolve_operator_identity(paths, config=config)` resolves right
-        now (including `None` when no/incomplete config block exists) --
-        never a caller-supplied value, by construction.
+        `resolve_operator_identity(paths)` resolves right now (including
+        `None` when no/incomplete config block exists) -- never a
+        caller-supplied value, by construction.
+
+        **R5-BLOCK-4 (round 5 gate)**: this factory previously also accepted
+        a `config: FoundryConfig | None` parameter, threaded to
+        `resolve_operator_identity(paths, config=config)` -- a SEPARATE
+        derivation input that `_check_identity_and_rbac` (NEW-18 Layer 3) and
+        :func:`mint_confirmation` (BLOCK-6, round 4) do NOT accept and could
+        therefore never agree with. A `ctx` built via
+        `for_configured_operator(paths=A, config=FoundryConfig(paths=B))`
+        made `mint_confirmation(ctx, paths=A)` HARD-FAIL with `ValueError`
+        (round 4's disagreement-is-fatal fix), even though every derivation
+        site was individually correct -- the `config` parameter itself was
+        the trap, a seam through which the SAME identity question could be
+        asked two different ways. `config` is REMOVED here (not threaded
+        elsewhere) rather than added to the other two sites: P1 has zero
+        production callers of any of the three (`grep` confirms), and
+        removing the option is strictly less new surface than adding it
+        twice more. Every identity-derivation site in this module now calls
+        `resolve_operator_identity(paths)` with no `config` override, so
+        there is no longer a seam through which the three CAN disagree.
 
         NEW-18 Layer 3 note: even this factory is defense in depth, not the
         primary guard -- :func:`_check_identity_and_rbac` (the actual
@@ -935,7 +1043,7 @@ class PolicyContext:
             model_provider=model_provider,
             source_sensitivities=source_sensitivities,
         )
-        identity = resolve_operator_identity(paths, config=config)
+        identity = resolve_operator_identity(paths)
         object.__setattr__(instance, "identity", identity)
         return instance
 
@@ -1032,9 +1140,32 @@ def resolve_operator_identity(
     therefore requires a real, configured identity).
     """
 
-    resolved_paths = paths if paths is not None else FoundryPaths.discover()
-    cfg = config if config is not None else FoundryConfig(paths=resolved_paths)
-    foundry_block = cfg.foundry
+    # R5-BLOCK-2 (round 5 gate): loading/parsing config is inside the failure
+    # boundary. A malformed `foundry.yaml` previously propagated a raw
+    # `yaml.parser.ParserError` OUT OF THIS FUNCTION with the offending file's
+    # CONTENT embedded in the message -- reopening NEW-8 (no caller-influenced
+    # data in an exception raised outside an H8 boundary) in the very primitive
+    # every identity path depends on. `evaluate_policy` caught it (converting to
+    # `internal_error`), but this function is public in `__all__` and
+    # `for_configured_operator`/`mint_confirmation` call it DIRECTLY, so they
+    # inherited the raw raise.
+    #
+    # Fail closed instead, consistent with this function's own documented
+    # contract ("Returns `None` when the block is absent or incomplete --
+    # callers MUST treat `None` as deny"): an unparseable config IS an
+    # incomplete one. Log the exception TYPE NAME only, never `str(exc)`
+    # (the NEW-13 convention), so nothing caller-influenced reaches the log.
+    try:
+        resolved_paths = paths if paths is not None else FoundryPaths.discover()
+        cfg = config if config is not None else FoundryConfig(paths=resolved_paths)
+        foundry_block = cfg.foundry
+    except Exception as exc:
+        _logger.warning(
+            "operator_mcp_policy.resolve_operator_identity: config load failed (%s) -- "
+            "resolving to None (deny)",
+            type(exc).__name__,
+        )
+        return None
     section = foundry_block.get(_IDENTITY_CONFIG_SECTION) if isinstance(foundry_block, dict) else None
     identity_cfg = section.get(_IDENTITY_CONFIG_KEY) if isinstance(section, dict) else None
     if not isinstance(identity_cfg, dict):
@@ -1109,11 +1240,30 @@ def check_tool_name(tool: str) -> PolicyDecision:
     return PolicyDecision(True, "capability")
 
 
+def _input_payload_byte_size(payload: Mapping[str, Any]) -> int:
+    """NB-1: total canonical-JSON byte size of `payload` -- the same
+    `json.dumps` convention `PolicyContext.canonical_json()` uses, so this
+    measurement matches exactly what would eventually be hashed/persisted.
+    `PolicyContext.__post_init__` already guarantees `payload` is JSON-
+    primitive with only finite floats, so this can never raise on a
+    well-formed `PolicyContext`."""
+
+    return len(
+        json.dumps(
+            dict(payload), ensure_ascii=False, separators=(",", ":"), sort_keys=True, allow_nan=False
+        ).encode("utf-8")
+    )
+
+
 def _check_capability(ctx: PolicyContext, _paths: FoundryPaths) -> PolicyDecision:
     if ctx.operation_kind not in OPERATION_KINDS:
         return PolicyDecision(False, "capability", "operation_unknown", retryable=False)
     # M1: bounded envelope, enforced here (not merely by tests/schema).
     if len(ctx.targets) > _MAX_TARGETS or len(ctx.input_payload) > _MAX_INPUT_PAYLOAD_PROPERTIES:
+        return PolicyDecision(False, "capability", "payload_too_large", retryable=False)
+    # NB-1 (round 5, fixed): a small property COUNT does not bound total
+    # BYTE SIZE -- see `_MAX_INPUT_PAYLOAD_BYTES`'s docstring above.
+    if _input_payload_byte_size(ctx.input_payload) > _MAX_INPUT_PAYLOAD_BYTES:
         return PolicyDecision(False, "capability", "payload_too_large", retryable=False)
     # NEW-2: the remaining 5 declared bounds -- idempotency_key and
     # policy_snapshot_version shape/length are envelope-level (not a
@@ -1239,6 +1389,38 @@ def _check_audit_health(ctx: PolicyContext, paths: FoundryPaths) -> PolicyDecisi
     # shape we should not be reading from on an authorization path at all.
     state = audit_service.health_check(paths)
     if not state.healthy:
+        # NB-9 (round 5, non-blocking, partially mitigated): this probe runs
+        # AT LEAST TWICE per mint->execute flow -- once inside this
+        # `evaluate_policy` call at mint/preflight time, again inside
+        # `authorize_operation`'s own `evaluate_policy` re-run at execute
+        # time (deliberate re-validation, see `evaluate_policy`'s docstring:
+        # policy "may have drifted since mint time"). Under concurrent
+        # callers this can legitimately contend for SQLite's single-writer
+        # lock; `audit_service._connect` (out of this module's file
+        # ownership) does not override `sqlite3.connect`'s DEFAULT 5-second
+        # busy-timeout, so brief contention already resolves silently
+        # *inside* the probe -- only sustained (>5s) contention or a
+        # genuinely broken store denies here, and both surface identically
+        # as `state.healthy=False`. This module cannot structurally tell
+        # them apart (only `audit_service.py` could, and it is out of this
+        # fix's file ownership) -- the WARNING below applies a heuristic to
+        # the error text's SHAPE only, NEVER the text itself (NEW-13
+        # convention: never log `str(exc)`-derived content), so an operator
+        # paging on repeated `audit_unhealthy` denials can distinguish
+        # "kept timing out under load, retries clear it" from "store is
+        # genuinely broken, needs intervention" without this module ever
+        # having logged or returned the distinguishing detail anywhere
+        # caller-reachable. The denial itself is UNCHANGED and already
+        # `retryable=True` either way -- this is additive telemetry, not a
+        # new safety property.
+        contention_suspected = any(
+            marker in (state.error_detail or "").lower() for marker in _AUDIT_CONTENTION_MARKERS
+        )
+        _logger.warning(
+            "operator_mcp_policy._check_audit_health: audit_unhealthy denial "
+            "(contention_suspected=%s)",
+            contention_suspected,
+        )
         return PolicyDecision(False, "audit_health", "audit_unhealthy", retryable=True)
     return PolicyDecision(True, "audit_health")
 
@@ -1526,7 +1708,8 @@ def mint_confirmation(
     `PolicyDecision`, so it cannot participate in the PolicyDecision-shaped
     H8 boundary `evaluate_policy`/`authorize_operation`/`verify_confirmation`
     use. The three deliberate `ValueError` guards immediately below (L3
-    defense-in-depth) are intentionally OUTSIDE any try/except -- they are
+    defense-in-depth: missing identity / unknown operation kind / unknown
+    target kind) are intentionally OUTSIDE any try/except -- they are
     expected, documented failure modes with safe, closed-vocabulary message
     text. Everything AFTER them is wrapped: any UNEXPECTED exception during
     minting is re-raised as a plain `RuntimeError("internal_error during
@@ -1538,6 +1721,20 @@ def mint_confirmation(
     be constructed in the first place -- this wrapper is defense in depth
     for anything else unexpected (e.g. an environment-level failure in
     `secrets`/`hashlib`).
+
+    **R5-BLOCK-2 (round 5 gate)**: the BLOCK-6 identity re-derivation call
+    (`resolve_operator_identity(paths)`, immediately below) is its OWN
+    SEPARATE exception boundary, wrapping ONLY that call -- an unexpected
+    exception raised while resolving `paths`/reading `foundry.yaml` (e.g. a
+    malformed YAML block, which previously escaped as a raw
+    `yaml.parser.ParserError`/`yaml.scanner.ScannerError` embedding the
+    malformed file's content verbatim) is now caught there and converted to
+    the SAME safe `RuntimeError("internal_error during confirmation
+    minting")` the main body's boundary below produces -- never propagated
+    raw. The FOURTH deliberate `ValueError` guard (the identity-mismatch
+    check, immediately after) stays OUTSIDE any try/except, matching the
+    other three L3 guards: it is an expected, documented failure mode with
+    safe, closed-vocabulary message text, not an unexpected exception.
     """
 
     if ctx.identity is None:
@@ -1560,8 +1757,40 @@ def mint_confirmation(
     # an already-built instance), and it is denied here, at the record's
     # ONLY point of production, the same way Layer 3 denies it for
     # execute-time authorization.
-    derived_identity = resolve_operator_identity(paths)
-    if derived_identity is None or derived_identity != ctx.identity:
+    #
+    # R5-BLOCK-2 (round 5 gate): this call is wrapped in its OWN exception
+    # boundary -- round 4's version placed it OUTSIDE the function's main
+    # try/except (below), so an internal failure while resolving identity
+    # (e.g. a malformed `foundry.yaml`) propagated as a raw, uncaught
+    # `yaml.*` exception embedding the malformed file's content verbatim,
+    # reopening NEW-8 in the very function NEW-8 was raised against. Never
+    # log/embed the exception's own text (NEW-13 convention) -- only its
+    # type name.
+    try:
+        derived_identity = resolve_operator_identity(paths)
+    except Exception as exc:
+        _logger.warning(
+            "operator_mcp_policy.mint_confirmation: internal_error while deriving "
+            "identity (%s)",
+            type(exc).__name__,
+        )
+        raise RuntimeError("internal_error during confirmation minting") from None
+    # R5-BLOCK-2 (round 5, hardened): `resolve_operator_identity` now itself
+    # fails CLOSED to `None` on an unparseable config rather than raising (the
+    # `except` above remains as defence in depth for any other internal
+    # failure). That makes `derived_identity is None` ambiguous between
+    # "config unavailable/unparseable" and "no identity configured" -- but in
+    # NEITHER case is it evidence of forgery, so it must NOT be reported with
+    # the forged-identity message. Report it as the same safe internal error
+    # the `except` branch raises, so the two indistinguishable causes produce
+    # one indistinguishable, content-free outcome.
+    if derived_identity is None:
+        _logger.warning(
+            "operator_mcp_policy.mint_confirmation: internal_error -- no identity could "
+            "be resolved from configured local config (absent, incomplete, or unparseable)"
+        )
+        raise RuntimeError("internal_error during confirmation minting")
+    if derived_identity != ctx.identity:
         raise ValueError(
             "mint_confirmation requires ctx.identity to match the identity "
             "resolved from configured local config -- callers MUST call "
@@ -2024,6 +2253,19 @@ def build_audit_delivery(
     programming errors, and this module's convention -- see :func:`build_error`
     -- is to fail loudly on them rather than emit a silently-malformed
     payload).
+
+    **R5-BLOCK-1 (round 5 gate)**: `audit_event_id` -- `detail`'s SIBLING
+    property on this same `$def`, one property over -- was length/type
+    checked above but never redacted: a caller-supplied path- or
+    traceback-shaped `audit_event_id` (this field's real producer,
+    `audit_service.AuditHealth`, always supplies a UUID4, but this function
+    itself imposes no such restriction on a caller) passed straight through
+    to the returned payload, and the receipt schema had no pattern guard on
+    it either (see `schemas/operator_mcp_receipt.schema.yaml`'s
+    `audit_delivery.audit_event_id` description). It is now routed through
+    the SAME :func:`_redact_and_bound` defense-in-depth pass `detail` uses
+    below -- a no-op for a genuine UUID, but no longer a silent pass-through
+    for anything path- or traceback-shaped.
     """
 
     if status not in AUDIT_DELIVERY_STATUSES:
@@ -2040,7 +2282,10 @@ def build_audit_delivery(
 
     payload: dict[str, Any] = {
         "status": status,
-        "audit_event_id": audit_event_id,
+        # R5-BLOCK-1: route through the same redaction pass `detail` uses --
+        # a no-op for the genuine-UUID producer, defense in depth against a
+        # path-/traceback-shaped caller-supplied value.
+        "audit_event_id": _redact_and_bound(audit_event_id) if audit_event_id is not None else None,
     }
     if detail_code is not None:
         safe_detail = _redact_and_bound(_AUDIT_DELIVERY_SAFE_DETAILS[detail_code])

@@ -429,6 +429,94 @@ def test_mint_confirmation_rejects_a_forged_identity(
         policy.mint_confirmation(forged, paths=tmp_foundry)
 
 
+def test_mint_confirmation_never_leaks_a_raw_yaml_exception_on_malformed_config(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R5-BLOCK-2 (round 5 gate): the BLOCK-6 (round 4) fix placed the
+    `resolve_operator_identity(paths)` re-derive call OUTSIDE
+    `mint_confirmation`'s exception boundary -- a malformed `foundry.yaml`
+    therefore propagated a raw `yaml.parser.ParserError`/`yaml.scanner.
+    ScannerError` embedding the malformed file's content verbatim,
+    reopening NEW-8 in the very function NEW-8 was raised against. This
+    bypasses the `_default_operator_identity` autouse fixture's monkeypatch
+    (which would mask the real `resolve_operator_identity` call entirely)
+    by restoring the REAL function for this test only, then corrupting
+    `foundry.yaml` AFTER the ctx has already resolved a valid identity via
+    the (still-patched, at ctx-construction time) default -- so the ONLY
+    call that hits the real, malformed-YAML-reading code path is
+    `mint_confirmation`'s own re-derive."""
+
+    ctx = _basic_ctx(targets=_run_targets())  # identity resolved via the autouse patch
+    monkeypatch.setattr(policy, "resolve_operator_identity", _REAL_RESOLVE_OPERATOR_IDENTITY)
+    tmp_foundry.foundry_yaml.write_text(
+        "foundry:\n  operator_mcp:\n    identity:\n\tbad_indent: [unclosed\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        policy.mint_confirmation(ctx, paths=tmp_foundry)
+
+    assert "internal_error during confirmation minting" in str(excinfo.value)
+    assert "bad_indent" not in str(excinfo.value)
+    assert "yaml" not in str(excinfo.value).lower()
+    assert not isinstance(excinfo.value, (ValueError,)) or type(excinfo.value) is RuntimeError
+
+
+def test_for_configured_operator_no_longer_accepts_a_config_parameter() -> None:
+    """R5-BLOCK-4 (round 5 gate): `PolicyContext.for_configured_operator`
+    previously accepted a `config: FoundryConfig | None` parameter, threaded
+    to `resolve_operator_identity(paths, config=config)` -- a SEPARATE
+    derivation input `_check_identity_and_rbac` and `mint_confirmation`
+    could never agree with, since neither accepted it. A ctx built with a
+    divergent `config=` then HARD-FAILED `mint_confirmation` with
+    `ValueError` even though every individual derivation site was correct
+    in isolation -- the parameter itself was the trap. It is removed here
+    (not threaded to the other two sites) so the divergent seam cannot
+    exist at all; this pins the removal so it cannot silently be re-added
+    without a corresponding fix to the other two derivation sites."""
+
+    with pytest.raises(TypeError):
+        policy.PolicyContext.for_configured_operator(
+            operation_kind="run.plan",
+            idempotency_key="idem-1",
+            effective_sensitivity="public",
+            sensitivity_ceiling="client_sensitive",
+            config=FoundryConfig(paths=FoundryPaths.discover()),
+        )
+
+
+def test_mint_confirmation_agrees_with_for_configured_operator_end_to_end(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R5-BLOCK-4 closure evidence (positive path, real derivation, no
+    autouse patch): a `ctx` built via `for_configured_operator(paths=...)`
+    against a REAL configured identity, then minted with the SAME `paths`,
+    must succeed -- the three derivation sites (`for_configured_operator`,
+    `_check_identity_and_rbac`, `mint_confirmation`) now all call
+    `resolve_operator_identity(paths)` with no `config` override and
+    therefore cannot disagree."""
+
+    monkeypatch.setattr(policy, "resolve_operator_identity", _REAL_RESOLVE_OPERATOR_IDENTITY)
+    _write_operator_identity(tmp_foundry, user_id="dana", workspace_id="ws-real", roles=["owner"])
+
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="run.plan",
+        idempotency_key="idem-real-1",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        paths=tmp_foundry,
+    )
+    assert ctx.identity is not None
+    assert ctx.identity.user_id == "dana"
+
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.allowed
+
+    issued = policy.mint_confirmation(ctx, paths=tmp_foundry)
+    assert issued.record["actor"]["user_id"] == "dana"
+    assert issued.record["actor"]["workspace_id"] == "ws-real"
+
+
 def test_context_rejects_non_json_primitive_input_payload() -> None:
     with pytest.raises(ValueError):
         _basic_ctx(input_payload={"bad": object()})
@@ -481,6 +569,28 @@ def test_capability_rejects_oversized_input_payload(tmp_foundry: FoundryPaths) -
     assert decision.denied
     assert decision.stage == "capability"
     assert decision.reason_code == "payload_too_large"
+
+
+def test_capability_rejects_oversized_input_payload_by_byte_size(tmp_foundry: FoundryPaths) -> None:
+    """NB-1 (round 5, fixed): `_MAX_INPUT_PAYLOAD_PROPERTIES` bounds top-
+    level KEY COUNT only -- round 5's empirical repro showed 32 properties x
+    300 KB each (9,600,086 bytes total) was ACCEPTED. A single well-under-
+    count-limit property can still carry an effectively unbounded string;
+    this pins the new total-byte-size cap."""
+
+    ctx = _basic_ctx(input_payload={"blob": "x" * (policy._MAX_INPUT_PAYLOAD_BYTES + 1)})
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.denied
+    assert decision.stage == "capability"
+    assert decision.reason_code == "payload_too_large"
+
+
+def test_capability_allows_input_payload_under_the_byte_size_cap(tmp_foundry: FoundryPaths) -> None:
+    # Leave headroom for the JSON structural characters (quotes/braces/key
+    # name) the canonical-JSON encoding of this payload also counts.
+    ctx = _basic_ctx(input_payload={"blob": "x" * (policy._MAX_INPUT_PAYLOAD_BYTES - 100)})
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.allowed
 
 
 # ---------------------------------------------------------------------------
@@ -658,6 +768,85 @@ def test_every_operation_kind_has_an_explicit_role_classification() -> None:
     mutation grant."""
 
     assert set(policy.OPERATION_KINDS) == set(policy._OPERATION_ROLES)
+
+
+def test_operation_roles_align_with_rbac_permissions() -> None:
+    """Part C (round 5, Karen Adjudication 2): the alignment between
+    `_OPERATION_ROLES` and `api.auth.rbac.ROLE_PERMISSIONS` was, until this
+    test, ONE PROSE COMMENT (`operator_mcp_policy.py:539`) with ZERO
+    mechanical linkage -- NEW-22 (security review round 3) already found TWO
+    real privilege escalations in that map by hand. This module deliberately
+    does NOT import `api.auth.rbac` at module level (NEW-23, the serve-extra
+    import boundary) -- this test imports it locally instead; tests in this
+    suite run WITH the `[serve]` extra installed, so that import is safe
+    here even though it is forbidden inside `operator_mcp_policy.py` itself.
+
+    Each `operation_kind` is mapped to ONE representative permission string
+    that `_OPERATION_ROLES`' role SET for that kind is defined by (e.g. every
+    `_MUTATION_ROLES`-classified kind maps to `catalog:update`, one of
+    several permissions that set happens to hold identically -- any would
+    do; `catalog:update` is simply the one this test's work order named).
+    For each kind, the roles `_OPERATION_ROLES` grants must equal EXACTLY
+    the roles `rbac.ROLE_PERMISSIONS` grants that permission to -- if either
+    map drifts (a role gains/loses the permission in rbac.py, or a kind's
+    classification changes here) without updating the other, this fails."""
+
+    from research_foundry.api.auth import rbac
+
+    operation_kind_permissions: dict[str, str] = {
+        "run.plan": "catalog:update",
+        "swarm.start": "agent_job:launch",
+        "job.status": "run:read",
+        "job.cancel": "agent_job:launch",
+        "job.resume": "agent_job:launch",
+        "external_report.import": "catalog:update",
+        "source.ingest": "catalog:update",
+        "run.extract": "catalog:update",
+        "run.claim_map": "catalog:update",
+        "run.synthesize": "catalog:update",
+        "run.verify": "catalog:update",
+        "run.bundle": "catalog:update",
+        "writeback.preview": "catalog:update",
+    }
+    # Every OPERATION_KINDS member must be covered by this drift guard too --
+    # an unmapped kind here would silently escape the check below.
+    assert set(operation_kind_permissions) == set(policy.OPERATION_KINDS)
+
+    for kind, permission in operation_kind_permissions.items():
+        expected_roles = {role for role, perms in rbac.ROLE_PERMISSIONS.items() if permission in perms}
+        actual_roles = policy._OPERATION_ROLES[kind]
+        assert actual_roles == expected_roles, (
+            f"{kind!r}: _OPERATION_ROLES grants {sorted(actual_roles)} but "
+            f"rbac.ROLE_PERMISSIONS[*][{permission!r}] grants {sorted(expected_roles)} -- "
+            "the two maps have drifted apart"
+        )
+
+
+# ---------------------------------------------------------------------------
+# R5-NB-3 / Part B: pin the frozen DUR-1 contract text (module-docstring
+# half; the mirrored schema-description half is pinned in
+# test_operator_mcp_schemas.py::test_confirmation_schema_pins_the_frozen_dur1_binding_predicate).
+# ---------------------------------------------------------------------------
+
+
+def test_dur1_binding_predicate_is_pinned_in_module_docstring() -> None:
+    """R5-NB-3 (round 5, fixed): round 5's mutation sweep found that
+    deleting the entire BINDING CHECK clause (b) from the frozen DUR-1 text
+    -- in EITHER of its two locations (this module's docstring and the
+    confirmation schema's description) -- went completely UNDETECTED (exit
+    0, zero failures). No test anywhere pinned this frozen normative prose,
+    the exact text P2's closeout is graded against. This asserts the
+    REQUIRED PREDICATE CLAUSES remain present in the module docstring --
+    deliberately not a byte-for-byte comparison (which would be brittle to
+    an ordinary copy-edit that preserves the normative content), so
+    deleting a clause (or the compare-and-swap framing entirely) fails this
+    test while a harmless rewording does not."""
+
+    doc = policy.__doc__ or ""
+    from tests.unit.test_operator_mcp_schemas import _DUR1_REQUIRED_CLAUSES
+
+    for clause in _DUR1_REQUIRED_CLAUSES:
+        assert clause in doc, f"DUR-1 predicate clause missing from the module docstring: {clause!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -937,6 +1126,56 @@ def test_audit_health_never_probed_runs_live_probe_and_blocks_when_unhealthy(
     assert decision.stage == "audit_health"
     assert decision.reason_code == "audit_unhealthy"
     assert decision.retryable is True
+
+
+def test_audit_unhealthy_denial_logs_contention_suspected_for_a_lock_shaped_failure(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """NB-9 (round 5, partially mitigated): the probe runs at least twice
+    per mint->execute flow (see `_check_audit_health`'s in-code comment),
+    so under concurrent callers a transient SQLite write-lock contention can
+    surface identically to a genuine store failure. This module cannot
+    structurally distinguish them (that would require touching
+    `audit_service.py`, out of this fix's file ownership) -- it applies a
+    heuristic to the error text's SHAPE only, logged for telemetry, NEVER
+    the error text itself (NEW-13 convention). The denial's OUTCOME is
+    unchanged either way -- this only pins the added observability."""
+
+    def _contended_probe(paths: FoundryPaths) -> audit_service.AuditHealth:
+        return audit_service.AuditHealth(
+            healthy=False,
+            last_probe_at="2026-01-01T00:00:00Z",
+            last_success_at=None,
+            error_detail="database is locked",
+        )
+
+    monkeypatch.setattr(audit_service, "health_check", _contended_probe)
+    ctx = _basic_ctx(targets=_run_targets())
+    with caplog.at_level("WARNING", logger="research_foundry.services.operator_mcp_policy"):
+        decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.reason_code == "audit_unhealthy"
+    assert decision.retryable is True
+    assert any("contention_suspected=True" in record.message for record in caplog.records)
+    assert not any("database is locked" in record.message for record in caplog.records)
+
+
+def test_audit_unhealthy_denial_logs_contention_not_suspected_for_a_genuine_failure(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def _broken_probe(paths: FoundryPaths) -> audit_service.AuditHealth:
+        return audit_service.AuditHealth(
+            healthy=False,
+            last_probe_at="2026-01-01T00:00:00Z",
+            last_success_at=None,
+            error_detail="disk I/O error",
+        )
+
+    monkeypatch.setattr(audit_service, "health_check", _broken_probe)
+    ctx = _basic_ctx(targets=_run_targets())
+    with caplog.at_level("WARNING", logger="research_foundry.services.operator_mcp_policy"):
+        decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.reason_code == "audit_unhealthy"
+    assert any("contention_suspected=False" in record.message for record in caplog.records)
 
 
 # ---------------------------------------------------------------------------
@@ -2112,3 +2351,47 @@ def test_effective_sensitivity_enum_matches_schema() -> None:
 def test_reason_code_enum_matches_schema() -> None:
     schema = _error_schema()
     assert set(schema["properties"]["reason_code"]["enum"]) == policy.CLOSED_REASON_CODES
+
+
+def test_resolve_operator_identity_fails_closed_on_malformed_config(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R5-BLOCK-2: a malformed `foundry.yaml` must NOT propagate a raw parser
+    exception carrying the file's content out of this function.
+
+    `resolve_operator_identity` is public in `__all__` and is called DIRECTLY by
+    `PolicyContext.for_configured_operator` and `mint_confirmation`, so a raw
+    raise here reopened NEW-8 (no caller-influenced data in an exception raised
+    outside an H8 boundary) on all three paths. `evaluate_policy` happened to
+    catch it; the others did not. Fail closed to `None` (deny) instead.
+    """
+
+    root = tmp_path / "fdry"
+    root.mkdir()
+    # Invalid YAML (unclosed flow sequence) with a distinctive secret alongside it.
+    (root / "foundry.yaml").write_text(
+        "foundry:\n  operator_mcp:\n   identity: [unclosed\n  SUPERSECRET_MARKER: leaked\n"
+    )
+    paths = FoundryPaths(root=root)
+
+    real_resolve = _REAL_RESOLVE_OPERATOR_IDENTITY
+    assert real_resolve(paths) is None, "malformed config must resolve to None (deny)"
+
+    # Bypass the module-wide `_default_operator_identity` autouse patch (NB-7)
+    # so the factory exercises REAL derivation against the malformed config
+    # rather than the fixture's canned identity.
+    monkeypatch.setattr(policy, "resolve_operator_identity", real_resolve)
+
+    # And the same must hold through the two direct callers.
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="run.plan",
+        idempotency_key="k",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        paths=paths,
+    )
+    assert ctx.identity is None
+
+    decision = policy.evaluate_policy(ctx, paths=paths)
+    assert decision.denied
+    assert decision.reason_code in {"identity_denied", "internal_error"}
