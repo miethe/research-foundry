@@ -5,7 +5,7 @@ doc_type: progress
 prd: research-foundry-operator-mcp
 feature_slug: research-foundry-operator-mcp
 phase: 1
-status: in_progress
+status: blocked
 created: '2026-07-28'
 updated: '2026-07-28'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
