@@ -77,21 +77,27 @@ $defs:
         maxLength: 128
       detail:
         description: >-
-          Optional bounded, redacted supplementary detail about the audit
-          delivery attempt -- never a stack trace, secret, or unrestricted
-          path. NEW-21 (security review round 3): this was previously an
-          unguarded `type: string, maxLength: 500`, while its natural
-          producer is `str(exc)` from a failed audit write -- which violates
-          AC OPM-7's bounded/redacted requirement. It now carries the SAME
-          traceback guard as `operator_mcp_error.schema.yaml`'s `message`
-          and `detail`. Producers MUST route through
-          `operator_mcp_policy.build_audit_delivery()`, which applies the
-          same `redact_payload` -> traceback-strip -> cap pipeline as the
-          error envelope.
+          Optional bounded, CLOSED-VOCABULARY supplementary detail about the
+          audit delivery attempt -- never a stack trace, secret, or
+          filesystem path. NEW-21 (security review round 3) first guarded
+          this as free text through a traceback-only pattern; BLOCK-1
+          (round 4 gate) found that guard incomplete -- this field's own
+          natural producer, `str(exc)` from a failed audit write, routinely
+          embeds an absolute filesystem path with NO traceback framing at
+          all (e.g. `OSError`/`PermissionError` messages), which the
+          traceback-only pattern never matched. Producers now MUST route
+          through `operator_mcp_policy.build_audit_delivery(detail_code=...)`,
+          which selects `detail` from a FIXED table of safe strings
+          (`operator_mcp_policy._AUDIT_DELIVERY_SAFE_DETAILS`) describing WHY
+          delivery degraded/failed, never HOW -- nothing exception-derived
+          can reach this field at all, not merely "nothing pattern-matched".
+          The `not.pattern` below is retained as defense-in-depth against a
+          producer that bypasses the helper entirely; it now also flags
+          absolute-path-shaped text, mirroring `operator_mcp_error.schema.yaml`.
         type: string
         maxLength: 500
         not:
-          pattern: "(?i)traceback|site-packages|File \"[^\"]*\", line \\d+"
+          pattern: "(?i)traceback|site-packages|File \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/"
   operation_receipt:
     type: object
     additionalProperties: false
@@ -197,8 +203,36 @@ $defs:
         type: [string, "null"]
         format: date-time
       reason_code:
-        type: [string, "null"]
-        maxLength: 64
+        description: >-
+          Populated when `status` is `failed`/`skipped`; drawn from the SAME
+          closed enum as `terminal_receipt.denial_reason_code`/
+          `operator_mcp_error.schema.yaml`'s `reason_code` (duplicated by
+          value; see module description). BLOCK-2 (round 4 gate): NEW-20
+          (round 3) closed `terminal_receipt.denial_reason_code` to this
+          enum but left THIS sibling field -- one `$def` above, in the same
+          file -- as the exact open `type: [string, "null"], maxLength: 64`
+          shape NEW-20 was raised on. `tests/unit/test_operator_mcp_schemas.py`
+          pins this enum against `operator_mcp_policy.CLOSED_REASON_CODES`
+          too, alongside `terminal_receipt`'s.
+        enum:
+          - identity_denied
+          - rbac_denied
+          - audit_unhealthy
+          - guard_blocked
+          - guard_review_required
+          - preflight_failed
+          - operation_unknown
+          - tool_unknown
+          - target_invalid
+          - confirmation_missing
+          - confirmation_expired
+          - confirmation_replayed
+          - confirmation_mismatch
+          - idempotency_conflict
+          - not_found
+          - payload_too_large
+          - internal_error
+          - null
       retryable:
         type: boolean
   effect_receipt:
@@ -409,6 +443,16 @@ $defs:
           required:
             - status
         then:
+          # BLOCK-3 (round 4 gate): `required` was missing here -- a
+          # `terminal_receipt` with `status: denied` and `denial_reason_code`
+          # entirely ABSENT (not merely null) validated, sidestepping the
+          # whole NEW-20 enum. The correct pattern already exists one file
+          # over, in `operator_mcp_confirmation.schema.yaml`'s
+          # `consumed`-status `then` branch (`required: [consumed_at,
+          # consumed_by_operation_id]` paired with `not: {const: null}`) --
+          # copied here.
+          required:
+            - denial_reason_code
           properties:
             denial_reason_code:
               not:

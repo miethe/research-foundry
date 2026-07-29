@@ -379,7 +379,14 @@ def test_layer3_denies_forged_identity_forced_via_setattr(
     assert decision.stage == "rbac"
     assert decision.reason_code == "identity_denied"
 
-    issued = policy.mint_confirmation(forged)
+    # BLOCK-6 (round 4 gate): the record presented below is minted from the
+    # REAL, unforged `ctx` -- so the `authorize_operation` denial asserted
+    # here is attributable ONLY to the forged `ctx` it is presented with,
+    # not to `mint_confirmation` independently rejecting the forgery (which
+    # it also now does -- see `test_mint_confirmation_rejects_a_forged_identity`
+    # below, which supersedes this test's prior "mint succeeds regardless"
+    # premise for the mint half specifically).
+    issued = policy.mint_confirmation(ctx, paths=tmp_foundry)
     exec_decision = policy.authorize_operation(
         forged, confirmation_record=issued.record, presented_token=issued.token, paths=tmp_foundry
     )
@@ -396,38 +403,30 @@ def test_layer3_denies_forged_identity_forced_via_setattr(
     assert decision_none.allowed
 
 
-def test_forged_identity_cannot_produce_an_authorized_mint_confirmation(
+def test_mint_confirmation_rejects_a_forged_identity(
     tmp_foundry: FoundryPaths,
 ) -> None:
-    """`mint_confirmation` has no `paths` parameter and cannot re-derive
-    identity itself, so it embeds a forged `ctx.identity` into the minted
-    record's `actor` block verbatim -- proving that record IS mintable.
-    What must NOT be possible is using that record to complete an
-    `authorize_operation` that returns `allowed=True`: `authorize_operation`
-    always re-runs `evaluate_policy` first, whose `rbac` stage independently
-    re-derives identity and denies the forgery before the confirmation
-    stage is ever reached, regardless of what the record's `actor` block
-    claims or whether the presented token/record binds correctly to it."""
+    """BLOCK-6 (round 4 gate): supersedes
+    `test_forged_identity_cannot_produce_an_authorized_mint_confirmation`
+    (round 3), whose premise -- "mint_confirmation cannot detect the
+    forgery on its own" -- was exactly the gap BLOCK-6 closes (see the
+    module docstring's "BLOCK-6 adjudication" paragraph for the full
+    empirical repro this closes: a forged mint previously let
+    `verify_confirmation(ctx=forged)` return `allowed=True` and let
+    `consume_confirmation` transition the record with no identity check at
+    all -- `authorize_operation` was the ONLY safe entry point).
+    `mint_confirmation` now derives the record's `actor` block from a
+    FRESH `resolve_operator_identity` call and raises `ValueError` when
+    that disagrees with `ctx.identity`, so a forged identity can no longer
+    even be MINTED into a schema-valid confirmation record, let alone
+    verified or consumed through either of the other two exported
+    entry points."""
+
     ctx = _basic_ctx(targets=_run_targets())
     forged = _forge_identity(ctx, AuthIdentity("mallory", "ws-mine", ("owner",)))
 
-    # The forged confirmation mints successfully (mint_confirmation cannot
-    # detect the forgery on its own) and its actor block reflects the
-    # forged identity, not the real configured one.
-    issued = policy.mint_confirmation(forged)
-    assert issued.record["actor"]["user_id"] == "mallory"
-
-    # Even presenting the SAME forged ctx/token/record combination back to
-    # authorize_operation -- the only way execution could proceed -- is
-    # denied at the rbac stage, never reaching (let alone passing) the
-    # confirmation stage the minted record would otherwise satisfy.
-    decision = policy.authorize_operation(
-        forged, confirmation_record=issued.record, presented_token=issued.token, paths=tmp_foundry
-    )
-    assert decision.denied
-    assert decision.allowed is False
-    assert decision.stage == "rbac"
-    assert decision.reason_code == "identity_denied"
+    with pytest.raises(ValueError):
+        policy.mint_confirmation(forged, paths=tmp_foundry)
 
 
 def test_context_rejects_non_json_primitive_input_payload() -> None:
@@ -666,7 +665,51 @@ def test_every_operation_kind_has_an_explicit_role_classification() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _unhealthy_probe(_paths: FoundryPaths) -> audit_service.AuditHealth:
+def _persist_health_row(
+    paths: FoundryPaths,
+    *,
+    healthy: bool,
+    last_probe_at: str,
+    last_success_at: str | None,
+    error_detail: str | None,
+) -> None:
+    """BLOCK-4 (round 4 gate) helper: write a REAL row into `tmp_foundry`'s
+    sqlite `audit_health` table, mirroring exactly what
+    `audit_service.health_check` itself persists on a probe. The pre-BLOCK-4
+    fakes below returned an `AuditHealth` value WITHOUT persisting it, so
+    `get_health_state` always saw a fresh, never-probed row (`last_probe_at
+    is None`) regardless of how many times the fake had "run" -- which meant
+    a reverted pre-NEW-19 latch (`if get_health_state(...).last_probe_at is
+    None: health_check(...)`) re-probed on EVERY call by accident, masking
+    the very latch these tests exist to pin. See BLOCK-4 in
+    `.claude/findings/research-foundry-operator-mcp-findings.md`."""
+
+    conn = audit_service._connect(paths)
+    try:
+        audit_service._ensure_schema(conn)
+        conn.execute(
+            (
+                "INSERT OR REPLACE INTO audit_health "
+                "(id, healthy, last_probe_at, last_success_at, error_detail) "
+                "VALUES (1, ?, ?, ?, ?)"
+            ),
+            (1 if healthy else 0, last_probe_at, last_success_at, error_detail),
+        )
+    finally:
+        conn.close()
+
+
+def _unhealthy_probe(paths: FoundryPaths) -> audit_service.AuditHealth:
+    """BLOCK-4: PERSISTS its result (unlike the pre-BLOCK-4 version) so a
+    reverted latch sees a real, non-`None` `last_probe_at` on the NEXT call."""
+
+    _persist_health_row(
+        paths,
+        healthy=False,
+        last_probe_at="2026-01-01T00:00:00Z",
+        last_success_at=None,
+        error_detail="simulated",
+    )
     return audit_service.AuditHealth(
         healthy=False,
         last_probe_at="2026-01-01T00:00:00Z",
@@ -675,7 +718,16 @@ def _unhealthy_probe(_paths: FoundryPaths) -> audit_service.AuditHealth:
     )
 
 
-def _healthy_probe(_paths: FoundryPaths) -> audit_service.AuditHealth:
+def _healthy_probe(paths: FoundryPaths) -> audit_service.AuditHealth:
+    """BLOCK-4: PERSISTS its result -- see `_unhealthy_probe`'s docstring."""
+
+    _persist_health_row(
+        paths,
+        healthy=True,
+        last_probe_at="2026-01-01T00:00:01Z",
+        last_success_at="2026-01-01T00:00:01Z",
+        error_detail=None,
+    )
     return audit_service.AuditHealth(
         healthy=True,
         last_probe_at="2026-01-01T00:00:01Z",
@@ -710,24 +762,43 @@ def test_audit_health_recovers_after_a_failed_probe(
 ) -> None:
     """NEW-19 core: `retryable=True` must be ACHIEVABLE.
 
-    Previously the first failed probe latched `healthy=False` into the
-    persisted row and the stage never re-probed, so a caller honouring
-    `retryable=True` could retry forever and never succeed. A later call must
-    now re-probe and pass once the audit store recovers.
+    BLOCK-4 (round 4 gate): the prior version of this test used fakes that
+    never persisted a row, so `get_health_state` always saw `last_probe_at
+    is None` regardless of how many probes had "run" -- which meant a
+    reverted pre-NEW-19 latch re-probed on every call BY ACCIDENT, and this
+    test could not distinguish the fix from the defect it exists to pin
+    (confirmed by mutation: all four NEW-19 tests passed under the reverted
+    code). `_unhealthy_probe`/`_healthy_probe` now persist real state, and a
+    call-count spy proves `health_check` genuinely runs on BOTH evaluations
+    -- the actual NEW-19 property, per the required-fix note.
     """
 
     ctx = _basic_ctx(targets=_run_targets())
+    call_count = {"n": 0}
 
-    monkeypatch.setattr(audit_service, "health_check", _unhealthy_probe)
+    def _spy_unhealthy(paths: FoundryPaths) -> audit_service.AuditHealth:
+        call_count["n"] += 1
+        return _unhealthy_probe(paths)
+
+    def _spy_healthy(paths: FoundryPaths) -> audit_service.AuditHealth:
+        call_count["n"] += 1
+        return _healthy_probe(paths)
+
+    monkeypatch.setattr(audit_service, "health_check", _spy_unhealthy)
     first = policy.evaluate_policy(ctx, paths=tmp_foundry)
     assert first.denied
     assert first.reason_code == "audit_unhealthy"
     assert first.retryable is True
+    assert call_count["n"] == 1
 
     # The audit store comes back. The very next call must observe it.
-    monkeypatch.setattr(audit_service, "health_check", _healthy_probe)
+    monkeypatch.setattr(audit_service, "health_check", _spy_healthy)
     second = policy.evaluate_policy(ctx, paths=tmp_foundry)
     assert second.allowed, "retryable=True was unachievable -- the failure latched"
+    assert call_count["n"] == 2, (
+        "health_check must run again on the second evaluation, not reuse the "
+        "persisted (stale, unhealthy) row from the first call"
+    )
 
 
 def test_audit_health_degradation_after_a_healthy_probe_is_detected(
@@ -735,39 +806,77 @@ def test_audit_health_degradation_after_a_healthy_probe_is_detected(
 ) -> None:
     """The symmetric half of the latch: a store that degrades AFTER a healthy
     probe must be caught. The old "probe once, then trust the row forever"
-    shape would have kept authorizing indefinitely."""
+    shape would have kept authorizing indefinitely.
+
+    BLOCK-4: persisting fakes + call-count spy -- see
+    `test_audit_health_recovers_after_a_failed_probe`'s docstring for why
+    this is required for the closure evidence to be valid."""
 
     ctx = _basic_ctx(targets=_run_targets())
+    call_count = {"n": 0}
 
-    monkeypatch.setattr(audit_service, "health_check", _healthy_probe)
+    def _spy_healthy(paths: FoundryPaths) -> audit_service.AuditHealth:
+        call_count["n"] += 1
+        return _healthy_probe(paths)
+
+    def _spy_unhealthy(paths: FoundryPaths) -> audit_service.AuditHealth:
+        call_count["n"] += 1
+        return _unhealthy_probe(paths)
+
+    monkeypatch.setattr(audit_service, "health_check", _spy_healthy)
     assert policy.evaluate_policy(ctx, paths=tmp_foundry).allowed
+    assert call_count["n"] == 1
 
-    monkeypatch.setattr(audit_service, "health_check", _unhealthy_probe)
+    monkeypatch.setattr(audit_service, "health_check", _spy_unhealthy)
     degraded = policy.evaluate_policy(ctx, paths=tmp_foundry)
     assert degraded.denied, "a store that degraded after a healthy probe was never re-checked"
     assert degraded.reason_code == "audit_unhealthy"
+    assert call_count["n"] == 2, (
+        "health_check must run again on the second evaluation, not reuse the "
+        "persisted (stale, healthy) row from the first call"
+    )
 
 
 def test_audit_health_does_not_read_the_assume_healthy_persisted_default(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`get_health_state` returns `healthy=True` when no probe has ever run
-    ("assume healthy until proven otherwise"). That fail-open default must not
-    be reachable from the authorization path at all: even if it reports
-    healthy, a failing live probe still denies."""
+    """The stage must never trust ANY persisted `get_health_state` snapshot
+    as a substitute for a live probe -- neither the "never probed, assume
+    healthy" default NOR a stale, already-probed-once-and-cached-healthy
+    row (the exact shape the NEW-19 latch trusted).
 
-    monkeypatch.setattr(
-        audit_service,
-        "get_health_state",
-        lambda paths: audit_service.AuditHealth(
-            healthy=True, last_probe_at=None, last_success_at=None, error_detail=None
-        ),
-    )
+    BLOCK-4 (round 4 gate): the prior version of this test stubbed
+    `get_health_state` to return `last_probe_at=None` -- precisely the value
+    that ALSO triggers a re-probe under the reverted pre-NEW-19 latch (`if
+    last_probe_at is None: health_check(...)`), so it could not distinguish
+    the fix from the defect. This version stubs a `get_health_state` that
+    reports a PREVIOUSLY-probed, healthy row (`last_probe_at` populated,
+    `healthy=True`) -- exactly the shape the reverted latch would trust and
+    skip re-probing on -- while the LIVE probe reports unhealthy, and spies
+    on call count. Only a genuinely unconditional live probe denies here and
+    never even consults `get_health_state`; the reverted latch would allow
+    and would call `get_health_state` at least once."""
+
+    call_count = {"get_health_state": 0}
+
+    def _spy_get_health_state(paths: FoundryPaths) -> audit_service.AuditHealth:
+        call_count["get_health_state"] += 1
+        return audit_service.AuditHealth(
+            healthy=True,
+            last_probe_at="2026-01-01T00:00:00Z",
+            last_success_at="2026-01-01T00:00:00Z",
+            error_detail=None,
+        )
+
+    monkeypatch.setattr(audit_service, "get_health_state", _spy_get_health_state)
     monkeypatch.setattr(audit_service, "health_check", _unhealthy_probe)
     ctx = _basic_ctx(targets=_run_targets())
     decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
     assert decision.denied
     assert decision.reason_code == "audit_unhealthy"
+    # The fixed stage has zero `get_health_state` call sites (see BLOCK-5 /
+    # the module docstring) -- it must not even be consulted.
+    assert call_count["get_health_state"] == 0
 
 
 def test_audit_unhealthy_does_not_block_job_status(
@@ -860,6 +969,57 @@ def test_guard_requires_review_for_work_sensitive_meatywiki_writeback(tmp_foundr
     assert decision.stage == "guard"
     assert decision.reason_code == "guard_review_required"
     assert decision.retryable is True
+
+
+def test_writeback_preview_with_empty_writeback_targets_denies_at_preflight(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """BLOCK-7 (round 4 gate): a default-constructed `writeback.preview`
+    context (`writeback_targets=()`, the field's own default) previously
+    sailed through `_check_guard` with NONE of the three block-severity
+    `*_writeback_requires_review` rules even able to fire -- they are all
+    gated on `GuardContext.writeback_targets` being non-empty. This is the
+    SAME omitted-means-skip shape H3 removed from `requested_workspace_id`
+    on the mutating plane; `_check_guard` silently reduced to the H7
+    ceiling comparison alone for any caller that did not opt in. Preflight
+    must now fail closed BEFORE the guard stage is even reached."""
+
+    ctx = _basic_ctx(
+        operation_kind="writeback.preview",
+        targets=(policy.TargetRef("evidence_bundle", "eb_demo"),),
+        effective_sensitivity="work_sensitive",
+        # writeback_targets deliberately omitted -- defaults to ().
+    )
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.denied
+    assert decision.stage == "preflight"
+    assert decision.reason_code == "preflight_failed"
+    assert decision.retryable is True
+
+
+def test_writeback_preview_guard_review_unreachable_by_omission_pre_block7(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BLOCK-7 empirical repro, isolating the GUARD stage specifically:
+    directly probing `_check_guard` (bypassing the now-fixed preflight
+    gate above) with the SAME `work_sensitive`+`meatywiki` scenario that
+    `test_guard_requires_review_for_work_sensitive_meatywiki_writeback`
+    correctly denies -- but with `writeback_targets` empty, exactly as a
+    default-constructed context would have reached this stage before
+    BLOCK-7. Confirms the underlying `governance.guard_check` behavior the
+    preflight fix is closing off: with no writeback target declared, the
+    review rule cannot fire and the guard stage passes."""
+
+    ctx = _basic_ctx(
+        operation_kind="writeback.preview",
+        targets=(policy.TargetRef("evidence_bundle", "eb_demo"),),
+        effective_sensitivity="work_sensitive",
+    )
+    guard_decision = policy._check_guard(ctx, tmp_foundry)
+    assert guard_decision.allowed, (
+        "the guard stage alone cannot detect the missing writeback target -- "
+        "this is exactly why BLOCK-7 gates at preflight instead"
+    )
 
 
 def test_guard_passes_for_public_sensitivity(tmp_foundry: FoundryPaths) -> None:
@@ -992,6 +1152,37 @@ def test_build_error_forces_null_identity_fields_for_not_found_regardless_of_cal
     )
     assert other_envelope["operation_id"] == "opm_keep_me"
     assert other_envelope["receipt_ref"] == "rcpt_keep_me"
+
+
+def test_build_error_forces_null_detail_for_not_found_regardless_of_caller() -> None:
+    """BLOCK-8 (round 4 gate): NEW-9 (round 2) forced `operation_id`/
+    `receipt_ref` to `None` for `not_found` on the CLOSED-envelope argument
+    -- "H6's one-denial-shape guarantee is a property of the envelope this
+    function builds, not something a caller can be trusted to preserve by
+    convention". `detail` is on the SAME envelope and is subject to the
+    IDENTICAL argument, but NEW-9 left it passed through verbatim. A caller
+    that attaches a `detail` naming the resource on the "exists, not yours"
+    case and omits it on the genuinely-absent case would restore exactly
+    the existence oracle H6/NEW-9 closed. `detail` must now be forced to
+    absent for `not_found` too, the same as `operation_id`/`receipt_ref`."""
+
+    decision = policy.PolicyDecision(False, "rbac", "not_found", retryable=False)
+    envelope = policy.build_error(
+        decision,
+        operation_id="opm_should_be_dropped",
+        receipt_ref="rcpt_should_be_dropped",
+        detail="run rn_abc123 is owned by workspace ws_other",
+    )
+    assert envelope["operation_id"] is None
+    assert envelope["receipt_ref"] is None
+    assert "detail" not in envelope
+
+    # Contrast: for every OTHER reason code, build_error still passes the
+    # caller's detail through (redacted/bounded as usual) -- this is a
+    # `not_found`-SPECIFIC guard, not a general suppression.
+    other_decision = policy.PolicyDecision(False, "guard", "guard_blocked", retryable=False)
+    other_envelope = policy.build_error(other_decision, detail="rule fired for this request")
+    assert other_envelope.get("detail") == "rule fired for this request"
 
 
 # ---------------------------------------------------------------------------
@@ -1242,7 +1433,7 @@ def test_exact_replay_after_consumption_is_not_an_error_but_is_non_accepting() -
 
     ctx = _basic_ctx(targets=_run_targets())
     issued = policy.mint_confirmation(ctx)
-    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64)
+    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64, ctx=ctx)
     assert consumed is not None
     assert consumed["status"] == "consumed"
 
@@ -1256,7 +1447,7 @@ def test_exact_replay_after_consumption_is_not_an_error_but_is_non_accepting() -
 def test_consumed_token_with_changed_inputs_is_idempotency_conflict() -> None:
     ctx = _basic_ctx(targets=_run_targets())
     issued = policy.mint_confirmation(ctx)
-    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64)
+    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64, ctx=ctx)
     assert consumed is not None
 
     changed_ctx = dataclasses.replace(ctx, idempotency_key="different-key")
@@ -1302,7 +1493,7 @@ def test_authorize_operation_denies_exact_replay_never_returns_accept(tmp_foundr
     )
     assert accepted.allowed
 
-    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64)
+    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64, ctx=ctx)
     assert consumed is not None
 
     # verify_confirmation directly: outcome is still correctly "not an
@@ -1380,7 +1571,9 @@ def test_exact_replay_still_fails_closed_when_expired() -> None:
     ctx = _basic_ctx(targets=_run_targets())
     minted_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     issued = policy.mint_confirmation(ctx, now=minted_at)
-    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64, now=minted_at)
+    consumed = policy.consume_confirmation(
+        issued.record, operation_id="opm_" + "a" * 64, ctx=ctx, now=minted_at
+    )
     assert consumed is not None
 
     later = minted_at + policy.CONFIRMATION_TTL + timedelta(seconds=1)
@@ -1419,7 +1612,7 @@ def test_forged_future_issued_at_does_not_extend_the_ttl_window() -> None:
     assert verification.outcome == "expired"
     assert verification.decision.reason_code == "confirmation_expired"
 
-    consumed = policy.consume_confirmation(record, operation_id="opm_" + "a" * 64)
+    consumed = policy.consume_confirmation(record, operation_id="opm_" + "a" * 64, ctx=ctx)
     assert consumed is None
 
 
@@ -1431,14 +1624,14 @@ def test_forged_future_issued_at_does_not_extend_the_ttl_window() -> None:
 def test_consume_confirmation_refuses_to_rebind_an_already_consumed_record() -> None:
     ctx = _basic_ctx(targets=_run_targets())
     issued = policy.mint_confirmation(ctx)
-    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64)
+    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64, ctx=ctx)
     assert consumed is not None
     assert consumed["consumed_by_operation_id"] == "opm_" + "a" * 64
 
     # A second consumption attempt against the now-consumed record must be
     # refused (CAS precondition failure), never silently rebound to a new
     # operation_id.
-    second = policy.consume_confirmation(consumed, operation_id="opm_" + "b" * 64)
+    second = policy.consume_confirmation(consumed, operation_id="opm_" + "b" * 64, ctx=ctx)
     assert second is None
 
 
@@ -1447,14 +1640,16 @@ def test_consume_confirmation_refuses_expired_record() -> None:
     minted_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     issued = policy.mint_confirmation(ctx, now=minted_at)
     later = minted_at + policy.CONFIRMATION_TTL + timedelta(seconds=1)
-    result = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64, now=later)
+    result = policy.consume_confirmation(
+        issued.record, operation_id="opm_" + "a" * 64, ctx=ctx, now=later
+    )
     assert result is None
 
 
 def test_consume_confirmation_succeeds_for_fresh_issued_record() -> None:
     ctx = _basic_ctx(targets=_run_targets())
     issued = policy.mint_confirmation(ctx)
-    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64)
+    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64, ctx=ctx)
     assert consumed is not None
     assert consumed["status"] == "consumed"
     assert consumed["consumed_at"] is not None
@@ -1467,7 +1662,7 @@ def test_consume_confirmation_returns_a_deep_copy_not_a_shared_shallow_one() -> 
     `consume_confirmation` now deep-copies."""
     ctx = _basic_ctx(targets=_run_targets())
     issued = policy.mint_confirmation(ctx)
-    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64)
+    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64, ctx=ctx)
     assert consumed is not None
     consumed["actor"]["user_id"] = "mutated"
     consumed["targets"][0]["target_ref"] = "mutated"
@@ -1475,11 +1670,13 @@ def test_consume_confirmation_returns_a_deep_copy_not_a_shared_shallow_one() -> 
     assert issued.record["targets"][0]["target_ref"] != "mutated"
 
 
-def test_consume_confirmation_optional_ctx_binding_denies_mismatch() -> None:
-    """NEW-12 fix (round 2, hardening): `consume_confirmation` previously
-    had NO binding precondition at all -- only `record`/`operation_id`.
-    When `ctx` is supplied, it now additionally requires
-    `_bindings_match(record, ctx)`."""
+def test_consume_confirmation_ctx_binding_denies_mismatch() -> None:
+    """NEW-12 (round 2, hardening) added `consume_confirmation`'s binding
+    check (`_bindings_match(record, ctx)`) but left `ctx` OPTIONAL --
+    BLOCK-9 (round 4 gate) made it REQUIRED, folding the binding predicate
+    into the frozen DUR-1 compare-and-swap text. This test now pins BOTH
+    halves: a mismatched `ctx` denies, and `ctx` is no longer omittable at
+    all (a `TypeError`, not a silent skip)."""
     ctx = _basic_ctx(targets=_run_targets())
     issued = policy.mint_confirmation(ctx)
 
@@ -1489,14 +1686,13 @@ def test_consume_confirmation_optional_ctx_binding_denies_mismatch() -> None:
     )
     assert denied is None
 
-    # Backward compatible: omitting `ctx` (the default) skips this check --
-    # P1's own call sites/tests pre-verify bindings via verify_confirmation.
-    allowed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64)
-    assert allowed is not None
+    # BLOCK-9: `ctx` is a REQUIRED keyword argument -- omitting it is a
+    # TypeError, not a silent "skip the binding check" default.
+    with pytest.raises(TypeError):
+        policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64)  # type: ignore[call-arg]
 
-    # And a MATCHING ctx succeeds too.
-    fresh = policy.mint_confirmation(ctx)
-    matching = policy.consume_confirmation(fresh.record, operation_id="opm_" + "b" * 64, ctx=ctx)
+    # A MATCHING ctx succeeds.
+    matching = policy.consume_confirmation(issued.record, operation_id="opm_" + "b" * 64, ctx=ctx)
     assert matching is not None
     assert matching["status"] == "consumed"
 
@@ -1698,6 +1894,35 @@ def test_build_error_scrubs_traceback_shaped_detail() -> None:
     assert "File " not in error.get("detail", "")
 
 
+def test_build_error_scrubs_bare_path_shaped_detail_with_no_traceback_framing() -> None:
+    """BLOCK-1 (round 4 gate): NEW-21's guard (`_TRACEBACK_LIKE`) only ever
+    matched traceback/stack-frame shapes. `detail`'s natural producer is
+    `str(exc)`, and a filesystem-related exception's message embeds an
+    absolute path with NO traceback framing at all -- empirically, prior to
+    this fix, `build_error(detail=str(OSError(...)))` emitted the path
+    VERBATIM (the receipt schema's sibling `build_audit_delivery` producer
+    showed the identical leak). `_redact_and_bound` now detects
+    `_PATH_LIKE` too and replaces the WHOLE string, not just the matched
+    span."""
+
+    decision = policy.PolicyDecision(False, "preflight", "internal_error", retryable=False)
+    raw = str(
+        OSError(2, "No such file or directory", "/Users/alice/.config/research-foundry/serve.env")
+    )
+    assert "/Users/alice" in raw, "precondition: the raw exception text really embeds a path"
+
+    error = policy.build_error(decision, detail=raw)
+    produced_detail = error.get("detail", "")
+    assert "/Users/alice" not in produced_detail
+    assert "serve.env" not in produced_detail
+
+    raw_permission = str(PermissionError(13, "Permission denied", "/home/bob/.ssh/id_ed25519"))
+    error_permission = policy.build_error(decision, detail=raw_permission)
+    produced_permission_detail = error_permission.get("detail", "")
+    assert "/home/bob" not in produced_permission_detail
+    assert "id_ed25519" not in produced_permission_detail
+
+
 def test_build_error_omits_detail_when_none() -> None:
     decision = policy.PolicyDecision(False, "capability", "operation_unknown", retryable=False)
     error = policy.build_error(decision)
@@ -1806,7 +2031,7 @@ def test_every_closed_reason_code_has_a_real_producer(
             expired_issued.record, presented_token=expired_issued.token, ctx=ctx, now=later
         ).decision.reason_code
     )
-    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64)
+    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64, ctx=ctx)
     assert consumed is not None
     mismatched_ctx = dataclasses.replace(ctx, idempotency_key="different-key")
     produced.add(

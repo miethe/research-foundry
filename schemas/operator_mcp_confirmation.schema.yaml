@@ -62,34 +62,50 @@ description: >-
   decision (round 1's opposite instruction is retracted).
 
   DURABLE CONSUMPTION IS A COMPARE-AND-SWAP (DUR-1, binding on P2; expiry
-  predicate folded in at round 2, finding NEW-10): the transition this
-  record makes from `status: issued` to `status: consumed` MUST be
-  implemented as:
+  predicate folded in at round 2, finding NEW-10; binding predicate folded
+  in at round 4, finding BLOCK-9): the transition this record makes from
+  `status: issued` to `status: consumed` MUST be implemented as:
 
   > Consumption is a compare-and-swap on `status` from exactly `issued` to
-  > `consumed`, GUARDED BY THE SAME CLAMPED-EXPIRY CHECK
-  > `operator_mcp_policy.consume_confirmation` applies (`min(expires_at,
-  > issued_at + CONFIRMATION_TTL)`, itself never later than the commit-time
-  > `now`), performed in the same durable transaction as the
-  > operation-manifest write, under an exclusive single-writer lock (SQLite
-  > `BEGIN IMMEDIATE`, or `O_EXCL` create-then-atomic-rename). A CAS that
-  > observes any status other than `issued`, OR whose clamped expiry has
-  > already passed at commit time, MUST route to the exact-replay /
-  > idempotency-conflict / expired path and MUST NOT execute.
+  > `consumed`, GUARDED BY:
+  >   (a) THE SAME CLAMPED-EXPIRY CHECK `operator_mcp_policy.consume_confirmation`
+  >       applies (`min(expires_at, issued_at + CONFIRMATION_TTL)`, itself
+  >       never later than the commit-time `now`); AND
+  >   (b) THE SAME BINDING CHECK `operator_mcp_policy.consume_confirmation`
+  >       applies (the record's bound actor/workspace/effective_sensitivity/
+  >       operation_kind/canonical_input_digest/idempotency_key/
+  >       policy_snapshot_version/targets fields, recomputed fresh against
+  >       the request being committed, byte-identical to the record's own),
+  > performed in the same durable transaction as the operation-manifest
+  > write, under an exclusive single-writer lock (SQLite `BEGIN IMMEDIATE`,
+  > or `O_EXCL` create-then-atomic-rename). A CAS that observes any status
+  > other than `issued`, whose clamped expiry has already passed at commit
+  > time, OR whose binding check fails, MUST route to the exact-replay /
+  > idempotency-conflict / expired / mismatch path and MUST NOT execute.
 
   NOTE (NEW-10): `WHERE status = 'issued'` alone is NOT this predicate --
   it is only the status half. A P2 implementation checking status without
   ALSO folding in the expiry check (in the SAME compare-and-swap, not a
   separate read) can consume an EXPIRED-but-still-`issued` token.
 
+  NOTE (BLOCK-9, round 4 gate): the binding half (b) was, until this fix,
+  the same defect one predicate over -- `operator_mcp_policy.consume_confirmation`'s
+  `ctx` parameter (the binding-check input) was OPTIONAL, defaulting to
+  `None`, which skipped the binding check entirely. "P2 SHOULD always pass
+  `ctx`" was prose, not shape; a P2 implementation following only the
+  status+expiry predicate above (pre-BLOCK-9 text) could consume a record
+  that never bound to the request it is committing. `ctx` is now a
+  REQUIRED keyword argument on `consume_confirmation`, and this predicate
+  states the binding requirement explicitly.
+
   `operator_mcp_policy.consume_confirmation` is a PURE function (P1) that
   models only the guarded `issued -> consumed` field transition and its
-  precondition (status must be `issued` and unexpired); it touches no disk.
-  P2's real persistence layer is the one that must satisfy the CAS/
-  single-writer-lock property above -- a read-then-write implementation
-  that merely calls this pure function and writes the result can pass every
-  P1 test while still permitting two concurrent callers to both observe
-  `status == "issued"` and both win.
+  precondition (status must be `issued`, unexpired, AND bound-matching); it
+  touches no disk. P2's real persistence layer is the one that must satisfy
+  the CAS/single-writer-lock property above -- a read-then-write
+  implementation that merely calls this pure function and writes the
+  result can pass every P1 test while still permitting two concurrent
+  callers to both observe `status == "issued"` and both win.
 type: object
 additionalProperties: false
 $defs:

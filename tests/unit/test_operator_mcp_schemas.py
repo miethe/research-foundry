@@ -192,6 +192,30 @@ def _valid_operation_receipt(**overrides: Any) -> dict[str, Any]:
     return instance
 
 
+def _valid_action_receipt(**overrides: Any) -> dict[str, Any]:
+    """BLOCK-2 (round 4 gate): `action_receipt` previously had ZERO test
+    coverage of any kind in this file (`grep -n action_receipt
+    tests/unit/test_operator_mcp_schemas.py` returned no matches) -- the
+    only one of the five `$defs` with no golden instance, no negative
+    fixture, and no `_valid_*` helper. Added alongside closing
+    `reason_code` to the same enum `terminal_receipt.denial_reason_code`
+    uses."""
+
+    instance = {
+        "schema_version": "1.0",
+        "kind": "action_receipt",
+        "operation_id": f"opm_{_SHA}",
+        "action_id": "action-1",
+        "action_index": 0,
+        "status": "completed",
+        "attempt_ref": "attempt-1",
+        "started_at": "2026-07-28T00:00:00Z",
+        "completed_at": "2026-07-28T00:00:01Z",
+    }
+    instance.update(overrides)
+    return instance
+
+
 def _valid_terminal_receipt(**overrides: Any) -> dict[str, Any]:
     instance = {
         "schema_version": "1.0",
@@ -239,6 +263,31 @@ def test_receipt_checkpoint_golden_instance_passes() -> None:
     assert not _errors("operator_mcp_receipt", _valid_checkpoint())
 
 
+def test_receipt_action_receipt_golden_instance_passes() -> None:
+    assert not _errors("operator_mcp_receipt", _valid_action_receipt())
+
+
+def test_receipt_action_receipt_with_closed_reason_code_passes() -> None:
+    instance = _valid_action_receipt(status="failed", reason_code="rbac_denied")
+    assert not _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_action_reason_code_rejects_value_outside_closed_enum() -> None:
+    """BLOCK-2 (round 4 gate) negative fixture: `action_receipt.reason_code`
+    was the exact open `type: [string, "null"], maxLength: 64` shape
+    NEW-20 (round 3) closed on its sibling `terminal_receipt.denial_reason_code`
+    but left open here, one `$def` above. An arbitrary code must now be
+    REJECTED, mirroring `test_receipt_denial_reason_code_rejects_value_outside_closed_enum`."""
+
+    instance = _valid_action_receipt(status="failed", reason_code="totally_made_up_code")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_action_reason_code_rejects_near_miss_of_a_real_code() -> None:
+    instance = _valid_action_receipt(status="failed", reason_code="guard_blocked_extra")
+    assert _errors("operator_mcp_receipt", instance)
+
+
 def test_receipt_rejects_unknown_kind_discriminator() -> None:
     instance = _valid_operation_receipt(kind="not_a_real_kind")
     assert _errors("operator_mcp_receipt", instance)
@@ -252,6 +301,20 @@ def test_receipt_rejects_missing_kind_discriminator() -> None:
 
 def test_receipt_terminal_denied_requires_reason_code() -> None:
     instance = _valid_terminal_receipt(status="denied")  # denial_reason_code still None
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_terminal_denied_requires_reason_code_key_to_be_present() -> None:
+    """BLOCK-3 (round 4 gate): the test above only pins the NULL case (the
+    key present with value `null`). The `allOf` `then` branch previously
+    had no `required: [denial_reason_code]`, so a `denied` receipt with the
+    KEY ABSENT ENTIRELY (not merely null) validated -- sidestepping the
+    whole NEW-20/BLOCK-2 enum. This pins the absent-key case specifically,
+    which the null-case test above cannot (dropping the key is not the same
+    JSON Schema condition as the key being present and null)."""
+
+    instance = _valid_terminal_receipt(status="denied")
+    del instance["denial_reason_code"]
     assert _errors("operator_mcp_receipt", instance)
 
 
@@ -292,11 +355,35 @@ def test_audit_delivery_detail_rejects_site_packages_path() -> None:
     assert _errors("operator_mcp_receipt", instance)
 
 
-def test_audit_delivery_builder_output_validates_even_for_a_real_traceback() -> None:
-    """The producer half of NEW-21: `build_audit_delivery()` must redact a
-    genuine traceback so the result still validates against the tightened
-    schema. This pins that the code-side pipeline and the schema-side guard
-    agree -- if they diverged, this test fails."""
+def test_audit_delivery_detail_rejects_absolute_filesystem_path() -> None:
+    """BLOCK-1 (round 4 gate): the schema-level guard also flags a BARE
+    absolute filesystem path with NO traceback framing at all -- exactly
+    the shape a real `str(exc)` naturally produces (e.g. `OSError`/
+    `PermissionError` messages) and that the pre-BLOCK-1 traceback-only
+    pattern missed entirely (empirically: it validated verbatim)."""
+
+    instance = _valid_terminal_receipt(status="denied", denial_reason_code="internal_error")
+    instance["audit_delivery"] = {
+        "status": "unavailable",
+        "audit_event_id": None,
+        "detail": "audit store unreachable at /var/secrets/db.sock",
+    }
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_audit_delivery_builder_never_leaks_exception_derived_content() -> None:
+    """BLOCK-1 (round 4 gate): supersedes the round-3 producer test, which
+    only asserted the SCHEMA validates for a real traceback -- schema
+    validity does not prove the sensitive CONTENT is gone. It empirically
+    was not: `build_audit_delivery`'s pre-BLOCK-1 free-text `detail` let a
+    bare `str(exc)` path (no traceback framing) straight through
+    unredacted, because `_TRACEBACK_LIKE` never matched it.
+
+    `detail` is no longer free text at all -- `detail_code` selects from a
+    closed, fixed table, so an exception's own text (a full traceback, an
+    embedded path, the exception message itself) has NO channel to reach
+    the output. This test asserts the CONTENT is absent, not merely that
+    the result happens to validate."""
 
     import traceback as _traceback
 
@@ -304,14 +391,21 @@ def test_audit_delivery_builder_output_validates_even_for_a_real_traceback() -> 
 
     try:
         raise OSError("audit store unreachable at /var/secrets/db.sock")
-    except OSError:
-        raw = _traceback.format_exc()
+    except OSError as exc:
+        raw_traceback = _traceback.format_exc()
+        raw_message = str(exc)
 
-    assert "Traceback" in raw, "precondition: the raw text really is a traceback"
+    assert "Traceback" in raw_traceback, "precondition: the raw text really is a traceback"
+    assert "/var/secrets/db.sock" in raw_message, "precondition: the raw message embeds a path"
 
-    block = build_audit_delivery("unavailable", audit_event_id=None, detail=raw)
+    block = build_audit_delivery("unavailable", audit_event_id=None, detail_code="write_failed")
     instance = _valid_terminal_receipt(status="denied", denial_reason_code="internal_error")
     instance["audit_delivery"] = block
+
+    produced_detail = block.get("detail", "")
+    assert raw_traceback not in produced_detail
+    assert raw_message not in produced_detail
+    assert "/var/secrets/db.sock" not in produced_detail
     assert not _errors("operator_mcp_receipt", instance), block
 
 
@@ -327,6 +421,19 @@ def test_audit_delivery_builder_rejects_unknown_status_and_overlong_event_id() -
         build_audit_delivery("totally_unknown_status")
     with _pytest.raises(ValueError):
         build_audit_delivery("delivered", audit_event_id="x" * 129)
+
+
+def test_audit_delivery_builder_rejects_unknown_detail_code() -> None:
+    """BLOCK-1: `detail_code` is a closed vocabulary -- an unknown code is a
+    caller programming error, same fail-loud convention as `status`/
+    `audit_event_id` above."""
+
+    import pytest as _pytest
+
+    from research_foundry.services.operator_mcp_policy import build_audit_delivery
+
+    with _pytest.raises(ValueError):
+        build_audit_delivery("unavailable", detail_code="totally_made_up_code")
 
 
 def test_receipt_denial_reason_code_rejects_value_outside_closed_enum() -> None:
@@ -351,15 +458,26 @@ def test_receipt_denial_reason_code_enum_matches_code_closed_reason_codes() -> N
     """Drift guard: the schema's closed enum and
     `operator_mcp_policy.CLOSED_REASON_CODES` are duplicated by value, so pin
     them to each other. If someone adds a reason code in one place only, this
-    fails instead of silently reopening the vocabulary."""
+    fails instead of silently reopening the vocabulary.
+
+    BLOCK-2 (round 4 gate): this guard previously read ONLY
+    `terminal_receipt.denial_reason_code` -- `action_receipt.reason_code`,
+    the exact sibling field NEW-20 (round 3) forgot to close, was
+    unguarded. Now asserts BOTH fields against `CLOSED_REASON_CODES`."""
 
     from research_foundry.services.operator_mcp_policy import CLOSED_REASON_CODES
 
     schema = SchemaRegistry().get("operator_mcp_receipt")
+
     terminal = schema["$defs"]["terminal_receipt"]["properties"]["denial_reason_code"]
-    schema_codes = {c for c in terminal["enum"] if c is not None}
+    terminal_codes = {c for c in terminal["enum"] if c is not None}
     assert None in terminal["enum"], "null must remain a member (completed/canceled require it)"
-    assert schema_codes == set(CLOSED_REASON_CODES)
+    assert terminal_codes == set(CLOSED_REASON_CODES)
+
+    action = schema["$defs"]["action_receipt"]["properties"]["reason_code"]
+    action_codes = {c for c in action["enum"] if c is not None}
+    assert None in action["enum"], "null must remain a member (reason_code is optional)"
+    assert action_codes == set(CLOSED_REASON_CODES)
 
 
 def test_receipt_every_closed_reason_code_is_accepted() -> None:
@@ -446,6 +564,15 @@ def test_error_rejects_raw_exception_shaped_message() -> None:
 
 def test_error_rejects_raw_exception_shaped_detail() -> None:
     instance = _valid_error(detail="ValueError raised in site-packages/foo/bar.py")
+    assert _errors("operator_mcp_error", instance)
+
+
+def test_error_rejects_absolute_filesystem_path_in_detail() -> None:
+    """BLOCK-1 (round 4 gate): the schema guard also flags a BARE absolute
+    filesystem path with no traceback framing -- the shape a real
+    `str(exc)` naturally produces (see the mirrored receipt-schema test)."""
+
+    instance = _valid_error(detail="failed to read /home/bob/.ssh/id_ed25519")
     assert _errors("operator_mcp_error", instance)
 
 

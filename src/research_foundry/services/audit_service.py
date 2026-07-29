@@ -79,6 +79,7 @@ class AuditHealth:
     last_success_at: Optional[str]  # None if never succeeded
     error_detail: Optional[str]     # populated when healthy=False
 
+
 # ---------------------------------------------------------------------------
 # Mutation-type taxonomy (all 6 reserved; 5 wired in P5.5)
 # ---------------------------------------------------------------------------

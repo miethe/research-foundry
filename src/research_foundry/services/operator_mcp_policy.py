@@ -32,29 +32,64 @@ This module is the SOLE owner of:
 * the bounded, redacted error-envelope builder (:func:`build_error`), whose
   ``message`` text is drawn ONLY from the closed :data:`_SAFE_MESSAGES`
   table -- never an f-string embedding caller-supplied VALUES or an
-  exception's own text. (`_check_preflight`'s internal `detail` string does
-  f-string a *closed enum member name* -- never caller input; see
-  :func:`_check_preflight`'s docstring, finding L6.)
+  exception's own text; its optional free-text ``detail`` is routed through
+  :func:`_redact_and_bound`, which replaces the ENTIRE string (never a
+  per-match substitution -- BLOCK-1, round 4 gate) with a fixed safe marker
+  whenever it detects traceback- OR absolute-filesystem-path-shaped content
+  (`_TRACEBACK_LIKE`/`_PATH_LIKE`) -- a bare ``str(exc)`` for a
+  filesystem-related failure embeds a path with no traceback framing at
+  all, which a traceback-only guard never caught. (`_check_preflight`'s
+  internal `detail` string does f-string a *closed enum member name* --
+  never caller input; see :func:`_check_preflight`'s docstring, finding L6.)
+  :func:`build_audit_delivery` goes further: its ``detail`` is not free text
+  at all, only a closed ``detail_code`` selecting from
+  :data:`_AUDIT_DELIVERY_SAFE_DETAILS` -- nothing exception-derived can
+  reach a durable receipt through it, not merely "nothing pattern-matched".
 
 No effect adapter, AgentJob attempt, or MCP server exists in this module
 (P1 scope note, decisions-block section "Quality gate": "no effect adapter
 or MCP server exists yet"). :mod:`operator_operation_service` (P2) is the
 durable-persistence owner that will call the functions here; this module
-never touches disk itself except through the read-only
+touches disk only through the
 :func:`research_foundry.services.governance.guard_check`/
-:func:`research_foundry.services.audit_service.get_health_state`/
-:func:`research_foundry.services.audit_service.health_check`
-calls it reuses (invariant: REUSE governance/audit primitives, never fork
-them). Finding M6 (reopened and FIXED at security-review round 2, finding
-NEW-3 -- see :func:`_check_audit_health`'s own comment): round 1's
-wontfix rested on a false premise ("probing would brick every fresh
-workspace"). `audit_service.health_check` is a cheap, idempotent,
-never-raising write-then-read probe already imported into this module; P1
-now probes ON DEMAND exactly once per workspace (whenever the persisted
-state has never been probed) instead of assuming a never-probed store is
-healthy forever. A workspace whose probe genuinely fails is now correctly
-denied; a healthy workspace (the overwhelmingly common case) self-heals on
-its own first mutating call with no separate bootstrap step required.
+:func:`research_foundry.services.audit_service.health_check` calls it
+reuses (invariant: REUSE governance/audit primitives, never fork them) --
+NEITHER is read-only: `guard_check` may read workspace-configured
+`governance.yaml`, and `health_check` is a write-then-read-then-delete
+probe against the local `audit_event` table (see immediately below). This
+module has NO call sites for
+:func:`research_foundry.services.audit_service.get_health_state` (its
+"assume healthy until proven otherwise" persisted-default read) at all --
+see the audit-health paragraph immediately below for why.
+
+**Audit-health is a LIVE, UNCONDITIONAL probe on every confirmation-
+requiring evaluation (BLOCK-5, round 4 gate; supersedes M6/NEW-3's round-2
+fix and NEW-19's round-3 fix, both of which this paragraph previously
+mis-described)**: `_check_audit_health` calls
+:func:`research_foundry.services.audit_service.health_check` -- a cheap,
+idempotent, never-raising write-then-read-then-delete probe against the
+local audit store -- on EVERY evaluation for a confirmation-requiring
+(privileged/mutating) `operation_kind` (`job.status`, the sole read kind,
+never reaches this stage at all). Two round-2/round-3 fix cycles are
+superseded by this, in order:
+
+1. Round 1's wontfix rested on a false premise ("probing would brick every
+   fresh workspace") and never probed at all -- a never-probed store was
+   silently assumed healthy forever (M6).
+2. Round 2 (NEW-3) probed ON DEMAND exactly once per workspace: read the
+   PERSISTED `get_health_state` snapshot first, and only run a live probe
+   when it had NEVER been probed (`last_probe_at is None`) -- trusting the
+   persisted row forever after that first probe, in BOTH directions
+   (NEW-19: a failed probe latched `healthy=False` and never recovered even
+   after `retryable=True` invited a retry; a healthy probe latched
+   `healthy=True` and never caught a later degradation).
+3. This module now probes LIVE, UNCONDITIONALLY, on every such evaluation
+   -- never consulting the persisted `get_health_state` snapshot at all.
+   Recovery is detected on the very next call (making `retryable=True`
+   honest) and degradation is detected immediately rather than never or
+   only once. The cost is one small local write-then-read-then-delete per
+   confirmation-requiring evaluation, which this module accepts as the
+   price of removing the latch in both directions.
 
 **EXACT REPLAY IS STRUCTURALLY NON-ACCEPTING (security-review round 2,
 finding NEW-1 -- supersedes round 1's C1 fix)**: an exact replay -- an
@@ -147,15 +182,22 @@ freezes the durability property P2's real persistence layer MUST implement
 around it, verbatim:
 
     Consumption is a compare-and-swap on `status` from exactly `issued` to
-    `consumed`, GUARDED BY THE SAME CLAMPED-EXPIRY CHECK `consume_confirmation`
-    applies (`_record_expiry`: `min(expires_at, issued_at + CONFIRMATION_TTL)`,
-    itself never later than `now` -- see finding NEW-7), performed in the
-    same durable transaction as the operation-manifest write, under an
-    exclusive single-writer lock (SQLite `BEGIN IMMEDIATE`, or `O_EXCL`
-    create-then-atomic-rename). A CAS that observes any status other than
-    `issued`, OR whose clamped expiry has already passed at commit time,
-    MUST route to the exact-replay / idempotency-conflict / expired path and
-    MUST NOT execute.
+    `consumed`, GUARDED BY:
+      (a) THE SAME CLAMPED-EXPIRY CHECK `consume_confirmation` applies
+          (`_record_expiry`: `min(expires_at, issued_at + CONFIRMATION_TTL)`,
+          itself never later than `now` -- see finding NEW-7); AND
+      (b) THE SAME BINDING CHECK `consume_confirmation` applies
+          (`_bindings_match`: the record's bound actor/workspace/
+          sensitivity/operation/canonical-input-digest/idempotency-key/
+          policy-snapshot/targets fields, recomputed fresh against the
+          request being committed, byte-identical to the record's own --
+          BLOCK-9, round 4 gate),
+    performed in the same durable transaction as the operation-manifest
+    write, under an exclusive single-writer lock (SQLite `BEGIN IMMEDIATE`,
+    or `O_EXCL` create-then-atomic-rename). A CAS that observes any status
+    other than `issued`, whose clamped expiry has already passed at commit
+    time, OR whose binding check fails, MUST route to the exact-replay /
+    idempotency-conflict / expired / mismatch path and MUST NOT execute.
 
 **NEW-10 (round 2)**: `WHERE status = 'issued'` alone is NOT the frozen
 predicate above -- it is only the status half. A P2 implementation
@@ -164,6 +206,17 @@ token and still satisfy a literal reading of round 1's text. The expiry
 predicate is binding and MUST be folded into the SAME compare-and-swap,
 not checked separately (a separate check reopens the TOCTOU window DUR-1
 exists to close).
+
+**BLOCK-9 (round 4 gate)**: the BINDING predicate (b) above was, until this
+fix, likewise not folded in -- it was the exact same defect NEW-10 raised
+against the expiry half, one predicate over. NEW-12 (round 2) added
+`consume_confirmation`'s `ctx`-based binding check but left `ctx` OPTIONAL
+(`None` skipped the check), so "P2 SHOULD always pass `ctx`" was prose, not
+shape. `consume_confirmation`'s `ctx` parameter is now REQUIRED (no
+default) -- a P2 implementation calling this function at all is
+structurally unable to skip the binding half, and the frozen predicate
+above now states the binding requirement explicitly rather than leaving it
+implicit in code comments only.
 
 A P2 implementation that reads a confirmation record, does other work, and
 only then writes `status="consumed"` (read-then-write, not a real CAS) can
@@ -230,21 +283,48 @@ AuthIdentity | None`` field previously tried to guarantee alone:
    convention extended to this case: an attacker forcing a value onto
    ``ctx.identity`` learns nothing about whether it was "close" to correct).
 
-The net property: **no value forced onto ``ctx.identity``, by any means, can
-ever grant more than the identity already configured in
-``foundry.operator_mcp.identity`` would grant on its own** -- at best a
-forged value exactly matches configured truth (in which case nothing was
-actually forged), and at worst Layer 3 denies it outright. This also means
-:func:`mint_confirmation` -- which still reads ``ctx.identity`` directly to
-populate a confirmation record's ``actor`` block, and does NOT itself
-re-derive identity (it has no ``paths`` parameter and is documented as
-callable only after an already-successful :func:`evaluate_policy`) -- cannot
-be used to mint an identity-forged confirmation that later authorizes
-anything: :func:`authorize_operation` always re-runs :func:`evaluate_policy`
-first, so a forged ``ctx.identity`` is caught at the ``rbac`` stage BEFORE
-the confirmation stage is ever reached, regardless of what the minted
-record's ``actor`` block says. A confirmation minted against a forged
-context is syntactically valid but semantically inert.
+The net property, SCOPED TO ``authorize_operation`` (round 3's original
+framing): **no value forced onto ``ctx.identity`` can ever grant more than
+the identity already configured in ``foundry.operator_mcp.identity`` would
+grant on its own** through that ONE sanctioned execute-time entry point --
+at best a forged value exactly matches configured truth (in which case
+nothing was actually forged), and at worst Layer 3 denies it outright.
+
+**BLOCK-6 adjudication (round 4 gate): this property did NOT hold for the
+whole module, only for ``authorize_operation``.** Round 3's closure claimed
+the broader "no value forced onto ``ctx.identity``, BY ANY MEANS, can ever
+grant more" -- but :func:`mint_confirmation`, :func:`verify_confirmation`,
+and :func:`consume_confirmation` are all in ``__all__``, and round 3's
+``mint_confirmation`` still read ``ctx.identity`` directly to populate a
+confirmation record's durable ``actor`` block, with no ``paths`` parameter
+to re-derive it. Empirically: a forged ``ctx.identity`` minted a record
+whose ``actor`` block matched the forgery; ``verify_confirmation(record,
+ctx=forged)`` then returned ``allowed=True`` (`_bindings_match` compares
+the record's ``actor`` against ``ctx.identity``, and a forged mint makes
+both sides the SAME forgery); and ``consume_confirmation`` (no ``ctx``
+argument existed to bind against) transitioned the forged record to
+``consumed`` with no identity check at all. Only ``authorize_operation``
+itself was safe, because it always re-runs :func:`evaluate_policy` (whose
+``rbac`` stage denies the forgery) BEFORE reaching the confirmation stage
+-- the narrow claim its own docstring made, correctly.
+
+``mint_confirmation`` now closes this the SAME way Layer 3 closes
+``_check_identity_and_rbac``: it accepts an optional ``paths`` parameter
+and derives the record's ``actor`` block from a FRESH
+:func:`resolve_operator_identity` call, raising ``ValueError`` if that
+disagrees with ``ctx.identity`` -- never trusting ``ctx.identity`` to
+populate durable content. A record's ``actor`` block is therefore
+authentic at its ONLY point of production, which transitively closes
+``verify_confirmation``'s counterexample (`_bindings_match` now compares a
+forged ``ctx.identity`` against a REAL, config-derived ``actor`` block, and
+the two disagree). ``consume_confirmation``'s counterexample is closed
+separately by making its ``ctx`` parameter REQUIRED (BLOCK-9, folded into
+the frozen DUR-1 predicate below) rather than an opt-in default. With both
+fixes, the net property now holds for the WHOLE module, not merely
+``authorize_operation``: no value forced onto ``ctx.identity``, through any
+of the three exported confirmation-lifecycle functions, can ever produce,
+verify, or consume a confirmation whose durable content diverges from what
+the actually-configured local identity would produce on its own.
 
 **Zero overlap with the read-only Knowledge MCP** (decisions-block section
 0, invariant 6): the eight ``rf-knowledge-mcp`` tool names (``search``,
@@ -502,9 +582,25 @@ _OPERATION_ROLES: dict[str, frozenset[str]] = {
     "run.verify": _MUTATION_ROLES,
     "run.bundle": _MUTATION_ROLES,
     # `writeback.preview` is a PREVIEW, not `report:publish` (which rbac.py
-    # withholds from researcher). It additionally passes the same
+    # withholds from researcher). BLOCK-7 (round 4 gate) corrected this
+    # comment's second, independent justification: it used to claim
+    # `writeback.preview` "additionally passes the same
     # `*_writeback_requires_review` guard rules as every other writeback, so
-    # researcher-initiated previews still cannot self-approve.
+    # researcher-initiated previews still cannot self-approve" -- but those
+    # rules are gated on `writeback_targets`/`model_provider`/
+    # `source_sensitivities`, which ALL defaulted empty/None, so for a
+    # default-constructed context none of them could fire at all; the
+    # rbac-eligibility comment rested on a guard-stage property that was not
+    # actually guaranteed. `_check_preflight` now REQUIRES `writeback_targets`
+    # to be non-empty for `writeback.preview` (BLOCK-7), so the
+    # `*_writeback_requires_review` rules are now guaranteed reachable for
+    # every `writeback.preview` that gets this far -- but `model_provider`/
+    # `source_sensitivities` remain caller-supplied and advisory (see the
+    # `PolicyContext` docstring), so `no_work_sensitive_to_unapproved_provider`/
+    # `no_mixed_personal_work_bundle` are NOT guaranteed to fire. Researcher
+    # eligibility here rests on the rbac.py axis alone (verified above);
+    # do not re-add a compound guard-stage justification without also
+    # populating those two fields from resolved server-side state.
     "writeback.preview": _MUTATION_ROLES,
 }
 
@@ -517,6 +613,24 @@ if _UNCLASSIFIED_OPERATION_KINDS:  # pragma: no cover - import-time invariant
     )
 
 _TRACEBACK_LIKE = re.compile(r'(?i)traceback|site-packages|File "[^"]*", line \d+')
+#: BLOCK-1 (round 4 gate): an ABSOLUTE FILESYSTEM PATH pattern, added
+#: alongside `_TRACEBACK_LIKE`. Prior to this fix `_TRACEBACK_LIKE` matched
+#: only traceback/stack-frame shapes, so `str(exc)` -- the natural producer
+#: of both `build_error`'s `detail` and (before this fix) `build_audit_delivery`'s
+#: `detail` -- passed through completely unredacted for exceptions whose
+#: message embeds a bare path with no traceback framing at all, e.g.
+#: `OSError(2, "No such file or directory", "/Users/alice/.config/research-foundry/serve.env")`
+#: or `PermissionError(13, "Permission denied", "/home/bob/.ssh/id_ed25519")`.
+#: `governance.redact_payload`'s built-in secret patterns do not cover
+#: filesystem paths either (they target credential/token shapes). This
+#: pattern mirrors the receipt/error schemas' `not: pattern` guards below.
+_PATH_LIKE = re.compile(r"(?:/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\)[^\s'\"]*")
+#: BLOCK-1: the fixed, safe replacement text substituted for the ENTIRE
+#: input when `_redact_and_bound` detects traceback- or path-shaped
+#: content -- a WHOLESALE replacement, not a per-match substitution (see
+#: `_redact_and_bound`'s docstring for why a partial substitution is not
+#: sufficient).
+_UNSAFE_DETAIL_MARKER = "[REDACTED: unsafe content stripped]"
 _ERROR_MESSAGE_MAX = 300
 _ERROR_DETAIL_MAX = 500
 
@@ -632,14 +746,36 @@ class PolicyContext:
     when `effective_sensitivity`'s rank exceeds it. Also intentionally NOT
     part of the canonical digest, for the same lookup-time-input reason.
 
-    `writeback_targets` is optional and meaningful only for
-    `writeback.preview` -- it feeds `governance.GuardContext.writeback_targets`
-    so the SAME `work_writeback_requires_review`/`intenttree_writeback_requires_review`/
-    `arc_writeback_requires_review` guard rules apply here as everywhere else.
-    `model_provider`/`source_sensitivities` are optional passthroughs to the
-    SAME `GuardContext` fields, enabling the `no_work_sensitive_to_unapproved_provider`/
-    `no_mixed_personal_work_bundle` block-severity rules to fire through this
-    contract exactly as they do for run-level guard checks -- REUSE, not a
+    `writeback_targets` is meaningful only for `writeback.preview` -- it
+    feeds `governance.GuardContext.writeback_targets` so the SAME
+    `work_writeback_requires_review`/`intenttree_writeback_requires_review`/
+    `arc_writeback_requires_review` guard rules apply here as everywhere
+    else. BLOCK-7 (round 4 gate) NARROWS a prior over-claim here: this
+    field defaults to `()`, and until this fix nothing required it to be
+    non-empty for `writeback.preview` -- for a default-constructed context
+    NONE of those three rules could fire at all, silently reducing
+    `_check_guard` to the H7 ceiling comparison alone (the same
+    fail-open-by-omission shape H3 removed from `requested_workspace_id`).
+    `_check_preflight` NOW REQUIRES `writeback_targets` to be non-empty for
+    `writeback.preview` (`preflight_failed` otherwise), so those three
+    rules are guaranteed REACHABLE for every `writeback.preview` that
+    clears preflight -- reachable, not necessarily TRIGGERED, since
+    whether a specific declared target is one this repo's governance rules
+    actually key on is still a governance-config question, not a shape one.
+
+    `model_provider`/`source_sensitivities` are optional, caller-supplied
+    passthroughs to the SAME `GuardContext` fields, ADVISORY ONLY (BLOCK-7):
+    unlike `writeback_targets`, this contract phase has no equivalent
+    non-empty requirement for them (there is no single well-formed "empty"
+    to reject -- `model_provider` is meaningfully `None` for many real
+    requests, and `source_sensitivities` is meaningfully `()` for a preview
+    with no source-derived content yet). The `no_work_sensitive_to_unapproved_provider`/
+    `no_mixed_personal_work_bundle` block-severity rules therefore fire ONLY
+    when a caller supplies these -- they do NOT fire "exactly as they do
+    for run-level guard checks" the way a prior version of this docstring
+    claimed; a P2/P5 that wants them to fire unconditionally must resolve
+    and populate them from server-side state before constructing this
+    context, which this contract phase does not yet do. Still REUSE, not a
     fork, of `governance.guard_check`.
 
     NEW-18 (security review round 3): `identity` is `init=False` -- there is
@@ -1133,7 +1269,8 @@ def _check_guard(ctx: PolicyContext, paths: FoundryPaths) -> PolicyDecision:
 
 
 def _check_preflight(ctx: PolicyContext, _paths: FoundryPaths) -> PolicyDecision:
-    """Missing-required-target-kind check.
+    """Missing-required-target-kind check, PLUS (BLOCK-7, round 4 gate)
+    `writeback.preview`'s missing-required-writeback_targets check.
 
     `detail` below f-strings `sorted(missing)` -- a list of CLOSED enum
     member names drawn from :data:`_REQUIRED_TARGET_KINDS`, never a
@@ -1141,7 +1278,22 @@ def _check_preflight(ctx: PolicyContext, _paths: FoundryPaths) -> PolicyDecision
     embedding caller input" guarantee is about caller-controlled VALUES
     (see `_SAFE_MESSAGES`/`build_error`); this is the one place internal
     enum names are interpolated, and they are never influenced by request
-    data."""
+    data.
+
+    BLOCK-7: `PolicyContext.writeback_targets`/`model_provider`/
+    `source_sensitivities` all default empty/`None` (see the class
+    docstring), so a default-constructed `writeback.preview` context left
+    ALL THREE `governance.guard_check` block-severity rules
+    (`*_writeback_requires_review`, `no_work_sensitive_to_unapproved_provider`,
+    `no_mixed_personal_work_bundle`) structurally unable to fire -- omission
+    silently reduced `_check_guard` to the H7 ceiling comparison alone, the
+    same fail-open-by-omission shape H3 removed from `requested_workspace_id`
+    on the mutating plane. This stage now fails CLOSED on the one input this
+    contract phase can validate without a server-side resolver:
+    `writeback_targets` must be non-empty for `writeback.preview`. See the
+    `PolicyContext` docstring for why `model_provider`/`source_sensitivities`
+    are NOT similarly enforced here (their guard rules remain advisory,
+    populated only if a caller supplies them)."""
 
     required = _REQUIRED_TARGET_KINDS.get(ctx.operation_kind, frozenset())
     present = {t.target_kind for t in ctx.targets}
@@ -1153,6 +1305,14 @@ def _check_preflight(ctx: PolicyContext, _paths: FoundryPaths) -> PolicyDecision
             "preflight_failed",
             retryable=True,
             detail=f"missing required target kinds: {sorted(missing)}",
+        )
+    if ctx.operation_kind == "writeback.preview" and not ctx.writeback_targets:
+        return PolicyDecision(
+            False,
+            "preflight",
+            "preflight_failed",
+            retryable=True,
+            detail="writeback.preview requires at least one writeback_targets entry",
         )
     return PolicyDecision(True, "preflight")
 
@@ -1323,7 +1483,9 @@ def _record_expiry(record: Mapping[str, Any], moment: datetime) -> datetime | No
     return min(expires_at, issued_at + CONFIRMATION_TTL)
 
 
-def mint_confirmation(ctx: PolicyContext, *, now: datetime | None = None) -> ConfirmationIssued:
+def mint_confirmation(
+    ctx: PolicyContext, *, paths: FoundryPaths | None = None, now: datetime | None = None
+) -> ConfirmationIssued:
     """Mint an opaque, single-use confirmation token bound to `ctx`'s
     canonical fields (OPM-OQ-2: five-minute TTL).
 
@@ -1331,22 +1493,30 @@ def mint_confirmation(ctx: PolicyContext, *, now: datetime | None = None) -> Con
     from :func:`evaluate_policy` for `ctx` before calling this -- minting
     does not itself re-run policy checks. Raises `ValueError` if
     `ctx.identity` is `None`, if `ctx.operation_kind` is not a member of
-    :data:`OPERATION_KINDS`, or if any `ctx.targets[i].target_kind` is not a
+    :data:`OPERATION_KINDS`, if any `ctx.targets[i].target_kind` is not a
     member of :data:`TARGET_KINDS` (finding L3 defense-in-depth -- mint is
     never reachable without a resolved identity/valid enums in the real
-    call flow, but this guards against a programming-error direct call).
+    call flow, but this guards against a programming-error direct call), or
+    if `ctx.identity` disagrees with the identity freshly resolved from
+    configured local config (BLOCK-6, round 4 gate -- see immediately
+    below).
 
-    NEW-18 note: this function has no `paths` parameter and therefore
-    cannot re-derive identity the way :func:`_check_identity_and_rbac` does
-    -- it embeds whatever `ctx.identity` currently holds into the minted
-    record's `actor` block verbatim. This is safe DESPITE that, not because
-    `ctx.identity` is trusted here: :func:`authorize_operation` always
-    re-runs :func:`evaluate_policy` (whose `rbac` stage independently
-    re-derives and validates identity) BEFORE it ever reaches the
-    confirmation stage that would consume a record minted here. A record
-    minted against a `ctx` carrying a forged identity is therefore
-    syntactically valid but semantically inert -- it can never back an
-    `authorize_operation` call that returns `allowed=True`.
+    **BLOCK-6 (round 4 gate)**: this function now accepts an optional
+    `paths` parameter and derives the minted record's durable `actor` block
+    from a FRESH :func:`resolve_operator_identity` call -- the SAME
+    derive-and-compare pattern :func:`_check_identity_and_rbac` (NEW-18
+    Layer 3) uses -- rather than embedding `ctx.identity` verbatim. Round
+    3's version had no `paths` parameter and could not re-derive; the
+    module docstring's round-3 claim that this was "safe despite that"
+    (because `authorize_operation` always re-checks identity before
+    EXECUTING) was true only for `authorize_operation` itself --
+    `verify_confirmation`/`consume_confirmation`, both also in `__all__`,
+    had no equivalent re-check and could accept/consume a confirmation
+    minted against a forged `ctx.identity` (see the module docstring's
+    "BLOCK-6 adjudication" paragraph for the full empirical repro). Deriving
+    the `actor` block from real config here, at the record's ONLY point of
+    production, makes it unforgeable regardless of which of the three
+    exported functions a caller reaches for next.
 
     `now` is a TEST-ONLY clock-injection seam (finding M2) -- P2/P5 MUST
     NEVER thread a caller-/request-supplied timestamp through it; doing so
@@ -1383,6 +1553,21 @@ def mint_confirmation(ctx: PolicyContext, *, now: datetime | None = None) -> Con
                 "mint_confirmation requires every ctx.targets[i].target_kind in "
                 "TARGET_KINDS -- callers MUST call evaluate_policy first (L3 defense-in-depth)"
             )
+    # BLOCK-6 (round 4 gate): derive the actor identity FRESH from
+    # configured local config -- never trust `ctx.identity` to populate
+    # durable content. A disagreement is only reachable by bypassing
+    # `PolicyContext.for_configured_operator` (e.g. `object.__setattr__` on
+    # an already-built instance), and it is denied here, at the record's
+    # ONLY point of production, the same way Layer 3 denies it for
+    # execute-time authorization.
+    derived_identity = resolve_operator_identity(paths)
+    if derived_identity is None or derived_identity != ctx.identity:
+        raise ValueError(
+            "mint_confirmation requires ctx.identity to match the identity "
+            "resolved from configured local config -- callers MUST call "
+            "evaluate_policy first (L3 defense-in-depth); a mismatch means "
+            "ctx.identity was forged or local config changed since evaluate_policy ran"
+        )
 
     try:
         moment = now or datetime.now(timezone.utc)
@@ -1399,9 +1584,9 @@ def mint_confirmation(ctx: PolicyContext, *, now: datetime | None = None) -> Con
             "confirmation_id": confirmation_id,
             "token_digest": token_digest,
             "actor": {
-                "user_id": ctx.identity.user_id,
-                "workspace_id": ctx.identity.workspace_id,
-                "roles": list(ctx.identity.roles),
+                "user_id": derived_identity.user_id,
+                "workspace_id": derived_identity.workspace_id,
+                "roles": list(derived_identity.roles),
             },
             "effective_sensitivity": ctx.effective_sensitivity,
             "operation_kind": ctx.operation_kind,
@@ -1580,8 +1765,8 @@ def consume_confirmation(
     record: Mapping[str, Any],
     *,
     operation_id: str,
+    ctx: PolicyContext,
     now: datetime | None = None,
-    ctx: PolicyContext | None = None,
 ) -> dict[str, Any] | None:
     """Return a NEW confirmation record transitioned to `status="consumed"`,
     or `None` if the compare-and-swap precondition fails.
@@ -1595,15 +1780,21 @@ def consume_confirmation(
     consumption's proof), and an expired-but-still-`"issued"` record can
     never be consumed.
 
-    NEW-12 fix (round 2, hardening): optional `ctx` -- when supplied,
-    additionally requires `_bindings_match(record, ctx)` before consuming.
-    Without it, this function had no binding precondition at all (only
-    `operation_id`/`record`), so nothing enforced that the caller had
-    actually obtained a matching `verify_confirmation(..., ctx=...)` for the
-    SAME `ctx`/token before consuming -- the H5 fix made it merely LOOK
-    self-sufficient. `ctx` defaults to `None` (skips this check) for
-    backward compatibility with P1's own call sites/tests, which already
-    call `verify_confirmation` first; P2 SHOULD always pass `ctx`.
+    **BLOCK-9 (round 4 gate)**: `ctx` is now a REQUIRED keyword argument --
+    `_bindings_match(record, ctx)` is ALWAYS checked before consuming.
+    NEW-12 (round 2, hardening) added this check but left `ctx` optional
+    (default `None`, skipping the check entirely), on the reasoning that P1's
+    own call sites already call `verify_confirmation` first. That reasoning
+    was the exact "trust the caller by convention" shape this module's own
+    H6/NEW-9 fixes reject everywhere else: the frozen DUR-1 compare-and-swap
+    predicate (module docstring) folds in a binding check, so a P2
+    implementation following the reference `WHERE status='issued' AND
+    <clamped expiry>` predicate literally, without ALSO binding, would
+    consume a record that never bound to the request it is committing --
+    and pass every P1 test, because P1's own tests could omit `ctx` too.
+    P1's call sites all already have a `ctx` in scope (they call
+    `verify_confirmation(..., ctx=...)` immediately before), so requiring it
+    here costs nothing today and closes the gap for P2.
 
     Pure function -- atomically persisting this alongside the operation
     manifest write is P2's job (`operator_operation_service.py`, OPM-2.1).
@@ -1618,7 +1809,7 @@ def consume_confirmation(
 
     if record.get("status") != "issued":
         return None
-    if ctx is not None and not _bindings_match(record, ctx):
+    if not _bindings_match(record, ctx):
         return None
     moment = now or datetime.now(timezone.utc)
     expiry = _record_expiry(record, moment)
@@ -1661,12 +1852,30 @@ _SAFE_MESSAGES: dict[str, str] = {
 
 
 def _redact_and_bound(text: str | None, *, config: FoundryConfig | None = None) -> str | None:
+    """Redact secret-shaped substrings, then scrub anything traceback- or
+    path-shaped, then bound the length.
+
+    BLOCK-1 (round 4 gate) hardening: when `text` (post-secret-redaction)
+    matches `_TRACEBACK_LIKE` OR `_PATH_LIKE` ANYWHERE, the WHOLE string is
+    replaced with :data:`_UNSAFE_DETAIL_MARKER` -- never a per-match
+    substitution. A per-match substitution (the pre-fix behaviour) only
+    scrubs the matched span and leaves the REST of the string -- including
+    any second, differently-shaped sensitive fragment the patterns don't
+    happen to cover -- untouched. `str(exc)` is exception-shaped text of
+    unbounded, caller-influenced structure; once ANY exception/path marker
+    is detected, the safest bound is to trust none of the surrounding text,
+    not merely the matched substring. `build_error`'s free-text `detail`
+    and (indirectly, defense-in-depth) `build_audit_delivery`'s closed
+    vocabulary both route through this function.
+    """
+
     if not text:
         return None
     redacted = governance.redact_payload(text, config=config)
     if not isinstance(redacted, str):
         redacted = str(redacted)
-    redacted = _TRACEBACK_LIKE.sub("[REDACTED]", redacted)
+    if _TRACEBACK_LIKE.search(redacted) or _PATH_LIKE.search(redacted):
+        return _UNSAFE_DETAIL_MARKER
     return redacted[:_ERROR_DETAIL_MAX] or None
 
 
@@ -1685,7 +1894,11 @@ def build_error(
     `message` is ALWAYS drawn from :data:`_SAFE_MESSAGES` by `reason_code`
     -- never an f-string embedding caller input or an exception's `str()`.
     `detail` (optional, bounded, redacted) is the only field that may carry
-    supplementary context, and is scrubbed of anything traceback-shaped.
+    supplementary context; anything traceback- or path-shaped (BLOCK-1,
+    round 4 gate: an absolute filesystem path with no traceback framing at
+    all, e.g. bare `str(exc)` text) causes the WHOLE `detail` string to be
+    replaced with a fixed safe marker via `_redact_and_bound`, never a
+    partial per-match substitution.
 
     `config` (finding M4, hardened NEW-5): optional `FoundryConfig`,
     threaded through to `governance.redact_payload` so workspace-configured
@@ -1698,14 +1911,19 @@ def build_error(
     current workspace SHOULD pass it; omitting it falls back to the
     built-in patterns only (unchanged prior behavior).
 
-    `operation_id`/`receipt_ref` (finding NEW-9): for `reason_code ==
-    "not_found"` these are ALWAYS forced to `None` in the returned payload,
-    REGARDLESS of what the caller passes in. H6's one-denial-shape
-    guarantee (wrong-workspace vs above-ceiling vs genuinely-missing all
-    look identical) is a property of the CLOSED envelope this function
-    builds, not something a caller can be trusted to preserve by convention
-    -- a caller that populates `operation_id` only on the "exists, not
-    yours" case would silently restore the existence oracle H6 closed.
+    `operation_id`/`receipt_ref` (finding NEW-9) AND `detail` (finding
+    BLOCK-8, round 4 gate): for `reason_code == "not_found"` ALL THREE are
+    ALWAYS forced to `None`/absent in the returned payload, REGARDLESS of
+    what the caller passes in. H6's one-denial-shape guarantee
+    (wrong-workspace vs above-ceiling vs genuinely-missing all look
+    identical) is a property of the CLOSED envelope this function builds,
+    not something a caller can be trusted to preserve by convention -- NEW-9
+    closed this for `operation_id`/`receipt_ref` on exactly that argument,
+    but left `detail` -- on the SAME envelope, subject to the IDENTICAL
+    argument -- passed through untouched. A P2 that attaches a `detail` on
+    the "exists, not yours" case (e.g. naming the resource) and omits it on
+    the genuinely-absent case would restore the existence oracle H6/NEW-9
+    closed, through the one field NEW-9 didn't force.
     """
 
     if decision.allowed or decision.reason_code is None:
@@ -1719,11 +1937,14 @@ def build_error(
         detail if detail is not None else decision.detail, config=config
     )
 
-    # NEW-9: force operation_id/receipt_ref to None for not_found,
-    # independent of what the caller supplied -- see docstring above.
+    # NEW-9 / BLOCK-8 (round 4 gate): force operation_id/receipt_ref/detail
+    # to None for not_found, independent of what the caller supplied -- see
+    # docstring above. `detail` is forced by the IDENTICAL argument NEW-9
+    # already applied to the other two fields.
     if decision.reason_code == "not_found":
         operation_id = None
         receipt_ref = None
+        safe_detail = None
 
     payload: dict[str, Any] = {
         "schema_version": "1.0",
@@ -1747,36 +1968,62 @@ AUDIT_DELIVERY_STATUSES: frozenset[str] = frozenset({"delivered", "degraded", "u
 #: `$defs.audit_delivery.audit_event_id` bound in the receipt schema.
 _AUDIT_EVENT_ID_MAX = 128
 
+#: BLOCK-1 (round 4 gate) -- CLOSED vocabulary for `audit_delivery.detail`.
+#: NEW-21 (round 3) routed a caller-supplied free-text `detail` through
+#: `_redact_and_bound`, but its own named producer -- `str(exc)` from a
+#: failed audit write -- routinely embeds an absolute filesystem path with
+#: NO traceback framing at all (e.g. `OSError`/`PermissionError` messages),
+#: which `_TRACEBACK_LIKE` never matched (see `_PATH_LIKE`'s docstring).
+#: Rather than trust every future producer to keep calling a redaction
+#: helper correctly on ad-hoc text, `detail` is now selected from this
+#: fixed, safe-string table by a closed `detail_code` -- nothing
+#: exception-derived can reach this field AT ALL, not merely "usually,
+#: after redaction". Each member describes WHY delivery degraded/failed,
+#: never HOW (no path, no exception message, no caller-influenced text).
+_AUDIT_DELIVERY_SAFE_DETAILS: dict[str, str] = {
+    "write_failed": "The audit write did not complete.",
+    "probe_failed": "The audit health probe did not complete.",
+    "connection_unavailable": "The audit store connection was unavailable.",
+    "unhealthy_at_delivery": "The audit store was unhealthy at delivery time.",
+}
+
 
 def build_audit_delivery(
     status: str,
     *,
     audit_event_id: str | None = None,
-    detail: str | None = None,
-    config: FoundryConfig | None = None,
+    detail_code: str | None = None,
 ) -> dict[str, Any]:
-    """Build a schema-valid `audit_delivery` block with a BOUNDED, REDACTED
-    `detail` (finding NEW-21, security review round 3).
+    """Build a schema-valid `audit_delivery` block with a CLOSED-VOCABULARY
+    `detail` (finding NEW-21, security review round 3; hardened BLOCK-1,
+    round 4 gate).
 
-    `audit_delivery.detail` describes a failed/degraded audit write, so its
-    natural producer is `str(exc)` -- which is exactly how a raw traceback,
-    a `site-packages` path, or a secret embedded in an exception message
-    reaches a durable receipt. That violates AC OPM-7's bounded/redacted
-    requirement, and the schema previously declared the field as a plain
-    `type: string, maxLength: 500` with no guard at all.
+    Round 3's fix routed a caller-supplied FREE-TEXT `detail` through
+    `_redact_and_bound` (`governance.redact_payload` -> `_TRACEBACK_LIKE`
+    strip -> length cap). That closed the traceback/stack-frame shape but
+    NOT this field's own named producer: `str(exc)` for a filesystem-related
+    failure (`OSError`/`PermissionError`/similar) embeds an absolute path
+    with NO traceback framing -- `_TRACEBACK_LIKE` never matched it, and
+    `governance.redact_payload`'s built-in patterns target credential/token
+    shapes, not paths. BLOCK-1's empirical repro: `build_audit_delivery(
+    "degraded", detail=str(OSError(2, "No such file or directory",
+    "/Users/alice/.config/research-foundry/serve.env")))` emitted the path
+    VERBATIM, and the embedding `terminal_receipt` validated.
 
-    This routes `detail` through the SAME pipeline the error envelope uses --
-    :func:`_redact_and_bound`, i.e. `governance.redact_payload` then the
-    `_TRACEBACK_LIKE` strip then the `_ERROR_DETAIL_MAX` cap -- so a caller
-    that passes `str(exc)` still cannot land unredacted text in a receipt.
-    The receipt schema additionally carries the same negative traceback
-    pattern as `operator_mcp_error`'s `message`/`detail`, so a producer that
-    bypasses this helper fails validation rather than succeeding quietly.
+    `detail` is therefore no longer free text: callers select a
+    `detail_code` from the fixed, safe-string :data:`_AUDIT_DELIVERY_SAFE_DETAILS`
+    table -- describing WHY delivery degraded/failed, never HOW. This is a
+    STRONGER guarantee than redaction: nothing exception-derived can reach
+    this field, not merely "nothing that matches a known-unsafe pattern".
+    The resolved safe string is still routed through `_redact_and_bound`
+    (defense in depth -- a no-op for the fixed strings in the table today,
+    keeping this producer aligned with `build_error`'s pipeline).
 
-    Raises `ValueError` for an unknown `status` or an over-long
-    `audit_event_id` (both are caller programming errors, and this module's
-    convention -- see :func:`build_error` -- is to fail loudly on them rather
-    than emit a silently-malformed payload).
+    Raises `ValueError` for an unknown `status`, an over-long
+    `audit_event_id`, or an unknown `detail_code` (all are caller
+    programming errors, and this module's convention -- see :func:`build_error`
+    -- is to fail loudly on them rather than emit a silently-malformed
+    payload).
     """
 
     if status not in AUDIT_DELIVERY_STATUSES:
@@ -1788,12 +2035,15 @@ def build_audit_delivery(
             raise ValueError(
                 f"audit_event_id exceeds the schema bound of {_AUDIT_EVENT_ID_MAX} characters"
             )
+    if detail_code is not None and detail_code not in _AUDIT_DELIVERY_SAFE_DETAILS:
+        raise ValueError(f"unknown audit_delivery detail_code: {detail_code!r}")
 
     payload: dict[str, Any] = {
         "status": status,
         "audit_event_id": audit_event_id,
     }
-    safe_detail = _redact_and_bound(detail, config=config)
-    if safe_detail:
-        payload["detail"] = safe_detail
+    if detail_code is not None:
+        safe_detail = _redact_and_bound(_AUDIT_DELIVERY_SAFE_DETAILS[detail_code])
+        if safe_detail:
+            payload["detail"] = safe_detail
     return payload

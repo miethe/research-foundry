@@ -5,7 +5,7 @@ doc_type: report
 report_category: findings
 status: in_progress
 created: 2026-07-28
-updated: 2026-07-28
+updated: 2026-07-29
 feature_slug: research-foundry-operator-mcp
 plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
 owner: nick
@@ -337,3 +337,455 @@ post-healthy degradation, and non-reliance on the assume-healthy default.
 
 `test_audit_unhealthy_blocks_mutating_operation` asserted the stage "must deny WITHOUT re-probing" —
 it pinned the defect. Rewritten against the live probe.
+
+---
+
+## FIND-P1-R4 — OPM-1.G consolidated final gate, round 4: **CHANGES_REQUESTED**
+
+Source: consolidated security + validation re-attack on exact tree `f16059f` (branch
+`worktree-operator-mcp-v1`, working tree clean). Base for diffs `main`; round-3 remediation alone
+`git show f16059f`.
+
+**Verdict: CHANGES_REQUESTED.** Five of the six round-3 blocking findings are genuinely closed and
+regression-detecting. The sixth (NEW-19) is closed *in code* but **none of its four purpose-built
+tests fail when the fix is reverted** — the closure evidence does not hold. Separately, the round-3
+remediation introduced or left nine defects, seven of them in the two recurring classes this gate
+exists to catch (false authoritativeness; fix-the-layer-below).
+
+### Round-3 closure re-verdicts
+
+| ID | Verdict | Evidence |
+|---|---|---|
+| NEW-23 serve-extra boundary | **CLOSED, regression-detecting** | Mutations M1/M2/M3 (revert each of the three import links: `audit_service`→`api.auth.provider` for `AuthIdentity`; `operator_mcp_policy`→`api.auth.provider`; `audit_service`→`api.auth.scope` for `resolve_workspace_isolation_active`) each fail `tests/unit/test_operator_mcp_serve_extra_boundary.py`. Class identity verified: exactly one `class AuthIdentity` (`src/research_foundry/auth_identity.py:29`) and one `def resolve_workspace_isolation_active` (`src/research_foundry/config.py:1558`); `auth_identity.AuthIdentity is api.auth.provider.AuthIdentity is operator_mcp_policy.AuthIdentity` → `True`; `config.resolve_workspace_isolation_active is api.auth.scope.resolve_workspace_isolation_active` → `True`. Both re-exports are in the re-exporting module's `__all__` (`provider.py:107`, `scope.py:211`). `isinstance` semantics across all ~487 references are therefore unchanged. |
+| NEW-18 structural identity | **CLOSED, regression-detecting** — but see BLOCK-6 | M4 (revert Layer 1: make `identity` an ordinary init field) and M5 (revert Layer 3: read `ctx.identity` instead of re-deriving) both fail. M5 is the load-bearing one. Empirically, `_check_identity_and_rbac` re-derives from the `paths` handed to `evaluate_policy` at call time and denies `identity_denied` when it disagrees with `ctx.identity`. |
+| NEW-22 role grants | **CLOSED, regression-detecting** — but see BLOCK-7 | M6 (restore researcher on `swarm.start`/`job.cancel`/`job.resume`) and M7 (restore `viewer` in `_READ_ROLES`) both fail. Grants re-derived against `api/auth/rbac.py:99-135`: `agent_job:launch` is owner/admin only and explicitly withheld from researcher → `_AGENT_JOB_ROLES = {owner, admin}` is correct; `"viewer": set()` → viewer's exclusion from every kind including `job.status` is correct; `run:read` is granted to reviewer → `reviewer` on `job.status` is correct. **`writeback.preview` → researcher is CORRECT on the rbac.py axis**: rbac.py grants researcher `report:create`/`report:update` and withholds only `report:publish`; a preview is not a publish. Its *second* justification is not (BLOCK-7). |
+| NEW-20 `denial_reason_code` enum | **CLOSED for the named field only** | M9 (reopen the enum to `type: [string,"null"], maxLength: 64`) fails `tests/unit/test_operator_mcp_schemas.py`. Negative fixtures and the bidirectional drift guard are real (`test_receipt_denial_reason_code_rejects_value_outside_closed_enum`, `..._rejects_near_miss_of_a_real_code`, `..._enum_matches_code_closed_reason_codes`, `test_receipt_every_closed_reason_code_is_accepted`). **Two residuals reopened as BLOCK-2 and BLOCK-3.** |
+| NEW-21 `audit_delivery.detail` | **CLOSED IN PART — REOPENED** | M10 (drop the schema `not: pattern`) and M11 (bypass `_redact_and_bound` in `build_audit_delivery`) each fail, so the two halves that *were* built are regression-detecting. But the finding's own named producer — `str(exc)` — still leaks. See BLOCK-1. |
+| NEW-19 audit-health latch | **CLOSED IN CODE; CLOSURE EVIDENCE INVALID — REOPENED** | The code fix is correct (`_check_audit_health`, `operator_mcp_policy.py:1104`, probes unconditionally). But under mutation M12 (restore the pre-NEW-19 `if last_probe_at is None:` latch) **all four NEW-19 tests still pass in isolation.** See BLOCK-4 for the mechanism, verified from test source. |
+
+### BLOCKING
+
+| ID | Sev | Finding | Location | Concrete failing scenario | Required fix |
+|---|---|---|---|---|---|
+| **BLOCK-1** | **MED-HIGH** | **NEW-21 is closed against tracebacks only, not against its own named producer `str(exc)`.** The finding text is "`audit_delivery.detail` accepts raw tracebacks; **its natural producer is `str(exc)`**". `_TRACEBACK_LIKE` (and the identical schema `not.pattern`) match only `traceback` / `site-packages` / `File "…", line N`. `governance.redact_payload`'s 18 built-in patterns contain no filesystem-path pattern, so the redact leg is a no-op for this input. The receipt schema's own module description asserts "No field here ever carries a stack trace, environment variable, secret, or **unrestricted filesystem path**" — that claim is false. | `operator_mcp_policy.py:519` (`_TRACEBACK_LIKE`), `:1663-1670` (`_redact_and_bound`), `:1751-1799` (`build_audit_delivery`); `schemas/operator_mcp_receipt.schema.yaml:47-54, 78-94`; same pipeline feeds `operator_mcp_error.detail` | **Empirically verified.** `build_audit_delivery("degraded", detail=str(OSError(2,"No such file or directory","/Users/alice/.config/research-foundry/serve.env")))` emits `detail` **verbatim, unredacted**, and the embedding `terminal_receipt` validates with `errors: []`. Same for `PermissionError(13,"Permission denied","/home/bob/.ssh/id_ed25519")`. Direct probes: `redact_payload("/Users/alice/.config/research-foundry/serve.env")` returns the string unchanged. **Worse — the NEW-21 producer test pins this**: `test_audit_delivery_builder_output_validates_even_for_a_real_traceback` (`test_operator_mcp_schemas.py:295-315`) raises `OSError("audit store unreachable at /var/secrets/db.sock")`, pushes `traceback.format_exc()` through the builder, and asserts the result validates — the `Traceback` header and `File "…", line N` frames are stripped, the `/var/secrets/db.sock` path in the exception message is not. The test demonstrates the leak and asserts it is acceptable (defect class 3). | Either (a) extend the redaction pipeline with an absolute-path pattern (`(?:/Users/|/home/|/var/|/etc/|/opt/|[A-Za-z]:\\\\)[^\s'"]*` → `[PATH]`) and a bare `Errno`/exception-shape guard, mirroring it into both schemas' `not.pattern`; or (b) drop `detail` to a closed enum of delivery-failure causes. Then rewrite the producer test to assert the path is **absent** from the output, and correct the receipt schema's "never … unrestricted filesystem path" claim. |
+| **BLOCK-2** | **MED-HIGH** | **NEW-20 closed one field and left its sibling open, in the same file, one `$def` above.** `action_receipt.reason_code` is still `type: [string, "null"], maxLength: 64` — the exact open-string shape NEW-20 was raised on — and carries the same semantics (a per-action denial cause). Fix-the-layer-below / `__all__`-sibling class. | `schemas/operator_mcp_receipt.schema.yaml:199-201` | The near-miss NEW-20's negative fixture was written for (`guard_blocked_extra`) is still accepted on `action_receipt`. Coverage is **zero**: `grep -n action_receipt tests/unit/test_operator_mcp_schemas.py` returns **no matches at all** — `action_receipt` is the only one of the five `$defs` with no golden instance, no negative fixture and no `_valid_*` helper. The drift guard `test_receipt_denial_reason_code_enum_matches_code_closed_reason_codes` (`:350-362`) reads only `$defs.terminal_receipt.properties.denial_reason_code`. Mutation N2 (closing the enum) breaks **no** existing test, so the tightening is free. | Close `action_receipt.reason_code` to the same 17-member enum + `null`; extend the drift guard to assert BOTH fields against `CLOSED_REASON_CODES`; add a golden instance + negative fixture for `action_receipt`. |
+| **BLOCK-3** | **MED** | **A `terminal_receipt` with `status: denied` validates with `denial_reason_code` entirely ABSENT.** The `allOf` `then` branch uses `denial_reason_code: not: {const: null}` but never `required: [denial_reason_code]`, and the property is not in the top-level `required` list. A producer omitting the key sidesteps the whole NEW-20 enum. | `schemas/operator_mcp_receipt.schema.yaml:404-415` | **Empirically verified**: a `terminal_receipt` with `status: "denied"` and no `denial_reason_code` key validates with `errors: []`. The existing guard `test_receipt_terminal_denied_requires_reason_code` (`:253-255`) only ever exercises the *null* case, because `_valid_terminal_receipt` (`:195-211`) always injects `"denial_reason_code": None`. **The correct pattern is used one file over by the same author in the same PR**: `operator_mcp_confirmation.schema.yaml:251-261` pairs `required: [consumed_at, consumed_by_operation_id]` with `not: {const: null}`. Mutation N1 (adding `required`) breaks no existing test. | Add `required: [denial_reason_code]` to the `denied`/`failed` `then` branch; add a negative fixture for the absent-key case. |
+| **BLOCK-4** | **MED** | **NEW-19's closure evidence is invalid: none of its four tests fail when the fix is reverted.** All four monkeypatch `audit_service.health_check` with a fake that returns an `AuditHealth` and **never persists a row**. Under the reverted pre-NEW-19 code (`state = get_health_state(paths); if state.last_probe_at is None: state = health_check(paths)`), `get_health_state` therefore keeps returning `last_probe_at=None` on every call, so the latch branch never engages and the fake is re-entered every time — reproducing, by accident, exactly the unlatched behaviour the tests assert. | `tests/unit/test_operator_mcp_policy.py:669-684` (`_unhealthy_probe`/`_healthy_probe`), `:687-705`, `:708-730`, `:733-748`, `:751-770` | Verified from source and confirmed by mutation M12. `test_audit_health_recovers_after_a_failed_probe` and `test_audit_health_degradation_after_a_healthy_probe_is_detected` (the two captioned "NEW-19 core") both **pass in isolation** under M12. `test_audit_health_does_not_read_the_assume_healthy_persisted_default` (`:751`) is the most acute case: it stubs `get_health_state` to return **`last_probe_at=None`** — precisely the value that makes the reverted latch branch fire — so the one test named for excluding the assume-healthy default is the one most thoroughly blinded to it. The regression is caught only incidentally, by `test_every_closed_reason_code_has_a_real_producer`, and only because an unrelated **real** probe earlier in that same test had already persisted state. | Drive the tests through the real sqlite `audit_health` row (or have the fakes persist), so a reintroduced latch makes `get_health_state().last_probe_at` non-`None` and the test fails. At minimum, one test must assert `health_check` is called on the SECOND evaluation (call-count spy), which is the actual NEW-19 property. |
+| **BLOCK-5** | **MED** | **The module docstring still describes the round-2 audit-health behaviour that NEW-19 replaced, and credits a function this module does not call.** Three false claims, all in prose the remediation edited around but did not update. False-authoritativeness class (same as NEW-2 / NEW-20 / NEW-23). | `operator_mcp_policy.py:44-57` | (a) `:52-54` — "P1 now probes **ON DEMAND exactly once per workspace** (whenever the persisted state has never been probed)". The code (`:1104`) probes **unconditionally on every confirmation-requiring call**; probe-once-per-workspace is precisely the defect NEW-19 named. (b) `:45-46` lists `audit_service.get_health_state` among the calls this module makes — `grep -n get_health_state src/research_foundry/services/operator_mcp_policy.py` returns only lines `45` and `1101`, **both prose**; there is no call site. NEW-19's own inline comment (`:1101-1103`) says the dependence was *removed*, directly contradicting the docstring 1050 lines above it. (c) `:44-47` calls the reused primitives "read-only"; `health_check` is a write-then-read probe that `INSERT`s, `SELECT`s and `DELETE`s an `audit_event` row. | Rewrite `:44-57` to describe unconditional live probing; drop `get_health_state` from the reuse list; drop "read-only". |
+| **BLOCK-6** | **MED** | **The NEW-18 closure's global claim is false; `mint_confirmation` is the reachable counterexample.** Module docstring `:233-237` asserts: "**no value forced onto `ctx.identity`, by any means, can ever grant more than the identity already configured … would grant on its own**". That holds for `authorize_operation` only. `verify_confirmation` and `consume_confirmation` are both in `__all__`, neither re-derives identity, and `mint_confirmation` writes the unverified `ctx.identity` straight into the record's durable `actor` block. | `operator_mcp_policy.py:233-247`, `:1326-1423` (`mint_confirmation`), `:1430-1454` (`_bindings_match`), `:1457-1576`, `:1579-1635`; `__all__` `:301-326` | **Empirically verified.** With a forged `ctx.identity` (`AuthIdentity("mallory","ws-evil",("owner",))` forced via `object.__setattr__`): `mint_confirmation` succeeds and `record["actor"]["user_id"] == "mallory"`; `verify_confirmation(record, presented_token=…, ctx=forged)` returns `outcome="accepted"`, `PolicyDecision(allowed=True, stage="confirmation")` — because `_bindings_match` compares the record's actor against `ctx.identity`, and both are the same forgery; `consume_confirmation(record, operation_id="op1")` (no `ctx`) returns a fully `consumed` record. Only `authorize_operation` denies (`stage='rbac'`, `identity_denied`). The pinning test `test_forged_identity_cannot_produce_an_authorized_mint_confirmation` (`test_operator_mcp_policy.py:399-430`) asserts *only* the `authorize_operation` half — it never touches the other two entry points, so it certifies the narrow claim while the docstring makes the broad one. This is the same "prose, not shape" objection that made NEW-1 and NEW-18 blocking. | **See the `mint_confirmation` adjudication below.** Preferred fix (≈3 lines): give `mint_confirmation` a `paths: FoundryPaths \| None = None` parameter and build the `actor` block from `resolve_operator_identity(paths)`, denying when it disagrees with `ctx.identity` — making the durable actor block unforgeable at the only place it is produced. Then correct `:233-237`. |
+| **BLOCK-7** | **MED-HIGH** | **The entire guard stage is skippable by omission, and the NEW-22 comment relies on a rule that cannot fire by default.** `_OPERATION_ROLES`'s new comment justifies researcher-eligibility for `writeback.preview` partly on: "It additionally passes the same `*_writeback_requires_review` guard rules as every other writeback, so researcher-initiated previews still cannot self-approve." All three of those rules are gated on `GuardContext.writeback_targets` being non-empty and containing `meatywiki`/`intenttree`/`arc`. `PolicyContext.writeback_targets` defaults to `()`, and nothing in `_check_capability`, `_check_preflight` or `__post_init__` requires it to be non-empty for `writeback.preview`. | `operator_mcp_policy.py:504-508`, `:664-666` (defaults), `:1110-1132` (`_check_guard`); `services/governance.py:425-479` | With a default-constructed `writeback.preview` context, `writeback_targets=()` → `personal_mw_target`/`intenttree_target`/`arc_target` are all `False` → none of the three review rules can fire. The same holds for the other two block-severity rules: `no_work_sensitive_to_unapproved_provider` needs `model_provider` (defaults `None`, `governance.py:386`) and `no_mixed_personal_work_bundle` needs `source_sensitivities` (defaults `()`, `governance.py:405-407`). **`_check_guard` therefore reduces to the H7 ceiling comparison for any caller that does not opt in** — while `PolicyContext`'s own docstring (`:634-643`) claims these fields "enable the … block-severity rules to fire through this contract exactly as they do for run-level guard checks". This is the omitted-means-skip shape H3 removed from `requested_workspace_id`, still live on the mutating plane, now load-bearing for a role grant. | Make `writeback_targets` mandatory and non-empty for `writeback.preview` (validate in `__post_init__` or `_check_capability`, denying `payload_too_large`/`preflight_failed`); and either populate the other two guard inputs from resolved server-side state or delete the claim that these rules fire "exactly as they do for run-level guard checks". |
+| **BLOCK-8** | **MED-HIGH** | **NEW-9 closed two caller channels on the `not_found` envelope and left a third open.** `build_error` forces `operation_id`/`receipt_ref` to `None` for `not_found` "REGARDLESS of what the caller passes in", on the stated grounds that H6's one-denial-shape guarantee "is a property of the CLOSED envelope this function builds, **not something a caller can be trusted to preserve by convention**". Caller-supplied `detail` is on the same envelope, is subject to the identical argument, and is passed through untouched. | `operator_mcp_policy.py:1673-1740` (`:1722-1726` forces two fields; `:1718-1720` and `:1738-1739` do not force `detail`) | **Empirically verified**: `build_error(PolicyDecision(False,"rbac","not_found"), operation_id="opm_…", receipt_ref="r1", detail="run rn_abc123 is owned by workspace ws_other")` returns `operation_id=None, receipt_ref=None` **and** `detail='run rn_abc123 is owned by workspace ws_other'` verbatim. The string is not redacted (it matches none of the 18 built-in secret patterns and is not traceback-shaped). A P2 that attaches a `detail` on the "exists, not yours" case and omits it on the genuinely-absent case restores exactly the existence oracle H6/NEW-9 closed. Neither of P1's two internal `not_found` producers sets `detail`, so forcing it costs nothing today. | Force `detail = None` for `reason_code == "not_found"` inside `build_error`, alongside `operation_id`/`receipt_ref`; add a test asserting a caller-supplied `detail` is dropped. |
+| **BLOCK-9** | **MED** | **The frozen DUR-1 CAS predicate is still weaker than its reference implementation — the same defect NEW-10 raised, one predicate over.** Round 2 folded the expiry half into the frozen text. The binding half was not folded in, and in the reference implementation it is **opt-in**: `consume_confirmation`'s `ctx` parameter defaults to `None`, which skips `_bindings_match` entirely. "P2 SHOULD always pass `ctx`" is prose. | `operator_mcp_policy.py:143-172` (frozen text), `:1579-1635` (`:1604-1606` documents the permissive default, `:1621-1622` implements it); `schemas/operator_mcp_confirmation.schema.yaml:64-83` | **Empirically verified**: `consume_confirmation(record, operation_id="op1")` with **no** `ctx` returns a fully `consumed` record with no binding check having run; with a mismatching `ctx` it correctly returns `None`. A P2 implementing the frozen text literally (`UPDATE … WHERE status='issued' AND <clamped expiry>`) consumes a record that does not bind to the request it is committing, and passes P1 closeout. | Fold the binding predicate into the frozen DUR-1 text in BOTH the module docstring and `operator_mcp_confirmation.schema.yaml`, and make `ctx` a required keyword argument on `consume_confirmation` (P1's own call sites already have one). |
+
+### NON-BLOCKING
+
+> **On NEW-15 / NEW-16 / NEW-17 / NEW-24 / NEW-25.** Their text was never captured into the ledger
+> and the round-3 reviewer's context is gone; the original wording and numbering are **not
+> recoverable**. Presenting a reconstruction as if it were those items would be fabrication. The set
+> below is therefore an **independently re-derived** non-blocking set from a fresh pass over the same
+> surface, at the same severity band. Where a plausible correspondence exists it is noted, but the
+> mapping is a guess and should not be relied on.
+
+| ID | Sev | Finding | Location |
+|---|---|---|---|
+| NB-1 | LOW-MED | **`input_payload` has no size bound, only shape bounds** (plausibly ≈NEW-15). Enforced: depth ≤32 and ≤32 top-level properties. Not enforced anywhere: nested breadth, string lengths, total bytes. A payload with 32 top-level keys each holding a 300 KB string passes `_check_capability`, passes the schema (`maxProperties: 32`, `additionalProperties: true`, no `maxLength`), gets SHA-256'd, and is embedded in a durable confirmation. `payload_too_large` has producers for *shape* violations but none for actual size — while the comment at `:414-430` calls the in-code enforcement "what actually protects every caller today". | `operator_mcp_policy.py:414-436`, `:976-1011`; `schemas/operator_mcp_operation.schema.yaml:170-176` |
+| NB-2 | LOW-MED | **`check_tool_name` still has zero callers** (L1 carried forward, plausibly ≈NEW-16). The "FROZEN P5 OBLIGATION" paragraph is prose with no artifact that fails if P5 ships without wiring it. `test_check_tool_name_rejects_unknown_and_wildcard` exercises the function but proves nothing about the transport boundary. | `operator_mcp_policy.py:955-973` |
+| NB-3 | LOW-MED | **The negative `pattern`s are not ECMA-262** (plausibly ≈NEW-17). `(?i)` is a Python inline flag; JSON Schema 2020-12 specifies ECMA-262 regexes, where `(?i)` is a syntax error. The repo validates with Python `jsonschema` so it works locally, but the schemas carry public `$id`s. Validators that cannot compile a `pattern` commonly skip the keyword — in which case the schema-side guard that BLOCK-1 shows is already the *only* remaining defence silently disappears. | `schemas/operator_mcp_receipt.schema.yaml:94`; `schemas/operator_mcp_error.schema.yaml:85, 104` |
+| NB-4 | LOW | **The `now=` clock seam is still public** on four exported functions (plausibly ≈NEW-24). M2 was closed by documentation only; nothing prevents P2/P5 threading a request-supplied timestamp. | `operator_mcp_policy.py:135-141`, `:1326`, `:1457`, `:1579`, `:1218` |
+| NB-5 | LOW | **`consume_confirmation`'s optional `ctx`** (plausibly ≈NEW-25) — see BLOCK-9, recorded here too as the non-blocking half (the API shape, as distinct from the frozen-contract defect). | `operator_mcp_policy.py:1584`, `:1598-1606` |
+| NB-6 | LOW-MED | **The serve-extra boundary test blocks three module names, not the declared `[serve]` extra.** `_BLOCKED = {"fastapi","uvicorn","starlette"}` is hard-coded rather than derived from `pyproject.toml`, so a new serve-only dependency is not covered. The test also exercises only `import` + `resolve_operator_identity`; it never runs `evaluate_policy`/`mint_confirmation` under the blocker, so a serve-gated import reachable only from a policy stage would still pass. | `tests/unit/test_operator_mcp_serve_extra_boundary.py:42`, `:68-135` |
+| NB-7 | LOW-MED | **An autouse fixture monkeypatches `policy.resolve_operator_identity` for the entire policy test module** — i.e. the exact seam that constitutes NEW-18 Layer 3. The ~100 tests in the module therefore exercise the *equality-commitment* half but never the *derive-from-configured-local-config* half; real derivation is covered only by the identity-resolution unit tests and the serve-extra boundary test. Not a defect (the property was independently confirmed empirically), but the closure note's coverage claim is thinner than it reads. | `tests/unit/test_operator_mcp_policy.py:90-106`, `:126-144` |
+| NB-8 | LOW-MED | **`_check_identity_and_rbac` ignores the `config` threaded through `for_configured_operator`.** The factory derives identity via `resolve_operator_identity(paths, config=config)`; the authorization stage derives via `resolve_operator_identity(paths)` — no `config=` — constructing a fresh `FoundryConfig(paths=…)`. A caller passing a custom `config` therefore gets a context that always denies `identity_denied` unless `paths` independently agrees. Fail-closed, so not a vulnerability, but a silent always-deny footgun and a divergence from the factory's own docstring. | `operator_mcp_policy.py:743-804` (`:802`), `:1026` |
+| NB-9 | LOW-MED | **Audit-probe write amplification on the authorization hot path.** NEW-19's unconditional probe means every confirmation-requiring evaluation performs `INSERT` + `SELECT` + `DELETE` against `audit_event` in `.rf_state/rbac.db` — at least twice per operation (mint-time `evaluate_policy` + execute-time `authorize_operation`). Under the concurrency DUR-1 explicitly contemplates ("two concurrent callers presenting the same token"), SQLite write-lock contention surfaces as `healthy=False` → a spurious `audit_unhealthy` denial. It also exercises a DELETE against a table whose own module contract states "no UPDATE or DELETE paths … Do not add UPDATE/DELETE helpers". `retryable=True` makes this self-correcting, so it degrades to retry churn rather than a hard failure. | `operator_mcp_policy.py:1104`; `services/audit_service.py:23-26`, `:496-513`, `:516-611` |
+| NB-10 | LOW | **The `_OPERATION_ROLES` completeness check is one-directional.** It asserts `OPERATION_KINDS ⊆ keys(_OPERATION_ROLES)` only. It does not assert `keys ⊆ OPERATION_KINDS` (a stale entry after a kind rename lingers silently), nor that each value is non-empty, nor that every role name appears in `rbac.ROLE_PERMISSIONS`. All three residual failure modes are fail-closed, so this is hygiene, not a hole. | `operator_mcp_policy.py:511-517` |
+| NB-11 | LOW | **Two receipt-shape gaps.** `checkpoint` carries no `workspace_id` (every other persisted kind does), so P2 cannot workspace-scope a checkpoint from the receipt alone — relevant given WKSP-304. And `operation_receipt.status` admits `denied` while the `$def` has no reason field at all, so a denied operation receipt records no cause. | `schemas/operator_mcp_receipt.schema.yaml:95-152`, `:244-302` |
+
+### `mint_confirmation` adjudication (explicitly queued for this gate)
+
+**Verdict: the "inert" argument is CORRECT but SCOPED TOO NARROWLY, and the boundary as shipped is
+NOT acceptable — though the fix is small.**
+
+What is true: `authorize_operation` is the only sanctioned execute-time entry point, it
+unconditionally re-runs `evaluate_policy` first, and `_check_identity_and_rbac` re-derives identity
+and denies at `rbac` before the confirmation stage is ever reached. A confirmation minted against a
+forged `ctx` therefore cannot back an `authorize_operation` that returns `allowed=True`. That was
+verified empirically, and `mint_confirmation`'s own docstring (`:1339-1349`) states exactly this
+narrow claim and nothing more.
+
+What is false: the module docstring's *global* restatement at `:233-237` ("no value forced onto
+`ctx.identity`, by any means, can ever grant more than the identity already configured … would grant
+on its own"). Three counterexamples, all reachable through `__all__`:
+
+1. `verify_confirmation(record, presented_token=…, ctx=forged)` returns
+   `PolicyDecision(allowed=True, stage="confirmation")`, because `_bindings_match` compares the
+   record's `actor` block against `ctx.identity` — and on a forged mint both sides are the same
+   forgery. The only thing standing between that and execution is the prose instruction "MUST NEVER
+   be called directly", which is precisely the mitigation shape NEW-1 rejected when it went to the
+   trouble of making the *replay* branch structurally non-accepting.
+2. `consume_confirmation(record, operation_id=…)` transitions the forged record to `consumed` with
+   no identity check and — by default — no binding check either (BLOCK-9).
+3. **What P2 will persist.** The forged `actor` block is written verbatim into a schema-valid
+   `operator_mcp_confirmation` record. Per DUR-1 that record is committed in the same transaction as
+   the operation manifest, so a forged actor becomes durable provenance. Nothing in the frozen DUR-1
+   text re-derives or re-checks identity at commit time. Decisions-block Risk 1 is rated *critical*
+   and is about the system never attributing or authorizing a mutation to anything but the configured
+   local identity — attribution is half of that, and it is unguarded.
+
+The counter-argument that forging requires `object.__setattr__` (and therefore in-process code
+execution, at which point everything is lost) does not rescue the boundary, because the remediation
+itself already rejected that argument: NEW-18 Layer 3 exists *specifically* because "a frozen
+dataclass can still be tampered with via `object.__setattr__`". Under its own accepted threat model,
+`mint_confirmation` is the one unguarded producer.
+
+**Required:** add `paths: FoundryPaths | None = None` to `mint_confirmation` and build the `actor`
+block from `resolve_operator_identity(paths)`, raising when it disagrees with `ctx.identity` — the
+same three-line pattern Layer 3 already uses. That removes the argument entirely rather than
+relitigating it, makes the durable `actor` block unforgeable at its only point of production, and
+lets `:233-237` be true as written. If instead the boundary is accepted as-is, `:233-237` MUST be
+narrowed to the `authorize_operation`-only claim, and `verify_confirmation`/`consume_confirmation`
+should be removed from `__all__` so "never call directly" is structural rather than advisory.
+
+### Serialization-barrier assessment (`audit_service.py`, `provider.py`, `scope.py`, `config.py`)
+
+**Provable no-op for existing callers. Recommend ratification.** The `audit_service.py` change is two
+import-source swaps plus docstring text; both targets resolve to the *same objects* the previous
+sources did (`is`-identity verified for both `AuthIdentity` and `resolve_workspace_isolation_active`),
+there is exactly one definition of each in the tree, and both re-exporting modules list the name in
+`__all__`. `resolve_workspace_isolation_active`'s body is byte-identical between `main`'s
+`api/auth/scope.py` and HEAD's `config.py` — a pure relocation. WKSP-304 behaviour is therefore
+unchanged for every existing caller (`catalog_service.py`, `builder_service.py`, `AgentJobService`,
+and `audit_service._isolation_active`, which remains a thin delegate).
+
+### Validation transcript (real, as run)
+
+```
+$ cd /Users/miethe/dev/homelab/development/research-foundry/.claude/worktrees/operator-mcp-v1
+
+# A) targeted operator-mcp unit suites
+$ /Users/miethe/dev/homelab/development/research-foundry/.venv/bin/python -m pytest \
+    tests/unit/test_operator_mcp_policy.py tests/unit/test_operator_mcp_schemas.py \
+    tests/unit/test_operator_mcp_serve_extra_boundary.py -q --tb=no -rf > /tmp/r4_targeted.txt 2>&1
+EXIT=0
+
+$ tail -5 /tmp/r4_targeted.txt   # ANSI color codes stripped below for readability; content otherwise verbatim
+........................................................................ [ 43%]
+........................................................................ [ 87%]
+.....................                                                    [100%]
+# (pytest emitted no trailing "N passed in Ys" summary line into the redirected file in this
+#  environment — reproduced on a second independent run with --color=no and PYTHONUNBUFFERED=1;
+#  the progress line reaching [100%] with EXIT=0 and zero FAILED/ERROR lines is the pass signal.)
+
+# B) full suite minus the two known-collection-error files
+$ /Users/miethe/dev/homelab/development/research-foundry/.venv/bin/python -m pytest tests/ -q --tb=no -rf \
+    --ignore=tests/test_verification_pediatric_cds.py \
+    --ignore=tests/test_verification_seam001_gate_composition.py > /tmp/r4_full.txt 2>&1
+EXIT=1
+
+$ grep -c "^FAILED" /tmp/r4_full.txt
+0
+$ grep -c "FAILED" /tmp/r4_full.txt   # ANSI color codes precede "FAILED" in the redirected file, so the
+16                                    # anchored ^FAILED count above is 0; the unanchored count is the real one.
+
+$ grep "FAILED" /tmp/r4_full.txt      # ANSI stripped below for readability; text otherwise verbatim
+FAILED tests/test_cli_rights.py::test_rights_validate_requires_as_of - assert '--as-of' in "\x1b[33mUsage: \x1b[0mrf rights validate [OPTIONS] [PA...
+FAILED tests/test_contract_drift_rf_schema_version.py::test_cli_json_dumps_site_counts_match_pinned_baseline - assert 28 == 27
+FAILED tests/test_deployment_mode_cli_and_app.py::TestServeModeFlag::test_mode_multi_user_without_provider_refuses_before_binding - AssertionError: assert '(a)' in '\x1b[31merror:\x1b[0m \x1b[33mdeployment_m...
+FAILED tests/test_pediatric_cds_redteam_fixtures.py::test_seven_verified_bundles_zero_false_positives - AssertionError: expected verified bundle sources dir at /Users/miethe/dev/h...
+FAILED tests/test_serve_api.py::test_get_run_detail_known_run_returns_200 - assert 404 == 200
+FAILED tests/test_serve_api.py::test_get_claims_non_empty - assert 404 == 200
+FAILED tests/test_serve_api.py::test_get_claims_empty_ledger_returns_empty_list - assert 404 == 200
+FAILED tests/test_serve_api.py::test_get_source_found - assert 404 == 200
+FAILED tests/test_serve_api.py::test_sensitivity_gate_parity_work_sensitive_claim - assert 404 == 200
+FAILED tests/test_swarm_drive.py::test_cli_drive_json_output - assert '"status_derived": "bundle_written"' in '\x1b[1m{\x1b[0m\n  \x1b[1;3...
+FAILED tests/test_swarm_drive.py::test_cli_drive_ica_json - assert '"status_derived": "awaiting_legs"' in '\x1b[1m{\x1b[0m\n  \x1b[1;34...
+FAILED tests/test_verification_clinical_eligibility_regression.py::test_seven_verified_bundles_zero_eligible_claims - AssertionError: expected claim ledger at /Users/miethe/dev/homelab/developm...
+FAILED tests/test_verification_clinical_eligibility_regression.py::test_seven_verified_bundles_exact_passage_present_never_hard_gated_by_p3 - AssertionError: expected claim ledger at /Users/miethe/dev/homelab/developm...
+FAILED tests/unit/test_assertion_rollout.py::test_assertion_ledger_controls_are_independently_default_off - AssertionError: assert True is False
+FAILED tests/unit/test_assertion_rollout.py::test_write_and_automated_reuse_consumers_fail_closed_by_default - AssertionError: assert 'eligible' == 'automated_reuse_disabled'
+FAILED tests/unit/test_report_anchors.py::test_schema_version_bumped_for_report_anchors - AssertionError: assert '1.8' == '1.4'
+
+# C) flake8 on the six touched/reviewed files (no --select filter, per this gate's instructions —
+#    note this project's own CLAUDE.md convention runs flake8 with --select=E9,F63,F7,F82 for
+#    errors-only; the unfiltered run below is style-noise (E501/E305) only, zero E9/F-class hits)
+$ /Users/miethe/dev/homelab/development/research-foundry/.venv/bin/python -m flake8 \
+    src/research_foundry/services/operator_mcp_policy.py src/research_foundry/auth_identity.py \
+    src/research_foundry/config.py src/research_foundry/api/auth/provider.py \
+    src/research_foundry/api/auth/scope.py src/research_foundry/services/audit_service.py
+EXIT=1
+src/research_foundry/api/auth/provider.py:72:80: E501 line too long (82 > 79 characters)
+src/research_foundry/api/auth/provider.py:88:80: E501 line too long (86 > 79 characters)
+src/research_foundry/api/auth/provider.py:97:80: E501 line too long (80 > 79 characters)
+src/research_foundry/api/auth/scope.py:1:80: E501 line too long (88 > 79 characters)
+src/research_foundry/api/auth/scope.py:3:80: E501 line too long (80 > 79 characters)
+src/research_foundry/api/auth/scope.py:81:80: E501 line too long (80 > 79 characters)
+src/research_foundry/api/auth/scope.py:82:80: E501 line too long (85 > 79 characters)
+src/research_foundry/api/auth/scope.py:83:80: E501 line too long (98 > 79 characters)
+src/research_foundry/api/auth/scope.py:84:80: E501 line too long (84 > 79 characters)
+src/research_foundry/api/auth/scope.py:160:80: E501 line too long (81 > 79 characters)
+src/research_foundry/api/auth/scope.py:165:80: E501 line too long (83 > 79 characters)
+src/research_foundry/api/auth/scope.py:182:80: E501 line too long (82 > 79 characters)
+src/research_foundry/api/auth/scope.py:189:80: E501 line too long (86 > 79 characters)
+src/research_foundry/api/auth/scope.py:191:80: E501 line too long (83 > 79 characters)
+src/research_foundry/auth_identity.py:35:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:29:80: E501 line too long (87 > 79 characters)
+src/research_foundry/config.py:66:80: E501 line too long (83 > 79 characters)
+src/research_foundry/config.py:164:80: E501 line too long (89 > 79 characters)
+src/research_foundry/config.py:216:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:217:80: E501 line too long (83 > 79 characters)
+src/research_foundry/config.py:284:80: E501 line too long (83 > 79 characters)
+src/research_foundry/config.py:391:80: E501 line too long (84 > 79 characters)
+src/research_foundry/config.py:397:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:401:80: E501 line too long (88 > 79 characters)
+src/research_foundry/config.py:500:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:501:80: E501 line too long (84 > 79 characters)
+src/research_foundry/config.py:517:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:520:80: E501 line too long (83 > 79 characters)
+src/research_foundry/config.py:528:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:584:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:588:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:633:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:643:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:645:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:657:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:661:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:669:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:705:80: E501 line too long (90 > 79 characters)
+src/research_foundry/config.py:708:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:736:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:744:80: E501 line too long (87 > 79 characters)
+src/research_foundry/config.py:791:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:793:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:798:80: E501 line too long (84 > 79 characters)
+src/research_foundry/config.py:802:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:803:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:805:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:810:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:826:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:829:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:830:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:833:80: E501 line too long (85 > 79 characters)
+src/research_foundry/config.py:859:80: E501 line too long (90 > 79 characters)
+src/research_foundry/config.py:865:80: E501 line too long (89 > 79 characters)
+src/research_foundry/config.py:880:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:902:80: E501 line too long (111 > 79 characters)
+src/research_foundry/config.py:904:80: E501 line too long (92 > 79 characters)
+src/research_foundry/config.py:918:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:919:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:921:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:955:80: E501 line too long (100 > 79 characters)
+src/research_foundry/config.py:976:80: E501 line too long (83 > 79 characters)
+src/research_foundry/config.py:985:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:1063:80: E501 line too long (83 > 79 characters)
+src/research_foundry/config.py:1072:80: E501 line too long (85 > 79 characters)
+src/research_foundry/config.py:1073:80: E501 line too long (86 > 79 characters)
+src/research_foundry/config.py:1074:80: E501 line too long (83 > 79 characters)
+src/research_foundry/config.py:1075:80: E501 line too long (83 > 79 characters)
+src/research_foundry/config.py:1078:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:1079:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:1131:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:1163:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:1208:80: E501 line too long (85 > 79 characters)
+src/research_foundry/config.py:1251:80: E501 line too long (92 > 79 characters)
+src/research_foundry/config.py:1291:80: E501 line too long (84 > 79 characters)
+src/research_foundry/config.py:1292:80: E501 line too long (83 > 79 characters)
+src/research_foundry/config.py:1302:80: E501 line too long (83 > 79 characters)
+src/research_foundry/config.py:1307:80: E501 line too long (91 > 79 characters)
+src/research_foundry/config.py:1316:80: E501 line too long (90 > 79 characters)
+src/research_foundry/config.py:1323:80: E501 line too long (88 > 79 characters)
+src/research_foundry/config.py:1325:80: E501 line too long (85 > 79 characters)
+src/research_foundry/config.py:1326:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:1327:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:1328:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:1332:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:1347:80: E501 line too long (93 > 79 characters)
+src/research_foundry/config.py:1353:80: E501 line too long (105 > 79 characters)
+src/research_foundry/config.py:1362:80: E501 line too long (91 > 79 characters)
+src/research_foundry/config.py:1363:80: E501 line too long (90 > 79 characters)
+src/research_foundry/config.py:1371:80: E501 line too long (85 > 79 characters)
+src/research_foundry/config.py:1374:80: E501 line too long (103 > 79 characters)
+src/research_foundry/config.py:1385:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:1386:80: E501 line too long (92 > 79 characters)
+src/research_foundry/config.py:1398:80: E501 line too long (113 > 79 characters)
+src/research_foundry/config.py:1409:80: E501 line too long (92 > 79 characters)
+src/research_foundry/config.py:1410:80: E501 line too long (98 > 79 characters)
+src/research_foundry/config.py:1416:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:1426:80: E501 line too long (91 > 79 characters)
+src/research_foundry/config.py:1435:80: E501 line too long (83 > 79 characters)
+src/research_foundry/config.py:1436:80: E501 line too long (84 > 79 characters)
+src/research_foundry/config.py:1443:80: E501 line too long (88 > 79 characters)
+src/research_foundry/config.py:1444:80: E501 line too long (83 > 79 characters)
+src/research_foundry/config.py:1455:80: E501 line too long (84 > 79 characters)
+src/research_foundry/config.py:1456:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:1457:80: E501 line too long (85 > 79 characters)
+src/research_foundry/config.py:1458:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:1462:80: E501 line too long (81 > 79 characters)
+src/research_foundry/config.py:1467:80: E501 line too long (83 > 79 characters)
+src/research_foundry/config.py:1475:80: E501 line too long (80 > 79 characters)
+src/research_foundry/config.py:1511:80: E501 line too long (88 > 79 characters)
+src/research_foundry/config.py:1531:80: E501 line too long (85 > 79 characters)
+src/research_foundry/config.py:1536:80: E501 line too long (82 > 79 characters)
+src/research_foundry/config.py:1580:80: E501 line too long (91 > 79 characters)
+src/research_foundry/services/audit_service.py:1:80: E501 line too long (84 > 79 characters)
+src/research_foundry/services/audit_service.py:4:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/audit_service.py:5:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/audit_service.py:6:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/audit_service.py:20:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/audit_service.py:52:80: E501 line too long (90 > 79 characters)
+src/research_foundry/services/audit_service.py:86:1: E305 expected 2 blank lines after class or function definition, found 1
+src/research_foundry/services/audit_service.py:90:80: E501 line too long (81 > 79 characters)
+src/research_foundry/services/audit_service.py:97:80: E501 line too long (82 > 79 characters)
+src/research_foundry/services/audit_service.py:120:80: E501 line too long (84 > 79 characters)
+src/research_foundry/services/audit_service.py:149:80: E501 line too long (108 > 79 characters)
+src/research_foundry/services/audit_service.py:160:80: E501 line too long (92 > 79 characters)
+src/research_foundry/services/audit_service.py:196:80: E501 line too long (82 > 79 characters)
+src/research_foundry/services/audit_service.py:198:80: E501 line too long (88 > 79 characters)
+src/research_foundry/services/audit_service.py:208:80: E501 line too long (84 > 79 characters)
+src/research_foundry/services/audit_service.py:209:80: E501 line too long (85 > 79 characters)
+src/research_foundry/services/audit_service.py:256:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/audit_service.py:270:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/audit_service.py:370:80: E501 line too long (109 > 79 characters)
+src/research_foundry/services/audit_service.py:375:80: E501 line too long (82 > 79 characters)
+src/research_foundry/services/audit_service.py:380:80: E501 line too long (81 > 79 characters)
+src/research_foundry/services/audit_service.py:382:80: E501 line too long (91 > 79 characters)
+src/research_foundry/services/audit_service.py:404:80: E501 line too long (84 > 79 characters)
+src/research_foundry/services/audit_service.py:451:80: E501 line too long (84 > 79 characters)
+src/research_foundry/services/audit_service.py:499:80: E501 line too long (87 > 79 characters)
+src/research_foundry/services/audit_service.py:502:80: E501 line too long (89 > 79 characters)
+src/research_foundry/services/audit_service.py:509:80: E501 line too long (93 > 79 characters)
+src/research_foundry/services/audit_service.py:542:80: E501 line too long (97 > 79 characters)
+src/research_foundry/services/audit_service.py:550:80: E501 line too long (86 > 79 characters)
+src/research_foundry/services/audit_service.py:556:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/audit_service.py:561:80: E501 line too long (86 > 79 characters)
+src/research_foundry/services/audit_service.py:596:80: E501 line too long (86 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:94:80: E501 line too long (81 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:127:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:193:80: E501 line too long (81 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:211:80: E501 line too long (94 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:332:80: E501 line too long (81 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:386:80: E501 line too long (98 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:483:80: E501 line too long (85 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:512:80: E501 line too long (86 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:515:80: E501 line too long (82 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:516:80: E501 line too long (90 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:519:80: E501 line too long (83 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:552:80: E501 line too long (101 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:637:80: E501 line too long (88 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:640:80: E501 line too long (88 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:648:80: E501 line too long (81 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:677:80: E501 line too long (92 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:680:80: E501 line too long (90 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:684:80: E501 line too long (86 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:686:80: E501 line too long (86 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:687:80: E501 line too long (86 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:688:80: E501 line too long (85 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:696:80: E501 line too long (82 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:702:80: E501 line too long (84 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:716:80: E501 line too long (88 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:717:80: E501 line too long (98 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:718:80: E501 line too long (90 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:741:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:867:80: E501 line too long (93 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:902:80: E501 line too long (102 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:903:80: E501 line too long (91 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:918:80: E501 line too long (86 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:933:80: E501 line too long (81 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:972:80: E501 line too long (83 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:976:80: E501 line too long (82 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:978:80: E501 line too long (88 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:980:80: E501 line too long (97 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:981:80: E501 line too long (88 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:993:80: E501 line too long (88 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:996:80: E501 line too long (81 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:998:80: E501 line too long (88 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1001:80: E501 line too long (89 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1010:80: E501 line too long (89 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1014:80: E501 line too long (88 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1028:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1037:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1046:80: E501 line too long (81 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1061:80: E501 line too long (83 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1106:80: E501 line too long (87 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1114:80: E501 line too long (93 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1126:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1131:80: E501 line too long (86 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1135:80: E501 line too long (81 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1180:80: E501 line too long (96 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1199:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1201:80: E501 line too long (85 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1211:80: E501 line too long (87 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1215:80: E501 line too long (85 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1259:80: E501 line too long (82 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1262:80: E501 line too long (98 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1266:80: E501 line too long (94 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1268:80: E501 line too long (86 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1277:80: E501 line too long (96 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1299:80: E501 line too long (83 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1326:80: E501 line too long (96 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1377:80: E501 line too long (82 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1383:80: E501 line too long (81 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1384:80: E501 line too long (95 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1393:80: E501 line too long (85 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1421:80: E501 line too long (92 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1423:80: E501 line too long (82 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1449:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1453:80: E501 line too long (85 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1501:80: E501 line too long (93 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1505:80: E501 line too long (104 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1508:80: E501 line too long (86 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1510:80: E501 line too long (89 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1512:80: E501 line too long (104 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1525:80: E501 line too long (100 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1532:80: E501 line too long (98 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1536:80: E501 line too long (95 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1549:80: E501 line too long (96 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1555:80: E501 line too long (104 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1560:80: E501 line too long (104 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1566:80: E501 line too long (96 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1569:80: E501 line too long (89 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1572:80: E501 line too long (94 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1575:80: E501 line too long (92 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1643:80: E501 line too long (99 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1644:80: E501 line too long (80 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1645:80: E501 line too long (109 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1647:80: E501 line too long (106 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1648:80: E501 line too long (88 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1652:80: E501 line too long (89 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1653:80: E501 line too long (99 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1654:80: E501 line too long (102 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1655:80: E501 line too long (90 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1656:80: E501 line too long (91 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1658:80: E501 line too long (82 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1659:80: E501 line too long (84 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1663:80: E501 line too long (94 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1712:80: E501 line too long (91 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1745:80: E501 line too long (93 > 79 characters)
+src/research_foundry/services/operator_mcp_policy.py:1789:80: E501 line too long (94 > 79 characters)
+# 248 lines total: 247 E501 (line-length) + 1 E305 (blank-line spacing), zero E9/F63/F7/F82 hits.
+
+# D) tree state
+$ git status --porcelain
+$ echo "EXIT=$?"
+EXIT=0
+$ git log --oneline -1
+f16059f fix(operator-mcp): close all six OPM-1.G round-3 blocking findings
+```
+
+Full suite: **16 FAILED**, matching the 16 pre-existing failures verified identical at pre-change
+commit `15101a4` — zero regressions from this work. The two collection-error files
+(`test_verification_pediatric_cds.py`, `test_verification_seam001_gate_composition.py`) are
+pre-existing on `main` and were excluded.
+
+### Standing cautions carried forward
+
+- `schemas/operator_mcp_receipt.schema.yaml` was attacked in full this round and yielded three more
+  findings (BLOCK-2, BLOCK-3, NB-11) plus one shared with the code (BLOCK-1). It is no longer
+  "under-reviewed", but `action_receipt` has **zero** test coverage of any kind and should get a
+  golden instance + negative fixtures before P2 builds against it.
+- The four recurring defect classes all recurred again this round: fail-open-by-omission (BLOCK-7),
+  fix-the-layer-below (BLOCK-2, BLOCK-8, BLOCK-9), unsafe-behaviour-pinned-by-a-test (BLOCK-1's
+  producer test, BLOCK-4's four blinded tests), and false authoritativeness (BLOCK-1, BLOCK-5,
+  BLOCK-6, BLOCK-7). **Every round-3 fix that was verified by mutation held; every defect found this
+  round is in prose, in a test, or in the field next to the one that was fixed.**
+- The plan's documented validation prefix `PYTHONPATH=$PWD/src` remains decorative (pytest's
+  `pythonpath = ["src"]` ini setting is inserted ahead of it). All mutation work this round was done
+  **in place** in the worktree and restored with `git checkout --`, avoiding the trap entirely.

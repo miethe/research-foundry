@@ -39,9 +39,14 @@ description: >-
   NO RAW EXCEPTION SHAPE (AC OPM-7, bounded/redacted): `message` and
   `detail` are both length-capped AND pattern-forbidden from resembling a
   Python traceback/stack frame (`Traceback`, `site-packages`, or a
-  `File "...", line N` frame) -- a defense-in-depth schema-level check
-  layered on top of `operator_mcp_policy.py`'s own safe-message table,
-  which never interpolates an exception's `str()` into either field.
+  `File "...", line N` frame) OR an absolute filesystem path (BLOCK-1,
+  round 4 gate: `str(exc)` for a filesystem-related failure, e.g.
+  `OSError`/`PermissionError`, embeds a bare path with no traceback framing
+  at all -- the traceback-only pattern never caught it) -- a defense-in-depth
+  schema-level check layered on top of `operator_mcp_policy.py`'s own
+  safe-message table and `_redact_and_bound`'s wholesale-replacement
+  redaction, neither of which interpolates an exception's `str()` verbatim
+  into either field.
 
   NO UNAUTHORIZED FIELD (AC OPM-7): `additionalProperties: false` at the
   root; there is no stack trace, environment variable, secret, credential,
@@ -82,7 +87,7 @@ properties:
     minLength: 1
     maxLength: 300
     not:
-      pattern: "(?i)traceback|site-packages|File \"[^\"]*\", line \\d+"
+      pattern: "(?i)traceback|site-packages|File \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/"
   retryable:
     type: boolean
   operation_id:
@@ -101,7 +106,7 @@ properties:
     type: string
     maxLength: 500
     not:
-      pattern: "(?i)traceback|site-packages|File \"[^\"]*\", line \\d+"
+      pattern: "(?i)traceback|site-packages|File \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/"
   occurred_at:
     type: string
     format: date-time
