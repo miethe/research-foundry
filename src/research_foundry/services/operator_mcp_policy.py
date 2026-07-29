@@ -18,12 +18,15 @@ This module is the SOLE owner of:
 * confirmation minting/verification/consumption (OPM-OQ-2/3): a five-minute
   TTL, opaque single-use token bound to actor/workspace/sensitivity/
   operation/canonical-input-digest/idempotency-key/policy-snapshot/targets,
-  with exact replay recognized as a distinct, non-error outcome
-  (:attr:`ConfirmationVerification.outcome` ``"exact_replay"``) rather than
-  a denial -- **but only from :func:`verify_confirmation` itself**. See the
-  "EXACT REPLAY VS `authorize_operation`" paragraph below (security-review
-  round 1, finding C1): the two functions deliberately disagree about
-  whether a replay may proceed, and that disagreement is the fix, not a bug;
+  with exact replay recognized as a distinct, non-error OUTCOME
+  (:attr:`ConfirmationVerification.outcome` ``"exact_replay"``) that a
+  caller uses to route to the PRIOR receipt -- but the underlying
+  `PolicyDecision` for that outcome is NEVER `allowed=True`, on EITHER
+  :func:`verify_confirmation` or :func:`authorize_operation` (security-
+  review round 2, finding NEW-1, superseding round 1's C1 fix, which left
+  the two functions disagreeing about whether a replay may proceed -- that
+  disagreement was itself the bug). See the "EXACT REPLAY IS STRUCTURALLY
+  NON-ACCEPTING" paragraph below;
 * the bounded, redacted error-envelope builder (:func:`build_error`), whose
   ``message`` text is drawn ONLY from the closed :data:`_SAFE_MESSAGES`
   table -- never an f-string embedding caller-supplied VALUES or an
@@ -37,32 +40,54 @@ or MCP server exists yet"). :mod:`operator_operation_service` (P2) is the
 durable-persistence owner that will call the functions here; this module
 never touches disk itself except through the read-only
 :func:`research_foundry.services.governance.guard_check`/
-:func:`research_foundry.services.audit_service.is_healthy_for_exposure`
+:func:`research_foundry.services.audit_service.get_health_state`/
+:func:`research_foundry.services.audit_service.health_check`
 calls it reuses (invariant: REUSE governance/audit primitives, never fork
-them). Finding M6 (wontfix-justified, see :func:`_check_audit_health`'s
-own comment): `is_healthy_for_exposure` inherits a documented
-"never-probed == healthy" tri-state from `audit_service.get_health_state`.
-Treating never-probed as unhealthy at this call site was evaluated and
-rejected -- P1 ships no probe-triggering code path, so doing so would brick
-every mutating operation in any fresh workspace. P2 MUST instead ensure at
-least one health probe has run before the first mint in a workspace.
+them). Finding M6 (reopened and FIXED at security-review round 2, finding
+NEW-3 -- see :func:`_check_audit_health`'s own comment): round 1's
+wontfix rested on a false premise ("probing would brick every fresh
+workspace"). `audit_service.health_check` is a cheap, idempotent,
+never-raising write-then-read probe already imported into this module; P1
+now probes ON DEMAND exactly once per workspace (whenever the persisted
+state has never been probed) instead of assuming a never-probed store is
+healthy forever. A workspace whose probe genuinely fails is now correctly
+denied; a healthy workspace (the overwhelmingly common case) self-heals on
+its own first mutating call with no separate bootstrap step required.
 
-**EXACT REPLAY VS `authorize_operation` (security-review round 1, C1)**:
-:func:`verify_confirmation` reports an already-consumed, still bound-
-matching, still-unexpired token as ``ConfirmationVerification(outcome=
-"exact_replay", decision=PolicyDecision(True, "confirmation"))`` -- this
-correctly means "not an error" for a caller (P2) that wants the RICH result
-so it can route to the PRIOR receipt. :func:`authorize_operation`, by
-contrast, is the boolean-shaped, execute-time entry point a naive caller
-might use as ``if authorize_operation(...).allowed: execute()``. Such a
-caller MUST NEVER execute a second time on replay. `authorize_operation`
-therefore NEVER returns ``allowed=True`` for a replay -- it denies with
-``reason_code="confirmation_replayed"`` (``retryable=False``), a decision
-that is never dataclass-``==``-equal to the ``accepted`` decision and never
-satisfies a bare ``.allowed`` check. Callers that need the "return the
-prior receipt, do not error" distinction MUST call :func:`verify_confirmation`
-directly and branch on ``outcome == "exact_replay"``; they must never infer
-it from `authorize_operation`'s boolean-shaped return.
+**EXACT REPLAY IS STRUCTURALLY NON-ACCEPTING (security-review round 2,
+finding NEW-1 -- supersedes round 1's C1 fix)**: an exact replay -- an
+already-``consumed``, still bound-matching, still-unexpired confirmation --
+is denied by BOTH :func:`verify_confirmation` AND :func:`authorize_operation`
+with an IDENTICAL (dataclass-``==``-equal) ``PolicyDecision(False,
+"confirmation", "confirmation_replayed", retryable=False)``. Neither
+function EVER returns ``allowed=True`` for a replay, regardless of which one
+a caller invokes -- the safety property holds by SHAPE, not by which entry
+point happens to be called or whether a docstring is read.
+:attr:`ConfirmationVerification.outcome` ``"exact_replay"`` remains the
+ONLY signal distinguishing "this exact request already executed" from every
+other denial reason; it exists so a caller that reaches this state (always
+via `authorize_operation`'s `confirmation_replayed` denial -- which has, by
+construction, already passed stages 1-5: capability, RBAC, audit-health,
+guard, preflight) can look up and return the PRIOR receipt from the
+confirmation record it already holds (`consumed_at`/`consumed_by_operation_id`)
+instead of a generic error, WITHOUT that signal ever being readable as
+`allowed=True`.
+
+Round 1's fix relocated the bug rather than closing it: it made
+`authorize_operation` deny correctly but left `verify_confirmation` itself
+returning `PolicyDecision(True, "confirmation")` for a replay, and then
+*instructed* callers needing the replay distinction to call
+`verify_confirmation` directly -- a function that runs ONLY the confirmation
+stage, so a P2 author following that instruction and reading
+`.decision.allowed` would execute a replay having skipped capability, RBAC,
+the H3 cross-workspace gate, audit-health, the H7 ceiling gate, and
+preflight. That instruction is RETRACTED: `verify_confirmation` MUST NEVER
+be called directly by P2 or any execute-time caller to make an authorization
+decision -- `authorize_operation` is the ONLY sanctioned execute-time entry
+point. `verify_confirmation` remains exported because `authorize_operation`
+and this module's own test suite call it directly to exercise each denial
+branch in isolation; it is not, on its own, a caller-facing authorization
+API.
 
 **No permissive defaults on governed fields (H2/H3/H7)**: `effective_sensitivity`
 and `sensitivity_ceiling` have no default and are validated in
@@ -84,12 +109,20 @@ the SAME `not_found` reason code, the SAME `_SAFE_MESSAGES["not_found"]`
 text, and `retryable=False` -- never a distinguishing message. See
 `schemas/operator_mcp_error.schema.yaml`'s updated description.
 
-**Canonicalization hardening (L4)**: `canonical_json()` passes
-`allow_nan=False` to `json.dumps` -- `NaN`/`Infinity` in a canonical field
-would otherwise silently produce non-JSON text no downstream reader could
-reproduce; `PolicyContext.__post_init__` additionally rejects a
-non-JSON-primitive `input_payload` at construction (finding H8) so
-`canonical_digest()` can never raise `TypeError` on caller-influenced data.
+**Canonicalization hardening (L4, hardened at NEW-8)**: `canonical_json()`
+passes `allow_nan=False` to `json.dumps` -- `NaN`/`Infinity` in a canonical
+field would otherwise silently produce non-JSON text no downstream reader
+could reproduce. `PolicyContext.__post_init__` rejects this MUCH earlier,
+at construction time (finding H8, hardened NEW-8): `input_payload` must be
+an actual `Mapping` (not merely something `_is_json_primitive`-shaped -- a
+bare `str`/`list` passes that recursive check but `canonical_payload()`'s
+`dict(self.input_payload)` would then raise), and every nested float must
+be finite (`math.isfinite`) -- a `PolicyContext` holding NaN/Infinity or a
+non-`Mapping` payload can no longer be constructed at all, which closes the
+gap where `mint_confirmation` (which returns `ConfirmationIssued`, not a
+`PolicyDecision`, and therefore cannot participate in the H8
+exception-to-`PolicyDecision` boundary the other three entry points use)
+could raise a raw, uncaught exception from deep inside `ctx.canonical_digest()`.
 There is deliberately NO Unicode normalization (e.g. NFC folding) anywhere
 in the canonicalization path -- two strings that are visually identical but
 differ in Unicode form produce DIFFERENT digests today (fails closed, never
@@ -112,11 +145,23 @@ freezes the durability property P2's real persistence layer MUST implement
 around it, verbatim:
 
     Consumption is a compare-and-swap on `status` from exactly `issued` to
-    `consumed`, performed in the same durable transaction as the
-    operation-manifest write, under an exclusive single-writer lock (SQLite
-    `BEGIN IMMEDIATE`, or `O_EXCL` create-then-atomic-rename). A CAS that
-    observes any status other than `issued` MUST route to the exact-replay /
-    idempotency-conflict path and MUST NOT execute.
+    `consumed`, GUARDED BY THE SAME CLAMPED-EXPIRY CHECK `consume_confirmation`
+    applies (`_record_expiry`: `min(expires_at, issued_at + CONFIRMATION_TTL)`,
+    itself never later than `now` -- see finding NEW-7), performed in the
+    same durable transaction as the operation-manifest write, under an
+    exclusive single-writer lock (SQLite `BEGIN IMMEDIATE`, or `O_EXCL`
+    create-then-atomic-rename). A CAS that observes any status other than
+    `issued`, OR whose clamped expiry has already passed at commit time,
+    MUST route to the exact-replay / idempotency-conflict / expired path and
+    MUST NOT execute.
+
+**NEW-10 (round 2)**: `WHERE status = 'issued'` alone is NOT the frozen
+predicate above -- it is only the status half. A P2 implementation
+following just that clause would consume an EXPIRED-but-still-`"issued"`
+token and still satisfy a literal reading of round 1's text. The expiry
+predicate is binding and MUST be folded into the SAME compare-and-swap,
+not checked separately (a separate check reopens the TOCTOU window DUR-1
+exists to close).
 
 A P2 implementation that reads a confirmation record, does other work, and
 only then writes `status="consumed"` (read-then-write, not a real CAS) can
@@ -147,9 +192,12 @@ or :mod:`research_foundry.services.knowledge_access`.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import hmac
 import json
+import logging
+import math
 import re
 import secrets
 from dataclasses import dataclass, field
@@ -164,6 +212,17 @@ from research_foundry.services.export_service import SENSITIVITY_ORDER
 
 if TYPE_CHECKING:
     from research_foundry.api.auth.provider import AuthIdentity
+
+# NEW-13: internal_error was previously silent (zero telemetry) -- a
+# malformed config/governance.yaml or a database error becomes a clean
+# `PolicyDecision(..., "internal_error", retryable=True)` for the caller
+# (correct, AC OPM-7), but a genuine bug hidden behind that denial with NO
+# log line was invisible operationally, plus it invites a retry loop on a
+# deterministic failure with nothing to page on. `_logger.warning` below
+# logs ONLY the failing stage and the exception's TYPE NAME -- never
+# `str(exc)`, which could embed caller-influenced data (e.g. a value read
+# back out of a malformed YAML file).
+_logger = logging.getLogger(__name__)
 
 __all__ = [
     "OPERATION_KINDS",
@@ -277,15 +336,29 @@ CLOSED_REASON_CODES: frozenset[str] = frozenset(
 CONFIRMATION_TTL: timedelta = timedelta(minutes=5)
 
 # Envelope bounds (mirror schemas/operator_mcp_operation.schema.yaml's
-# `maxItems: 20` on `targets` / `maxProperties: 32` on `input_payload`).
+# SEVEN declared bounds: `targets` maxItems 20, `input_payload`
+# maxProperties 32, `target_ref` maxLength 256 + pattern, `idempotency_key`
+# maxLength 128 + pattern, `policy_snapshot_version` maxLength 64).
 # Enforced here in `_check_capability`, not via `SchemaRegistry` (finding
 # M1) -- P1 constructs `PolicyContext` directly from already-typed Python
-# values (no raw request envelope exists yet in this repository); P5's
-# transport boundary MAY additionally schema-validate the raw wire envelope
-# before ever constructing a `PolicyContext`, but THIS enforcement is
-# authoritative and does not depend on that happening.
+# values (no raw request envelope exists yet in this repository). ALL
+# SEVEN bounds are enforced below, in code, as of the round-2 fix cycle
+# (finding NEW-2): round 1 enforced only the two counts below and left the
+# other five as schema-only decoration while this comment falsely called
+# that PARTIAL enforcement "authoritative" -- an unbounded/path-shaped
+# `target_ref` (e.g. `"../../../etc/passwd"`) or an empty `idempotency_key`
+# passed every stage under that partial enforcement. P5's transport
+# boundary MAY additionally schema-validate the raw wire envelope before
+# ever constructing a `PolicyContext`, but this in-code enforcement does
+# not depend on that happening and is what actually protects every caller
+# today.
 _MAX_TARGETS = 20
 _MAX_INPUT_PAYLOAD_PROPERTIES = 32
+_TARGET_REF_MAX_LENGTH = 256
+_TARGET_REF_PATTERN = re.compile(r"^[A-Za-z0-9_\-:.]+$")
+_IDEMPOTENCY_KEY_MAX_LENGTH = 128
+_IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_\-]+$")
+_POLICY_SNAPSHOT_VERSION_MAX_LENGTH = 64
 
 # Stage-prerequisite target kinds per operation kind (the "preflight" stage
 # below). Not an exhaustive service contract -- P3/P4 adapters own their own
@@ -335,8 +408,15 @@ def _is_json_primitive(value: Any, *, _depth: int = 0) -> bool:
 
     if _depth > _JSON_PRIMITIVE_MAX_DEPTH:
         return False
-    if value is None or isinstance(value, (bool, int, float, str)):
+    if value is None or isinstance(value, (bool, int, str)):
         return True
+    if isinstance(value, float):
+        # NEW-8(a): NaN/Infinity are Python floats but are NOT valid JSON
+        # values -- reject them HERE (construction time) rather than
+        # letting `canonical_json()`'s `allow_nan=False` raise deep inside
+        # `canonical_digest()`, reachable UNCAUGHT from `mint_confirmation`
+        # (which has no PolicyDecision-shaped H8 boundary of its own).
+        return math.isfinite(value)
     if isinstance(value, Mapping):
         return all(
             isinstance(k, str) and _is_json_primitive(v, _depth=_depth + 1) for k, v in value.items()
@@ -347,16 +427,38 @@ def _is_json_primitive(value: Any, *, _depth: int = 0) -> bool:
 
 
 def _sensitivity_rank(label: str) -> int:
-    """Shared rank lookup for `effective_sensitivity`/`sensitivity_ceiling`
-    comparisons (H7). Unknown labels rank `len(SENSITIVITY_ORDER)` --
-    STRICTER than every known level, mirroring `export_service.py`'s own
-    `_UNKNOWN_SENSITIVITY` convention -- NEVER `-1`, which would make an
-    unknown/malformed label the LOOSEST possible value and silently fail
-    open. In normal operation this branch is unreachable (both fields are
-    validated against :data:`SENSITIVITY_LEVELS` at `PolicyContext`
-    construction) -- this is defense in depth, not the primary guard."""
+    """Rank lookup for `effective_sensitivity` (H7). Unknown labels rank
+    `len(SENSITIVITY_ORDER)` -- STRICTER than every known level, mirroring
+    `export_service.py`'s own `_UNKNOWN_SENSITIVITY` convention -- NEVER
+    `-1`, which would make an unknown/malformed label the LOOSEST possible
+    value and silently fail open. In normal operation this branch is
+    unreachable (validated against :data:`SENSITIVITY_LEVELS` at
+    `PolicyContext` construction) -- this is defense in depth, not the
+    primary guard.
+
+    NOT used for `sensitivity_ceiling` -- see :func:`_ceiling_rank` (finding
+    NEW-6): the fail-closed direction is OPPOSITE for a ceiling."""
 
     return SENSITIVITY_ORDER.get(label, len(SENSITIVITY_ORDER))
+
+
+def _ceiling_rank(label: str) -> int:
+    """Rank lookup for `sensitivity_ceiling` (H7, hardened NEW-6).
+
+    An unknown/malformed CEILING must rank BELOW every known level (`-1`),
+    the OPPOSITE fail-closed direction from :func:`_sensitivity_rank`: an
+    unknown `effective_sensitivity` must be treated as MORE restrictive
+    (content), but an unknown `sensitivity_ceiling` must be treated as LESS
+    permissive (clearance) -- ranking it `len(SENSITIVITY_ORDER)` (as the
+    prior single shared helper did) would make an unknown/malformed ceiling
+    the MAXIMUM possible clearance and silently permit everything. In
+    normal operation this branch is unreachable (`sensitivity_ceiling` is
+    validated against :data:`SENSITIVITY_LEVELS` at `PolicyContext`
+    construction) -- this is defense in depth against a future drift
+    between :data:`SENSITIVITY_LEVELS` and :data:`SENSITIVITY_ORDER`, not
+    the primary guard."""
+
+    return SENSITIVITY_ORDER.get(label, -1)
 
 
 # ---------------------------------------------------------------------------
@@ -426,18 +528,17 @@ class PolicyContext:
 
     def __post_init__(self) -> None:
         # H2: no permissive default -- effective_sensitivity must be a real
-        # member of the closed vocabulary, always.
+        # member of the closed vocabulary, always. NEW-8(c): the message
+        # names only the CLOSED vocabulary (safe, internal, never caller
+        # data) -- it no longer echoes the caller-supplied value itself
+        # (`got {value!r}`), which would have interpolated unredacted
+        # caller-controlled data into an exception raised OUTSIDE every
+        # H8 boundary (this dataclass's own __init__).
         if self.effective_sensitivity not in SENSITIVITY_LEVELS:
-            raise ValueError(
-                f"effective_sensitivity must be one of {SENSITIVITY_LEVELS!r}, "
-                f"got {self.effective_sensitivity!r}"
-            )
+            raise ValueError(f"effective_sensitivity must be one of {SENSITIVITY_LEVELS!r}")
         # H7: sensitivity_ceiling is required and validated the same way.
         if self.sensitivity_ceiling not in SENSITIVITY_LEVELS:
-            raise ValueError(
-                f"sensitivity_ceiling must be one of {SENSITIVITY_LEVELS!r}, "
-                f"got {self.sensitivity_ceiling!r}"
-            )
+            raise ValueError(f"sensitivity_ceiling must be one of {SENSITIVITY_LEVELS!r}")
         # H3: whenever any target is declared, its owning-workspace
         # resolution MUST be supplied (a real workspace id, or None for
         # "could not be resolved") -- no default/omitted-means-skip gate.
@@ -447,12 +548,20 @@ class PolicyContext:
                 "entry (or None for an unresolved/absent target) per declared target "
                 "-- there is no default/omitted-means-skip cross-workspace gate (H3)"
             )
-        # H8: input_payload must be JSON-primitive so canonical_digest() can
-        # never raise on caller-influenced data.
+        # NEW-8(b): input_payload must be an actual Mapping, not merely
+        # something `_is_json_primitive`-shaped -- a bare `str`/`list`
+        # passes that recursive primitive check (a `str` IS a JSON
+        # primitive) but `canonical_payload()`'s `dict(self.input_payload)`
+        # would then raise, uncaught, deep inside `canonical_digest()`.
+        if not isinstance(self.input_payload, Mapping):
+            raise ValueError("input_payload must be a Mapping (dict-like object)")
+        # H8/NEW-8(a): input_payload must be JSON-primitive (finite floats
+        # only) so canonical_digest() can never raise on caller-influenced
+        # data.
         if not _is_json_primitive(self.input_payload):
             raise ValueError(
-                "input_payload must be JSON-primitive (str/int/float/bool/None/"
-                "dict/list only, bounded depth)"
+                "input_payload must be JSON-primitive (str/int/bool/None/dict/list/"
+                "finite-float only, bounded depth)"
             )
 
     def canonical_payload(self) -> dict[str, Any]:
@@ -536,14 +645,21 @@ class ConfirmationVerification:
 
     `outcome` distinguishes the non-error "exact replay" case
     (decisions-block: "Exact replay returns the existing operation/receipt")
-    from every denial case -- callers (P2) route `"exact_replay"` to the
-    PRIOR terminal receipt rather than fabricate a new effect. `"error"` is
-    the H8 exception-safety boundary: an unexpected internal failure while
-    verifying, never propagated as a raised exception.
+    from every denial case -- a caller that reaches this state (always via
+    `authorize_operation`'s `confirmation_replayed` denial) routes
+    `"exact_replay"` to the PRIOR terminal receipt rather than fabricate a
+    new effect. `"error"` is the H8 exception-safety boundary: an
+    unexpected internal failure while verifying, never propagated as a
+    raised exception.
 
-    See the module docstring's "EXACT REPLAY VS `authorize_operation`"
-    paragraph (finding C1) -- `authorize_operation` deliberately does NOT
-    pass a bare `exact_replay` `allowed=True` through to its own callers.
+    **NEW-1 (round 2)**: `decision` for `outcome == "exact_replay"` is now
+    `PolicyDecision(False, "confirmation", "confirmation_replayed",
+    retryable=False)` -- IDENTICAL to what `authorize_operation` returns
+    for the same case, never `allowed=True`. See the module docstring's
+    "EXACT REPLAY IS STRUCTURALLY NON-ACCEPTING" paragraph. `outcome`
+    remains the only field that distinguishes a replay from any other
+    denial; `decision.allowed` alone can no longer be used (by anyone) to
+    mistake a replay for a fresh accept.
     """
 
     outcome: Literal["accepted", "exact_replay", "expired", "mismatched", "missing", "error"]
@@ -608,13 +724,23 @@ def resolve_effective_sensitivity(*sensitivities: str | None) -> str:
 
     Unknown labels are treated as stricter than every known level
     (fail-closed, mirrors `export_service.SENSITIVITY_ORDER`'s own
-    `_UNKNOWN_SENSITIVITY` convention). Returns `"public"` when no
-    non-empty sensitivity is supplied.
+    `_UNKNOWN_SENSITIVITY` convention).
+
+    NEW-4 fix (round 2): returns the STRICTEST label
+    (:data:`SENSITIVITY_LEVELS`'s last member), never `"public"`, when no
+    non-empty sensitivity is supplied. Empty input is the FAILED-LOOKUP
+    case -- every upstream sensitivity source came back `None`/`""`/absent
+    -- and this function PRODUCES the value `PolicyContext.effective_sensitivity`
+    consumes; resolving a failed lookup to the LOOSEST possible label here
+    would silently reintroduce, in the producer, the exact permissive
+    default H2 removed from the consumer (`PolicyContext.__post_init__`,
+    which merely validates whatever value it is handed and cannot tell a
+    genuine "public" apart from a failed lookup that resolved to "public").
     """
 
     values = [s for s in sensitivities if s]
     if not values:
-        return "public"
+        return SENSITIVITY_LEVELS[-1]
     if any(s not in SENSITIVITY_ORDER for s in values):
         return SENSITIVITY_LEVELS[-1]
     return max(values, key=_sensitivity_rank)
@@ -653,8 +779,34 @@ def _check_capability(ctx: PolicyContext, _paths: FoundryPaths) -> PolicyDecisio
     # M1: bounded envelope, enforced here (not merely by tests/schema).
     if len(ctx.targets) > _MAX_TARGETS or len(ctx.input_payload) > _MAX_INPUT_PAYLOAD_PROPERTIES:
         return PolicyDecision(False, "capability", "payload_too_large", retryable=False)
+    # NEW-2: the remaining 5 declared bounds -- idempotency_key and
+    # policy_snapshot_version shape/length are envelope-level (not a
+    # per-target concern), so they share `payload_too_large`, the closed
+    # reason code closest in meaning ("this envelope does not conform to
+    # its configured bounds") among the 17 frozen members; adding a new
+    # reason code is a schema version bump this contract phase does not take.
+    if (
+        not ctx.idempotency_key
+        or len(ctx.idempotency_key) > _IDEMPOTENCY_KEY_MAX_LENGTH
+        or not _IDEMPOTENCY_KEY_PATTERN.match(ctx.idempotency_key)
+    ):
+        return PolicyDecision(False, "capability", "payload_too_large", retryable=False)
+    if (
+        not ctx.policy_snapshot_version
+        or len(ctx.policy_snapshot_version) > _POLICY_SNAPSHOT_VERSION_MAX_LENGTH
+    ):
+        return PolicyDecision(False, "capability", "payload_too_large", retryable=False)
     for target in ctx.targets:
         if target.target_kind not in TARGET_KINDS:
+            return PolicyDecision(False, "capability", "target_invalid", retryable=False)
+        # NEW-2: target_ref maxLength 256 + pattern -- e.g. rejects a raw
+        # filesystem path (`"../../../etc/passwd"`) or an oversized ref
+        # that round 1 let pass every stage and reach a minted confirmation.
+        if (
+            not target.target_ref
+            or len(target.target_ref) > _TARGET_REF_MAX_LENGTH
+            or not _TARGET_REF_PATTERN.match(target.target_ref)
+        ):
             return PolicyDecision(False, "capability", "target_invalid", retryable=False)
     return PolicyDecision(True, "capability")
 
@@ -686,20 +838,22 @@ def _check_audit_health(ctx: PolicyContext, paths: FoundryPaths) -> PolicyDecisi
     # one and is never gated on audit health.
     if ctx.operation_kind in CONFIRMATION_NOT_REQUIRED_KINDS:
         return PolicyDecision(True, "audit_health")
-    # M6 (wontfix-justified, see finding table + phase-1-completion.md):
-    # `audit_service.get_health_state`'s own docstring documents a
-    # "never-probed == healthy" tri-state ("assume healthy until proven
-    # otherwise"). Treating never-probed as UNHEALTHY here was evaluated
-    # and rejected: P1 ships no probe-triggering code path (no MCP server,
-    # no scheduled health check), so a fresh workspace would brick every
-    # mutating operation until an unrelated subsystem happens to run a
-    # probe -- a worse regression than the inherited fail-open gap. Kept as
-    # the finding's own documented alternative: P2 MUST ensure at least one
-    # `audit_service.health_check()` probe has run (e.g. at process start,
-    # or synchronously before the very first mint in a workspace) before
-    # privileged operations begin, resolving this tri-state deliberately
-    # rather than leaving it to chance.
-    if not audit_service.is_healthy_for_exposure(paths):
+    # M6 REOPENED and FIXED at security-review round 2 (finding NEW-3):
+    # round 1's wontfix rested on a false premise. `audit_service.health_check`
+    # is a cheap, idempotent, never-raising write-then-read probe already
+    # imported into this module (not a fork). PROBE ON DEMAND exactly once
+    # per workspace: read the persisted state first (cheap); only when it
+    # has NEVER been probed (`last_probe_at is None`) run a REAL live probe
+    # and use ITS result instead of assuming healthy. This closes the
+    # fail-open the M6 wontfix rested on ("never-probed == healthy forever")
+    # without the wontfix's feared bricking -- a healthy workspace (the
+    # overwhelmingly common case) self-heals silently on its own first
+    # mutating call; a genuinely degraded audit store is now caught on that
+    # SAME first call instead of never.
+    state = audit_service.get_health_state(paths)
+    if state.last_probe_at is None:
+        state = audit_service.health_check(paths)
+    if not state.healthy:
         return PolicyDecision(False, "audit_health", "audit_unhealthy", retryable=True)
     return PolicyDecision(True, "audit_health")
 
@@ -708,7 +862,7 @@ def _check_guard(ctx: PolicyContext, paths: FoundryPaths) -> PolicyDecision:
     # H7: above-ceiling content is denied with the SAME `not_found` shape
     # as a wrong-workspace/absent target (H6) -- checked first, and cheaply,
     # before touching disk via governance.guard_check.
-    if _sensitivity_rank(ctx.effective_sensitivity) > _sensitivity_rank(ctx.sensitivity_ceiling):
+    if _sensitivity_rank(ctx.effective_sensitivity) > _ceiling_rank(ctx.sensitivity_ceiling):
         return PolicyDecision(False, "guard", "not_found", retryable=False)
 
     guard_ctx = governance.GuardContext(
@@ -754,6 +908,17 @@ def _check_preflight(ctx: PolicyContext, _paths: FoundryPaths) -> PolicyDecision
     return PolicyDecision(True, "preflight")
 
 
+# NEW-14 hygiene fix: stage names now live as an attribute COLOCATED with
+# each check function's own definition (immediately below) rather than in a
+# second, distant parallel structure that could drift out of order/silently
+# mismatch (the prior `_STAGE_NAMES` dict). `evaluate_policy` reads
+# `check.stage_name` directly.
+_check_capability.stage_name = "capability"  # type: ignore[attr-defined]
+_check_identity_and_rbac.stage_name = "rbac"  # type: ignore[attr-defined]
+_check_audit_health.stage_name = "audit_health"  # type: ignore[attr-defined]
+_check_guard.stage_name = "guard"  # type: ignore[attr-defined]
+_check_preflight.stage_name = "preflight"  # type: ignore[attr-defined]
+
 _POLICY_STAGES = (
     _check_capability,
     _check_identity_and_rbac,
@@ -761,14 +926,6 @@ _POLICY_STAGES = (
     _check_guard,
     _check_preflight,
 )
-
-_STAGE_NAMES: dict[Any, str] = {
-    _check_capability: "capability",
-    _check_identity_and_rbac: "rbac",
-    _check_audit_health: "audit_health",
-    _check_guard: "guard",
-    _check_preflight: "preflight",
-}
 
 
 def evaluate_policy(ctx: PolicyContext, *, paths: FoundryPaths | None = None) -> PolicyDecision:
@@ -792,12 +949,20 @@ def evaluate_policy(ctx: PolicyContext, *, paths: FoundryPaths | None = None) ->
     try:
         resolved_paths = paths if paths is not None else FoundryPaths.discover()
         for check in _POLICY_STAGES:
-            current_stage = _STAGE_NAMES[check]
+            current_stage = check.stage_name  # type: ignore[attr-defined,union-attr]
             decision = check(ctx, resolved_paths)
             if decision.denied:
                 return decision
         return PolicyDecision(True, "preflight")
-    except Exception:
+    except Exception as exc:
+        # NEW-13: log the failing stage + exception TYPE NAME only -- never
+        # `str(exc)`, which could embed caller-influenced data (e.g. a
+        # value echoed back out of a malformed governance.yaml).
+        _logger.warning(
+            "operator_mcp_policy.evaluate_policy: internal_error during %r stage (%s)",
+            current_stage,
+            type(exc).__name__,
+        )
         return PolicyDecision(False, current_stage, "internal_error", retryable=True)
 
 
@@ -818,15 +983,16 @@ def authorize_operation(
     the confirmation stage is a no-op pass -- those kinds never mint or
     consume a token.
 
-    **C1 (security review round 1)**: an exact-replay presentation is
-    ALWAYS denied here (`reason_code="confirmation_replayed"`,
-    `retryable=False`) -- NEVER `allowed=True`. This is deliberately
-    different from `verify_confirmation`'s own `outcome == "exact_replay"`,
-    which correctly reports "not an error" for a caller that wants to
-    return the prior receipt. See the module docstring's "EXACT REPLAY VS
-    `authorize_operation`" paragraph. A caller doing
+    **C1/NEW-1 (security review rounds 1 and 2)**: an exact-replay
+    presentation is ALWAYS denied here (`reason_code="confirmation_replayed"`,
+    `retryable=False`) -- NEVER `allowed=True`. `verify_confirmation`'s OWN
+    decision for the same replay is now IDENTICAL (dataclass-`==`-equal) to
+    what this function returns -- see the module docstring's "EXACT REPLAY
+    IS STRUCTURALLY NON-ACCEPTING" paragraph. A caller doing
     `if authorize_operation(...).allowed: execute()` therefore CANNOT
-    execute a second time on replay.
+    execute a second time on replay, and neither can a caller that
+    (incorrectly) calls `verify_confirmation` directly and reads
+    `.decision.allowed`.
 
     H8 exception boundary: wraps its own orchestration in
     `except Exception -> PolicyDecision(False, "confirmation",
@@ -846,7 +1012,10 @@ def authorize_operation(
         if verification.outcome == "exact_replay":
             return PolicyDecision(False, "confirmation", "confirmation_replayed", retryable=False)
         return verification.decision
-    except Exception:
+    except Exception as exc:
+        _logger.warning(
+            "operator_mcp_policy.authorize_operation: internal_error (%s)", type(exc).__name__
+        )
         return PolicyDecision(False, "confirmation", "internal_error", retryable=True)
 
 
@@ -878,18 +1047,29 @@ def _parse_iso(value: Any) -> datetime | None:
     return parsed
 
 
-def _record_expiry(record: Mapping[str, Any]) -> datetime | None:
+def _record_expiry(record: Mapping[str, Any], moment: datetime) -> datetime | None:
     """Effective, CLAMPED expiry for a confirmation record (finding H4):
     `min(stored expires_at, issued_at + CONFIRMATION_TTL)` -- a record
     whose stored `expires_at` claims an implausible far-future date (e.g.
     hand-edited, or a P2 bug) can never outlive the real TTL measured from
     its own `issued_at`. Returns `None` (meaning "always expired" per every
     caller's fail-closed convention) when either `issued_at` or
-    `expires_at` is missing/unparseable/naive."""
+    `expires_at` is missing/unparseable/naive.
+
+    NEW-7 fix (round 2): the clamp above defends against a forged
+    far-future `expires_at` but NOT a forged far-future `issued_at` -- an
+    `issued_at` of `now + 1 year` previously yielded a token effectively
+    valid for a year (`min(expires_at, issued_at + TTL)` with both operands
+    inflated together). `moment` (the caller's already-resolved "now") is
+    now REQUIRED and compared against `issued_at`: an `issued_at` in the
+    future relative to `moment` returns `None` (always expired) rather than
+    granting a still-valid-looking window."""
 
     issued_at = _parse_iso(record.get("issued_at"))
     expires_at = _parse_iso(record.get("expires_at"))
     if issued_at is None or expires_at is None:
+        return None
+    if issued_at > moment:
         return None
     return min(expires_at, issued_at + CONFIRMATION_TTL)
 
@@ -910,6 +1090,23 @@ def mint_confirmation(ctx: PolicyContext, *, now: datetime | None = None) -> Con
     `now` is a TEST-ONLY clock-injection seam (finding M2) -- P2/P5 MUST
     NEVER thread a caller-/request-supplied timestamp through it; doing so
     would let a caller forge `issued_at`/`expires_at` and defeat the TTL.
+
+    NEW-8(b) boundary: this function RETURNS `ConfirmationIssued`, not a
+    `PolicyDecision`, so it cannot participate in the PolicyDecision-shaped
+    H8 boundary `evaluate_policy`/`authorize_operation`/`verify_confirmation`
+    use. The three deliberate `ValueError` guards immediately below (L3
+    defense-in-depth) are intentionally OUTSIDE any try/except -- they are
+    expected, documented failure modes with safe, closed-vocabulary message
+    text. Everything AFTER them is wrapped: any UNEXPECTED exception during
+    minting is re-raised as a plain `RuntimeError("internal_error during
+    confirmation minting")` with NO caller-supplied text -- the raise-shaped
+    equivalent of "never leak an exception whose message embeds
+    caller-influenced data" (AC OPM-7). `PolicyContext.__post_init__`
+    (NEW-8(a)/(b)) already guarantees `ctx.canonical_digest()` cannot raise
+    on a non-finite float or non-Mapping payload, since such a `ctx` cannot
+    be constructed in the first place -- this wrapper is defense in depth
+    for anything else unexpected (e.g. an environment-level failure in
+    `secrets`/`hashlib`).
     """
 
     if ctx.identity is None:
@@ -926,37 +1123,43 @@ def mint_confirmation(ctx: PolicyContext, *, now: datetime | None = None) -> Con
                 "TARGET_KINDS -- callers MUST call evaluate_policy first (L3 defense-in-depth)"
             )
 
-    moment = now or datetime.now(timezone.utc)
-    token = secrets.token_urlsafe(32)
-    token_digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
-    digest = ctx.canonical_digest()
-    confirmation_id = "opc_" + hashlib.sha256(
-        f"{digest}:{ctx.idempotency_key}:{secrets.token_hex(16)}".encode("utf-8")
-    ).hexdigest()
+    try:
+        moment = now or datetime.now(timezone.utc)
+        token = secrets.token_urlsafe(32)
+        token_digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        digest = ctx.canonical_digest()
+        confirmation_id = "opc_" + hashlib.sha256(
+            f"{digest}:{ctx.idempotency_key}:{secrets.token_hex(16)}".encode("utf-8")
+        ).hexdigest()
 
-    record: dict[str, Any] = {
-        "schema_version": "1.0",
-        "type": "operator_mcp_confirmation",
-        "confirmation_id": confirmation_id,
-        "token_digest": token_digest,
-        "actor": {
-            "user_id": ctx.identity.user_id,
-            "workspace_id": ctx.identity.workspace_id,
-            "roles": list(ctx.identity.roles),
-        },
-        "effective_sensitivity": ctx.effective_sensitivity,
-        "operation_kind": ctx.operation_kind,
-        "canonical_input_digest": digest,
-        "idempotency_key": ctx.idempotency_key,
-        "policy_snapshot_version": ctx.policy_snapshot_version,
-        "targets": [t.to_dict() for t in ctx.targets],
-        "status": "issued",
-        "issued_at": _iso_utc(moment),
-        "expires_at": _iso_utc(moment + CONFIRMATION_TTL),
-        "consumed_at": None,
-        "consumed_by_operation_id": None,
-    }
-    return ConfirmationIssued(token=token, record=record)
+        record: dict[str, Any] = {
+            "schema_version": "1.0",
+            "type": "operator_mcp_confirmation",
+            "confirmation_id": confirmation_id,
+            "token_digest": token_digest,
+            "actor": {
+                "user_id": ctx.identity.user_id,
+                "workspace_id": ctx.identity.workspace_id,
+                "roles": list(ctx.identity.roles),
+            },
+            "effective_sensitivity": ctx.effective_sensitivity,
+            "operation_kind": ctx.operation_kind,
+            "canonical_input_digest": digest,
+            "idempotency_key": ctx.idempotency_key,
+            "policy_snapshot_version": ctx.policy_snapshot_version,
+            "targets": [t.to_dict() for t in ctx.targets],
+            "status": "issued",
+            "issued_at": _iso_utc(moment),
+            "expires_at": _iso_utc(moment + CONFIRMATION_TTL),
+            "consumed_at": None,
+            "consumed_by_operation_id": None,
+        }
+        return ConfirmationIssued(token=token, record=record)
+    except Exception as exc:
+        _logger.warning(
+            "operator_mcp_policy.mint_confirmation: internal_error (%s)", type(exc).__name__
+        )
+        raise RuntimeError("internal_error during confirmation minting") from None
 
 
 def _confirmation_bound_targets(record: Mapping[str, Any]) -> Any:
@@ -1008,9 +1211,9 @@ def verify_confirmation(
 
     H4 fix: expiry is evaluated via :func:`_record_expiry` (clamped to
     `issued_at + CONFIRMATION_TTL`, fails closed on any missing/
-    unparseable timestamp) on EVERY branch, including the `consumed`
-    (exact-replay) branch -- a consumed record is never an unbounded-
-    lifetime replay oracle.
+    unparseable/future-dated timestamp -- NEW-7) on EVERY branch, including
+    the `consumed` (exact-replay) branch -- a consumed record is never an
+    unbounded-lifetime replay oracle.
 
     H8: this function never raises -- any unexpected internal exception is
     caught and reported as `ConfirmationVerification("error",
@@ -1019,9 +1222,15 @@ def verify_confirmation(
     `now` is a TEST-ONLY clock-injection seam (finding M2); see
     :func:`mint_confirmation`'s docstring.
 
-    See the module docstring's "EXACT REPLAY VS `authorize_operation`"
-    paragraph (finding C1) for why `authorize_operation` does NOT pass this
-    function's `exact_replay` outcome through as `allowed=True`.
+    **NEW-1 (round 2)**: the `exact_replay` branch's `PolicyDecision` is
+    now `PolicyDecision(False, "confirmation", "confirmation_replayed",
+    retryable=False)` -- IDENTICAL in shape to what `authorize_operation`
+    returns for the same case. See the module docstring's "EXACT REPLAY IS
+    STRUCTURALLY NON-ACCEPTING" paragraph: `ConfirmationVerification.outcome
+    == "exact_replay"` remains the only signal distinguishing this case from
+    every other denial, but `.decision.allowed` is now `False` on BOTH
+    entry points, so no caller -- reading only `.decision`, direct or via
+    `authorize_operation` -- can ever mistake a replay for a fresh accept.
     """
 
     try:
@@ -1044,12 +1253,16 @@ def verify_confirmation(
 
         status = record.get("status")
         bound_matches = _bindings_match(record, ctx)
-        expiry = _record_expiry(record)
+        expiry = _record_expiry(record, moment)
         is_expired = expiry is None or moment > expiry
 
         if status == "consumed":
             if bound_matches and not is_expired:
-                return ConfirmationVerification("exact_replay", PolicyDecision(True, "confirmation"))
+                # NEW-1: structurally non-accepting -- see docstring above.
+                return ConfirmationVerification(
+                    "exact_replay",
+                    PolicyDecision(False, "confirmation", "confirmation_replayed", retryable=False),
+                )
             if bound_matches and is_expired:
                 # H4: a consumed-and-matching record past its clamped
                 # expiry is NOT an unbounded-lifetime replay oracle.
@@ -1062,8 +1275,21 @@ def verify_confirmation(
                 PolicyDecision(False, "confirmation", "idempotency_conflict", retryable=False),
             )
 
+        if status == "revoked":
+            # NEW-11 fix: a deliberately revoked confirmation must NOT
+            # invite a retry via a fresh preflight -- the closed
+            # reason-code set has no revoked-specific member, so this
+            # reuses `confirmation_mismatch` (non-retryable, "this token is
+            # no longer valid for this request"), never
+            # `confirmation_expired` (retryable=True, "request a new
+            # preflight preview" -- actively misleading for a revocation).
+            return ConfirmationVerification(
+                "mismatched",
+                PolicyDecision(False, "confirmation", "confirmation_mismatch", retryable=False),
+            )
+
         if status != "issued":
-            # expired/revoked record presented again.
+            # any other non-issued status (schema's "expired") presented again.
             return ConfirmationVerification(
                 "expired", PolicyDecision(False, "confirmation", "confirmation_expired", retryable=True)
             )
@@ -1080,25 +1306,43 @@ def verify_confirmation(
             )
 
         return ConfirmationVerification("accepted", PolicyDecision(True, "confirmation"))
-    except Exception:
+    except Exception as exc:
+        _logger.warning(
+            "operator_mcp_policy.verify_confirmation: internal_error (%s)", type(exc).__name__
+        )
         return ConfirmationVerification(
             "error", PolicyDecision(False, "confirmation", "internal_error", retryable=True)
         )
 
 
 def consume_confirmation(
-    record: Mapping[str, Any], *, operation_id: str, now: datetime | None = None
+    record: Mapping[str, Any],
+    *,
+    operation_id: str,
+    now: datetime | None = None,
+    ctx: PolicyContext | None = None,
 ) -> dict[str, Any] | None:
     """Return a NEW confirmation record transitioned to `status="consumed"`,
     or `None` if the compare-and-swap precondition fails.
 
     H5 fix: this is now a GUARDED transition, not an unconditional
     overwrite. Returns `None` (never raises) when `record["status"] !=
-    "issued"` OR the record's clamped expiry (:func:`_record_expiry`) has
-    already passed at `now` -- an already-`consumed` record is NEVER
-    silently rebound to a new `operation_id` (which would destroy the
-    first consumption's proof), and an expired-but-still-`"issued"`
-    record can never be consumed.
+    "issued"` OR the record's clamped expiry (:func:`_record_expiry`,
+    NEW-7-hardened against a forged future `issued_at` too) has already
+    passed at `now` -- an already-`consumed` record is NEVER silently
+    rebound to a new `operation_id` (which would destroy the first
+    consumption's proof), and an expired-but-still-`"issued"` record can
+    never be consumed.
+
+    NEW-12 fix (round 2, hardening): optional `ctx` -- when supplied,
+    additionally requires `_bindings_match(record, ctx)` before consuming.
+    Without it, this function had no binding precondition at all (only
+    `operation_id`/`record`), so nothing enforced that the caller had
+    actually obtained a matching `verify_confirmation(..., ctx=...)` for the
+    SAME `ctx`/token before consuming -- the H5 fix made it merely LOOK
+    self-sufficient. `ctx` defaults to `None` (skips this check) for
+    backward compatibility with P1's own call sites/tests, which already
+    call `verify_confirmation` first; P2 SHOULD always pass `ctx`.
 
     Pure function -- atomically persisting this alongside the operation
     manifest write is P2's job (`operator_operation_service.py`, OPM-2.1).
@@ -1113,11 +1357,17 @@ def consume_confirmation(
 
     if record.get("status") != "issued":
         return None
+    if ctx is not None and not _bindings_match(record, ctx):
+        return None
     moment = now or datetime.now(timezone.utc)
-    expiry = _record_expiry(record)
+    expiry = _record_expiry(record, moment)
     if expiry is None or moment > expiry:
         return None
-    updated = dict(record)
+    # NEW-14 hygiene fix: DEEP copy, not `dict(record)` (shallow) -- a
+    # shallow copy shares the nested `actor`/`targets` values with the
+    # INPUT record, so a caller mutating the returned record's nested
+    # structures could previously mutate the original too.
+    updated = copy.deepcopy(dict(record))
     updated["status"] = "consumed"
     updated["consumed_at"] = _iso_utc(moment)
     updated["consumed_by_operation_id"] = operation_id
@@ -1176,12 +1426,25 @@ def build_error(
     `detail` (optional, bounded, redacted) is the only field that may carry
     supplementary context, and is scrubbed of anything traceback-shaped.
 
-    `config` (finding M4): optional `FoundryConfig`, threaded through to
-    `governance.redact_payload` so workspace-configured `secret_patterns`
-    (not just the built-in list) are scrubbed from `detail`. Callers that
-    already have a resolved `FoundryConfig` for the current workspace
-    SHOULD pass it; omitting it falls back to the built-in patterns only
-    (unchanged prior behavior).
+    `config` (finding M4, hardened NEW-5): optional `FoundryConfig`,
+    threaded through to `governance.redact_payload` so workspace-configured
+    `secret_patterns` are UNIONED WITH -- never replace -- the built-in
+    list (`governance._secret_patterns` itself guarantees the union; round
+    1 threaded `config` through correctly but the function it fed silently
+    REPLACED the built-ins with a narrow workspace list, which made a
+    workspace with its own `secret_patterns` LESS strict than the no-config
+    default). Callers that already have a resolved `FoundryConfig` for the
+    current workspace SHOULD pass it; omitting it falls back to the
+    built-in patterns only (unchanged prior behavior).
+
+    `operation_id`/`receipt_ref` (finding NEW-9): for `reason_code ==
+    "not_found"` these are ALWAYS forced to `None` in the returned payload,
+    REGARDLESS of what the caller passes in. H6's one-denial-shape
+    guarantee (wrong-workspace vs above-ceiling vs genuinely-missing all
+    look identical) is a property of the CLOSED envelope this function
+    builds, not something a caller can be trusted to preserve by convention
+    -- a caller that populates `operation_id` only on the "exists, not
+    yours" case would silently restore the existence oracle H6 closed.
     """
 
     if decision.allowed or decision.reason_code is None:
@@ -1194,6 +1457,12 @@ def build_error(
     safe_detail = _redact_and_bound(
         detail if detail is not None else decision.detail, config=config
     )
+
+    # NEW-9: force operation_id/receipt_ref to None for not_found,
+    # independent of what the caller supplied -- see docstring above.
+    if decision.reason_code == "not_found":
+        operation_id = None
+        receipt_ref = None
 
     payload: dict[str, Any] = {
         "schema_version": "1.0",

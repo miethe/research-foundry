@@ -18,6 +18,21 @@ no-existence-leak case), H8 (exception boundary), M1 (bounded envelope
 enforced in code), M3 (`_bindings_match` identity-None guard), M4 (config
 threaded into redaction), M5 (no `rule_id` leak), L4 (`allow_nan=False`),
 L5 (naive timestamps rejected, never coerced).
+
+Also covers the security-review round 2 fix cycle (FIND-P1-R2): NEW-1
+(exact replay structurally non-accepting on BOTH entry points -- not just
+`authorize_operation`), NEW-2 (all 7 envelope bounds enforced, not 2),
+NEW-3 (audit-health probes on demand -- M6 reopened and closed), NEW-4
+(`resolve_effective_sensitivity` fails closed to strictest on empty
+input), NEW-5 (config secret_patterns union with, never replace, the
+built-ins), NEW-6 (`_ceiling_rank`'s opposite fail-closed direction),
+NEW-7 (forged future `issued_at` no longer extends the TTL window), NEW-8
+(NaN/non-Mapping payload rejected at construction; `mint_confirmation`'s
+own raise-shaped boundary), NEW-9 (`build_error` forces null
+operation_id/receipt_ref for `not_found`), NEW-11 (revoked status is
+non-retryable), NEW-12 (`consume_confirmation` optional ctx-binding
+precondition), NEW-13 (internal_error is now logged, redacted), NEW-14
+(deep copy on consume; colocated stage names).
 """
 
 from __future__ import annotations
@@ -131,9 +146,18 @@ def test_resolve_effective_sensitivity_strictest_wins() -> None:
     assert policy.resolve_effective_sensitivity("public", "work_sensitive", "personal") == "work_sensitive"
 
 
-def test_resolve_effective_sensitivity_defaults_to_public_when_empty() -> None:
-    assert policy.resolve_effective_sensitivity() == "public"
-    assert policy.resolve_effective_sensitivity(None, None) == "public"
+def test_resolve_effective_sensitivity_fails_closed_to_strictest_when_empty() -> None:
+    """NEW-4 fix (round 2): replaces the prior
+    `test_resolve_effective_sensitivity_defaults_to_public_when_empty`,
+    which pinned the UNSAFE shape -- empty input is the FAILED-LOOKUP case
+    (every upstream sensitivity source returned None/empty), and this
+    function PRODUCES the value `PolicyContext.effective_sensitivity`
+    consumes. Resolving a failed lookup to "public" (the LOOSEST label)
+    would silently reintroduce, in the producer, the exact permissive
+    default H2 removed from the consumer. The old assertion
+    (`== "public"`) was the unsafe shape; this asserts the safe one."""
+    assert policy.resolve_effective_sensitivity() == policy.SENSITIVITY_LEVELS[-1]
+    assert policy.resolve_effective_sensitivity(None, None) == policy.SENSITIVITY_LEVELS[-1]
 
 
 def test_resolve_effective_sensitivity_unknown_label_fails_closed_to_strictest() -> None:
@@ -142,6 +166,31 @@ def test_resolve_effective_sensitivity_unknown_label_fails_closed_to_strictest()
 
 def test_sensitivity_levels_match_export_service_vocabulary() -> None:
     assert set(policy.SENSITIVITY_LEVELS) == set(SENSITIVITY_ORDER)
+
+
+# ---------------------------------------------------------------------------
+# NEW-6 (round 2): `_ceiling_rank`'s fail-closed direction is OPPOSITE
+# `_sensitivity_rank`'s -- an unknown ceiling must rank BELOW every known
+# level, never ABOVE (which would grant unknown/malformed ceilings maximum
+# clearance). Defense-in-depth: unreachable via normal `PolicyContext`
+# construction (validated in __post_init__), tested at the unit level
+# directly against the shared vocabulary-drift scenario the docstring names.
+# ---------------------------------------------------------------------------
+
+
+def test_sensitivity_rank_unknown_label_ranks_strictest() -> None:
+    assert policy._sensitivity_rank("not_a_real_label") == len(SENSITIVITY_ORDER)
+    assert policy._sensitivity_rank("not_a_real_label") > policy._sensitivity_rank(
+        policy.SENSITIVITY_LEVELS[-1]
+    )
+
+
+def test_ceiling_rank_unknown_label_ranks_below_every_known_level() -> None:
+    """NEW-6: the OPPOSITE direction from `_sensitivity_rank` -- an unknown
+    ceiling must never be treated as maximum clearance."""
+    assert policy._ceiling_rank("not_a_real_label") == -1
+    for level in policy.SENSITIVITY_LEVELS:
+        assert policy._ceiling_rank("not_a_real_label") < policy._ceiling_rank(level)
     # Same rank order too.
     ranked = sorted(policy.SENSITIVITY_LEVELS, key=lambda s: SENSITIVITY_ORDER[s])
     assert ranked == list(policy.SENSITIVITY_LEVELS)
@@ -241,6 +290,63 @@ def test_capability_rejects_oversized_input_payload(tmp_foundry: FoundryPaths) -
     assert decision.reason_code == "payload_too_large"
 
 
+# ---------------------------------------------------------------------------
+# NEW-2 (round 2): all 7 declared envelope bounds enforced in code, not just
+# the 2 counts (maxItems/maxProperties) round 1 enforced.
+# ---------------------------------------------------------------------------
+
+
+def test_capability_rejects_path_shaped_target_ref(tmp_foundry: FoundryPaths) -> None:
+    """The exact attack NEW-2 names: a raw filesystem path as target_ref,
+    which round 1's partial enforcement let pass every stage and reach a
+    minted confirmation."""
+    ctx = _basic_ctx(targets=(policy.TargetRef("run", "../../../etc/passwd"),))
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.denied
+    assert decision.stage == "capability"
+    assert decision.reason_code == "target_invalid"
+
+
+def test_capability_rejects_oversized_target_ref(tmp_foundry: FoundryPaths) -> None:
+    ctx = _basic_ctx(targets=(policy.TargetRef("run", "r" * 257),))
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.denied
+    assert decision.stage == "capability"
+    assert decision.reason_code == "target_invalid"
+
+
+def test_capability_rejects_empty_idempotency_key(tmp_foundry: FoundryPaths) -> None:
+    ctx = _basic_ctx(idempotency_key="")
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.denied
+    assert decision.stage == "capability"
+    assert decision.reason_code == "payload_too_large"
+
+
+def test_capability_rejects_oversized_idempotency_key(tmp_foundry: FoundryPaths) -> None:
+    ctx = _basic_ctx(idempotency_key="k" * 129)
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.denied
+    assert decision.stage == "capability"
+    assert decision.reason_code == "payload_too_large"
+
+
+def test_capability_rejects_idempotency_key_with_disallowed_characters(tmp_foundry: FoundryPaths) -> None:
+    ctx = _basic_ctx(idempotency_key="has a space")
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.denied
+    assert decision.stage == "capability"
+    assert decision.reason_code == "payload_too_large"
+
+
+def test_capability_rejects_oversized_policy_snapshot_version(tmp_foundry: FoundryPaths) -> None:
+    ctx = _basic_ctx(policy_snapshot_version="v" * 65)
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.denied
+    assert decision.stage == "capability"
+    assert decision.reason_code == "payload_too_large"
+
+
 def test_check_tool_name_rejects_unknown_and_wildcard() -> None:
     assert policy.check_tool_name("run.plan").allowed
     assert policy.check_tool_name(policy.PREFLIGHT_TOOL_NAME).allowed
@@ -293,7 +399,17 @@ def test_rbac_allows_viewer_for_read_only_job_status(tmp_foundry: FoundryPaths) 
 def test_audit_unhealthy_blocks_mutating_operation(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(audit_service, "is_healthy_for_exposure", lambda paths: False)
+    """Already-probed + unhealthy: `get_health_state` reports a real prior
+    probe (`last_probe_at` set) that came back unhealthy -- `_check_audit_health`
+    takes the cheap "already probed" branch and must deny without
+    re-probing."""
+    already_probed_unhealthy = audit_service.AuditHealth(
+        healthy=False,
+        last_probe_at="2026-01-01T00:00:00Z",
+        last_success_at=None,
+        error_detail="simulated",
+    )
+    monkeypatch.setattr(audit_service, "get_health_state", lambda paths: already_probed_unhealthy)
     ctx = _basic_ctx(targets=_run_targets())
     decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
     assert decision.denied
@@ -311,16 +427,55 @@ def test_audit_unhealthy_does_not_block_job_status(
     assert decision.allowed
 
 
-def test_audit_health_never_probed_does_not_block_mutating_operation(tmp_foundry: FoundryPaths) -> None:
-    """M6 wontfix-justified: a pristine workspace with no audit_health row
-    (never probed) must still ALLOW mutating operations -- otherwise
-    operator MCP would be unusable out of the box, since P1 has no
-    probe-triggering code path. Locks in the documented decision so it
-    cannot silently flip in either direction."""
+def test_audit_health_never_probed_runs_live_probe_and_allows_when_healthy(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """NEW-3 fix (round 2): replaces
+    `test_audit_health_never_probed_does_not_block_mutating_operation`,
+    which pinned M6's fail-open (never-probed silently assumed healthy,
+    with NO real probe ever run). A pristine workspace now runs a REAL
+    `audit_service.health_check` probe on its first mutating call
+    (self-heal) -- against `tmp_foundry`'s real, writable sqlite store the
+    probe genuinely succeeds, so the operation is still allowed, but for
+    the RIGHT reason (a live probe passed), not because never-probed was
+    assumed healthy."""
 
     ctx = _basic_ctx(targets=_run_targets())
     decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
     assert not (decision.denied and decision.stage == "audit_health")
+    # The probe must have actually run and persisted a result -- proves
+    # this is a live probe, not the old "never-probed == healthy" fiction.
+    state = audit_service.get_health_state(tmp_foundry)
+    assert state.last_probe_at is not None
+    assert state.healthy is True
+
+
+def test_audit_health_never_probed_runs_live_probe_and_blocks_when_unhealthy(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NEW-3 fix (round 2): the other half of the replaced pinning test --
+    proves the fail-open is ACTUALLY closed, not merely relocated. On a
+    never-probed workspace (`tmp_foundry`, fresh), `_check_audit_health`
+    must run a REAL live probe (`audit_service.health_check`) and USE its
+    result -- simulated here as a failing probe -- rather than assuming
+    healthy. This is the scenario the M6 wontfix's justification claimed
+    was unreachable/unnecessary to guard; it is now guarded."""
+
+    def _failing_probe(paths: FoundryPaths) -> audit_service.AuditHealth:
+        return audit_service.AuditHealth(
+            healthy=False,
+            last_probe_at="2026-01-01T00:00:00Z",
+            last_success_at=None,
+            error_detail="simulated probe failure",
+        )
+
+    monkeypatch.setattr(audit_service, "health_check", _failing_probe)
+    ctx = _basic_ctx(targets=_run_targets())
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.denied
+    assert decision.stage == "audit_health"
+    assert decision.reason_code == "audit_unhealthy"
+    assert decision.retryable is True
 
 
 # ---------------------------------------------------------------------------
@@ -454,6 +609,35 @@ def test_identity_denied_reserved_strictly_for_missing_identity(tmp_foundry: Fou
     assert missing_identity_decision.reason_code != wrong_workspace_decision.reason_code
 
 
+def test_build_error_forces_null_identity_fields_for_not_found_regardless_of_caller(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """NEW-9 fix (round 2): the H6 no-existence-leak test above (and the
+    round-1 one it replaced) hard-codes `operation_id=None`,
+    `receipt_ref=None` at every call site -- proving H6 holds ONLY when the
+    caller cooperates. `build_error` itself must force both to `None` for
+    `not_found`, independent of what the caller passes: a caller that
+    populates `operation_id` only on the "exists, not yours" branch (and
+    leaves it `None` on the genuinely-absent branch) would otherwise
+    silently restore the existence oracle H6 closed."""
+    decision = policy.PolicyDecision(False, "rbac", "not_found", retryable=False)
+    envelope = policy.build_error(
+        decision, operation_id="opm_should_be_dropped", receipt_ref="rcpt_should_be_dropped"
+    )
+    assert envelope["operation_id"] is None
+    assert envelope["receipt_ref"] is None
+
+    # Contrast: for every OTHER reason code, build_error still passes the
+    # caller's identifiers through -- this is a `not_found`-SPECIFIC guard,
+    # not a general suppression.
+    other_decision = policy.PolicyDecision(False, "guard", "guard_blocked", retryable=False)
+    other_envelope = policy.build_error(
+        other_decision, operation_id="opm_keep_me", receipt_ref="rcpt_keep_me"
+    )
+    assert other_envelope["operation_id"] == "opm_keep_me"
+    assert other_envelope["receipt_ref"] == "rcpt_keep_me"
+
+
 # ---------------------------------------------------------------------------
 # Preflight stage (stage-prerequisite target kinds)
 # ---------------------------------------------------------------------------
@@ -567,6 +751,31 @@ def test_authorize_operation_wraps_unexpected_exception_as_internal_error(
     assert decision.retryable is True
 
 
+def test_evaluate_policy_internal_error_is_logged_without_leaking_exception_text(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """NEW-13 fix (round 2): `internal_error` was previously completely
+    silent (zero telemetry) -- a genuine bug hidden behind a policy denial
+    with nothing to page on, AND nothing to distinguish it from a retry
+    loop worth investigating. A warning is now logged, but ONLY the failing
+    stage and the exception's TYPE NAME -- never `str(exc)`, which could
+    embed caller-influenced data (e.g. a value read back out of a
+    malformed governance.yaml)."""
+
+    secret_marker = "SIMULATED_SECRET_MARKER_never_logged"
+
+    def _boom(_ctx: Any, *, paths: Any = None) -> Any:
+        raise RuntimeError(secret_marker)
+
+    monkeypatch.setattr(governance, "guard_check", _boom)
+    ctx = _basic_ctx(targets=_run_targets())
+    with caplog.at_level("WARNING", logger="research_foundry.services.operator_mcp_policy"):
+        decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.reason_code == "internal_error"
+    assert any("guard" in record.message for record in caplog.records)
+    assert not any(secret_marker in record.message for record in caplog.records)
+
+
 # ---------------------------------------------------------------------------
 # Confirmation lifecycle (OPM-OQ-2/3)
 # ---------------------------------------------------------------------------
@@ -621,6 +830,23 @@ def test_verify_confirmation_expired_token() -> None:
     assert verification.decision.retryable is True
 
 
+def test_verify_confirmation_revoked_status_denies_non_retryable_not_expired() -> None:
+    """NEW-11 fix (round 2): a `status: revoked` record (the schema's third
+    non-`issued`/`consumed` status) was previously reported as
+    `confirmation_expired` (`retryable=True`, message "request a new
+    preflight preview") -- actively inviting a retry on a token that was
+    DELIBERATELY revoked, which a new preflight would not fix. Revocation
+    now maps to `confirmation_mismatch` (`retryable=False`)."""
+    ctx = _basic_ctx(targets=_run_targets())
+    issued = policy.mint_confirmation(ctx)
+    record = dict(issued.record)
+    record["status"] = "revoked"
+    verification = policy.verify_confirmation(record, presented_token=issued.token, ctx=ctx)
+    assert verification.outcome == "mismatched"
+    assert verification.decision.reason_code == "confirmation_mismatch"
+    assert verification.decision.retryable is False
+
+
 @pytest.mark.parametrize(
     "mutate",
     [
@@ -644,11 +870,17 @@ def test_verify_confirmation_mismatched_bound_field_denies(mutate) -> None:
     assert verification.decision.retryable is False
 
 
-def test_exact_replay_after_consumption_is_not_an_error() -> None:
-    """`verify_confirmation` called DIRECTLY still reports exact replay as
-    "not an error" -- this is the richer, non-boolean-shaped API a caller
-    (P2) uses when it explicitly wants to route to the prior receipt. See
-    the C1 tests below for why `authorize_operation` behaves differently."""
+def test_exact_replay_after_consumption_is_not_an_error_but_is_non_accepting() -> None:
+    """NEW-1 fix (round 2): replaces
+    `test_exact_replay_after_consumption_is_not_an_error`, which pinned the
+    UNSAFE shape (`verification.decision.allowed` was `True` for a replay).
+    `outcome == "exact_replay"` remains the non-error SIGNAL a caller uses
+    to route to the prior receipt, but `decision` itself is now a real,
+    non-retryable denial (`confirmation_replayed`) -- structurally
+    indistinguishable from what `authorize_operation` returns for the same
+    case (see the C1/NEW-1 tests below). No caller reading only `.decision`
+    can mistake a replay for a fresh accept, regardless of which function
+    they called."""
 
     ctx = _basic_ctx(targets=_run_targets())
     issued = policy.mint_confirmation(ctx)
@@ -658,8 +890,9 @@ def test_exact_replay_after_consumption_is_not_an_error() -> None:
 
     verification = policy.verify_confirmation(consumed, presented_token=issued.token, ctx=ctx)
     assert verification.outcome == "exact_replay"
-    assert verification.decision.allowed
-    assert verification.decision.reason_code is None
+    assert verification.decision.allowed is False
+    assert verification.decision.reason_code == "confirmation_replayed"
+    assert verification.decision.retryable is False
 
 
 def test_consumed_token_with_changed_inputs_is_idempotency_conflict() -> None:
@@ -697,8 +930,8 @@ def test_authorize_operation_full_success_path(tmp_foundry: FoundryPaths) -> Non
 
 
 # ---------------------------------------------------------------------------
-# C1: authorize_operation must never conflate exact replay with an execute
-# authorization.
+# C1/NEW-1: authorize_operation AND verify_confirmation must never conflate
+# exact replay with an execute authorization -- by shape, not docstring.
 # ---------------------------------------------------------------------------
 
 
@@ -714,10 +947,16 @@ def test_authorize_operation_denies_exact_replay_never_returns_accept(tmp_foundr
     consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64)
     assert consumed is not None
 
-    # verify_confirmation directly: still correctly "not an error".
+    # verify_confirmation directly: outcome is still correctly "not an
+    # error" (NEW-1: but `.decision` itself is now a real, non-accepting
+    # denial -- round 1 left this returning `allowed=True`, which is
+    # EXACTLY the shape a naive caller following round 1's own docstring
+    # instruction to "call verify_confirmation directly" would read as a
+    # fresh accept, skipping capability/RBAC/audit-health/guard/preflight).
     direct_verification = policy.verify_confirmation(consumed, presented_token=issued.token, ctx=ctx)
     assert direct_verification.outcome == "exact_replay"
-    assert direct_verification.decision.allowed
+    assert direct_verification.decision.allowed is False
+    assert direct_verification.decision.reason_code == "confirmation_replayed"
 
     # authorize_operation: the execute-time, boolean-shaped entry point --
     # a caller doing `if authorize_operation(...).allowed: execute()` must
@@ -730,8 +969,14 @@ def test_authorize_operation_denies_exact_replay_never_returns_accept(tmp_foundr
     assert replay_decision.reason_code == "confirmation_replayed"
     assert replay_decision.retryable is False
 
-    # The two decisions are NOT equal -- a replay can never be mistaken for
-    # the original accept.
+    # NEW-1: the two entry points now agree EXACTLY -- verify_confirmation's
+    # own decision for the replay is dataclass-`==`-equal to
+    # authorize_operation's. There is no longer a discrepancy a caller
+    # could exploit by choosing which function to call.
+    assert direct_verification.decision == replay_decision
+
+    # The replay decision is NOT equal to the original accept -- a replay
+    # can never be mistaken for it.
     assert replay_decision != accepted
     assert replay_decision.stage == accepted.stage == "confirmation"
     assert replay_decision.allowed != accepted.allowed
@@ -796,6 +1041,30 @@ def test_parse_iso_rejects_naive_datetime_never_coerces_to_utc() -> None:
     assert verification.outcome == "expired"
 
 
+def test_forged_future_issued_at_does_not_extend_the_ttl_window() -> None:
+    """NEW-7 fix (round 2): H4's clamp (`min(expires_at, issued_at + TTL)`)
+    defended against a forged far-future `expires_at` but NOT a forged
+    far-future `issued_at` -- inflating BOTH operands together previously
+    yielded a token effectively valid for as long as the forged
+    `issued_at` implied. `moment` is now compared against `issued_at`
+    directly: an `issued_at` in the future relative to `now` is always
+    expired, in both `verify_confirmation` and `consume_confirmation`."""
+
+    ctx = _basic_ctx(targets=_run_targets())
+    issued = policy.mint_confirmation(ctx)
+    record = dict(issued.record)
+    forged_issued_at = "3000-01-01T00:00:00Z"
+    record["issued_at"] = forged_issued_at
+    record["expires_at"] = "3000-01-01T00:05:00Z"  # consistent, still forged
+
+    verification = policy.verify_confirmation(record, presented_token=issued.token, ctx=ctx)
+    assert verification.outcome == "expired"
+    assert verification.decision.reason_code == "confirmation_expired"
+
+    consumed = policy.consume_confirmation(record, operation_id="opm_" + "a" * 64)
+    assert consumed is None
+
+
 # ---------------------------------------------------------------------------
 # H5: consume_confirmation is a guarded compare-and-swap-shaped transition.
 # ---------------------------------------------------------------------------
@@ -833,6 +1102,47 @@ def test_consume_confirmation_succeeds_for_fresh_issued_record() -> None:
     assert consumed["consumed_at"] is not None
 
 
+def test_consume_confirmation_returns_a_deep_copy_not_a_shared_shallow_one() -> None:
+    """NEW-14 hygiene fix (round 2): `dict(record)` (shallow) shares nested
+    `actor`/`targets` values with the input record -- mutating the returned
+    record's nested structures could previously mutate the original too.
+    `consume_confirmation` now deep-copies."""
+    ctx = _basic_ctx(targets=_run_targets())
+    issued = policy.mint_confirmation(ctx)
+    consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64)
+    assert consumed is not None
+    consumed["actor"]["user_id"] = "mutated"
+    consumed["targets"][0]["target_ref"] = "mutated"
+    assert issued.record["actor"]["user_id"] != "mutated"
+    assert issued.record["targets"][0]["target_ref"] != "mutated"
+
+
+def test_consume_confirmation_optional_ctx_binding_denies_mismatch() -> None:
+    """NEW-12 fix (round 2, hardening): `consume_confirmation` previously
+    had NO binding precondition at all -- only `record`/`operation_id`.
+    When `ctx` is supplied, it now additionally requires
+    `_bindings_match(record, ctx)`."""
+    ctx = _basic_ctx(targets=_run_targets())
+    issued = policy.mint_confirmation(ctx)
+
+    mismatched_ctx = dataclasses.replace(ctx, idempotency_key="a-different-key")
+    denied = policy.consume_confirmation(
+        issued.record, operation_id="opm_" + "a" * 64, ctx=mismatched_ctx
+    )
+    assert denied is None
+
+    # Backward compatible: omitting `ctx` (the default) skips this check --
+    # P1's own call sites/tests pre-verify bindings via verify_confirmation.
+    allowed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64)
+    assert allowed is not None
+
+    # And a MATCHING ctx succeeds too.
+    fresh = policy.mint_confirmation(ctx)
+    matching = policy.consume_confirmation(fresh.record, operation_id="opm_" + "b" * 64, ctx=ctx)
+    assert matching is not None
+    assert matching["status"] == "consumed"
+
+
 # ---------------------------------------------------------------------------
 # L3: mint_confirmation defensive guards (operation_kind/target_kind).
 # ---------------------------------------------------------------------------
@@ -864,6 +1174,29 @@ def test_mint_confirmation_rejects_unknown_target_kind() -> None:
         policy.mint_confirmation(ctx)
 
 
+def test_mint_confirmation_unexpected_failure_raises_sanitized_runtime_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NEW-8(b) fix (round 2): `mint_confirmation` returns
+    `ConfirmationIssued`, not a `PolicyDecision`, so it cannot participate
+    in the PolicyDecision-shaped H8 boundary the other three entry points
+    use. Any UNEXPECTED exception during minting (distinct from the
+    deliberate L3 `ValueError` guards, which stay outside this boundary) is
+    now re-raised as a plain `RuntimeError` with NO caller-supplied text --
+    the raise-shaped equivalent of the PolicyDecision boundary."""
+
+    ctx = _basic_ctx(targets=_run_targets())
+    secret_marker = "SIMULATED_SECRET_MARKER_never_leaked"
+
+    def _boom(*_args: Any, **_kwargs: Any) -> Any:
+        raise RuntimeError(secret_marker)
+
+    monkeypatch.setattr(policy.secrets, "token_urlsafe", _boom)
+    with pytest.raises(RuntimeError) as excinfo:
+        policy.mint_confirmation(ctx)
+    assert secret_marker not in str(excinfo.value)
+
+
 # ---------------------------------------------------------------------------
 # M3: _bindings_match identity-None guard (first line, no vacuous match).
 # ---------------------------------------------------------------------------
@@ -880,14 +1213,41 @@ def test_bindings_match_returns_false_when_identity_is_none() -> None:
 
 
 # ---------------------------------------------------------------------------
-# L4: canonicalization hardening (allow_nan=False).
+# L4/NEW-8: canonicalization hardening (allow_nan=False; construction-time
+# rejection of non-finite floats and non-Mapping input_payload).
 # ---------------------------------------------------------------------------
 
 
-def test_canonical_json_rejects_nan_value() -> None:
-    ctx = _basic_ctx(input_payload={"x": float("nan")})
+def test_context_construction_rejects_nan_value() -> None:
+    """NEW-8(a) fix (round 2): replaces
+    `test_canonical_json_rejects_nan_value`. Round 1's `allow_nan=False`
+    fix made `canonical_json()` raise on NaN, but ONLY once called -- the
+    `PolicyContext` itself could still be CONSTRUCTED with a NaN payload,
+    and `mint_confirmation` (which calls `ctx.canonical_digest()` with no
+    exception boundary of its own before the round-2 fix) could then raise
+    an uncaught, unbounded `ValueError` outside every H8 boundary. NaN is
+    now rejected at `PolicyContext.__post_init__` -- construction itself
+    fails, before `canonical_json()`/`mint_confirmation` is ever reached."""
+
     with pytest.raises(ValueError):
-        ctx.canonical_json()
+        _basic_ctx(input_payload={"x": float("nan")})
+
+
+def test_context_construction_rejects_infinite_value() -> None:
+    with pytest.raises(ValueError):
+        _basic_ctx(input_payload={"x": float("inf")})
+
+
+def test_context_construction_rejects_non_mapping_input_payload() -> None:
+    """NEW-8(b) fix: a bare `str` passes the OLD `_is_json_primitive`
+    recursive check (a `str` IS a JSON primitive) but
+    `canonical_payload()`'s `dict(self.input_payload)` would then raise,
+    uncaught, deep inside `canonical_digest()`. `__post_init__` now
+    requires `input_payload` to be an actual `Mapping`, not merely
+    JSON-primitive-shaped."""
+
+    with pytest.raises(ValueError):
+        _basic_ctx(input_payload="not-a-mapping")  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -910,6 +1270,32 @@ def test_build_error_threads_config_for_workspace_secret_patterns(tmp_foundry: F
 
     with_config = policy.build_error(decision, detail=workspace_secret, config=cfg)
     assert workspace_secret not in with_config.get("detail", "")
+
+
+def test_build_error_config_secret_patterns_union_with_builtins_never_replace(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """NEW-5 fix (round 2): extends the test above, which only asserted
+    the CUSTOM pattern fires and never re-checked a BUILT-IN pattern once a
+    `config` was supplied. `governance._secret_patterns` previously
+    REPLACED the built-in list whenever governance.yaml declared its own
+    (narrow) `secret_patterns` -- a workspace with a custom list became
+    LESS strict than the no-config default. Config patterns must UNION with
+    the built-ins, never replace them."""
+    data = load_yaml(tmp_foundry.config / "governance.yaml") or {}
+    narrow_custom_pattern = r"WORKSPACE_SECRET_[A-Za-z0-9]+"
+    data["secret_patterns"] = [narrow_custom_pattern]  # deliberately narrow -- no built-ins listed
+    dump_yaml(data, tmp_foundry.config / "governance.yaml")
+    cfg = FoundryConfig(paths=tmp_foundry)
+
+    decision = policy.PolicyDecision(False, "preflight", "preflight_failed", retryable=True)
+    builtin_shaped_secret = "sk-ant-" + "x" * 40
+
+    error = policy.build_error(decision, detail=builtin_shaped_secret, config=cfg)
+    assert "sk-ant-" not in error.get("detail", ""), (
+        "a workspace's narrow custom secret_patterns list must not turn off "
+        "built-in secret detection (NEW-5)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1032,7 +1418,18 @@ def test_every_closed_reason_code_has_a_real_producer(
         policy.evaluate_policy(_basic_ctx(operation_kind="swarm.start", targets=()), paths=tmp_foundry).reason_code
     )
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(audit_service, "is_healthy_for_exposure", lambda paths: False)
+        # NEW-3: `tmp_foundry` may already have been probed by an earlier
+        # call in this same test (self-healing on first mutating call) --
+        # monkeypatch `get_health_state` directly (the "already probed,
+        # unhealthy" branch) rather than `health_check`, so this producer
+        # is independent of prior probe state.
+        mp.setattr(
+            audit_service,
+            "get_health_state",
+            lambda paths: audit_service.AuditHealth(
+                healthy=False, last_probe_at="2026-01-01T00:00:00Z", last_success_at=None, error_detail="x"
+            ),
+        )
         produced.add(
             policy.evaluate_policy(_basic_ctx(targets=_run_targets()), paths=tmp_foundry).reason_code
         )

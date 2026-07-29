@@ -41,31 +41,46 @@ description: >-
   second operation off the same confirmation requires a SEPARATE,
   separately-previewed manifest with its own confirmation record.
 
-  EXACT REPLAY IS NOT AN ERROR (decisions-block section 0): presenting an
-  ALREADY-`consumed` token whose freshly recomputed canonical fields are
-  byte-identical to this record's own bound fields, AND still within its
-  clamped expiry, is the "exact replay" case --
-  `operator_mcp_policy.verify_confirmation` signals this as a distinct
-  outcome (`exact_replay`, not a `PolicyDecision` denial) so a caller (P2)
-  can return the PRIOR receipt rather than fabricate a new effect. A
-  `consumed` token whose recomputed fields differ from this record is
-  `idempotency_conflict` (see operator_mcp_error.schema.yaml). NOTE:
-  `operator_mcp_policy.authorize_operation` -- the execute-time
-  boolean-shaped entry point -- deliberately denies exact replay
-  (`confirmation_replayed`) rather than returning `allowed=True`; only a
-  caller invoking `verify_confirmation` directly sees the "not an error"
-  distinction (security-review round 1 finding C1).
+  EXACT REPLAY IS NOT AN ERROR, BUT IS STRUCTURALLY NON-ACCEPTING
+  (decisions-block section 0; security-review round 2 finding NEW-1,
+  superseding round 1's C1 fix): presenting an ALREADY-`consumed` token
+  whose freshly recomputed canonical fields are byte-identical to this
+  record's own bound fields, AND still within its clamped expiry, is the
+  "exact replay" case -- `operator_mcp_policy.verify_confirmation` signals
+  this as a distinct OUTCOME (`exact_replay`) so a caller can return the
+  PRIOR receipt rather than fabricate a new effect, but the underlying
+  `PolicyDecision` for that outcome is `PolicyDecision(False, "confirmation",
+  "confirmation_replayed", retryable=False)` -- IDENTICAL to what
+  `operator_mcp_policy.authorize_operation` (the execute-time,
+  boolean-shaped entry point) returns for the same case. Neither function
+  EVER returns `allowed=True` for a replay, regardless of which one a
+  caller invokes -- the safety property holds by SHAPE. A `consumed` token
+  whose recomputed fields differ from this record is `idempotency_conflict`
+  (see operator_mcp_error.schema.yaml). `authorize_operation` is the ONLY
+  sanctioned execute-time entry point; `verify_confirmation` MUST NOT be
+  called directly by an execute-time caller to make an authorization
+  decision (round 1's opposite instruction is retracted).
 
-  DURABLE CONSUMPTION IS A COMPARE-AND-SWAP (DUR-1, binding on P2): the
-  transition this record makes from `status: issued` to `status: consumed`
-  MUST be implemented as:
+  DURABLE CONSUMPTION IS A COMPARE-AND-SWAP (DUR-1, binding on P2; expiry
+  predicate folded in at round 2, finding NEW-10): the transition this
+  record makes from `status: issued` to `status: consumed` MUST be
+  implemented as:
 
   > Consumption is a compare-and-swap on `status` from exactly `issued` to
-  > `consumed`, performed in the same durable transaction as the
+  > `consumed`, GUARDED BY THE SAME CLAMPED-EXPIRY CHECK
+  > `operator_mcp_policy.consume_confirmation` applies (`min(expires_at,
+  > issued_at + CONFIRMATION_TTL)`, itself never later than the commit-time
+  > `now`), performed in the same durable transaction as the
   > operation-manifest write, under an exclusive single-writer lock (SQLite
   > `BEGIN IMMEDIATE`, or `O_EXCL` create-then-atomic-rename). A CAS that
-  > observes any status other than `issued` MUST route to the exact-replay /
-  > idempotency-conflict path and MUST NOT execute.
+  > observes any status other than `issued`, OR whose clamped expiry has
+  > already passed at commit time, MUST route to the exact-replay /
+  > idempotency-conflict / expired path and MUST NOT execute.
+
+  NOTE (NEW-10): `WHERE status = 'issued'` alone is NOT this predicate --
+  it is only the status half. A P2 implementation checking status without
+  ALSO folding in the expiry check (in the SAME compare-and-swap, not a
+  separate read) can consume an EXPIRED-but-still-`issued` token.
 
   `operator_mcp_policy.consume_confirmation` is a PURE function (P1) that
   models only the guarded `issued -> consumed` field transition and its

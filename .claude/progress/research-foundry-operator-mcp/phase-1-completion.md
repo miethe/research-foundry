@@ -277,6 +277,286 @@ description (new "DURABLE CONSUMPTION IS A COMPARE-AND-SWAP (DUR-1, binding on P
 Not touched by this fix cycle — the findings file marks this "carry to Karen" (adjudication, not
 a required P1 code change). `_MUTATION_ROLES`/`_READ_ROLES` remain unchanged.
 
+## Security fix cycle round 2
+
+The round-2 security re-attack (section FIND-P1-R2 in the findings file) returned
+`CHANGES_REQUESTED` against the round-1 tree, re-verdicting several round-1 "fixed" claims as
+`PARTIAL` and rejecting M6's `wontfix-justified`. This section maps every FIND-P1-R2 finding to
+the concrete change and the test(s) that now cover it. All line numbers are in
+`src/research_foundry/services/operator_mcp_policy.py` unless stated otherwise (current tree,
+post-round-2).
+
+**Evidence integrity**: every command below was actually run in this worktree; see "Validation
+command output — round 2 fix cycle" further down for the real, unedited transcripts (counts,
+not narrative).
+
+### BLOCKING findings
+
+- **NEW-1 (CRITICAL)** — Round 1 made `authorize_operation` deny a replay but left
+  `verify_confirmation` itself returning `PolicyDecision(True, "confirmation")` for the same
+  case, and *instructed* callers wanting the replay distinction to call `verify_confirmation`
+  directly (a function that runs ONLY the confirmation stage). Fixed by making the replay
+  decision structurally non-accepting on BOTH functions: `verify_confirmation`'s `"consumed" +
+  bound_matches + not is_expired` branch (`verify_confirmation` :1196-1296, the `exact_replay`
+  branch inside it) now returns `PolicyDecision(False, "confirmation", "confirmation_replayed",
+  retryable=False)` — dataclass-`==`-equal to what `authorize_operation` (:969-1013) already
+  returned. The module docstring's "EXACT REPLAY IS STRUCTURALLY NON-ACCEPTING" paragraph
+  (replacing the old "EXACT REPLAY VS `authorize_operation`" paragraph) retracts round 1's
+  instruction: `verify_confirmation` MUST NOT be called directly by an execute-time caller;
+  `authorize_operation` is the only sanctioned entry point, and the replay path is reachable only
+  from its `confirmation_replayed` denial (which has, by construction, passed stages 1-5).
+  `ConfirmationVerification.outcome == "exact_replay"` remains the only signal distinguishing this
+  case, but `.decision.allowed` can no longer be misread as an accept regardless of which
+  function is called. Covered by
+  `test_exact_replay_after_consumption_is_not_an_error_but_is_non_accepting` and
+  `test_authorize_operation_denies_exact_replay_never_returns_accept` (now additionally asserts
+  `direct_verification.decision == replay_decision`).
+
+- **NEW-3 (HIGH)** — M6's `wontfix-justified` is rejected; reopened and fixed. `_check_audit_health`
+  (:835-859) now reads `audit_service.get_health_state(paths)` first (cheap) and, ONLY when
+  `state.last_probe_at is None` (never probed), runs a REAL `audit_service.health_check(paths)`
+  probe and uses ITS result. This closes the "never-probed == healthy forever" fail-open without
+  the wontfix's feared bricking: `health_check` is a cheap, idempotent, never-raising
+  write-then-read probe already imported into this module, and a healthy workspace (the common
+  case) self-heals silently on its first mutating call. Covered by
+  `test_audit_health_never_probed_runs_live_probe_and_allows_when_healthy` (proves the probe
+  actually ran and persisted, not the old fiction) and
+  `test_audit_health_never_probed_runs_live_probe_and_blocks_when_unhealthy` (proves a genuinely
+  failing live probe now denies — the exact scenario the wontfix claimed was safe to ignore).
+  `test_audit_unhealthy_blocks_mutating_operation` was adjusted to monkeypatch `get_health_state`
+  (the already-probed branch) instead of `is_healthy_for_exposure`, which this stage no longer
+  calls. The M6 finding row in FIND-P1's own table is updated to `fixed`.
+
+- **NEW-2 (HIGH)** — `_check_capability` (:776-810) now enforces all 7 declared envelope bounds,
+  not the 2 counts round 1 enforced: `target_ref` `maxLength: 256` + pattern
+  `^[A-Za-z0-9_\-:.]+\$` (rejects e.g. `"../../../etc/passwd"`), `idempotency_key` `maxLength: 128`
+  + pattern `^[A-Za-z0-9_\-]+\$` (rejects empty/oversized/space-containing keys), and
+  `policy_snapshot_version` `maxLength: 64`. The falsely-"authoritative" comment above the bound
+  constants (previously :279-286) is corrected to describe what is actually enforced. Covered by
+  `test_capability_rejects_path_shaped_target_ref`, `test_capability_rejects_oversized_target_ref`,
+  `test_capability_rejects_empty_idempotency_key`,
+  `test_capability_rejects_oversized_idempotency_key`,
+  `test_capability_rejects_idempotency_key_with_disallowed_characters`,
+  `test_capability_rejects_oversized_policy_snapshot_version`.
+
+- **NEW-4 (HIGH)** — `resolve_effective_sensitivity()` (:722-745) now returns
+  `SENSITIVITY_LEVELS[-1]` (strictest), never `"public"`, when no non-empty sensitivity is
+  supplied — empty is the FAILED-LOOKUP case, and this function PRODUCES the value
+  `PolicyContext.effective_sensitivity` consumes, so resolving a failed lookup to the loosest
+  label would reintroduce H2's permissive default in the producer. Covered by
+  `test_resolve_effective_sensitivity_fails_closed_to_strictest_when_empty` (replaces the
+  round-1 test that pinned `== "public"`).
+
+- **NEW-5 (MED-HIGH)** — `governance._secret_patterns` (`services/governance.py`, `_secret_patterns`)
+  now UNIONS config-declared `secret_patterns` with the built-in list instead of replacing it —
+  confirmed the claim first (round-1's `config=` threading was correct but fed a function that
+  silently dropped every built-in whenever a workspace declared its own list). `build_error`'s
+  docstring (:1412-1450 area) is corrected to state the union guarantee explicitly. Covered by
+  `test_build_error_config_secret_patterns_union_with_builtins_never_replace` (a narrow
+  workspace-only pattern list still lets a built-in `sk-ant-...` shape redact) — extends, not
+  replaces, `test_build_error_threads_config_for_workspace_secret_patterns`. Regression-checked
+  against `tests/security/test_credential_isolation_regression.py` and
+  `tests/test_cli_governance.py`/`tests/test_governance_adversarial.py` (all still pass — those
+  tests either don't configure custom patterns, or their custom config already re-declares the
+  built-in shape they need).
+
+- **NEW-8 (MED)** — Three sub-holes in the H8 boundary, each fixed: (a) `_is_json_primitive`
+  (:399-427) now rejects non-finite floats (`math.isfinite`) so `PolicyContext.__post_init__`
+  (:529-560) raises at CONSTRUCTION time on a NaN/Infinity payload, before `canonical_json()`'s
+  `allow_nan=False` raiser or `mint_confirmation` could ever see it. (b) `__post_init__` now also
+  requires `input_payload` to be an actual `Mapping` (not merely `_is_json_primitive`-shaped — a
+  bare `str` passed that check but broke `canonical_payload()`'s `dict(self.input_payload)`).
+  (c) `__post_init__`'s two `ValueError`s no longer interpolate the caller-supplied
+  `effective_sensitivity`/`sensitivity_ceiling` value itself, only the closed vocabulary.
+  Additionally, `mint_confirmation` (:1077-1150) now wraps its own minting logic (everything after
+  the deliberate L3 guards) in `try/except Exception -> raise RuntimeError("internal_error
+  during confirmation minting") from None` — the raise-shaped equivalent of the
+  `PolicyDecision`-shaped H8 boundary, since `mint_confirmation` returns `ConfirmationIssued`, not
+  a `PolicyDecision`. Covered by `test_context_construction_rejects_nan_value` (replaces the
+  round-1 test that only asserted `canonical_json()` raised, not construction),
+  `test_context_construction_rejects_infinite_value`,
+  `test_context_construction_rejects_non_mapping_input_payload`,
+  `test_mint_confirmation_unexpected_failure_raises_sanitized_runtime_error`.
+
+- **NEW-6 (MED)** — Split `_sensitivity_rank` into two functions with OPPOSITE fail-closed
+  directions: `_sensitivity_rank` (:429-443, unchanged, unknown -> `len(SENSITIVITY_ORDER)`,
+  strictest) for `effective_sensitivity`, and new `_ceiling_rank` (:445-462, unknown -> `-1`,
+  below every known level) for `sensitivity_ceiling`. `_check_guard` (:861-891) now compares
+  `_sensitivity_rank(ctx.effective_sensitivity) > _ceiling_rank(ctx.sensitivity_ceiling)`. Both
+  remain unreachable via normal `PolicyContext` construction (defense in depth against a future
+  drift between `SENSITIVITY_LEVELS`/`SENSITIVITY_ORDER`). Covered by
+  `test_sensitivity_rank_unknown_label_ranks_strictest` and
+  `test_ceiling_rank_unknown_label_ranks_below_every_known_level` (direct unit tests against the
+  two helper functions, since the vocabulary-drift scenario is unreachable through the public
+  API by design).
+
+- **NEW-7 (MED)** — `_record_expiry` (:1050-1075) now takes `moment` as a required parameter and
+  returns `None` (always-expired) when `issued_at > moment` — closing the case where a forged
+  far-future `issued_at` inflated BOTH operands of the H4 clamp
+  (`min(expires_at, issued_at + TTL)`) together, yielding a token effectively valid for as long
+  as the forged `issued_at` implied. Both call sites (`verify_confirmation`, `consume_confirmation`)
+  now thread their already-resolved `moment` through. Covered by
+  `test_forged_future_issued_at_does_not_extend_the_ttl_window`.
+
+- **NEW-9 (MED)** — `build_error` (:1412- ) now forces `operation_id`/`receipt_ref` to `None` in
+  its OWN output whenever `decision.reason_code == "not_found"`, regardless of what the caller
+  passes — H6's one-denial-shape guarantee is now a property of the closed envelope builder
+  itself, not something a caller must be trusted to preserve by convention. Covered by
+  `test_build_error_forces_null_identity_fields_for_not_found_regardless_of_caller` (passes
+  non-`None` identifiers and asserts both come back `None`; also asserts every OTHER reason code
+  still passes them through unmodified).
+
+- **NEW-10 (MED)** — The frozen DUR-1 compare-and-swap text (module docstring +
+  `schemas/operator_mcp_confirmation.schema.yaml`) is amended to explicitly fold the clamped-expiry
+  check into the SAME compare-and-swap as the `status` transition, with an explicit "NOTE (NEW-10)"
+  callout that `WHERE status = 'issued'` alone is not the frozen predicate. Documentation-only (the
+  reference implementation, `consume_confirmation`, already checked both in one pass) — no new test
+  strictly required; existing `test_consume_confirmation_refuses_expired_record` continues to prove
+  the reference implementation's own behavior.
+
+### NON-BLOCKING findings (folded into this cycle)
+
+- **NEW-11** — `verify_confirmation`'s `status == "revoked"` branch (inside :1196-1296) now maps to
+  `PolicyDecision(False, "confirmation", "confirmation_mismatch", retryable=False)` instead of
+  falling into the generic non-`issued` branch's `confirmation_expired, retryable=True` (which
+  invited a retry via "request a new preflight preview" on a token that was deliberately
+  revoked). Covered by `test_verify_confirmation_revoked_status_denies_non_retryable_not_expired`.
+- **NEW-12** — `consume_confirmation` (:1318- ) gained an optional `ctx: PolicyContext | None =
+  None` parameter; when supplied, it additionally requires `_bindings_match(record, ctx)` before
+  consuming. Defaults to `None` (skips the check) for backward compatibility with P1's own call
+  sites, which already pre-verify via `verify_confirmation`. Covered by
+  `test_consume_confirmation_optional_ctx_binding_denies_mismatch`.
+- **NEW-13** — Added `import logging` + `_logger = logging.getLogger(__name__)` (:225). All three
+  H8 exception boundaries (`evaluate_policy`, `authorize_operation`, `verify_confirmation`) now log
+  a `WARNING` naming the failing stage and the exception's TYPE NAME ONLY — never `str(exc)`,
+  which could embed caller-influenced data. Covered by
+  `test_evaluate_policy_internal_error_is_logged_without_leaking_exception_text` (uses `caplog`
+  to assert the stage name IS logged and a planted secret marker in the simulated exception's
+  message is NOT).
+- **NEW-14** — `consume_confirmation` now returns `copy.deepcopy(dict(record))` instead of a
+  shallow `dict(record)` (mutating the returned record's `actor`/`targets` no longer mutates the
+  input). The `_STAGE_NAMES` parallel dict is removed; each `_check_*` function now carries its own
+  `stage_name` attribute (assigned immediately after its definition), read directly by
+  `evaluate_policy`'s loop — colocated with the function it names instead of a second structure
+  that could silently drift out of order. Covered by
+  `test_consume_confirmation_returns_a_deep_copy_not_a_shared_shallow_one`.
+
+### Tests whose ASSERTION CHANGED (and why the round-1 assertion was wrong)
+
+Per the round-2 task brief: "all tests still pass" is not evidence of success on its own — several
+tests had to change MEANING, not just survive. Every test below asserts the OPPOSITE (or a
+materially stricter) shape than it did before this cycle:
+
+1. **`test_exact_replay_after_consumption_is_not_an_error` ->
+   `test_exact_replay_after_consumption_is_not_an_error_but_is_non_accepting`**. Old:
+   `assert verification.decision.allowed` (asserted `True`) and
+   `assert verification.decision.reason_code is None`. New:
+   `assert verification.decision.allowed is False` and
+   `assert verification.decision.reason_code == "confirmation_replayed"`. The old assertion
+   directly pinned NEW-1's unsafe shape — a caller reading `.decision.allowed` on a direct
+   `verify_confirmation` call for a replay would have seen `True`.
+2. **`test_authorize_operation_denies_exact_replay_never_returns_accept`**. Old:
+   `assert direct_verification.decision.allowed` (no further assertion on that decision). New:
+   `assert direct_verification.decision.allowed is False`,
+   `assert direct_verification.decision.reason_code == "confirmation_replayed"`, and a NEW
+   `assert direct_verification.decision == replay_decision` proving the two entry points now
+   agree exactly. Same root cause as #1.
+3. **`test_resolve_effective_sensitivity_defaults_to_public_when_empty` ->
+   `test_resolve_effective_sensitivity_fails_closed_to_strictest_when_empty`**. Old:
+   `assert policy.resolve_effective_sensitivity() == "public"`. New:
+   `assert policy.resolve_effective_sensitivity() == policy.SENSITIVITY_LEVELS[-1]`. The old
+   assertion pinned exactly the permissive default H2 was supposed to have removed — just moved
+   from the consumer (`PolicyContext.__post_init__`) into the producer.
+4. **`test_audit_health_never_probed_does_not_block_mutating_operation` -> split into
+   `test_audit_health_never_probed_runs_live_probe_and_allows_when_healthy` and
+   `test_audit_health_never_probed_runs_live_probe_and_blocks_when_unhealthy`**. Old: asserted
+   ONLY that a never-probed workspace is not denied at the audit_health stage, with NO way for
+   the test to ever observe a denial (M6's fail-open made the negative case unreachable through
+   this test). New: the first half additionally asserts a REAL probe ran and persisted
+   (`get_health_state(...).last_probe_at is not None`); the second half is entirely new and
+   proves the fail-open is closed — a simulated failing live probe on a never-probed workspace
+   now DOES deny. The old test could not have failed even if the fail-open were exploited; the
+   new pair can.
+5. **`test_canonical_json_rejects_nan_value` ->
+   `test_context_construction_rejects_nan_value`**. Old: constructed the `PolicyContext`
+   successfully, THEN asserted `ctx.canonical_json()` raised. New: asserts `_basic_ctx(...)`
+   itself (construction) raises. This is a strictly EARLIER failure point, not merely a rename —
+   under the old shape, `mint_confirmation` (which has no H8 boundary of its own before this
+   cycle) could still receive a validly-constructed-but-NaN-poisoned `ctx` and raise uncaught from
+   deep inside `canonical_digest()`; under the new shape that `ctx` can never exist.
+6. **`test_build_error_threads_config_for_workspace_secret_patterns`** (assertions unchanged,
+   but no longer sufficient on its own) — a NEW test,
+   `test_build_error_config_secret_patterns_union_with_builtins_never_replace`, was added
+   alongside it asserting a BUILT-IN pattern (`sk-ant-...`) still fires when `config` supplies its
+   own narrow list. The original test alone was consistent with EITHER a union OR a full-replace
+   implementation; it could not distinguish NEW-5's regression from correct behavior.
+7. **`test_wrong_workspace_above_ceiling_and_genuinely_missing_target_share_one_denial_shape`**
+   (assertions unchanged, but no longer sufficient on its own) — a NEW test,
+   `test_build_error_forces_null_identity_fields_for_not_found_regardless_of_caller`, was added
+   because the original test's `build_error(d, operation_id=None, receipt_ref=None)` call sites
+   hard-code the safe caller behavior at every call site, so it could not detect NEW-9 (a `build_error`
+   that trusted the caller to withhold these fields, rather than enforcing it itself).
+8. **`test_every_closed_reason_code_has_a_real_producer`** (assertion target unchanged — every
+   reason code must still have a producer — but its internal mechanism for producing
+   `audit_unhealthy` changed from monkeypatching `is_healthy_for_exposure` to monkeypatching
+   `get_health_state`, since the NEW-3 fix means the former is no longer called from
+   `_check_audit_health` at all; the old monkeypatch would have silently become a no-op and the
+   test would have failed to exercise `audit_unhealthy`, not silently passed for the wrong
+   reason — this was caught by actually running the suite, not by inspection).
+
+### Anti-regression check
+
+Re-ran the full validation command list (below) plus the round-1 regression-sensitive suites
+(`tests/test_cli_governance.py`, `tests/test_governance_adversarial.py`,
+`tests/security/test_credential_isolation_regression.py`) to confirm the NEW-5 `governance.py`
+change has no collateral impact — all green. `mypy` on the changed module
+(`operator_mcp_policy.py`) reports zero errors; `governance.py`'s 5 pre-existing `union-attr`
+errors (lines unrelated to `_secret_patterns`) are confirmed pre-existing via `git stash`
+comparison against the round-1 base tree, not introduced by this cycle.
+
+### Validation command output — round 2 fix cycle (exact, as run)
+
+```
+$ PYTHONPATH=$PWD/src .venv/bin/python -m pytest tests/unit/test_operator_mcp_policy.py -q -p no:warnings
+....................................................................[ 68%]
+...................................                                 [100%]
+105 passed in 1.37s
+
+$ PYTHONPATH=$PWD/src .venv/bin/python -m pytest tests/unit/test_operator_mcp_schemas.py -q -p no:warnings
+......................................                              [100%]
+38 passed in 0.29s
+
+$ PYTHONPATH=$PWD/src .venv/bin/python -m pytest tests/test_schema_validation.py -q -p no:warnings
+.......................................................................[ 28%]
+.......................................................................[ 56%]
+.......................................................................[ 84%]
+......................................                              [100%]
+255 passed in 0.82s
+
+$ PYTHONPATH=$PWD/src .venv/bin/python -m pytest tests/integration/test_agent_jobs_api.py \
+    tests/unit/test_agent_job_schemas.py tests/unit/test_agent_job_service.py -q -p no:warnings
+.................................................................    [100%]
+65 passed in 1.99s
+
+$ .venv/bin/python -m flake8 src/research_foundry --select=E9,F63,F7,F82
+(no output)
+$ echo $?
+0
+```
+
+Total: **463 passed, 0 failed** across the four required suites (105 + 38 + 255 + 65), `flake8`
+clean on the required error-class selection. Regression suites (not part of the required gate,
+run as extra assurance given the `governance.py` NEW-5 change):
+
+```
+$ PYTHONPATH=$PWD/src .venv/bin/python -m pytest tests/test_cli_governance.py \
+    tests/test_governance_adversarial.py -p no:warnings
+59 passed in 2.35s
+
+$ PYTHONPATH=$PWD/src .venv/bin/python -m pytest tests/security/test_credential_isolation_regression.py -p no:warnings
+33 passed, 1 skipped in 69.91s (0:01:09)
+```
+
 ## Assumptions made
 
 1. **`flake8` was not installed** in the worktree's `.venv` (only `pytest`/`jsonschema` etc. were present — the `dev` extra's `flake8` entry apparently was not synced into this venv). Installed it via `uv pip install --python <venv> flake8` (no `pip` module was present either) so the exact required command could run. This is an environment gap, not a code change; flagged here rather than silently worked around.
@@ -291,8 +571,21 @@ a required P1 code change). `_MUTATION_ROLES`/`_READ_ROLES` remain unchanged.
 All of OPM-1.1, OPM-1.2, OPM-1.3, OPM-1.4 are implementation-complete and validated per above.
 `OPM-1.G` (the tier-3 contract gate: task-completion-validator + Karen approval on the exact
 tree) returned `CHANGES_REQUESTED` after round 1; every finding in FIND-P1 (C1, H2–H8, M1–M7,
-L1–L6, DUR-1) has now been closed per the "Security fix cycle round 1" section above, with each
-fix independently test-covered and genuine (re-run, not reused) validation transcripts pasted.
+L1–L6, DUR-1) was closed per the "Security fix cycle round 1" section above.
+
+A round-2 security re-attack (section FIND-P1-R2 in the findings file) then returned
+`CHANGES_REQUESTED` again, re-verdicting several round-1 "fixed" claims as merely `PARTIAL` or
+relocated (not closed), rejecting M6's `wontfix-justified`, and finding two entirely new gaps
+(NEW-6, introduced by the H7 fix itself). All 10 BLOCKING findings (NEW-1..NEW-10) and all 4
+NON-BLOCKING findings (NEW-11..NEW-14) are now closed per the "Security fix cycle round 2"
+section above — including correcting three tests that had pinned unsafe behavior as "expected"
+(NEW-1, NEW-3, NEW-4) and strengthening two tests that were structurally unable to detect the
+gaps they were meant to prove closed (NEW-5, NEW-9); see that section's "Tests whose ASSERTION
+CHANGED" subsection for the full list and rationale. Every fix is independently test-covered and
+genuine (re-run, not reused) validation transcripts are pasted in both the round-1 and round-2
+validation-output sections.
+
 FIND-P1-B (the net-new RBAC primitive) remains explicitly carried to Karen for adjudication, per
-the findings file. Re-running `OPM-1.G` on this tree is the orchestrator's next step and is out
-of scope for this implementation sprint.
+the findings file — untouched by either fix cycle. Re-running `OPM-1.G` (round 3) on this tree is
+the orchestrator's next step and is out of scope for this implementation sprint; per this cycle's
+own brief, this is the implementer's self-assessment and does not itself constitute the re-attack.
