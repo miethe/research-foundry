@@ -1,0 +1,246 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/operator_mcp_confirmation.schema.yaml/v1"
+title: Operator MCP Confirmation Record
+description: >-
+  Server-side confirmation-binding record for the local-stdio Operator MCP
+  (research-foundry-operator-mcp-v1 P1, OPM-1.3); see decisions-block
+  sections 0/7 (OPM-OQ-2/3) and PRD section 6.2 ("Operation lifecycle").
+
+  OPAQUE TOKEN, NEVER PERSISTED AS PLAINTEXT (invariant): the caller-facing
+  confirmation token itself (minted by
+  `operator_mcp_policy.mint_confirmation`, e.g. via `secrets.token_urlsafe`)
+  is returned to the caller exactly once and is NEVER written to disk, a
+  log, or this record. `token_digest` below is the SHA-256 hex digest of
+  that token -- verification (`operator_mcp_policy.verify_confirmation`)
+  recomputes the digest of a presented token and compares via
+  `hmac.compare_digest`, mirroring `local_static.py`'s constant-time Bearer
+  comparison pattern.
+
+  FULL BINDING (OPM-OQ-2, AC OPM-1): a confirmation binds actor, workspace
+  (via `actor.workspace_id`), `effective_sensitivity`, `operation_kind`,
+  `canonical_input_digest`, `idempotency_key`, `policy_snapshot_version`,
+  and `targets` -- every field this record freezes at mint time. Execution
+  MUST revalidate every one of these fields against the freshly
+  canonicalized current request (see
+  `schemas/operator_mcp_operation.schema.yaml`'s canonicalization section);
+  ANY mismatch denies with zero manifest and zero effect (AC OPM-1
+  resilience clause) -- see `operator_mcp_error.schema.yaml`'s
+  `confirmation_mismatch`/`idempotency_conflict` reason codes.
+
+  FIVE-MINUTE TTL, ONE-TIME ATOMIC CONSUMPTION (OPM-OQ-2 default): `status`
+  starts `issued` and transitions to exactly one of `consumed`, `expired`,
+  or `revoked` -- never back to `issued`. `expires_at` is always
+  `issued_at` + 300 seconds. Atomic consumption (writing the operation
+  manifest AND flipping this record to `consumed` in one atomic step) is
+  P2's job (`operator_operation_service.py`, OPM-2.1); this schema freezes
+  only the record SHAPE both this phase's policy checks and P2's durable
+  store must agree on.
+
+  ONE CONFIRMATION -> ONE OPERATION (OPM-OQ-3): `consumed_by_operation_id`
+  is populated only once, at consumption, and never reused -- chaining a
+  second operation off the same confirmation requires a SEPARATE,
+  separately-previewed manifest with its own confirmation record.
+
+  EXACT REPLAY IS NOT AN ERROR (decisions-block section 0): presenting an
+  ALREADY-`consumed` token whose freshly recomputed canonical fields are
+  byte-identical to this record's own bound fields, AND still within its
+  clamped expiry, is the "exact replay" case --
+  `operator_mcp_policy.verify_confirmation` signals this as a distinct
+  outcome (`exact_replay`, not a `PolicyDecision` denial) so a caller (P2)
+  can return the PRIOR receipt rather than fabricate a new effect. A
+  `consumed` token whose recomputed fields differ from this record is
+  `idempotency_conflict` (see operator_mcp_error.schema.yaml). NOTE:
+  `operator_mcp_policy.authorize_operation` -- the execute-time
+  boolean-shaped entry point -- deliberately denies exact replay
+  (`confirmation_replayed`) rather than returning `allowed=True`; only a
+  caller invoking `verify_confirmation` directly sees the "not an error"
+  distinction (security-review round 1 finding C1).
+
+  DURABLE CONSUMPTION IS A COMPARE-AND-SWAP (DUR-1, binding on P2): the
+  transition this record makes from `status: issued` to `status: consumed`
+  MUST be implemented as:
+
+  > Consumption is a compare-and-swap on `status` from exactly `issued` to
+  > `consumed`, performed in the same durable transaction as the
+  > operation-manifest write, under an exclusive single-writer lock (SQLite
+  > `BEGIN IMMEDIATE`, or `O_EXCL` create-then-atomic-rename). A CAS that
+  > observes any status other than `issued` MUST route to the exact-replay /
+  > idempotency-conflict path and MUST NOT execute.
+
+  `operator_mcp_policy.consume_confirmation` is a PURE function (P1) that
+  models only the guarded `issued -> consumed` field transition and its
+  precondition (status must be `issued` and unexpired); it touches no disk.
+  P2's real persistence layer is the one that must satisfy the CAS/
+  single-writer-lock property above -- a read-then-write implementation
+  that merely calls this pure function and writes the result can pass every
+  P1 test while still permitting two concurrent callers to both observe
+  `status == "issued"` and both win.
+type: object
+additionalProperties: false
+$defs:
+  actor:
+    type: object
+    additionalProperties: false
+    required:
+      - user_id
+      - workspace_id
+      - roles
+    properties:
+      user_id:
+        type: string
+        minLength: 1
+        maxLength: 128
+      workspace_id:
+        type: string
+        minLength: 1
+        maxLength: 128
+      roles:
+        type: array
+        maxItems: 8
+        items:
+          type: string
+          minLength: 1
+          maxLength: 32
+  target_ref:
+    type: object
+    additionalProperties: false
+    required:
+      - target_kind
+      - target_ref
+    properties:
+      target_kind:
+        enum:
+          - run
+          - source
+          - extraction_card
+          - claim_ledger
+          - report_draft
+          - report_final
+          - evidence_bundle
+          - import_packet
+          - agent_job
+          - writeback_preview
+          - verification
+      target_ref:
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[A-Za-z0-9_\\-:.]+$"
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: operator_mcp_confirmation
+  confirmation_id:
+    type: string
+    pattern: "^opc_[a-f0-9]{64}$"
+  token_digest:
+    description: SHA-256 hex digest of the opaque token; never the raw token.
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  actor:
+    $ref: "#/$defs/actor"
+  effective_sensitivity:
+    enum:
+      - public
+      - personal
+      - work_sensitive
+      - client_sensitive
+  operation_kind:
+    enum:
+      - run.plan
+      - swarm.start
+      - job.status
+      - job.cancel
+      - job.resume
+      - external_report.import
+      - source.ingest
+      - run.extract
+      - run.claim_map
+      - run.synthesize
+      - run.verify
+      - run.bundle
+      - writeback.preview
+  canonical_input_digest:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  idempotency_key:
+    type: string
+    minLength: 1
+    maxLength: 128
+    pattern: "^[A-Za-z0-9_\\-]+$"
+  policy_snapshot_version:
+    type: string
+    minLength: 1
+    maxLength: 64
+  targets:
+    type: array
+    maxItems: 20
+    items:
+      $ref: "#/$defs/target_ref"
+  status:
+    enum:
+      - issued
+      - consumed
+      - expired
+      - revoked
+  issued_at:
+    type: string
+    format: date-time
+  expires_at:
+    type: string
+    format: date-time
+  consumed_at:
+    type: [string, "null"]
+    format: date-time
+  consumed_by_operation_id:
+    type: [string, "null"]
+    minLength: 1
+    maxLength: 128
+required:
+  - schema_version
+  - type
+  - confirmation_id
+  - token_digest
+  - actor
+  - effective_sensitivity
+  - operation_kind
+  - canonical_input_digest
+  - idempotency_key
+  - policy_snapshot_version
+  - targets
+  - status
+  - issued_at
+  - expires_at
+  - consumed_at
+  - consumed_by_operation_id
+allOf:
+  - if:
+      properties:
+        status:
+          const: issued
+      required:
+        - status
+    then:
+      properties:
+        consumed_at:
+          const: null
+        consumed_by_operation_id:
+          const: null
+  - if:
+      properties:
+        status:
+          const: consumed
+      required:
+        - status
+    then:
+      required:
+        - consumed_at
+        - consumed_by_operation_id
+      properties:
+        consumed_at:
+          not:
+            const: null
+        consumed_by_operation_id:
+          not:
+            const: null

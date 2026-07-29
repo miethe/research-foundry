@@ -1,0 +1,204 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/operator_mcp_operation.schema.yaml/v1"
+title: Operator MCP Operation Request
+description: >-
+  Canonicalized operation-request envelope for the local-stdio Operator MCP
+  (research-foundry-operator-mcp-v1 P1, OPM-1.1); see
+  docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
+  ("Phase P1: Contract, Identity, and Confirmation") and
+  .codex/worknotes/research-foundry-operator-mcp/decisions-block.md sections
+  0/1/7 (OPM-OQ-1..4/6).
+
+  CLOSED OPERATION KINDS, NO WILDCARD (invariant, AC OPM-4): `operation_kind`
+  is a fixed 13-member enum mirroring PRD section 6.1's tool inventory minus
+  `operation.preflight` itself -- `operation.preflight` is a distinct META
+  TOOL (the mint/preview step) that carries one of these 13 kinds as ITS OWN
+  request payload rather than ever appearing as a value of this field. There
+  is no `execute`, `shell`, `file`, `url.fetch`, `provider.run`,
+  `adapter.run`, `writeback.execute`, `agent-job.accept`, or wildcard/glob
+  member, and none will ever be added without a new schema version. An
+  unrecognized `operation_kind` fails closed at this schema boundary before
+  any policy stage in `operator_mcp_policy.py` ever runs.
+
+  TOOL NAMES = OPERATION KINDS + `operation.preflight` (14 total). Operator
+  MCP has no separate "tool" namespace distinct from `operation_kind` --
+  contrast Knowledge MCP's `tool` transport label
+  (`research_foundry.knowledge_mcp.registry`), which names a DIFFERENT,
+  read-only surface. `research_foundry.services.operator_mcp_policy.TOOL_NAMES`
+  is this contract's own code-level mirror of the enum below (kept in sync
+  by `tests/unit/test_operator_mcp_policy.py`).
+
+  KNOWLEDGE MCP NON-OVERLAP INVENTORY (OPM-1.1, KMCP-1.G consumed not
+  duplicated): the read-only `rf-knowledge-mcp` package
+  (`research_foundry.knowledge_mcp.registry`) registers exactly eight tools:
+  `search`, `fetch` (frozen core) and `rf_search`, `rf_fetch`,
+  `rf_source_get`, `rf_assertion_get`, `rf_report_get`, `rf_run_get`
+  (RF-extended). None of those eight names, and no read/search/fetch/get
+  verb over knowledge resources, ever appears in this file's `operation_kind`
+  enum or in Operator MCP's tool inventory -- the two tool-name sets are
+  disjoint by construction. `tests/unit/test_operator_mcp_policy.py` asserts
+  this disjointness at import time against
+  `research_foundry.knowledge_mcp.registry.TOOL_NAMES` so the two packages
+  cannot silently drift into an overlapping surface.
+
+  CANONICALIZATION (OPM-1.1/OPM-1.3): the `canonical_input_digest` a
+  confirmation token binds to (see
+  `schemas/operator_mcp_confirmation.schema.yaml`) is the SHA-256 hex digest
+  of this envelope's own canonical JSON form -- `json.dumps(obj,
+  ensure_ascii=False, separators=(",", ":"), sort_keys=True)` (the SAME
+  convention `assertion_identity.canonical_source_assertion_json` and
+  `knowledge_access._canonical_json` already use) -- computed over every
+  field EXCEPT `requested_at` (a wall-clock timestamp would make the digest
+  non-reproducible across an identical logical request). Two requests with
+  the same `operation_kind`/`actor`/`idempotency_key`/`targets`/
+  `input_payload`/`policy_snapshot_version`/`effective_sensitivity` always
+  produce the SAME digest regardless of `requested_at`.
+
+  NO CALLER-SUPPLIED WORKSPACE FALLBACK (OPM-OQ-1, security-review round 1
+  finding H3): `actor.workspace_id` here is always the value RESOLVED from
+  the trusted local identity (`operator_mcp_policy.resolve_operator_identity`),
+  never a caller-supplied default. Every declared target's OWNING workspace
+  is resolved server-side (`PolicyContext.resolved_target_workspaces`,
+  mandatory and length-matched to `targets` whenever any are declared -- no
+  default/omitted-means-skip gate) and compared against `actor.workspace_id`;
+  a mismatch, or a target that could not be resolved at all, is denied with
+  the SAME `not_found` reason code a genuinely-absent target reference would
+  produce (see `operator_mcp_error.schema.yaml`) -- never `identity_denied`
+  (reserved strictly for a wholly missing identity) and never a
+  distinguishing message.
+
+  BOUNDED, NOT OPEN (AC OPM-7): `targets` is capped at 20 items and
+  `input_payload` at 32 top-level properties. Per-tool payload SHAPES beyond
+  this generic envelope are frozen incrementally by later phases (P3-P5) as
+  they wire each of the 13 closed adapters; this schema freezes only the
+  envelope, the closed kind/target-kind enums, and the canonicalization
+  contract -- premature per-tool payload schemas would drift from services
+  that do not exist yet in this repository (P1 scope note: "no effect
+  adapter or MCP server exists yet").
+type: object
+additionalProperties: false
+$defs:
+  actor:
+    type: object
+    additionalProperties: false
+    required:
+      - user_id
+      - workspace_id
+      - roles
+    properties:
+      user_id:
+        type: string
+        minLength: 1
+        maxLength: 128
+      workspace_id:
+        type: string
+        minLength: 1
+        maxLength: 128
+      roles:
+        type: array
+        maxItems: 8
+        items:
+          type: string
+          minLength: 1
+          maxLength: 32
+  target_ref:
+    type: object
+    additionalProperties: false
+    required:
+      - target_kind
+      - target_ref
+    properties:
+      target_kind:
+        description: >-
+          Closed vocabulary of the canonical objects an operation may
+          declare as a target. Never a raw filesystem path.
+        enum:
+          - run
+          - source
+          - extraction_card
+          - claim_ledger
+          - report_draft
+          - report_final
+          - evidence_bundle
+          - import_packet
+          - agent_job
+          - writeback_preview
+          - verification
+      target_ref:
+        description: Opaque canonical identifier for the target object -- never a path.
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[A-Za-z0-9_\\-:.]+$"
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: operator_mcp_operation
+  operation_kind:
+    enum:
+      - run.plan
+      - swarm.start
+      - job.status
+      - job.cancel
+      - job.resume
+      - external_report.import
+      - source.ingest
+      - run.extract
+      - run.claim_map
+      - run.synthesize
+      - run.verify
+      - run.bundle
+      - writeback.preview
+  actor:
+    $ref: "#/$defs/actor"
+  idempotency_key:
+    description: >-
+      Stable client-chosen key spanning retries of the SAME logical
+      operation (decisions-block section 0: "A stable operation_id spans
+      retries"). Same key + changed bound inputs fails closed
+      (`idempotency_conflict`, see operator_mcp_error.schema.yaml).
+    type: string
+    minLength: 1
+    maxLength: 128
+    pattern: "^[A-Za-z0-9_\\-]+$"
+  targets:
+    type: array
+    maxItems: 20
+    items:
+      $ref: "#/$defs/target_ref"
+  input_payload:
+    description: >-
+      Generic bounded per-tool payload; per-kind shapes are frozen
+      incrementally by P3-P5 (see description above).
+    type: object
+    additionalProperties: true
+    maxProperties: 32
+  policy_snapshot_version:
+    type: string
+    minLength: 1
+    maxLength: 64
+  effective_sensitivity:
+    description: >-
+      Strictest value across every input/target/policy sensitivity in scope
+      (SENSITIVITY_ORDER four-level vocabulary --
+      `research_foundry.services.export_service.SENSITIVITY_ORDER`).
+    enum:
+      - public
+      - personal
+      - work_sensitive
+      - client_sensitive
+  requested_at:
+    type: string
+    format: date-time
+required:
+  - schema_version
+  - type
+  - operation_kind
+  - actor
+  - idempotency_key
+  - targets
+  - input_payload
+  - policy_snapshot_version
+  - effective_sensitivity
+  - requested_at

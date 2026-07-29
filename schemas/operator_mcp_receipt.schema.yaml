@@ -1,0 +1,386 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/operator_mcp_receipt.schema.yaml/v1"
+title: Operator MCP Receipt
+description: >-
+  Discriminated-union receipt envelope for the local-stdio Operator MCP
+  (research-foundry-operator-mcp-v1 P1, OPM-1.4); see decisions-block
+  sections 0/1/7 (OPM-OQ-5/6) and PRD sections 6.2/6.3/7.1 (OPM-FR-5/6/7).
+
+  FIVE RECEIPT KINDS, ONE FILE (OPM-1.4: "Freeze operation/action/effect/
+  checkpoint/terminal receipt fields"): every instance of this schema is
+  exactly one of the five `$defs` branches below, selected by the required
+  `kind` discriminator and enforced via a closed `oneOf`. P2
+  (`operator_operation_service.py`, OPM-2.1/2.3) is the durable-persistence
+  OWNER of these shapes; this schema freezes the CONTRACT both this phase's
+  fixtures and P2's store must agree on.
+
+  IMMUTABLE VS MUTABLE (mirrors external_research_import_receipt.schema.yaml
+  / external_research_import_checkpoint.schema.yaml's split, generalized
+  into one file with a discriminator instead of two files, since P1 owns
+  exactly four schema files per the implementation plan's `files_affected`
+  list): `operation_receipt`, `action_receipt`, `effect_receipt`, and
+  `terminal_receipt` are immutable once written -- never updated in place,
+  never re-emitted for the same identity. `checkpoint` is the ONE mutable,
+  atomically-replaceable kind (decisions-block section 0 / OPM-OQ-4:
+  "cancellation safe points are between manifest actions"); it never
+  substitutes for a terminal receipt and is superseded, not amended.
+
+  AUDIT IS SUPPLEMENTAL, RECEIPT IS PRIMARY (OPM-OQ-6): `terminal_receipt`
+  carries a mandatory `audit_delivery` disposition
+  (`delivered`/`degraded`/`unavailable`) that is recorded ALONGSIDE the
+  effect truth and NEVER erases or blocks it -- a degraded/unavailable
+  audit delivery is itself durable receipt content, not a reason to omit
+  the terminal receipt (mirrors `audit_service.py`'s documented fail-open
+  contract: "a lost audit row is loud but non-blocking").
+
+  EFFECT KINDS STAY OPEN-BUT-BOUNDED (deliberate, not an oversight): unlike
+  `operation_kind`/`target_kind` (closed enums, frozen in
+  `operator_mcp_operation.schema.yaml`), `effect_receipt.effect_kind` is a
+  bounded PATTERN (snake_case identifier, not a fixed enum) because P1 does
+  not yet know every concrete effect P3-P5's adapters will name (e.g.
+  `source_card_created`, `claim_ledger_updated`) -- freezing that
+  enumeration now would either be incomplete or would have to be revised by
+  every later phase, contradicting "closed operation kinds" which applies
+  to the DISPATCH surface (operation/tool names), not to the descriptive
+  effect_kind label recorded after the fact.
+
+  NO RAW EXCEPTION, NO UNBOUNDED FIELD (AC OPM-7): every string field below
+  is length-capped; `terminal_receipt.denial_reason_code`, when present, is
+  drawn from the SAME closed enum as `operator_mcp_error.schema.yaml`'s
+  `reason_code` (duplicated by value, not `$ref`, per this repo's
+  no-cross-file-`$ref`-resolver limitation -- see
+  `knowledge_activity_receipt.schema.yaml`'s docstring for the identical
+  convention). No field here ever carries a stack trace, environment
+  variable, secret, or unrestricted filesystem path.
+type: object
+oneOf:
+  - $ref: "#/$defs/operation_receipt"
+  - $ref: "#/$defs/action_receipt"
+  - $ref: "#/$defs/effect_receipt"
+  - $ref: "#/$defs/checkpoint"
+  - $ref: "#/$defs/terminal_receipt"
+$defs:
+  audit_delivery:
+    type: object
+    additionalProperties: false
+    required:
+      - status
+      - audit_event_id
+    properties:
+      status:
+        enum:
+          - delivered
+          - degraded
+          - unavailable
+      audit_event_id:
+        type: [string, "null"]
+        maxLength: 128
+      detail:
+        type: string
+        maxLength: 500
+  operation_receipt:
+    type: object
+    additionalProperties: false
+    required:
+      - schema_version
+      - kind
+      - operation_id
+      - workspace_id
+      - operation_kind
+      - status
+      - idempotency_key
+      - canonical_input_digest
+      - generated_at
+    properties:
+      schema_version:
+        const: "1.0"
+      kind:
+        const: operation_receipt
+      operation_id:
+        type: string
+        pattern: "^opm_[a-f0-9]{64}$"
+      workspace_id:
+        type: string
+        minLength: 1
+        maxLength: 128
+      operation_kind:
+        enum:
+          - run.plan
+          - swarm.start
+          - job.status
+          - job.cancel
+          - job.resume
+          - external_report.import
+          - source.ingest
+          - run.extract
+          - run.claim_map
+          - run.synthesize
+          - run.verify
+          - run.bundle
+          - writeback.preview
+      status:
+        enum:
+          - accepted
+          - in_progress
+          - completed
+          - failed
+          - denied
+          - canceled
+      idempotency_key:
+        type: string
+        minLength: 1
+        maxLength: 128
+      canonical_input_digest:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      generated_at:
+        type: string
+        format: date-time
+  action_receipt:
+    type: object
+    additionalProperties: false
+    required:
+      - schema_version
+      - kind
+      - operation_id
+      - action_id
+      - action_index
+      - status
+      - attempt_ref
+      - started_at
+      - completed_at
+    properties:
+      schema_version:
+        const: "1.0"
+      kind:
+        const: action_receipt
+      operation_id:
+        type: string
+        pattern: "^opm_[a-f0-9]{64}$"
+      action_id:
+        type: string
+        minLength: 1
+        maxLength: 128
+      action_index:
+        type: integer
+        minimum: 0
+      status:
+        enum:
+          - completed
+          - failed
+          - skipped
+      attempt_ref:
+        description: >-
+          Opaque AgentJob attempt identifier (OPM-2.2 reuse) -- never a
+          filesystem path.
+        type: string
+        minLength: 1
+        maxLength: 128
+      started_at:
+        type: string
+        format: date-time
+      completed_at:
+        type: [string, "null"]
+        format: date-time
+      reason_code:
+        type: [string, "null"]
+        maxLength: 64
+      retryable:
+        type: boolean
+  effect_receipt:
+    type: object
+    additionalProperties: false
+    required:
+      - schema_version
+      - kind
+      - operation_id
+      - action_id
+      - effect_kind
+      - effect_digest
+      - effect_ref
+      - generated_at
+    properties:
+      schema_version:
+        const: "1.0"
+      kind:
+        const: effect_receipt
+      operation_id:
+        type: string
+        pattern: "^opm_[a-f0-9]{64}$"
+      action_id:
+        type: string
+        minLength: 1
+        maxLength: 128
+      effect_kind:
+        description: Bounded, open descriptive label -- see module description.
+        type: string
+        pattern: "^[a-z][a-z0-9_]{0,62}$"
+      effect_digest:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      effect_ref:
+        description: Opaque canonical target reference the effect produced/mutated.
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[A-Za-z0-9_\\-:.]+$"
+      generated_at:
+        type: string
+        format: date-time
+  checkpoint:
+    description: >-
+      The ONE mutable kind (see module description). `next_action_index`
+      is null only when `status` is `converged`.
+    type: object
+    additionalProperties: false
+    required:
+      - schema_version
+      - kind
+      - operation_id
+      - status
+      - next_action_index
+      - completed_action_count
+      - total_action_count
+      - non_cancelable
+      - updated_at
+    properties:
+      schema_version:
+        const: "1.0"
+      kind:
+        const: checkpoint
+      operation_id:
+        type: string
+        pattern: "^opm_[a-f0-9]{64}$"
+      status:
+        enum:
+          - pending
+          - converged
+      next_action_index:
+        type: [integer, "null"]
+        minimum: 0
+      completed_action_count:
+        type: integer
+        minimum: 0
+      total_action_count:
+        type: integer
+        minimum: 0
+      non_cancelable:
+        description: >-
+          True while an atomic, indivisible action (e.g. atomic file
+          publication) is in flight -- OPM-OQ-4: cancellation is observed
+          only at the NEXT manifest action boundary while this is true.
+        type: boolean
+      updated_at:
+        type: string
+        format: date-time
+    allOf:
+      - if:
+          properties:
+            status:
+              const: converged
+          required:
+            - status
+        then:
+          properties:
+            next_action_index:
+              const: null
+            non_cancelable:
+              const: false
+  terminal_receipt:
+    type: object
+    additionalProperties: false
+    required:
+      - schema_version
+      - kind
+      - operation_id
+      - workspace_id
+      - operation_kind
+      - status
+      - effect_receipt_refs
+      - action_count_total
+      - action_count_completed
+      - audit_delivery
+      - completed_at
+    properties:
+      schema_version:
+        const: "1.0"
+      kind:
+        const: terminal_receipt
+      operation_id:
+        type: string
+        pattern: "^opm_[a-f0-9]{64}$"
+      workspace_id:
+        type: string
+        minLength: 1
+        maxLength: 128
+      operation_kind:
+        enum:
+          - run.plan
+          - swarm.start
+          - job.status
+          - job.cancel
+          - job.resume
+          - external_report.import
+          - source.ingest
+          - run.extract
+          - run.claim_map
+          - run.synthesize
+          - run.verify
+          - run.bundle
+          - writeback.preview
+      status:
+        enum:
+          - completed
+          - failed
+          - denied
+          - canceled
+      effect_receipt_refs:
+        description: >-
+          Echo of every effect_receipt.effect_digest this operation
+          produced -- bounded, never a superset, never a hidden/denied
+          count.
+        type: array
+        maxItems: 200
+        items:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+      action_count_total:
+        type: integer
+        minimum: 0
+      action_count_completed:
+        type: integer
+        minimum: 0
+      denial_reason_code:
+        description: >-
+          Populated only when status is `denied`/`failed`; drawn from the
+          SAME closed enum as operator_mcp_error.schema.yaml's reason_code
+          (duplicated by value; see module description).
+        type: [string, "null"]
+        maxLength: 64
+      audit_delivery:
+        $ref: "#/$defs/audit_delivery"
+      completed_at:
+        type: string
+        format: date-time
+    allOf:
+      - if:
+          properties:
+            status:
+              enum: [denied, failed]
+          required:
+            - status
+        then:
+          properties:
+            denial_reason_code:
+              not:
+                const: null
+      - if:
+          properties:
+            status:
+              enum: [completed, canceled]
+          required:
+            - status
+        then:
+          properties:
+            denial_reason_code:
+              const: null
