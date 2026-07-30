@@ -84,6 +84,19 @@ this module has no UPDATE path for `operations.manifest_json` and no DELETE
 path for either table. Only the CAS `UPDATE` on `confirmations.status` (and
 its accompanying `record_json`) ever mutates an existing row, and it only
 ever transitions `issued -> consumed`.
+
+**G4 (cross-model concurrency review)**: the two invariants above --
+`confirmations.status` staying within its closed vocabulary, and
+`operations` rows being immutable -- were, until this fix, enforced ONLY by
+this module's own Python; nothing at the DB level rejected an out-of-band
+write that violated either one. Both are now ALSO enforced by SQLite
+triggers (`trg_confirmations_status_valid_insert`/`_update`,
+`trg_operations_immutable_no_update`/`_no_delete`, in :data:`_DDL`) rather
+than a literal `CHECK` constraint -- SQLite cannot add a `CHECK` to an
+already-created table (no `ALTER TABLE ... ADD CONSTRAINT`), and the only
+non-destructive retrofit technique (create-copy-drop-rename) would violate
+this module's own "never drop/recreate" rule below. Triggers give the
+identical enforcement guarantee while staying purely additive.
 """
 
 from __future__ import annotations
@@ -145,6 +158,42 @@ _DDL: tuple[str, ...] = (
         created_at      TEXT NOT NULL
     )
     """,
+    # G4 (cross-model concurrency review): `status` was, until this fix,
+    # APPLICATION-enforced only -- nothing at the DB level rejected a row
+    # whose `status` fell outside the schema's closed vocabulary
+    # (`issued`/`consumed`/`expired`/`revoked`,
+    # `schemas/operator_mcp_confirmation.schema.yaml`). A literal SQL
+    # `CHECK` constraint CANNOT be added to an ALREADY-CREATED SQLite table
+    # -- `ALTER TABLE` has no `ADD CONSTRAINT`/`ADD CHECK` (a hard SQLite
+    # limitation, not a design choice); the only non-destructive way to
+    # retrofit one is the create-copy-drop-rename rebuild idiom, which this
+    # module's OWN "never drop/recreate" invariant (module docstring, and
+    # `rbac_store.py`'s sibling convention this module mirrors) explicitly
+    # forbids for a durable store. These two triggers give the IDENTICAL
+    # guarantee a `CHECK(status IN (...))` would -- any write with an
+    # out-of-vocabulary `status` is rejected by SQLite itself (raises
+    # `sqlite3.IntegrityError`), not merely by this module's own Python --
+    # while remaining PURELY ADDITIVE (`CREATE TRIGGER IF NOT EXISTS`, no
+    # version bump, no data rebuild): applying immediately, retroactively,
+    # to any `operator_operations.db` created by an EARLIER version of this
+    # module the next time `_ensure_schema` runs against it, with zero risk
+    # to already-persisted rows.
+    """
+    CREATE TRIGGER IF NOT EXISTS trg_confirmations_status_valid_insert
+    BEFORE INSERT ON confirmations
+    WHEN NEW.status NOT IN ('issued', 'consumed', 'expired', 'revoked')
+    BEGIN
+        SELECT RAISE(ABORT, 'confirmations.status must be one of issued/consumed/expired/revoked');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS trg_confirmations_status_valid_update
+    BEFORE UPDATE OF status ON confirmations
+    WHEN NEW.status NOT IN ('issued', 'consumed', 'expired', 'revoked')
+    BEGIN
+        SELECT RAISE(ABORT, 'confirmations.status must be one of issued/consumed/expired/revoked');
+    END
+    """,
     # operations: immutable operation manifests. UNIQUE(workspace_id,
     # idempotency_key) is the idempotency-conflict/exact-replay dedup key
     # (AC OPM-3) -- never relaxed to a plain index.
@@ -165,6 +214,30 @@ _DDL: tuple[str, ...] = (
     """
     CREATE INDEX IF NOT EXISTS idx_operations_workspace
         ON operations (workspace_id)
+    """,
+    # G4: `operations` rows are documented (module docstring, final
+    # paragraph) as immutable -- no UPDATE path for `manifest_json`, no
+    # DELETE path at all. Until this fix that was true only because no
+    # CODE PATH happens to issue those statements, not because the
+    # DATABASE would refuse them -- a bug, an out-of-band script, or a
+    # future refactor could silently mutate or erase a committed manifest.
+    # These two triggers make the immutability a DB-level invariant, the
+    # same additive `CREATE TRIGGER IF NOT EXISTS` idiom as the two above:
+    # any UPDATE or DELETE against `operations` is rejected by SQLite
+    # itself, regardless of which Python code path attempts it.
+    """
+    CREATE TRIGGER IF NOT EXISTS trg_operations_immutable_no_update
+    BEFORE UPDATE ON operations
+    BEGIN
+        SELECT RAISE(ABORT, 'operations rows are immutable -- no UPDATE path exists by design');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS trg_operations_immutable_no_delete
+    BEFORE DELETE ON operations
+    BEGIN
+        SELECT RAISE(ABORT, 'operations rows are immutable -- no DELETE path exists by design');
+    END
     """,
 )
 
@@ -615,6 +688,40 @@ class OperatorOperationService:
         fixture in `tests/conftest.py`; a test that needs to move time
         forward calls `ids.set_clock(...)` (or monkeypatches `ids.now`)
         itself, exactly like every other service in this codebase.
+
+        **G1 (cross-model concurrency review, HIGH -- time-of-check/
+        time-of-use across the lock wait)**: `moment` is captured AFTER
+        `BEGIN IMMEDIATE` has actually acquired the exclusive writer lock,
+        NOT before the (up to `_BUSY_TIMEOUT_MS`, currently 15s) wait for
+        it. A `moment` captured before the wait would let a confirmation
+        that expires WHILE this call is blocked on a concurrent writer's
+        lock still be judged not-yet-expired once the lock is finally
+        acquired -- committing a manifest and consuming a token strictly
+        AFTER its clamped expiry, violating
+        `schemas/operator_mcp_confirmation.schema.yaml`'s "the expiry
+        predicate must hold at commit time" contract. There is exactly ONE
+        `ids.now()` call in this method, and it is the SAME `moment`
+        threaded into both expiry checks inside `_consume_locked`
+        (`verify_confirmation` AND `consume_confirmation`) and into the
+        persisted manifest's `created_at`/`requested_at`/`consumed_at` --
+        no other call site in this class reads the clock.
+
+        **G2 (cross-model concurrency review, MEDIUM -- lock-timeout
+        escapes raw)**: `_ensure_schema(conn)` and `conn.execute("BEGIN
+        IMMEDIATE")` are wrapped in their OWN exception boundary. When the
+        busy-timeout window above is exhausted without acquiring the lock,
+        SQLite raises `sqlite3.OperationalError` ("database is locked") --
+        the SAME class of unbounded-internal-error-crossing-the-boundary
+        defect F4 already closed for the CAS-invariant-violation path
+        (`_Dur1InvariantViolation`); this sibling lock-ACQUISITION path was
+        missed in that fix. No transaction is ever opened when this branch
+        fires (`BEGIN IMMEDIATE` failing means it never took effect), so
+        there is nothing to roll back -- the governed, retryable
+        `OperationOutcome("denied", "internal_error", None)` is returned
+        directly, with the full exception detail logged server-side only
+        (never in the caller-visible surface, per
+        `schemas/operator_mcp_error.schema.yaml`'s bounded/redacted
+        contract).
         """
 
         if authorization is None:
@@ -632,11 +739,29 @@ class OperatorOperationService:
             # computed for, even if it is itself valid and unexpired.
             return OperationOutcome("denied", "internal_error", None)
 
-        moment = ids.now()
         conn = _connect(self._paths)
         try:
-            _ensure_schema(conn)
-            conn.execute("BEGIN IMMEDIATE")
+            try:
+                _ensure_schema(conn)
+                conn.execute("BEGIN IMMEDIATE")
+            except sqlite3.OperationalError as exc:
+                # G2: busy_timeout exhausted acquiring the exclusive writer
+                # lock (or, in principle, during schema setup) -- no
+                # transaction was ever opened on this path.
+                _logger.error(
+                    "operator_operation_service: DUR-1 lock acquisition failed (%s) "
+                    "for confirmation_id=%s -- busy_timeout exhausted or schema "
+                    "setup failed",
+                    type(exc).__name__,
+                    confirmation_id,
+                )
+                return OperationOutcome("denied", "internal_error", None)
+
+            # G1: the ONLY `ids.now()` call in this method -- captured HERE,
+            # with the exclusive writer lock already held, not before the
+            # wait for it. See this method's docstring for the full TOCTOU
+            # rationale.
+            moment = ids.now()
             try:
                 outcome = self._consume_locked(
                     conn,
@@ -780,6 +905,25 @@ class OperatorOperationService:
             # reaching a caller would violate
             # `schemas/operator_mcp_error.schema.yaml`'s bounded/redacted
             # contract the moment anything downstream serialized it verbatim.
+            #
+            # G3 (cross-model concurrency review): `internal_error` (rather
+            # than `idempotency_conflict` or a new replay-shaped code) is
+            # the DELIBERATE, re-affirmed classification for this branch,
+            # not an oversight. Between two COMPLIANT callers of this
+            # module this branch is unreachable -- the CAS predicate above
+            # (`verify_confirmation` + the guarded `WHERE status =
+            # 'issued'` UPDATE) already routes every legitimate retry,
+            # collision, and replay to its own specific outcome BEFORE this
+            # point; reaching `rowcount != 1` HERE means `BEGIN IMMEDIATE`'s
+            # exclusivity guarantee itself was violated (e.g. a future
+            # refactor sharing one connection across threads/processes) --
+            # a genuine integrity violation in this module's OWN durability
+            # mechanism, not a caller-triggerable business-logic outcome.
+            # `internal_error` is the honest code for "this module's own
+            # invariant broke," exactly as it is used at G2's lock-timeout
+            # branch immediately above in `consume_and_create_operation`;
+            # reusing `idempotency_conflict` here would misattribute this
+            # module's own bug to a caller-triggerable request condition.
             _logger.error(
                 "operator_operation_service: DUR-1 CAS observed rowcount=%d "
                 "(expected 1) for confirmation_id=%s -- a concurrent writer "

@@ -52,9 +52,11 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import multiprocessing
 import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Mapping
 
 import pytest
@@ -63,6 +65,7 @@ from research_foundry import ids
 from research_foundry.paths import FoundryPaths
 from research_foundry.schemas import SchemaRegistry
 from research_foundry.services import operator_mcp_policy as policy
+from research_foundry.services import operator_operation_service as service_module
 from research_foundry.services.operator_operation_service import (
     AuthorizationProof,
     OperationOutcome,
@@ -696,6 +699,113 @@ def test_concurrent_consumers_of_one_confirmation_yield_one_success_one_conflict
 
 
 # ---------------------------------------------------------------------------
+# G5: the SAME guarantee, across REAL OS processes (not threads)
+# ---------------------------------------------------------------------------
+#
+# The threaded test immediately above shares ONE interpreter and ONE GIL --
+# it cannot exercise DUR-1's actual claim, which is durability under an
+# exclusive FILE lock across INDEPENDENT connections/processes. This
+# top-level (module-scope, so it is importable/picklable under
+# `multiprocessing`'s `spawn` start method) worker function runs
+# `consume_and_create_operation` in a genuinely separate OS process, with
+# its own interpreter, its own sqlite3 connection, and its own
+# `research_foundry.ids` clock state -- pytest's `_fixed_clock` autouse
+# fixture and this module's `_default_operator_identity` monkeypatch do NOT
+# cross a process boundary, so the clock is re-pinned explicitly to the
+# SAME `fixed_now` the confirmation was minted against in the parent
+# (identity does not need re-deriving in the child: `ctx`/`authorization`
+# were already fully resolved in the parent and are passed through by
+# value -- `_consume_locked`'s own logic never re-derives identity from
+# config, only `authorize_for_consumption`/`mint_confirmation` do, and both
+# already ran in the parent).
+
+
+def _g5_consume_worker(
+    root: str,
+    confirmation_id: str,
+    presented_token: str,
+    ctx: policy.PolicyContext,
+    authorization: AuthorizationProof,
+    fixed_now: datetime,
+    barrier: Any,
+    result_queue: Any,
+) -> None:
+    from research_foundry import ids as _ids
+    from research_foundry.paths import FoundryPaths as _FoundryPaths
+    from research_foundry.services.operator_operation_service import (
+        OperatorOperationService as _OperatorOperationService,
+    )
+
+    _ids.set_clock(lambda: fixed_now)
+    service = _OperatorOperationService(_FoundryPaths(root=Path(root)))
+    barrier.wait()
+    outcome = service.consume_and_create_operation(
+        confirmation_id=confirmation_id,
+        presented_token=presented_token,
+        ctx=ctx,
+        authorization=authorization,
+    )
+    operation_id = outcome.operation.operation_id if outcome.operation is not None else None
+    result_queue.put((outcome.outcome, outcome.reason_code, operation_id))
+
+
+def test_two_real_os_processes_racing_the_same_confirmation_yield_one_success_one_conflict(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """G5 (coverage gap, cross-model concurrency review): races two REAL,
+    separately-`spawn`ed OS processes against the SAME confirmation row in
+    the SAME sqlite file, and asserts the identical DUR-1 property the
+    threaded test above asserts: exactly one `"created"`, exactly one
+    `"exact_replay"`, and exactly one persisted `operations` row -- never
+    two manifests, never two `"created"` outcomes. A `multiprocessing.Barrier`
+    holds both children at the same starting line so they genuinely race on
+    `BEGIN IMMEDIATE`, not merely execute sequentially."""
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    fixed_now = ids.now()
+    confirmation_id, token, record = _mint_and_record(service, ctx, now=fixed_now)
+    authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=record, presented_token=token, now=fixed_now
+    )
+    assert authorization.decision.allowed
+
+    mp_ctx = multiprocessing.get_context("spawn")
+    result_queue = mp_ctx.Queue()
+    barrier = mp_ctx.Barrier(2)
+    processes = [
+        mp_ctx.Process(
+            target=_g5_consume_worker,
+            args=(
+                str(tmp_foundry.root),
+                confirmation_id,
+                token,
+                ctx,
+                authorization,
+                fixed_now,
+                barrier,
+                result_queue,
+            ),
+        )
+        for _ in range(2)
+    ]
+    for p in processes:
+        p.start()
+
+    results = [result_queue.get(timeout=60) for _ in processes]
+    for p in processes:
+        p.join(timeout=60)
+        assert p.exitcode == 0, f"worker process failed (exitcode={p.exitcode})"
+
+    outcomes = sorted(r[0] for r in results)
+    assert outcomes == ["created", "exact_replay"]
+
+    operation_ids = {r[2] for r in results if r[2] is not None}
+    assert len(operation_ids) == 1
+    assert _count_operations(tmp_foundry) == 1
+
+
+# ---------------------------------------------------------------------------
 # F1: authorization is a DATA dependency, not a docstring instruction
 # ---------------------------------------------------------------------------
 #
@@ -892,7 +1002,18 @@ def test_dur1_cas_invariant_violation_returns_governed_denial_not_raw_exception(
     `WHERE status = 'issued'` on the (desynced) column cannot match --
     `cur.rowcount` comes back 0, not 1, exercising the exact branch F4
     guards. The resulting `OperationOutcome` must be bounded/governed, and
-    the confirmations table must show no partial mutation."""
+    the confirmations table must show no partial mutation.
+
+    Uses `"expired"` (a real member of the schema's closed `status`
+    vocabulary) rather than an arbitrary string like the original
+    `"desynced"` -- G4's new `trg_confirmations_status_valid_update`
+    trigger now rejects any raw UPDATE that sets `status` OUTSIDE
+    `issued`/`consumed`/`expired`/`revoked` at the DB level (see
+    `operator_operation_service._DDL`), so an out-of-vocabulary literal
+    here would raise `sqlite3.IntegrityError` from this setup step itself
+    rather than reaching the CAS branch this test exists to exercise. Any
+    valid-but-not-`"issued"` value reproduces the identical
+    column/JSON-blob desync."""
 
     service = OperatorOperationService(tmp_foundry)
     ctx = _basic_ctx(targets=_run_targets())
@@ -904,7 +1025,7 @@ def test_dur1_cas_invariant_violation_returns_governed_denial_not_raw_exception(
     conn = _raw_connect(tmp_foundry)
     try:
         conn.execute(
-            "UPDATE confirmations SET status = 'desynced' WHERE confirmation_id = ?",
+            "UPDATE confirmations SET status = 'expired' WHERE confirmation_id = ?",
             (confirmation_id,),
         )
         conn.commit()
@@ -924,4 +1045,294 @@ def test_dur1_cas_invariant_violation_returns_governed_denial_not_raw_exception(
     # The desynced status is left exactly as it was -- the failed UPDATE
     # (rowcount 0) never partially applied, and the surrounding transaction
     # was rolled back.
-    assert _confirmation_status(tmp_foundry, confirmation_id) == "desynced"
+    assert _confirmation_status(tmp_foundry, confirmation_id) == "expired"
+
+
+# ---------------------------------------------------------------------------
+# G1: expiry must be checked AFTER the exclusive lock is acquired, not
+# before the (potentially long) wait for it -- time-of-check/time-of-use
+# across `BEGIN IMMEDIATE`.
+# ---------------------------------------------------------------------------
+
+
+class _BeginImmediateInterceptingConn:
+    """Thin proxy around a real sqlite3 connection that fires a callback
+    the FIRST time `execute("BEGIN IMMEDIATE")` is called, before letting
+    it proceed -- delegates everything else (including every other
+    `execute` call) straight to the real connection unchanged. Used by the
+    G1 test below to deterministically simulate "the clock advanced past
+    expiry while this call was blocked waiting for the writer lock",
+    without any real-time sleep/race."""
+
+    def __init__(self, conn: sqlite3.Connection, on_begin_immediate: Any) -> None:
+        self._conn = conn
+        self._on_begin_immediate = on_begin_immediate
+        self._fired = False
+
+    def execute(self, sql: str, *args: Any, **kwargs: Any) -> sqlite3.Cursor:
+        if not self._fired and sql.strip() == "BEGIN IMMEDIATE":
+            self._fired = True
+            self._on_begin_immediate()
+        return self._conn.execute(sql, *args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._conn, name)
+
+
+def test_expiry_checked_after_lock_acquired_not_before_the_wait_for_it(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G1 (HIGH, cross-model concurrency review): `consume_and_create_operation`
+    captured `moment = ids.now()` BEFORE `_ensure_schema()`/`BEGIN IMMEDIATE`
+    -- but `BEGIN IMMEDIATE` can block for up to `_BUSY_TIMEOUT_MS` (15s)
+    waiting for a concurrent writer's exclusive lock. A confirmation that
+    expires WHILE this call is blocked would still be judged not-yet-expired
+    once the lock is finally acquired, using the STALE pre-wait `moment` --
+    committing a manifest and consuming a token strictly AFTER the
+    confirmation's own clamped expiry.
+
+    Simulated deterministically (no real thread/sleep race, so this is not
+    flaky): `_BeginImmediateInterceptingConn` wraps the real connection and
+    intercepts the FIRST `BEGIN IMMEDIATE` call. Before letting it proceed,
+    the interceptor (a) advances the injectable `ids` clock past the
+    confirmation's clamped expiry, then (b) commits a competing writer
+    (`blocker_conn`) that was already holding the exclusive lock --
+    reproducing exactly the interleaving a real caller blocked on a busy
+    lock would observe: the wait for the lock ends AFTER expiry has passed.
+
+    MUST FAIL on the pre-fix code (which reads `ids.now()` before the wait,
+    observing the PRE-advance, not-yet-expired time, and returns
+    `"created"`) and PASS after the fix (which reads `ids.now()` only once
+    the lock is actually held, observing the POST-advance, expired time)."""
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    minted_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    confirmation_id, token, record = _mint_and_record(service, ctx, now=minted_at)
+    authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=record, presented_token=token, now=minted_at
+    )
+    assert authorization.decision.allowed
+
+    expired_at = minted_at + policy.CONFIRMATION_TTL + timedelta(seconds=1)
+    clock_holder = {"now": minted_at}
+    monkeypatch.setattr(ids, "now", lambda: clock_holder["now"])
+
+    # A competing writer already holding the exclusive lock at the exact
+    # moment `consume_and_create_operation` tries to acquire it below.
+    blocker_conn = sqlite3.connect(str(tmp_foundry.operator_operations_db), isolation_level=None)
+    blocker_conn.execute("PRAGMA busy_timeout = 15000")
+    blocker_conn.execute("BEGIN IMMEDIATE")
+
+    def _simulate_expiry_during_the_wait() -> None:
+        # "The wait for the lock took long enough that the token expired
+        # mid-wait" -- advance the clock, THEN release the competing
+        # holder so the real `BEGIN IMMEDIATE` this wraps can finally
+        # proceed, observing a database that is no longer locked.
+        clock_holder["now"] = expired_at
+        blocker_conn.execute("COMMIT")
+
+    real_connect = service_module._connect
+
+    def _patched_connect(paths: FoundryPaths) -> _BeginImmediateInterceptingConn:
+        return _BeginImmediateInterceptingConn(real_connect(paths), _simulate_expiry_during_the_wait)
+
+    monkeypatch.setattr(service_module, "_connect", _patched_connect)
+    try:
+        outcome = service.consume_and_create_operation(
+            confirmation_id=confirmation_id,
+            presented_token=token,
+            ctx=ctx,
+            authorization=authorization,
+        )
+    finally:
+        blocker_conn.close()
+
+    assert outcome.outcome == "denied"
+    assert outcome.reason_code == "confirmation_expired"
+    assert outcome.operation is None
+    assert _count_operations(tmp_foundry) == 0
+    # Zero effect: the confirmation is left `issued` (its own TTL already
+    # governs any future retry) -- never consumed for a request whose
+    # expiry had already passed by the time the lock was actually held.
+    assert _confirmation_status(tmp_foundry, confirmation_id) == "issued"
+
+
+# ---------------------------------------------------------------------------
+# G2: a lock-acquisition timeout must return a governed denial, not a raw
+# sqlite3.OperationalError -- the sibling of F4's already-closed
+# lock-invariant-violation path, at the ACQUISITION site instead.
+# ---------------------------------------------------------------------------
+
+
+def test_lock_acquisition_timeout_returns_governed_denial_not_raw_exception(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G2 (MEDIUM, cross-model concurrency review): `_ensure_schema()` and
+    `BEGIN IMMEDIATE` sat OUTSIDE any exception handler -- when the busy
+    timeout is exhausted acquiring the exclusive writer lock, `BEGIN
+    IMMEDIATE` raises `sqlite3.OperationalError` ("database is locked") and
+    it used to propagate straight out of `consume_and_create_operation`
+    instead of returning a governed `OperationOutcome`.
+
+    Holds a REAL competing writer lock (`blocker_conn`, `BEGIN IMMEDIATE`,
+    never released until after the call under test returns) and shrinks
+    `_BUSY_TIMEOUT_MS` to 50ms so the test exercises a REAL timeout without
+    waiting the real 15s window.
+
+    MUST FAIL on the pre-fix code (an uncaught `sqlite3.OperationalError`
+    propagates out of the test as an error, not a returned `OperationOutcome`)
+    and PASS after the fix (`OperationOutcome("denied", "internal_error", None)`
+    is returned; no transaction was ever opened, so the confirmation is
+    completely untouched)."""
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    confirmation_id, token, record = _mint_and_record(service, ctx)
+    authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=record, presented_token=token
+    )
+
+    # Small busy_timeout so this test does not actually wait the real 15s
+    # window -- exercises the SAME exhausted-timeout path, just faster.
+    monkeypatch.setattr(service_module, "_BUSY_TIMEOUT_MS", 50)
+
+    blocker_conn = sqlite3.connect(str(tmp_foundry.operator_operations_db), isolation_level=None)
+    blocker_conn.execute("BEGIN IMMEDIATE")
+    try:
+        outcome = service.consume_and_create_operation(
+            confirmation_id=confirmation_id,
+            presented_token=token,
+            ctx=ctx,
+            authorization=authorization,
+        )
+    finally:
+        blocker_conn.execute("ROLLBACK")
+        blocker_conn.close()
+
+    assert outcome.outcome == "denied"
+    assert outcome.reason_code == "internal_error"
+    assert outcome.operation is None
+    assert _count_operations(tmp_foundry) == 0
+    # No transaction was ever opened on this path -- the confirmation is
+    # completely untouched, still available (within its own TTL) for a
+    # retry once the competing writer releases the lock.
+    assert _confirmation_status(tmp_foundry, confirmation_id) == "issued"
+
+
+# ---------------------------------------------------------------------------
+# G4: `confirmations.status` and `operations` immutability are now ALSO
+# enforced at the DB level (triggers), not merely by this module's Python.
+# ---------------------------------------------------------------------------
+
+
+def test_db_rejects_out_of_vocabulary_confirmation_status_at_insert(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """G4: `trg_confirmations_status_valid_insert` rejects an INSERT whose
+    `status` is outside `issued`/`consumed`/`expired`/`revoked` -- a
+    real, DB-level guarantee independent of `record_confirmation`'s own
+    (already-tested, F3) Python-level validation."""
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    # Force the DB file (and its schema, including the new triggers) into
+    # existence via the real write path first.
+    _mint_and_record(service, ctx)
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO confirmations"
+                " (confirmation_id, workspace_id, status, record_json, created_at)"
+                " VALUES ('opc_bogus', 'ws-mine', 'not_a_real_status', '{}', 'x')"
+            )
+    finally:
+        conn.close()
+
+
+def test_db_rejects_out_of_vocabulary_confirmation_status_at_update(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """G4: `trg_confirmations_status_valid_update` rejects an UPDATE that
+    sets `status` outside the closed vocabulary."""
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    confirmation_id, _token, _record = _mint_and_record(service, ctx)
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "UPDATE confirmations SET status = 'not_a_real_status' WHERE confirmation_id = ?",
+                (confirmation_id,),
+            )
+    finally:
+        conn.close()
+    # Untouched -- the rejected UPDATE never partially applied.
+    assert _confirmation_status(tmp_foundry, confirmation_id) == "issued"
+
+
+def test_db_rejects_update_of_an_operations_row(tmp_foundry: FoundryPaths) -> None:
+    """G4: `trg_operations_immutable_no_update` rejects ANY UPDATE against
+    `operations`, independent of which column is targeted -- a real,
+    DB-level enforcement of the module docstring's "manifests are
+    immutable once written" claim."""
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    confirmation_id, token, record = _mint_and_record(service, ctx)
+    authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=record, presented_token=token
+    )
+    created = service.consume_and_create_operation(
+        confirmation_id=confirmation_id,
+        presented_token=token,
+        ctx=ctx,
+        authorization=authorization,
+    )
+    assert created.outcome == "created"
+    assert created.operation is not None
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "UPDATE operations SET manifest_json = '{}' WHERE operation_id = ?",
+                (created.operation.operation_id,),
+            )
+    finally:
+        conn.close()
+
+
+def test_db_rejects_delete_of_an_operations_row(tmp_foundry: FoundryPaths) -> None:
+    """G4: `trg_operations_immutable_no_delete` rejects ANY DELETE against
+    `operations`."""
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    confirmation_id, token, record = _mint_and_record(service, ctx)
+    authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=record, presented_token=token
+    )
+    created = service.consume_and_create_operation(
+        confirmation_id=confirmation_id,
+        presented_token=token,
+        ctx=ctx,
+        authorization=authorization,
+    )
+    assert created.outcome == "created"
+    assert created.operation is not None
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "DELETE FROM operations WHERE operation_id = ?",
+                (created.operation.operation_id,),
+            )
+    finally:
+        conn.close()
+    assert _count_operations(tmp_foundry) == 1

@@ -223,6 +223,37 @@ are code-reading conclusions. **G1 must be reproduced with a real failing test b
 accepted** — this project's history (`BLOCK-4`) is exactly about closure asserted rather than
 demonstrated.
 
+## P2-ARCH-1 — split schema ownership on a shared SQLite file (found by orchestrator review)
+
+Not from any delegate's report; found by inspecting who opens the shared database once three modules
+started converging on it.
+
+`FoundryPaths.operator_operations_db` is now opened by **two** modules, and they manage schema
+differently:
+
+- `operator_operation_service.py` owns `PRAGMA user_version` (`_SCHEMA_VERSION = 1`) and gates its
+  migrations on that counter — the repo's additive-migration convention, correctly followed.
+- `operator_attempt_adapter.py` creates its `attempts` table with a bare
+  `CREATE TABLE IF NOT EXISTS` and **never touches `user_version`**.
+
+So `attempts` sits *outside* the versioned migration scheme on a file whose version counter another
+module owns. Three consequences, in increasing severity:
+
+1. A future migration that bumps `user_version` has no record that `attempts` exists or which version
+   introduced it, so `attempts` can never be migrated under the counter.
+2. `CREATE TABLE IF NOT EXISTS` silently no-ops when the table exists with an *older shape* — so an
+   evolved `attempts` definition would diverge silently per-database, with no error. This is the same
+   failure mode the G4 finding identified for the missing `CHECK` constraint: the app assumes an
+   invariant the database does not enforce.
+3. It is about to get worse. The G1/G2 hardening task is adding a `CHECK` constraint under a
+   `user_version` bump, and OPM-2.3 will add receipt/checkpoint tables to this same file. Without a
+   decision, OPM-2.3 becomes the **third** independent schema author on one database with one shared
+   counter.
+
+**Resolution required before/with OPM-2.3:** one module owns schema and migration for this file, and
+every other module opens it for DML only — or every writer participates in the same `user_version`
+scheme. Folded into OPM-2.3's contract as a hard constraint rather than left to discover later.
+
 ## Open items / follow-ups (→ ITT nodes)
 
 Populated as execution proceeds; see the Next Actions table in the final response.
