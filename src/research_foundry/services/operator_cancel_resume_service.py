@@ -200,6 +200,80 @@ class ResumeOutcome:
 
 
 # ---------------------------------------------------------------------------
+# R1/R2 hardening: binding `resume_ctx` (and the workspace/operation_kind it
+# implies) to the REAL operation being resumed, as a DATA DEPENDENCY rather
+# than caller convention -- mirrors `AuthorizationProof`'s own closing of F1
+# in `operator_operation_service.py` (a public method reaching durable state
+# whose precondition was enforced only by convention/docstring).
+#
+# Prior to this, `resume_operation` discarded `load_operation`'s return
+# value (called only for its raise-on-missing/wrong-workspace side effect)
+# and threaded `workspace_id`/`operation_kind` straight from caller
+# parameters into `write_checkpoint`/`finalize_terminal_receipt`, whose
+# `workspace_id` columns back `idx_checkpoints_workspace`/
+# `idx_terminal_receipts_workspace`. Neither `resume_ctx`'s own
+# `effective_sensitivity`/`targets` nor the caller-supplied `workspace_id`/
+# `operation_kind` were ever compared to the manifest `load_operation` just
+# proved exists -- so a `resume_ctx` that legitimately cleared confirmation/
+# RBAC/audit-health/guard/preflight FOR ITSELF could still be presented
+# against an unrelated `operation_id` in the same workspace, and a
+# mismatched `workspace_id` parameter could misattribute checkpoint/
+# terminal-receipt rows across workspaces. Both are now DENIED, fail-closed,
+# before any attempt is minted or receipt touched.
+# ---------------------------------------------------------------------------
+
+
+def _sensitivity_rank(label: str) -> int:
+    """Rank lookup for a `PolicyContext.effective_sensitivity`-shaped label,
+    fail-closed in the SAME direction as `operator_mcp_policy`'s own
+    (module-private) `_sensitivity_rank`: an unrecognized label ranks
+    STRICTER than every known level (`len(SENSITIVITY_LEVELS)`), so a
+    corrupt/unknown value can never compare as "not weaker" against a real
+    one. This is an intentional, narrow duplicate of that helper's
+    convention -- not a reach into policy's private internals -- because
+    `operator_mcp_policy.SENSITIVITY_LEVELS` (the public vocabulary tuple)
+    is all this module needs."""
+
+    try:
+        return policy.SENSITIVITY_LEVELS.index(label)
+    except ValueError:
+        return len(policy.SENSITIVITY_LEVELS)
+
+
+def _resume_ctx_binds_operation(
+    resume_ctx: policy.PolicyContext, operation: OperationRecord
+) -> bool:
+    """R1: prove `resume_ctx` -- which `consume_and_create_operation` has
+    only proven SELF-consistent -- actually corresponds to `operation`, the
+    operation `resume_operation` is about to resume. Both checks are
+    fail-closed (a missing/unrecognized value denies, never passes):
+
+    * `resume_ctx.effective_sensitivity` must rank AT LEAST as strict as
+      `operation`'s real, persisted `effective_sensitivity` -- a caller MAY
+      present a context re-evaluated at an equal or STRICTER sensitivity
+      (e.g. governance now ranks the operation more sensitive than it was
+      at creation, and resume's fresh authorization pass correctly reflects
+      that), but never a LAXER stand-in used to sidestep a guard/preflight
+      rule that applies at the operation's real sensitivity.
+    * `resume_ctx.targets` must contain the `agent_job` target that IS
+      `operation.operation_id` -- the binding every caller (and this
+      module's own tests) already followed by convention; this makes it a
+      real data dependency instead of one caller could simply omit.
+    """
+
+    manifest_sensitivity = operation.manifest.get("effective_sensitivity")
+    if not isinstance(manifest_sensitivity, str) or manifest_sensitivity not in policy.SENSITIVITY_LEVELS:
+        return False
+    if _sensitivity_rank(resume_ctx.effective_sensitivity) < _sensitivity_rank(manifest_sensitivity):
+        return False
+
+    return any(
+        target.target_kind == "agent_job" and target.target_ref == operation.operation_id
+        for target in resume_ctx.targets
+    )
+
+
+# ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
 
@@ -541,6 +615,19 @@ class OperatorCancelResumeService:
         (resume point `0`) and an exact-replay of a still-in-flight one
         (resume point wherever it last left off) with the SAME, single
         code path.
+
+        R3 (checklist-item-2 sibling of R2, found by enumerating this
+        module's public methods after R2 was fixed in `resume_operation`):
+        `workspace_id`/`operation_kind` are DERIVED from `operation` --
+        already the AUTHORITATIVE `OperationRecord` (only constructible
+        from a persisted manifest: `OperationRecord.from_manifest` or
+        `OperatorOperationService.load_operation`) -- never taken from the
+        separately-supplied parameters. This is a SECOND, independent
+        entrypoint into the SAME `write_checkpoint`/`finalize_terminal_
+        receipt` calls whose `workspace_id` columns back `idx_checkpoints_
+        workspace`/`idx_terminal_receipts_workspace`; trusting the
+        parameters here would reach the identical unsafe behavior R2 closed
+        in `resume_operation`, just through a different door.
         """
 
         if is_replay:
@@ -567,10 +654,25 @@ class OperatorCancelResumeService:
             # operation whose receipt state was corrupted out of band.
             return ExecutionOutcome("denied", None, 0)
 
+        resolved_workspace_id = operation.workspace_id
+        resolved_operation_kind = operation.manifest["operation"]["operation_kind"]
+        if workspace_id != resolved_workspace_id or operation_kind != resolved_operation_kind:
+            _logger.warning(
+                "operator_cancel_resume_service.run_or_replay: caller-supplied "
+                "workspace_id=%r/operation_kind=%r for operation_id=%s does not match "
+                "operation.workspace_id=%r/the operation's own manifest operation_kind=%r "
+                "-- using the operation's own values (R3 hardening)",
+                workspace_id,
+                operation_kind,
+                operation.operation_id,
+                resolved_workspace_id,
+                resolved_operation_kind,
+            )
+
         return self.run_actions(
             operation.operation_id,
-            workspace_id=workspace_id,
-            operation_kind=operation_kind,
+            workspace_id=resolved_workspace_id,
+            operation_kind=resolved_operation_kind,
             actions=actions,
             attempt_ref=attempt_ref,
             start_index=resume_point.next_action_index or 0,
@@ -617,6 +719,17 @@ class OperatorCancelResumeService:
         Creates a NEW attempt via `attempt_adapter.create_attempt` (OPM-2.2)
         -- never a second, parallel attempt-minting path -- linked to the
         SAME `operation_id` being resumed.
+
+        R1/R2 (see the module-level hardening block above
+        :class:`OperatorCancelResumeService`): `resume_ctx` is proven to
+        BIND to `operation_id` (:func:`_resume_ctx_binds_operation`) before
+        anything else happens -- including before `already_terminal` is
+        ever revealed, closing a side channel where a caller with only a
+        self-consistent-but-unbound `resume_ctx` could learn whether an
+        unrelated operation had already finished. `workspace_id` and
+        `operation_kind` are then DERIVED from the just-loaded manifest,
+        never taken from the caller's parameters, for every downstream
+        write (`attempt_adapter.create_attempt`, `run_actions`).
         """
 
         if not isinstance(operation_id, str) or not operation_id:
@@ -632,9 +745,52 @@ class OperatorCancelResumeService:
             return ResumeOutcome("denied", resume_op_outcome.reason_code, None)
 
         try:
-            self._operations.load_operation(operation_id, identity=identity)
+            operation_record = self._operations.load_operation(operation_id, identity=identity)
         except KeyError:
             return ResumeOutcome("denied", "not_found", None)
+
+        if not _resume_ctx_binds_operation(resume_ctx, operation_record):
+            # R1: `resume_ctx` cleared confirmation/policy for ITSELF, but
+            # does not correspond to `operation_id` -- deny with the SAME
+            # `"not_found"` code `load_operation` already uses for a
+            # wrong-workspace lookup (H6's no-existence-leak convention): a
+            # caller must never be able to distinguish "wrong operation_id"
+            # / "wrong sensitivity" / "wrong target" from "operation not
+            # found".
+            _logger.error(
+                "operator_cancel_resume_service.resume_operation: resume_ctx "
+                "does not bind to operation_id=%s (resume_ctx.effective_sensitivity=%r, "
+                "resume_ctx.targets=%r) -- denying (R1)",
+                operation_id,
+                resume_ctx.effective_sensitivity,
+                [t.to_dict() for t in resume_ctx.targets],
+            )
+            return ResumeOutcome("denied", "not_found", None)
+
+        # R2: derive workspace_id/operation_kind from the manifest just
+        # loaded -- never trust the caller-supplied parameters, which back
+        # `checkpoints`/`terminal_receipts`' own workspace-scoped indexes
+        # (`idx_checkpoints_workspace`/`idx_terminal_receipts_workspace`).
+        # Deriving (rather than requiring the parameters and denying on
+        # mismatch) removes the fail-open entirely: no caller-suppliable
+        # value can misattribute a row, because none is ever consulted for
+        # that purpose again below. A mismatch is still logged -- it
+        # indicates either a caller bug or a boundary probe worth knowing
+        # about, even though it can no longer cause a wrong write.
+        resolved_workspace_id = operation_record.workspace_id
+        resolved_operation_kind = operation_record.manifest["operation"]["operation_kind"]
+        if workspace_id != resolved_workspace_id or operation_kind != resolved_operation_kind:
+            _logger.warning(
+                "operator_cancel_resume_service.resume_operation: caller-supplied "
+                "workspace_id=%r/operation_kind=%r for operation_id=%s does not match "
+                "the manifest's workspace_id=%r/operation_kind=%r -- using the "
+                "manifest's values (R2 hardening)",
+                workspace_id,
+                operation_kind,
+                operation_id,
+                resolved_workspace_id,
+                resolved_operation_kind,
+            )
 
         existing_terminal = self._receipts.load_terminal_receipt(operation_id)
         if existing_terminal is not None:
@@ -650,14 +806,14 @@ class OperatorCancelResumeService:
             attempt_model_profile,
             attempt_request_kind,
             attempt_policy_snapshot,
-            workspace_id=workspace_id,
+            workspace_id=resolved_workspace_id,
             identity=identity,
         )
 
         execution = self.run_actions(
             operation_id,
-            workspace_id=workspace_id,
-            operation_kind=operation_kind,
+            workspace_id=resolved_workspace_id,
+            operation_kind=resolved_operation_kind,
             actions=actions,
             attempt_ref=new_attempt.attempt_id,
             start_index=resume_point.next_action_index or 0,

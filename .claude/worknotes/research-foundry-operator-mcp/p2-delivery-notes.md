@@ -254,6 +254,62 @@ module owns. Three consequences, in increasing severity:
 every other module opens it for DML only — or every writer participates in the same `user_version`
 scheme. Folded into OPM-2.3's contract as a hard constraint rather than left to discover later.
 
+## Cheap pre-gate sweep (ICA) — found a HIGH defect the whole pipeline missed
+
+The plan mandates a focused fail-open / layer-below sweep on Sonnet **before** any Opus reviewer, at
+roughly 1/5 the cost. Offloaded to ICA `claude-sonnet-5[1m]`, scoped to the ~3400-line P2 surface and
+told to hunt exactly two defect classes and nothing else (with the already-resolved decisions listed
+so it would not re-report them). It returned **2 findings in 1 of 5 files, and "clean" for the other
+four** — and the HIGH one had escaped four implementation passes, three delegate mutation suites, and
+my own diff review.
+
+| ID | Sev | Finding |
+|---|---|---|
+| R1 | **HIGH** | **Authorization not bound to the operation being resumed.** `resume_operation` takes `operation_id` and `resume_ctx`/`resume_authorization` as *independent* parameters. `consume_and_create_operation` proves only that `resume_ctx` **itself** cleared all five policy stages — for whatever sensitivity/targets the caller put in it. The service then calls `load_operation(operation_id, identity=...)` **without assigning the result** (verified: line 635 discards it), purely for its raise-on-missing/wrong-workspace side effect, so the manifest's `effective_sensitivity`, `target_refs`, and `operation_kind` are never compared to `resume_ctx`. Reachable path: an identity holding `job.resume` in workspace W mints a valid confirmation for a **low-sensitivity** ctx (all five stages legitimately pass *for that ctx*), then presents it against a **higher-sensitivity** operation in the same W. Workspace equality holds, so nothing rejects the mismatch. H3 scenario 9's guarantee — resume re-evaluates against *current* policy/sensitivity — is thereby evaluated against a caller-chosen stand-in. |
+| R2 | MED | **`workspace_id` trusted from the caller.** Threaded unchecked into `write_checkpoint`/`finalize_terminal_receipt`, whose `workspace_id` columns back `idx_checkpoints_workspace`/`idx_terminal_receipts_workspace`. Never compared to the manifest just loaded, so an inconsistent value denormalizes receipt rows under the wrong workspace and any workspace-scoped read keyed on that column misattributes across workspaces. |
+
+**Both are the F1 pattern on a sibling method.** `AuthorizationProof` was introduced specifically to
+close "public method reaching durable state, precondition enforced only by a docstring" for
+`consume_and_create_operation` — and was simply never applied to `resume_operation`. The binding was
+held together by *caller convention* (the tests happen to pass
+`targets=(TargetRef("agent_job", operation_id),)`). This is now the **sixth** instance of the
+layer-below/sibling class in this workstream (F1, G2, BLOCK-2, R5-BLOCK-1, R5-BLOCK-3, P2R-BLOCK-1 →
+R1/R2), which is why the fix task was told to assume a third sibling exists until every public method
+in the module has been enumerated.
+
+**Routing conclusion:** ICA is effective on *review* work, not just mechanical implementation — this
+was the single highest-value-per-token delegation of the phase.
+
+## Regression gate — PASSED with a real baseline diff
+
+`pytest` full-suite numbers are meaningless in this repo without a baseline, so one was built:
+a detached worktree at P2's starting commit (`e5a2e6e`) running the byte-identical command.
+
+| | dots (passing) | F | E | skip | distinct failing nodes |
+|---|---:|---:|---:|---:|---:|
+| Baseline `e5a2e6e` | 4258 | 32 | 46 | 6 | 16 |
+| After P2 | 4370 | 32 | 46 | 6 | 16 |
+
+`comm` on the sorted failing-node sets: **zero new, zero fixed — the sets are identical.** Every red
+test is inherited; P2 adds 112 passing tests and regresses nothing. No P2-surface test appears in the
+failing set at all.
+
+**Two traps worth recording, both of which would have produced a false "clean suite" claim:**
+
+1. **A full `pytest` run aborts at collection with exit 2 and runs ZERO tests.**
+   `tests/test_verification_pediatric_cds.py` and `test_verification_seam001_gate_composition.py`
+   do `import test_claim_verifier` / `import test_pediatric_cds_redteam_fixtures` — sibling *test
+   modules* that only resolve when those siblings are collected first. The plan documents this as a
+   `-k`-filtering artifact; it in fact breaks the **unfiltered** run too, and `Interrupted: 2 errors
+   during collection` means nothing executed. `--ignore` both to get any signal at all.
+2. **A wrapper's exit code is not pytest's.** `pytest … > log; echo "EXIT=$?"` inside a
+   `run_in_background` Bash call reports the *wrapper's* status to the completion notification — which
+   arrived as "exit code 0" for a run that had actually failed with exit 2 and run no tests. Always
+   write the real `$?` into the log and read it back.
+
+Also confirmed: the full-suite run left **no** stray `run/`/`ccdash` artifacts in the worktree (the
+data-plane split holds), so the historical full-pytest pollution hazard did not materialize here.
+
 ## Open items / follow-ups (→ ITT nodes)
 
 Populated as execution proceeds; see the Next Actions table in the final response.

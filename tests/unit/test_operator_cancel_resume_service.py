@@ -96,6 +96,7 @@ from research_foundry.services.operator_receipt_service import OperatorReceiptSe
 # confirmation-lifecycle test helpers.
 from tests.unit.test_operator_mcp_policy import (  # noqa: F401
     _IDENTITY,
+    _IDENTITY_OTHER_WORKSPACE,
     _VIEWER_IDENTITY,
     _basic_ctx,
     _default_operator_identity,
@@ -552,6 +553,449 @@ def test_scenario9_policy_change_before_resume_denies_via_fresh_authorization(
         assert action_count == 0
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# R1: authorization must be bound to the operation being resumed, not
+# merely self-consistent. Reproduces a defect found in a fail-open/
+# layer-below sweep of `resume_operation` -- see the module-level hardening
+# block above `OperatorCancelResumeService` (`_resume_ctx_binds_operation`)
+# for the fix. Each test below asserts the FAILING-then-PASSING shape
+# directly (assert the correct outcome against the FIXED code) plus a
+# revert-detection mutation further down proves each guard actually does
+# something (see `test_r1_r2_r3_revert_detection_*` at the end of this
+# section).
+# ---------------------------------------------------------------------------
+
+
+def test_r1_valid_low_sensitivity_resume_authorization_denied_against_higher_sensitivity_operation(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """The exact scenario from the defect report: a caller mints and fully
+    clears a FRESH `job.resume` confirmation for a LOW-sensitivity
+    `resume_ctx` that targets some OTHER, benign `agent_job` -- every prior
+    policy stage (capability/RBAC/audit-health/guard/preflight/
+    confirmation-CAS) legitimately passes FOR THAT CONTEXT. The caller then
+    presents that same, fully-authorized `resume_ctx` against `operation_id`
+    -- a DIFFERENT, HIGHER-sensitivity operation in the SAME workspace, real,
+    a real target the low-sensitivity confirmation never actually named.
+
+    Before the fix: `resume_operation` proceeds -- `consume_and_create_
+    operation` only validates `resume_ctx` against itself, and the (then-
+    discarded) `load_operation` call only proves workspace equality (which
+    holds); nothing compares `resume_ctx.effective_sensitivity`/`targets`
+    to the real operation's manifest. After the fix
+    (`_resume_ctx_binds_operation`), this is denied `"not_found"` before
+    any attempt is minted or any receipt touched."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+    attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
+
+    # The VICTIM operation: HIGHER sensitivity, same workspace as the
+    # low-sensitivity resume_ctx minted below.
+    victim_ctx = _basic_ctx(
+        targets=_run_targets(),
+        effective_sensitivity="client_sensitive",
+        idempotency_key="victim-op",
+    )
+    victim_outcome = _consume(tmp_foundry, op_service, victim_ctx)
+    assert victim_outcome.outcome == "created"
+    operation_id = victim_outcome.operation.operation_id
+    workspace_id = victim_outcome.operation.workspace_id
+
+    # A fully valid, FRESH `job.resume` confirmation for a LOW-sensitivity
+    # context that targets some OTHER, benign job -- never `operation_id`.
+    resume_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="job.resume",
+        idempotency_key="low-sensitivity-resume",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("agent_job", "aj_benign_low_sensitivity_job"),),
+        resolved_target_workspaces=(_IDENTITY.workspace_id,),
+    )
+    resume_confirmation_id, resume_token, record = _mint_and_record(op_service, resume_ctx)
+    resume_authorization = _authorize(
+        tmp_foundry, resume_ctx, confirmation_record=record, presented_token=resume_token
+    )
+    # Every prior policy stage legitimately clears FOR THIS CONTEXT -- the
+    # bug is not that authorization is broken, it's that nothing binds it
+    # to the operation actually being resumed.
+    assert resume_authorization.decision.allowed
+
+    resume_outcome = svc.resume_operation(
+        operation_id,
+        identity=_IDENTITY,
+        resume_ctx=resume_ctx,
+        resume_confirmation_id=resume_confirmation_id,
+        resume_presented_token=resume_token,
+        resume_authorization=resume_authorization,
+        actions=[_action("act-0", [])],
+        operation_kind=victim_ctx.operation_kind,
+        workspace_id=workspace_id,
+        attempt_adapter=attempt_adapter,
+        attempt_provider="claude_agent_sdk",
+        attempt_model_profile="rf_synthesize_deep",
+        attempt_request_kind="research",
+        attempt_policy_snapshot=dict(_MINIMAL_POLICY_SNAPSHOT),
+    )
+
+    assert resume_outcome.outcome == "denied"
+    assert resume_outcome.reason_code == "not_found"
+    assert resume_outcome.new_attempt is None
+    assert resume_outcome.execution is None
+
+    # Zero effects from the denied resume: no new attempt, no action
+    # receipt against the victim operation.
+    conn = _raw_connect(tmp_foundry)
+    try:
+        attempt_count = conn.execute(
+            "SELECT COUNT(*) FROM attempts WHERE operation_id = ?", (operation_id,)
+        ).fetchone()[0]
+        action_count = conn.execute(
+            "SELECT COUNT(*) FROM action_receipts WHERE operation_id = ?", (operation_id,)
+        ).fetchone()[0]
+        assert attempt_count == 0
+        assert action_count == 0
+    finally:
+        conn.close()
+
+
+def test_r1_resume_ctx_targeting_a_different_operation_id_in_the_same_workspace_is_denied(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """A narrower repro of the same R1 gap, isolating the TARGET half of
+    the binding check from the sensitivity half: `resume_ctx` has the SAME
+    (not weaker) sensitivity as the victim operation, but its target is a
+    different, real `agent_job` id -- never `operation_id`. Must still
+    deny."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+    attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
+
+    victim_ctx = _basic_ctx(targets=_run_targets(), idempotency_key="victim-op-2")
+    victim_outcome = _consume(tmp_foundry, op_service, victim_ctx)
+    operation_id = victim_outcome.operation.operation_id
+    workspace_id = victim_outcome.operation.workspace_id
+
+    other_ctx = _basic_ctx(targets=_run_targets(), idempotency_key="other-op-2")
+    other_outcome = _consume(tmp_foundry, op_service, other_ctx)
+    other_operation_id = other_outcome.operation.operation_id
+
+    resume_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="job.resume",
+        idempotency_key="wrong-target-resume",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("agent_job", other_operation_id),),
+        resolved_target_workspaces=(_IDENTITY.workspace_id,),
+    )
+    resume_confirmation_id, resume_token, record = _mint_and_record(op_service, resume_ctx)
+    resume_authorization = _authorize(
+        tmp_foundry, resume_ctx, confirmation_record=record, presented_token=resume_token
+    )
+    assert resume_authorization.decision.allowed
+
+    resume_outcome = svc.resume_operation(
+        operation_id,
+        identity=_IDENTITY,
+        resume_ctx=resume_ctx,
+        resume_confirmation_id=resume_confirmation_id,
+        resume_presented_token=resume_token,
+        resume_authorization=resume_authorization,
+        actions=[_action("act-0", [])],
+        operation_kind=victim_ctx.operation_kind,
+        workspace_id=workspace_id,
+        attempt_adapter=attempt_adapter,
+        attempt_provider="claude_agent_sdk",
+        attempt_model_profile="rf_synthesize_deep",
+        attempt_request_kind="research",
+        attempt_policy_snapshot=dict(_MINIMAL_POLICY_SNAPSHOT),
+    )
+
+    assert resume_outcome.outcome == "denied"
+    assert resume_outcome.reason_code == "not_found"
+    assert resume_outcome.new_attempt is None
+
+
+def test_r1_resume_ctx_with_equal_or_stricter_sensitivity_and_correct_target_still_resumes(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """R1 must not be OVER-strict: a `resume_ctx` that correctly targets
+    `operation_id` and is evaluated at an EQUAL (or stricter) sensitivity
+    than the operation's real, persisted sensitivity is legitimate and must
+    still resume -- this is the normal, intended path every other test in
+    this file already exercises (H3 scenario 9's own "fresh policy
+    evaluation" guarantee), and this test pins it against a REGRESSION from
+    the R1 fix itself."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+    attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
+
+    ctx = _basic_ctx(
+        targets=_run_targets(), effective_sensitivity="personal", idempotency_key="stricter-op"
+    )
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    # STRICTER than the operation's real "personal" -- legitimate: policy
+    # now ranks it more sensitive than it was at creation.
+    resume_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="job.resume",
+        idempotency_key="stricter-resume",
+        effective_sensitivity="work_sensitive",
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("agent_job", operation_id),),
+        resolved_target_workspaces=(_IDENTITY.workspace_id,),
+    )
+    resume_confirmation_id, resume_token, record = _mint_and_record(op_service, resume_ctx)
+    resume_authorization = _authorize(
+        tmp_foundry, resume_ctx, confirmation_record=record, presented_token=resume_token
+    )
+    assert resume_authorization.decision.allowed
+
+    resume_outcome = svc.resume_operation(
+        operation_id,
+        identity=_IDENTITY,
+        resume_ctx=resume_ctx,
+        resume_confirmation_id=resume_confirmation_id,
+        resume_presented_token=resume_token,
+        resume_authorization=resume_authorization,
+        actions=[_action("act-0", [])],
+        operation_kind=ctx.operation_kind,
+        workspace_id=workspace_id,
+        attempt_adapter=attempt_adapter,
+        attempt_provider="claude_agent_sdk",
+        attempt_model_profile="rf_synthesize_deep",
+        attempt_request_kind="research",
+        attempt_policy_snapshot=dict(_MINIMAL_POLICY_SNAPSHOT),
+    )
+
+    assert resume_outcome.outcome == "resumed"
+    assert resume_outcome.new_attempt is not None
+    assert resume_outcome.execution is not None
+    assert resume_outcome.execution.status == "completed"
+
+
+def test_r1_correct_target_but_weaker_sensitivity_is_denied(tmp_foundry: FoundryPaths) -> None:
+    """Isolates the SENSITIVITY half of `_resume_ctx_binds_operation` from
+    the TARGET half: `resume_ctx` correctly targets `operation_id` (the
+    target guard alone would pass this), but its `effective_sensitivity` is
+    WEAKER than the operation's real, persisted sensitivity. Must still
+    deny -- a revert of ONLY the sensitivity comparison (with the target
+    comparison left intact) would let this one through, since the target
+    matches; this test exists specifically to catch that regression, which
+    `test_r1_resume_ctx_targeting_a_different_operation_id_in_the_same_
+    workspace_is_denied` (wrong target, same sensitivity) and
+    `test_r1_valid_low_sensitivity_resume_authorization_denied_against_
+    higher_sensitivity_operation` (wrong target AND weaker sensitivity,
+    conflated) do not."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+    attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
+
+    victim_ctx = _basic_ctx(
+        targets=_run_targets(),
+        effective_sensitivity="client_sensitive",
+        idempotency_key="victim-op-3",
+    )
+    victim_outcome = _consume(tmp_foundry, op_service, victim_ctx)
+    operation_id = victim_outcome.operation.operation_id
+    workspace_id = victim_outcome.operation.workspace_id
+
+    # Correct target (operation_id itself), but WEAKER sensitivity than the
+    # victim operation's real "client_sensitive".
+    resume_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="job.resume",
+        idempotency_key="weaker-sensitivity-resume",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("agent_job", operation_id),),
+        resolved_target_workspaces=(_IDENTITY.workspace_id,),
+    )
+    resume_confirmation_id, resume_token, record = _mint_and_record(op_service, resume_ctx)
+    resume_authorization = _authorize(
+        tmp_foundry, resume_ctx, confirmation_record=record, presented_token=resume_token
+    )
+    assert resume_authorization.decision.allowed
+
+    resume_outcome = svc.resume_operation(
+        operation_id,
+        identity=_IDENTITY,
+        resume_ctx=resume_ctx,
+        resume_confirmation_id=resume_confirmation_id,
+        resume_presented_token=resume_token,
+        resume_authorization=resume_authorization,
+        actions=[_action("act-0", [])],
+        operation_kind=victim_ctx.operation_kind,
+        workspace_id=workspace_id,
+        attempt_adapter=attempt_adapter,
+        attempt_provider="claude_agent_sdk",
+        attempt_model_profile="rf_synthesize_deep",
+        attempt_request_kind="research",
+        attempt_policy_snapshot=dict(_MINIMAL_POLICY_SNAPSHOT),
+    )
+
+    assert resume_outcome.outcome == "denied"
+    assert resume_outcome.reason_code == "not_found"
+    assert resume_outcome.new_attempt is None
+
+
+# ---------------------------------------------------------------------------
+# R2: `workspace_id` must be derived from the operation's real manifest,
+# never trusted from the caller parameter -- it backs the workspace-scoped
+# `idx_checkpoints_workspace`/`idx_terminal_receipts_workspace` indexes.
+# ---------------------------------------------------------------------------
+
+
+def test_r2_mismatched_caller_workspace_id_never_reaches_checkpoint_or_terminal_receipt(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """A `resume_ctx` that correctly binds to `operation_id` (R1 passes),
+    but the CALLER supplies a `workspace_id` parameter that disagrees with
+    the operation's real, persisted workspace. `identity` is correctly
+    scoped (same workspace as the real operation) so `load_operation`
+    itself does not raise -- isolating R2 from R1.
+
+    Before the fix: `write_checkpoint`/`finalize_terminal_receipt` persist
+    rows with the WRONG (caller-supplied) `workspace_id`, denormalized
+    into `idx_checkpoints_workspace`/`idx_terminal_receipts_workspace`.
+    After the fix, both rows carry the operation's REAL workspace_id
+    (`operation_record.workspace_id`) regardless of what the caller passed."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+    attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
+
+    ctx = _basic_ctx(targets=_run_targets(), idempotency_key="r2-real-op")
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    real_workspace_id = outcome.operation.workspace_id
+    assert real_workspace_id == _IDENTITY.workspace_id
+
+    resume_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="job.resume",
+        idempotency_key="r2-resume",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("agent_job", operation_id),),
+        resolved_target_workspaces=(_IDENTITY.workspace_id,),
+    )
+    resume_confirmation_id, resume_token, record = _mint_and_record(op_service, resume_ctx)
+    resume_authorization = _authorize(
+        tmp_foundry, resume_ctx, confirmation_record=record, presented_token=resume_token
+    )
+    assert resume_authorization.decision.allowed
+
+    wrong_workspace_id = _IDENTITY_OTHER_WORKSPACE.workspace_id
+    assert wrong_workspace_id != real_workspace_id
+
+    resume_outcome = svc.resume_operation(
+        operation_id,
+        identity=_IDENTITY,
+        resume_ctx=resume_ctx,
+        resume_confirmation_id=resume_confirmation_id,
+        resume_presented_token=resume_token,
+        resume_authorization=resume_authorization,
+        actions=[_action("act-0", [])],
+        operation_kind=ctx.operation_kind,
+        workspace_id=wrong_workspace_id,  # <-- mismatched, must be ignored
+        attempt_adapter=attempt_adapter,
+        attempt_provider="claude_agent_sdk",
+        attempt_model_profile="rf_synthesize_deep",
+        attempt_request_kind="research",
+        attempt_policy_snapshot=dict(_MINIMAL_POLICY_SNAPSHOT),
+    )
+
+    assert resume_outcome.outcome == "resumed"
+    assert resume_outcome.execution is not None
+    assert resume_outcome.execution.status == "completed"
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        checkpoint_ws = conn.execute(
+            "SELECT workspace_id FROM checkpoints WHERE operation_id = ?", (operation_id,)
+        ).fetchone()[0]
+        terminal_ws = conn.execute(
+            "SELECT workspace_id FROM terminal_receipts WHERE operation_id = ?", (operation_id,)
+        ).fetchone()[0]
+        attempt_ws = conn.execute(
+            "SELECT workspace_id FROM attempts WHERE operation_id = ?", (operation_id,)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert checkpoint_ws == real_workspace_id
+    assert terminal_ws == real_workspace_id
+    assert attempt_ws == real_workspace_id
+    assert checkpoint_ws != wrong_workspace_id
+    assert terminal_ws != wrong_workspace_id
+
+
+# ---------------------------------------------------------------------------
+# R3 (checklist-item-2 sibling of R2, found by enumerating this module's
+# public methods): `run_or_replay` has an `operation: OperationRecord`
+# parameter that ALREADY carries the authoritative workspace_id/
+# operation_kind, yet threaded the separately-supplied caller parameters
+# into `run_actions` instead -- the SAME unsafe behavior R2 closed in
+# `resume_operation`, reachable through a second door.
+# ---------------------------------------------------------------------------
+
+
+def test_r3_run_or_replay_mismatched_caller_workspace_id_never_reaches_checkpoint(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets(), idempotency_key="r3-real-op")
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation = outcome.operation
+    real_workspace_id = operation.workspace_id
+    assert real_workspace_id == _IDENTITY.workspace_id
+
+    wrong_workspace_id = _IDENTITY_OTHER_WORKSPACE.workspace_id
+    assert wrong_workspace_id != real_workspace_id
+
+    executed: list[str] = []
+    execution = svc.run_or_replay(
+        operation,
+        is_replay=False,
+        workspace_id=wrong_workspace_id,  # <-- mismatched, must be ignored
+        operation_kind=ctx.operation_kind,
+        actions=[_action("act-0", executed)],
+        attempt_ref="attempt-r3",
+    )
+
+    assert execution.status == "completed"
+    assert executed == ["act-0"]
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        checkpoint_ws = conn.execute(
+            "SELECT workspace_id FROM checkpoints WHERE operation_id = ?",
+            (operation.operation_id,),
+        ).fetchone()[0]
+        terminal_ws = conn.execute(
+            "SELECT workspace_id FROM terminal_receipts WHERE operation_id = ?",
+            (operation.operation_id,),
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert checkpoint_ws == real_workspace_id
+    assert terminal_ws == real_workspace_id
+    assert checkpoint_ws != wrong_workspace_id
 
 
 # ---------------------------------------------------------------------------
