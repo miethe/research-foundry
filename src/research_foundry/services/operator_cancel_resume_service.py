@@ -60,9 +60,10 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
 
 from research_foundry import ids
 from research_foundry.auth_identity import AuthIdentity
@@ -71,6 +72,7 @@ from research_foundry.services import operator_mcp_policy as policy
 from research_foundry.services import operator_operation_service as _ops_store
 from research_foundry.services.operator_attempt_adapter import (
     AttemptRecord,
+    AttemptStoreUnavailableError,
     OperatorAttemptAdapter,
 )
 from research_foundry.services.operator_operation_service import (
@@ -81,6 +83,7 @@ from research_foundry.services.operator_operation_service import (
 )
 from research_foundry.services.operator_receipt_service import (
     OperatorReceiptService,
+    ReceiptStoreUnavailableError,
     ResumePointOutcome,
 )
 
@@ -90,10 +93,81 @@ __all__ = [
     "ActionEffect",
     "ActionSpec",
     "CancellationOutcome",
+    "CancellationStoreUnavailableError",
     "ExecutionOutcome",
     "ResumeOutcome",
     "OperatorCancelResumeService",
 ]
+
+
+# ---------------------------------------------------------------------------
+# K3-BLOCK-1 / K4-BLOCK-1 / K4-NB-1 sibling instance in THIS module:
+# `request_cancellation` and `cancellation_requested` are this module's own
+# two direct `_ops_store._connect`/`_ensure_schema` call sites (DML on the
+# additive `cancellation_requests` table this module owns -- see module
+# docstring) and, until this fix, had ZERO `except sqlite3` handling. See
+# `CancellationStoreUnavailableError` below for why a locked store must be
+# classified as transient/retryable, never folded into an existing
+# permanent-denial shape.
+# ---------------------------------------------------------------------------
+
+
+class CancellationStoreUnavailableError(RuntimeError):
+    """The operations database (`paths.operator_operations_db`, the SAME
+    file OPM-2.1 owns -- see module docstring) was unavailable (locked) for
+    :meth:`OperatorCancelResumeService.cancellation_requested`'s own read.
+
+    PUBLIC and deliberately **not** folded into a `False` return ("not
+    canceled") -- `cancellation_requested` is read at the top of EVERY
+    safe-point iteration in :meth:`OperatorCancelResumeService.run_actions`,
+    specifically to decide whether it is safe to start the next action.
+    Returning `False` when the store is merely unreadable would silently
+    continue executing an operation whose cancellation status this method
+    could not actually determine -- a textbook fail-open on a
+    safety-relevant read (defect class 1 in this workstream's own
+    checklist), and the opposite of every other safe-point guard in this
+    module, all of which fail closed (see `run_actions`'s own docstring).
+    `run_actions` catches exactly this type and returns a governed
+    `ExecutionOutcome("denied", ...)` -- stopping the operation rather than
+    guessing at its cancellation state.
+
+    `request_cancellation`'s own DML (the sibling guard immediately above
+    this method in the source) does NOT raise this type -- it already has
+    an outcome contract (`CancellationOutcome`) to deny into, exactly like
+    its existing `except OperationStoreUnavailableError` arm two lines
+    above it, so it converts directly rather than raising-then-catching.
+
+    Carries no driver text, no SQL, and no file path, per
+    `schemas/operator_mcp_error.schema.yaml` (AC OPM-7) -- the full detail
+    is logged server-side via `_logger.error` at the raise site.
+
+    Retryable by contract: means the writer lock (or DDL/setup on a cold
+    start) was unavailable within
+    `operator_operation_service._BUSY_TIMEOUT_MS`, never that the request
+    itself is invalid.
+    """
+
+
+def _raise_cancellation_store_unavailable(
+    exc: sqlite3.OperationalError, *, method: str, operation_id: str
+) -> NoReturn:
+    """Shared raise-site for this module's own guarded DML/read helper
+    (`cancellation_requested`), mirroring `operator_receipt_service.
+    _raise_store_unavailable` / `operator_attempt_adapter.
+    _raise_store_unavailable`."""
+
+    _logger.error(
+        "operator_cancel_resume_service: %s could not access the operations "
+        "store for operation_id=%s -- %s: %s (busy_timeout exhausted, or "
+        "schema setup failed on a cold start)",
+        method,
+        operation_id,
+        type(exc).__name__,
+        exc,
+    )
+    raise CancellationStoreUnavailableError(
+        f"{method}: operations database unavailable"
+    ) from None
 
 
 # ---------------------------------------------------------------------------
@@ -415,8 +489,30 @@ class OperatorCancelResumeService:
         moment = ids.now_iso()
         conn = _ops_store._connect(self._paths)
         try:
-            _ops_store._ensure_schema(conn)
-            conn.execute("BEGIN IMMEDIATE")
+            try:
+                _ops_store._ensure_schema(conn)
+                conn.execute("BEGIN IMMEDIATE")
+            except sqlite3.OperationalError as exc:
+                # Acquisition half (K3-BLOCK-1 half 1 analogue): `_ensure_
+                # schema` is DDL (RESERVED lock) and `BEGIN IMMEDIATE`
+                # itself also acquires RESERVED -- either can block behind
+                # a concurrent writer until `_BUSY_TIMEOUT_MS` is
+                # exhausted. No transaction was ever opened, so there is
+                # nothing to roll back. Classified the SAME way as the
+                # `except OperationStoreUnavailableError` arm above (K4-
+                # BLOCK-1's own `internal_error`/retryable convention for
+                # THIS outcome type) -- never `not_found`, which would tell
+                # a caller to stop retrying an operation that merely could
+                # not be written to just now.
+                _logger.error(
+                    "operator_cancel_resume_service: request_cancellation lock "
+                    "acquisition failed (%s: %s) for operation_id=%s -- "
+                    "busy_timeout exhausted or schema setup failed",
+                    type(exc).__name__,
+                    exc,
+                    operation_id,
+                )
+                return CancellationOutcome("denied", operation_id, None, None, "internal_error")
             try:
                 existing = conn.execute(
                     "SELECT requested_at, requested_by FROM cancellation_requests"
@@ -438,6 +534,30 @@ class OperatorCancelResumeService:
                     (operation_id, workspace_id, moment, requested_by),
                 )
                 conn.execute("COMMIT")
+            except sqlite3.OperationalError as exc:
+                # Promotion half (K3-BLOCK-1 half 2 analogue): `BEGIN
+                # IMMEDIATE` takes RESERVED immediately but SQLite promotes
+                # to EXCLUSIVE lazily, on the first real write -- so
+                # contention can still fire AFTER a successful `BEGIN
+                # IMMEDIATE`, on the SELECT or the INSERT above. Best-
+                # effort ROLLBACK: if the SAME contention that raised this
+                # also makes ROLLBACK raise, a second raw exception must
+                # not replace the bounded outcome about to be returned
+                # (COMMIT was never reached either way).
+                _logger.error(
+                    "operator_cancel_resume_service: request_cancellation lock "
+                    "contention (%s: %s) inside the locked transaction for "
+                    "operation_id=%s -- database is locked past BEGIN "
+                    "IMMEDIATE's own acquisition",
+                    type(exc).__name__,
+                    exc,
+                    operation_id,
+                )
+                try:
+                    conn.execute("ROLLBACK")
+                except sqlite3.OperationalError:
+                    pass
+                return CancellationOutcome("denied", operation_id, None, None, "internal_error")
             except Exception:
                 conn.execute("ROLLBACK")
                 raise
@@ -460,15 +580,31 @@ class OperatorCancelResumeService:
         this parameter is defense-in-depth for a caller (like
         :meth:`run_actions`, which always supplies its own already-derived
         `workspace_id`) that wants the read scoped too.
+
+        Raises
+        ------
+        CancellationStoreUnavailableError
+            If the operations database is locked past
+            `operator_operation_service._BUSY_TIMEOUT_MS` -- deliberately
+            NOT swallowed into a `False` ("not canceled") return. See that
+            error type's own docstring for why: this method is read at
+            every `run_actions` safe point specifically to decide whether
+            it is safe to proceed, and `run_actions` catches this type to
+            fail closed rather than assume "not canceled".
         """
 
         conn = _ops_store._connect(self._paths)
         try:
-            _ops_store._ensure_schema(conn)
-            row = conn.execute(
-                "SELECT workspace_id FROM cancellation_requests WHERE operation_id = ?",
-                (operation_id,),
-            ).fetchone()
+            try:
+                _ops_store._ensure_schema(conn)
+                row = conn.execute(
+                    "SELECT workspace_id FROM cancellation_requests WHERE operation_id = ?",
+                    (operation_id,),
+                ).fetchone()
+            except sqlite3.OperationalError as exc:
+                _raise_cancellation_store_unavailable(
+                    exc, method="cancellation_requested", operation_id=operation_id
+                )
         finally:
             conn.close()
         if row is None:
@@ -608,7 +744,28 @@ class OperatorCancelResumeService:
 
         idx = start_index
         for idx in range(start_index, total):
-            if self.cancellation_requested(operation_id, workspace_id=identity.workspace_id):
+            try:
+                is_canceled = self.cancellation_requested(
+                    operation_id, workspace_id=identity.workspace_id
+                )
+            except CancellationStoreUnavailableError:
+                # Fail CLOSED (defect class 1): the store being transiently
+                # unreadable means this method cannot determine whether
+                # `operation_id` was canceled -- proceeding to run the next
+                # action anyway would be a fail-open on a safety-relevant
+                # read. Stop here, the SAME shape every other safe-point
+                # guard in this loop uses on denial, rather than assuming
+                # "not canceled" and continuing.
+                _logger.error(
+                    "operator_cancel_resume_service: run_actions REJECTED -- "
+                    "could not read cancellation status for operation_id=%s "
+                    "at index=%d (operations store unavailable, retryable) "
+                    "-- stopping without running the action",
+                    operation_id,
+                    idx,
+                )
+                return ExecutionOutcome("denied", None, idx)
+            if is_canceled:
                 break
 
             spec = actions[idx]
@@ -973,7 +1130,29 @@ class OperatorCancelResumeService:
         """
 
         if is_replay:
-            existing_terminal = self._receipts.load_terminal_receipt(operation.operation_id)
+            try:
+                existing_terminal = self._receipts.load_terminal_receipt(operation.operation_id)
+            except ReceiptStoreUnavailableError:
+                # The bounded, typed successor to a raw sqlite3 leak here is
+                # STILL an uncaught propagation out of this governed API
+                # until classified. `ExecutionOutcome` carries no
+                # `reason_code` field (unlike `CancellationOutcome`/
+                # `ResumeOutcome`), so "denied" -- the SAME shape the
+                # corrupt-receipt-state denial three lines below already
+                # uses -- is the only available classification; the
+                # transient/retryable distinction this exception carries is
+                # preserved in the server-side log `_raise_store_
+                # unavailable` already emitted, even though this return
+                # value cannot itself distinguish it from that sibling
+                # denial (a structural limit of this existing type, not
+                # something this fix widens).
+                _logger.error(
+                    "operator_cancel_resume_service: run_or_replay REJECTED -- "
+                    "could not read the terminal receipt for operation_id=%s "
+                    "(operations store unavailable, retryable)",
+                    operation.operation_id,
+                )
+                return ExecutionOutcome("denied", None, 0)
             if existing_terminal is not None:
                 return ExecutionOutcome(
                     existing_terminal["status"],
@@ -982,9 +1161,20 @@ class OperatorCancelResumeService:
                     replayed=True,
                 )
 
-        resume_point = self._receipts.resolve_resume_point(
-            operation.operation_id, total_action_count=len(actions)
-        )
+        try:
+            resume_point = self._receipts.resolve_resume_point(
+                operation.operation_id, total_action_count=len(actions)
+            )
+        except ReceiptStoreUnavailableError:
+            # Sibling of the `load_terminal_receipt` guard immediately
+            # above -- same classification, same reasoning.
+            _logger.error(
+                "operator_cancel_resume_service: run_or_replay REJECTED -- "
+                "could not resolve the resume point for operation_id=%s "
+                "(operations store unavailable, retryable)",
+                operation.operation_id,
+            )
+            return ExecutionOutcome("denied", None, 0)
         if resume_point.outcome != "ok":
             # Corrupt receipt state (scenario 8, extended to resume) --
             # refuse to execute anything further, and produce NO receipt
@@ -1192,25 +1382,86 @@ class OperatorCancelResumeService:
         # workspace scoping above -- threading it through these two reads
         # too costs nothing and means neither method depends SOLELY on
         # every OTHER caller getting this right.
-        existing_terminal = self._receipts.load_terminal_receipt(operation_id, identity=identity)
+        try:
+            existing_terminal = self._receipts.load_terminal_receipt(operation_id, identity=identity)
+        except ReceiptStoreUnavailableError:
+            # Sibling of `resume_operation`'s own `except
+            # OperationStoreUnavailableError` arm above (same method,
+            # `load_operation` call) -- classified the SAME way,
+            # `"internal_error"`, for the SAME reason: `ResumeOutcome.
+            # reason_code` is a CLOSED enum (`operator_mcp_policy.
+            # CLOSED_REASON_CODES`, schema-validated per
+            # `operator_mcp_error.schema.yaml`) with no more granular
+            # "store unavailable, retry me" member, and `"internal_error"`
+            # is this module's own already-established code for "our own
+            # infrastructure failed", used identically for the sibling
+            # `OperationStoreUnavailableError` case two guards up. Verified
+            # by inspection (not assumed) that this is a pre-existing,
+            # schema-forced conflation -- `resolve_resume_point`'s own
+            # corrupt-receipt-state denial ALSO forwards `reason_code=
+            # "internal_error"` into this same field below -- rather than a
+            # NEW ambiguity introduced by this fix.
+            _logger.error(
+                "operator_cancel_resume_service: resume_operation REJECTED -- "
+                "could not read the terminal receipt for operation_id=%s "
+                "(operations store unavailable, retryable)",
+                operation_id,
+            )
+            return ResumeOutcome("denied", "internal_error", None)
         if existing_terminal is not None:
             return ResumeOutcome("already_terminal", None, existing_terminal)
 
-        resume_point = self._receipts.resolve_resume_point(
-            operation_id, identity=identity, total_action_count=len(actions)
-        )
+        try:
+            resume_point = self._receipts.resolve_resume_point(
+                operation_id, identity=identity, total_action_count=len(actions)
+            )
+        except ReceiptStoreUnavailableError:
+            # Sibling of the `load_terminal_receipt` guard immediately
+            # above -- same classification, same reasoning.
+            _logger.error(
+                "operator_cancel_resume_service: resume_operation REJECTED -- "
+                "could not resolve the resume point for operation_id=%s "
+                "(operations store unavailable, retryable)",
+                operation_id,
+            )
+            return ResumeOutcome("denied", "internal_error", None)
         if resume_point.outcome != "ok":
             return ResumeOutcome("denied", resume_point.reason_code, None)
 
-        new_attempt = attempt_adapter.create_attempt(
-            operation_id,
-            attempt_provider,
-            attempt_model_profile,
-            attempt_request_kind,
-            attempt_policy_snapshot,
-            workspace_id=resolved_workspace_id,
-            identity=identity,
-        )
+        try:
+            new_attempt = attempt_adapter.create_attempt(
+                operation_id,
+                attempt_provider,
+                attempt_model_profile,
+                attempt_request_kind,
+                attempt_policy_snapshot,
+                workspace_id=resolved_workspace_id,
+                identity=identity,
+            )
+        except AttemptStoreUnavailableError:
+            # Found via layer-below-the-fix enumeration (this task's own
+            # rule #2), not explicitly named in the dispatch: unlike
+            # `operator_mcp_adapters.job_lifecycle`'s `job.resume` adapter
+            # (whose own `create_attempt` call runs inside an
+            # `ActionSpec.run()` closure that `run_actions`' own broad
+            # `except Exception` already converts to a governed outcome --
+            # see that module's own P2S-NB-9 docstring), THIS call is
+            # `resume_operation`'s own DIRECT call, made before
+            # `run_actions` is ever reached, with no surrounding handler.
+            # `AttemptStoreUnavailableError` (introduced by this same fix,
+            # in `operator_attempt_adapter.py`) would otherwise propagate
+            # out of this governed `ResumeOutcome`-returning API uncaught --
+            # the identical "bounded but still uncaught" gap class this
+            # task's own instructions call out for `load_terminal_receipt`/
+            # `resolve_resume_point` above. Classified the same as its two
+            # siblings immediately above, for the same CLOSED-enum reason.
+            _logger.error(
+                "operator_cancel_resume_service: resume_operation REJECTED -- "
+                "could not create a new attempt for operation_id=%s "
+                "(operations store unavailable, retryable)",
+                operation_id,
+            )
+            return ResumeOutcome("denied", "internal_error", None)
 
         execution = self.run_actions(
             operation_id,

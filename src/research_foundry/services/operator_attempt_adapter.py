@@ -97,9 +97,10 @@ anymore.
 from __future__ import annotations
 
 import logging
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from research_foundry import ids
 from research_foundry.paths import FoundryPaths
@@ -116,8 +117,92 @@ __all__ = [
     "AttemptRecord",
     "OperatorAttemptAdapter",
     "AttemptLimitExceededError",
+    "AttemptStoreUnavailableError",
     "MAX_ATTEMPTS_PER_OPERATION",
 ]
+
+
+# ---------------------------------------------------------------------------
+# K3-BLOCK-1 / K4-BLOCK-1 / K4-NB-1 sibling instance in THIS module: this
+# module's three private DML/read helpers each open
+# `paths.operator_operations_db` via `operator_operation_service`'s own
+# `_connect`/`_ensure_schema` (see module docstring's P2-ARCH-1 section) and,
+# until this fix, had ZERO `except sqlite3` handling on any of them -- a
+# contending writer (another attempt being linked/looked-up concurrently, or
+# a cold-start DDL race) raised a raw `sqlite3.OperationalError` ("database
+# is locked", full driver text) straight out of this module's boundary, the
+# exact defect class K3-BLOCK-1/K4-BLOCK-1/K4-NB-1 already closed everywhere
+# else in `operator_operation_service.py`/`operator_receipt_service.py`.
+# ---------------------------------------------------------------------------
+
+
+class AttemptStoreUnavailableError(RuntimeError):
+    """The operations database (the SAME file this module's `attempts` link
+    table lives in -- see module docstring's P2-ARCH-1) was unavailable
+    (locked) for a read or write one of this module's own DML helpers
+    (`_record_attempt_link`, `_lookup_operation_id`,
+    `_list_attempt_ids_for_operation`) could not complete.
+
+    Module-owned, deliberately NOT reused from `operator_operation_service.
+    OperationStoreUnavailableError` / `operator_receipt_service.
+    ReceiptStoreUnavailableError` even though all three wrap the identical
+    underlying `sqlite3.OperationalError` on the identical database file --
+    mirrors this codebase's own established convention (see
+    `ReceiptStoreUnavailableError`'s own docstring) of a bounded,
+    module-owned type per failure surface.
+
+    PUBLIC and deliberately **not** folded into any of this module's
+    existing return/raise shapes:
+
+    * NOT `None` from `_lookup_operation_id` -- that already means "no
+      link row exists for this attempt_id" (the correct, documented result
+      for a legacy `AgentJob` created outside this adapter). Folding a
+      transient lock into that shape would misreport an unreadable store as
+      "this attempt has no linked operation", which is a PERMANENT fact
+      about an already-created attempt.
+    * NOT `AttemptLimitExceededError` -- that means "the cap is correctly
+      enforced against a REAL, successfully-read attempt count", a
+      permanent-for-this-count refusal. A caller that cannot read the count
+      at all has learned nothing about whether the cap is exceeded, and
+      reporting it as "limit exceeded" would deny retries that would
+      otherwise succeed once the lock clears.
+    * NOT swallowed by `create_attempt`'s own "cross-store atomicity gap"
+      `except Exception: logger.error(...); raise` around
+      `_record_attempt_link` -- that block re-raises the ORIGINAL exception
+      object verbatim, so `_record_attempt_link` raising a raw
+      `sqlite3.OperationalError` would have let raw driver text escape
+      through it unchanged. Raising this bounded type FROM
+      `_record_attempt_link` itself is what that surrounding handler needed
+      to make its own re-raise safe.
+
+    Carries no driver text, no SQL, and no file path, per
+    `schemas/operator_mcp_error.schema.yaml` (AC OPM-7) -- the full
+    un-redacted detail is logged server-side via `logger.error` at each
+    raise site.
+
+    Retryable by contract: means the writer lock (or DDL/setup on a cold
+    start) was unavailable within
+    `operator_operation_service._BUSY_TIMEOUT_MS`, never that the
+    attempt/operation_id itself is invalid.
+    """
+
+
+def _raise_store_unavailable(exc: sqlite3.OperationalError, *, method: str, detail: str) -> NoReturn:
+    """Shared raise-site for this module's three guarded DML/read helpers,
+    mirroring `operator_receipt_service._raise_store_unavailable` exactly --
+    one classification/logging/redaction shape instead of three
+    independently-drifting copies."""
+
+    logger.error(
+        "operator_attempt_adapter: %s could not access the operations store "
+        "for %s -- %s: %s (busy_timeout exhausted, or schema setup failed "
+        "on a cold start)",
+        method,
+        detail,
+        type(exc).__name__,
+        exc,
+    )
+    raise AttemptStoreUnavailableError(f"{method}: operations database unavailable") from None
 
 # ---------------------------------------------------------------------------
 # P2S-NB-9 (AC OPM-3 "bounded attempts", scheduled at OPM-3.4): before this
@@ -206,8 +291,18 @@ def _record_attempt_link(
 
     conn = _ops_store._connect(paths)
     try:
-        _ops_store._ensure_schema(conn)
-        conn.execute("BEGIN IMMEDIATE")
+        try:
+            _ops_store._ensure_schema(conn)
+            conn.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as exc:
+            # Acquisition half (K3-BLOCK-1 half 1 analogue): `_ensure_schema`
+            # is DDL (RESERVED lock) and `BEGIN IMMEDIATE` itself also
+            # acquires RESERVED -- either can block behind a concurrent
+            # writer until `_BUSY_TIMEOUT_MS` is exhausted. No transaction
+            # was ever opened here, so there is nothing to roll back.
+            _raise_store_unavailable(
+                exc, method="_record_attempt_link", detail=f"attempt_id={attempt_id}"
+            )
         try:
             conn.execute(
                 "INSERT INTO attempts (attempt_id, operation_id, workspace_id, created_at)"
@@ -215,6 +310,22 @@ def _record_attempt_link(
                 (attempt_id, operation_id, workspace_id, created_at),
             )
             conn.execute("COMMIT")
+        except sqlite3.OperationalError as exc:
+            # Promotion half (K3-BLOCK-1 half 2 analogue): `BEGIN IMMEDIATE`
+            # takes RESERVED immediately but SQLite promotes to EXCLUSIVE
+            # lazily, on the first real write -- the INSERT above -- so
+            # contention can still fire AFTER a successful `BEGIN IMMEDIATE`.
+            # Best-effort ROLLBACK: if the SAME contention that raised this
+            # also makes ROLLBACK raise, a second raw exception must not
+            # replace the bounded error about to be raised (COMMIT was
+            # never reached either way).
+            try:
+                conn.execute("ROLLBACK")
+            except sqlite3.OperationalError:
+                pass
+            _raise_store_unavailable(
+                exc, method="_record_attempt_link", detail=f"attempt_id={attempt_id}"
+            )
         except Exception:
             conn.execute("ROLLBACK")
             raise
@@ -236,11 +347,16 @@ def _lookup_operation_id(paths: FoundryPaths, attempt_id: str) -> str | None:
 
     conn = _ops_store._connect(paths)
     try:
-        _ops_store._ensure_schema(conn)
-        row = conn.execute(
-            "SELECT operation_id FROM attempts WHERE attempt_id = ?",
-            (attempt_id,),
-        ).fetchone()
+        try:
+            _ops_store._ensure_schema(conn)
+            row = conn.execute(
+                "SELECT operation_id FROM attempts WHERE attempt_id = ?",
+                (attempt_id,),
+            ).fetchone()
+        except sqlite3.OperationalError as exc:
+            _raise_store_unavailable(
+                exc, method="_lookup_operation_id", detail=f"attempt_id={attempt_id}"
+            )
     finally:
         conn.close()
     return row["operation_id"] if row is not None else None
@@ -260,11 +376,16 @@ def _list_attempt_ids_for_operation(paths: FoundryPaths, operation_id: str) -> l
 
     conn = _ops_store._connect(paths)
     try:
-        _ops_store._ensure_schema(conn)
-        rows = conn.execute(
-            "SELECT attempt_id FROM attempts WHERE operation_id = ? ORDER BY created_at",
-            (operation_id,),
-        ).fetchall()
+        try:
+            _ops_store._ensure_schema(conn)
+            rows = conn.execute(
+                "SELECT attempt_id FROM attempts WHERE operation_id = ? ORDER BY created_at",
+                (operation_id,),
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            _raise_store_unavailable(
+                exc, method="_list_attempt_ids_for_operation", detail=f"operation_id={operation_id}"
+            )
     finally:
         conn.close()
     return [row["attempt_id"] for row in rows]

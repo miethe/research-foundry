@@ -85,10 +85,14 @@ from research_foundry import ids
 from research_foundry.auth_identity import AuthIdentity
 from research_foundry.paths import FoundryPaths
 from research_foundry.services import operator_mcp_policy as policy
-from research_foundry.services.operator_attempt_adapter import OperatorAttemptAdapter
+from research_foundry.services.operator_attempt_adapter import (
+    AttemptStoreUnavailableError,
+    OperatorAttemptAdapter,
+)
 from research_foundry.services.operator_cancel_resume_service import (
     ActionEffect,
     ActionSpec,
+    CancellationStoreUnavailableError,
     OperatorCancelResumeService,
 )
 from research_foundry.services import operator_operation_service as ops_module
@@ -96,7 +100,11 @@ from research_foundry.services.operator_operation_service import (
     OperationStoreUnavailableError,
     OperatorOperationService,
 )
-from research_foundry.services.operator_receipt_service import OperatorReceiptService, ReceiptOutcome
+from research_foundry.services.operator_receipt_service import (
+    OperatorReceiptService,
+    ReceiptOutcome,
+    ReceiptStoreUnavailableError,
+)
 
 # Reuse, never reinvent (per this task's instructions and the project's own
 # convention -- see `test_operator_operation_service.py`'s own docstring):
@@ -2894,6 +2902,456 @@ def test_resume_operation_denies_retryably_when_operations_store_is_locked(
         )
 
     monkeypatch.setattr(op_service, "load_operation", _unavailable)
+
+    resume_outcome = svc.resume_operation(
+        operation_id,
+        identity=_IDENTITY,
+        resume_ctx=resume_ctx,
+        resume_confirmation_id=resume_confirmation_id,
+        resume_presented_token=resume_token,
+        resume_authorization=resume_authorization,
+        actions=[_action("act-0", [])],
+        operation_kind=ctx.operation_kind,
+        workspace_id=workspace_id,
+        attempt_adapter=attempt_adapter,
+        attempt_provider="claude_agent_sdk",
+        attempt_model_profile="rf_synthesize_deep",
+        attempt_request_kind="research",
+        attempt_policy_snapshot=dict(_MINIMAL_POLICY_SNAPSHOT),
+    )
+
+    assert resume_outcome.outcome == "denied"
+    assert resume_outcome.reason_code == "internal_error"
+    assert resume_outcome.new_attempt is None
+
+
+
+# ---------------------------------------------------------------------------
+# K3-BLOCK-1 / K4-BLOCK-1 / K4-NB-1 sibling instance, closing the LAST two
+# instances of this defect class in this tree: `request_cancellation`'s own
+# DML and `cancellation_requested`'s own read (this module's two direct
+# `_ops_store._connect`/`_ensure_schema` call sites) had ZERO `except
+# sqlite3` handlers; separately, the `8fe3a2c` fix to `operator_receipt_
+# service.py` made `load_terminal_receipt`/`resolve_resume_point` raise a
+# BOUNDED `ReceiptStoreUnavailableError` instead of a raw driver error --
+# strictly better, but still uncaught at the four call sites in
+# `run_or_replay`/`resume_operation` below. Every test proves either a
+# bounded exception (never the raw driver exception) via REAL competing
+# sqlite locks, or the correct governed-outcome classification at each
+# now-guarded boundary.
+# ---------------------------------------------------------------------------
+
+
+def test_cancellation_requested_raises_bounded_error_not_raw_driver_exception_when_locked(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`cancellation_requested`'s own guard, at the source. Cold store (no
+    prior operation/DML on this file) + a real competing writer lock, so
+    this method's own `_ensure_schema` (DDL on a genuinely unschema'd file)
+    blocks behind it -- identical technique to `_block_operations_db`'s
+    other K4-BLOCK-1 uses in this file. `operation_id` need not exist
+    (mirrors `request_cancellation`'s own existing sibling test): the lock
+    fires before any referential check."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(tmp_foundry)
+    try:
+        with pytest.raises(CancellationStoreUnavailableError) as excinfo:
+            svc.cancellation_requested("op-does-not-exist")
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    message = str(excinfo.value)
+    assert "database is locked" not in message
+    assert "SELECT" not in message
+    assert str(tmp_foundry.operator_operations_db) not in message
+    assert not isinstance(excinfo.value, sqlite3.OperationalError)
+
+
+def test_run_actions_denies_fail_closed_when_cancellation_status_cannot_be_read(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Wired end-to-end (defect class 1, no fail-open): `run_actions` does
+    NOT reference `self._operations` at all -- its FIRST call, at every
+    safe point, is `cancellation_requested`, so a cold store + real lock
+    fires there before any receipt is touched. MUST deny
+    (`ExecutionOutcome("denied", ...)`), never silently treat "could not
+    read cancellation status" as "not canceled" and run the action anyway
+    -- `executed` staying empty is the proof no action ran.
+    """
+
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, receipts=receipt_service)
+    executed: list[str] = []
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(tmp_foundry)
+    try:
+        outcome = svc.run_actions(
+            "op-does-not-exist",
+            identity=_IDENTITY,
+            operation_kind="run.plan",
+            actions=[_action("act-0", executed)],
+            attempt_ref="attempt-cancel-lock",
+        )
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    assert outcome.status == "denied"
+    assert outcome.terminal_receipt is None
+    assert executed == []
+
+
+def test_request_cancellation_dml_denies_retryably_when_locked_after_operation_load_succeeds(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`request_cancellation`'s OWN new DML guard (acquisition half),
+    distinct from its pre-existing `except OperationStoreUnavailableError`
+    arm (already covered by
+    `test_request_cancellation_denies_retryably_when_operations_store_is_locked`
+    above, which uses a COLD store so `load_operation` itself is what
+    trips). HERE the operation is created and committed FIRST (so the
+    schema is warm and `load_operation`'s own SELECT succeeds even against
+    the blocker's held RESERVED lock -- a warm-schema read does not need to
+    acquire a competing lock), isolating THIS method's own `_ensure_schema`
+    + `BEGIN IMMEDIATE` for the `cancellation_requests` INSERT as the thing
+    under test. Non-redundant with the existing sibling test: mutating
+    `load_operation`'s own guard leaves THIS test green (it never reaches
+    that code path with a real lock); mutating THIS guard leaves the
+    existing sibling test green (it fails before ever reaching this code).
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(tmp_foundry)
+    try:
+        cancel = svc.request_cancellation(
+            operation_id, workspace_id=workspace_id, requested_by="alice"
+        )
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    assert cancel.outcome == "denied"
+    assert cancel.reason_code == "internal_error"
+
+    # Nothing was committed -- a retry once the lock clears must be able to
+    # create the request fresh, not find a corrupt/partial row.
+    blocker2_conn = sqlite3.connect(str(tmp_foundry.operator_operations_db), isolation_level=None)
+    try:
+        row = blocker2_conn.execute(
+            "SELECT COUNT(*) AS n FROM cancellation_requests WHERE operation_id = ?",
+            (operation_id,),
+        ).fetchone()
+        assert row[0] == 0
+    finally:
+        blocker2_conn.close()
+
+
+def test_request_cancellation_dml_promotion_denies_retryably_when_locked(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`request_cancellation`'s OWN new DML guard (promotion half): `BEGIN
+    IMMEDIATE` takes RESERVED immediately but SQLite promotes to EXCLUSIVE
+    lazily, on the first real write -- so contention can still fire AFTER a
+    successful `BEGIN IMMEDIATE`. Identical proxy-connection technique to
+    `test_operator_operation_service.
+    test_record_confirmation_lock_contention_inside_transaction_raises_bounded_error_not_raw`.
+    NOT redundant with the acquisition-half test above: `BEGIN IMMEDIATE`
+    succeeds on this path, so that guard cannot fire here.
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    rollbacks: list[str] = []
+
+    class _FailingInsertConnection:
+        def __init__(self, conn: sqlite3.Connection) -> None:
+            self._conn = conn
+
+        def execute(self, sql: str, *args: object, **kwargs: object) -> object:
+            if sql.lstrip().upper().startswith("INSERT INTO CANCELLATION_REQUESTS"):
+                raise sqlite3.OperationalError("database is locked")
+            if sql.strip().upper() == "ROLLBACK":
+                rollbacks.append(sql)
+            return self._conn.execute(sql, *args, **kwargs)
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._conn, name)
+
+    real_connect = ops_module._connect
+    monkeypatch.setattr(
+        ops_module, "_connect", lambda paths: _FailingInsertConnection(real_connect(paths))
+    )
+
+    cancel = svc.request_cancellation(operation_id, workspace_id=workspace_id, requested_by="alice")
+
+    assert cancel.outcome == "denied"
+    assert cancel.reason_code == "internal_error"
+    assert rollbacks == ["ROLLBACK"]
+
+
+def test_run_or_replay_denies_when_terminal_receipt_store_is_unavailable(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`run_or_replay`'s `load_terminal_receipt` call (is_replay branch) is
+    now guarded against `ReceiptStoreUnavailableError` -- the bounded
+    successor to a raw sqlite3 leak the `8fe3a2c` fix produced there, which
+    was itself still uncaught out of this governed API until this fix. The
+    real "does a locked store raise `ReceiptStoreUnavailableError`" fact is
+    already proven by `test_operator_receipt_service.
+    test_load_terminal_receipt_raises_bounded_error_not_raw_driver_exception_when_locked`;
+    what THIS test proves is that `run_or_replay` correctly classifies it
+    (`ExecutionOutcome("denied", ...)`, never an uncaught raise) --
+    monkeypatching the already-proven-real exception onto the receipt
+    service call mirrors this file's own established technique for testing
+    exactly this class of question (see
+    `test_resume_operation_denies_retryably_when_operations_store_is_locked`'s
+    own `OperationStoreUnavailableError` monkeypatch above).
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+
+    def _unavailable(*args: object, **kwargs: object) -> object:
+        raise ReceiptStoreUnavailableError("load_terminal_receipt: operations database unavailable")
+
+    monkeypatch.setattr(receipt_service, "load_terminal_receipt", _unavailable)
+
+    execution = svc.run_or_replay(
+        outcome.operation,
+        is_replay=True,
+        identity=_IDENTITY,
+        operation_kind=ctx.operation_kind,
+        actions=[_action("act-0", [])],
+        attempt_ref="attempt-x",
+    )
+
+    assert execution.status == "denied"
+    assert execution.terminal_receipt is None
+    assert execution.replayed is False
+
+
+def test_run_or_replay_denies_when_resolve_resume_point_store_is_unavailable(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`run_or_replay`'s `resolve_resume_point` call is the SIBLING guard to
+    the `load_terminal_receipt` one above -- `is_replay=False` here so
+    `load_terminal_receipt` is never called at all, proving this is a
+    genuinely independent guard (mutating the sibling's `except` clause
+    cannot make this test pass or fail it)."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+
+    def _unavailable(*args: object, **kwargs: object) -> object:
+        raise ReceiptStoreUnavailableError("resolve_resume_point: operations database unavailable")
+
+    monkeypatch.setattr(receipt_service, "resolve_resume_point", _unavailable)
+
+    execution = svc.run_or_replay(
+        outcome.operation,
+        is_replay=False,
+        identity=_IDENTITY,
+        operation_kind=ctx.operation_kind,
+        actions=[_action("act-0", [])],
+        attempt_ref="attempt-x",
+    )
+
+    assert execution.status == "denied"
+    assert execution.terminal_receipt is None
+
+
+def test_resume_operation_denies_when_terminal_receipt_store_is_unavailable(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`resume_operation`'s `load_terminal_receipt` call, sibling of
+    `run_or_replay`'s own above -- classified `"internal_error"` (verified
+    CLOSED enum: `operator_mcp_policy.CLOSED_REASON_CODES` has no more
+    granular "store unavailable" member, and `"internal_error"` is this
+    method's OWN pre-existing code for the analogous
+    `OperationStoreUnavailableError` case two guards up in the same
+    method -- reused for consistency, not reinvented)."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    resume_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="job.resume",
+        idempotency_key="resume-k4nb1-terminal",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("agent_job", operation_id),),
+        resolved_target_workspaces=(_IDENTITY.workspace_id,),
+    )
+    resume_confirmation_id, resume_token, record = _mint_and_record(op_service, resume_ctx)
+    resume_authorization = _authorize(
+        tmp_foundry, resume_ctx, confirmation_record=record, presented_token=resume_token
+    )
+
+    def _unavailable(*args: object, **kwargs: object) -> object:
+        raise ReceiptStoreUnavailableError("load_terminal_receipt: operations database unavailable")
+
+    monkeypatch.setattr(receipt_service, "load_terminal_receipt", _unavailable)
+
+    resume_outcome = svc.resume_operation(
+        operation_id,
+        identity=_IDENTITY,
+        resume_ctx=resume_ctx,
+        resume_confirmation_id=resume_confirmation_id,
+        resume_presented_token=resume_token,
+        resume_authorization=resume_authorization,
+        actions=[_action("act-0", [])],
+        operation_kind=ctx.operation_kind,
+        workspace_id=workspace_id,
+        attempt_adapter=attempt_adapter,
+        attempt_provider="claude_agent_sdk",
+        attempt_model_profile="rf_synthesize_deep",
+        attempt_request_kind="research",
+        attempt_policy_snapshot=dict(_MINIMAL_POLICY_SNAPSHOT),
+    )
+
+    assert resume_outcome.outcome == "denied"
+    assert resume_outcome.reason_code == "internal_error"
+    assert resume_outcome.new_attempt is None
+
+
+def test_resume_operation_denies_when_resolve_resume_point_store_is_unavailable(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`resume_operation`'s `resolve_resume_point` call -- sibling of the
+    `load_terminal_receipt` guard above. Non-redundant: `load_terminal_
+    receipt` itself is NOT patched here, so it runs for real and returns
+    `None` (no prior terminal receipt), and control reaches THIS guard
+    next."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    resume_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="job.resume",
+        idempotency_key="resume-k4nb1-resumepoint",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("agent_job", operation_id),),
+        resolved_target_workspaces=(_IDENTITY.workspace_id,),
+    )
+    resume_confirmation_id, resume_token, record = _mint_and_record(op_service, resume_ctx)
+    resume_authorization = _authorize(
+        tmp_foundry, resume_ctx, confirmation_record=record, presented_token=resume_token
+    )
+
+    def _unavailable(*args: object, **kwargs: object) -> object:
+        raise ReceiptStoreUnavailableError("resolve_resume_point: operations database unavailable")
+
+    monkeypatch.setattr(receipt_service, "resolve_resume_point", _unavailable)
+
+    resume_outcome = svc.resume_operation(
+        operation_id,
+        identity=_IDENTITY,
+        resume_ctx=resume_ctx,
+        resume_confirmation_id=resume_confirmation_id,
+        resume_presented_token=resume_token,
+        resume_authorization=resume_authorization,
+        actions=[_action("act-0", [])],
+        operation_kind=ctx.operation_kind,
+        workspace_id=workspace_id,
+        attempt_adapter=attempt_adapter,
+        attempt_provider="claude_agent_sdk",
+        attempt_model_profile="rf_synthesize_deep",
+        attempt_request_kind="research",
+        attempt_policy_snapshot=dict(_MINIMAL_POLICY_SNAPSHOT),
+    )
+
+    assert resume_outcome.outcome == "denied"
+    assert resume_outcome.reason_code == "internal_error"
+    assert resume_outcome.new_attempt is None
+
+
+def test_resume_operation_denies_when_attempt_store_is_unavailable(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`resume_operation`'s DIRECT `attempt_adapter.create_attempt` call --
+    found via layer-below-the-fix enumeration (not explicitly named in the
+    dispatch): unlike `operator_mcp_adapters.job_lifecycle`'s `job.resume`
+    tool adapter (whose OWN `create_attempt` call runs inside an
+    `ActionSpec.run()` closure that `run_actions`'s broad `except
+    Exception` already converts to a governed outcome), THIS call sits
+    directly in `resume_operation`, before `run_actions` is ever reached,
+    with no surrounding handler until this fix. `AttemptStoreUnavailableError`
+    (introduced by this same task, in `operator_attempt_adapter.py`) would
+    otherwise propagate out of this `ResumeOutcome`-returning API uncaught."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    resume_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="job.resume",
+        idempotency_key="resume-k4nb1-attempt",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("agent_job", operation_id),),
+        resolved_target_workspaces=(_IDENTITY.workspace_id,),
+    )
+    resume_confirmation_id, resume_token, record = _mint_and_record(op_service, resume_ctx)
+    resume_authorization = _authorize(
+        tmp_foundry, resume_ctx, confirmation_record=record, presented_token=resume_token
+    )
+
+    def _unavailable(*args: object, **kwargs: object) -> object:
+        raise AttemptStoreUnavailableError("_record_attempt_link: operations database unavailable")
+
+    monkeypatch.setattr(attempt_adapter, "create_attempt", _unavailable)
 
     resume_outcome = svc.resume_operation(
         operation_id,

@@ -28,10 +28,12 @@ import pytest
 from research_foundry.api.auth.provider import AuthIdentity
 from research_foundry.config import FoundryConfig
 from research_foundry.paths import FoundryPaths
+from research_foundry.services import operator_operation_service as ops_module
 from research_foundry.services.agent_job_schemas import AgentJobStatus
 from research_foundry.services.agent_job_service import AgentJobService
 from research_foundry.services.operator_attempt_adapter import (
     AttemptRecord,
+    AttemptStoreUnavailableError,
     OperatorAttemptAdapter,
 )
 
@@ -463,3 +465,188 @@ def test_terminate_and_cleanup_attempt_are_idempotent_noops_for_unspawned_job(
     # Neither raises for a job with no live subprocess registry entry.
     adapter.terminate_attempt(record.attempt_id)
     adapter.cleanup_attempt(record.attempt_id)
+
+
+
+# ---------------------------------------------------------------------------
+# K3-BLOCK-1 / K4-BLOCK-1 / K4-NB-1 sibling instance in THIS module: this
+# module's own three private DML/read helpers (`_record_attempt_link`,
+# `_lookup_operation_id`, `_list_attempt_ids_for_operation`) had ZERO
+# `except sqlite3` handlers -- a contending writer raised a raw
+# `sqlite3.OperationalError` straight out of this module's boundary. Every
+# test below proves a bounded `AttemptStoreUnavailableError`, never the raw
+# driver exception, using REAL competing sqlite locks (never a
+# fake/monkeypatched store), mirroring
+# `test_operator_cancel_resume_service.py`'s and
+# `test_operator_receipt_service.py`'s own K4-BLOCK-1/K4-NB-1 techniques.
+# ---------------------------------------------------------------------------
+
+
+def _block_operations_db(paths: FoundryPaths) -> sqlite3.Connection:
+    """Hold a REAL competing writer lock on the operations DB. Caller must
+    ROLLBACK + close. Identical technique to
+    `test_operator_cancel_resume_service._block_operations_db` /
+    `test_operator_receipt_service._block_operations_db` (K4-BLOCK-1 /
+    K4-NB-1)."""
+
+    paths.operator_operations_db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(paths.operator_operations_db), isolation_level=None)
+    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("CREATE TABLE IF NOT EXISTS _attempt_adapter_blocker (x INTEGER)")
+    return conn
+
+
+def _assert_bounded_not_raw(excinfo: pytest.ExceptionInfo, paths: FoundryPaths) -> None:
+    """Bounded per `schemas/operator_mcp_error.schema.yaml` (AC OPM-7): no
+    driver text, no SQL, no path. Mirrors the sibling assertion helpers in
+    `test_operator_cancel_resume_service.py` / `test_operator_receipt_service.py`."""
+
+    message = str(excinfo.value)
+    assert "database is locked" not in message
+    assert "SELECT" not in message
+    assert "INSERT" not in message
+    assert str(paths.operator_operations_db) not in message
+    assert not isinstance(excinfo.value, sqlite3.OperationalError)
+
+
+def test_list_attempt_ids_for_operation_raises_bounded_error_not_raw_driver_exception_when_locked(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_list_attempt_ids_for_operation`'s own guard, reached via the public
+    `list_attempts_for_operation` -- the first (and only) db interaction in
+    that method, so a cold store + real competing lock exercises it
+    directly, no confound from any other guard."""
+
+    adapter = _adapter(tmp_foundry)
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(tmp_foundry)
+    try:
+        with pytest.raises(AttemptStoreUnavailableError) as excinfo:
+            adapter.list_attempts_for_operation(_OPERATION_ID)
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    _assert_bounded_not_raw(excinfo, tmp_foundry)
+
+
+def test_lookup_operation_id_raises_bounded_error_not_raw_driver_exception_when_locked(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_lookup_operation_id`'s own guard, reached via the public
+    `load_attempt`. A REAL `AgentJob` is created first, directly via
+    `AgentJobService.create_job` (bypassing this adapter's own
+    `create_attempt` -- so `attempts` has no link row for it and the
+    operations db stays genuinely untouched/cold), so `load_job` succeeds
+    (file-based, no sqlite involved) and execution reaches
+    `_lookup_operation_id` -- the ONLY sqlite interaction `load_attempt`
+    makes -- which then hits the real competing lock."""
+
+    adapter = _adapter(tmp_foundry)
+    jobs = AgentJobService(tmp_foundry)
+    job = jobs.create_job(
+        "claude_agent_sdk",
+        "rf_synthesize_deep",
+        "research",
+        dict(_MINIMAL_POLICY_SNAPSHOT),
+        project_id="test-project",
+        workspace_id="ws-mine",
+    )
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(tmp_foundry)
+    try:
+        with pytest.raises(AttemptStoreUnavailableError) as excinfo:
+            adapter.load_attempt(job.agent_job_id)
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    _assert_bounded_not_raw(excinfo, tmp_foundry)
+
+
+def test_record_attempt_link_acquisition_raises_bounded_error_not_raw_driver_exception_when_locked(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_record_attempt_link`'s own acquisition-half guard (K3-BLOCK-1 half
+    1 analogue), reached via the public `create_attempt`.
+
+    Schema is warmed FIRST via an unrelated, successful `create_attempt`
+    call -- both so the blocker connection below can open an existing file,
+    and (the real reason) so `create_attempt`'s OWN cap-check
+    (`_list_attempt_ids_for_operation`, a plain SELECT against a WARM
+    schema) succeeds against the blocker's held RESERVED lock rather than
+    tripping ITS OWN guard first -- which would prove the wrong guard fired.
+    This isolates `_record_attempt_link`'s `BEGIN IMMEDIATE` (which DOES
+    conflict with an already-held RESERVED lock -- SQLite allows only one
+    RESERVED holder at a time) as the thing under test.
+    """
+
+    adapter = _adapter(tmp_foundry)
+    _create_attempt(adapter, operation_id="opm_" + "b" * 64)
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(tmp_foundry)
+    try:
+        with pytest.raises(AttemptStoreUnavailableError) as excinfo:
+            _create_attempt(adapter, operation_id="opm_" + "c" * 64)
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    _assert_bounded_not_raw(excinfo, tmp_foundry)
+
+
+def test_record_attempt_link_promotion_raises_bounded_error_not_raw_driver_exception_when_locked(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_record_attempt_link`'s own promotion-half guard (K3-BLOCK-1 half 2
+    analogue): `BEGIN IMMEDIATE` takes RESERVED immediately but SQLite
+    promotes to EXCLUSIVE lazily, on the first real write -- the INSERT --
+    so contention can still fire AFTER a successful `BEGIN IMMEDIATE`.
+    Identical proxy-connection technique to
+    `test_operator_operation_service.
+    test_record_confirmation_lock_contention_inside_transaction_raises_bounded_error_not_raw`
+    (`sqlite3.Connection` is an immutable C type and cannot be patched
+    directly): wraps the module's `_connect` in a proxy whose `execute`
+    raises the SAME exception class SQLite raises, on the INSERT into
+    `attempts` specifically, so the transaction, the connection, and the
+    surrounding handling are all real and only the failing statement is
+    simulated.
+
+    NOT redundant with the acquisition-half test above: that test's guard
+    sits around `_ensure_schema`/`BEGIN IMMEDIATE` and cannot fire here
+    (`BEGIN IMMEDIATE` succeeds on this path); deleting only the
+    promotion-half `except` clause leaves the acquisition-half test green
+    and fails this one.
+    """
+
+    adapter = _adapter(tmp_foundry)
+    rollbacks: list[str] = []
+
+    class _FailingInsertConnection:
+        def __init__(self, conn: sqlite3.Connection) -> None:
+            self._conn = conn
+
+        def execute(self, sql: str, *args: Any, **kwargs: Any) -> Any:
+            if sql.lstrip().upper().startswith("INSERT INTO ATTEMPTS"):
+                raise sqlite3.OperationalError("database is locked")
+            if sql.strip().upper() == "ROLLBACK":
+                rollbacks.append(sql)
+            return self._conn.execute(sql, *args, **kwargs)
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._conn, name)
+
+    real_connect = ops_module._connect
+    monkeypatch.setattr(
+        ops_module, "_connect", lambda paths: _FailingInsertConnection(real_connect(paths))
+    )
+
+    with pytest.raises(AttemptStoreUnavailableError) as excinfo:
+        _create_attempt(adapter, operation_id="opm_" + "d" * 64)
+
+    assert not isinstance(excinfo.value, sqlite3.OperationalError)
+    assert "database is locked" not in str(excinfo.value)
+    assert rollbacks == ["ROLLBACK"]

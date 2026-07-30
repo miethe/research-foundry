@@ -266,6 +266,30 @@ trace. Concrete "validate these acceptance criteria" and "fix this named defect"
 different ask and work fine. Recorded so the next phase doesn't over-generalize the trap into "Codex
 is unusable on this codebase".
 
+## Cross-model result: two codex runs, same repo, same model, opposite outcomes
+
+Both were `codex exec --model gpt-5.6-terra --sandbox workspace-write`, prompt via stdin, same
+worktree, minutes apart.
+
+| Run | Shape | Outcome |
+|---|---|---|
+| Registry test-isolation fix | ~60 lines, 2 files, **one concrete defect** | **Excellent.** 38.9k tokens, exit 0, fixed the *root cause* — an autouse whole-registry snapshot/restore fixture — rather than the two red assertions, and explicitly declined the tempting shortcut of swapping in another concrete operation kind, which would have re-armed the trap for P4/P5. Verified by me in both orderings. |
+| sqlite guard completion sweep | ~110 lines, 4 files, **enumerate-a-pattern + a propagation sub-task** | **Derailed.** Pulled in the repo's own artifact-tracking / CLAUDE.md skill documentation, then looped trying to spawn full-history forked subagents (`ERROR codex_core::tools::router: Full-history forked agents inherit the parent agent type`), ended in a `collab: Wait` loop, and **exited 0 having made zero edits** — clean tree, unchanged guard counts. |
+
+Two transferable lessons:
+
+1. **`codex exec` exit 0 is not a completion signal.** It exited 0 with an empty diff. Verify on disk,
+   always. (Same family as the "agent self-reported transcript is not evidence" rule this ledger
+   already carries — a *third* variant of it.)
+2. **The failure correlated with prompt shape, not with the model or the codebase.** Single-concern,
+   short prompt → excellent root-cause work. Multi-concern sweep prompt → skill-doc loading and
+   subagent forking instead of the task. The right response is to split codex fix runs into
+   single-concern prompts, **not** to conclude "codex doesn't work here" — which is exactly the
+   over-generalization the P1 trap note already invites.
+
+Captured as ITT `node_01KYTGKRK7RW3NNDM1DFSW7DWW`. Fallback was a Claude implementer, chosen because
+it had already completed an identical task shape (the K4-NB-1 seven-site sweep) successfully.
+
 ## Timeline
 
 - **2026-07-30** — P3 opened. Baseline captured, surface mapped, implementer contract written,
