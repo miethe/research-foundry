@@ -150,6 +150,26 @@ from research_foundry.services import operator_operation_service as _ops_store
 
 _logger = logging.getLogger(__name__)
 
+#: K2 (P2 re-gate, non-blocking-but-U5-class): MUST stay in sync with
+#: `schemas/operator_mcp_receipt.schema.yaml`'s
+#: `terminal_receipt.effect_receipt_refs.maxItems` (frozen, not edited by
+#: this fix). That cap is a property of the WHOLE persisted history of an
+#: operation and can only ever GROW (effect_receipts are immutable, no
+#: UPDATE/DELETE path) -- so a denial caught only at `finalize_terminal_
+#: receipt` time (after `_reconcile` already read back 201+ refs) can
+#: NEVER be retried into success: every future `finalize_terminal_receipt`
+#: call for that `operation_id` would find the SAME 201+ refs and deny
+#: again, forever -- permanently unfinalizable, the exact U5-class brick
+#: this closes. :meth:`OperatorReceiptService.record_effect_receipt`
+#: enforces this cap AT WRITE TIME instead (refuses the 201st effect
+#: outright, `reason_code="payload_too_large"`, a member of
+#: `operator_mcp_policy.CLOSED_REASON_CODES`) so `effect_receipt_refs` can
+#: never exceed it in the first place -- the unfinalizable state can no
+#: longer be CREATED, mirroring U5/REGATE-BLOCK-3's own write-time-over-
+#: reconciliation-time precedent for the GAP defect class (see this
+#: module's docstring).
+_MAX_EFFECT_RECEIPTS_PER_OPERATION = 200
+
 __all__ = [
     "ReceiptOutcome",
     "ResumePointOutcome",
@@ -499,7 +519,12 @@ class OperatorReceiptService:
         Denies (governed) if `action_id` does not reference an
         already-persisted `action_receipt` for this `operation_id` -- the
         MISMATCHED write-time guard -- or if `effect_digest` was already
-        recorded (for ANY action/operation) -- the DUPLICATE guard.
+        recorded (for ANY action/operation) -- the DUPLICATE guard -- or if
+        `operation_id` already has `_MAX_EFFECT_RECEIPTS_PER_OPERATION`
+        persisted effect_receipts (`reason_code == "payload_too_large"`) --
+        the K2 CAP write-time guard; see that constant's docstring for why
+        this must be enforced here rather than left to `finalize_terminal_
+        receipt`'s schema-validation catch.
 
         **U2/REGATE-BLOCK-2**: `workspace_id` is authorized against the
         REAL, derived workspace for `operation_id`, identically to
@@ -592,6 +617,33 @@ class OperatorReceiptService:
                         operation_id,
                     )
                     return ReceiptOutcome("denied", "internal_error", None)
+
+                # K2 (P2 re-gate): refuse the write BEFORE it would push
+                # this operation's `effect_receipt_refs` past the schema's
+                # own `maxItems` cap -- see `_MAX_EFFECT_RECEIPTS_PER_
+                # OPERATION`'s docstring for why this must happen here,
+                # at write time, rather than being left to `finalize_
+                # terminal_receipt`'s schema-validation catch (which would
+                # deny, correctly, but only AFTER the cap was already
+                # irreversibly exceeded -- permanently, since effect_
+                # receipts are immutable).
+                effect_count_row = conn.execute(
+                    "SELECT COUNT(*) AS n FROM effect_receipts WHERE operation_id = ?",
+                    (operation_id,),
+                ).fetchone()
+                if effect_count_row["n"] >= _MAX_EFFECT_RECEIPTS_PER_OPERATION:
+                    conn.execute("ROLLBACK")
+                    _logger.error(
+                        "operator_receipt_service: effect_receipt REJECTED -- "
+                        "operation_id=%s already has %d persisted effect_receipts, "
+                        "at the terminal_receipt.effect_receipt_refs schema cap "
+                        "(maxItems=%d, K2) -- denying this write so the operation "
+                        "can never reach an unfinalizable state",
+                        operation_id,
+                        effect_count_row["n"],
+                        _MAX_EFFECT_RECEIPTS_PER_OPERATION,
+                    )
+                    return ReceiptOutcome("denied", "payload_too_large", None)
 
                 conn.execute(
                     "INSERT INTO effect_receipts"

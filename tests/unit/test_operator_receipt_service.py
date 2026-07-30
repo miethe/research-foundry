@@ -258,6 +258,94 @@ def test_mismatched_effect_receipt_unknown_action_id_denies(tmp_foundry: Foundry
 
 
 # ---------------------------------------------------------------------------
+# K2 (P2 re-gate, non-blocking-but-U5-class): `record_effect_receipt` must
+# refuse the 201st effect_receipt for a single operation_id AT WRITE TIME,
+# never letting `effect_receipt_refs` (echoed verbatim into
+# `terminal_receipt`, capped `maxItems: 200` by the frozen schema) grow
+# past that cap. Before this fix, nothing bounded this write -- the cap
+# was only ever discovered later, inside `finalize_terminal_receipt`'s
+# `_validate_receipt` call, by which point it can NEVER be un-exceeded
+# (effect_receipts are immutable, no UPDATE/DELETE path) -- the operation
+# would be denied "internal_error" on EVERY future finalize attempt,
+# forever: the exact permanently-unfinalizable "brick" class U5 closed for
+# GAP receipts, left open here for this one.
+# ---------------------------------------------------------------------------
+
+
+def test_effect_receipt_denies_at_maxitems_cap(tmp_foundry: FoundryPaths) -> None:
+    """Real, out-of-band persistence (never a fake/mock) of exactly 200
+    action_receipt/effect_receipt pairs -- the schema's own `maxItems: 200`
+    -- then a 201st effect_receipt for a 201st real action_receipt must
+    deny with `reason_code == "payload_too_large"` (a member of
+    `operator_mcp_policy.CLOSED_REASON_CODES`, never a bare "internal_error"),
+    and the 201st row must NEVER reach the table -- `effect_receipt_refs`
+    can therefore never exceed the schema cap for this operation_id again,
+    on any future `finalize_terminal_receipt` call."""
+
+    from research_foundry.services.operator_receipt_service import (
+        _MAX_EFFECT_RECEIPTS_PER_OPERATION,
+    )
+
+    service = _service(tmp_foundry)
+    assert _MAX_EFFECT_RECEIPTS_PER_OPERATION == 200  # pins this test's own iteration count
+
+    for i in range(_MAX_EFFECT_RECEIPTS_PER_OPERATION):
+        action_outcome = _record_action(service, action_id=f"act-{i}", action_index=i)
+        assert action_outcome.outcome == "created"
+        effect_outcome = service.record_effect_receipt(
+            _OPERATION_ID,
+            workspace_id=_WORKSPACE,
+            action_id=f"act-{i}",
+            effect_kind="source_card_created",
+            effect_digest=_SHA(f"effect-{i}"),
+            effect_ref=f"source_card:{i}",
+            generated_at="2026-07-29T00:00:06Z",
+        )
+        assert effect_outcome.outcome == "created"
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        count_before = conn.execute(
+            "SELECT COUNT(*) FROM effect_receipts WHERE operation_id = ?", (_OPERATION_ID,)
+        ).fetchone()[0]
+        assert count_before == _MAX_EFFECT_RECEIPTS_PER_OPERATION
+    finally:
+        conn.close()
+
+    # The 201st action_receipt itself is unaffected (only effect_receipts
+    # are capped) -- record it so the MISMATCHED guard doesn't mask the
+    # cap guard under test.
+    overflow_action = _record_action(
+        service, action_id="act-overflow", action_index=_MAX_EFFECT_RECEIPTS_PER_OPERATION
+    )
+    assert overflow_action.outcome == "created"
+
+    overflow_outcome = service.record_effect_receipt(
+        _OPERATION_ID,
+        workspace_id=_WORKSPACE,
+        action_id="act-overflow",
+        effect_kind="source_card_created",
+        effect_digest=_SHA("effect-overflow"),
+        effect_ref="source_card:overflow",
+        generated_at="2026-07-29T00:00:07Z",
+    )
+    assert overflow_outcome.outcome == "denied"
+    assert overflow_outcome.reason_code == "payload_too_large"
+    assert overflow_outcome.receipt is None
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        count_after = conn.execute(
+            "SELECT COUNT(*) FROM effect_receipts WHERE operation_id = ?", (_OPERATION_ID,)
+        ).fetchone()[0]
+        # THE actual invariant this closes: the 201st row never landed --
+        # effect_receipt_refs can never exceed the schema's maxItems cap.
+        assert count_after == _MAX_EFFECT_RECEIPTS_PER_OPERATION
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
 # TRUNCATED / EXTRA / REORDERED: finalize_terminal_receipt reconciliation.
 # ---------------------------------------------------------------------------
 

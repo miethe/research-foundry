@@ -1603,8 +1603,10 @@ class _ReceiptsFailureInjector:
         self._real = real
         self.deny_write_checkpoint_when = None
         self.deny_record_action_receipt_when = None
+        self.deny_record_effect_receipt_when = None
         self.write_checkpoint_calls: list[dict] = []
         self.record_action_receipt_calls: list[dict] = []
+        self.record_effect_receipt_calls: list[dict] = []
 
     def write_checkpoint(self, operation_id: str, **kwargs):  # noqa: ANN001, ANN201
         self.write_checkpoint_calls.append(dict(kwargs))
@@ -1620,6 +1622,15 @@ class _ReceiptsFailureInjector:
         ):
             return ReceiptOutcome("denied", "internal_error", None)
         return self._real.record_action_receipt(operation_id, **kwargs)
+
+    def record_effect_receipt(self, operation_id: str, **kwargs):  # noqa: ANN001, ANN201
+        self.record_effect_receipt_calls.append(dict(kwargs))
+        if (
+            self.deny_record_effect_receipt_when is not None
+            and self.deny_record_effect_receipt_when(kwargs)
+        ):
+            return ReceiptOutcome("denied", "internal_error", None)
+        return self._real.record_effect_receipt(operation_id, **kwargs)
 
     def __getattr__(self, name: str):  # noqa: ANN001, ANN204
         return getattr(self._real, name)
@@ -1862,6 +1873,150 @@ def test_run_actions_denies_when_canceled_checkpoint_is_denied(
     assert real_receipts.load_terminal_receipt(operation_id) is None
 
 
+# ---------------------------------------------------------------------------
+# K1: the P2 re-gate found that two of `run_actions`' 11 outcome-carrying
+# receipt-service calls -- the SUCCESS-branch `record_action_receipt`
+# (status="completed") and `record_effect_receipt` -- were checked in the
+# code (both have an `if ...outcome != "created": return ExecutionOutcome(
+# "denied", ...)` guard) but had NO test that could fail if either guard
+# were deleted: every other test in this module either never reaches these
+# two call sites with a real effect, or reaches them but never denies them.
+# These two tests close that gap using the SAME real-service-wrapping
+# `_ReceiptsFailureInjector` pattern as the six U3/REGATE-BLOCK-1 tests
+# above, extended with `deny_record_action_receipt_when(status="completed")`
+# (the hook already existed, just unused for this branch) and the NEW
+# `deny_record_effect_receipt_when` hook.
+# ---------------------------------------------------------------------------
+
+
+def _action_no_effect(action_id: str, executed: list[str]) -> ActionSpec:
+    """Like `_action` above, but produces NO effect (`run()` returns
+    `None`) -- deliberately, so `run_actions` never reaches its `if effect
+    is not None:` block / `record_effect_receipt` call for this action.
+    Used ONLY by the two tests below to isolate the SUCCESS-branch
+    `record_action_receipt` guard from its downstream sibling
+    (`record_effect_receipt`'s own guard, K1's OTHER half): an earlier
+    draft of this test used effect-bearing actions, and its mutation
+    verification revealed that draft passed EVEN WITH the guard under test
+    deleted -- `record_effect_receipt`'s OWN write-time guard (an
+    action_id must reference an already-persisted action_receipt) denied
+    first, at the SAME loop index, producing byte-identical `executed`/
+    `status` observables regardless of whether the action_receipt guard
+    itself was present. That is the exact "redundant sibling guard" trap
+    this task's proof requirements warn against (see U4/U8's docstrings
+    elsewhere in this file) -- effect-less actions close it: with no
+    effect, the ONLY thing standing between a denied action_receipt and an
+    extra action silently executing is this specific guard."""
+
+    def _run() -> ActionEffect | None:
+        executed.append(action_id)
+        return None
+
+    return ActionSpec(action_id=action_id, run=_run)
+
+
+def test_run_actions_denies_when_success_branch_action_receipt_is_denied(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """K1, guard 1 of 2: the `record_action_receipt` call on the SUCCESS
+    path (`status="completed"`, immediately after `spec.run()` returns
+    without raising). Before this test existed, deleting this guard's
+    `if action_receipt_outcome.outcome != "created": return
+    ExecutionOutcome("denied", None, idx)` check left the entire operator
+    suite passing at exit 0 -- the action's own receipt-service call was
+    exercised by every scenario test, but never denied, so a mutant that
+    fell through to unconditionally write the post-action checkpoint (and
+    let the NEXT action start) went undetected. Uses `_action_no_effect`
+    (not `_action`) -- see that helper's docstring for why an
+    effect-bearing action here would let `record_effect_receipt`'s own
+    guard mask this one instead of proving it independently."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_receipts = OperatorReceiptService(tmp_foundry)
+    injector = _ReceiptsFailureInjector(real_receipts)
+    injector.deny_record_action_receipt_when = lambda kw: kw.get("status") == "completed"
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=injector)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    executed: list[str] = []
+    actions = [_action_no_effect("act-0", executed), _action_no_effect("act-1", executed)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == "denied"
+    # act-0 already ran (the action callable itself returned successfully)
+    # before its own action_receipt denied -- THE actual defect this
+    # closes: with the guard deleted, run_actions would fall through to
+    # write_checkpoint (which persists unconditionally, with no
+    # cross-check against real receipts) and let act-1 start too.
+    assert executed == ["act-0"]
+    assert real_receipts.load_checkpoint(operation_id) is None
+    assert real_receipts.load_terminal_receipt(operation_id) is None
+
+
+def test_run_actions_denies_when_effect_receipt_is_denied(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """K1, guard 2 of 2: the `record_effect_receipt` call, reached only
+    when `spec.run()` returns a non-`None` `ActionEffect`. Before this test
+    existed, deleting this guard's `if effect_receipt_outcome.outcome !=
+    "created": return ExecutionOutcome("denied", None, idx)` check left the
+    entire operator suite passing at exit 0 -- every scenario test that
+    exercises an effect-bearing action does so through the REAL service
+    with nothing denying it, so a mutant that fell through to
+    unconditionally write the post-action checkpoint (claiming progress on
+    an effect that was never durably recorded) went undetected."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_receipts = OperatorReceiptService(tmp_foundry)
+    injector = _ReceiptsFailureInjector(real_receipts)
+    injector.deny_record_effect_receipt_when = lambda kw: True
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=injector)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    executed: list[str] = []
+    actions = [_action("act-0", executed), _action("act-1", executed)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == "denied"
+    # act-0 ran and its action_receipt WAS durably persisted (reconciliation
+    # would find it) -- only the effect_receipt denied. `resolve_resume_
+    # point` reads ONLY real, already-committed `action_receipts` rows (see
+    # that method's own docstring), so `next_action_index == 1` here proves
+    # act-0's action_receipt is durably persisted, independent of anything
+    # `run_actions` itself reports.
+    assert executed == ["act-0"]
+    resume_point = real_receipts.resolve_resume_point(operation_id)
+    assert resume_point.outcome == "ok"
+    assert resume_point.next_action_index == 1
+    # THE actual defect this closes: with the guard deleted, run_actions
+    # would write the post-action "pending" checkpoint (claiming act-0's
+    # effect is durably recorded) even though record_effect_receipt denied.
+    assert real_receipts.load_checkpoint(operation_id) is None
+    assert real_receipts.load_terminal_receipt(operation_id) is None
+
+
 def test_run_actions_denies_start_index_exceeding_total_action_count(
     tmp_foundry: FoundryPaths,
 ) -> None:
@@ -2089,6 +2244,173 @@ def test_p2s_block2_extra_receipt_denies_run_actions_completed_branch(
     # And -- the actual corruption-detection invariant -- no terminal
     # receipt was ever durably persisted for this operation.
     assert receipt_service.load_terminal_receipt(operation_id) is None
+
+
+# ---------------------------------------------------------------------------
+# K1 follow-on (found by THIS task's own mutation-verification sweep, not
+# by the P2 re-gate): the re-gate named exactly two untested outcome-
+# carrying calls (the two tests above this block). Mutating the REMAINING
+# nine guards one at a time to confirm the re-gate's count found TWO MORE
+# that also left the full operator suite at exit 0 when neutralized --
+# `finalize_terminal_receipt`'s FAILURE-branch and CANCELED-branch denial
+# checks (the `if outcome.outcome == "denied":` guards immediately before
+# `return ExecutionOutcome("failed", ...)` and `return ExecutionOutcome(
+# "canceled", ...)` respectively). Every existing failure/cancellation test
+# reaches a finalize call that always SUCCEEDS -- nothing plants an
+# out-of-band EXTRA receipt on either of those two specific branches -- so
+# no test could observe the difference between "denied, reported denied"
+# and "denied, reported failed/canceled anyway" on those two paths. These
+# two tests close that gap the same way `test_p2s_block2_extra_receipt_
+# denies_run_actions_completed_branch` above closes it for the COMPLETED
+# branch: a REAL, out-of-band EXTRA action_receipt, planted via the real
+# `OperatorReceiptService` (never a fake). The completed-branch test could
+# plant its ghost before `run_actions` even started (nothing else races
+# with the caller). The failure/canceled branches cannot: their contiguity
+# write-time guard refuses a ghost at `expected_action_count` before the
+# branch's OWN write to `expected_action_count - 1` exists yet. So the
+# ghost must be planted MID-FLIGHT, immediately before each branch's own
+# `write_checkpoint(status="converged")` call -- `_GhostAtCheckpoint`
+# below is a real-service wrapper that does exactly that as a side effect,
+# then delegates the checkpoint write itself to the real service
+# unmodified.
+# ---------------------------------------------------------------------------
+
+
+class _GhostAtCheckpoint:
+    """Wraps a REAL `OperatorReceiptService`. The FIRST time `write_
+    checkpoint` is called with `status="converged"`, it plants one real,
+    out-of-band `action_receipt` at `ghost_index` (via the wrapped real
+    service) BEFORE delegating the checkpoint write itself to that same
+    real service, unmodified. Every other call goes straight through.
+    Used only to reproduce the EXTRA-receipt corruption shape mid-flight,
+    on branches whose own write-time contiguity guard makes it impossible
+    to pre-plant the ghost before `run_actions` starts (see block comment
+    above)."""
+
+    def __init__(
+        self,
+        real: OperatorReceiptService,
+        *,
+        operation_id: str,
+        workspace_id: str,
+        ghost_index: int,
+    ) -> None:
+        self._real = real
+        self._operation_id = operation_id
+        self._workspace_id = workspace_id
+        self._ghost_index = ghost_index
+        self._planted = False
+
+    def write_checkpoint(self, operation_id: str, **kwargs):  # noqa: ANN001, ANN201
+        if not self._planted and kwargs.get("status") == "converged":
+            self._planted = True
+            ghost = self._real.record_action_receipt(
+                self._operation_id,
+                workspace_id=self._workspace_id,
+                action_id="act-ghost",
+                action_index=self._ghost_index,
+                status="completed",
+                attempt_ref="attempt-out-of-band",
+                started_at=ids.now_iso(),
+                completed_at=ids.now_iso(),
+            )
+            assert ghost.outcome == "created"
+        return self._real.write_checkpoint(operation_id, **kwargs)
+
+    def __getattr__(self, name: str):  # noqa: ANN001, ANN204
+        return getattr(self._real, name)
+
+
+def test_p2s_block2_extra_receipt_denies_run_actions_failed_branch(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """K1 follow-on, failure branch: a single action raises (idx=0), so
+    the failure branch's own `record_action_receipt(status="failed",
+    action_index=0)` and `write_checkpoint(status="converged")` both
+    succeed normally -- but a real, out-of-band ghost `action_receipt` is
+    planted at index=1 (one past `expected_action_count=idx+1=1`)
+    immediately before that checkpoint write, so `finalize_terminal_
+    receipt(expected_action_count=1, status="failed")`'s own reconciliation
+    -- not any earlier guard -- is what denies."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_receipts = OperatorReceiptService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    injected = _GhostAtCheckpoint(
+        real_receipts, operation_id=operation_id, workspace_id=workspace_id, ghost_index=1
+    )
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=injected)
+
+    def _raises() -> ActionEffect | None:
+        raise RuntimeError("simulated action failure")
+
+    actions = [ActionSpec("act-0", _raises)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == "denied"
+    assert execution.terminal_receipt is None
+    # The FAILURE receipt and its checkpoint WERE durably persisted
+    # (reconciliation would find them) -- only finalize's own reconciled
+    # EXTRA check is what denies.
+    assert real_receipts.load_checkpoint(operation_id)["status"] == "converged"
+    assert real_receipts.load_terminal_receipt(operation_id) is None
+
+
+def test_p2s_block2_extra_receipt_denies_run_actions_canceled_branch(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """K1 follow-on, canceled branch: cancellation is requested before the
+    single action ever starts, so the `break` fires at idx=0
+    (`completed_action_count=0`). The canceled branch's own `write_
+    checkpoint(status="converged", completed_action_count=0)` succeeds
+    normally -- but a real, out-of-band ghost `action_receipt` is planted
+    at index=0 (one past `expected_action_count=idx=0`) immediately before
+    that checkpoint write, so `finalize_terminal_receipt(expected_
+    action_count=0, status="canceled")`'s own reconciliation -- not any
+    earlier guard -- is what denies."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_receipts = OperatorReceiptService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    injected = _GhostAtCheckpoint(
+        real_receipts, operation_id=operation_id, workspace_id=workspace_id, ghost_index=0
+    )
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=injected)
+
+    cancel = svc.request_cancellation(operation_id, workspace_id=workspace_id, requested_by="alice")
+    assert cancel.outcome == "created"
+
+    executed: list[str] = []
+    actions = [_action("act-0", executed)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == "denied"
+    assert execution.terminal_receipt is None
+    assert executed == []  # canceled before the action ever started
+    assert real_receipts.load_checkpoint(operation_id)["status"] == "converged"
+    assert real_receipts.load_terminal_receipt(operation_id) is None
 
 
 def test_p2s_block2_extra_receipt_denies_run_or_replay_before_any_action_executes(
