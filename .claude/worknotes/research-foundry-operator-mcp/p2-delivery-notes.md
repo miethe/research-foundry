@@ -350,6 +350,59 @@ Second lesson: the reviewer also found the threaded test **passes in isolation a
 full-file ordering** — an order-dependent test is not a guard. Any new DUR-1 test must be run
 standalone as well as in-file.
 
+## Karen gate — `CHANGES_REQUESTED` (exact tree `2806ea5`)
+
+Karen confirmed the hard part is real, then found a genuine hole *and corrected two of my own
+disclosures*. The disclosure corrections are the more valuable half.
+
+**Mutation-verified as genuinely load-bearing** (Karen ran these, not the implementer):
+`BEGIN IMMEDIATE`→`BEGIN DEFERRED` at 3 sites → **5 tests fail** including both multi-process tests;
+stripping `AND status = 'issued'` from the CAS → 1 test fails; neutralizing the resume sensitivity
+rank → the R1 test fails; disabling the reordered-range check → its test fails. So after
+P2S-BLOCK-1's remediation, **DUR-1 is now genuinely mutation-proof** — the phase's central claim is
+real. Karen also confirmed the audit-non-erasure ordering is *structurally* correct (reconciliation
+precedes the audit call, which sits outside the transaction) and that the convergence test's
+normalizations do **not** launder away effect divergence — it compares effect payloads and ordering.
+
+**Blocking — CRITICAL: an untested cross-workspace WRITE hole.**
+`tests/unit/test_operator_attempt_adapter.py:276-292` is named
+`test_every_lifecycle_wrapper_denies_wrong_workspace…` and enumerates **7 of 9** wrappers. It omits
+`persist_event` and `persist_artifact` — precisely the two whose underlying `AgentJobService` methods
+(`agent_job_service.py:497`, `:517`) take **no `identity` and scope nothing**, so the adapter gate is
+the *sole* boundary. Karen removed both gates and the full operator suite **plus**
+`tests/test_workspace_isolation_enforcement.py` stayed exit 0, zero failures. This is P1's `K-FINAL-1`
+lesson recurring: enumerate **every** public symbol, and beware a test whose *name* asserts more than
+its parametrize list covers.
+
+Four more: truncated/extra receipt tests both pass with their own guard disabled (a redundant sibling
+range check subsumes them — correct behavior, but neither test pins its guard: the BLOCK-4 signature
+again); no test asserts a **stale/original** confirmation is rejected on resume, so H3 scenario 9's
+"fresh confirmation" is a property of the harness rather than the service; scenario 10's
+`assert not dest.exists()` is tautological (the service never sees `dest`); and the `accept_job`
+trip-wire is a substring *name* ban while the docstring's stronger "never calls it" claim is untested.
+
+### Karen corrected two of my disclosures — both were wrong
+
+1. **`effective_sensitivity` is NOT inert.** The fix wave declared it "inert by design at this layer,
+   deferred to P5." That is **stale**: it is read at four real decision sites
+   (`operator_mcp_policy.py:1432`, `:1436`, `:1864`; `operator_cancel_resume_service.py:283`) with
+   behavioral tests. What is actually dead is the `operations.effective_sensitivity` **column** —
+   written at `:1253`, zero readers, because every SELECT projects `manifest_json`. So: a dead
+   denormalized copy plus an out-of-date note, not a security hole. The disclosure erred toward
+   *understating* the implementation, which is the honest direction, but it was still wrong.
+2. **`OPM-DF-preflight` was factually false, and I put it in a durable ITT node.** I recorded
+   "`governance.preflight()` has ZERO call sites" from the P1 ledger digest. It **does** have a
+   production call site — `services/planning.py:955`. Verified directly. The operator path simply
+   uses its own `_check_preflight` (`operator_mcp_policy.py:1453`), which **is** wired as the 5th of
+   five stages in the fixed-order chain (`:1518`) and produces real denials with coverage. The node has
+   been corrected and downgraded from high/`s` to low/`xs`: it is a design-and-documentation decision,
+   not an unwired security stage.
+
+**Lesson: a digest of a findings ledger is hearsay, not evidence.** Both corrections trace to me
+carrying a delegated summary forward without re-verifying the underlying claim — and one of them
+hardened into a tracker node that would have sent a future agent chasing a phantom. Grep the claim
+before you file it.
+
 ## Open items / follow-ups (→ ITT nodes)
 
 Filed on tree `aos-research-foundry`:
