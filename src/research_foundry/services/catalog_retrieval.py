@@ -21,7 +21,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..api.auth.provider import AuthIdentity
+from ..auth_identity import AuthIdentity
 from .assertion_catalog import AssertionCatalog, AssertionCatalogDenied
 from .assertion_reuse import ReuseDecision, evaluate_reuse
 from .sensitivity import SENSITIVITY_RANK

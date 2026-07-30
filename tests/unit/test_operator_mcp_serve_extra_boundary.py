@@ -233,3 +233,106 @@ def test_evaluate_policy_and_mint_confirmation_run_without_serve_extra() -> None
             f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
         )
         assert "POLICY_OK" in result.stdout
+
+
+def test_planning_module_imports_without_serve_extra() -> None:
+    """P3-F2 -- `research_foundry.services.planning` must import cleanly
+    without the serve extra (P3 implementer contract). The FULL import
+    closure required THREE fixes, not one -- "fix the layer below"
+    (P1 defect-class checklist item 2), discovered iteratively:
+
+    1. `assertion_catalog.py:45` -- the ORIGINALLY-traced blocker
+       (`planning.py:47 -> assertion_catalog.py:45 -> api/__init__.py:21`,
+       "fastapi and uvicorn are required").
+    2. `catalog_retrieval.py:24` -- a SECOND, independent module-level
+       `from ..api.auth.provider import AuthIdentity`, imported by BOTH
+       `planning.py:49` directly and by (3) below. Invisible in the
+       original trace because Python's import system stops at the FIRST
+       failing import -- this one was masked by (1) until (1) was fixed.
+    3. `research_evidence_planning.py:122` -- a THIRD, independent
+       module-level `from ..api.auth.provider import AuthIdentity`,
+       imported by `planning.py:50`. Also masked by (1)/(2) until both
+       were fixed.
+
+    All three now import `AuthIdentity` from `..auth_identity` (the
+    deliberately import-clean canonical module `api/auth/provider.py`
+    itself re-exports the SAME class object from -- never a
+    `TYPE_CHECKING`-only guard, so each still works at RUNTIME, not merely
+    at import time). Verified by walking the closure to a fixed point: after
+    fixing all three, `governance.py`/`backlog_metadata.py`/
+    `assertion_reuse.py`/`sensitivity.py` (the remaining modules `planning`,
+    `catalog_retrieval`, and `research_evidence_planning` import at module
+    level) carry NO `..api.auth.*` reference of their own -- there is no
+    fourth link.
+
+    Five FURTHER module-level `..api.auth.*` imports exist elsewhere in
+    `services/` (`assertion_impact.py`, `builder_service.py`,
+    `catalog_service.py`, `knowledge_access.py`, `verification.py`) -- NOT
+    in `planning`'s import closure (confirmed by this test actually
+    importing `planning` successfully without touching any of them), out
+    of scope, not touched. `builder_service.py`/`catalog_service.py`/
+    `knowledge_access.py` also import `..api.auth.scope` helpers
+    (`require_workspace_scope`/`resolve_workspace_isolation_active`) at
+    module level, which have no import-clean twin -- correctly left alone.
+
+    Carries its own CONTROL ASSERTION (P3 implementer contract requirement):
+    a `sys.meta_path` blocker built on the deprecated `find_module` API is
+    silently inert on Python 3.12 (the import protocol dropped
+    `find_module`) and would make this whole test a meaningless pass. The
+    script below asserts `import fastapi` itself raises INSIDE the harness
+    BEFORE asserting the real import under test succeeds -- proving the
+    `find_spec`-based `_Blocker` this file already uses (see
+    `_blocker_preamble` above) actually bites.
+    """
+
+    result = _run_blocked(
+        textwrap.dedent(
+            """
+            import importlib
+
+            # Control assertion: the blocker must actually block, or this
+            # whole test is a meaningless pass (see docstring).
+            try:
+                import fastapi  # noqa: F401
+            except ImportError:
+                pass
+            else:
+                raise AssertionError("control failed: fastapi import was NOT blocked")
+
+            importlib.import_module("research_foundry.services.planning")
+            print("PLANNING_IMPORT_OK")
+            """
+        )
+    )
+    assert result.returncode == 0, (
+        f"research_foundry.services.planning import raised under the serve-extra "
+        f"blocker.\nstdout={result.stdout!r}\nstderr={result.stderr!r}"
+    )
+    assert "PLANNING_IMPORT_OK" in result.stdout
+
+
+def test_operator_mcp_adapters_job_lifecycle_imports_without_serve_extra() -> None:
+    """The new `job.status`/`job.cancel`/`job.resume` adapter module
+    (OPM-3.4) must also import cleanly without the serve extra -- every
+    module it imports (`operator_attempt_adapter`, `operator_cancel_resume_
+    service`, `operator_operation_service`, `operator_receipt_service`,
+    `operator_mcp_policy`) already satisfies that boundary; this proves the
+    NEW module adds no regression."""
+
+    result = _run_blocked(
+        textwrap.dedent(
+            """
+            import importlib
+
+            importlib.import_module(
+                "research_foundry.services.operator_mcp_adapters.job_lifecycle"
+            )
+            print("JOB_LIFECYCLE_IMPORT_OK")
+            """
+        )
+    )
+    assert result.returncode == 0, (
+        f"job_lifecycle import raised under the serve-extra blocker.\n"
+        f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
+    )
+    assert "JOB_LIFECYCLE_IMPORT_OK" in result.stdout

@@ -205,6 +205,67 @@ worktree, so the substance stands — but the transcript as written could not ha
 the third variant of "an agent's self-reported test output is not evidence" this plan has recorded.
 Re-running each leg's suite myself is what surfaced it, and stays mandatory.
 
+## Mid-phase events that changed P3's scope
+
+### P2 closed *during* P3, and its commits landed on this branch on top of Wave 0
+
+`9df464b` ("close K4-BLOCK-1 + record P2 rounds 4-5 (both gates APPROVED)") and `5a13848` ("P2 phase
+closed") were committed to `worktree-operator-mcp-v1` **after** P3's Wave-0 commit `70c8a6f`. This is
+the first honest gate close in this workstream — P1 was closed by owner acceptance over a
+`CHANGES_REQUESTED` verdict; P2 has two genuinely APPROVED gates.
+
+Handled, not merely noticed:
+- Verified the commits were **targeted** (5 files), not a `git add -A` sweep, so no in-flight P3 work
+  was captured into someone else's commit.
+- They modified `operator_cancel_resume_service.py` and `operator_operation_service.py` — both
+  underneath live P3 legs. Re-ran OPM-3.3's full surface against the merged tree (green) and messaged
+  the in-flight leg to re-read both files rather than build on its launch-time snapshot.
+
+**Standing hazard**: two agents committing to one worktree concurrently. It was benign this time
+because both committers scoped their `git add`. It would not be benign with `git add -A`.
+
+### K4-NB-1 became a new P3 obligation (High)
+
+P2's close explicitly assigns it here, with the instruction that it "must not be re-deferred as
+'adjacent' a third time". `operator_receipt_service.py` has **zero** `OperationalError` handlers
+across all **seven** `_ensure_schema` sites; three methods (`load_terminal_receipt`,
+`load_checkpoint`, `resolve_resume_point`) leak a raw `sqlite3.OperationalError: database is locked`
+to callers, reachable from the same two governed APIs K4-BLOCK-1 was about.
+
+The ledger's own durable lesson is the actual instruction: K3-BLOCK-1, K4-BLOCK-1 and K4-NB-1 are
+**one defect** — an unguarded `_ensure_schema` on a shared SQLite file — and each round closed the
+instance in front of it while the sweep found the next, at a cost of one full adversarial round per
+instance. Dispatched with: enumerate every occurrence of the *pattern* and fix as a set; inventory
+(don't fix) the sibling modules; don't fold "store unavailable" into a `KeyError`/not-found contract
+(a transient lock reported as "does not exist" is worse than the raw leak); don't over-broaden the
+`except` (`K3-NB-6`); and exercise the **cold-start** path, because a warm schema makes a contention
+test pass for free.
+
+### Orchestrator error, corrected: P3-F2's closure was deeper than reported
+
+I traced the serve-extra leak as `planning.py:47 → assertion_catalog.py:45 → api/__init__.py:21` and
+scoped the fix to that one file, telling the leg the other eight `..api.auth.*` imports were out of
+scope. That was wrong: the chain is one file deep only **at the first failure point**. Fixing
+`assertion_catalog` reveals `catalog_retrieval.py:24` behind it, and `planning` still won't import
+clean. This is the same "fix the layer below" class the plan's own checklist names as item 2 — the
+tracer stops at the first raise, and the first raise is not the boundary.
+
+Scope corrected in flight: fix **every** module in `planning`'s import closure, iterating until it
+imports clean under a blocked-fastapi harness. Noted here rather than quietly amended because the
+mis-scoping, not the fix, is the transferable lesson.
+
+## Cross-model lane
+
+`gpt-5.6-terra` probed and confirmed working in this repo (`codex exec --sandbox read-only`, prompt
+via **stdin** — the argument form hangs waiting on stdin). Reserved for (a) AC cross-validation and
+(b) fix runs if a Claude leg stalls or a gate returns red.
+
+The P1-era trap "do not use Codex here" is **narrower than it reads**: what Codex refused was the
+*adversarial security-audit* framing, under its own safety classifier, after burning a long reasoning
+trace. Concrete "validate these acceptance criteria" and "fix this named defect" framings are a
+different ask and work fine. Recorded so the next phase doesn't over-generalize the trap into "Codex
+is unusable on this codebase".
+
 ## Timeline
 
 - **2026-07-30** — P3 opened. Baseline captured, surface mapped, implementer contract written,

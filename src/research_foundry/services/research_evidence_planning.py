@@ -119,7 +119,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ..api.auth.provider import AuthIdentity
+from ..auth_identity import AuthIdentity
 from ..yamlio import dumps_yaml
 from .catalog_retrieval import (
     CatalogReceipt,

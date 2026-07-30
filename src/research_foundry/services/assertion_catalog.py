@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..api.auth.provider import AuthIdentity
+from ..auth_identity import AuthIdentity
 from ..paths import FoundryPaths
 from ..yamlio import load_yaml
 from .assertion_materialization import _referenced_target_ids

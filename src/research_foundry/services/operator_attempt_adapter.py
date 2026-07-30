@@ -115,7 +115,68 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "AttemptRecord",
     "OperatorAttemptAdapter",
+    "AttemptLimitExceededError",
+    "MAX_ATTEMPTS_PER_OPERATION",
 ]
+
+# ---------------------------------------------------------------------------
+# P2S-NB-9 (AC OPM-3 "bounded attempts", scheduled at OPM-3.4): before this
+# fix, `create_attempt` had no cap at all -- `grep -rn "max_attempt\|
+# attempt_limit\|MAX_ATTEMPT" src/research_foundry/services/` returned zero
+# hits (findings ledger P2S-NB-9). A caller (originally: any future retry
+# loop; concretely, as of OPM-3.4: `operator_mcp_adapters.job_lifecycle`'s
+# `job.resume` adapter, and `OperatorCancelResumeService.resume_operation`'s
+# own direct call) could mint an unbounded number of attempts (real
+# `AgentJob` subprocess-spawn records, each with its own credential
+# lifecycle) against a single `operation_id`.
+#
+# **No fail-open (defect class 1)**: the cap is a hard-coded Python `int`,
+# always present -- never a caller-suppliable/config-parsed value whose
+# absence or malformed shape could be misread as "unlimited". A caller
+# cannot raise, lower, or bypass it through any parameter this method
+# accepts.
+#
+# **Not literally "an exception" from the governed caller's perspective**:
+# `AttemptLimitExceededError` is still a real, named Python exception (the
+# ONLY mechanism this method has to refuse a would-be side-effecting write
+# before performing it, consistent with this module's own existing
+# convention -- see `create_attempt`'s pre-existing empty-`operation_id`
+# `ValueError`), but every reachable caller in this codebase invokes
+# `create_attempt` from inside an `ActionSpec.run()` closure executed by
+# `OperatorCancelResumeService.run_actions` (`operator_cancel_resume_
+# service.py:624-647`), which already converts ANY raised exception from an
+# action into a governed, typed, bounded `ExecutionOutcome("failed", ...)`
+# terminal receipt (`reason_code="internal_error"`, `retryable=False`) --
+# never a raw traceback reaching an Operator MCP caller, never a silent
+# success, and (since the failure is terminal, not retried by this method
+# itself) never an infinite retry loop. This reuses that EXISTING governed-
+# failure path rather than inventing a second, parallel one.
+_DEFAULT_MAX_ATTEMPTS_PER_OPERATION = 5
+
+#: Hard cap on the number of attempts (`AgentJob` records) a single
+#: `operation_id` may accumulate via :meth:`OperatorAttemptAdapter.
+#: create_attempt`. Chosen conservatively: every existing test and call site
+#: in this tree creates at most 2 attempts for any one `operation_id`
+#: (verified by inspection of `tests/unit/test_operator_attempt_adapter.py`
+#: and `tests/unit/test_operator_cancel_resume_service.py`), so this cap is
+#: never reached by legitimate existing usage while still bounding a
+#: pathological retry loop.
+MAX_ATTEMPTS_PER_OPERATION = _DEFAULT_MAX_ATTEMPTS_PER_OPERATION
+
+
+class AttemptLimitExceededError(RuntimeError):
+    """Raised by :meth:`OperatorAttemptAdapter.create_attempt` when
+    `operation_id` already has :data:`MAX_ATTEMPTS_PER_OPERATION` linked
+    attempts. See the module-level P2S-NB-9 comment above this class for
+    why this is the correct, bounded (never fail-open, never silently
+    successful, never infinitely retried) way to enforce the cap."""
+
+    def __init__(self, operation_id: str, limit: int) -> None:
+        super().__init__(
+            f"attempt limit exceeded for operation_id={operation_id!r} (limit={limit})"
+        )
+        self.operation_id = operation_id
+        self.limit = limit
 
 # ---------------------------------------------------------------------------
 # Storage: the ``attempts`` table in the SAME db OPM-2.1 already owns.
@@ -291,6 +352,25 @@ class OperatorAttemptAdapter:
 
         if not isinstance(operation_id, str) or not operation_id:
             raise ValueError("create_attempt requires a non-empty operation_id")
+
+        # P2S-NB-9: enforce the bounded-attempts cap BEFORE any side effect
+        # (no `AgentJob` is created, no `job.json` written, no `attempts`
+        # row inserted) -- a clean fail-closed check, mirroring this
+        # method's own pre-existing empty-`operation_id` guard immediately
+        # above. Counts existing linked attempts via the SAME unscoped
+        # helper `list_attempts_for_operation`/`_lookup_operation_id` build
+        # on (`_list_attempt_ids_for_operation`) -- never a second,
+        # independently-maintained count.
+        existing_attempt_count = len(_list_attempt_ids_for_operation(self._paths, operation_id))
+        if existing_attempt_count >= MAX_ATTEMPTS_PER_OPERATION:
+            logger.error(
+                "operator_attempt_adapter: create_attempt REJECTED -- "
+                "operation_id=%s already has %d attempts (limit=%d, P2S-NB-9)",
+                operation_id,
+                existing_attempt_count,
+                MAX_ATTEMPTS_PER_OPERATION,
+            )
+            raise AttemptLimitExceededError(operation_id, MAX_ATTEMPTS_PER_OPERATION)
 
         job = self._jobs.create_job(
             provider,

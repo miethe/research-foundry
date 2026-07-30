@@ -55,6 +55,16 @@ def _sha(tag: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _restore_adapter_registry() -> Any:
+    """Keep registry-mutating tests isolated from built-in registrations."""
+
+    snapshot = dict(base._REGISTRY)
+    yield
+    base._REGISTRY.clear()
+    base._REGISTRY.update(snapshot)
+
+
 def test_register_rejects_unknown_operation_kind() -> None:
     @dataclass(frozen=True)
     class _Bogus:
@@ -70,11 +80,16 @@ def test_register_rejects_unknown_operation_kind() -> None:
 
 
 def test_get_adapter_returns_none_for_unregistered_kind() -> None:
-    """`job.resume` is a real, closed OPERATION_KINDS member with no adapter
-    registered by this test module (P3.1 ships only `run.plan`) -- `None`,
-    never a default/fallback adapter."""
+    """An unregistrable probe returns ``None``, never a fallback adapter.
 
-    assert base.get_adapter("job.resume") is None
+    The registry accepts only the frozen ``OPERATION_KINDS`` members.  This
+    probe therefore remains unregistered even as adapters are added for every
+    legitimate operation kind.
+    """
+
+    probe = "test.unregistered.adapter"
+    assert probe not in policy.OPERATION_KINDS
+    assert base.get_adapter(probe) is None
 
 
 def test_register_and_get_adapter_roundtrip() -> None:
