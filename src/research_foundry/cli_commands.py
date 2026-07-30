@@ -756,39 +756,37 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         ``--notebook-id`` refine how the run maps to a notebook.
         """
 
-        from .adapters import get_adapter, load_all
-        from .frontmatter import load_md
-        from .paths import FoundryPaths
-        from .yamlio import dump_yaml
+        from .services import swarm_service as svc
 
-        load_all()
-        paths = FoundryPaths.discover()
-        rp = paths.run_paths(run)
         wanted = [a.strip() for a in adapters.split(",")]
-        # research_brief.md is front-mattered Markdown, not pure YAML.
-        brief = load_md(rp.research_brief)[0] if rp.research_brief.exists() else {}
-        if dry_run:
-            console.print(f"[cyan]dry-run[/cyan] would run: {', '.join(wanted)}")
-            return
         # Best-effort NLM correlation before adapter dispatch (fail-soft).
-        if project or notebook_mode or notebook_id:
+        # Skipped on dry-run, matching the dry-run branch below (no effects).
+        if not dry_run and (project or notebook_mode or notebook_id):
             _apply_notebook_options(
                 run,
                 project=notebook_id if notebook_mode == "explicit" else project,
                 mode=notebook_mode,
             )
-        candidates: list[dict] = []
-        for aid in wanted:
-            ad = get_adapter(aid)
-            if ad is None:
-                err_console.print(f"[yellow]unknown adapter {aid}[/yellow]")
+        result = svc.run_swarm(run, wanted, profile=profile, dry_run=dry_run)
+        if result.dry_run:
+            console.print(
+                f"[cyan]dry-run[/cyan] would run: {', '.join(result.requested_adapter_ids)}"
+            )
+            return
+        for outcome in result.outcomes:
+            if outcome.denial is not None:
+                err_console.print(
+                    f"[yellow]{outcome.denial.reason}: {outcome.adapter_id}[/yellow]"
+                )
                 continue
-            res = ad.run({"brief": brief, "profile": profile})
-            candidates.extend(res.source_candidates)
-            mark = " (degraded)" if res.degraded else ""
-            console.print(f"  {aid}: {len(res.source_candidates)} candidate(s){mark}")
-        dump_yaml({"source_candidates": candidates}, rp.source_candidates)
-        console.print(f"[green]source candidates[/green] {rp.source_candidates}")
+            if outcome.error is not None:
+                err_console.print(
+                    f"[yellow]adapter {outcome.adapter_id} failed: {outcome.error}[/yellow]"
+                )
+                continue
+            mark = " (degraded)" if outcome.degraded else ""
+            console.print(f"  {outcome.adapter_id}: {outcome.source_candidate_count} candidate(s){mark}")
+        console.print(f"[green]source candidates[/green] {result.source_candidates_path}")
 
     @swarm_app.command("drive")
     def swarm_drive_cmd(

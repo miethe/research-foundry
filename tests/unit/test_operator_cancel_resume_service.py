@@ -82,6 +82,7 @@ from pathlib import Path
 import pytest
 
 from research_foundry import ids
+from research_foundry.auth_identity import AuthIdentity
 from research_foundry.paths import FoundryPaths
 from research_foundry.services import operator_mcp_policy as policy
 from research_foundry.services.operator_attempt_adapter import OperatorAttemptAdapter
@@ -196,7 +197,7 @@ def test_scenario5_cancel_before_first_action_produces_canceled_receipt_with_zer
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -255,7 +256,7 @@ def test_scenario6_cancel_during_multi_action_operation_stops_at_next_safe_point
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -297,7 +298,7 @@ def test_scenario7_process_loss_after_effect_receipt_before_checkpoint_resumes_w
     # writes, not a simulated in-memory state.
     receipt_service.record_action_receipt(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         action_id="act-0",
         action_index=0,
         status="completed",
@@ -307,7 +308,7 @@ def test_scenario7_process_loss_after_effect_receipt_before_checkpoint_resumes_w
     )
     receipt_service.record_effect_receipt(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=_sha("act-0-effect"),
@@ -338,7 +339,7 @@ def test_scenario7_process_loss_after_effect_receipt_before_checkpoint_resumes_w
 
     execution = fresh_svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-postcrash",
@@ -370,7 +371,7 @@ def test_scenario8_extended_corrupt_receipt_state_denies_resolve_resume_point(
 
     receipt_service.record_action_receipt(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         action_id="act-0",
         action_index=0,
         status="completed",
@@ -420,7 +421,7 @@ def test_scenario8_extended_corrupt_receipt_state_denies_resume_operation(
 
     receipt_service.record_action_receipt(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         action_id="act-0",
         action_index=0,
         status="completed",
@@ -1076,7 +1077,7 @@ def test_r3_run_or_replay_mismatched_caller_workspace_id_never_reaches_checkpoin
     execution = svc.run_or_replay(
         operation,
         is_replay=False,
-        workspace_id=wrong_workspace_id,  # <-- mismatched, must be ignored
+        identity=_IDENTITY_OTHER_WORKSPACE,  # <-- mismatched, must be ignored
         operation_kind=ctx.operation_kind,
         actions=[_action("act-0", executed)],
         attempt_ref="attempt-r3",
@@ -1152,7 +1153,7 @@ def test_scenario10_non_cancelable_atomic_publication_completes_before_cancellat
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -1211,7 +1212,7 @@ def test_scenario10_non_cancelable_action_failure_leaves_no_partial_artifact(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -1262,7 +1263,7 @@ def test_scenario2_exact_retry_after_completion_returns_same_terminal_receipt_en
     first_execution = svc.run_or_replay(
         operation,
         is_replay=False,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -1290,7 +1291,7 @@ def test_scenario2_exact_retry_after_completion_returns_same_terminal_receipt_en
     second_execution = svc.run_or_replay(
         retry_op_outcome.operation,
         is_replay=True,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-2",
@@ -1344,7 +1345,7 @@ def test_uninterrupted_and_resumed_operations_converge_to_identical_effects_and_
     executed_a: list[str] = []
     execution_a = svc.run_actions(
         operation_a.operation_id,
-        workspace_id=operation_a.workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx_a.operation_kind,
         actions=_actions(executed_a),
         attempt_ref="attempt-a",
@@ -1364,7 +1365,7 @@ def test_uninterrupted_and_resumed_operations_converge_to_identical_effects_and_
     effect0 = actions_b[0].run()  # action 0 genuinely executes once, here
     receipt_service.record_action_receipt(
         operation_b.operation_id,
-        workspace_id=operation_b.workspace_id,
+        identity=_IDENTITY,
         action_id=actions_b[0].action_id,
         action_index=0,
         status="completed",
@@ -1374,7 +1375,7 @@ def test_uninterrupted_and_resumed_operations_converge_to_identical_effects_and_
     )
     receipt_service.record_effect_receipt(
         operation_b.operation_id,
-        workspace_id=operation_b.workspace_id,
+        identity=_IDENTITY,
         action_id=actions_b[0].action_id,
         effect_kind=effect0.effect_kind,
         effect_digest=effect0.effect_digest,
@@ -1392,7 +1393,7 @@ def test_uninterrupted_and_resumed_operations_converge_to_identical_effects_and_
 
     execution_b = fresh_svc.run_actions(
         operation_b.operation_id,
-        workspace_id=operation_b.workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx_b.operation_kind,
         actions=actions_b,
         attempt_ref="attempt-b-resume",
@@ -1555,7 +1556,7 @@ def test_action_that_raises_stops_the_operation_and_finalizes_failed(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -1667,7 +1668,7 @@ def test_run_actions_denies_when_pre_action_non_cancelable_checkpoint_is_denied(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -1706,7 +1707,7 @@ def test_run_actions_denies_when_failure_branch_action_receipt_is_denied(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -1745,7 +1746,7 @@ def test_run_actions_denies_when_failure_branch_checkpoint_is_denied(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -1785,7 +1786,7 @@ def test_run_actions_denies_when_post_action_success_checkpoint_is_denied(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -1824,7 +1825,7 @@ def test_run_actions_denies_when_completed_checkpoint_is_denied(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -1862,7 +1863,7 @@ def test_run_actions_denies_when_canceled_checkpoint_is_denied(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -1947,7 +1948,7 @@ def test_run_actions_denies_when_success_branch_action_receipt_is_denied(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -1993,7 +1994,7 @@ def test_run_actions_denies_when_effect_receipt_is_denied(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -2057,7 +2058,7 @@ def test_run_actions_denies_start_index_exceeding_total_action_count(
     for i in range(5):
         seeded = receipt_service.record_action_receipt(
             operation_id,
-            workspace_id=workspace_id,
+            identity=_IDENTITY,
             action_id=f"act-{i}",
             action_index=i,
             status="completed",
@@ -2072,7 +2073,7 @@ def test_run_actions_denies_start_index_exceeding_total_action_count(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -2127,7 +2128,7 @@ def test_run_or_replay_calls_resolve_resume_point_with_declared_total_action_cou
     execution = svc.run_or_replay(
         operation,
         is_replay=False,
-        workspace_id=operation.workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -2194,7 +2195,7 @@ def test_p2s_block2_extra_receipt_denies_run_actions_completed_branch(
     for i in range(5):
         seeded = receipt_service.record_action_receipt(
             operation_id,
-            workspace_id=workspace_id,
+            identity=_IDENTITY,
             action_id=f"act-{i}",
             action_index=i,
             status="completed",
@@ -2211,7 +2212,7 @@ def test_p2s_block2_extra_receipt_denies_run_actions_completed_branch(
     # demonstrated.
     ghost_outcome = receipt_service.record_action_receipt(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         action_id="act-ghost",
         action_index=5,
         status="completed",
@@ -2226,7 +2227,7 @@ def test_p2s_block2_extra_receipt_denies_run_actions_completed_branch(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -2292,12 +2293,12 @@ class _GhostAtCheckpoint:
         real: OperatorReceiptService,
         *,
         operation_id: str,
-        workspace_id: str,
+        identity: AuthIdentity,
         ghost_index: int,
     ) -> None:
         self._real = real
         self._operation_id = operation_id
-        self._workspace_id = workspace_id
+        self._identity = identity
         self._ghost_index = ghost_index
         self._planted = False
 
@@ -2306,7 +2307,7 @@ class _GhostAtCheckpoint:
             self._planted = True
             ghost = self._real.record_action_receipt(
                 self._operation_id,
-                workspace_id=self._workspace_id,
+                identity=self._identity,
                 action_id="act-ghost",
                 action_index=self._ghost_index,
                 status="completed",
@@ -2341,7 +2342,7 @@ def test_p2s_block2_extra_receipt_denies_run_actions_failed_branch(
     workspace_id = outcome.operation.workspace_id
 
     injected = _GhostAtCheckpoint(
-        real_receipts, operation_id=operation_id, workspace_id=workspace_id, ghost_index=1
+        real_receipts, operation_id=operation_id, identity=_IDENTITY, ghost_index=1
     )
     svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=injected)
 
@@ -2352,7 +2353,7 @@ def test_p2s_block2_extra_receipt_denies_run_actions_failed_branch(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -2388,7 +2389,7 @@ def test_p2s_block2_extra_receipt_denies_run_actions_canceled_branch(
     workspace_id = outcome.operation.workspace_id
 
     injected = _GhostAtCheckpoint(
-        real_receipts, operation_id=operation_id, workspace_id=workspace_id, ghost_index=0
+        real_receipts, operation_id=operation_id, identity=_IDENTITY, ghost_index=0
     )
     svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=injected)
 
@@ -2400,7 +2401,7 @@ def test_p2s_block2_extra_receipt_denies_run_actions_canceled_branch(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -2443,7 +2444,7 @@ def test_p2s_block2_extra_receipt_denies_run_or_replay_before_any_action_execute
     for i in range(7):  # EXTRA: 7 persisted, operation below only declares 5
         receipt_outcome = receipt_service.record_action_receipt(
             operation.operation_id,
-            workspace_id=operation.workspace_id,
+            identity=_IDENTITY,
             action_id=f"act-{i}",
             action_index=i,
             status="completed",
@@ -2459,7 +2460,7 @@ def test_p2s_block2_extra_receipt_denies_run_or_replay_before_any_action_execute
     execution = svc.run_or_replay(
         operation,
         is_replay=True,
-        workspace_id=operation.workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -2523,7 +2524,7 @@ def test_request_cancellation_cross_workspace_forgery_denies_zero_effect(
     actions = [_action("act-0", executed), _action("act-1", executed)]
     execution = svc.run_actions(
         operation_id,
-        workspace_id=real_workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -2628,7 +2629,7 @@ def test_run_actions_denies_negative_start_index_and_executes_nothing(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
@@ -2748,7 +2749,7 @@ def test_run_actions_checks_cancellation_with_the_operations_workspace_id(
 
     execution = svc.run_actions(
         operation_id,
-        workspace_id=workspace_id,
+        identity=_IDENTITY,
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",

@@ -46,6 +46,14 @@ _WORKSPACE = "ws-mine"
 # lives in); `_IDENTITY_OTHER_WORKSPACE` never does.
 _IDENTITY = AuthIdentity("alice", _WORKSPACE, ("owner",))
 _IDENTITY_OTHER_WORKSPACE = AuthIdentity("mallory", "ws-attacker", ("owner",))
+# NB-D/REGATE-NB-4: a distinct forged-workspace identity for the
+# "..._forged_workspace_not_derives" tests below, which historically used
+# the string literal "ws-attacker-forged" (distinct from
+# `_IDENTITY_OTHER_WORKSPACE`'s "ws-attacker" -- kept as two separate
+# fixtures rather than collapsed, since the two test groups predate this
+# fixture and this preserves their original, independently-chosen probe
+# values).
+_IDENTITY_FORGED_WORKSPACE = AuthIdentity("mallory", "ws-attacker-forged", ("owner",))
 
 _SHA = lambda tag: __import__("hashlib").sha256(tag.encode()).hexdigest()  # noqa: E731
 
@@ -123,7 +131,7 @@ def _record_action(
     service: OperatorReceiptService,
     *,
     operation_id: str = _OPERATION_ID,
-    workspace_id: str = _WORKSPACE,
+    identity: AuthIdentity = _IDENTITY,
     action_id: str,
     action_index: int,
     status: str = "completed",
@@ -131,7 +139,7 @@ def _record_action(
 ) -> ReceiptOutcome:
     return service.record_action_receipt(
         operation_id,
-        workspace_id=workspace_id,
+        identity=identity,
         action_id=action_id,
         action_index=action_index,
         status=status,
@@ -198,7 +206,7 @@ def test_duplicate_effect_receipt_same_digest_denies(tmp_foundry: FoundryPaths) 
     digest = _SHA("effect-1")
     first = service.record_effect_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=digest,
@@ -209,7 +217,7 @@ def test_duplicate_effect_receipt_same_digest_denies(tmp_foundry: FoundryPaths) 
 
     second = service.record_effect_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=digest,
@@ -239,7 +247,7 @@ def test_mismatched_effect_receipt_unknown_action_id_denies(tmp_foundry: Foundry
     # Deliberately never record an action_receipt for "act-ghost".
     outcome = service.record_effect_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         action_id="act-ghost",
         effect_kind="source_card_created",
         effect_digest=_SHA("effect-mismatched"),
@@ -294,7 +302,7 @@ def test_effect_receipt_denies_at_maxitems_cap(tmp_foundry: FoundryPaths) -> Non
         assert action_outcome.outcome == "created"
         effect_outcome = service.record_effect_receipt(
             _OPERATION_ID,
-            workspace_id=_WORKSPACE,
+            identity=_IDENTITY,
             action_id=f"act-{i}",
             effect_kind="source_card_created",
             effect_digest=_SHA(f"effect-{i}"),
@@ -322,7 +330,7 @@ def test_effect_receipt_denies_at_maxitems_cap(tmp_foundry: FoundryPaths) -> Non
 
     overflow_outcome = service.record_effect_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         action_id="act-overflow",
         effect_kind="source_card_created",
         effect_digest=_SHA("effect-overflow"),
@@ -358,7 +366,7 @@ def test_truncated_action_receipts_denies_finalize(tmp_foundry: FoundryPaths) ->
 
     outcome = service.finalize_terminal_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         operation_kind="run.plan",
         expected_action_count=3,
         status="completed",
@@ -377,7 +385,7 @@ def test_extra_action_receipts_denies_finalize(tmp_foundry: FoundryPaths) -> Non
 
     outcome = service.finalize_terminal_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         operation_kind="run.plan",
         expected_action_count=2,
         status="completed",
@@ -431,7 +439,7 @@ def test_reordered_action_receipts_denies_finalize(tmp_foundry: FoundryPaths) ->
 
     outcome = service.finalize_terminal_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         operation_kind="run.plan",
         expected_action_count=3,
         status="completed",
@@ -453,7 +461,7 @@ def test_finalize_terminal_receipt_golden_path(tmp_foundry: FoundryPaths) -> Non
     digest = _SHA("effect-golden")
     effect_outcome = service.record_effect_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=digest,
@@ -464,7 +472,7 @@ def test_finalize_terminal_receipt_golden_path(tmp_foundry: FoundryPaths) -> Non
 
     outcome = service.finalize_terminal_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         operation_kind="run.plan",
         expected_action_count=2,
         status="completed",
@@ -490,7 +498,7 @@ def test_finalize_terminal_receipt_is_idempotent(tmp_foundry: FoundryPaths) -> N
 
     first = service.finalize_terminal_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         operation_kind="run.plan",
         expected_action_count=1,
         status="completed",
@@ -499,7 +507,7 @@ def test_finalize_terminal_receipt_is_idempotent(tmp_foundry: FoundryPaths) -> N
 
     second = service.finalize_terminal_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         operation_kind="run.plan",
         expected_action_count=1,
         status="completed",
@@ -544,7 +552,7 @@ def test_audit_delivery_failure_never_blocks_terminal_receipt(
     digest = _SHA("effect-audit-fail")
     service.record_effect_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=digest,
@@ -554,7 +562,7 @@ def test_audit_delivery_failure_never_blocks_terminal_receipt(
 
     outcome = service.finalize_terminal_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         operation_kind="run.plan",
         expected_action_count=1,
         status="completed",
@@ -597,7 +605,7 @@ def test_write_checkpoint_rejects_completed_exceeding_total(tmp_foundry: Foundry
     with pytest.raises(ValueError):
         service.write_checkpoint(
             _OPERATION_ID,
-            workspace_id=_WORKSPACE,
+            identity=_IDENTITY,
             status="pending",
             next_action_index=1,
             completed_action_count=5,
@@ -628,7 +636,7 @@ def test_checkpoint_is_atomically_replaced_not_appended(tmp_foundry: FoundryPath
     service = _service(tmp_foundry)
     first = service.write_checkpoint(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         status="pending",
         next_action_index=1,
         completed_action_count=0,
@@ -639,7 +647,7 @@ def test_checkpoint_is_atomically_replaced_not_appended(tmp_foundry: FoundryPath
 
     second = service.write_checkpoint(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         status="pending",
         next_action_index=2,
         completed_action_count=1,
@@ -670,7 +678,7 @@ def test_checkpoint_converged_forbids_next_action_index(tmp_foundry: FoundryPath
     with pytest.raises(ValueError):
         service.write_checkpoint(
             _OPERATION_ID,
-            workspace_id=_WORKSPACE,
+            identity=_IDENTITY,
             status="converged",
             next_action_index=1,
             completed_action_count=3,
@@ -707,7 +715,7 @@ def test_effect_receipts_table_rejects_raw_delete(tmp_foundry: FoundryPaths) -> 
     digest = _SHA("effect-immutable")
     service.record_effect_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=digest,
@@ -728,7 +736,7 @@ def test_terminal_receipts_table_rejects_raw_update(tmp_foundry: FoundryPaths) -
     _record_action(service, action_id="act-0", action_index=0)
     service.finalize_terminal_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         operation_kind="run.plan",
         expected_action_count=1,
         status="completed",
@@ -758,14 +766,14 @@ def test_two_operations_reconcile_independently(tmp_foundry: FoundryPaths) -> No
 
     outcome_a = service.finalize_terminal_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         operation_kind="run.plan",
         expected_action_count=1,
         status="completed",
     )
     outcome_b = service.finalize_terminal_receipt(
         _OTHER_OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         operation_kind="run.plan",
         expected_action_count=2,
         status="completed",
@@ -881,7 +889,7 @@ def test_record_effect_receipt_denies_for_phantom_operation_id_via_mismatch_guar
     service = _service(tmp_foundry)
     outcome = service.record_effect_receipt(
         _PHANTOM_OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=_SHA("effect-phantom-operation"),
@@ -934,7 +942,7 @@ def test_record_effect_receipt_direct_referential_guard_fires_even_when_mismatch
 
     outcome = service.record_effect_receipt(
         _PHANTOM_OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         action_id="act-orphan",
         effect_kind="source_card_created",
         effect_digest=_SHA("effect-phantom-operation-direct"),
@@ -956,7 +964,7 @@ def test_write_checkpoint_denies_for_phantom_operation_id(tmp_foundry: FoundryPa
     service = _service(tmp_foundry)
     outcome = service.write_checkpoint(
         _PHANTOM_OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         status="pending",
         next_action_index=0,
         completed_action_count=0,
@@ -972,7 +980,7 @@ def test_finalize_terminal_receipt_denies_for_phantom_operation_id(tmp_foundry: 
     service = _service(tmp_foundry)
     outcome = service.finalize_terminal_receipt(
         _PHANTOM_OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         operation_kind="run.plan",
         expected_action_count=0,
         status="completed",
@@ -1053,7 +1061,7 @@ def test_record_action_receipt_denies_wrong_workspace_not_phantom(
 
     service = _service(tmp_foundry)
     outcome = _record_action(
-        service, workspace_id="ws-attacker", action_id="act-0", action_index=0
+        service, identity=_IDENTITY_OTHER_WORKSPACE, action_id="act-0", action_index=0
     )
     assert outcome.outcome == "denied"
     assert outcome.reason_code == "not_found"
@@ -1082,7 +1090,7 @@ def test_record_effect_receipt_denies_wrong_workspace_not_phantom(
 
     outcome = service.record_effect_receipt(
         _OPERATION_ID,
-        workspace_id="ws-attacker",
+        identity=_IDENTITY_OTHER_WORKSPACE,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=_SHA("effect-wrong-workspace"),
@@ -1101,7 +1109,7 @@ def test_record_effect_receipt_denies_wrong_workspace_not_phantom(
 
     legit = service.record_effect_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=_SHA("effect-wrong-workspace-legit"),
@@ -1152,7 +1160,7 @@ def test_write_checkpoint_denies_forged_workspace_not_derives(
     service = _service(tmp_foundry)
     outcome = service.write_checkpoint(
         _OPERATION_ID,
-        workspace_id="ws-attacker-forged",
+        identity=_IDENTITY_FORGED_WORKSPACE,
         status="pending",
         next_action_index=1,
         completed_action_count=0,
@@ -1180,7 +1188,7 @@ def test_write_checkpoint_denies_forged_workspace_not_derives(
     # general.
     legit = service.write_checkpoint(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         status="pending",
         next_action_index=1,
         completed_action_count=0,
@@ -1207,7 +1215,7 @@ def test_finalize_terminal_receipt_denies_forged_workspace_not_derives(
 
     outcome = service.finalize_terminal_receipt(
         _OPERATION_ID,
-        workspace_id="ws-attacker-forged",
+        identity=_IDENTITY_FORGED_WORKSPACE,
         operation_kind="run.plan",
         expected_action_count=1,
         status="completed",
@@ -1233,7 +1241,7 @@ def test_finalize_terminal_receipt_denies_forged_workspace_not_derives(
 
     legit = service.finalize_terminal_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         operation_kind="run.plan",
         expected_action_count=1,
         status="completed",
@@ -1249,7 +1257,7 @@ def test_load_terminal_receipt_wrong_workspace_indistinguishable_from_missing(
     _record_action(service, action_id="act-0", action_index=0)
     service.finalize_terminal_receipt(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         operation_kind="run.plan",
         expected_action_count=1,
         status="completed",
@@ -1276,7 +1284,7 @@ def test_load_checkpoint_wrong_workspace_indistinguishable_from_missing(
     service = _service(tmp_foundry)
     service.write_checkpoint(
         _OPERATION_ID,
-        workspace_id=_WORKSPACE,
+        identity=_IDENTITY,
         status="pending",
         next_action_index=1,
         completed_action_count=0,
@@ -1310,3 +1318,109 @@ def test_resolve_resume_point_wrong_workspace_denies_not_found(tmp_foundry: Foun
     same_workspace = service.resolve_resume_point(_OPERATION_ID, identity=_IDENTITY)
     assert same_workspace.outcome == "ok"
     assert same_workspace.next_action_index == 1
+
+
+
+# ---------------------------------------------------------------------------
+# NB-D/REGATE-NB-4: the four writers require a real `AuthIdentity`, with no
+# `None` fail-open default. `identity` has no default value at all -- an
+# OMITTED argument is a `TypeError` from Python's own call machinery before
+# this module's code ever runs (nothing to test: the function cannot even
+# be invoked). These tests instead prove the guard's OWN body -- the
+# `isinstance(identity, AuthIdentity)` check -- actually fires for a caller
+# that explicitly passes `identity=None` (or any other non-`AuthIdentity`
+# value), rather than silently treating it as "no scoping" the way this
+# module's READ methods deliberately do. Zero rows are ever written in any
+# of these -- the `TypeError` is raised before the transaction opens.
+# ---------------------------------------------------------------------------
+
+
+def test_record_action_receipt_rejects_non_authidentity(tmp_foundry: FoundryPaths) -> None:
+    service = _service(tmp_foundry)
+    with pytest.raises(TypeError):
+        service.record_action_receipt(
+            _OPERATION_ID,
+            identity=None,
+            action_id="act-0",
+            action_index=0,
+            status="completed",
+            attempt_ref="attempt-1",
+            started_at="2026-07-29T00:00:00Z",
+        )
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM action_receipts WHERE operation_id = ?", (_OPERATION_ID,)
+        ).fetchone()[0]
+        assert count == 0
+    finally:
+        conn.close()
+
+
+def test_record_effect_receipt_rejects_non_authidentity(tmp_foundry: FoundryPaths) -> None:
+    service = _service(tmp_foundry)
+    _record_action(service, action_id="act-0", action_index=0)
+    with pytest.raises(TypeError):
+        service.record_effect_receipt(
+            _OPERATION_ID,
+            identity=None,
+            action_id="act-0",
+            effect_kind="source_card_created",
+            effect_digest=_SHA("effect-non-authidentity"),
+            effect_ref="source_card:abc123",
+            generated_at="2026-07-29T00:00:06Z",
+        )
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM effect_receipts").fetchone()[0]
+        assert count == 0
+    finally:
+        conn.close()
+
+
+def test_write_checkpoint_rejects_non_authidentity(tmp_foundry: FoundryPaths) -> None:
+    service = _service(tmp_foundry)
+    with pytest.raises(TypeError):
+        service.write_checkpoint(
+            _OPERATION_ID,
+            identity="ws-mine",  # a bare string is NOT an AuthIdentity
+            status="pending",
+            next_action_index=1,
+            completed_action_count=0,
+            total_action_count=3,
+            non_cancelable=False,
+        )
+
+    if tmp_foundry.operator_operations_db.exists():
+        conn = _raw_connect(tmp_foundry)
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM checkpoints WHERE operation_id = ?", (_OPERATION_ID,)
+            ).fetchone()[0]
+            assert count == 0
+        finally:
+            conn.close()
+
+
+def test_finalize_terminal_receipt_rejects_non_authidentity(tmp_foundry: FoundryPaths) -> None:
+    service = _service(tmp_foundry)
+    _record_action(service, action_id="act-0", action_index=0)
+    with pytest.raises(TypeError):
+        service.finalize_terminal_receipt(
+            _OPERATION_ID,
+            identity=None,
+            operation_kind="run.plan",
+            expected_action_count=1,
+            status="completed",
+        )
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM terminal_receipts WHERE operation_id = ?", (_OPERATION_ID,)
+        ).fetchone()[0]
+        assert count == 0
+    finally:
+        conn.close()

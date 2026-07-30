@@ -61,7 +61,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from research_foundry import ids
@@ -480,7 +480,7 @@ class OperatorCancelResumeService:
         self,
         operation_id: str,
         *,
-        workspace_id: str,
+        identity: AuthIdentity,
         operation_kind: str,
         actions: Sequence[ActionSpec],
         attempt_ref: str,
@@ -560,6 +560,22 @@ class OperatorCancelResumeService:
         AFTER a real effect has already been performed. The lower bound is
         therefore not cosmetic: it is the only thing standing between a
         negative index and an executed-but-unrecorded action.
+
+        **NB-D/REGATE-NB-4 (identity, not a bare workspace string)**:
+        `identity` is REQUIRED (no default) and threaded, unchanged, into
+        every `record_action_receipt`/`record_effect_receipt`/
+        `write_checkpoint`/`finalize_terminal_receipt` call this method
+        makes, and into the `cancellation_requested` safe-point read
+        (`workspace_id=identity.workspace_id`) -- see
+        `operator_receipt_service.OperatorReceiptService.record_action_
+        receipt`'s own docstring for why these writers no longer accept a
+        caller-suppliable `workspace_id: str` at all. This method itself
+        does not re-derive or re-validate `identity` against `operation_id`
+        -- it trusts its OWN caller (`run_or_replay`/`resume_operation`)
+        to have already bound it correctly (both do); each individual
+        receipt write is still independently workspace-authorized by
+        `operator_receipt_service` itself, so a wrong `identity` reaching
+        this method denies at the FIRST write, not silently.
         """
 
         total = len(actions)
@@ -578,7 +594,7 @@ class OperatorCancelResumeService:
 
         idx = start_index
         for idx in range(start_index, total):
-            if self.cancellation_requested(operation_id, workspace_id=workspace_id):
+            if self.cancellation_requested(operation_id, workspace_id=identity.workspace_id):
                 break
 
             spec = actions[idx]
@@ -586,7 +602,7 @@ class OperatorCancelResumeService:
             if spec.non_cancelable:
                 pre_checkpoint_outcome = self._receipts.write_checkpoint(
                     operation_id,
-                    workspace_id=workspace_id,
+                    identity=identity,
                     status="pending",
                     next_action_index=idx,
                     completed_action_count=idx,
@@ -619,7 +635,7 @@ class OperatorCancelResumeService:
                 )
                 failure_receipt_outcome = self._receipts.record_action_receipt(
                     operation_id,
-                    workspace_id=workspace_id,
+                    identity=identity,
                     action_id=spec.action_id,
                     action_index=idx,
                     status="failed",
@@ -649,7 +665,7 @@ class OperatorCancelResumeService:
 
                 failure_checkpoint_outcome = self._receipts.write_checkpoint(
                     operation_id,
-                    workspace_id=workspace_id,
+                    identity=identity,
                     status="converged",
                     next_action_index=None,
                     completed_action_count=idx,
@@ -670,7 +686,7 @@ class OperatorCancelResumeService:
 
                 outcome = self._receipts.finalize_terminal_receipt(
                     operation_id,
-                    workspace_id=workspace_id,
+                    identity=identity,
                     operation_kind=operation_kind,
                     expected_action_count=idx + 1,
                     status="failed",
@@ -702,7 +718,7 @@ class OperatorCancelResumeService:
 
             action_receipt_outcome = self._receipts.record_action_receipt(
                 operation_id,
-                workspace_id=workspace_id,
+                identity=identity,
                 action_id=spec.action_id,
                 action_index=idx,
                 status="completed",
@@ -726,7 +742,7 @@ class OperatorCancelResumeService:
             if effect is not None:
                 effect_receipt_outcome = self._receipts.record_effect_receipt(
                     operation_id,
-                    workspace_id=workspace_id,
+                    identity=identity,
                     action_id=spec.action_id,
                     effect_kind=effect.effect_kind,
                     effect_digest=effect.effect_digest,
@@ -747,7 +763,7 @@ class OperatorCancelResumeService:
 
             post_action_checkpoint_outcome = self._receipts.write_checkpoint(
                 operation_id,
-                workspace_id=workspace_id,
+                identity=identity,
                 status="pending",
                 next_action_index=idx + 1,
                 completed_action_count=idx + 1,
@@ -778,7 +794,7 @@ class OperatorCancelResumeService:
             # the `total == start_index` short-circuit note below).
             converged_checkpoint_outcome = self._receipts.write_checkpoint(
                 operation_id,
-                workspace_id=workspace_id,
+                identity=identity,
                 status="converged",
                 next_action_index=None,
                 completed_action_count=total,
@@ -798,7 +814,7 @@ class OperatorCancelResumeService:
 
             outcome = self._receipts.finalize_terminal_receipt(
                 operation_id,
-                workspace_id=workspace_id,
+                identity=identity,
                 operation_kind=operation_kind,
                 expected_action_count=total,
                 status="completed",
@@ -831,7 +847,7 @@ class OperatorCancelResumeService:
         # (indices `[0, idx)`) actually ran; zero of `actions[idx:]` did.
         canceled_checkpoint_outcome = self._receipts.write_checkpoint(
             operation_id,
-            workspace_id=workspace_id,
+            identity=identity,
             status="converged",
             next_action_index=None,
             completed_action_count=idx,
@@ -852,7 +868,7 @@ class OperatorCancelResumeService:
 
         outcome = self._receipts.finalize_terminal_receipt(
             operation_id,
-            workspace_id=workspace_id,
+            identity=identity,
             operation_kind=operation_kind,
             expected_action_count=idx,
             status="canceled",
@@ -878,7 +894,7 @@ class OperatorCancelResumeService:
         operation: OperationRecord,
         *,
         is_replay: bool,
-        workspace_id: str,
+        identity: AuthIdentity,
         operation_kind: str,
         actions: Sequence[ActionSpec],
         attempt_ref: str,
@@ -910,9 +926,10 @@ class OperatorCancelResumeService:
 
         R3 (checklist-item-2 sibling of R2, found by enumerating this
         module's public methods after R2 was fixed in `resume_operation`):
-        `workspace_id`/`operation_kind` are DERIVED from `operation` --
-        already the AUTHORITATIVE `OperationRecord` (only constructible
-        from a persisted manifest: `OperationRecord.from_manifest` or
+        `workspace_id`/`operation_kind` (the VALUES persisted into the
+        receipt rows) are DERIVED from `operation` -- already the
+        AUTHORITATIVE `OperationRecord` (only constructible from a
+        persisted manifest: `OperationRecord.from_manifest` or
         `OperatorOperationService.load_operation`) -- never taken from the
         separately-supplied parameters. This is a SECOND, independent
         entrypoint into the SAME `write_checkpoint`/`finalize_terminal_
@@ -920,6 +937,25 @@ class OperatorCancelResumeService:
         workspace`/`idx_terminal_receipts_workspace`; trusting the
         parameters here would reach the identical unsafe behavior R2 closed
         in `resume_operation`, just through a different door.
+
+        **NB-D/REGATE-NB-4 (identity, not a bare workspace string)**:
+        `identity` replaces this method's former bare `workspace_id: str`
+        parameter -- REQUIRED, no default, matching
+        `operator_receipt_service`'s own hardened writers (they no longer
+        accept an unauthenticated `workspace_id` at all). R3's own
+        derive-and-warn behavior for the mismatch case is UNCHANGED: this
+        method still never trusts `identity.workspace_id` for the value
+        persisted into a receipt row (that is still always `operation`'s
+        own, real, authoritative `workspace_id`) -- only the CARRIER
+        changed from a bare string to a real `AuthIdentity`. The
+        `AuthIdentity` handed to `run_actions`/the receipt writers below is
+        `identity` REBOUND (`dataclasses.replace`) to `operation`'s own
+        `workspace_id` -- preserving the caller's real `user_id`/`roles`
+        while guaranteeing the value the receipt writers authorize against
+        is always the operation's own, never whatever `identity` a caller
+        happened to present (identical intent to the pre-existing
+        `workspace_id`/`operation_kind` substitution immediately above,
+        now applied to the identity carrier too).
         """
 
         if is_replay:
@@ -955,22 +991,32 @@ class OperatorCancelResumeService:
 
         resolved_workspace_id = operation.workspace_id
         resolved_operation_kind = operation.manifest["operation"]["operation_kind"]
-        if workspace_id != resolved_workspace_id or operation_kind != resolved_operation_kind:
+        if identity.workspace_id != resolved_workspace_id or operation_kind != resolved_operation_kind:
             _logger.warning(
                 "operator_cancel_resume_service.run_or_replay: caller-supplied "
-                "workspace_id=%r/operation_kind=%r for operation_id=%s does not match "
+                "identity.workspace_id=%r/operation_kind=%r for operation_id=%s does not match "
                 "operation.workspace_id=%r/the operation's own manifest operation_kind=%r "
                 "-- using the operation's own values (R3 hardening)",
-                workspace_id,
+                identity.workspace_id,
                 operation_kind,
                 operation.operation_id,
                 resolved_workspace_id,
                 resolved_operation_kind,
             )
 
+        # NB-D/REGATE-NB-4: rebind `identity` to the operation's own,
+        # authoritative `workspace_id` before handing it to `run_actions`
+        # -- the receipt writers below authorize the WRITE against
+        # `identity.workspace_id`, which must always be the value R3
+        # already proved correct, never whatever a caller's `identity`
+        # happened to carry (see this method's own docstring).
+        resolved_identity = (
+            identity if identity.workspace_id == resolved_workspace_id else replace(identity, workspace_id=resolved_workspace_id)
+        )
+
         return self.run_actions(
             operation.operation_id,
-            workspace_id=resolved_workspace_id,
+            identity=resolved_identity,
             operation_kind=resolved_operation_kind,
             actions=actions,
             attempt_ref=attempt_ref,
@@ -984,7 +1030,7 @@ class OperatorCancelResumeService:
         self,
         operation_id: str,
         *,
-        identity: AuthIdentity | None,
+        identity: AuthIdentity,
         resume_ctx: policy.PolicyContext,
         resume_confirmation_id: str,
         resume_presented_token: str,
@@ -1029,6 +1075,29 @@ class OperatorCancelResumeService:
         `operation_kind` are then DERIVED from the just-loaded manifest,
         never taken from the caller's parameters, for every downstream
         write (`attempt_adapter.create_attempt`, `run_actions`).
+
+        **NB-D/REGATE-NB-4 (identity is REQUIRED, no fail-open default)**:
+        `identity` was previously `AuthIdentity | None` -- `None` performed
+        no workspace scoping on the two reads it fed
+        (`load_operation`/`load_terminal_receipt`/`resolve_resume_point`),
+        a deliberate, DOCUMENTED convention on THOSE methods' own read
+        side (see `operator_receipt_service`'s module docstring). But this
+        method also WRITES, via `run_actions`, whose receipt writers now
+        REQUIRE a real `AuthIdentity` with no `None` fallback at all -- so
+        `identity=None` reaching this method could previously mean
+        "resume with zero workspace scoping applied to the load, then
+        crash deep inside the write path" once the writers were hardened.
+        Dropping the `| None` here closes that door structurally: omitting
+        `identity` (or passing `None`) is now a `TypeError` at THIS
+        method's own call boundary, not a latent, harder-to-diagnose
+        failure several calls deeper. `identity` is threaded UNCHANGED
+        into `run_actions` below -- by the time execution reaches that
+        call, `load_operation(operation_id, identity=identity)` has
+        already proven `identity.workspace_id == operation_record.
+        workspace_id` (a mismatch raises `KeyError`, caught immediately
+        above as `"denied"/"not_found"`), so no `dataclasses.replace`
+        rebinding (unlike `run_or_replay`, which has no such prior proof)
+        is needed here.
         """
 
         if not isinstance(operation_id, str) or not operation_id:
@@ -1118,7 +1187,7 @@ class OperatorCancelResumeService:
 
         execution = self.run_actions(
             operation_id,
-            workspace_id=resolved_workspace_id,
+            identity=identity,
             operation_kind=resolved_operation_kind,
             actions=actions,
             attempt_ref=new_attempt.attempt_id,

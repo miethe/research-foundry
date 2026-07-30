@@ -315,7 +315,7 @@ class OperatorReceiptService:
         self,
         operation_id: str,
         *,
-        workspace_id: str,
+        identity: AuthIdentity,
         action_id: str,
         action_index: int,
         status: str,
@@ -328,7 +328,8 @@ class OperatorReceiptService:
         """Persist one immutable `action_receipt`.
 
         **U2/REGATE-BLOCK-2 (workspace-AUTHORIZED, not merely
-        workspace-attributed)**: `workspace_id` is the caller's OWN claimed
+        workspace-attributed) + NB-D/REGATE-NB-4 (an `AuthIdentity`, not a
+        bare string)**: `identity.workspace_id` is the caller's OWN claimed
         authority to write this receipt -- checked, INSIDE the same locked
         transaction as the INSERT, against the REAL `workspace_id` derived
         from the `operations` row `operation_id` references. A phantom
@@ -338,7 +339,15 @@ class OperatorReceiptService:
         mirroring `request_cancellation`'s own hard-denial pattern in
         `operator_cancel_resume_service.py` (this method previously had NO
         workspace parameter at all: it could not authorize what it never
-        received).
+        received). `identity` is REQUIRED, with no default -- unlike this
+        module's read methods (`resolve_resume_point`/`load_terminal_receipt`/
+        `load_checkpoint`), where `identity=None` is a deliberate, documented
+        "no scoping" default for already-scoped internal callers, a WRITE
+        has no equivalent safe default: there is no such thing as an
+        unscoped receipt write, so `identity=None` is not merely
+        undocumented here, it is structurally unreachable -- omitting the
+        argument is a `TypeError` at the call site, never a silently
+        unauthorized write.
 
         **U5/REGATE-BLOCK-3 (write-time contiguity -- the GAP guard)**:
         `action_index` MUST be exactly the next contiguous index for
@@ -358,8 +367,19 @@ class OperatorReceiptService:
 
         if not isinstance(operation_id, str) or not operation_id:
             raise ValueError("record_action_receipt requires a non-empty operation_id")
-        if not isinstance(workspace_id, str) or not workspace_id:
-            raise ValueError("record_action_receipt requires a non-empty workspace_id")
+        if not isinstance(identity, AuthIdentity):
+            # NB-D/REGATE-NB-4: no fail-open default -- `identity` has no
+            # default value at all (see this method's own docstring), so
+            # reaching this branch means a caller explicitly passed
+            # something other than a real `AuthIdentity` (e.g. `None`,
+            # a bare workspace string, or a forged look-alike object).
+            # `TypeError` (wrong TYPE), not `ValueError` (wrong VALUE),
+            # mirrors this codebase's own convention (`rights_validation.
+            # as_of`) for "the type contract itself was violated".
+            raise TypeError(
+                "record_action_receipt requires identity to be an AuthIdentity "
+                f"(got {type(identity).__name__})"
+            )
         if not isinstance(action_id, str) or not action_id:
             raise ValueError("record_action_receipt requires a non-empty action_id")
         if isinstance(action_index, bool) or not isinstance(action_index, int) or action_index < 0:
@@ -425,7 +445,7 @@ class OperatorReceiptService:
                 # guard immediately below, and `request_cancellation`'s
                 # hard-denial pattern one module over).
                 resolved_workspace_id = _derive_workspace_id(conn, operation_id)
-                if resolved_workspace_id is None or resolved_workspace_id != workspace_id:
+                if resolved_workspace_id is None or resolved_workspace_id != identity.workspace_id:
                     conn.execute("ROLLBACK")
                     _logger.error(
                         json.dumps(
@@ -434,7 +454,7 @@ class OperatorReceiptService:
                                 "record_type": "action_receipt",
                                 "record_id": operation_id,
                                 "record_workspace_id": resolved_workspace_id,
-                                "identity_workspace_id": workspace_id,
+                                "identity_workspace_id": identity.workspace_id,
                             }
                         )
                     )
@@ -507,7 +527,7 @@ class OperatorReceiptService:
         self,
         operation_id: str,
         *,
-        workspace_id: str,
+        identity: AuthIdentity,
         action_id: str,
         effect_kind: str,
         effect_digest: str,
@@ -526,17 +546,22 @@ class OperatorReceiptService:
         this must be enforced here rather than left to `finalize_terminal_
         receipt`'s schema-validation catch.
 
-        **U2/REGATE-BLOCK-2**: `workspace_id` is authorized against the
-        REAL, derived workspace for `operation_id`, identically to
-        :meth:`record_action_receipt` -- see that method's docstring. A
-        phantom `operation_id` and a wrong-workspace one are
-        indistinguishable, denying `reason_code == "not_found"`.
+        **U2/REGATE-BLOCK-2 + NB-D/REGATE-NB-4**: `identity.workspace_id`
+        is authorized against the REAL, derived workspace for
+        `operation_id`, identically to :meth:`record_action_receipt` --
+        see that method's docstring (including why `identity` is REQUIRED,
+        with no `None` fail-open default). A phantom `operation_id` and a
+        wrong-workspace one are indistinguishable, denying `reason_code ==
+        "not_found"`.
         """
 
         if not isinstance(operation_id, str) or not operation_id:
             raise ValueError("record_effect_receipt requires a non-empty operation_id")
-        if not isinstance(workspace_id, str) or not workspace_id:
-            raise ValueError("record_effect_receipt requires a non-empty workspace_id")
+        if not isinstance(identity, AuthIdentity):
+            raise TypeError(
+                "record_effect_receipt requires identity to be an AuthIdentity "
+                f"(got {type(identity).__name__})"
+            )
         if not isinstance(action_id, str) or not action_id:
             raise ValueError("record_effect_receipt requires a non-empty action_id")
         if not isinstance(effect_kind, str) or not effect_kind:
@@ -585,7 +610,7 @@ class OperatorReceiptService:
                 # DIRECT caller of THIS method alone must not depend on that
                 # other guard staying correct forever).
                 resolved_workspace_id = _derive_workspace_id(conn, operation_id)
-                if resolved_workspace_id is None or resolved_workspace_id != workspace_id:
+                if resolved_workspace_id is None or resolved_workspace_id != identity.workspace_id:
                     conn.execute("ROLLBACK")
                     _logger.error(
                         json.dumps(
@@ -594,7 +619,7 @@ class OperatorReceiptService:
                                 "record_type": "effect_receipt",
                                 "record_id": operation_id,
                                 "record_workspace_id": resolved_workspace_id,
-                                "identity_workspace_id": workspace_id,
+                                "identity_workspace_id": identity.workspace_id,
                             }
                         )
                     )
@@ -684,7 +709,7 @@ class OperatorReceiptService:
         self,
         operation_id: str,
         *,
-        workspace_id: str,
+        identity: AuthIdentity,
         status: str,
         next_action_index: int | None,
         completed_action_count: int,
@@ -699,21 +724,24 @@ class OperatorReceiptService:
         module docstring and :func:`_validate_action_counts`.
 
         **U1/REGATE-BLOCK-2 (workspace-AUTHORIZED, not merely
-        workspace-attributed)**: `workspace_id` is the caller's OWN claimed
-        authority to write this checkpoint -- checked against the REAL
-        `workspace_id` derived from the `operations` row `operation_id`
-        references. A phantom `operation_id` and a wrong-workspace one are
-        INDISTINGUISHABLE -- both deny (`reason_code == "not_found"`), zero
-        row written. An earlier revision of this method DERIVED the real
-        value and used it (logging a warning) even when the caller-supplied
-        one disagreed -- that is attribution, not authorization: it
-        silently accepted whatever a caller claimed, then quietly
-        substituted the truth for storage, meaning any caller holding an
-        `operation_id` (not a secret -- it appears in every caller-visible
-        envelope, log line, and receipt) could plant a value into another
-        workspace's IMMUTABLE checkpoint row. This method now matches
-        `finalize_terminal_receipt`'s identical hardening and
-        `request_cancellation`'s hard-denial pattern one module over.
+        workspace-attributed) + NB-D/REGATE-NB-4**: `identity.workspace_id`
+        is the caller's OWN claimed authority to write this checkpoint --
+        checked against the REAL `workspace_id` derived from the
+        `operations` row `operation_id` references. A phantom
+        `operation_id` and a wrong-workspace one are INDISTINGUISHABLE --
+        both deny (`reason_code == "not_found"`), zero row written. An
+        earlier revision of this method DERIVED the real value and used it
+        (logging a warning) even when the caller-supplied one disagreed --
+        that is attribution, not authorization: it silently accepted
+        whatever a caller claimed, then quietly substituted the truth for
+        storage, meaning any caller holding an `operation_id` (not a secret
+        -- it appears in every caller-visible envelope, log line, and
+        receipt) could plant a value into another workspace's IMMUTABLE
+        checkpoint row. This method now matches `finalize_terminal_
+        receipt`'s identical hardening and `request_cancellation`'s
+        hard-denial pattern one module over. `identity` has no default --
+        see :meth:`record_action_receipt`'s docstring for why a write has
+        no safe "no scoping" equivalent to this module's read methods.
         """
 
         if status not in ("pending", "converged"):
@@ -725,8 +753,10 @@ class OperatorReceiptService:
         if status == "converged" and non_cancelable:
             raise ValueError("write_checkpoint requires non_cancelable=False when status == 'converged'")
         _validate_action_counts(completed_action_count, total_action_count)
-        if not isinstance(workspace_id, str) or not workspace_id:
-            raise ValueError("write_checkpoint requires a non-empty workspace_id")
+        if not isinstance(identity, AuthIdentity):
+            raise TypeError(
+                f"write_checkpoint requires identity to be an AuthIdentity (got {type(identity).__name__})"
+            )
 
         moment = ids.now()
 
@@ -742,7 +772,7 @@ class OperatorReceiptService:
             # `not_found` denial, zero row written. Safe to read unlocked:
             # see `_derive_workspace_id`'s own docstring.
             resolved_workspace_id = _derive_workspace_id(conn, operation_id)
-            if resolved_workspace_id is None or resolved_workspace_id != workspace_id:
+            if resolved_workspace_id is None or resolved_workspace_id != identity.workspace_id:
                 _logger.error(
                     json.dumps(
                         {
@@ -750,7 +780,7 @@ class OperatorReceiptService:
                             "record_type": "checkpoint",
                             "record_id": operation_id,
                             "record_workspace_id": resolved_workspace_id,
-                            "identity_workspace_id": workspace_id,
+                            "identity_workspace_id": identity.workspace_id,
                         }
                     )
                 )
@@ -760,7 +790,7 @@ class OperatorReceiptService:
                 "schema_version": "1.0",
                 "kind": "checkpoint",
                 "operation_id": operation_id,
-                "workspace_id": workspace_id,
+                "workspace_id": identity.workspace_id,
                 "status": status,
                 "next_action_index": next_action_index,
                 "completed_action_count": completed_action_count,
@@ -799,7 +829,7 @@ class OperatorReceiptService:
                     "   checkpoint_json = excluded.checkpoint_json",
                     (
                         operation_id,
-                        workspace_id,
+                        identity.workspace_id,
                         status,
                         next_action_index,
                         completed_action_count,
@@ -1036,7 +1066,7 @@ class OperatorReceiptService:
         self,
         operation_id: str,
         *,
-        workspace_id: str,
+        identity: AuthIdentity,
         operation_kind: str,
         expected_action_count: int,
         status: str,
@@ -1062,18 +1092,20 @@ class OperatorReceiptService:
         section and :meth:`_record_supplemental_audit_event`.
 
         **U1/REGATE-BLOCK-2 (workspace-AUTHORIZED, not merely
-        workspace-attributed)**: identical hardening to
-        :meth:`write_checkpoint` -- `workspace_id` is authorized against
-        the REAL, derived workspace for `operation_id` and a mismatch (or a
-        phantom `operation_id`) DENIES (`reason_code == "not_found"`, zero
-        row written), indistinguishably. An earlier revision derived the
-        real value and used it anyway on a mismatch (logging a warning) --
-        that let ANY caller holding an `operation_id` plant a permanent,
-        immutable, forged terminal receipt on another workspace's
-        operation (demonstrated empirically: a forged `status="failed"`
-        receipt written by an attacker-supplied `workspace_id` was later
-        read back by the operation's own LEGITIMATE, successful run,
-        permanently, since `terminal_receipts` is immutable by trigger).
+        workspace-attributed) + NB-D/REGATE-NB-4**: identical hardening to
+        :meth:`write_checkpoint` -- `identity.workspace_id` is authorized
+        against the REAL, derived workspace for `operation_id` and a
+        mismatch (or a phantom `operation_id`) DENIES (`reason_code ==
+        "not_found"`, zero row written), indistinguishably. An earlier
+        revision derived the real value and used it anyway on a mismatch
+        (logging a warning) -- that let ANY caller holding an
+        `operation_id` plant a permanent, immutable, forged terminal
+        receipt on another workspace's operation (demonstrated
+        empirically: a forged `status="failed"` receipt written by an
+        attacker-supplied `workspace_id` was later read back by the
+        operation's own LEGITIMATE, successful run, permanently, since
+        `terminal_receipts` is immutable by trigger). `identity` has no
+        default -- see :meth:`record_action_receipt`'s docstring.
         """
 
         if status not in ("completed", "failed", "denied", "canceled"):
@@ -1088,8 +1120,11 @@ class OperatorReceiptService:
             raise ValueError(f"unknown denial_reason_code: {denial_reason_code!r}")
         if expected_action_count < 0:
             raise ValueError("finalize_terminal_receipt requires expected_action_count >= 0")
-        if not isinstance(workspace_id, str) or not workspace_id:
-            raise ValueError("finalize_terminal_receipt requires a non-empty workspace_id")
+        if not isinstance(identity, AuthIdentity):
+            raise TypeError(
+                "finalize_terminal_receipt requires identity to be an AuthIdentity "
+                f"(got {type(identity).__name__})"
+            )
 
         conn = _ops_store._connect(self._paths)
         try:
@@ -1103,7 +1138,7 @@ class OperatorReceiptService:
             # phantom/mismatched operation_id can never even produce an
             # `"exact_replay"` lookup hit.
             resolved_workspace_id = _derive_workspace_id(conn, operation_id)
-            if resolved_workspace_id is None or resolved_workspace_id != workspace_id:
+            if resolved_workspace_id is None or resolved_workspace_id != identity.workspace_id:
                 _logger.error(
                     json.dumps(
                         {
@@ -1111,7 +1146,7 @@ class OperatorReceiptService:
                             "record_type": "terminal_receipt",
                             "record_id": operation_id,
                             "record_workspace_id": resolved_workspace_id,
-                            "identity_workspace_id": workspace_id,
+                            "identity_workspace_id": identity.workspace_id,
                         }
                     )
                 )
@@ -1137,7 +1172,7 @@ class OperatorReceiptService:
             moment = ids.now()
             audit_delivery = self._record_supplemental_audit_event(
                 operation_id=operation_id,
-                workspace_id=workspace_id,
+                workspace_id=identity.workspace_id,
                 status=status,
                 actor_user_id=audit_actor_user_id,
             )
@@ -1146,7 +1181,7 @@ class OperatorReceiptService:
                 "schema_version": "1.0",
                 "kind": "terminal_receipt",
                 "operation_id": operation_id,
-                "workspace_id": workspace_id,
+                "workspace_id": identity.workspace_id,
                 "operation_kind": operation_kind,
                 "status": status,
                 "effect_receipt_refs": effect_receipt_refs,
@@ -1188,7 +1223,7 @@ class OperatorReceiptService:
                     " VALUES (?, ?, ?, ?, ?)",
                     (
                         operation_id,
-                        workspace_id,
+                        identity.workspace_id,
                         status,
                         json.dumps(terminal_receipt),
                         _iso_utc(moment),
