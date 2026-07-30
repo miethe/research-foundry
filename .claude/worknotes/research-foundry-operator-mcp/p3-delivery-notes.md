@@ -97,6 +97,33 @@ referenced by path from each dispatch, rather than restated per prompt.
 |---|---|---|
 | `node_01KYTBQ3D44CYEYFXZYP8KWJT2` | delegation-router: ICA `sonnet` alias still resolves to `claude-sonnet-4-5[1m]` though `claude-sonnet-5[1m]` exists in the same registry — silently downgrades ICA offloads | ITT `agentic_meta_dev` |
 | `node_01KYTBRTK0BT9ETQS0W8TE2BAV` | delegation-router SKILL.md "Key References" all point at a `skillmeat/.claude/skills/delegation-router/` directory that does not exist | ITT `agentic_meta_dev` |
+| `node_01KYTDY3WA8TK23PDNCAGP8S89` | Background-job worktree guard spuriously blocks *subagent* Edit/Write when cwd already IS the worktree; `EnterWorktree` cannot satisfy it; agents route around it with a Bash patcher | ITT `agentic_meta_dev` |
+| `node_01KYTDXMJ21ZZBWKAR6RMNFGWC` | 8 remaining module-level `..api.auth.*` imports in `services/` break the serve-extra boundary (latent P5 blockers) | ITT `research-foundry` |
+| `node_01KYTDXMYQXGTJJP9KG0325RV2` | P3-F3 — no public reader to recover canonical effect refs on exact replay | ITT `research-foundry` |
+| `node_01KYTDXN8R957GFF3CQGRVPRKJ` | K3-NB-5 — nothing binds `action_id` to `action_index` at receipt-write time | ITT `research-foundry` |
+
+## Wave 0 result — landed `70c8a6f`
+
+| Task | Outcome |
+|---|---|
+| OPM-3.1 | Adapter substrate + `run.plan` adapter. 16 tests, 5-guard mutation matrix. |
+| OPM-3.2 | `swarm_service.py` extracted from the Typer body; allowlist, dry-run, typed adapter errors, byte-for-byte CLI parity. 8 tests, 4-guard matrix. |
+| NB-D | Four receipt writers now require a real `AuthIdentity`; `workspace_id: str` removed entirely and `identity=None` made *unrepresentable* (no default + isinstance guard) rather than documented. 9-guard matrix. |
+
+Orchestrator-run validation (not agent-reported): 10 operator suites `exit 0`, 393 tests, 0 F / 0 E.
+Full suite with the two known-uncollectable files ignored → **16 distinct FAILED nodes, zero
+operator/adapter/swarm nodes** — exactly P2's documented pre-P2 baseline, so Wave 0 introduced no
+regressions.
+
+**A judgment call worth recording:** the NB-D leg made `identity=None` unrepresentable for writes
+while *keeping* it a permitted default on the module's three read methods. That asymmetry is
+deliberate and correct — a write has no safe "no scoping" default — and it was stated rather than
+slipped in. It is also the shape the ledger asked for.
+
+**K3-NB-5 was left explicitly open rather than half-closed**, with a stated reason: a real check needs
+an authoritative persisted per-index action manifest that does not exist in this module family, so
+any check writable today would validate against non-authoritative data. That is the right call and the
+opposite of the "assert closure" failure mode that produced P1 gate rounds 4 and 5.
 
 ## P3 findings raised during execution
 

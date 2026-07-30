@@ -5,9 +5,9 @@ doc_type: progress
 prd: research-foundry-operator-mcp
 feature_slug: research-foundry-operator-mcp
 phase: 3
-status: pending
+status: in_progress
 created: '2026-07-28'
-updated: '2026-07-28'
+updated: '2026-07-30'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
 plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
 commit_refs: []
@@ -17,34 +17,45 @@ owners:
 contributors: []
 tasks:
 - id: OPM-3.1
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - P2
   - CARP-4.G
-  estimate: "1 pt"
+  estimate: 1 pt
+  started: 2026-07-30T20:05Z
+  completed: 2026-07-30T21:00Z
+  evidence:
+  - commit: 70c8a6f
+  - test: tests/unit/test_operator_mcp_adapter_base.py
+  - test: tests/unit/test_operator_mcp_adapter_run_plan.py
 - id: OPM-3.2
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-3.1
-  estimate: "1.5 pts"
+  estimate: 1.5 pts
+  started: 2026-07-30T20:05Z
+  completed: 2026-07-30T20:50Z
+  evidence:
+  - commit: 70c8a6f
+  - test: tests/unit/test_swarm_service.py
 - id: OPM-3.3
-  status: pending
+  status: in_progress
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-3.2
-  estimate: "1.5 pts"
+  estimate: 1.5 pts
 - id: OPM-3.4
-  status: pending
+  status: in_progress
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-2.4
-  estimate: "1 pt"
+  estimate: 1 pt
 parallelization:
   batch_1:
   - OPM-3.1
@@ -54,10 +65,10 @@ parallelization:
   batch_3:
   - OPM-3.3
 total_tasks: 4
-completed_tasks: 0
-in_progress_tasks: 0
+completed_tasks: 2
+in_progress_tasks: 2
 blocked_tasks: 0
-progress: 0
+progress: 50
 ---
 
 # Phase 3 Progress — Run Planning and Swarm Adapters

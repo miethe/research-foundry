@@ -22,6 +22,7 @@ from .base import (
     run_pipeline,
 )
 from . import run_plan as _run_plan  # noqa: F401  -- import for registration side effect
+from . import swarm_start as _swarm_start  # noqa: F401  -- import for registration side effect
 
 __all__ = [
     "OperatorAdapter",

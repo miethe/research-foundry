@@ -234,6 +234,144 @@ def test_dry_run_performs_zero_adapter_and_write_effects(
 
 
 # ---------------------------------------------------------------------------
+# P3-F1: dry run still validates and denies (intersection of requirements
+# 2 and 4 -- the gap the original mutation matrix missed because each guard
+# was verified only against its OWN test, never their intersection)
+# ---------------------------------------------------------------------------
+
+
+def test_dry_run_still_denies_unknown_and_not_allowlisted_adapters_with_zero_effects(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P3-F1 fix, proven precisely: `run_swarm(..., dry_run=True)` for a
+    request mixing a valid adapter with an unknown one and a known-but-not-
+    allowlisted one still records BOTH denials (never silently swallowed by
+    the dry-run short-circuit) while performing ZERO dispatch/write effects
+    for ANY id, valid or not -- a spy on both `adapter.run` and `dump_yaml`
+    proves neither is ever called, for either the denied ids or the one
+    valid id in the same request."""
+
+    registry = adapters.load_all()
+    run_id = _planned_run(tmp_foundry)
+    monkeypatch.setattr(svc, "ALLOWED_ADAPTER_IDS", svc.ALLOWED_ADAPTER_IDS - {"opencode"})
+    assert "opencode" in registry  # known to the registry, but now disallowed above
+
+    write_spy = MagicMock(wraps=dump_yaml)
+    monkeypatch.setattr(svc, "dump_yaml", write_spy)
+
+    run_spies = {}
+    for adapter_id, instance in registry.items():
+        mock_run = MagicMock(wraps=instance.run)
+        run_spies[adapter_id] = mock_run
+        instance.run = mock_run  # type: ignore[method-assign]
+
+    result = svc.run_swarm(
+        run_id,
+        ["gpt_researcher", "definitely_unknown_adapter_id", "opencode"],
+        profile="personal",
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+
+    assert result.dry_run is True
+    assert result.wrote_candidates is False
+    assert result.source_candidates_path is None
+    assert result.source_candidates == ()
+    write_spy.assert_not_called()
+    for adapter_id, mock_run in run_spies.items():
+        mock_run.assert_not_called()
+
+    # The two invalid ids ARE denied -- P3-F1's own fix -- while the one
+    # valid id records no outcome at all (the pre-existing, still-correct
+    # dry-run contract for a VALID id: see
+    # test_dry_run_performs_zero_adapter_and_write_effects above).
+    by_id = {o.adapter_id: o for o in result.outcomes}
+    assert set(by_id) == {"definitely_unknown_adapter_id", "opencode"}
+    assert by_id["definitely_unknown_adapter_id"].denial.reason == svc.DENIAL_UNKNOWN_ADAPTER
+    assert by_id["opencode"].denial.reason == svc.DENIAL_NOT_ALLOWLISTED
+    assert all(o.ran is False for o in result.outcomes)
+
+
+# ---------------------------------------------------------------------------
+# merge_with_existing (OPM-3.3's own non-duplication dependency)
+# ---------------------------------------------------------------------------
+
+
+def test_merge_with_existing_false_is_the_unchanged_default_overwrite_behaviour(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """Default (`merge_with_existing=False`, every pre-existing caller
+    including the CLI): a second call REPLACES the file, it does not add to
+    it -- proves this task's new parameter changed nothing observable for
+    any caller that does not opt in."""
+
+    run_id = _planned_run(tmp_foundry)
+
+    svc.run_swarm(run_id, ["gpt_researcher"], profile="personal", dry_run=False, paths=tmp_foundry)
+    first = load_yaml(tmp_foundry.run_paths(run_id).source_candidates)
+    assert len(first["source_candidates"]) >= 1
+
+    svc.run_swarm(run_id, ["paperqa2"], profile="personal", dry_run=False, paths=tmp_foundry)
+    second = load_yaml(tmp_foundry.run_paths(run_id).source_candidates)
+
+    # paperqa2's own candidates only -- gpt_researcher's are GONE (overwritten).
+    assert second["source_candidates"] != first["source_candidates"]
+
+
+def test_merge_with_existing_true_appends_across_calls_without_duplicating(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """`merge_with_existing=True` (OPM-3.3's own per-adapter dispatch
+    pattern): calling `run_swarm` twice, once per adapter, each with a
+    single-element list, accumulates BOTH adapters' candidates in the file
+    -- neither call's candidates are lost, and neither is counted twice."""
+
+    run_id = _planned_run(tmp_foundry)
+
+    first = svc.run_swarm(
+        run_id, ["gpt_researcher"], profile="personal", dry_run=False, paths=tmp_foundry, merge_with_existing=True
+    )
+    persisted_after_first = load_yaml(tmp_foundry.run_paths(run_id).source_candidates)
+    assert persisted_after_first["source_candidates"] == list(first.source_candidates)
+
+    second = svc.run_swarm(
+        run_id, ["paperqa2"], profile="personal", dry_run=False, paths=tmp_foundry, merge_with_existing=True
+    )
+    persisted_after_second = load_yaml(tmp_foundry.run_paths(run_id).source_candidates)
+
+    # SwarmRunResult.source_candidates always describes only THIS call.
+    assert second.source_candidates != first.source_candidates
+    # The FILE holds both, in order, exactly once each -- no loss, no dupes.
+    assert persisted_after_second["source_candidates"] == [
+        *persisted_after_first["source_candidates"],
+        *second.source_candidates,
+    ]
+    assert len(persisted_after_second["source_candidates"]) == len(persisted_after_first["source_candidates"]) + len(
+        second.source_candidates
+    )
+
+
+def test_merge_with_existing_true_survives_a_corrupt_prior_file(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """A malformed pre-existing `source_candidates.yaml` (e.g. truncated by
+    a prior crash) never raises out of `run_swarm` -- it is treated as an
+    empty prior list (logged, not fatal), so this call's own candidates are
+    still durably persisted."""
+
+    run_id = _planned_run(tmp_foundry)
+    rp = tmp_foundry.run_paths(run_id)
+    rp.source_candidates.write_text("{not: valid: yaml: [", encoding="utf-8")
+
+    result = svc.run_swarm(
+        run_id, ["gpt_researcher"], profile="personal", dry_run=False, paths=tmp_foundry, merge_with_existing=True
+    )
+
+    persisted = load_yaml(rp.source_candidates)
+    assert persisted["source_candidates"] == list(result.source_candidates)
+
+
+# ---------------------------------------------------------------------------
 # Degraded/failing adapters stay typed (requirement 6)
 # ---------------------------------------------------------------------------
 
