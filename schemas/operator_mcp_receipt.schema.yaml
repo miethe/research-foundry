@@ -63,16 +63,54 @@ description: >-
   `not: pattern` traceback-/absolute-path-shaped guard `detail` uses
   (`audit_event_id`, `action_receipt.action_id`, `action_receipt.attempt_ref`,
   `effect_receipt.action_id`, `operation_receipt.workspace_id`,
-  `terminal_receipt.workspace_id`) -- see the per-`$def`/per-property matrix
-  in `.claude/findings/research-foundry-operator-mcp-findings.md`, section
-  FIND-P1-R5, for which fields were reviewed and why each was (or was not)
-  changed. This is a defense-in-depth SCHEMA-level guard against a
-  producer bug; P1 has no code-level producer for most of these fields at
-  all yet (P2's `operator_operation_service.py` is the durable-persistence
-  owner -- see above), so it does not by itself prove no caller-influenced
-  content can ever reach them, only that a well-formed producer's output
-  which DOES leak one is now rejected at the schema boundary rather than
-  silently accepted.
+  `terminal_receipt.workspace_id`, `checkpoint.workspace_id`) -- see the
+  per-`$def`/per-property matrix in
+  `.claude/findings/research-foundry-operator-mcp-findings.md`, section
+  FIND-P1-R5 (and FIND-P2-RECEIPT-REATTACK for the P2 pass that added
+  `checkpoint.workspace_id`), for which fields were reviewed and why each
+  was (or was not) changed. This is a defense-in-depth SCHEMA-level guard
+  against a producer bug; P1 has no code-level producer for most of these
+  fields at all yet (P2's `operator_operation_service.py` is the
+  durable-persistence owner -- see above), so it does not by itself prove
+  no caller-influenced content can ever reach them, only that a
+  well-formed producer's output which DOES leak one is now rejected at the
+  schema boundary rather than silently accepted.
+
+  P2R-BLOCK-1 (P2 pre-persistence re-attack gate) CLOSES the one gap the
+  paragraph above's enumeration left open while implicitly claiming
+  completeness: `operation_receipt.idempotency_key` sat one property below
+  the newly-guarded `workspace_id` in the SAME `$def`, completely
+  unguarded -- the fourth instance of the exact "fix-the-layer-below"
+  sibling class that produced R5-BLOCK-1/BLOCK-2/BLOCK-3 before it.
+  `idempotency_key` is now CLOSED to the identical pattern
+  `operator_mcp_operation.schema.yaml`'s own `idempotency_key` already
+  uses (`^[A-Za-z0-9_\-]+$` -- single source of truth for this value's
+  shape, since this field echoes that exact source field, duplicated by
+  value not `$ref` per this repo's convention). A pattern whitelist is
+  STRICTER than the `not: pattern` blacklist the paragraph above
+  describes, so `idempotency_key` is deliberately NOT re-added to that
+  list -- it is closed by pattern, not by negation, and is therefore no
+  longer "open" in that paragraph's sense.
+
+  NB-11 (P1 closeout residual risk, both items resolved by the same P2
+  pre-persistence re-attack gate): (1) `checkpoint` now carries a required
+  `workspace_id`, guarded identically to its `operation_receipt`/
+  `terminal_receipt` siblings -- added pre-persistence (ahead of P2
+  OPM-2.3) because WKSP-304 row-level workspace isolation needs this
+  column on every workspace-scoped durable row, and `checkpoint` is the
+  ONE mutable kind P2's resume/cancel path will query most by workspace;
+  retrofitting a `NOT NULL` column onto a live checkpoint table after ship
+  is materially costlier than freezing it now. (2) `operation_receipt`
+  now carries a nullable `denial_reason_code`, required-and-non-null
+  exactly when `status: denied` and forced null otherwise -- mirroring
+  (duplicating BY VALUE, not by `$ref`) `terminal_receipt.
+  denial_reason_code`'s `allOf` presence-coupling and the SAME closed
+  enum. DECISION: `operation_receipt` is minted at accept/deny time,
+  before any action runs and before a `terminal_receipt` is guaranteed to
+  exist for the same operation (P1 has no code path yet that proves one
+  always follows) -- the denial cause must therefore be recoverable from
+  `operation_receipt` alone rather than deferred to a receipt kind that
+  may not (yet) exist for a given denied operation.
 type: object
 oneOf:
   - $ref: "#/$defs/operation_receipt"
@@ -217,15 +255,82 @@ $defs:
           - denied
           - canceled
       idempotency_key:
+        description: >-
+          Echoes the idempotency_key the originating
+          operator_mcp_operation.schema.yaml request carried. P2R-BLOCK-1
+          (P2 pre-persistence re-attack gate): this field was a completely
+          unguarded open string -- one property below the newly-guarded
+          `workspace_id` in this SAME `$def` -- and was also strictly
+          WEAKER than `operator_mcp_operation.schema.yaml`'s own
+          `idempotency_key` pattern for the identical logical field.
+          Closed to that EXACT pattern (single source of truth; duplicated
+          by value, not `$ref`, per this repo's no-cross-file-`$ref`-
+          resolver convention -- see module description).
         type: string
         minLength: 1
         maxLength: 128
+        pattern: "^[A-Za-z0-9_\\-]+$"
       canonical_input_digest:
         type: string
         pattern: "^[a-f0-9]{64}$"
       generated_at:
         type: string
         format: date-time
+      denial_reason_code:
+        description: >-
+          NB-11 item 2 (P1 closeout residual risk, resolved by the P2
+          pre-persistence re-attack gate): `operation_receipt.status:
+          denied` previously carried no reason field anywhere in this
+          `$def`, unlike its sibling `terminal_receipt.denial_reason_code`.
+          Mirrors (duplicates BY VALUE, not by `$ref`) that field's `allOf`
+          presence-coupling and the SAME closed enum as
+          `operator_mcp_error.schema.yaml`'s `reason_code` (see module
+          description). Required and non-null exactly when `status:
+          denied`; forced null for every other status (see this `$def`'s
+          `allOf` below).
+        enum:
+          - identity_denied
+          - rbac_denied
+          - audit_unhealthy
+          - guard_blocked
+          - guard_review_required
+          - preflight_failed
+          - operation_unknown
+          - tool_unknown
+          - target_invalid
+          - confirmation_missing
+          - confirmation_expired
+          - confirmation_replayed
+          - confirmation_mismatch
+          - idempotency_conflict
+          - not_found
+          - payload_too_large
+          - internal_error
+          - null
+    allOf:
+      - if:
+          properties:
+            status:
+              const: denied
+          required:
+            - status
+        then:
+          required:
+            - denial_reason_code
+          properties:
+            denial_reason_code:
+              not:
+                const: null
+      - if:
+          properties:
+            status:
+              enum: [accepted, in_progress, completed, failed, canceled]
+          required:
+            - status
+        then:
+          properties:
+            denial_reason_code:
+              const: null
   action_receipt:
     type: object
     additionalProperties: false
@@ -401,13 +506,18 @@ $defs:
   checkpoint:
     description: >-
       The ONE mutable kind (see module description). `next_action_index`
-      is null only when `status` is `converged`.
+      is null IFF `status` is `converged` -- enforced bidirectionally
+      (P2R-NB-1, P2 pre-persistence re-attack gate: the `pending` ->
+      non-null direction was previously unenforced, contradicting this
+      same docstring; `{status: "pending", next_action_index: null}`
+      validated cleanly before this fix).
     type: object
     additionalProperties: false
     required:
       - schema_version
       - kind
       - operation_id
+      - workspace_id
       - status
       - next_action_index
       - completed_action_count
@@ -422,6 +532,21 @@ $defs:
       operation_id:
         type: string
         pattern: "^opm_[a-f0-9]{64}$"
+      workspace_id:
+        description: >-
+          NB-11 item 1 (P1 closeout residual risk, resolved by the P2
+          pre-persistence re-attack gate): `checkpoint` -- the one MUTABLE
+          receipt kind -- previously carried no `workspace_id` at all,
+          unlike its `operation_receipt`/`terminal_receipt` siblings.
+          Added now, ahead of P2 (OPM-2.3) building durable checkpoint
+          persistence, so WKSP-304 row-level workspace isolation has a
+          column to filter on from day one. Guarded identically to
+          `operation_receipt.workspace_id`/`terminal_receipt.workspace_id`.
+        type: string
+        minLength: 1
+        maxLength: 128
+        not:
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
       status:
         enum:
           - pending
@@ -457,6 +582,20 @@ $defs:
               const: null
             non_cancelable:
               const: false
+      - if:
+          properties:
+            status:
+              const: pending
+          required:
+            - status
+        then:
+          # P2R-NB-1 (P2 pre-persistence re-attack gate): the converse of
+          # the branch above -- closes the direction that previously let a
+          # `pending` checkpoint carry `next_action_index: null`.
+          properties:
+            next_action_index:
+              not:
+                const: null
   terminal_receipt:
     type: object
     additionalProperties: false

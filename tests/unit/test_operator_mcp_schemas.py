@@ -282,6 +282,7 @@ def _valid_checkpoint(**overrides: Any) -> dict[str, Any]:
         "schema_version": "1.0",
         "kind": "checkpoint",
         "operation_id": f"opm_{_SHA}",
+        "workspace_id": "default",
         "status": "pending",
         "next_action_index": 1,
         "completed_action_count": 1,
@@ -580,6 +581,200 @@ def test_receipt_action_receipt_attempt_ref_rejects_path_shaped_value() -> None:
     assert _errors("operator_mcp_receipt", instance)
 
 
+def test_receipt_checkpoint_workspace_id_rejects_path_shaped_value() -> None:
+    """NB-11 item 1: `checkpoint` previously had no `workspace_id` at all."""
+
+    instance = _valid_checkpoint(workspace_id="/etc/passwd")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+# ---------------------------------------------------------------------------
+# P2R-BLOCK-1: operation_receipt.idempotency_key
+# ---------------------------------------------------------------------------
+
+
+def test_receipt_operation_receipt_idempotency_key_rejects_path_shaped_value() -> None:
+    """P2R-BLOCK-1: `idempotency_key` was a completely unguarded open
+    string, one property below the newly-guarded `workspace_id` in the
+    SAME `$def` -- the fourth instance of the fix-the-layer-below sibling
+    class this file has produced every round examined."""
+
+    instance = _valid_operation_receipt(idempotency_key="/etc/passwd")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_operation_receipt_idempotency_key_rejects_traceback_shaped_value() -> None:
+    instance = _valid_operation_receipt(idempotency_key="Traceback: File x.py")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_operation_receipt_idempotency_key_golden_value_passes() -> None:
+    assert not _errors("operator_mcp_receipt", _valid_operation_receipt())
+
+
+def test_receipt_operation_receipt_idempotency_key_matches_operation_schema_pattern() -> None:
+    """Parity check (empirical, not reasoned): the receipt's
+    `idempotency_key` must be closed to the IDENTICAL pattern
+    `operator_mcp_operation.schema.yaml`'s own `idempotency_key` uses,
+    since this field is defined to echo that exact source field (single
+    source of truth). Compares the live schema strings directly rather
+    than asserting behavior on a handful of sample instances."""
+
+    receipt_schema = SchemaRegistry().get("operator_mcp_receipt")
+    operation_schema = SchemaRegistry().get("operator_mcp_operation")
+    receipt_pattern = receipt_schema["$defs"]["operation_receipt"]["properties"]["idempotency_key"][
+        "pattern"
+    ]
+    operation_pattern = operation_schema["properties"]["idempotency_key"]["pattern"]
+    assert receipt_pattern == operation_pattern
+
+
+# ---------------------------------------------------------------------------
+# NB-11 item 2: operation_receipt.denial_reason_code
+# ---------------------------------------------------------------------------
+
+
+def test_receipt_operation_receipt_denied_requires_reason_code_key_to_be_present() -> None:
+    instance = _valid_operation_receipt(status="denied")  # denial_reason_code absent entirely
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_operation_receipt_denied_with_null_reason_code_rejected() -> None:
+    instance = _valid_operation_receipt(status="denied", denial_reason_code=None)
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_operation_receipt_denied_with_reason_code_passes() -> None:
+    instance = _valid_operation_receipt(status="denied", denial_reason_code="guard_blocked")
+    assert not _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_operation_receipt_accepted_forbids_reason_code() -> None:
+    instance = _valid_operation_receipt(status="accepted", denial_reason_code="guard_blocked")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_operation_receipt_accepted_with_absent_reason_code_still_passes() -> None:
+    assert not _errors("operator_mcp_receipt", _valid_operation_receipt())
+
+
+def test_receipt_operation_receipt_accepted_with_null_reason_code_passes() -> None:
+    instance = _valid_operation_receipt(status="accepted", denial_reason_code=None)
+    assert not _errors("operator_mcp_receipt", instance)
+
+
+# ---------------------------------------------------------------------------
+# P2R-NB-1: checkpoint next_action_index / status bidirectional coupling
+# ---------------------------------------------------------------------------
+
+
+def test_receipt_checkpoint_pending_with_null_next_action_index_rejected() -> None:
+    """P2R-NB-1: previously unenforced -- a `pending` checkpoint with
+    `next_action_index: null` validated cleanly, contradicting this
+    `$def`'s own docstring ("null only when status is converged")."""
+
+    instance = _valid_checkpoint(status="pending", next_action_index=None)
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_checkpoint_pending_with_non_null_next_action_index_passes() -> None:
+    assert not _errors("operator_mcp_receipt", _valid_checkpoint())
+
+
+def test_receipt_checkpoint_converged_rejects_non_cancelable_true() -> None:
+    """P2R-NB-4: the converged branch's `non_cancelable: const false`
+    coupling had no negative fixture -- only `next_action_index` was
+    varied by the existing converged-branch tests."""
+
+    instance = _valid_checkpoint(status="converged", next_action_index=None, non_cancelable=True)
+    assert _errors("operator_mcp_receipt", instance)
+
+
+# ---------------------------------------------------------------------------
+# P2R-NB-3: regression-detection gap -- operation_id / operation_kind /
+# status negative fixtures across all five $defs.
+# ---------------------------------------------------------------------------
+
+
+def test_receipt_operation_receipt_operation_id_rejects_malformed_value() -> None:
+    instance = _valid_operation_receipt(operation_id="not-an-opm-id")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_action_receipt_operation_id_rejects_malformed_value() -> None:
+    instance = _valid_action_receipt(operation_id="not-an-opm-id")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_effect_receipt_operation_id_rejects_malformed_value() -> None:
+    instance = {
+        "schema_version": "1.0",
+        "kind": "effect_receipt",
+        "operation_id": "not-an-opm-id",
+        "action_id": "action-1",
+        "effect_kind": "source_card_created",
+        "effect_digest": _SHA,
+        "effect_ref": "run_demo",
+        "generated_at": "2026-07-28T00:00:00Z",
+    }
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_checkpoint_operation_id_rejects_malformed_value() -> None:
+    instance = _valid_checkpoint(operation_id="not-an-opm-id")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_terminal_receipt_operation_id_rejects_malformed_value() -> None:
+    instance = _valid_terminal_receipt(operation_id="not-an-opm-id")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_operation_receipt_operation_kind_rejects_unknown_value() -> None:
+    instance = _valid_operation_receipt(operation_kind="shell.exec")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_terminal_receipt_operation_kind_rejects_unknown_value() -> None:
+    instance = _valid_terminal_receipt(operation_kind="shell.exec")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_operation_receipt_status_rejects_unknown_value() -> None:
+    instance = _valid_operation_receipt(status="bogus_status")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_action_receipt_status_rejects_unknown_value() -> None:
+    instance = _valid_action_receipt(status="bogus_status")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_checkpoint_status_rejects_unknown_value() -> None:
+    instance = _valid_checkpoint(status="bogus_status")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_receipt_terminal_receipt_status_rejects_unknown_value() -> None:
+    instance = _valid_terminal_receipt(status="bogus_status")
+    assert _errors("operator_mcp_receipt", instance)
+
+
+# NOTE (P2R-NB-3, date-time fields): NOT extended to `generated_at`/
+# `started_at`/`completed_at`/`updated_at`. Confirmed empirically that this
+# repo's `jsonschema.Draft202012Validator` usage -- both here (`_errors`
+# above) and in `research_foundry.schemas.SchemaRegistry.validate` -- never
+# attaches a `format_checker`, so `format: date-time` is annotation-only and
+# NOT enforced (`grep -rn "format_checker\|FormatChecker"` across
+# `tests/unit/test_operator_mcp_schemas.py`, `tests/test_schema_validation.py`,
+# and `src/research_foundry/schemas.py` returns zero hits). A malformed
+# `generated_at` value validates today regardless of this schema's content,
+# so a "negative fixture" here would be dishonest -- it would assert
+# behavior this schema cannot currently provide. Wiring a `FormatChecker`
+# is a validator-plumbing change outside this schema file's scope; flagged
+# for OPM-2.3/a follow-up rather than faked here.
+
+
 def test_audit_delivery_builder_never_leaks_exception_derived_content() -> None:
     """BLOCK-1 (round 4 gate): supersedes the round-3 producer test, which
     only asserted the SCHEMA validates for a real traceback -- schema
@@ -672,7 +867,10 @@ def test_receipt_denial_reason_code_enum_matches_code_closed_reason_codes() -> N
     BLOCK-2 (round 4 gate): this guard previously read ONLY
     `terminal_receipt.denial_reason_code` -- `action_receipt.reason_code`,
     the exact sibling field NEW-20 (round 3) forgot to close, was
-    unguarded. Now asserts BOTH fields against `CLOSED_REASON_CODES`."""
+    unguarded. NB-11 item 2 (P2 pre-persistence re-attack gate): extended
+    again to cover `operation_receipt.denial_reason_code`, the newly-added
+    THIRD copy of this same enum. Now asserts all three fields against
+    `CLOSED_REASON_CODES`."""
 
     from research_foundry.services.operator_mcp_policy import CLOSED_REASON_CODES
 
@@ -688,6 +886,11 @@ def test_receipt_denial_reason_code_enum_matches_code_closed_reason_codes() -> N
     assert None in action["enum"], "null must remain a member (reason_code is optional)"
     assert action_codes == set(CLOSED_REASON_CODES)
 
+    operation = schema["$defs"]["operation_receipt"]["properties"]["denial_reason_code"]
+    operation_codes = {c for c in operation["enum"] if c is not None}
+    assert None in operation["enum"], "null must remain a member (only denied requires non-null)"
+    assert operation_codes == set(CLOSED_REASON_CODES)
+
 
 def test_receipt_every_closed_reason_code_is_accepted() -> None:
     """The enum must not be narrower than the code's vocabulary either -- every
@@ -697,6 +900,17 @@ def test_receipt_every_closed_reason_code_is_accepted() -> None:
 
     for code in sorted(CLOSED_REASON_CODES):
         instance = _valid_terminal_receipt(status="denied", denial_reason_code=code)
+        assert not _errors("operator_mcp_receipt", instance), f"{code} should validate"
+
+
+def test_receipt_operation_receipt_every_closed_reason_code_is_accepted() -> None:
+    """NB-11 item 2: same coverage as the terminal_receipt test above, for
+    the newly-added operation_receipt.denial_reason_code."""
+
+    from research_foundry.services.operator_mcp_policy import CLOSED_REASON_CODES
+
+    for code in sorted(CLOSED_REASON_CODES):
+        instance = _valid_operation_receipt(status="denied", denial_reason_code=code)
         assert not _errors("operator_mcp_receipt", instance), f"{code} should validate"
 
 

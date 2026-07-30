@@ -96,6 +96,133 @@ credible four-row mutation table — and still contained a docstring-only author
 effect boundary. A green suite plus a self-reported mutation table is not gate evidence. All four
 defects came from orchestrator review of the actual diff.
 
+**Accepted deviation (F1), argued by the implementer and verified independently.** The authorization
+gate tests `decision.stage == "confirmation"`, **not** `decision.allowed`. Rationale: P1 reports an
+exact replay as `allowed=False, reason_code="confirmation_replayed"`, so a literal `allowed` check
+would deny every idempotent retry and regress OPM-2.1's own frozen AC ("exact manifest replay
+resolves same operation"). Verified in P1's code rather than taken on faith:
+`PolicyDecision.stage` names the *last stage evaluated* in a fixed order
+(`capability → rbac → audit_health → guard → preflight → confirmation`), and `evaluate_policy` only
+ever produces stages 1–5 — so `stage == "confirmation"` is reachable **only** after all five earlier
+stages pass. Confirmation-stage denials that pass the outer gate then fall through to the
+authoritative `verify_confirmation` + `consume_confirmation` re-evaluation *inside* the lock, so the
+confirmation predicate is never weakened. A more precise predicate than `allowed`, not a weaker one.
+
+**Landed:** commit `55c341c`. Validation (orchestrator-independent re-run): **257 passed, exit 0**;
+`flake8 E9,F63,F7,F82` exit 0; pyright clean on both touched files.
+
+**Delegation hazard hit and worked around (carry forward).** The first fix attempt was dispatched via
+`SendMessage` to resume the original implementer with its context intact. The resume was
+acknowledged, but the agent silently died — it wrote nothing and the source mtime never moved.
+Detected by checking file mtimes and grepping for the specific guards rather than trusting the
+"resumed" acknowledgement. Recovery: `TaskStop` the dead agent, then dispatch a **fresh** implementer
+with all four findings fully re-specified. Lesson: after resuming an agent, verify the artifact
+changed on disk before assuming the work happened.
+
+**ICA launch hazard.** `nohup … &` inside a `run_in_background: true` Bash call is reaped when the
+wrapper shell exits — the delegate died instantly, leaving only a startup warning in its log. Launch
+ICA as the *foreground* command of a `run_in_background` call so the harness owns the process.
+
+## OPM-2.2 — AgentJob attempt adapter (ICA-delegated leaf) — commit `0e2d1c6`
+
+First ICA offload of this phase, and it worked well. `OperatorAttemptAdapter` wraps a **private**
+`AgentJobService` and adds an additive `attempts` table to the database OPM-2.1 already owns.
+
+- `accept_job` kept unreachable structurally, not by convention: never called, wrapped service is a
+  private attribute with no public getter, no method name contains `accept`. Proven by a `dir()` scan
+  test *and* a test that no public attribute returns an `AgentJobService`.
+- Wrong-workspace indistinguishable from missing is **inherited rather than re-implemented** — the
+  adapter never catches or re-wraps `load_job`'s exception, so P1's guarantee holds for free. Tested
+  on the *same* id both ways (wrong workspace, then delete `job.json` for that id) asserting identical
+  exception type and identical `str()`.
+- operation→attempts re-applies the identity gate per candidate rather than adding a second SQL
+  workspace predicate, keeping workspace policy in exactly one place. Good instinct — a duplicated
+  predicate is how these two copies would silently diverge later.
+
+**Verified independently, not taken on report:** all seven barrier files untouched (`git diff` against
+HEAD); `_BUSY_TIMEOUT_MS` is `15_000` in *both* modules (checked explicitly — the adapter wrote its own
+`_connect` against the same database file rather than importing OPM-2.1's private helper, so a value
+mismatch would have made lock behavior diverge between two writers on one file); 319 passed / 0
+failures / exit 0.
+
+**Honest gap it disclosed rather than hid:** the `job.json` write (filesystem) and the `attempts` row
+(SQLite) are two storage engines and are **not cross-store atomic**. A link-insert failure after job
+creation logs at ERROR and re-raises rather than silently orphaning. A real fix needs a cleanup path
+on `agent_job_service.py`, a barrier file. Carried to the gate as a known limitation, not a defect.
+
+**ICA verdict for the routing record:** on a bounded task with a precise contract, ICA
+`claude-sonnet-5[1m]` produced work that needed **no rework** — the strongest argument yet for
+offloading contract-clear leaf nodes. It also honored every negative constraint (barrier files,
+no-git, no `accept_job`) and volunteered two considered-and-rejected scope decisions instead of
+silently omitting them.
+
+## Receipt-schema re-attack (pre-OPM-2.3) — commit `77717de`
+
+Run **before** OPM-2.3 builds durable persistence, because a weakness in this schema becomes a
+durable-data problem. The base rate the ledger predicted (1–3 more findings, most likely here) held:
+
+**`P2R-BLOCK-1` — a FOURTH instance of the same sibling-field class.**
+`operation_receipt.idempotency_key` is a completely unguarded open string sitting one property below
+the *guarded* `workspace_id` in the same `$def`. Empirically confirmed: `/etc/passwd` and
+`Traceback: File x.py` both validate there, while the identical string is rejected in the sibling
+field. It is also weaker than `operator_mcp_operation.schema.yaml`'s own closed pattern for the same
+logical field. And the `$def` description enumerates six guarded fields, falsely implying
+completeness — the same false-self-claim pattern `R5-BLOCK-1` already caught once.
+
+**Process conclusion worth keeping:** judgment has now failed on this one file four times in the same
+way. So the fix task was given a *mechanical* requirement instead of a reminder — after each fix,
+enumerate every sibling in that `$def` and the equivalent property in the other four `$defs`, and
+state a needs-same-treatment verdict for each, as a table. When a defect class recurs four times,
+stop trusting the checklist to be *read* and make the sweep an output artifact.
+
+Both P1-deferred `NB-11` items were forced to explicit decisions rather than inherited: add
+`workspace_id` to `checkpoint` now (it is the only mutable receipt kind, and row-level workspace
+isolation needs it on every workspace-scoped row — retrofitting `NOT NULL` post-ship costs more), and
+decide the `operation_receipt.status: denied` reason field rather than leaving a silent gap.
+
+One finding deliberately **not** forced into the schema: there is no `completed ≤ total` relational
+invariant on either count pair, and JSON Schema cannot express it. Handed forward as an OPM-2.3
+application-layer obligation instead of contorting the schema.
+
+## Cross-model lens: gpt-5.6-terra concurrency review of OPM-2.1 (the standout result of P2)
+
+**The Codex refusal is framing-specific, not workstream-wide.** The plan records `codex exec`
+refusing this workstream under its safety classifier after burning a long reasoning trace, and
+concludes "do not retry the cross-model security lens here." That conclusion holds for the
+*adversarial security-audit* framing — but a **pure engineering correctness framing** ("review this
+SQLite module for transactional-correctness and concurrency bugs", with concrete questions about
+transaction scope, `isolation_level`, `busy_timeout`, two-process interleaving, `rowcount` semantics)
+was accepted and ran to completion, exit 0, ~98k tokens. This is a **reusable unblock**: the
+cross-model lens is available to this workstream after all, provided the ask is framed as correctness
+rather than attack. Recorded because the plan's blanket "Codex is unavailable for this workstream"
+line would otherwise keep costing us the best defect-finding lens we have.
+
+It found a real HIGH-severity bug that the Claude implementer, its own mutation suite, and the
+orchestrator review had all missed — and it is precisely the class a concurrency-specialist lens
+finds and a general reviewer does not:
+
+| ID | Sev | Finding |
+|---|---|---|
+| G1 | **HIGH** | **Time-of-check/time-of-use on expiry across the lock wait.** `moment = ids.now()` is captured *before* `_ensure_schema()` and `BEGIN IMMEDIATE`, and `BEGIN IMMEDIATE` can block up to the 15s `busy_timeout`. Interleaving: process B captures `moment` just before a token expires; A holds the writer lock; B waits, acquires the lock *after* expiry, and validates against its stale pre-expiry timestamp — committing a manifest and consuming a token past its clamped expiry. `schemas/operator_mcp_confirmation.schema.yaml` explicitly requires the expiry predicate **at commit time**. Fix: capture the clock *after* the lock is held. |
+| G2 | MED | **Lock-timeout escapes as a raw exception.** `_ensure_schema()` and `BEGIN IMMEDIATE` are outside the inner handler, so an exhausted `busy_timeout` raises `sqlite3.OperationalError` out of the method instead of returning a governed retryable `OperationOutcome`. Same defect class as F4 — which was fixed for the CAS invariant path while its **sibling** lock-acquisition path was missed. A textbook "fix the layer below / check the siblings" recurrence, in a fix cycle that was explicitly carrying that checklist item. |
+| G3 | LOW | `rowcount != 1` classifies as `internal_error` rather than replay/conflict. Unreachable between two compliant callers of this service (the later one reads committed `consumed` JSON and takes the exact-replay branch first); reachable only if `record_json.status` desynchronizes from the `status` column. |
+| G4 | LOW | **Schema-level integrity gap.** Primary keys and `UNIQUE(workspace_id, idempotency_key)` are genuinely DB-enforced, but confirmation status validity and JSON↔column consistency are **application-enforced only** — no `CHECK(status IN (...))`, no FK for the JSON-embedded `consumed_by_operation_id`, no immutability trigger on records the design calls immutable. Verified independently: no `CHECK` exists. This is why G3's path is reachable at all, and it means F3's dual-source-of-truth fix is only half-closed — the app-level permissive default is gone, but nothing at the DB level enforces the invariant. |
+| G5 | MED (coverage) | **The concurrency test covers threads, not separate processes.** DUR-1's actual guarantee is cross-process durability under an exclusive file lock; a threaded test shares one interpreter and one connection pool and cannot exercise it. |
+
+Independently confirmed correct by the same review (worth recording so it is not re-litigated):
+transaction scope is right (CAS read, idempotency lookup, guarded UPDATE, validation, and manifest
+INSERT are all inside one `BEGIN IMMEDIATE`…`COMMIT` on one connection, with no path that commits the
+status transition independently of the manifest); the two-process race admits exactly one winner;
+`IMMEDIATE` takes a RESERVED rather than EXCLUSIVE lock, which is sufficient here because it excludes
+other writers while permitting readers; `isolation_level=None` is used correctly and `_ensure_schema`'s
+autocommitted DDL cannot leave partial confirmation/manifest state; and `rowcount` is reliable for
+this single-statement primary-key `UPDATE`.
+
+Caveat on its evidence: it could not run pytest (read-only sandbox had no writable tmpdir), so G1/G2
+are code-reading conclusions. **G1 must be reproduced with a real failing test before the fix is
+accepted** — this project's history (`BLOCK-4`) is exactly about closure asserted rather than
+demonstrated.
+
 ## Open items / follow-ups (→ ITT nodes)
 
 Populated as execution proceeds; see the Next Actions table in the final response.
