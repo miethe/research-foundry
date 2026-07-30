@@ -28,6 +28,7 @@ import pytest
 from research_foundry import adapters, ids
 from research_foundry.auth_identity import AuthIdentity
 from research_foundry.paths import FoundryPaths
+from research_foundry.services import operator_mcp_adapters as adapters_pkg
 from research_foundry.services import operator_mcp_policy as policy
 from research_foundry.services import swarm_service as swarm_svc
 from research_foundry.services.operator_cancel_resume_service import (
@@ -42,7 +43,12 @@ from research_foundry.yamlio import dump_yaml, load_yaml
 
 from tests.test_planning import _make_intent
 from tests.unit.test_operator_cancel_resume_service import _consume
-from tests.unit.test_operator_mcp_policy import _default_operator_identity, _IDENTITY  # noqa: F401
+from tests.unit.test_operator_mcp_adapter_run_plan import _default_sensitivity_ceiling  # noqa: F401
+from tests.unit.test_operator_mcp_policy import (  # noqa: F401
+    _default_operator_identity,
+    _IDENTITY,
+    _IDENTITY_OTHER_WORKSPACE,
+)
 
 _ADAPTER_A = "gpt_researcher"
 _ADAPTER_B = "paperqa2"
@@ -425,3 +431,109 @@ def test_merge_with_existing_true_is_required_for_non_duplication(
         *after_action0["source_candidates"],
         *captured[-1].source_candidates,
     ]
+
+
+# ---------------------------------------------------------------------------
+# H7 defect fix: an above-ceiling run denies at the guard stage, with the
+# SAME `not_found` shape a genuinely-missing run gets (this task's negative
+# fixture -- proves the fix, not merely the absence of a crash).
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing_run(
+    tmp_foundry: FoundryPaths, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same defect/fix this task addresses across all five P3 entry points
+    (see `run_plan.py`'s own sibling test for the full narrative): before
+    this fix, `swarm_start.invoke` accepted a caller-supplied
+    `sensitivity_ceiling` defaulting to `"client_sensitive"`, making
+    `_check_guard`'s H7 comparison a permanent no-op. Here, a real planned
+    run whose OWN `run.yaml`-declared `sensitivity` is `"personal"` is
+    denied once the LOCALLY CONFIGURED ceiling resolves to `"public"` (one
+    rank below).
+
+    Also proves the SAME H6/H7 one-denial-shape guarantee `run_plan.py`'s
+    sibling test proves, via the comparison that actually applies to THIS
+    adapter: this above-ceiling denial (real run, guard stage) is
+    byte-identical to a wrong-workspace denial for the SAME real run
+    (rbac stage, earlier in the fixed pipeline order) -- a caller cannot
+    tell "this run exists but you are not cleared for it" from "this run
+    exists but is not yours" from the response alone. A genuinely-missing
+    `run_id` is deliberately NOT used for this comparison: it denies via
+    this adapter's OWN budget/timeout/profile preflight check (module
+    docstring's "resolved, never caller-supplied" section) BEFORE `ctx` --
+    and therefore the ceiling -- is ever constructed, a different,
+    intentionally distinct denial reason (`preflight_failed`, see
+    `test_missing_run_denies_with_preflight_failed_no_confirmation_needed`
+    above), not a second instance of the SAME guard/rbac `not_found`
+    family."""
+
+    run_id = _planned_run(tmp_foundry, sample_idea_text)
+    run_ctx = swarm_start._resolve_run_context(run_id, tmp_foundry)
+    assert run_ctx.sensitivity == "personal"
+
+    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", lambda *a, **kw: "public")
+
+    # Direct proof of STAGE: build the identical PolicyContext `invoke()`
+    # would build internally and evaluate it directly.
+    direct_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=swarm_start.OPERATION_KIND,
+        idempotency_key="idem-above-ceiling",
+        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
+        sensitivity_ceiling="public",
+        targets=(policy.TargetRef("run", run_id),),
+        resolved_target_workspaces=(run_ctx.workspace_id,),
+        input_payload={"run_id": run_id, "adapter_ids": [_ADAPTER_A]},
+        paths=tmp_foundry,
+    )
+    direct_decision = policy.evaluate_policy(direct_ctx, paths=tmp_foundry)
+    assert direct_decision.allowed is False
+    assert direct_decision.stage == "guard"
+    assert direct_decision.reason_code == "not_found"
+    assert direct_decision.retryable is False
+
+    above_ceiling_result = swarm_start.invoke(
+        run_id=run_id,
+        adapter_ids=[_ADAPTER_A],
+        idempotency_key="idem-above-ceiling",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+
+    assert above_ceiling_result.ok is False
+    assert above_ceiling_result.error is not None
+    assert above_ceiling_result.error["reason_code"] == "not_found"
+    assert above_ceiling_result.error["retryable"] is False
+    assert above_ceiling_result.error["operation_id"] is None
+    assert above_ceiling_result.error["receipt_ref"] is None
+    assert "detail" not in above_ceiling_result.error
+    assert not tmp_foundry.run_paths(run_id).source_candidates.exists()
+
+    # H6/H7 one-denial-shape comparison: a WRONG-WORKSPACE caller for the
+    # SAME real run denies at the EARLIER `rbac` stage (fixed pipeline
+    # order: capability -> rbac -> audit_health -> guard -> ...), never
+    # even reaching the guard/ceiling check -- yet produces the
+    # BYTE-IDENTICAL envelope. A genuinely-missing `run_id` is NOT a valid
+    # comparison here (unlike `run_plan.py`'s sibling test): this adapter's
+    # own budget/timeout/profile preflight (module docstring's "resolved,
+    # never caller-supplied" section) denies with `preflight_failed` for a
+    # missing run BEFORE `ctx` -- and therefore the ceiling -- is ever
+    # reached (see `test_missing_run_denies_with_preflight_failed_no_
+    # confirmation_needed` above), a DIFFERENT, deliberately distinct
+    # denial reason this adapter also implements.
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY_OTHER_WORKSPACE)
+    wrong_workspace_result = swarm_start.invoke(
+        run_id=run_id,
+        adapter_ids=[_ADAPTER_A],
+        idempotency_key="idem-above-ceiling-wrong-ws",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+    assert wrong_workspace_result.ok is False
+    assert wrong_workspace_result.error is not None
+    assert wrong_workspace_result.error["reason_code"] == "not_found"
+    assert above_ceiling_result.error == wrong_workspace_result.error

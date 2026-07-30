@@ -27,6 +27,7 @@ import pytest
 from research_foundry import ids
 from research_foundry.auth_identity import AuthIdentity
 from research_foundry.paths import FoundryPaths
+from research_foundry.services import operator_mcp_adapters as adapters_pkg
 from research_foundry.services import operator_mcp_policy as policy
 from research_foundry.services import operator_operation_service as ops_module
 from research_foundry.services.operator_attempt_adapter import (
@@ -42,6 +43,7 @@ from research_foundry.services.operator_operation_service import OperatorOperati
 from research_foundry.services.operator_receipt_service import OperatorReceiptService
 
 from tests.unit.test_operator_cancel_resume_service import _action, _consume
+from tests.unit.test_operator_mcp_adapter_run_plan import _default_sensitivity_ceiling  # noqa: F401
 from tests.unit.test_operator_mcp_policy import (  # noqa: F401
     _IDENTITY,
     _IDENTITY_OTHER_WORKSPACE,
@@ -896,6 +898,175 @@ def test_missing_operation_denies_via_h3_gate_not_a_fabricated_workspace_match(
     assert result.ok is False
     assert result.error is not None
     assert result.error["reason_code"] == "not_found"
+
+
+# ---------------------------------------------------------------------------
+# H7 defect fix: `job.status`/`job.cancel`/`job.resume` all resolve
+# `effective_sensitivity` to the STRICTEST label unconditionally
+# (`policy.resolve_effective_sensitivity(None)` -- these ops carry no
+# content of their own to inspect), so ANY ceiling below `"client_sensitive"`
+# denies all three. This is this task's negative fixture, one per entry
+# point, proving the fix -- not merely the absence of a crash.
+# ---------------------------------------------------------------------------
+
+
+def test_job_status_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Before this task's fix, all three `job.*` entry points accepted a
+    caller-supplied `sensitivity_ceiling` defaulting to `"client_sensitive"`
+    -- the SAME rank `resolve_effective_sensitivity(None)` always resolves
+    to for these three kinds (they carry no inspectable content of their
+    own), so `_check_guard`'s H7 comparison could never deny. Here the
+    LOCALLY CONFIGURED ceiling resolves to `"work_sensitive"` (one rank
+    below), denying a real, existing target operation.
+
+    Also proves the SAME H6/H7 one-denial-shape guarantee this task's
+    `run_plan.py`/`swarm_start.py` sibling tests prove: this above-ceiling
+    denial (guard stage) is byte-identical to a genuinely-missing-operation
+    denial (rbac stage, `test_missing_operation_denies_via_h3_gate_not_a_
+    fabricated_workspace_match` above) -- a caller cannot tell "this
+    operation exists but you are not cleared for it" from "this operation
+    does not exist" from the response alone."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_operation_id = _target_operation_id(tmp_foundry, op_service)
+
+    monkeypatch.setattr(
+        adapters_pkg, "resolve_local_sensitivity_ceiling", lambda *a, **kw: "work_sensitive"
+    )
+
+    # Direct proof of STAGE: build the identical PolicyContext `invoke_
+    # status` would build internally and evaluate it directly.
+    direct_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=job_lifecycle.STATUS_OPERATION_KIND,
+        idempotency_key="idem-above-ceiling",
+        effective_sensitivity=policy.resolve_effective_sensitivity(None),
+        sensitivity_ceiling="work_sensitive",
+        targets=(policy.TargetRef(target_kind="agent_job", target_ref=real_operation_id),),
+        resolved_target_workspaces=(_IDENTITY.workspace_id,),
+        input_payload={"operation_id": real_operation_id},
+        paths=tmp_foundry,
+    )
+    direct_decision = policy.evaluate_policy(direct_ctx, paths=tmp_foundry)
+    assert direct_decision.allowed is False
+    assert direct_decision.stage == "guard"
+    assert direct_decision.reason_code == "not_found"
+    assert direct_decision.retryable is False
+
+    above_ceiling_result = job_lifecycle.invoke_status(
+        operation_id=real_operation_id,
+        idempotency_key="idem-above-ceiling",
+        paths=tmp_foundry,
+        operations=op_service,
+    )
+    missing_result = job_lifecycle.invoke_status(
+        operation_id="op_does_not_exist_at_all_either",
+        idempotency_key="idem-above-ceiling-missing",
+        paths=tmp_foundry,
+        operations=op_service,
+    )
+
+    assert above_ceiling_result.ok is False
+    assert above_ceiling_result.error is not None
+    assert above_ceiling_result.error["reason_code"] == "not_found"
+    assert above_ceiling_result.error["retryable"] is False
+    assert above_ceiling_result.error["operation_id"] is None
+    assert above_ceiling_result.error["receipt_ref"] is None
+    assert "detail" not in above_ceiling_result.error
+
+    assert missing_result.ok is False
+    assert above_ceiling_result.error == missing_result.error
+
+
+def test_job_cancel_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`job.cancel` sibling of the `job.status` test immediately above --
+    same defect, same fix, same H6/H7 shape proof, via `dry_run=True` so no
+    confirmation ever needs to be minted (mirrors this file's own
+    `*_wrong_workspace_indistinguishable_from_missing_dry_run` convention)."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_operation_id = _target_operation_id(tmp_foundry, op_service)
+
+    monkeypatch.setattr(
+        adapters_pkg, "resolve_local_sensitivity_ceiling", lambda *a, **kw: "work_sensitive"
+    )
+
+    above_ceiling_result = job_lifecycle.invoke_cancel(
+        operation_id=real_operation_id,
+        idempotency_key="idem-above-ceiling-cancel",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+        operations=op_service,
+    )
+    missing_result = job_lifecycle.invoke_cancel(
+        operation_id="op_does_not_exist_at_all_either",
+        idempotency_key="idem-above-ceiling-cancel-missing",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+        operations=op_service,
+    )
+
+    assert above_ceiling_result.ok is False
+    assert above_ceiling_result.error is not None
+    assert above_ceiling_result.error["reason_code"] == "not_found"
+    assert above_ceiling_result.error["retryable"] is False
+    assert above_ceiling_result.error["operation_id"] is None
+    assert above_ceiling_result.error["receipt_ref"] is None
+    assert "detail" not in above_ceiling_result.error
+
+    assert missing_result.ok is False
+    assert above_ceiling_result.error == missing_result.error
+
+
+def test_job_resume_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`job.resume` sibling of the two tests immediately above -- same
+    defect, same fix, same H6/H7 shape proof."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_operation_id = _target_operation_id(tmp_foundry, op_service)
+
+    monkeypatch.setattr(
+        adapters_pkg, "resolve_local_sensitivity_ceiling", lambda *a, **kw: "work_sensitive"
+    )
+
+    above_ceiling_result = job_lifecycle.invoke_resume(
+        operation_id=real_operation_id,
+        idempotency_key="idem-above-ceiling-resume",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+        operations=op_service,
+    )
+    missing_result = job_lifecycle.invoke_resume(
+        operation_id="op_does_not_exist_at_all_either",
+        idempotency_key="idem-above-ceiling-resume-missing",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+        operations=op_service,
+    )
+
+    assert above_ceiling_result.ok is False
+    assert above_ceiling_result.error is not None
+    assert above_ceiling_result.error["reason_code"] == "not_found"
+    assert above_ceiling_result.error["retryable"] is False
+    assert above_ceiling_result.error["operation_id"] is None
+    assert above_ceiling_result.error["receipt_ref"] is None
+    assert "detail" not in above_ceiling_result.error
+
+    assert missing_result.ok is False
+    assert above_ceiling_result.error == missing_result.error
 
 
 def test_all_three_kinds_are_registered() -> None:

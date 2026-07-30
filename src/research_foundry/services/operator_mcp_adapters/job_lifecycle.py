@@ -304,7 +304,6 @@ def invoke_status(
     *,
     operation_id: str,
     idempotency_key: str,
-    sensitivity_ceiling: str = "client_sensitive",
     dry_run: bool = False,
     paths: FoundryPaths | None = None,
     now: datetime | None = None,
@@ -325,9 +324,18 @@ def invoke_status(
     is deliberately no page-size/offset parameter anywhere in this
     function's signature or result shape, so the "no unbounded pages"
     defect class (AC OPM-3.4) cannot arise here: there are no pages.
+
+    Also deliberately accepts NO `sensitivity_ceiling` parameter (P3
+    hardening pass, H7 defect fix) -- see
+    `operator_mcp_adapters.resolve_local_sensitivity_ceiling`'s own
+    docstring for the full defect and remediation rationale; resolved
+    structurally, the same way identity is resolved.
     """
 
+    from . import resolve_local_sensitivity_ceiling  # lazy: see operator_mcp_adapters/__init__.py's own docstring -- avoids the circular import a module-level import back into the package would create
+
     resolved_paths = paths or FoundryPaths.discover()
+    sensitivity_ceiling = resolve_local_sensitivity_ceiling(resolved_paths)
     owning_workspace, store_error = _resolve_operation_workspace_or_error(
         operation_id, resolved_paths, now=now
     )
@@ -438,7 +446,6 @@ def invoke_cancel(
     idempotency_key: str,
     confirmation_record: Mapping[str, Any] | None,
     presented_token: str | None,
-    sensitivity_ceiling: str = "client_sensitive",
     dry_run: bool = False,
     paths: FoundryPaths | None = None,
     now: datetime | None = None,
@@ -451,9 +458,18 @@ def invoke_cancel(
     `OperatorCancelResumeService.request_cancellation` -- a durable,
     idempotent REQUEST checked at the target operation's own next safe
     point (see that method's docstring), not a synchronous kill.
+
+    Also deliberately accepts NO `sensitivity_ceiling` parameter (P3
+    hardening pass, H7 defect fix) -- see
+    `operator_mcp_adapters.resolve_local_sensitivity_ceiling`'s own
+    docstring for the full defect and remediation rationale; resolved
+    structurally, the same way identity is resolved.
     """
 
+    from . import resolve_local_sensitivity_ceiling  # lazy: see operator_mcp_adapters/__init__.py's own docstring -- avoids the circular import a module-level import back into the package would create
+
     resolved_paths = paths or FoundryPaths.discover()
+    sensitivity_ceiling = resolve_local_sensitivity_ceiling(resolved_paths)
     owning_workspace, store_error = _resolve_operation_workspace_or_error(
         operation_id, resolved_paths, now=now
     )
@@ -538,7 +554,6 @@ def invoke_resume(
     idempotency_key: str,
     confirmation_record: Mapping[str, Any] | None,
     presented_token: str | None,
-    sensitivity_ceiling: str = "client_sensitive",
     dry_run: bool = False,
     paths: FoundryPaths | None = None,
     now: datetime | None = None,
@@ -549,9 +564,19 @@ def invoke_resume(
 ) -> base.OperatorAdapterResult:
     """The `job.resume` Operator MCP tool. See module docstring's
     "documented gap" section for the precise, bounded scope of what this
-    does and does not do."""
+    does and does not do.
+
+    Also deliberately accepts NO `sensitivity_ceiling` parameter (P3
+    hardening pass, H7 defect fix) -- see
+    `operator_mcp_adapters.resolve_local_sensitivity_ceiling`'s own
+    docstring for the full defect and remediation rationale; resolved
+    structurally, the same way identity is resolved.
+    """
+
+    from . import resolve_local_sensitivity_ceiling  # lazy: see operator_mcp_adapters/__init__.py's own docstring -- avoids the circular import a module-level import back into the package would create
 
     resolved_paths = paths or FoundryPaths.discover()
+    sensitivity_ceiling = resolve_local_sensitivity_ceiling(resolved_paths)
     owning_workspace, store_error = _resolve_operation_workspace_or_error(
         operation_id, resolved_paths, now=now
     )

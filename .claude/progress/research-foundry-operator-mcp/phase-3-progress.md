@@ -10,7 +10,13 @@ created: '2026-07-28'
 updated: '2026-07-30'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
 plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
-commit_refs: []
+commit_refs:
+- 70c8a6f
+- c88e77e
+- 9ddb087
+- 8fe3a2c
+- 415fb5e
+- 22a75cc
 pr_refs: []
 owners:
 - python-backend-engineer
@@ -43,19 +49,29 @@ tasks:
   - commit: 70c8a6f
   - test: tests/unit/test_swarm_service.py
 - id: OPM-3.3
-  status: in_progress
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-3.2
   estimate: 1.5 pts
+  started: 2026-07-30T21:10Z
+  completed: 2026-07-30T21:55Z
+  evidence:
+  - commit: c88e77e
+  - test: tests/unit/test_operator_mcp_adapter_swarm_start.py
 - id: OPM-3.4
-  status: in_progress
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-2.4
   estimate: 1 pt
+  started: 2026-07-30T21:10Z
+  completed: 2026-07-30T22:30Z
+  evidence:
+  - commit: 9ddb087
+  - test: tests/unit/test_operator_mcp_adapter_job_lifecycle.py
 parallelization:
   batch_1:
   - OPM-3.1
@@ -65,10 +81,10 @@ parallelization:
   batch_3:
   - OPM-3.3
 total_tasks: 4
-completed_tasks: 2
-in_progress_tasks: 2
+completed_tasks: 4
+in_progress_tasks: 0
 blocked_tasks: 0
-progress: 50
+progress: 100
 ---
 
 # Phase 3 Progress — Run Planning and Swarm Adapters

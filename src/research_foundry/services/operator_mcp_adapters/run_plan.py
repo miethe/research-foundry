@@ -168,7 +168,6 @@ def invoke(
     project: str | None = None,
     retrieval_policy: str | None = None,
     retrieval_limits: Mapping[str, Any] | None = None,
-    sensitivity_ceiling: str = "client_sensitive",
     dry_run: bool = False,
     paths: FoundryPaths | None = None,
     now: datetime | None = None,
@@ -186,11 +185,20 @@ def invoke(
     confirmation for this exact request (from `operation.preflight` -- P1
     scope, no transport in this repo yet) -- both are ignored entirely when
     `dry_run=True`.
+
+    Also deliberately accepts NO `sensitivity_ceiling` parameter (P3
+    hardening pass, H7 defect fix) -- see
+    `operator_mcp_adapters.resolve_local_sensitivity_ceiling`'s own
+    docstring for the full defect and remediation rationale. The ceiling is
+    resolved structurally, exactly once per call, from `foundry.yaml`'s
+    `operator_mcp.sensitivity_ceiling`, the same way identity is resolved.
     """
 
     from research_foundry.services import planning  # lazy: see module docstring
+    from . import resolve_local_sensitivity_ceiling  # lazy: see operator_mcp_adapters/__init__.py's own docstring -- avoids the circular import a module-level import back into the package would create
 
     resolved_paths = paths or FoundryPaths.discover()
+    sensitivity_ceiling = resolve_local_sensitivity_ceiling(resolved_paths)
 
     intent_sensitivity = _resolve_intent_sensitivity(intent_id, resolved_paths)
     effective_sensitivity = policy.resolve_effective_sensitivity(intent_sensitivity)
