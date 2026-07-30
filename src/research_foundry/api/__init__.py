@@ -1,26 +1,20 @@
 """Research Foundry HTTP API (optional ``serve`` extra).
 
-Importing this package requires ``fastapi`` and ``uvicorn`` to be installed.
-Install with::
+Importing this bare package does **not** require ``fastapi`` or ``uvicorn`` —
+several CLI-reachable services import typed support modules such as
+``api.auth.provider`` / ``api.auth.scope`` at runtime, and those must stay
+import-safe without the ``serve`` extra installed. Only :func:`create_app`
+(and the ``.app`` module it lazily imports) require the extra; calling it
+without ``fastapi``/``uvicorn`` installed still raises a clear
+``ModuleNotFoundError`` from that lazy import. Install with::
 
     pip install 'research-foundry[serve]'
-
-The core ``research_foundry`` package does **not** import this sub-package on
-startup, so a plain ``pip install research-foundry`` never pulls in FastAPI or
-Uvicorn.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-try:
-    import fastapi  # noqa: F401
-    import uvicorn  # noqa: F401
-except ImportError as exc:
-    raise ImportError(
-        "fastapi and uvicorn are required. Install with: pip install 'research-foundry[serve]'"
-    ) from exc
 
 def create_app(*args: Any, **kwargs: Any) -> Any:
     """Lazily import the application factory without coupling service imports.
