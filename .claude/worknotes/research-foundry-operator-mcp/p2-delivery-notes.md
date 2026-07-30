@@ -310,6 +310,58 @@ failing set at all.
 Also confirmed: the full-suite run left **no** stray `run/`/`ccdash` artifacts in the worktree (the
 data-plane split holds), so the historical full-pytest pollution hazard did not materialize here.
 
+## P2 security gate (AC-mandated) — `CHANGES_REQUESTED`, 5 blocking
+
+Ran on Opus against exact tree `4b1b6fd`, per the revised post-P1 structure
+(security-with-AC-mandate → Karen, because a validator alone will approve a read-then-write CAS).
+Findings in `FIND-P2-SECURITY-GATE` (commit `b7dc8eb`).
+
+**AC OPM-2 NOT MET · AC OPM-3 NOT MET.**
+
+| ID | Sev | Finding |
+|---|---|---|
+| P2S-BLOCK-1 | blocking | **DUR-1 is correct in code but defended by no test that can fail.** The reviewer converted the implementation into a *true* read-then-write — moved `COMMIT` before `_consume_locked` **and** deleted the CAS predicate — and the real multi-process G5 test **still passed**; the threaded test only failed under full-file ordering and passed in isolation. |
+| P2S-BLOCK-2 | blocking | `run_actions` discards `finalize_terminal_receipt`'s outcome (`operator_cancel_resume_service.py:550-558`) → EXTRA corruption returns `status="completed", terminal_receipt=None` instead of denying; H3 scenario 8 does not converge. |
+| P2S-BLOCK-3 | blocking | `OperatorReceiptService` has **no identity/workspace seam at all** — `workspace_id` caller-asserted into immutable rows (`:423`, `:646`), all three reads unscoped (`:508`, `:770`, `:785`), while the authoritative value sits on the same connection. Directly fails AC OPM-2, whose contract names *receipts* as a gated surface. Related: `effective_sensitivity` is written (`operator_operation_service.py:1209`) and **never read**, so sensitivity gates nothing anywhere. |
+| P2S-BLOCK-4 | blocking | Action/effect receipts accept an `operation_id` with no `operations` row; because the immutability triggers refuse repair, one out-of-turn receipt **permanently bricks** that operation. |
+| P2S-BLOCK-5 | blocking | `cancellation_requested` has no workspace predicate and the row cannot be rescinded → anyone holding an `operation_id` can permanently DoS that operation's lifecycle across workspaces. Severity re-rating of a disclosed item. |
+
+Verified by mutation to **HOLD**: G1 (expiry-after-lock), F1 (both halves — data dependency *and*
+ctx-digest rebinding), R1, R2, R3, G4 triggers. **PARTIAL**: F4 (sibling raw-raise sites remain).
+**DOES NOT HOLD**: G5.
+
+### The lesson of P2S-BLOCK-1 — and my own miss
+
+This is the phase's most important finding, and it is a process finding as much as a code one.
+
+Every layer above it looked green: DUR-1's transaction boundary **is** correct, 606 tests passed, the
+implementer produced a plausible mutation table, and I personally ran revert-detection and watched
+tests fail. But my revert-check mutated **G1 and G2** — not the CAS itself. The implementer's own
+"mutation #1" removed `BEGIN IMMEDIATE`, which is a *weaker* mutation than a true read-then-write. So
+the one guarantee the plan singles out as frozen (*"a read-then-write implementation passes every P1
+test and is still wrong"*) was the one guarantee nothing could detect the loss of.
+
+Generalizable rule: **when a plan names a specific wrong implementation, the mutation must be exactly
+that wrong implementation** — not a nearby proxy. "I mutated something and a test failed" is not the
+same as "I mutated *the* thing." Adding G5's multi-process test made the coverage *look* stronger
+while leaving the actual predicate untested.
+
+Second lesson: the reviewer also found the threaded test **passes in isolation and only fails under
+full-file ordering** — an order-dependent test is not a guard. Any new DUR-1 test must be run
+standalone as well as in-file.
+
 ## Open items / follow-ups (→ ITT nodes)
+
+Filed on tree `aos-research-foundry`:
+
+| Node | Item |
+|---|---|
+| `OPM-DF-preflight` | `governance.preflight()` still has zero call sites; needs run-layer wiring + an artifact that FAILS if unwired. |
+| `OPM-DF-regate` | P1's round-6 consolidated security re-gate, deferred; last machine verdict was `CHANGES_REQUESTED` (R5). |
+| `OPM-P2-audit-mutation-type` | Audit vocabulary has no operator-mcp `mutation_type`; receipts are logged as `agent_job_launched`. |
+| `RF-schema-format-checker-inert` | Repo-wide: `format: date-time` is enforced nowhere — no `format_checker` attached in `SchemaRegistry.validate` or any test helper, so every timestamp field in every RF schema is an unconstrained string. |
+
+Still to file once P2 closes: the `job.json`↔`attempts` cross-store atomicity gap (needs a cleanup
+path on the frozen `agent_job_service.py`), and anything surviving the blocking-fix wave.
 
 Populated as execution proceeds; see the Next Actions table in the final response.

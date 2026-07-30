@@ -58,6 +58,7 @@ service instance backed by the same durable files.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -136,14 +137,32 @@ class ActionSpec:
 class CancellationOutcome:
     """Result of :meth:`OperatorCancelResumeService.request_cancellation`.
 
-    `outcome` is `"created"` for the first request against `operation_id`,
-    `"exact_replay"` for every subsequent one (idempotent -- first request
-    wins, never a second row, never a raised exception)."""
+    `outcome`:
+        `"created"`
+            The first request against `operation_id` (by a caller whose
+            `workspace_id` matches the operation's own).
+        `"exact_replay"`
+            Idempotent -- a later request against the SAME `operation_id`
+            (workspace already proven to match) resolves to the FIRST
+            persisted request, never a second row.
+        `"denied"`
+            `operation_id` does not exist, or exists in a DIFFERENT
+            workspace than the caller-supplied `workspace_id` (P2S-BLOCK-5)
+            -- the two cases are INDISTINGUISHABLE (`reason_code ==
+            "not_found"` for both), and ZERO rows are ever written. See
+            :meth:`request_cancellation`'s docstring for why this is a
+            hard denial rather than "derive and proceed" (unlike
+            `write_checkpoint`/`finalize_terminal_receipt`'s own
+            derive-and-correct pattern): the cancellation row is
+            IRREVOCABLE once created, so the write itself must be
+            workspace-AUTHORIZED, not merely workspace-attributed.
+    """
 
-    outcome: Literal["created", "exact_replay"]
+    outcome: Literal["created", "exact_replay", "denied"]
     operation_id: str
-    requested_at: str
+    requested_at: str | None
     requested_by: str | None
+    reason_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -305,18 +324,79 @@ class OperatorCancelResumeService:
     ) -> CancellationOutcome:
         """Durably persist a cancellation request for `operation_id`.
 
-        Idempotent: a second (or Nth) call for the same `operation_id`
-        returns the FIRST persisted request unchanged (`"exact_replay"`) --
-        never a second row, never an exception. This is the durable fact
-        :meth:`run_actions` checks at every safe point; it survives process
-        loss because it lives in `paths.operator_operations_db`, not in any
-        in-memory flag on this (or any) service instance.
+        Idempotent: a second (or Nth) call for the same `operation_id` (by
+        a caller whose `workspace_id` matches) returns the FIRST persisted
+        request unchanged (`"exact_replay"`) -- never a second row, never
+        an exception. This is the durable fact :meth:`run_actions` checks
+        at every safe point; it survives process loss because it lives in
+        `paths.operator_operations_db`, not in any in-memory flag on this
+        (or any) service instance.
+
+        **P2S-BLOCK-5 (workspace-AUTHORIZED write, not merely workspace-
+        attributed)**: before ANY row is written, `operation_id` is loaded
+        and its REAL, persisted workspace is compared against the caller-
+        supplied `workspace_id` -- a mismatch (or a genuinely missing
+        `operation_id`) DENIES with `reason_code == "not_found"` for BOTH
+        cases (indistinguishable, no derived detail leaked), and writes
+        NOTHING. This is deliberately a hard DENIAL, not the "derive the
+        real value and proceed" pattern `write_checkpoint`/
+        `finalize_terminal_receipt` use (P2S-BLOCK-3): those methods are
+        reached only after a caller has ALREADY been authorized to execute
+        the operation whose receipt they are writing, so silently
+        correcting a stale/wrong parameter there is safe. Cancellation is
+        different -- `operation_id` is not a secret (it appears in every
+        caller-visible envelope, log line, and receipt), so ANY caller
+        presenting one must be independently proven to belong to the SAME
+        workspace as the operation before a durable, IRREVOCABLE stop
+        request can be created for it. Without this check, any holder of
+        an `operation_id` could permanently and cross-workspace
+        Denial-of-Service any operation's future execution -- see the P2
+        security gate's P2S-BLOCK-5 finding for the full attack.
+
+        **Rescindability (explicit decision, not a silent gap)**:
+        `cancellation_requests` rows remain IMMUTABLE and irrevocable --
+        this fix is authorization on the WRITE, not a new "un-cancel"
+        capability. A cancellation, once durably recorded by an actor who
+        legitimately holds this operation's workspace, permanently stops
+        that operation's future execution; there is no retraction path in
+        this design, matching every other closed, immutable governance
+        record in this module family (`terminal_receipts`, `operations`
+        manifests). The severity this finding actually raised was NEVER
+        "cancellation is irrevocable" (a deliberate design property) -- it
+        was "cancellation is irrevocable AND anyone could trigger it for
+        anyone else's operation". Closing the authorization gap is the
+        complete fix; adding rescindability would be a separate, unplanned
+        feature this task does not require.
         """
 
         if not isinstance(operation_id, str) or not operation_id:
             raise ValueError("request_cancellation requires a non-empty operation_id")
         if not isinstance(workspace_id, str) or not workspace_id:
             raise ValueError("request_cancellation requires a non-empty workspace_id")
+
+        try:
+            operation = self._operations.load_operation(operation_id)
+        except KeyError:
+            _logger.error(
+                "operator_cancel_resume_service: request_cancellation DENIED -- "
+                "operation_id=%s does not exist",
+                operation_id,
+            )
+            return CancellationOutcome("denied", operation_id, None, None, "not_found")
+
+        if operation.workspace_id != workspace_id:
+            _logger.error(
+                json.dumps(
+                    {
+                        "event": "workspace_scope_enforced_denial",
+                        "record_type": "cancellation_request",
+                        "record_id": operation_id,
+                        "record_workspace_id": operation.workspace_id,
+                        "identity_workspace_id": workspace_id,
+                    }
+                )
+            )
+            return CancellationOutcome("denied", operation_id, None, None, "not_found")
 
         moment = ids.now_iso()
         conn = _ops_store._connect(self._paths)
@@ -352,21 +432,47 @@ class OperatorCancelResumeService:
 
         return CancellationOutcome("created", operation_id, moment, requested_by)
 
-    def cancellation_requested(self, operation_id: str) -> bool:
+    def cancellation_requested(
+        self, operation_id: str, *, workspace_id: str | None = None
+    ) -> bool:
         """Return whether a durable cancellation request exists for
         `operation_id` -- reads real persisted state, never an in-process
-        flag."""
+        flag.
+
+        `workspace_id=None` (the default) performs no scoping -- safe
+        because the primary DoS vector this read could otherwise surface
+        (P2S-BLOCK-5) is now closed at the WRITE side by
+        :meth:`request_cancellation`'s own workspace-authorization check;
+        this parameter is defense-in-depth for a caller (like
+        :meth:`run_actions`, which always supplies its own already-derived
+        `workspace_id`) that wants the read scoped too.
+        """
 
         conn = _ops_store._connect(self._paths)
         try:
             _ops_store._ensure_schema(conn)
             row = conn.execute(
-                "SELECT 1 FROM cancellation_requests WHERE operation_id = ?",
+                "SELECT workspace_id FROM cancellation_requests WHERE operation_id = ?",
                 (operation_id,),
             ).fetchone()
         finally:
             conn.close()
-        return row is not None
+        if row is None:
+            return False
+        if workspace_id is not None and row["workspace_id"] != workspace_id:
+            _logger.error(
+                json.dumps(
+                    {
+                        "event": "workspace_scope_enforced_denial",
+                        "record_type": "cancellation_request",
+                        "record_id": operation_id,
+                        "record_workspace_id": row["workspace_id"],
+                        "identity_workspace_id": workspace_id,
+                    }
+                )
+            )
+            return False
+        return True
 
     # -- the safe-point execution loop (scenario 5/6/10) --------------------
 
@@ -421,7 +527,7 @@ class OperatorCancelResumeService:
         total = len(actions)
         idx = start_index
         for idx in range(start_index, total):
-            if self.cancellation_requested(operation_id):
+            if self.cancellation_requested(operation_id, workspace_id=workspace_id):
                 break
 
             spec = actions[idx]
@@ -478,6 +584,27 @@ class OperatorCancelResumeService:
                     denial_reason_code="internal_error",
                     audit_actor_user_id=audit_actor_user_id,
                 )
+                if outcome.outcome == "denied":
+                    # P2S-BLOCK-2: the outcome of `finalize_terminal_receipt`
+                    # is CHECKED, never assumed successful -- mirrors the
+                    # `record_action_receipt`/`record_effect_receipt` guards
+                    # immediately above/below. A denied finalize means
+                    # reconciliation itself found corrupt receipt state (e.g.
+                    # an EXTRA receipt written out of turn) -- reporting
+                    # "failed" with `outcome.receipt is None` would violate
+                    # `ExecutionOutcome`'s own docstring contract and (the
+                    # actual defect this closes) silently claim a status the
+                    # store refused to durably record.
+                    _logger.error(
+                        "operator_cancel_resume_service: finalize_terminal_receipt "
+                        "denied (%s) for operation_id=%s while finalizing a FAILED "
+                        "action at index=%d -- reconciliation found corrupt "
+                        "receipt state; reporting denied, not failed",
+                        outcome.reason_code,
+                        operation_id,
+                        idx,
+                    )
+                    return ExecutionOutcome("denied", None, idx)
                 return ExecutionOutcome("failed", outcome.receipt, idx)
 
             action_receipt_outcome = self._receipts.record_action_receipt(
@@ -555,6 +682,26 @@ class OperatorCancelResumeService:
                 status="completed",
                 audit_actor_user_id=audit_actor_user_id,
             )
+            if outcome.outcome == "denied":
+                # P2S-BLOCK-2 -- THE fix: this is the exact bug the security
+                # gate demonstrated (H3 scenario 8's EXTRA-receipt variant --
+                # an out-of-turn action_receipt written after this loop
+                # already ran every action it knew about). Before this
+                # check, this branch unconditionally returned
+                # `ExecutionOutcome("completed", outcome.receipt, total)`
+                # even when `outcome.receipt is None`, fabricating a
+                # "completed" status with no terminal receipt at all and a
+                # `completed_action_count` that was never reconciled.
+                _logger.error(
+                    "operator_cancel_resume_service: finalize_terminal_receipt "
+                    "denied (%s) for operation_id=%s while finalizing a "
+                    "COMPLETED operation -- reconciliation found corrupt "
+                    "receipt state (e.g. EXTRA); reporting denied, not "
+                    "completed",
+                    outcome.reason_code,
+                    operation_id,
+                )
+                return ExecutionOutcome("denied", None, total)
             return ExecutionOutcome("completed", outcome.receipt, total)
 
         # Loop `break`-ed due to a durable cancellation request observed at
@@ -577,6 +724,17 @@ class OperatorCancelResumeService:
             status="canceled",
             audit_actor_user_id=audit_actor_user_id,
         )
+        if outcome.outcome == "denied":
+            # P2S-BLOCK-2, canceled branch's sibling.
+            _logger.error(
+                "operator_cancel_resume_service: finalize_terminal_receipt "
+                "denied (%s) for operation_id=%s while finalizing a "
+                "CANCELED operation -- reconciliation found corrupt receipt "
+                "state; reporting denied, not canceled",
+                outcome.reason_code,
+                operation_id,
+            )
+            return ExecutionOutcome("denied", None, idx)
         return ExecutionOutcome("canceled", outcome.receipt, idx)
 
     # -- exact-retry-after-completion replay (scenario 2, wired end-to-end) -
@@ -640,7 +798,9 @@ class OperatorCancelResumeService:
                     replayed=True,
                 )
 
-        resume_point = self._receipts.resolve_resume_point(operation.operation_id)
+        resume_point = self._receipts.resolve_resume_point(
+            operation.operation_id, total_action_count=len(actions)
+        )
         if resume_point.outcome != "ok":
             # Corrupt receipt state (scenario 8, extended to resume) --
             # refuse to execute anything further, and produce NO receipt
@@ -652,6 +812,11 @@ class OperatorCancelResumeService:
             # operation's first call (zero persisted rows is trivially
             # contiguous) -- reachable only via an exact-replay of an
             # operation whose receipt state was corrupted out of band.
+            # P2S-BLOCK-2: `total_action_count=len(actions)` (this caller's
+            # own declared action count) additionally catches the EXTRA
+            # corruption class HERE, before any action is (re-)executed,
+            # rather than only once `run_actions` reaches
+            # `finalize_terminal_receipt` at the very end.
             return ExecutionOutcome("denied", None, 0)
 
         resolved_workspace_id = operation.workspace_id
@@ -792,11 +957,18 @@ class OperatorCancelResumeService:
                 resolved_operation_kind,
             )
 
-        existing_terminal = self._receipts.load_terminal_receipt(operation_id)
+        # P2S-BLOCK-3 (defense in depth, read side): `identity` is already
+        # proven correct for `operation_id` by `load_operation`'s own
+        # workspace scoping above -- threading it through these two reads
+        # too costs nothing and means neither method depends SOLELY on
+        # every OTHER caller getting this right.
+        existing_terminal = self._receipts.load_terminal_receipt(operation_id, identity=identity)
         if existing_terminal is not None:
             return ResumeOutcome("already_terminal", None, existing_terminal)
 
-        resume_point = self._receipts.resolve_resume_point(operation_id)
+        resume_point = self._receipts.resolve_resume_point(
+            operation_id, identity=identity, total_action_count=len(actions)
+        )
         if resume_point.outcome != "ok":
             return ResumeOutcome("denied", resume_point.reason_code, None)
 

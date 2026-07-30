@@ -698,6 +698,65 @@ def test_concurrent_consumers_of_one_confirmation_yield_one_success_one_conflict
     assert _count_operations(tmp_foundry) == 1
 
 
+def test_consume_locked_is_only_ever_invoked_with_an_already_open_transaction(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P2S-BLOCK-1, mechanism half: a direct, white-box assertion that
+    `_consume_locked` is invoked with `conn.in_transaction is True` (i.e.
+    `BEGIN IMMEDIATE` has already executed) and that the SAME transaction
+    is STILL open when it returns (`COMMIT` happens in the CALLER,
+    `consume_and_create_operation`, never inside `_consume_locked`
+    itself) -- proving DUR-1's "verify, CAS, and manifest-write all happen
+    in ONE transaction" contract by inspecting the real `sqlite3.Connection`
+    object, not by inferring it from an outcome.
+
+    This is the discriminating half of the reviewer's own recommended fix
+    for P2S-BLOCK-1 (this module's docstring, and the P2 security gate's
+    `FIND-P2-SECURITY-GATE` finding): it fails immediately, deterministically,
+    and without any multiprocessing/timing dependency against the EXACT
+    mutation the gate applied (moving `conn.execute("COMMIT")` ahead of the
+    `_consume_locked` call) -- see
+    `test_two_real_os_processes_genuinely_block_on_begin_immediate_not_merely_interleave`
+    below for the companion multi-process wall-clock proof.
+    """
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    confirmation_id, token, record = _mint_and_record(service, ctx)
+    authorization = _authorize(tmp_foundry, ctx, confirmation_record=record, presented_token=token)
+
+    observed: dict[str, bool] = {}
+    original = OperatorOperationService._consume_locked
+
+    def _wrapped(self: OperatorOperationService, conn: sqlite3.Connection, **kwargs: Any) -> Any:
+        observed["in_transaction_on_entry"] = conn.in_transaction
+        result = original(self, conn, **kwargs)
+        observed["in_transaction_on_exit"] = conn.in_transaction
+        return result
+
+    monkeypatch.setattr(OperatorOperationService, "_consume_locked", _wrapped)
+
+    outcome = service.consume_and_create_operation(
+        confirmation_id=confirmation_id,
+        presented_token=token,
+        ctx=ctx,
+        authorization=authorization,
+    )
+    assert outcome.outcome == "created"
+    assert observed["in_transaction_on_entry"] is True, (
+        "_consume_locked was entered WITHOUT an open transaction -- the "
+        "read-then-write mutation this test detects moves COMMIT (or "
+        "never opens BEGIN IMMEDIATE) before the critical section runs"
+    )
+    assert observed["in_transaction_on_exit"] is True, (
+        "the transaction was closed INSIDE _consume_locked -- COMMIT must "
+        "happen in the caller, after this method returns, so the CAS and "
+        "the manifest INSERT stay in the SAME transaction as the caller's "
+        "own COMMIT"
+    )
+    assert _count_operations(tmp_foundry) == 1
+
+
 # ---------------------------------------------------------------------------
 # G5: the SAME guarantee, across REAL OS processes (not threads)
 # ---------------------------------------------------------------------------
@@ -803,6 +862,196 @@ def test_two_real_os_processes_racing_the_same_confirmation_yield_one_success_on
     operation_ids = {r[2] for r in results if r[2] is not None}
     assert len(operation_ids) == 1
     assert _count_operations(tmp_foundry) == 1
+
+
+# ---------------------------------------------------------------------------
+# P2S-BLOCK-1: the SAME two-process race, but discriminating by WALL CLOCK,
+# not by outcome distribution.
+# ---------------------------------------------------------------------------
+#
+# The G5 test immediately above proves the OBSERVABLE outcome contract
+# (one "created", one "exact_replay", one row) -- but the P2 security gate
+# demonstrated that outcome contract ALONE survives a read-then-write
+# mutation unchanged: `UNIQUE (workspace_id, idempotency_key)` on
+# `operations` produces the identical one-created/one-exact_replay split
+# even with NO exclusive lock at all, because the second process's
+# unlocked read simply observes the first process's already-committed row.
+# A test that cannot fail when the lock is deleted is not evidence for the
+# lock (this module's own DUR-1 docstring, and the gate's exact words).
+#
+# This test instead proves the LOCK ITSELF, by wall-clock evidence. ONLY
+# the "holder" child's `policy.consume_confirmation` is monkeypatched
+# (in-process, spawn-child-local) to (1) set a `ready_event` the INSTANT it
+# is entered -- which is only ever true AFTER `BEGIN IMMEDIATE` has already
+# been executed by the SAME child's `consume_and_create_operation` call
+# (`_consume_locked` calls `consume_confirmation` from inside the locked
+# section, strictly between the caller's `BEGIN IMMEDIATE` and `COMMIT` --
+# see `operator_operation_service.py`'s own module docstring), then (2)
+# sleep `_SLEEP_SECONDS` before returning. The "waiter" child is
+# UNPATCHED -- it blocks on `ready_event` before calling
+# `consume_and_create_operation` AT ALL (so it cannot even attempt `BEGIN
+# IMMEDIATE` before the holder is PROVABLY already inside its lock), then
+# runs the real, fast, un-slowed method.
+#
+# Under the REAL implementation, the waiter's OWN `BEGIN IMMEDIATE` must
+# block until the holder's transaction commits -- which cannot happen
+# before the holder's `_SLEEP_SECONDS` sleep finishes, because the sleep is
+# INSIDE that transaction. So the waiter's measured wall-clock duration is
+# bounded below by (approximately) `_SLEEP_SECONDS`, even though the waiter
+# itself never sleeps.
+#
+# Under the reviewer's EXACT read-then-write mutation (`COMMIT` moved
+# ahead of the `_consume_locked` call, CAS predicate removed), the
+# holder's `COMMIT` fires BEFORE `_consume_locked` -- and therefore before
+# `ready_event` is even set -- releasing any lock immediately. By the time
+# the waiter (signaled by the event, which now fires on an already-
+# unlocked database) opens its own `BEGIN IMMEDIATE`, there is nothing to
+# wait for: it succeeds instantly, and the waiter -- unpatched, un-slowed
+# -- completes in a small fraction of `_SLEEP_SECONDS`. `_MIN_WAITER_SECONDS`
+# (a majority fraction of `_SLEEP_SECONDS`, comfortably above realistic
+# spawn/IPC/scheduling overhead alone) is the threshold that discriminates
+# the two: only the locked implementation can push the waiter above it.
+
+_SLEEP_SECONDS = 0.35
+_MIN_WAITER_SECONDS = 0.20  # comfortably < _SLEEP_SECONDS, comfortably > pure IPC/spawn overhead
+
+
+def _g5_blocking_probe_worker(
+    root: str,
+    confirmation_id: str,
+    presented_token: str,
+    ctx: policy.PolicyContext,
+    authorization: AuthorizationProof,
+    fixed_now: datetime,
+    role: str,
+    ready_event: Any,
+    result_queue: Any,
+) -> None:
+    import time as _time
+
+    from research_foundry import ids as _ids
+    from research_foundry.paths import FoundryPaths as _FoundryPaths
+    from research_foundry.services import operator_mcp_policy as _policy
+    from research_foundry.services.operator_operation_service import (
+        OperatorOperationService as _OperatorOperationService,
+    )
+
+    _ids.set_clock(lambda: fixed_now)
+
+    if role == "holder":
+        _original_consume_confirmation = _policy.consume_confirmation
+
+        def _slow_consume_confirmation(*args: Any, **kwargs: Any) -> Any:
+            # Signal readiness ONLY from inside the real critical section --
+            # see this section's module-level comment for why this proves
+            # the waiter cannot start racing for the lock any earlier than
+            # the moment it is genuinely held.
+            ready_event.set()
+            _time.sleep(_SLEEP_SECONDS)
+            return _original_consume_confirmation(*args, **kwargs)
+
+        _policy.consume_confirmation = _slow_consume_confirmation
+    else:
+        # "waiter": do not even attempt `consume_and_create_operation`
+        # until the holder is provably inside its locked section. Runs the
+        # REAL, UNPATCHED `consume_confirmation` -- this child never sleeps
+        # on its own account, so any measured delay is entirely lock
+        # contention, not an injected sleep of its own.
+        assert ready_event.wait(timeout=30), "holder never signaled readiness"
+
+    service = _OperatorOperationService(_FoundryPaths(root=Path(root)))
+    started = _time.monotonic()
+    outcome = service.consume_and_create_operation(
+        confirmation_id=confirmation_id,
+        presented_token=presented_token,
+        ctx=ctx,
+        authorization=authorization,
+    )
+    elapsed = _time.monotonic() - started
+    operation_id = outcome.operation.operation_id if outcome.operation is not None else None
+    result_queue.put((role, outcome.outcome, outcome.reason_code, operation_id, elapsed))
+
+
+def test_two_real_os_processes_genuinely_block_on_begin_immediate_not_merely_interleave(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """P2S-BLOCK-1: the discriminating durability test the security gate's
+    finding demanded -- see this section's module-level comment above for
+    the full mechanism and why the existing G5 test cannot detect the
+    read-then-write mutation on its own.
+
+    Proof of discrimination performed manually for this task (not
+    encoded here, since the mutation is applied to SOURCE, not to this
+    test): copying `operator_operation_service.py` aside, moving
+    `conn.execute("COMMIT")` ahead of the `_consume_locked` call and
+    deleting the `AND status = 'issued'` CAS predicate (the reviewer's
+    EXACT described mutation), running this test alone, observing it FAIL
+    on the `waiter_elapsed >= _MIN_WAITER_SECONDS` assertion, then
+    restoring the original file and `diff`-verifying byte-identical
+    restoration. See this task's final report for the pasted transcript.
+    """
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    fixed_now = ids.now()
+    confirmation_id, token, record = _mint_and_record(service, ctx, now=fixed_now)
+    authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=record, presented_token=token, now=fixed_now
+    )
+    assert authorization.decision.allowed
+
+    mp_ctx = multiprocessing.get_context("spawn")
+    result_queue = mp_ctx.Queue()
+    ready_event = mp_ctx.Event()
+    processes = [
+        mp_ctx.Process(
+            target=_g5_blocking_probe_worker,
+            args=(
+                str(tmp_foundry.root),
+                confirmation_id,
+                token,
+                ctx,
+                authorization,
+                fixed_now,
+                role,
+                ready_event,
+                result_queue,
+            ),
+        )
+        for role in ("holder", "waiter")
+    ]
+    for p in processes:
+        p.start()
+
+    results = [result_queue.get(timeout=60) for _ in processes]
+    for p in processes:
+        p.join(timeout=60)
+        assert p.exitcode == 0, f"worker process failed (exitcode={p.exitcode})"
+
+    by_role = {r[0]: r for r in results}
+    holder_outcome, waiter_outcome = by_role["holder"], by_role["waiter"]
+
+    # The existing G5 outcome-distribution contract still holds (it is a
+    # real, valid property -- just not, on its own, a discriminating one).
+    outcomes = sorted([holder_outcome[1], waiter_outcome[1]])
+    assert outcomes == ["created", "exact_replay"]
+    operation_ids = {r[3] for r in results if r[3] is not None}
+    assert len(operation_ids) == 1
+    assert _count_operations(tmp_foundry) == 1
+
+    # The discriminating assertion: the UNPATCHED, never-sleeping waiter's
+    # own measured wall-clock duration is bounded below by the (patched,
+    # sleeping) holder's lock-held time -- proof the waiter genuinely
+    # blocked on `BEGIN IMMEDIATE` rather than interleaving past it.
+    waiter_elapsed = waiter_outcome[4]
+    assert waiter_elapsed >= _MIN_WAITER_SECONDS, (
+        f"waiter (never sleeps on its own account) completed in "
+        f"{waiter_elapsed:.3f}s (< {_MIN_WAITER_SECONDS}s) -- it did not "
+        "genuinely block on BEGIN IMMEDIATE while the holder's transaction "
+        "was open; this is exactly what the read-then-write mutation "
+        "produces (the holder's own sleep runs OUTSIDE any real lock, so "
+        "the waiter never waits for it)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -913,6 +1162,51 @@ def test_authorization_bound_to_a_different_ctx_denies(tmp_foundry: FoundryPaths
     assert outcome.reason_code == "internal_error"
     assert outcome.operation is None
     assert _count_operations(tmp_foundry) == 0
+    assert _confirmation_status(tmp_foundry, confirmation_id) == "issued"
+
+
+# ---------------------------------------------------------------------------
+# F4 sibling (P2S-NB-4): manifest schema-validation failure must be a
+# governed denial, never a raw exception crossing this module's boundary.
+# ---------------------------------------------------------------------------
+
+
+def test_manifest_schema_validation_failure_is_governed_not_raw(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_consume_locked`'s manifest validation is believed unreachable in
+    normal operation (the manifest is built entirely from an
+    already-validated `ctx`) -- forced here via monkeypatch to prove the
+    CATCH, not the (untestable-by-construction) real trigger. Before this
+    fix, this raised a bare `RuntimeError` that the generic
+    `except Exception: ROLLBACK; raise` in `consume_and_create_operation`
+    re-raised RAW past the method boundary."""
+
+    from research_foundry.schemas import ValidationResult
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    confirmation_id, token, record = _mint_and_record(service, ctx)
+    authorization = _authorize(tmp_foundry, ctx, confirmation_record=record, presented_token=token)
+
+    monkeypatch.setattr(
+        service._schemas,
+        "validate",
+        lambda payload, kind: ValidationResult(schema=kind, errors=["forced failure"]),
+    )
+
+    outcome = service.consume_and_create_operation(
+        confirmation_id=confirmation_id,
+        presented_token=token,
+        ctx=ctx,
+        authorization=authorization,
+    )
+    assert outcome.outcome == "denied"
+    assert outcome.reason_code == "internal_error"
+    assert outcome.operation is None
+    assert _count_operations(tmp_foundry) == 0
+    # The confirmation was NOT consumed -- the whole transaction rolled
+    # back, including the CAS that would otherwise have already succeeded.
     assert _confirmation_status(tmp_foundry, confirmation_id) == "issued"
 
 

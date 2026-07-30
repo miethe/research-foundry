@@ -1452,3 +1452,258 @@ def test_action_that_raises_stops_the_operation_and_finalizes_failed(
     assert receipt["denial_reason_code"] == "internal_error"
     assert receipt["action_count_completed"] == 0
     assert receipt["action_count_total"] == 1
+
+
+# ---------------------------------------------------------------------------
+# P2S-BLOCK-2: `run_actions` must CHECK `finalize_terminal_receipt`'s
+# returned outcome, never assume it succeeded.
+# ---------------------------------------------------------------------------
+#
+# `run_or_replay`/`resume_operation` now bound `resolve_resume_point` by
+# their own declared `total_action_count` (P2S-BLOCK-2's OTHER half, in
+# `operator_receipt_service.py`), which catches an EXTRA-receipt operation
+# BEFORE any action is (re-)executed on THOSE two entrypoints. To exercise
+# `run_actions`' OWN outcome-check independently of that earlier gate
+# (never assume one guard makes a sibling redundant -- "fix the layer
+# below" cuts both ways), this test calls `run_actions` DIRECTLY (the same
+# pattern every other scenario test in this file already uses) and plants
+# the EXTRA receipt OUT OF BAND, past the point `run_actions` itself would
+# ever look for it before starting -- so reconciliation inside
+# `finalize_terminal_receipt`, not `resolve_resume_point`, is what denies.
+
+
+def test_p2s_block2_extra_receipt_denies_run_actions_completed_branch(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """H3 scenario 8, EXTRA variant, exercised through `run_actions` itself
+    (not `resolve_resume_point`'s own, separate EXTRA guard). Before the
+    fix, `run_actions`' for-else "every action ran" branch discarded
+    `finalize_terminal_receipt`'s returned `ReceiptOutcome` and
+    unconditionally returned `ExecutionOutcome("completed",
+    outcome.receipt, total)` -- with `outcome.receipt is None` (finalize
+    denied), fabricating a `"completed"` status with NO terminal receipt at
+    all. The mutation-verification step for this task reverted exactly
+    this check and confirmed THIS test fails as a result.
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    # Plant an EXTRA action_receipt at index 5, OUT OF BAND -- via the
+    # real, real-persistence `record_action_receipt` (never a fake), for
+    # an index this `run_actions` call (5 real actions, indices 0-4) will
+    # never itself write. This is exactly the "one out-of-turn receipt"
+    # shape the P2 security gate demonstrated.
+    ghost_outcome = receipt_service.record_action_receipt(
+        operation_id,
+        action_id="act-ghost",
+        action_index=5,
+        status="completed",
+        attempt_ref="attempt-out-of-band",
+        started_at=ids.now_iso(),
+        completed_at=ids.now_iso(),
+    )
+    assert ghost_outcome.outcome == "created"
+
+    executed: list[str] = []
+    actions = [_action(f"act-{i}", executed) for i in range(5)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    # Every real action DID run (this is not a truncation/cancellation
+    # case) -- but the operation must NOT be reported "completed", because
+    # reconciliation (6 persisted action_receipts vs 5 declared) denies.
+    assert executed == [f"act-{i}" for i in range(5)]
+    assert execution.status == "denied"
+    assert execution.terminal_receipt is None
+
+    # And -- the actual corruption-detection invariant -- no terminal
+    # receipt was ever durably persisted for this operation.
+    assert receipt_service.load_terminal_receipt(operation_id) is None
+
+
+def test_p2s_block2_extra_receipt_denies_run_or_replay_before_any_action_executes(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """H3 scenario 8's EXTRA variant, this time through `run_or_replay`'s
+    OWN entry point -- exercises `resolve_resume_point`'s new
+    `total_action_count` bound (`operator_receipt_service.py`), the OTHER
+    half of the P2S-BLOCK-2 fix, independent of the `run_actions`
+    outcome-check exercised by
+    `test_p2s_block2_extra_receipt_denies_run_actions_completed_branch`
+    above. This is the EARLIER, cheaper catch the finding's recommended
+    fix (b) added: EXTRA is denied BEFORE any action is (re-)executed,
+    not only once `run_actions` reaches `finalize_terminal_receipt` at
+    the very end -- so `executed` below must stay EMPTY.
+
+    Mirrors the security gate's own empirical repro almost verbatim:
+    create a real operation, record 7 contiguous action_receipts against
+    a 5-action operation (real persistence, `record_action_receipt`, not
+    a fake), then call `run_or_replay`.
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation = outcome.operation
+
+    for i in range(7):  # EXTRA: 7 persisted, operation below only declares 5
+        receipt_outcome = receipt_service.record_action_receipt(
+            operation.operation_id,
+            action_id=f"act-{i}",
+            action_index=i,
+            status="completed",
+            attempt_ref="attempt-out-of-band",
+            started_at=ids.now_iso(),
+            completed_at=ids.now_iso(),
+        )
+        assert receipt_outcome.outcome == "created"
+
+    executed: list[str] = []
+    actions = [_action(f"real-act-{i}", executed) for i in range(5)]
+
+    execution = svc.run_or_replay(
+        operation,
+        is_replay=True,
+        workspace_id=operation.workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == "denied"
+    assert execution.terminal_receipt is None
+    # THE key distinction from the run_actions-level test: zero actions
+    # ran at all -- caught before execution, not after.
+    assert executed == []
+    assert receipt_service.load_terminal_receipt(operation.operation_id) is None
+
+
+# ---------------------------------------------------------------------------
+# P2S-BLOCK-5: `request_cancellation` must be workspace-AUTHORIZED, not
+# merely workspace-attributed -- a caller asserting the WRONG workspace_id
+# for a REAL operation in a DIFFERENT workspace must be denied, never
+# silently corrected and never allowed to create the (irrevocable) row.
+# ---------------------------------------------------------------------------
+
+
+def test_request_cancellation_cross_workspace_forgery_denies_zero_effect(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """The exact attack the security gate demonstrated empirically:
+    `request_cancellation(victim_operation_id, workspace_id="ws-attacker")`
+    must now DENY -- before this fix it returned `"created"` and
+    permanently, cross-workspace, canceled the victim's future execution.
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    real_workspace_id = outcome.operation.workspace_id
+
+    forged = svc.request_cancellation(
+        operation_id, workspace_id="ws-attacker", requested_by="mallory"
+    )
+    assert forged.outcome == "denied"
+    assert forged.reason_code == "not_found"
+    assert forged.requested_at is None
+
+    # ZERO effect: no cancellation_requests row at all for this operation.
+    conn = _raw_connect(tmp_foundry)
+    try:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM cancellation_requests WHERE operation_id = ?",
+            (operation_id,),
+        ).fetchone()[0]
+        assert count == 0
+    finally:
+        conn.close()
+
+    # The victim operation is UNAFFECTED -- it still runs to completion,
+    # not "canceled" (proves the forged request had zero real effect, not
+    # merely zero row -- the actual attack scenario the gate ran).
+    executed: list[str] = []
+    actions = [_action("act-0", executed), _action("act-1", executed)]
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=real_workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+    assert execution.status == "completed"
+    assert executed == ["act-0", "act-1"]
+
+    # And a LEGITIMATE, same-workspace cancellation request still works
+    # normally on a fresh operation -- the fix denies the FORGED case, not
+    # cancellation in general.
+    outcome2 = _consume(
+        tmp_foundry,
+        op_service,
+        _basic_ctx(targets=_run_targets(), idempotency_key="legit-cancel"),
+    )
+    legit = svc.request_cancellation(
+        outcome2.operation.operation_id,
+        workspace_id=outcome2.operation.workspace_id,
+        requested_by="alice",
+    )
+    assert legit.outcome == "created"
+
+
+def test_request_cancellation_nonexistent_operation_denies_indistinguishably(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """A genuinely missing `operation_id` and a wrong-workspace one
+    resolve to the SAME shape (`reason_code == "not_found"`, zero
+    effect) -- no existence leak."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service)
+
+    missing = svc.request_cancellation(
+        "opm_" + "9" * 64, workspace_id="any-workspace", requested_by="alice"
+    )
+    assert missing.outcome == "denied"
+    assert missing.reason_code == "not_found"
+
+
+def test_cancellation_requested_scoped_read_denies_cross_workspace(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """P2S-BLOCK-5, read-side defense in depth: `cancellation_requested`'s
+    optional `workspace_id` scoping (used internally by `run_actions`)
+    denies a real cancellation row when queried under the WRONG
+    workspace, even though the write itself is now authorized (this
+    guards a future direct caller of `cancellation_requested`, not the
+    primary attack -- which the write-side fix above already closes)."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    created = svc.request_cancellation(operation_id, workspace_id=workspace_id)
+    assert created.outcome == "created"
+
+    assert svc.cancellation_requested(operation_id) is True  # unscoped
+    assert svc.cancellation_requested(operation_id, workspace_id=workspace_id) is True
+    assert svc.cancellation_requested(operation_id, workspace_id="ws-attacker") is False

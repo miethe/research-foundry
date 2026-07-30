@@ -619,6 +619,23 @@ class _Dur1InvariantViolation(RuntimeError):
     """
 
 
+class _ManifestValidationInvariantViolation(RuntimeError):
+    """Internal-only: F4 sibling (P2 security gate finding P2S-NB-4) of
+    :class:`_Dur1InvariantViolation`, for the SAME reason and caught by
+    `consume_and_create_operation` the SAME way.
+
+    `_consume_locked`'s manifest schema-validation failure is "believed
+    unreachable" (the manifest is built entirely from an already-validated
+    `ctx`) -- but that exact "believed unreachable" reasoning was what F4
+    originally left open for the CAS-invariant violation above, and this
+    task's own review explicitly rejected it as sufficient once. Wrapping
+    this raise in a dedicated, caught exception type (rather than a bare
+    `RuntimeError` that the surrounding `except Exception: ROLLBACK; raise`
+    would otherwise re-raise RAW) closes the identical class of defect here,
+    for consistency rather than a fresh, unreviewed judgment call.
+    """
+
+
 # ---------------------------------------------------------------------------
 # F1: authorization as a data dependency (DUR-1's other half)
 # ---------------------------------------------------------------------------
@@ -858,6 +875,23 @@ class OperatorOperationService:
         if not isinstance(issued_at, str) or not issued_at:
             raise ValueError("record_confirmation requires a non-empty issued_at -- never defaulted")
 
+        # F4 enumeration (P2S-NB-4): a duplicate `confirmation_id` here
+        # raises `sqlite3.IntegrityError` raw through the `except Exception:
+        # ROLLBACK; raise` below -- assessed and DELIBERATELY left
+        # unconverted, unlike the two `RuntimeError` siblings this same
+        # review closed (`_Dur1InvariantViolation`,
+        # `_ManifestValidationInvariantViolation`). Rationale, not a silent
+        # gap: (1) `confirmation_id` is minted by `mint_confirmation` from a
+        # `secrets.token_hex`-salted SHA-256 digest -- a collision is
+        # cryptographic-strength improbable, a fundamentally different
+        # reachability class than the CAS-rowcount or manifest-validation
+        # invariants (both reachable in principle via a future refactor
+        # bug, which is why THOSE got converted); (2) this method has no
+        # established governed-outcome return contract to convert into --
+        # it returns `None` and is called exactly once, synchronously,
+        # inside the SAME request that just minted the record, never
+        # independently re-triggerable by a caller across a boundary the
+        # way `consume_and_create_operation`/the receipt methods are.
         conn = _connect(self._paths)
         try:
             _ensure_schema(conn)
@@ -1009,6 +1043,11 @@ class OperatorOperationService:
                 # (server-side, `_logger.error`) at the raise site inside
                 # `_consume_locked`. Roll back and return the SAME bounded,
                 # governed denial shape every other closed path here uses.
+                conn.execute("ROLLBACK")
+                return OperationOutcome("denied", "internal_error", None)
+            except _ManifestValidationInvariantViolation:
+                # F4 sibling (P2S-NB-4) -- identical bounded/governed
+                # treatment as `_Dur1InvariantViolation` immediately above.
                 conn.execute("ROLLBACK")
                 return OperationOutcome("denied", "internal_error", None)
             except Exception:
@@ -1187,8 +1226,13 @@ class OperatorOperationService:
             # validated `ctx`. Never log the errors themselves (they could
             # echo caller-influenced values) -- only the count, mirroring
             # `operator_mcp_policy.py`'s NEW-13 "log the type, never the
-            # content" convention.
-            raise RuntimeError(
+            # content" convention. F4 sibling (P2S-NB-4): raises the
+            # dedicated `_ManifestValidationInvariantViolation` (never a
+            # bare `RuntimeError`) so `consume_and_create_operation`'s own
+            # catch converts this into a governed denial rather than
+            # letting it escape raw via the generic `except Exception:
+            # ROLLBACK; raise` below it.
+            raise _ManifestValidationInvariantViolation(
                 f"operator_operation_service: manifest failed schema validation "
                 f"({len(validation.errors)} error(s))"
             )

@@ -83,6 +83,26 @@ caller supplies both counts directly there) and :meth:`finalize_terminal_receipt
 (defense in depth; structurally unreachable via the reconciled path alone,
 since `completed_action_count` there is a subset count of the SAME rows
 `_reconcile` has already proven number exactly `expected_action_count`).
+
+**Sensitivity threshold (P2S-NB-1, assessed and deliberately deferred, not
+a silent gap)**: this module's identity-scoping seam (P2S-BLOCK-3, above)
+enforces WORKSPACE only, never `effective_sensitivity`. This is an explicit
+architectural decision, not an oversight: `operations.effective_sensitivity`
+is written once, at creation, by `operator_operation_service.py`, and this
+codebase's established precedent (the runs/reports API routers' own
+`sensitivity_threshold`/`resolve_workspace_isolation_active`-style gating)
+enforces a sensitivity CEILING at the CALLER/transport boundary -- the
+layer that knows the REQUESTING actor's own clearance -- not inside a
+low-level durable store that has no such context and would otherwise need
+a THIRD scoping parameter threaded through every read/write in this
+module ahead of any P3-P5 caller existing to supply it correctly. P5
+(`OPM-5.4`, the plan's own "limits and error mapping ... at the transport
+boundary" task) is the correct, already-planned integration point for an
+above-threshold gate; wiring one INTO this store now, before that
+boundary exists, would be unvalidated surface area with no real caller to
+prove it against. Workspace scoping alone is not a partial substitute for
+this -- it is the orthogonal, independently-complete half of AC OPM-2 this
+module owns.
 """
 
 from __future__ import annotations
@@ -95,6 +115,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, Mapping
 
 from research_foundry import ids
+from research_foundry.auth_identity import AuthIdentity
 from research_foundry.paths import FoundryPaths
 from research_foundry.schemas import SchemaRegistry
 from research_foundry.services import operator_mcp_policy as policy
@@ -115,6 +136,31 @@ def _iso_utc(dt: datetime) -> str:
     boundaries for a three-line function (that module's own convention)."""
 
     return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _derive_workspace_id(conn: sqlite3.Connection, operation_id: str) -> str | None:
+    """Look up the REAL, persisted `workspace_id` for `operation_id` from
+    the authoritative `operations` table (P2S-BLOCK-3 / P2S-BLOCK-4).
+
+    Returns `None` if no `operations` row exists for `operation_id` --
+    callers MUST treat that as a referential-integrity denial (a receipt
+    can never be written for, or a workspace derived from, an operation
+    that was never durably created), never as "use the caller-supplied
+    value instead".
+
+    Safe to call OUTSIDE a `BEGIN IMMEDIATE` lock: `operations` rows are
+    immutable (`operator_operation_service.py`'s own
+    `trg_operations_immutable_no_update`/`_no_delete` triggers, module
+    docstring) -- once a row exists, its `workspace_id` can never change,
+    so there is no TOCTOU window for a value that is either absent or
+    permanently fixed.
+    """
+
+    row = conn.execute(
+        "SELECT workspace_id FROM operations WHERE operation_id = ?",
+        (operation_id,),
+    ).fetchone()
+    return row["workspace_id"] if row is not None else None
 
 
 def _validate_action_counts(completed_action_count: int, total_action_count: int) -> None:
@@ -267,13 +313,52 @@ class OperatorReceiptService:
         if retryable is not None:
             receipt["retryable"] = bool(retryable)
 
-        self._validate_receipt(receipt)
+        try:
+            self._validate_receipt(receipt)
+        except RuntimeError:
+            # F4 sibling (P2S-NB-4): schema validation is believed
+            # unreachable (the receipt is built entirely from already
+            # ValueError-guarded values above) -- but "believed
+            # unreachable" was explicitly rejected as sufficient for this
+            # module family's OTHER internal invariant
+            # (`_Dur1InvariantViolation` in `operator_operation_service.py`),
+            # so this is caught and converted here too, never allowed to
+            # cross this method's boundary as a raw `RuntimeError`.
+            _logger.error(
+                "operator_receipt_service: action_receipt failed schema "
+                "validation for operation_id=%s action_id=%s -- denying "
+                "rather than raising raw",
+                operation_id,
+                action_id,
+            )
+            return ReceiptOutcome("denied", "internal_error", None)
 
         conn = _ops_store._connect(self._paths)
         try:
             _ops_store._ensure_schema(conn)
             conn.execute("BEGIN IMMEDIATE")
             try:
+                # P2S-BLOCK-4: referential integrity -- `operation_id` MUST
+                # reference an already-persisted `operations` manifest.
+                # Checked INSIDE this locked transaction (mirrors
+                # `record_effect_receipt`'s own MISMATCHED guard immediately
+                # below): without this, a single out-of-turn receipt for a
+                # phantom operation_id was accepted and, because
+                # action_receipts rows are immutable, could never be
+                # repaired -- permanently bricking that operation_id the
+                # moment a REAL operation with the same id (astronomically
+                # unlikely, but the point is this store must not depend on
+                # that) or any resume/reconcile path touched it.
+                if _derive_workspace_id(conn, operation_id) is None:
+                    conn.execute("ROLLBACK")
+                    _logger.error(
+                        "operator_receipt_service: action_receipt REJECTED -- "
+                        "operation_id=%s has no persisted operation manifest "
+                        "(referential integrity guard, P2S-BLOCK-4)",
+                        operation_id,
+                    )
+                    return ReceiptOutcome("denied", "internal_error", None)
+
                 conn.execute(
                     "INSERT INTO action_receipts"
                     " (operation_id, action_id, action_index, status, attempt_ref,"
@@ -356,13 +441,43 @@ class OperatorReceiptService:
             "effect_ref": effect_ref,
             "generated_at": generated_at,
         }
-        self._validate_receipt(receipt)
+        try:
+            self._validate_receipt(receipt)
+        except RuntimeError:
+            # F4 sibling (P2S-NB-4) -- see the identical guard in
+            # `record_action_receipt` for the full rationale.
+            _logger.error(
+                "operator_receipt_service: effect_receipt failed schema "
+                "validation for operation_id=%s action_id=%s -- denying "
+                "rather than raising raw",
+                operation_id,
+                action_id,
+            )
+            return ReceiptOutcome("denied", "internal_error", None)
 
         conn = _ops_store._connect(self._paths)
         try:
             _ops_store._ensure_schema(conn)
             conn.execute("BEGIN IMMEDIATE")
             try:
+                # P2S-BLOCK-4: referential integrity, direct check (defense
+                # in depth -- "fix the layer below": once
+                # `record_action_receipt` closes the phantom-operation_id
+                # hole, this is transitively unreachable via the
+                # MISMATCHED guard just below (an action_receipt cannot
+                # exist for a phantom operation), but a DIRECT caller of
+                # THIS method alone must not depend on that other guard
+                # staying correct forever).
+                if _derive_workspace_id(conn, operation_id) is None:
+                    conn.execute("ROLLBACK")
+                    _logger.error(
+                        "operator_receipt_service: effect_receipt REJECTED -- "
+                        "operation_id=%s has no persisted operation manifest "
+                        "(referential integrity guard, P2S-BLOCK-4)",
+                        operation_id,
+                    )
+                    return ReceiptOutcome("denied", "internal_error", None)
+
                 # MISMATCHED guard -- checked INSIDE this locked
                 # transaction (not a separate, earlier read) so no
                 # concurrent writer can insert a phantom effect for an
@@ -448,23 +563,65 @@ class OperatorReceiptService:
             raise ValueError("write_checkpoint requires a non-empty workspace_id")
 
         moment = ids.now()
-        checkpoint: dict[str, Any] = {
-            "schema_version": "1.0",
-            "kind": "checkpoint",
-            "operation_id": operation_id,
-            "workspace_id": workspace_id,
-            "status": status,
-            "next_action_index": next_action_index,
-            "completed_action_count": completed_action_count,
-            "total_action_count": total_action_count,
-            "non_cancelable": bool(non_cancelable),
-            "updated_at": _iso_utc(moment),
-        }
-        self._validate_receipt(checkpoint)
 
         conn = _ops_store._connect(self._paths)
         try:
             _ops_store._ensure_schema(conn)
+
+            # P2S-BLOCK-3/BLOCK-4: derive the REAL workspace_id from the
+            # authoritative `operations` row rather than trusting the
+            # caller-supplied parameter (which, before this fix, was
+            # written verbatim into an IMMUTABLE row -- a wrong or forged
+            # attribution could never be corrected). Denies (governed,
+            # never a raw write) if `operation_id` has no persisted
+            # manifest at all -- the same referential-integrity guard as
+            # the receipt tables. Safe to read unlocked: see
+            # `_derive_workspace_id`'s own docstring.
+            resolved_workspace_id = _derive_workspace_id(conn, operation_id)
+            if resolved_workspace_id is None:
+                _logger.error(
+                    "operator_receipt_service: write_checkpoint REJECTED -- "
+                    "operation_id=%s has no persisted operation manifest "
+                    "(referential integrity guard, P2S-BLOCK-4)",
+                    operation_id,
+                )
+                return ReceiptOutcome("denied", "internal_error", None)
+            if workspace_id != resolved_workspace_id:
+                _logger.warning(
+                    "operator_receipt_service: write_checkpoint caller-supplied "
+                    "workspace_id=%r for operation_id=%s does not match the "
+                    "operation's own workspace_id=%r -- using the operation's "
+                    "value (P2S-BLOCK-3 hardening)",
+                    workspace_id,
+                    operation_id,
+                    resolved_workspace_id,
+                )
+            workspace_id = resolved_workspace_id
+
+            checkpoint: dict[str, Any] = {
+                "schema_version": "1.0",
+                "kind": "checkpoint",
+                "operation_id": operation_id,
+                "workspace_id": workspace_id,
+                "status": status,
+                "next_action_index": next_action_index,
+                "completed_action_count": completed_action_count,
+                "total_action_count": total_action_count,
+                "non_cancelable": bool(non_cancelable),
+                "updated_at": _iso_utc(moment),
+            }
+            try:
+                self._validate_receipt(checkpoint)
+            except RuntimeError:
+                # F4 sibling (P2S-NB-4).
+                _logger.error(
+                    "operator_receipt_service: checkpoint failed schema "
+                    "validation for operation_id=%s -- denying rather than "
+                    "raising raw",
+                    operation_id,
+                )
+                return ReceiptOutcome("denied", "internal_error", None)
+
             conn.execute("BEGIN IMMEDIATE")
             try:
                 conn.execute(
@@ -505,7 +662,13 @@ class OperatorReceiptService:
 
     # -- resume point (OPM-2.4) -------------------------------------------
 
-    def resolve_resume_point(self, operation_id: str) -> ResumePointOutcome:
+    def resolve_resume_point(
+        self,
+        operation_id: str,
+        *,
+        identity: AuthIdentity | None = None,
+        total_action_count: int | None = None,
+    ) -> ResumePointOutcome:
         """Determine the first INCOMPLETE action index for `operation_id`,
         reading real persisted `action_receipts` -- see
         :class:`ResumePointOutcome` for the full contract and why this is
@@ -513,11 +676,63 @@ class OperatorReceiptService:
         instead of trusting `checkpoint.next_action_index` (which is a
         SEPARATE, independently-written row that can be stale relative to
         `action_receipts` if a process was lost between the two writes --
-        exactly the OPM-2.4 scenario-7 gap this method closes)."""
+        exactly the OPM-2.4 scenario-7 gap this method closes).
+
+        **P2S-BLOCK-3 (identity/workspace seam)**: `identity=None` (the
+        default) performs NO workspace scoping, matching
+        `OperatorOperationService.load_operation`'s own default -- existing
+        internal callers that have already established the correct
+        workspace by other means (e.g. having just loaded the operation
+        with scoping applied) are unaffected. When `identity` IS supplied,
+        a wrong-workspace `operation_id` denies with `reason_code=
+        "not_found"` -- the SAME code used for a genuinely missing
+        `operation_id` (denied one line below, before the workspace
+        comparison), so the two are indistinguishable to the caller,
+        mirroring `load_operation`'s own no-existence-leak convention.
+
+        **P2S-BLOCK-2 (EXTRA receipt corruption caught before resume, not
+        only at `finalize_terminal_receipt`)**: when `total_action_count`
+        is supplied (the caller's own declared action count -- e.g.
+        `len(actions)` in `operator_cancel_resume_service.run_or_replay`/
+        `resume_operation`), more persisted `action_receipts` than that
+        declared count denies -- the EXTRA corruption class, caught here
+        BEFORE any action would be (re-)executed, rather than discovered
+        only once `run_actions` reaches `finalize_terminal_receipt` at the
+        end. `total_action_count=None` (the default) skips this check,
+        preserving the exact prior contiguity-only behavior for callers
+        that do not (yet) know their own declared count.
+        """
 
         conn = _ops_store._connect(self._paths)
         try:
             _ops_store._ensure_schema(conn)
+
+            op_row = conn.execute(
+                "SELECT workspace_id FROM operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            if op_row is None:
+                _logger.error(
+                    "operator_receipt_service: resolve_resume_point REJECTED -- "
+                    "operation_id=%s has no persisted operation manifest "
+                    "(referential integrity guard, P2S-BLOCK-4)",
+                    operation_id,
+                )
+                return ResumePointOutcome("denied", "not_found", None)
+            if identity is not None and op_row["workspace_id"] != identity.workspace_id:
+                _logger.error(
+                    json.dumps(
+                        {
+                            "event": "workspace_scope_enforced_denial",
+                            "record_type": "operation",
+                            "record_id": operation_id,
+                            "record_workspace_id": op_row["workspace_id"],
+                            "identity_workspace_id": identity.workspace_id,
+                        }
+                    )
+                )
+                return ResumePointOutcome("denied", "not_found", None)
+
             rows = conn.execute(
                 "SELECT action_index FROM action_receipts"
                 " WHERE operation_id = ? ORDER BY action_index",
@@ -534,6 +749,17 @@ class OperatorReceiptService:
                 "-- denying resume (corrupt receipt state)",
                 indices,
                 operation_id,
+            )
+            return ResumePointOutcome("denied", "internal_error", None)
+        if total_action_count is not None and len(indices) > total_action_count:
+            _logger.error(
+                "operator_receipt_service: resolve_resume_point found %d "
+                "persisted action_receipt(s) for operation_id=%s, exceeding "
+                "the declared total_action_count=%d -- denying resume "
+                "(EXTRA receipt corruption, P2S-BLOCK-2)",
+                len(indices),
+                operation_id,
+                total_action_count,
             )
             return ResumePointOutcome("denied", "internal_error", None)
         return ResumePointOutcome("ok", None, len(indices))
@@ -689,6 +915,33 @@ class OperatorReceiptService:
         try:
             _ops_store._ensure_schema(conn)
 
+            # P2S-BLOCK-3/BLOCK-4: derive the REAL workspace_id from the
+            # authoritative `operations` row -- see `write_checkpoint`'s
+            # identical guard for the full rationale. Checked BEFORE the
+            # `existing`/idempotency short-circuit so a phantom
+            # operation_id can never even produce an `"exact_replay"`
+            # lookup hit.
+            resolved_workspace_id = _derive_workspace_id(conn, operation_id)
+            if resolved_workspace_id is None:
+                _logger.error(
+                    "operator_receipt_service: finalize_terminal_receipt REJECTED -- "
+                    "operation_id=%s has no persisted operation manifest "
+                    "(referential integrity guard, P2S-BLOCK-4)",
+                    operation_id,
+                )
+                return ReceiptOutcome("denied", "internal_error", None)
+            if workspace_id != resolved_workspace_id:
+                _logger.warning(
+                    "operator_receipt_service: finalize_terminal_receipt caller-"
+                    "supplied workspace_id=%r for operation_id=%s does not match "
+                    "the operation's own workspace_id=%r -- using the operation's "
+                    "value (P2S-BLOCK-3 hardening)",
+                    workspace_id,
+                    operation_id,
+                    resolved_workspace_id,
+                )
+            workspace_id = resolved_workspace_id
+
             existing = conn.execute(
                 "SELECT receipt_json FROM terminal_receipts WHERE operation_id = ?",
                 (operation_id,),
@@ -728,7 +981,17 @@ class OperatorReceiptService:
                 "audit_delivery": audit_delivery,
                 "completed_at": _iso_utc(moment),
             }
-            self._validate_receipt(terminal_receipt)
+            try:
+                self._validate_receipt(terminal_receipt)
+            except RuntimeError:
+                # F4 sibling (P2S-NB-4).
+                _logger.error(
+                    "operator_receipt_service: terminal_receipt failed schema "
+                    "validation for operation_id=%s -- denying rather than "
+                    "raising raw",
+                    operation_id,
+                )
+                return ReceiptOutcome("denied", "internal_error", None)
 
             conn.execute("BEGIN IMMEDIATE")
             try:
@@ -767,35 +1030,89 @@ class OperatorReceiptService:
 
     # -- read path --------------------------------------------------------
 
-    def load_terminal_receipt(self, operation_id: str) -> Mapping[str, Any] | None:
+    def load_terminal_receipt(
+        self, operation_id: str, *, identity: AuthIdentity | None = None
+    ) -> Mapping[str, Any] | None:
         """Return the persisted `terminal_receipt` for `operation_id`, or
-        `None` if none has been finalized yet."""
+        `None` if none has been finalized yet.
+
+        **P2S-BLOCK-3**: `identity=None` (the default) performs no
+        workspace scoping. When `identity` IS supplied, a terminal receipt
+        belonging to a DIFFERENT workspace returns `None` -- the IDENTICAL
+        shape as "not yet finalized", indistinguishable to the caller, no
+        derived detail leaked (mirrors `OperatorOperationService.
+        load_operation`'s own no-existence-leak convention, adapted to this
+        method's `Optional`-return shape rather than a raised `KeyError`).
+        `terminal_receipts.workspace_id` is trustworthy for this comparison
+        because `finalize_terminal_receipt` now DERIVES it from the
+        authoritative `operations` row rather than accepting a caller-
+        asserted value (P2S-BLOCK-3's write-side half, above).
+        """
 
         conn = _ops_store._connect(self._paths)
         try:
             _ops_store._ensure_schema(conn)
             row = conn.execute(
-                "SELECT receipt_json FROM terminal_receipts WHERE operation_id = ?",
+                "SELECT receipt_json, workspace_id FROM terminal_receipts WHERE operation_id = ?",
                 (operation_id,),
             ).fetchone()
         finally:
             conn.close()
-        return json.loads(row["receipt_json"]) if row is not None else None
+        if row is None:
+            return None
+        if identity is not None and row["workspace_id"] != identity.workspace_id:
+            _logger.error(
+                json.dumps(
+                    {
+                        "event": "workspace_scope_enforced_denial",
+                        "record_type": "terminal_receipt",
+                        "record_id": operation_id,
+                        "record_workspace_id": row["workspace_id"],
+                        "identity_workspace_id": identity.workspace_id,
+                    }
+                )
+            )
+            return None
+        return json.loads(row["receipt_json"])
 
-    def load_checkpoint(self, operation_id: str) -> Mapping[str, Any] | None:
+    def load_checkpoint(
+        self, operation_id: str, *, identity: AuthIdentity | None = None
+    ) -> Mapping[str, Any] | None:
         """Return the current (possibly-superseded-by-a-later-write)
-        `checkpoint` for `operation_id`, or `None` if none exists yet."""
+        `checkpoint` for `operation_id`, or `None` if none exists yet.
+
+        **P2S-BLOCK-3**: identical identity-scoping contract as
+        :meth:`load_terminal_receipt` -- see that method's docstring.
+        `checkpoints.workspace_id` is trustworthy for this comparison
+        because `write_checkpoint` now DERIVES it from the authoritative
+        `operations` row (P2S-BLOCK-3's write-side half, above).
+        """
 
         conn = _ops_store._connect(self._paths)
         try:
             _ops_store._ensure_schema(conn)
             row = conn.execute(
-                "SELECT checkpoint_json FROM checkpoints WHERE operation_id = ?",
+                "SELECT checkpoint_json, workspace_id FROM checkpoints WHERE operation_id = ?",
                 (operation_id,),
             ).fetchone()
         finally:
             conn.close()
-        return json.loads(row["checkpoint_json"]) if row is not None else None
+        if row is None:
+            return None
+        if identity is not None and row["workspace_id"] != identity.workspace_id:
+            _logger.error(
+                json.dumps(
+                    {
+                        "event": "workspace_scope_enforced_denial",
+                        "record_type": "checkpoint",
+                        "record_id": operation_id,
+                        "record_workspace_id": row["workspace_id"],
+                        "identity_workspace_id": identity.workspace_id,
+                    }
+                )
+            )
+            return None
+        return json.loads(row["checkpoint_json"])
 
     # -- internal ---------------------------------------------------------
 
