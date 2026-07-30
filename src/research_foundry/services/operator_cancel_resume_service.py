@@ -76,6 +76,7 @@ from research_foundry.services.operator_attempt_adapter import (
 from research_foundry.services.operator_operation_service import (
     AuthorizationProof,
     OperationRecord,
+    OperationStoreUnavailableError,
     OperatorOperationService,
 )
 from research_foundry.services.operator_receipt_service import (
@@ -376,6 +377,19 @@ class OperatorCancelResumeService:
 
         try:
             operation = self._operations.load_operation(operation_id)
+        except OperationStoreUnavailableError:
+            # K4-BLOCK-1: MUST be classified before the `KeyError` arm and
+            # MUST NOT reuse `"not_found"`. The store being locked is
+            # transient and retryable; reporting it as "does not exist"
+            # would tell a caller to stop retrying an operation that is
+            # merely temporarily unreadable. `internal_error` is this
+            # module family's established retryable governed denial.
+            _logger.error(
+                "operator_cancel_resume_service: request_cancellation DENIED -- "
+                "operations store unavailable for operation_id=%s (retryable)",
+                operation_id,
+            )
+            return CancellationOutcome("denied", operation_id, None, None, "internal_error")
         except KeyError:
             _logger.error(
                 "operator_cancel_resume_service: request_cancellation DENIED -- "
@@ -1114,6 +1128,19 @@ class OperatorCancelResumeService:
 
         try:
             operation_record = self._operations.load_operation(operation_id, identity=identity)
+        except OperationStoreUnavailableError:
+            # K4-BLOCK-1, sibling of the `request_cancellation` arm above --
+            # same reasoning: transient/retryable, so NOT `"not_found"`.
+            # Note this does NOT weaken the no-existence-leak convention:
+            # the discriminator here is the STORE's availability, which is
+            # identical for every operation_id and therefore leaks nothing
+            # about whether any particular one exists.
+            _logger.error(
+                "operator_cancel_resume_service: resume_operation DENIED -- "
+                "operations store unavailable for operation_id=%s (retryable)",
+                operation_id,
+            )
+            return ResumeOutcome("denied", "internal_error", None)
         except KeyError:
             return ResumeOutcome("denied", "not_found", None)
 

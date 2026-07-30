@@ -636,6 +636,27 @@ class _ManifestValidationInvariantViolation(RuntimeError):
     """
 
 
+class OperationStoreUnavailableError(RuntimeError):
+    """The operations database was unavailable (locked) for a read this
+    module could not complete (K4-BLOCK-1).
+
+    PUBLIC and deliberately **not** a `KeyError`. `load_operation`'s only
+    documented failure is `KeyError` ("no such operation, or wrong
+    workspace"), and both production callers
+    (`operator_cancel_resume_service.request_cancellation`,
+    `.resume_operation`) catch exactly that and return a governed
+    `not_found` denial. Folding lock contention into that contract would
+    report a TRANSIENT, retryable database condition as a PERMANENT "this
+    operation does not exist" -- strictly worse than the raw leak it
+    replaces, because a caller would stop retrying rather than back off.
+    A distinct type forces each caller to classify it deliberately.
+
+    Carries no driver text, no SQL and no file path, per
+    `schemas/operator_mcp_error.schema.yaml` (AC OPM-7); the full detail,
+    including `str(exc)`, is logged server-side at the raise site.
+    """
+
+
 class ConfirmationPersistenceError(RuntimeError):
     """`record_confirmation` could not durably persist a freshly minted
     confirmation because the operations database was locked (K3-BLOCK-1).
@@ -938,10 +959,14 @@ class OperatorOperationService:
         # lock-contention invariants (all reachable in practice, which is
         # why THOSE got converted); (2) this method has no established
         # governed-outcome return contract to convert into -- it returns
-        # `None` and is called exactly once, synchronously, inside the SAME
-        # request that just minted the record, never independently
-        # re-triggerable by a caller across a boundary the way
-        # `consume_and_create_operation`/the receipt methods are.
+        # `None`, and (K3-NB-a: an earlier revision of this clause asserted
+        # it "is called exactly once, synchronously, inside the SAME
+        # request that just minted the record" -- which contradicted the
+        # very grep, recorded on `ConfirmationPersistenceError`, that found
+        # it has NO production caller at all) it is today called only from
+        # tests. Whichever of those turns out to be true once a caller
+        # lands, neither yields an existing governed-outcome contract here,
+        # unlike `consume_and_create_operation`/the receipt methods.
         conn = _connect(self._paths)
         try:
             try:
@@ -954,9 +979,11 @@ class OperatorOperationService:
                 # there is nothing to roll back.
                 _logger.error(
                     "operator_operation_service: record_confirmation lock acquisition "
-                    "failed (%s) for confirmation_id=%s -- busy_timeout exhausted or "
-                    "schema setup failed",
+                    "failed (%s: %s) for confirmation_id=%s -- busy_timeout exhausted "
+                    "or schema setup failed (K3-NB-b: log str(exc) too, so these two "
+                    "distinct causes are actually distinguishable to an operator)",
                     type(exc).__name__,
+                    exc,
                     confirmation_id,
                 )
                 raise ConfirmationPersistenceError(
@@ -985,9 +1012,10 @@ class OperatorOperationService:
                     "inside the locked transaction for confirmation_id=%s -- database is "
                     "locked past BEGIN IMMEDIATE's own acquisition; raising a bounded "
                     "ConfirmationPersistenceError rather than letting a raw "
-                    "sqlite3.OperationalError escape this module's boundary",
+                    "sqlite3.OperationalError escape this module's boundary (%s)",
                     type(exc).__name__,
                     confirmation_id,
+                    exc,
                 )
                 # Best-effort, for U6's reason: if the SAME contention that
                 # raised this also makes ROLLBACK raise, a second raw
@@ -1444,11 +1472,36 @@ class OperatorOperationService:
 
         conn = _connect(self._paths)
         try:
+            # K4-BLOCK-1: `_ensure_schema` writes DDL, so on a cold start it
+            # takes a RESERVED lock and can block behind a concurrent writer
+            # until `_BUSY_TIMEOUT_MS` is exhausted -- and this block
+            # previously had NO handler, so a raw `sqlite3.OperationalError`
+            # ("database is locked", driver text and all) crossed this
+            # module's boundary. MORE exposed than the K3-BLOCK-1 instance
+            # it mirrors: `record_confirmation` had zero production callers,
+            # whereas BOTH of this method's callers catch only `KeyError`,
+            # so the raw exception escaped two governed-outcome APIs on a
+            # caller-triggerable path (`operation_id` need not exist, and
+            # the not-found path is exactly the one a caller can invoke at
+            # will). See `OperationStoreUnavailableError` for why this is
+            # deliberately NOT folded into the `KeyError` contract.
             _ensure_schema(conn)
             row = conn.execute(
                 "SELECT manifest_json, workspace_id FROM operations WHERE operation_id = ?",
                 (operation_id,),
             ).fetchone()
+        except sqlite3.OperationalError as exc:
+            _logger.error(
+                "operator_operation_service: load_operation could not read the "
+                "operations store for operation_id=%s -- %s: %s (busy_timeout "
+                "exhausted, or schema setup failed on a cold start)",
+                operation_id,
+                type(exc).__name__,
+                exc,
+            )
+            raise OperationStoreUnavailableError(
+                "operation could not be read: operations database unavailable"
+            ) from None
         finally:
             conn.close()
 

@@ -2160,3 +2160,106 @@ each of the 5 new tests run standalone -> EXIT=0
 - **K3-NB-6** — the new `except sqlite3.OperationalError` is broader than "database is locked" (it
   would also convert schema drift). Logged at ERROR, so not silent.
 - **K3-NB-7 / NB-8, P2S-NB-9 (bounded attempts, scheduled at `OPM-3.4`)** — unchanged.
+
+---
+
+## FIND-P2-REGATE-R4R5 — rounds 4 and 5: K4-BLOCK-1 found and closed; P2 gates now both APPROVED
+
+### Round 4 — Karen on tree `4e3e62f`: `CHANGES_REQUESTED`
+
+All K3 items verified closed (Karen re-ran the matrix itself, and re-proved K3-BLOCK-1 half 2 with
+**real** contention — a concurrent reader blocking EXCLUSIVE promotion at COMMIT — rather than the
+proxy-connection simulation the fix shipped, which is a stronger test than ours). Zero regressions.
+
+Its ordered sibling sweep then found the predicted **eighth** instance of the layer-below class:
+
+**K4-BLOCK-1** — `load_operation` calls `_ensure_schema` (DDL → RESERVED lock) then `SELECT` with
+**no handler**, so on a cold start behind a concurrent writer it leaked a raw
+`sqlite3.OperationalError` across the module boundary. **More exposed than K3-BLOCK-1**:
+`record_confirmation` had zero production callers, whereas both of `load_operation`'s callers catch
+only `KeyError`, so the raw exception escaped two governed-outcome APIs on a caller-triggerable path.
+
+### Round 5 — Karen on tree `ad7d461`: **APPROVED**
+
+Fix: a bounded, module-owned `OperationStoreUnavailableError`, deliberately **not** a `KeyError` —
+folding it into the existing `KeyError` contract would be *worse* than the leak, because both callers
+map `KeyError` to `not_found`, so a transient retryable lock would be reported as a permanent "does
+not exist" and callers would stop retrying. Both callers now classify it `internal_error`.
+
+**The existence-leak question was the load-bearing judgment call, and Karen verified it empirically
+rather than accepting the claim.** Cold store + lock, five inputs including one operation that
+genuinely exists:
+
+| input | outcome | latency |
+|---|---|---|
+| `op-REAL` (row present) | bounded `Unavailable`, identical string | 57.6 ms |
+| `op-MISSING` | identical | 61.9 ms |
+| `''` | identical | 57.3 ms |
+| 300-char id | identical | 59.9 ms |
+| `'; DROP TABLE operations; --` | identical | 61.7 ms |
+
+Byte-identical messages, latency indistinguishable. SQLite locks whole files, so `SQLITE_BUSY` cannot
+be differential by bound value; H6's no-existence-leak convention is structurally untouched (both
+`KeyError` raises sit **outside** the new `try`).
+
+**Mutation: 6 mutations, zero survivors** — including message-content mutants (append driver text;
+append SQL + path) and the type mutant (`RuntimeError` → `KeyError`). Plus M3, which proves the tests
+reject the **wrong fix**, not merely the absence of an exception.
+
+**Test-vacuity closed.** Karen probed which statement actually raises: cold → `_ensure_schema:510`
+(the real window); warm → plain `KeyError` (the vacuous configuration an earlier draft had). The
+shipped blocker keeps `user_version` at 0 by holding its DDL in an *uncommitted* transaction, so the
+service genuinely attempts DDL.
+
+**Disclosed limitation, adjudicated acceptable:** `resume_operation`'s arm is pinned by injection, not
+real contention — under a real lock `consume_and_create_operation` denies first, so the arm is
+unreachable. M1 confirms the injection test proves nothing about the *raise*; it does not need to,
+because the raise is proven by the source-level test, and M3/M4 confirm it pins what it claims
+(classification). The alternative was shipping that sibling untested — the exact pattern this is the
+eighth instance of.
+
+### P2 gate status
+
+| Lens | Tree | Verdict |
+|---|---|---|
+| Security (AC-mandated), Opus | `be6ba96` | **APPROVED** — AC OPM-2 MET, AC OPM-3 MET |
+| Karen, Opus | `ad7d461` | **APPROVED** |
+
+The two APPROVED verdicts are on different trees. Everything between them
+(`be6ba96..ad7d461`) is **guard-strengthening plus tests only** — no behavior is weakened, and both
+rounds independently re-confirmed the 16-node pre-P2 baseline with zero operator nodes.
+
+### K4-NB-1 (High) — the same class is REPRODUCED in `operator_receipt_service.py`. Assign to P3.
+
+Karen probed the adjacent class it flagged in round 4 and it is no longer theoretical. That file has
+**zero** `OperationalError` handlers across all 7 `_ensure_schema` sites, and three methods leak raw:
+
+```
+load_terminal_receipt   -> RAW sqlite3.OperationalError LEAKED: database is locked
+load_checkpoint         -> RAW sqlite3.OperationalError LEAKED: database is locked
+resolve_resume_point    -> RAW sqlite3.OperationalError LEAKED: database is locked
+```
+
+Reachable from **the same two governed APIs K4-BLOCK-1 was about**
+(`operator_cancel_resume_service.py:940`, `:949`, `:1126`, `:1130`). Sites `:416`, `:575`, `:733`,
+`:1094` are the same shape and unprobed. Not blocked on here because it is pre-existing at `4e3e62f`,
+untouched by the K4 delta, and blocking a narrow re-gate on it would be manufacturing a blocker —
+**but it must not be re-deferred as "adjacent" a third time.** The P3 wave is already editing this
+file.
+
+### Other non-blocking
+
+- **K4-NB-2 (Low)** — NB-b was fixed on `record_confirmation` (zero production callers) and left open
+  on `consume_and_create_operation`'s two log sites (`:1155`, `:1216`), which have real callers. The
+  asymmetry is backwards.
+- **K4-NB-3 (Low)** — `OperationRecord.from_manifest` raises bare `KeyError` on a malformed manifest,
+  which both callers map to `not_found`: corrupt data reported as "does not exist". Same
+  KeyError-overload hazard the K4 fix's own rationale identifies, one layer over.
+
+### The durable lesson of rounds 3–5
+
+Three consecutive blockers (K3-BLOCK-1, K4-BLOCK-1, K4-NB-1) are **one defect**: an unguarded
+`_ensure_schema` on a shared SQLite file. Each round closed the instance in front of it and the sweep
+found the next. The generalizable rule: when a defect is a *property of a pattern* rather than a
+site, enumerate every occurrence of the pattern in the first round and fix them as a set — closing
+them one gate at a time costs a full adversarial round per instance.

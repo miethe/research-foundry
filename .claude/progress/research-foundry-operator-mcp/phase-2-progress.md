@@ -119,3 +119,15 @@ docstring is a silent gap (Karen K3-NB-4, round 3).
 | 3 | Karen | `be6ba96` | CHANGES_REQUESTED — K3-BLOCK-1 |
 
 Detail: `.claude/findings/research-foundry-operator-mcp-findings.md` §`FIND-P2-REGATE-R3`.
+
+### Gate record (final)
+
+| Round | Lens | Tree | Verdict |
+|---|---|---|---|
+| 4 | Karen | `4e3e62f` | CHANGES_REQUESTED — K4-BLOCK-1 |
+| 5 | Karen | `ad7d461` | **APPROVED** |
+
+Security lens APPROVED on `be6ba96`; `be6ba96..ad7d461` is guard-strengthening + tests only.
+Carried to P3 as a **High** obligation: `K4-NB-1` — `operator_receipt_service.py` leaks raw
+`sqlite3.OperationalError` from `load_terminal_receipt`/`load_checkpoint`/`resolve_resume_point`
+(reproduced), reachable from the same two governed APIs. Detail: `FIND-P2-REGATE-R4R5`.

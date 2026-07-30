@@ -91,7 +91,11 @@ from research_foundry.services.operator_cancel_resume_service import (
     ActionSpec,
     OperatorCancelResumeService,
 )
-from research_foundry.services.operator_operation_service import OperatorOperationService
+from research_foundry.services import operator_operation_service as ops_module
+from research_foundry.services.operator_operation_service import (
+    OperationStoreUnavailableError,
+    OperatorOperationService,
+)
 from research_foundry.services.operator_receipt_service import OperatorReceiptService, ReceiptOutcome
 
 # Reuse, never reinvent (per this task's instructions and the project's own
@@ -2760,3 +2764,154 @@ def test_run_actions_checks_cancellation_with_the_operations_workspace_id(
     assert len(calls) == len(actions)
     for call in calls:
         assert call.get("workspace_id") == workspace_id
+
+
+# ---------------------------------------------------------------------------
+# K4-BLOCK-1 (Karen gate, tree `4e3e62f`): `load_operation`'s cold-start read
+# must not leak a raw driver exception past its two governed callers.
+# ---------------------------------------------------------------------------
+
+
+def _block_operations_db(paths: FoundryPaths) -> sqlite3.Connection:
+    """Hold a REAL competing writer lock on the operations DB. Caller must
+    ROLLBACK + close. Materializes the file first so the blocker can open
+    it, then leaves the schema in place -- `load_operation`'s own
+    `_ensure_schema` still attempts DDL and blocks behind this."""
+
+    paths.operator_operations_db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(paths.operator_operations_db), isolation_level=None)
+    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("CREATE TABLE IF NOT EXISTS _k4_blocker (x INTEGER)")
+    return conn
+
+
+def test_request_cancellation_denies_retryably_when_operations_store_is_locked(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K4-BLOCK-1: `load_operation` does `_ensure_schema` (DDL -> RESERVED
+    lock) then SELECT with no handler, so under a concurrent writer it
+    raised a raw `sqlite3.OperationalError` -- which sails past this
+    caller's `except KeyError` and out of a governed API.
+
+    The assertion that matters is `reason_code == "internal_error"`, NOT
+    merely "did not raise": denying as `not_found` would be a *worse*
+    fix than the leak, because it reports a transient, retryable lock as a
+    permanent "this operation does not exist" and a caller would stop
+    retrying. So this test pins the CLASSIFICATION, not just the absence
+    of an exception.
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    # Cold store on purpose (see `_block_operations_db`). `operation_id`
+    # need not exist -- the not-found path is exactly the one a caller can
+    # invoke at will, which is what makes this caller-triggerable.
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(tmp_foundry)
+    try:
+        cancel = svc.request_cancellation(
+            "op-does-not-exist", workspace_id="ws-any", requested_by="alice"
+        )
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    assert cancel.outcome == "denied"
+    assert cancel.reason_code == "internal_error"
+
+
+def test_load_operation_raises_bounded_error_not_raw_driver_exception_when_locked(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K4-BLOCK-1 at the source. Bounded per
+    `operator_mcp_error.schema.yaml` (AC OPM-7): no driver text, no SQL, no
+    path. Deliberately NOT a `KeyError` -- see
+    `OperationStoreUnavailableError`."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(tmp_foundry)
+    try:
+        with pytest.raises(OperationStoreUnavailableError) as excinfo:
+            op_service.load_operation("op-does-not-exist")
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    message = str(excinfo.value)
+    assert "database is locked" not in message
+    assert "SELECT" not in message
+    assert str(tmp_foundry.operator_operations_db) not in message
+    assert not isinstance(excinfo.value, sqlite3.OperationalError)
+    # Must NOT be swallowed by callers' `except KeyError` -- that is the
+    # whole reason for a distinct type.
+    assert not isinstance(excinfo.value, KeyError)
+
+
+def test_resume_operation_denies_retryably_when_operations_store_is_locked(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K4-BLOCK-1, sibling arm. `resume_operation`'s `load_operation` call
+    sits AFTER `consume_and_create_operation`, so a real cold-store lock
+    denies earlier and never reaches it -- which is precisely why this arm
+    would otherwise ship untested, the sibling-gap pattern this workstream
+    has hit eight times. The raise itself is proven real against genuine
+    contention by
+    `test_load_operation_raises_bounded_error_not_raw_driver_exception_when_locked`;
+    what is pinned HERE is the CLASSIFICATION: `internal_error`
+    (transient/retryable), never `not_found`.
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    resume_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="job.resume",
+        idempotency_key="resume-k4",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("agent_job", operation_id),),
+        resolved_target_workspaces=(_IDENTITY.workspace_id,),
+    )
+    resume_confirmation_id, resume_token, record = _mint_and_record(op_service, resume_ctx)
+    resume_authorization = _authorize(
+        tmp_foundry, resume_ctx, confirmation_record=record, presented_token=resume_token
+    )
+
+    def _unavailable(*args: object, **kwargs: object) -> object:
+        raise OperationStoreUnavailableError(
+            "operation could not be read: operations database unavailable"
+        )
+
+    monkeypatch.setattr(op_service, "load_operation", _unavailable)
+
+    resume_outcome = svc.resume_operation(
+        operation_id,
+        identity=_IDENTITY,
+        resume_ctx=resume_ctx,
+        resume_confirmation_id=resume_confirmation_id,
+        resume_presented_token=resume_token,
+        resume_authorization=resume_authorization,
+        actions=[_action("act-0", [])],
+        operation_kind=ctx.operation_kind,
+        workspace_id=workspace_id,
+        attempt_adapter=attempt_adapter,
+        attempt_provider="claude_agent_sdk",
+        attempt_model_profile="rf_synthesize_deep",
+        attempt_request_kind="research",
+        attempt_policy_snapshot=dict(_MINIMAL_POLICY_SNAPSHOT),
+    )
+
+    assert resume_outcome.outcome == "denied"
+    assert resume_outcome.reason_code == "internal_error"
+    assert resume_outcome.new_attempt is None
