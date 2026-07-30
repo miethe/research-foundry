@@ -29,14 +29,27 @@ receipt fixtures deny") is split across TWO enforcement points, by design,
 so each defect class is caught as close to its root cause as possible and
 NONE of the five degrade to a raw, un-governed exception:
 
-* **DUPLICATE** and **MISMATCHED** are caught at WRITE time, against REAL
-  persisted state (never a fake/in-memory stand-in):
-    - :meth:`record_action_receipt`'s INSERT targets a table whose PRIMARY
-      KEY is `(operation_id, action_index)` (and a UNIQUE index on
-      `(operation_id, action_id)`) -- a second receipt presenting an
-      `action_index`/`action_id` already recorded for this `operation_id`
-      raises `sqlite3.IntegrityError`, caught here and turned into a
-      governed `ReceiptOutcome("denied", "internal_error", None)`.
+* **DUPLICATE**, **MISMATCHED**, and **GAP/OUT-OF-ORDER (REORDERED's
+  write-time half, U5/REGATE-BLOCK-3)** are caught at WRITE time, against
+  REAL persisted state (never a fake/in-memory stand-in):
+    - :meth:`record_action_receipt` requires `action_index` to be EXACTLY
+      the next contiguous index for `operation_id` --
+      `COUNT(*)` of its own already-persisted `action_receipts`, read
+      INSIDE the same locked transaction as its own INSERT. A receipt
+      presenting any OTHER index -- one already recorded (DUPLICATE) or
+      one that skips ahead (GAP) -- denies before a single row is written.
+      This closes the hole an earlier revision of this module had: a gap
+      receipt used to be ACCEPTED, and because `action_receipts` is
+      immutable (no UPDATE/DELETE path, enforced by DB trigger), the only
+      way to discover the gap was later, at `resolve_resume_point`/
+      reconciliation time -- by which point the operation could never
+      resume or finalize again. Enforcing contiguity AT WRITE TIME means
+      that unrecoverable state can no longer be CREATED in the first
+      place. A second receipt reusing an already-recorded `action_id`
+      under a DIFFERENT, correctly-contiguous `action_index` remains
+      caught by the table's own `sqlite3.IntegrityError` (`UNIQUE
+      (operation_id, action_id)`), turned into the identical governed
+      `ReceiptOutcome("denied", "internal_error", None)`.
     - :meth:`record_effect_receipt` first checks, INSIDE the same locked
       transaction as its own INSERT, that `action_id` references an
       already-persisted `action_receipt` for this `operation_id` -- an
@@ -46,16 +59,21 @@ NONE of the five degrade to a raw, un-governed exception:
       identity) -- a second receipt presenting the SAME digest (even for a
       different action) also denies via the identical `IntegrityError`
       path.
-* **TRUNCATED**, **EXTRA**, and **REORDERED** are properties of the WHOLE
-  persisted set relative to the operation's own declared action count, so
-  they can only be caught at RECONCILIATION time -- :meth:`_reconcile`,
-  called from :meth:`finalize_terminal_receipt`, reads back every
-  `action_receipt` for `operation_id` and denies unless the persisted
-  `action_index` values are EXACTLY the contiguous sequence
-  `range(expected_action_count)` (too few is truncated, too many is extra,
-  present-but-out-of-sequence is reordered -- all three collapse to the
-  same `!= list(range(...))` check once duplicates/gaps are impossible by
-  construction, per the write-time guard above).
+* **TRUNCATED** and **EXTRA-beyond-the-operation's-own-declared-total**
+  remain properties of the WHOLE persisted set relative to that declared
+  count, caught at RECONCILIATION time -- :meth:`_reconcile`, called from
+  :meth:`finalize_terminal_receipt`, reads back every `action_receipt` for
+  `operation_id` and denies unless the persisted `action_index` values are
+  EXACTLY the contiguous sequence `range(expected_action_count)` (too few
+  is TRUNCATED, too many is EXTRA; true REORDERED -- present but
+  out-of-sequence -- can no longer occur at all once the write-time
+  contiguity guard above is in place, so this check now exists for
+  TRUNCATED/EXTRA and as a defense-in-depth backstop against any
+  direct-SQL/out-of-band write that bypasses this module entirely).
+  :meth:`resolve_resume_point` ALSO catches EXTRA earlier, before any
+  (re-)execution, when its caller supplies its own `total_action_count`
+  (P2S-BLOCK-2) -- reconciliation remains the LAST-resort, always-correct
+  backstop for whatever reaches it regardless of caller diligence.
 
 AUDIT IS SUPPLEMENTAL, RECEIPT IS PRIMARY (OPM-OQ-6, quality-gate
 invariant): :meth:`finalize_terminal_receipt` calls
@@ -84,25 +102,34 @@ caller supplies both counts directly there) and :meth:`finalize_terminal_receipt
 since `completed_action_count` there is a subset count of the SAME rows
 `_reconcile` has already proven number exactly `expected_action_count`).
 
-**Sensitivity threshold (P2S-NB-1, assessed and deliberately deferred, not
-a silent gap)**: this module's identity-scoping seam (P2S-BLOCK-3, above)
-enforces WORKSPACE only, never `effective_sensitivity`. This is an explicit
-architectural decision, not an oversight: `operations.effective_sensitivity`
-is written once, at creation, by `operator_operation_service.py`, and this
-codebase's established precedent (the runs/reports API routers' own
-`sensitivity_threshold`/`resolve_workspace_isolation_active`-style gating)
-enforces a sensitivity CEILING at the CALLER/transport boundary -- the
-layer that knows the REQUESTING actor's own clearance -- not inside a
-low-level durable store that has no such context and would otherwise need
-a THIRD scoping parameter threaded through every read/write in this
-module ahead of any P3-P5 caller existing to supply it correctly. P5
-(`OPM-5.4`, the plan's own "limits and error mapping ... at the transport
-boundary" task) is the correct, already-planned integration point for an
-above-threshold gate; wiring one INTO this store now, before that
-boundary exists, would be unvalidated surface area with no real caller to
-prove it against. Workspace scoping alone is not a partial substitute for
-this -- it is the orthogonal, independently-complete half of AC OPM-2 this
-module owns.
+**Sensitivity threshold (P2S-NB-1 / REGATE-NB-5, corrected -- an earlier
+revision of this note stated something false and is superseded by this
+one)**: this module's identity-scoping seam (P2S-BLOCK-3 / REGATE-BLOCK-2,
+above) enforces WORKSPACE on every read AND every write; it does NOT
+enforce `effective_sensitivity` anywhere in this module. That is NOT the
+same as "sensitivity is unenforced" -- it already IS enforced, upstream of
+this module entirely: `operator_mcp_policy._check_guard` denies an
+above-ceiling `PolicyContext` with the SAME non-existence-leak
+`reason_code == "not_found"` this module's own denials use, before
+`consume_and_create_operation` ever persists a manifest, and that guard
+re-runs on every resume. (An earlier revision of this note claimed
+sensitivity was "never read in any gate" -- that was wrong; grepping
+`operator_mcp_policy.py` for `effective_sensitivity` finds it read at the
+guard's own comparison, not zero times.) What genuinely IS a gap, narrowly:
+no READ path in this module (:meth:`load_terminal_receipt`,
+:meth:`load_checkpoint`, :meth:`resolve_resume_point`, and
+`OperatorOperationService.load_operation` one module over) accepts a
+sensitivity threshold, so an in-workspace caller can freely read an
+above-threshold operation's receipts once past the workspace check. What
+is separately, genuinely DEAD: the denormalized `operations.
+effective_sensitivity` COLUMN -- written once at creation
+(`operator_operation_service.py`), read by zero query anywhere in this
+codebase (every SELECT against `operations` projects `manifest_json`
+instead, which itself embeds the same value). Adding a threshold parameter
+to the read paths above is deferred to `OPM-5.4` (the plan's own "limits
+and error mapping ... at the transport boundary" task, and the layer that
+will actually know the REQUESTING actor's own clearance) -- a real,
+tracked, narrow deferral, not a silent gap and not a non-issue.
 """
 
 from __future__ import annotations
@@ -203,11 +230,17 @@ class ReceiptOutcome:
             returned, never a second row.
         `"denied"`
             The write was refused -- `reason_code` is one of
-            `operator_mcp_policy.CLOSED_REASON_CODES` (always
-            `"internal_error"` in this module: every denial here is a
-            receipt-integrity/reconciliation violation, never a
-            caller-request-shaped policy denial -- see module docstring).
-            Zero rows written.
+            `operator_mcp_policy.CLOSED_REASON_CODES`, one of exactly two
+            values in this module: `"not_found"` for a workspace-
+            authorization denial (U1/U2 -- a phantom `operation_id` or one
+            in a DIFFERENT workspace than the caller-supplied
+            `workspace_id`; the two are INDISTINGUISHABLE, mirroring
+            `OperatorOperationService.load_operation`'s own no-existence-
+            leak convention), or `"internal_error"` for a receipt-
+            integrity/reconciliation violation (DUPLICATE/GAP/MISMATCHED at
+            write time, TRUNCATED/EXTRA at reconciliation) -- never a
+            caller-request-shaped policy denial (see module docstring).
+            Zero rows written either way.
     """
 
     outcome: Literal["created", "exact_replay", "denied"]
@@ -262,6 +295,7 @@ class OperatorReceiptService:
         self,
         operation_id: str,
         *,
+        workspace_id: str,
         action_id: str,
         action_index: int,
         status: str,
@@ -273,13 +307,39 @@ class OperatorReceiptService:
     ) -> ReceiptOutcome:
         """Persist one immutable `action_receipt`.
 
-        Denies (governed, never a raw exception) if `action_index` or
-        `action_id` was already recorded for this `operation_id` -- the
-        DUPLICATE/REORDERED write-time guard (module docstring).
+        **U2/REGATE-BLOCK-2 (workspace-AUTHORIZED, not merely
+        workspace-attributed)**: `workspace_id` is the caller's OWN claimed
+        authority to write this receipt -- checked, INSIDE the same locked
+        transaction as the INSERT, against the REAL `workspace_id` derived
+        from the `operations` row `operation_id` references. A phantom
+        `operation_id` (no such row) and a wrong-workspace `operation_id`
+        (a real row in a DIFFERENT workspace) are INDISTINGUISHABLE --
+        both deny with `reason_code == "not_found"`, zero row written --
+        mirroring `request_cancellation`'s own hard-denial pattern in
+        `operator_cancel_resume_service.py` (this method previously had NO
+        workspace parameter at all: it could not authorize what it never
+        received).
+
+        **U5/REGATE-BLOCK-3 (write-time contiguity -- the GAP guard)**:
+        `action_index` MUST be exactly the next contiguous index for
+        `operation_id` (`COUNT(*)` of its own already-persisted
+        `action_receipts`, read inside the SAME locked transaction).
+        Denies (governed, never a raw exception, zero row written) if
+        `action_index` was already recorded (DUPLICATE) OR skips ahead
+        (GAP/OUT-OF-ORDER) -- see module docstring's RECONCILIATION
+        section for why this must be enforced AT WRITE TIME: `action_receipts`
+        rows are immutable (DB trigger), so a gap accepted here could never
+        later be repaired, only discovered (permanently bricking
+        `operation_id`'s ability to resume or finalize). A second receipt
+        reusing an already-recorded `action_id` under a correctly-contiguous
+        `action_index` remains caught by the table's own `UNIQUE
+        (operation_id, action_id)` constraint.
         """
 
         if not isinstance(operation_id, str) or not operation_id:
             raise ValueError("record_action_receipt requires a non-empty operation_id")
+        if not isinstance(workspace_id, str) or not workspace_id:
+            raise ValueError("record_action_receipt requires a non-empty workspace_id")
         if not isinstance(action_id, str) or not action_id:
             raise ValueError("record_action_receipt requires a non-empty action_id")
         if isinstance(action_index, bool) or not isinstance(action_index, int) or action_index < 0:
@@ -338,24 +398,47 @@ class OperatorReceiptService:
             _ops_store._ensure_schema(conn)
             conn.execute("BEGIN IMMEDIATE")
             try:
-                # P2S-BLOCK-4: referential integrity -- `operation_id` MUST
-                # reference an already-persisted `operations` manifest.
-                # Checked INSIDE this locked transaction (mirrors
-                # `record_effect_receipt`'s own MISMATCHED guard immediately
-                # below): without this, a single out-of-turn receipt for a
-                # phantom operation_id was accepted and, because
-                # action_receipts rows are immutable, could never be
-                # repaired -- permanently bricking that operation_id the
-                # moment a REAL operation with the same id (astronomically
-                # unlikely, but the point is this store must not depend on
-                # that) or any resume/reconcile path touched it.
-                if _derive_workspace_id(conn, operation_id) is None:
+                # P2S-BLOCK-4 + U2/REGATE-BLOCK-2: referential integrity AND
+                # workspace authorization, both checked INSIDE this locked
+                # transaction, both denying with the SAME indistinguishable
+                # `not_found` shape (mirrors `record_effect_receipt`'s own
+                # guard immediately below, and `request_cancellation`'s
+                # hard-denial pattern one module over).
+                resolved_workspace_id = _derive_workspace_id(conn, operation_id)
+                if resolved_workspace_id is None or resolved_workspace_id != workspace_id:
+                    conn.execute("ROLLBACK")
+                    _logger.error(
+                        json.dumps(
+                            {
+                                "event": "workspace_scope_enforced_denial",
+                                "record_type": "action_receipt",
+                                "record_id": operation_id,
+                                "record_workspace_id": resolved_workspace_id,
+                                "identity_workspace_id": workspace_id,
+                            }
+                        )
+                    )
+                    return ReceiptOutcome("denied", "not_found", None)
+
+                # U5/REGATE-BLOCK-3: write-time contiguity -- `action_index`
+                # must be exactly the count of already-persisted
+                # action_receipts for this operation_id (the next expected
+                # index). See this method's own docstring and the module
+                # docstring's RECONCILIATION section for the full rationale.
+                next_expected_index = conn.execute(
+                    "SELECT COUNT(*) FROM action_receipts WHERE operation_id = ?",
+                    (operation_id,),
+                ).fetchone()[0]
+                if action_index != next_expected_index:
                     conn.execute("ROLLBACK")
                     _logger.error(
                         "operator_receipt_service: action_receipt REJECTED -- "
-                        "operation_id=%s has no persisted operation manifest "
-                        "(referential integrity guard, P2S-BLOCK-4)",
+                        "action_index=%d for operation_id=%s is not the next "
+                        "contiguous index (expected %d) -- denying at write "
+                        "time so a gap can never be created (U5/REGATE-BLOCK-3)",
+                        action_index,
                         operation_id,
+                        next_expected_index,
                     )
                     return ReceiptOutcome("denied", "internal_error", None)
 
@@ -404,6 +487,7 @@ class OperatorReceiptService:
         self,
         operation_id: str,
         *,
+        workspace_id: str,
         action_id: str,
         effect_kind: str,
         effect_digest: str,
@@ -416,10 +500,18 @@ class OperatorReceiptService:
         already-persisted `action_receipt` for this `operation_id` -- the
         MISMATCHED write-time guard -- or if `effect_digest` was already
         recorded (for ANY action/operation) -- the DUPLICATE guard.
+
+        **U2/REGATE-BLOCK-2**: `workspace_id` is authorized against the
+        REAL, derived workspace for `operation_id`, identically to
+        :meth:`record_action_receipt` -- see that method's docstring. A
+        phantom `operation_id` and a wrong-workspace one are
+        indistinguishable, denying `reason_code == "not_found"`.
         """
 
         if not isinstance(operation_id, str) or not operation_id:
             raise ValueError("record_effect_receipt requires a non-empty operation_id")
+        if not isinstance(workspace_id, str) or not workspace_id:
+            raise ValueError("record_effect_receipt requires a non-empty workspace_id")
         if not isinstance(action_id, str) or not action_id:
             raise ValueError("record_effect_receipt requires a non-empty action_id")
         if not isinstance(effect_kind, str) or not effect_kind:
@@ -460,23 +552,28 @@ class OperatorReceiptService:
             _ops_store._ensure_schema(conn)
             conn.execute("BEGIN IMMEDIATE")
             try:
-                # P2S-BLOCK-4: referential integrity, direct check (defense
-                # in depth -- "fix the layer below": once
-                # `record_action_receipt` closes the phantom-operation_id
-                # hole, this is transitively unreachable via the
-                # MISMATCHED guard just below (an action_receipt cannot
-                # exist for a phantom operation), but a DIRECT caller of
-                # THIS method alone must not depend on that other guard
-                # staying correct forever).
-                if _derive_workspace_id(conn, operation_id) is None:
+                # P2S-BLOCK-4 + U2/REGATE-BLOCK-2: referential integrity AND
+                # workspace authorization, direct check (defense in depth --
+                # "fix the layer below": once `record_action_receipt` closes
+                # the phantom-operation_id hole, this is transitively
+                # unreachable via the MISMATCHED guard just below, but a
+                # DIRECT caller of THIS method alone must not depend on that
+                # other guard staying correct forever).
+                resolved_workspace_id = _derive_workspace_id(conn, operation_id)
+                if resolved_workspace_id is None or resolved_workspace_id != workspace_id:
                     conn.execute("ROLLBACK")
                     _logger.error(
-                        "operator_receipt_service: effect_receipt REJECTED -- "
-                        "operation_id=%s has no persisted operation manifest "
-                        "(referential integrity guard, P2S-BLOCK-4)",
-                        operation_id,
+                        json.dumps(
+                            {
+                                "event": "workspace_scope_enforced_denial",
+                                "record_type": "effect_receipt",
+                                "record_id": operation_id,
+                                "record_workspace_id": resolved_workspace_id,
+                                "identity_workspace_id": workspace_id,
+                            }
+                        )
                     )
-                    return ReceiptOutcome("denied", "internal_error", None)
+                    return ReceiptOutcome("denied", "not_found", None)
 
                 # MISMATCHED guard -- checked INSIDE this locked
                 # transaction (not a separate, earlier read) so no
@@ -548,6 +645,23 @@ class OperatorReceiptService:
         `completed_action_count > total_action_count`, or if
         `next_action_index`'s nullness disagrees with `status` -- see
         module docstring and :func:`_validate_action_counts`.
+
+        **U1/REGATE-BLOCK-2 (workspace-AUTHORIZED, not merely
+        workspace-attributed)**: `workspace_id` is the caller's OWN claimed
+        authority to write this checkpoint -- checked against the REAL
+        `workspace_id` derived from the `operations` row `operation_id`
+        references. A phantom `operation_id` and a wrong-workspace one are
+        INDISTINGUISHABLE -- both deny (`reason_code == "not_found"`), zero
+        row written. An earlier revision of this method DERIVED the real
+        value and used it (logging a warning) even when the caller-supplied
+        one disagreed -- that is attribution, not authorization: it
+        silently accepted whatever a caller claimed, then quietly
+        substituted the truth for storage, meaning any caller holding an
+        `operation_id` (not a secret -- it appears in every caller-visible
+        envelope, log line, and receipt) could plant a value into another
+        workspace's IMMUTABLE checkpoint row. This method now matches
+        `finalize_terminal_receipt`'s identical hardening and
+        `request_cancellation`'s hard-denial pattern one module over.
         """
 
         if status not in ("pending", "converged"):
@@ -568,35 +682,27 @@ class OperatorReceiptService:
         try:
             _ops_store._ensure_schema(conn)
 
-            # P2S-BLOCK-3/BLOCK-4: derive the REAL workspace_id from the
-            # authoritative `operations` row rather than trusting the
-            # caller-supplied parameter (which, before this fix, was
-            # written verbatim into an IMMUTABLE row -- a wrong or forged
-            # attribution could never be corrected). Denies (governed,
-            # never a raw write) if `operation_id` has no persisted
-            # manifest at all -- the same referential-integrity guard as
-            # the receipt tables. Safe to read unlocked: see
-            # `_derive_workspace_id`'s own docstring.
+            # U1/REGATE-BLOCK-2 (was P2S-BLOCK-3/BLOCK-4): derive the REAL
+            # workspace_id from the authoritative `operations` row and DENY
+            # -- never silently correct -- when it disagrees with the
+            # caller-supplied one, or when `operation_id` has no persisted
+            # manifest at all. Both collapse to the SAME indistinguishable
+            # `not_found` denial, zero row written. Safe to read unlocked:
+            # see `_derive_workspace_id`'s own docstring.
             resolved_workspace_id = _derive_workspace_id(conn, operation_id)
-            if resolved_workspace_id is None:
+            if resolved_workspace_id is None or resolved_workspace_id != workspace_id:
                 _logger.error(
-                    "operator_receipt_service: write_checkpoint REJECTED -- "
-                    "operation_id=%s has no persisted operation manifest "
-                    "(referential integrity guard, P2S-BLOCK-4)",
-                    operation_id,
+                    json.dumps(
+                        {
+                            "event": "workspace_scope_enforced_denial",
+                            "record_type": "checkpoint",
+                            "record_id": operation_id,
+                            "record_workspace_id": resolved_workspace_id,
+                            "identity_workspace_id": workspace_id,
+                        }
+                    )
                 )
-                return ReceiptOutcome("denied", "internal_error", None)
-            if workspace_id != resolved_workspace_id:
-                _logger.warning(
-                    "operator_receipt_service: write_checkpoint caller-supplied "
-                    "workspace_id=%r for operation_id=%s does not match the "
-                    "operation's own workspace_id=%r -- using the operation's "
-                    "value (P2S-BLOCK-3 hardening)",
-                    workspace_id,
-                    operation_id,
-                    resolved_workspace_id,
-                )
-            workspace_id = resolved_workspace_id
+                return ReceiptOutcome("denied", "not_found", None)
 
             checkpoint: dict[str, Any] = {
                 "schema_version": "1.0",
@@ -775,6 +881,23 @@ class OperatorReceiptService:
         on a TRUNCATED/EXTRA/REORDERED defect (logged server-side; see
         module docstring for why DUPLICATE/MISMATCHED can never reach this
         point at all).
+
+        **U8/REGATE (redundant-guard consolidation)**: an earlier revision
+        checked `len(action_rows) != expected_action_count` (TRUNCATED/
+        EXTRA) as a SEPARATE, earlier statement from the contiguity check
+        below (REORDERED). That separate length check was provably
+        redundant -- and therefore untestable on its own: two Python lists
+        of DIFFERENT lengths can never compare equal, so ANY count mismatch
+        (too few or too many rows) ALSO fails the contiguity comparison
+        below by itself, with the byte-identical `ReceiptOutcome("denied",
+        "internal_error", None)` observable either way. Deleting that first
+        check left every TRUNCATED/EXTRA test green (the contiguity check
+        caught them anyway) -- a guard whose removal does not change any
+        observable behavior is not a guard a test can pin. Collapsed to the
+        ONE check below, which is -- and always was -- sufficient for all
+        three defect classes: too few rows never form a valid
+        `range(expected_action_count)` prefix, too many never form a valid
+        one either, and neither does any out-of-sequence set.
         """
 
         action_rows = conn.execute(
@@ -783,22 +906,13 @@ class OperatorReceiptService:
             (operation_id,),
         ).fetchall()
 
-        if len(action_rows) != expected_action_count:
-            _logger.error(
-                "operator_receipt_service: reconciliation failed for operation_id=%s -- "
-                "persisted %d action_receipt(s), expected %d (TRUNCATED if fewer, "
-                "EXTRA if more)",
-                operation_id,
-                len(action_rows),
-                expected_action_count,
-            )
-            return None
-
         indices = [row["action_index"] for row in action_rows]
         if indices != list(range(expected_action_count)):
             _logger.error(
                 "operator_receipt_service: reconciliation failed for operation_id=%s -- "
-                "action_index sequence %r is not the contiguous range(%d) (REORDERED)",
+                "persisted action_index sequence %r is not the contiguous "
+                "range(%d) (TRUNCATED if shorter, EXTRA if longer, REORDERED "
+                "if same length but out of sequence)",
                 operation_id,
                 indices,
                 expected_action_count,
@@ -894,6 +1008,20 @@ class OperatorReceiptService:
         Audit delivery NEVER blocks or erases the terminal receipt -- see
         module docstring's "AUDIT IS SUPPLEMENTAL, RECEIPT IS PRIMARY"
         section and :meth:`_record_supplemental_audit_event`.
+
+        **U1/REGATE-BLOCK-2 (workspace-AUTHORIZED, not merely
+        workspace-attributed)**: identical hardening to
+        :meth:`write_checkpoint` -- `workspace_id` is authorized against
+        the REAL, derived workspace for `operation_id` and a mismatch (or a
+        phantom `operation_id`) DENIES (`reason_code == "not_found"`, zero
+        row written), indistinguishably. An earlier revision derived the
+        real value and used it anyway on a mismatch (logging a warning) --
+        that let ANY caller holding an `operation_id` plant a permanent,
+        immutable, forged terminal receipt on another workspace's
+        operation (demonstrated empirically: a forged `status="failed"`
+        receipt written by an attacker-supplied `workspace_id` was later
+        read back by the operation's own LEGITIMATE, successful run,
+        permanently, since `terminal_receipts` is immutable by trigger).
         """
 
         if status not in ("completed", "failed", "denied", "canceled"):
@@ -915,32 +1043,27 @@ class OperatorReceiptService:
         try:
             _ops_store._ensure_schema(conn)
 
-            # P2S-BLOCK-3/BLOCK-4: derive the REAL workspace_id from the
-            # authoritative `operations` row -- see `write_checkpoint`'s
-            # identical guard for the full rationale. Checked BEFORE the
-            # `existing`/idempotency short-circuit so a phantom
-            # operation_id can never even produce an `"exact_replay"`
-            # lookup hit.
+            # U1/REGATE-BLOCK-2 (was P2S-BLOCK-3/BLOCK-4): derive the REAL
+            # workspace_id from the authoritative `operations` row and DENY
+            # -- never silently correct -- on absence or disagreement,
+            # collapsed to the SAME indistinguishable `not_found` denial.
+            # Checked BEFORE the `existing`/idempotency short-circuit so a
+            # phantom/mismatched operation_id can never even produce an
+            # `"exact_replay"` lookup hit.
             resolved_workspace_id = _derive_workspace_id(conn, operation_id)
-            if resolved_workspace_id is None:
+            if resolved_workspace_id is None or resolved_workspace_id != workspace_id:
                 _logger.error(
-                    "operator_receipt_service: finalize_terminal_receipt REJECTED -- "
-                    "operation_id=%s has no persisted operation manifest "
-                    "(referential integrity guard, P2S-BLOCK-4)",
-                    operation_id,
+                    json.dumps(
+                        {
+                            "event": "workspace_scope_enforced_denial",
+                            "record_type": "terminal_receipt",
+                            "record_id": operation_id,
+                            "record_workspace_id": resolved_workspace_id,
+                            "identity_workspace_id": workspace_id,
+                        }
+                    )
                 )
-                return ReceiptOutcome("denied", "internal_error", None)
-            if workspace_id != resolved_workspace_id:
-                _logger.warning(
-                    "operator_receipt_service: finalize_terminal_receipt caller-"
-                    "supplied workspace_id=%r for operation_id=%s does not match "
-                    "the operation's own workspace_id=%r -- using the operation's "
-                    "value (P2S-BLOCK-3 hardening)",
-                    workspace_id,
-                    operation_id,
-                    resolved_workspace_id,
-                )
-            workspace_id = resolved_workspace_id
+                return ReceiptOutcome("denied", "not_found", None)
 
             existing = conn.execute(
                 "SELECT receipt_json FROM terminal_receipts WHERE operation_id = ?",

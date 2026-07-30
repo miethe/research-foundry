@@ -875,23 +875,35 @@ class OperatorOperationService:
         if not isinstance(issued_at, str) or not issued_at:
             raise ValueError("record_confirmation requires a non-empty issued_at -- never defaulted")
 
-        # F4 enumeration (P2S-NB-4): a duplicate `confirmation_id` here
-        # raises `sqlite3.IntegrityError` raw through the `except Exception:
-        # ROLLBACK; raise` below -- assessed and DELIBERATELY left
-        # unconverted, unlike the two `RuntimeError` siblings this same
-        # review closed (`_Dur1InvariantViolation`,
-        # `_ManifestValidationInvariantViolation`). Rationale, not a silent
+        # F4 enumeration (P2S-NB-4, corrected by U9/REGATE §"judgment call 2"):
+        # a duplicate `confirmation_id` here raises `sqlite3.IntegrityError`
+        # raw through the `except Exception: ROLLBACK; raise` below --
+        # assessed and DELIBERATELY left unconverted, unlike the two
+        # `RuntimeError` siblings this same review closed
+        # (`_Dur1InvariantViolation`, `_ManifestValidationInvariantViolation`)
+        # AND unlike `consume_and_create_operation`'s own
+        # `sqlite3.OperationalError` sibling (U6/REGATE-NB-2, that method's
+        # docstring): an EARLIER version of this note implied raw DB
+        # exceptions could not otherwise cross this module's boundary, which
+        # was disproven empirically (an `OperationalError` from the CAS
+        # `UPDATE` killed a real child process in this tree's own
+        # full-suite run) BEFORE that sibling was closed. With U6 landed,
+        # the claim below is narrow and complete: EVERY reachable-by-
+        # contention raw exception in this module (lock acquisition,
+        # in-lock promotion, the two Python-raised invariants) is now
+        # governed; only this ONE, cryptographically-improbable collision
+        # remains raw, for the reasons that follow. Rationale, not a silent
         # gap: (1) `confirmation_id` is minted by `mint_confirmation` from a
         # `secrets.token_hex`-salted SHA-256 digest -- a collision is
         # cryptographic-strength improbable, a fundamentally different
-        # reachability class than the CAS-rowcount or manifest-validation
-        # invariants (both reachable in principle via a future refactor
-        # bug, which is why THOSE got converted); (2) this method has no
-        # established governed-outcome return contract to convert into --
-        # it returns `None` and is called exactly once, synchronously,
-        # inside the SAME request that just minted the record, never
-        # independently re-triggerable by a caller across a boundary the
-        # way `consume_and_create_operation`/the receipt methods are.
+        # reachability class than the CAS-rowcount, manifest-validation, or
+        # lock-contention invariants (all reachable in practice, which is
+        # why THOSE got converted); (2) this method has no established
+        # governed-outcome return contract to convert into -- it returns
+        # `None` and is called exactly once, synchronously, inside the SAME
+        # request that just minted the record, never independently
+        # re-triggerable by a caller across a boundary the way
+        # `consume_and_create_operation`/the receipt methods are.
         conn = _connect(self._paths)
         try:
             _ensure_schema(conn)
@@ -987,6 +999,21 @@ class OperatorOperationService:
         (never in the caller-visible surface, per
         `schemas/operator_mcp_error.schema.yaml`'s bounded/redacted
         contract).
+
+        **U6/REGATE-NB-2 (G2's own sibling, inside the lock)**: `BEGIN
+        IMMEDIATE` acquiring the RESERVED lock does not guarantee the
+        subsequent promotion to EXCLUSIVE (required by the CAS `UPDATE` and
+        the manifest `INSERT` inside `_consume_locked`) succeeds instantly --
+        that promotion can itself exhaust `_BUSY_TIMEOUT_MS` and raise the
+        SAME `sqlite3.OperationalError` from INSIDE the locked section,
+        after `BEGIN IMMEDIATE` already returned successfully. G2's original
+        fix wrapped only lock ACQUISITION and missed this; the enumeration
+        is now complete -- every statement between `BEGIN IMMEDIATE` and
+        `COMMIT` (the CAS `UPDATE`, the manifest `INSERT`, and `COMMIT`
+        itself) is covered by the SAME governed, retryable denial one frame
+        out, and `record_confirmation`'s own `sqlite3.IntegrityError`
+        disposition note (see that method's docstring) remains accurate
+        precisely because this sibling is now closed too.
         """
 
         if authorization is None:
@@ -1049,6 +1076,45 @@ class OperatorOperationService:
                 # F4 sibling (P2S-NB-4) -- identical bounded/governed
                 # treatment as `_Dur1InvariantViolation` immediately above.
                 conn.execute("ROLLBACK")
+                return OperationOutcome("denied", "internal_error", None)
+            except sqlite3.OperationalError as exc:
+                # U6/REGATE-NB-2 (G2 sibling): `BEGIN IMMEDIATE` acquires the
+                # RESERVED lock immediately, but SQLite only promotes to
+                # EXCLUSIVE lazily, on the first actual write inside this
+                # transaction (the CAS `UPDATE` at `_consume_locked`'s
+                # `"... WHERE confirmation_id = ? AND status = 'issued'"`, or
+                # the manifest `INSERT` immediately after it) -- so a
+                # `sqlite3.OperationalError: database is locked` can still
+                # fire AFTER `BEGIN IMMEDIATE` has already returned
+                # successfully, if that promotion is blocked (e.g. a
+                # concurrent reader holding a SHARED lock) long enough to
+                # exhaust `_BUSY_TIMEOUT_MS`. The original G2 fix wrapped
+                # ONLY `_ensure_schema`/`BEGIN IMMEDIATE` and missed this
+                # sibling entirely -- observed for real, escaping raw and
+                # killing a child process, in this tree's own full-suite
+                # run (`OperationalError` at the CAS `UPDATE` inside
+                # `_consume_locked`). Same governed, retryable
+                # `"internal_error"` denial as the BEGIN-IMMEDIATE-level G2
+                # catch above; the ROLLBACK below is itself best-effort --
+                # if the SAME lock contention that raised this also makes
+                # `ROLLBACK` raise, there is nothing left to protect (COMMIT
+                # was never reached on this path either way) and a second
+                # raw exception must not replace the governed denial about
+                # to be returned.
+                _logger.error(
+                    "operator_operation_service: DUR-1 lock contention (%s) inside "
+                    "the locked transaction for confirmation_id=%s -- database is "
+                    "locked past BEGIN IMMEDIATE's own acquisition (e.g. promoting "
+                    "to an exclusive lock while a concurrent reader still holds a "
+                    "shared one); denying as retryable rather than letting a raw "
+                    "sqlite3.OperationalError escape this module's boundary",
+                    type(exc).__name__,
+                    confirmation_id,
+                )
+                try:
+                    conn.execute("ROLLBACK")
+                except sqlite3.OperationalError:
+                    pass
                 return OperationOutcome("denied", "internal_error", None)
             except Exception:
                 conn.execute("ROLLBACK")

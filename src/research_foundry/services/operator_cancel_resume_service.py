@@ -509,22 +509,62 @@ class OperatorCancelResumeService:
         operation stops there -- no further actions run, and the terminal
         receipt is finalized `status="failed"`.
 
-        `record_action_receipt`/`record_effect_receipt`'s own `ReceiptOutcome`
-        is CHECKED, never assumed successful -- a `"denied"` outcome from
-        either (a receipt-integrity violation: duplicate/reordered/
-        mismatched, OPM-2.3's own write-time guards) stops the operation
-        immediately with `ExecutionOutcome("denied", ...)` and writes NO
-        further receipt -- `finalize_terminal_receipt` is deliberately not
-        attempted here, since the `expected_action_count` this method could
-        supply would only be a guess at a state already proven corrupt.
-        This branch is unreachable via `run_actions`' own normal control
-        flow (it only ever calls these with an index it has not itself
-        already written); it protects against a `start_index` computed
-        from stale/corrupt state reaching this method at all (e.g. a caller
-        that bypasses `resolve_resume_point`'s own denial).
+        `record_action_receipt`/`record_effect_receipt`/`write_checkpoint`'s
+        own `ReceiptOutcome` is CHECKED at EVERY call site in this method,
+        never assumed successful (U3/REGATE-BLOCK-1: an earlier revision
+        checked only `record_action_receipt`'s success branch,
+        `record_effect_receipt`, and `finalize_terminal_receipt` -- 6 of
+        this method's 11 outcome-carrying calls, ALL FIVE `write_checkpoint`
+        calls plus the failure-branch `record_action_receipt`, still
+        discarded their result. With checkpoint writes denying silently,
+        this method used to return `"completed"` with ZERO checkpoints
+        persisted while every action still executed, and a denied
+        failure-branch receipt used to produce a terminal receipt claiming
+        `status="failed"` with a fabricated `action_count_completed` and NO
+        failure receipt actually in the ledger). A `"denied"` outcome from
+        ANY of them (a receipt-integrity or workspace-authorization
+        violation, OPM-2.3's own write-time guards) stops the operation
+        immediately with `ExecutionOutcome("denied", ...)`; `record_action_
+        receipt`/`record_effect_receipt` denials in particular skip
+        `finalize_terminal_receipt` entirely, since the
+        `expected_action_count` this method could supply would only be a
+        guess at a state already proven corrupt. This branch is
+        unreachable via `run_actions`' own normal control flow (it only
+        ever calls these with an index it has not itself already written);
+        it protects against a `start_index` computed from stale/corrupt
+        state reaching this method at all (e.g. a caller that bypasses
+        `resolve_resume_point`'s own denial).
+
+        **U4/REGATE-BLOCK-1 (independent `start_index` bound)**: this
+        method ALSO refuses `start_index > len(actions)` on its own,
+        BEFORE the loop -- not merely trusting that its caller correctly
+        bounded `resolve_resume_point`'s own `total_action_count`. An
+        earlier revision relied SOLELY on that upstream bound: deleting
+        `total_action_count=len(actions)` from `run_or_replay`'s call left
+        the whole suite green anyway, because an unbounded
+        `resolve_resume_point` returned a `next_action_index` beyond
+        `total`, `range(next_action_index, total)` was then EMPTY, and the
+        loop's own `for...else` fell straight to the "every action ran"
+        branch -- passing by arithmetic accident, not because any guard
+        fired. This bound closes that gap at the layer that actually
+        executes, independent of every upstream caller getting its own
+        bound right.
         """
 
         total = len(actions)
+        if start_index > total:
+            _logger.error(
+                "operator_cancel_resume_service: run_actions REJECTED -- "
+                "start_index=%d exceeds total action count=%d for "
+                "operation_id=%s (U4/REGATE-BLOCK-1: independent defense-in-"
+                "depth even when an upstream caller's own bound on "
+                "resolve_resume_point was bypassed, omitted, or wrong)",
+                start_index,
+                total,
+                operation_id,
+            )
+            return ExecutionOutcome("denied", None, start_index)
+
         idx = start_index
         for idx in range(start_index, total):
             if self.cancellation_requested(operation_id, workspace_id=workspace_id):
@@ -533,7 +573,7 @@ class OperatorCancelResumeService:
             spec = actions[idx]
             started_at = ids.now_iso()
             if spec.non_cancelable:
-                self._receipts.write_checkpoint(
+                pre_checkpoint_outcome = self._receipts.write_checkpoint(
                     operation_id,
                     workspace_id=workspace_id,
                     status="pending",
@@ -542,6 +582,17 @@ class OperatorCancelResumeService:
                     total_action_count=total,
                     non_cancelable=True,
                 )
+                if pre_checkpoint_outcome.outcome != "created":
+                    _logger.error(
+                        "operator_cancel_resume_service: write_checkpoint denied "
+                        "(%s) for operation_id=%s while marking the pre-action "
+                        "non_cancelable checkpoint at index=%d -- stopping "
+                        "without running the action (U3/REGATE-BLOCK-1)",
+                        pre_checkpoint_outcome.reason_code,
+                        operation_id,
+                        idx,
+                    )
+                    return ExecutionOutcome("denied", None, idx)
 
             try:
                 effect = spec.run()
@@ -555,8 +606,9 @@ class OperatorCancelResumeService:
                     operation_id,
                     exc_info=True,
                 )
-                self._receipts.record_action_receipt(
+                failure_receipt_outcome = self._receipts.record_action_receipt(
                     operation_id,
+                    workspace_id=workspace_id,
                     action_id=spec.action_id,
                     action_index=idx,
                     status="failed",
@@ -566,7 +618,25 @@ class OperatorCancelResumeService:
                     reason_code="internal_error",
                     retryable=False,
                 )
-                self._receipts.write_checkpoint(
+                if failure_receipt_outcome.outcome != "created":
+                    # U3/REGATE-BLOCK-1: this outcome used to be discarded --
+                    # a denied FAILURE receipt still fell through to
+                    # `finalize_terminal_receipt` below, which could then
+                    # persist a terminal receipt claiming `status="failed"`
+                    # with NO failure receipt actually in the ledger.
+                    _logger.error(
+                        "operator_cancel_resume_service: record_action_receipt "
+                        "denied (%s) for operation_id=%s action_id=%s index=%d "
+                        "while recording a FAILURE -- stopping without "
+                        "finalizing (U3/REGATE-BLOCK-1)",
+                        failure_receipt_outcome.reason_code,
+                        operation_id,
+                        spec.action_id,
+                        idx,
+                    )
+                    return ExecutionOutcome("denied", None, idx)
+
+                failure_checkpoint_outcome = self._receipts.write_checkpoint(
                     operation_id,
                     workspace_id=workspace_id,
                     status="converged",
@@ -575,6 +645,18 @@ class OperatorCancelResumeService:
                     total_action_count=total,
                     non_cancelable=False,
                 )
+                if failure_checkpoint_outcome.outcome != "created":
+                    _logger.error(
+                        "operator_cancel_resume_service: write_checkpoint denied "
+                        "(%s) for operation_id=%s while marking the FAILED "
+                        "checkpoint at index=%d -- stopping without finalizing "
+                        "(U3/REGATE-BLOCK-1)",
+                        failure_checkpoint_outcome.reason_code,
+                        operation_id,
+                        idx,
+                    )
+                    return ExecutionOutcome("denied", None, idx)
+
                 outcome = self._receipts.finalize_terminal_receipt(
                     operation_id,
                     workspace_id=workspace_id,
@@ -587,14 +669,14 @@ class OperatorCancelResumeService:
                 if outcome.outcome == "denied":
                     # P2S-BLOCK-2: the outcome of `finalize_terminal_receipt`
                     # is CHECKED, never assumed successful -- mirrors the
-                    # `record_action_receipt`/`record_effect_receipt` guards
-                    # immediately above/below. A denied finalize means
-                    # reconciliation itself found corrupt receipt state (e.g.
-                    # an EXTRA receipt written out of turn) -- reporting
-                    # "failed" with `outcome.receipt is None` would violate
-                    # `ExecutionOutcome`'s own docstring contract and (the
-                    # actual defect this closes) silently claim a status the
-                    # store refused to durably record.
+                    # `record_action_receipt`/`record_effect_receipt`/
+                    # `write_checkpoint` guards throughout this method. A
+                    # denied finalize means reconciliation itself found
+                    # corrupt receipt state (e.g. an EXTRA receipt written out
+                    # of turn) -- reporting "failed" with `outcome.receipt is
+                    # None` would violate `ExecutionOutcome`'s own docstring
+                    # contract and (the actual defect this closes) silently
+                    # claim a status the store refused to durably record.
                     _logger.error(
                         "operator_cancel_resume_service: finalize_terminal_receipt "
                         "denied (%s) for operation_id=%s while finalizing a FAILED "
@@ -609,6 +691,7 @@ class OperatorCancelResumeService:
 
             action_receipt_outcome = self._receipts.record_action_receipt(
                 operation_id,
+                workspace_id=workspace_id,
                 action_id=spec.action_id,
                 action_index=idx,
                 status="completed",
@@ -632,6 +715,7 @@ class OperatorCancelResumeService:
             if effect is not None:
                 effect_receipt_outcome = self._receipts.record_effect_receipt(
                     operation_id,
+                    workspace_id=workspace_id,
                     action_id=spec.action_id,
                     effect_kind=effect.effect_kind,
                     effect_digest=effect.effect_digest,
@@ -650,7 +734,7 @@ class OperatorCancelResumeService:
                     )
                     return ExecutionOutcome("denied", None, idx)
 
-            self._receipts.write_checkpoint(
+            post_action_checkpoint_outcome = self._receipts.write_checkpoint(
                 operation_id,
                 workspace_id=workspace_id,
                 status="pending",
@@ -659,13 +743,29 @@ class OperatorCancelResumeService:
                 total_action_count=total,
                 non_cancelable=False,
             )
+            if post_action_checkpoint_outcome.outcome != "created":
+                # U3/REGATE-BLOCK-1: this outcome used to be discarded -- with
+                # checkpoint writes denying, this method would keep executing
+                # every remaining action while persisting ZERO checkpoints,
+                # leaving process-loss recovery entirely unrecoverable-by-
+                # checkpoint on an operation nothing else flagged as wrong.
+                _logger.error(
+                    "operator_cancel_resume_service: write_checkpoint denied "
+                    "(%s) for operation_id=%s after successfully completing "
+                    "action index=%d -- stopping without finalizing "
+                    "(U3/REGATE-BLOCK-1)",
+                    post_action_checkpoint_outcome.reason_code,
+                    operation_id,
+                    idx,
+                )
+                return ExecutionOutcome("denied", None, idx)
         else:
             # Loop completed without `break` -- every action in
             # [start_index, total) ran. `idx` here is `total - 1` (or,
             # when `start_index == total`, the loop body never ran at all
             # and `idx` still holds its initial `start_index` value -- see
             # the `total == start_index` short-circuit note below).
-            self._receipts.write_checkpoint(
+            converged_checkpoint_outcome = self._receipts.write_checkpoint(
                 operation_id,
                 workspace_id=workspace_id,
                 status="converged",
@@ -674,6 +774,17 @@ class OperatorCancelResumeService:
                 total_action_count=total,
                 non_cancelable=False,
             )
+            if converged_checkpoint_outcome.outcome != "created":
+                _logger.error(
+                    "operator_cancel_resume_service: write_checkpoint denied "
+                    "(%s) for operation_id=%s while marking the COMPLETED "
+                    "checkpoint -- stopping without finalizing the terminal "
+                    "receipt (U3/REGATE-BLOCK-1)",
+                    converged_checkpoint_outcome.reason_code,
+                    operation_id,
+                )
+                return ExecutionOutcome("denied", None, total)
+
             outcome = self._receipts.finalize_terminal_receipt(
                 operation_id,
                 workspace_id=workspace_id,
@@ -707,7 +818,7 @@ class OperatorCancelResumeService:
         # Loop `break`-ed due to a durable cancellation request observed at
         # the safe point before `actions[idx]` -- exactly `idx` actions
         # (indices `[0, idx)`) actually ran; zero of `actions[idx:]` did.
-        self._receipts.write_checkpoint(
+        canceled_checkpoint_outcome = self._receipts.write_checkpoint(
             operation_id,
             workspace_id=workspace_id,
             status="converged",
@@ -716,6 +827,18 @@ class OperatorCancelResumeService:
             total_action_count=total,
             non_cancelable=False,
         )
+        if canceled_checkpoint_outcome.outcome != "created":
+            _logger.error(
+                "operator_cancel_resume_service: write_checkpoint denied (%s) "
+                "for operation_id=%s while marking the CANCELED checkpoint at "
+                "index=%d -- stopping without finalizing the terminal receipt "
+                "(U3/REGATE-BLOCK-1)",
+                canceled_checkpoint_outcome.reason_code,
+                operation_id,
+                idx,
+            )
+            return ExecutionOutcome("denied", None, idx)
+
         outcome = self._receipts.finalize_terminal_receipt(
             operation_id,
             workspace_id=workspace_id,

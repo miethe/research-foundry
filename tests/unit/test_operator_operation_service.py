@@ -757,6 +757,21 @@ def test_consume_locked_is_only_ever_invoked_with_an_already_open_transaction(
     assert _count_operations(tmp_foundry) == 1
 
 
+# U10/REGATE-NB-1: both real-OS-process tests below were observed to flake
+# under FULL-SUITE load (a 60s `result_queue.get`/`p.join` timeout, once in
+# two runs at this exact tree) -- root-caused to `spawn`'s own overhead
+# under a loaded machine PLUS (before U6) a child dying outright on a raw
+# `sqlite3.OperationalError` escaping the CAS `UPDATE` rather than returning
+# normally. U6 removes the second cause entirely (that exception is now a
+# governed, queue-reported denial, never a process death); this constant
+# gives the FIRST cause (pure scheduling/spawn overhead under load) more
+# headroom WITHOUT touching either test's own discriminating assertion --
+# widening a wall-clock budget is not the same as weakening what the
+# assertion proves, and per this task's own instruction a flaky-but-
+# discriminating test must stay discriminating, never be made unfalsifiable
+# to buy stability.
+_MP_RESULT_TIMEOUT_SECONDS = 120
+
 # ---------------------------------------------------------------------------
 # G5: the SAME guarantee, across REAL OS processes (not threads)
 # ---------------------------------------------------------------------------
@@ -851,9 +866,9 @@ def test_two_real_os_processes_racing_the_same_confirmation_yield_one_success_on
     for p in processes:
         p.start()
 
-    results = [result_queue.get(timeout=60) for _ in processes]
+    results = [result_queue.get(timeout=_MP_RESULT_TIMEOUT_SECONDS) for _ in processes]
     for p in processes:
-        p.join(timeout=60)
+        p.join(timeout=_MP_RESULT_TIMEOUT_SECONDS)
         assert p.exitcode == 0, f"worker process failed (exitcode={p.exitcode})"
 
     outcomes = sorted(r[0] for r in results)
@@ -1023,9 +1038,9 @@ def test_two_real_os_processes_genuinely_block_on_begin_immediate_not_merely_int
     for p in processes:
         p.start()
 
-    results = [result_queue.get(timeout=60) for _ in processes]
+    results = [result_queue.get(timeout=_MP_RESULT_TIMEOUT_SECONDS) for _ in processes]
     for p in processes:
-        p.join(timeout=60)
+        p.join(timeout=_MP_RESULT_TIMEOUT_SECONDS)
         assert p.exitcode == 0, f"worker process failed (exitcode={p.exitcode})"
 
     by_role = {r[0]: r for r in results}
@@ -1511,6 +1526,63 @@ def test_lock_acquisition_timeout_returns_governed_denial_not_raw_exception(
     # No transaction was ever opened on this path -- the confirmation is
     # completely untouched, still available (within its own TTL) for a
     # retry once the competing writer releases the lock.
+    assert _confirmation_status(tmp_foundry, confirmation_id) == "issued"
+
+
+def test_operational_error_inside_locked_transaction_returns_governed_denial_not_raw_exception(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """U6/REGATE-NB-2: G2's original fix wrapped only `_ensure_schema`/`BEGIN
+    IMMEDIATE` -- a `sqlite3.OperationalError` raised INSIDE the locked
+    section (e.g. the CAS `UPDATE` promoting to an EXCLUSIVE lock while a
+    concurrent reader still holds a shared one) still propagated raw through
+    the `except Exception: ROLLBACK; raise` catch-all below it. This is not
+    hypothetical: this exact exception, from this exact statement, killed a
+    real child process during this tree's own full-suite run (see the
+    finding's validation transcript).
+
+    `_consume_locked` is monkeypatched to raise the SAME exception class
+    SQLite itself raises on lock contention, from INSIDE the real,
+    already-open `BEGIN IMMEDIATE` transaction this call opens (only
+    `_consume_locked`'s body is replaced -- the transaction, the connection,
+    and the surrounding exception handling are all real). This exercises
+    the NEW `except sqlite3.OperationalError` clause around the
+    `_consume_locked` call specifically, distinct from the pre-existing G2
+    clause around `BEGIN IMMEDIATE` itself covered by
+    `test_lock_acquisition_timeout_returns_governed_denial_not_raw_exception`
+    above.
+
+    MUST FAIL on the pre-fix code (the `OperationalError` propagates raw
+    out of `consume_and_create_operation`, exactly as it did in the real
+    full-suite run) and PASS after the fix (a governed
+    `OperationOutcome("denied", "internal_error", None)` is returned, the
+    transaction is rolled back, and the confirmation is left untouched)."""
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    confirmation_id, token, record = _mint_and_record(service, ctx)
+    authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=record, presented_token=token
+    )
+
+    def _raise_operational_error(*args: Any, **kwargs: Any) -> Any:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(service, "_consume_locked", _raise_operational_error)
+
+    outcome = service.consume_and_create_operation(
+        confirmation_id=confirmation_id,
+        presented_token=token,
+        ctx=ctx,
+        authorization=authorization,
+    )
+
+    assert outcome.outcome == "denied"
+    assert outcome.reason_code == "internal_error"
+    assert outcome.operation is None
+    assert _count_operations(tmp_foundry) == 0
+    # No COMMIT was ever reached on this path -- the confirmation is left
+    # completely untouched, still "issued", available for a retry.
     assert _confirmation_status(tmp_foundry, confirmation_id) == "issued"
 
 

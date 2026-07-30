@@ -123,6 +123,7 @@ def _record_action(
     service: OperatorReceiptService,
     *,
     operation_id: str = _OPERATION_ID,
+    workspace_id: str = _WORKSPACE,
     action_id: str,
     action_index: int,
     status: str = "completed",
@@ -130,6 +131,7 @@ def _record_action(
 ) -> ReceiptOutcome:
     return service.record_action_receipt(
         operation_id,
+        workspace_id=workspace_id,
         action_id=action_id,
         action_index=action_index,
         status=status,
@@ -196,6 +198,7 @@ def test_duplicate_effect_receipt_same_digest_denies(tmp_foundry: FoundryPaths) 
     digest = _SHA("effect-1")
     first = service.record_effect_receipt(
         _OPERATION_ID,
+        workspace_id=_WORKSPACE,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=digest,
@@ -206,6 +209,7 @@ def test_duplicate_effect_receipt_same_digest_denies(tmp_foundry: FoundryPaths) 
 
     second = service.record_effect_receipt(
         _OPERATION_ID,
+        workspace_id=_WORKSPACE,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=digest,
@@ -235,6 +239,7 @@ def test_mismatched_effect_receipt_unknown_action_id_denies(tmp_foundry: Foundry
     # Deliberately never record an action_receipt for "act-ghost".
     outcome = service.record_effect_receipt(
         _OPERATION_ID,
+        workspace_id=_WORKSPACE,
         action_id="act-ghost",
         effect_kind="source_card_created",
         effect_digest=_SHA("effect-mismatched"),
@@ -295,12 +300,46 @@ def test_extra_action_receipts_denies_finalize(tmp_foundry: FoundryPaths) -> Non
 
 
 def test_reordered_action_receipts_denies_finalize(tmp_foundry: FoundryPaths) -> None:
+    """U5/REGATE-BLOCK-3 changed what "REORDERED" means as a REACHABLE
+    state: `record_action_receipt` now refuses any `action_index` that
+    is not the next contiguous index at WRITE time, so a gap/out-of-order
+    sequence can no longer be created through this module's own governed
+    API at all (`_record_action(service, action_id="act-3",
+    action_index=3)` against an operation with only indices 0-1 persisted
+    would itself now be DENIED -- proven directly by
+    `test_gap_receipt_denies_at_write_time_operation_remains_resumable`
+    above). This test now plants the reordered state via raw SQL (real
+    persistence, bypassing this module's write path entirely -- the SAME
+    pattern `test_record_effect_receipt_direct_referential_guard_fires_
+    even_when_mismatch_guard_would_not` already uses) to prove
+    `finalize_terminal_receipt`'s own reconciliation remains a correct
+    defense-in-depth backstop for out-of-band writes, independent of the
+    write-time guard."""
+
     service = _service(tmp_foundry)
     _record_action(service, action_id="act-0", action_index=0)
     _record_action(service, action_id="act-1", action_index=1)
-    # Skip index 2 entirely; jump to 3 -- exactly 3 rows persisted (matches
-    # expected_action_count) but NOT the contiguous 0..2 sequence.
-    _record_action(service, action_id="act-3", action_index=3)
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        # Skip index 2 entirely; jump to 3 -- exactly 3 rows persisted
+        # (matches expected_action_count) but NOT the contiguous 0..2
+        # sequence. Only reachable out-of-band -- see docstring above.
+        conn.execute(
+            "INSERT INTO action_receipts"
+            " (operation_id, action_id, action_index, status, attempt_ref,"
+            "  started_at, completed_at, reason_code, retryable, receipt_json, created_at)"
+            " VALUES (?, 'act-3', 3, 'completed', 'attempt-x', ?, ?, NULL, NULL, '{}', ?)",
+            (
+                _OPERATION_ID,
+                "2026-07-29T00:00:00Z",
+                "2026-07-29T00:00:00Z",
+                "2026-07-29T00:00:00Z",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     outcome = service.finalize_terminal_receipt(
         _OPERATION_ID,
@@ -326,6 +365,7 @@ def test_finalize_terminal_receipt_golden_path(tmp_foundry: FoundryPaths) -> Non
     digest = _SHA("effect-golden")
     effect_outcome = service.record_effect_receipt(
         _OPERATION_ID,
+        workspace_id=_WORKSPACE,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=digest,
@@ -416,6 +456,7 @@ def test_audit_delivery_failure_never_blocks_terminal_receipt(
     digest = _SHA("effect-audit-fail")
     service.record_effect_receipt(
         _OPERATION_ID,
+        workspace_id=_WORKSPACE,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=digest,
@@ -578,6 +619,7 @@ def test_effect_receipts_table_rejects_raw_delete(tmp_foundry: FoundryPaths) -> 
     digest = _SHA("effect-immutable")
     service.record_effect_receipt(
         _OPERATION_ID,
+        workspace_id=_WORKSPACE,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=digest,
@@ -709,7 +751,11 @@ def test_record_action_receipt_denies_for_phantom_operation_id(tmp_foundry: Foun
         service, operation_id=_PHANTOM_OPERATION_ID, action_id="act-0", action_index=0
     )
     assert outcome.outcome == "denied"
-    assert outcome.reason_code == "internal_error"
+    # U2/REGATE-BLOCK-2: a phantom operation_id and a wrong-workspace one
+    # are now INDISTINGUISHABLE -- both deny "not_found" (was
+    # "internal_error" before this module gained a workspace-authorization
+    # seam on its write paths).
+    assert outcome.reason_code == "not_found"
 
     conn = _raw_connect(tmp_foundry)
     try:
@@ -731,16 +777,23 @@ def test_record_action_receipt_denies_for_phantom_operation_id(tmp_foundry: Foun
 def test_record_effect_receipt_denies_for_phantom_operation_id_via_mismatch_guard(
     tmp_foundry: FoundryPaths,
 ) -> None:
-    """No matching `action_receipt` exists either, so this exercises
-    `record_effect_receipt`'s pre-existing MISMATCHED guard (real,
-    unrelated to P2S-BLOCK-4) -- kept as the golden-path proof that a
-    phantom operation_id denies via AT LEAST one guard.
+    """No matching `action_receipt` exists either. Before U2/REGATE-BLOCK-2
+    added an explicit workspace-authorization check to this method, this
+    exercised `record_effect_receipt`'s pre-existing MISMATCHED guard as
+    the golden-path proof a phantom operation_id denies via AT LEAST one
+    guard. The NEW workspace-authorization check now runs FIRST (a phantom
+    operation_id has no derivable workspace at all), so this test now
+    isolates THAT guard instead; the MISMATCHED guard's own isolation is
+    `test_mismatched_effect_receipt_unknown_action_id_denies` above (a
+    REAL operation, deliberately no matching action_receipt), and
     `test_record_effect_receipt_direct_referential_guard_fires_even_when_
-    mismatch_guard_would_not` below isolates BLOCK-4's OWN direct check."""
+    mismatch_guard_would_not` below still isolates the referential guard
+    independent of MISMATCHED specifically."""
 
     service = _service(tmp_foundry)
     outcome = service.record_effect_receipt(
         _PHANTOM_OPERATION_ID,
+        workspace_id=_WORKSPACE,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=_SHA("effect-phantom-operation"),
@@ -748,7 +801,7 @@ def test_record_effect_receipt_denies_for_phantom_operation_id_via_mismatch_guar
         generated_at="2026-07-29T00:00:06Z",
     )
     assert outcome.outcome == "denied"
-    assert outcome.reason_code == "internal_error"
+    assert outcome.reason_code == "not_found"
 
     conn = _raw_connect(tmp_foundry)
     try:
@@ -761,8 +814,8 @@ def test_record_effect_receipt_denies_for_phantom_operation_id_via_mismatch_guar
 def test_record_effect_receipt_direct_referential_guard_fires_even_when_mismatch_guard_would_not(
     tmp_foundry: FoundryPaths,
 ) -> None:
-    """Isolates P2S-BLOCK-4's OWN direct `_derive_workspace_id` check in
-    `record_effect_receipt`, independent of the (real, but DIFFERENT)
+    """Isolates P2S-BLOCK-4/U2's OWN direct workspace-authorization check
+    in `record_effect_receipt`, independent of the (real, but DIFFERENT)
     MISMATCHED guard immediately below it. Plants an ORPHAN
     `action_receipt` for the phantom operation_id via raw SQL (real
     persistence -- a row genuinely present in the real table, just not
@@ -793,6 +846,7 @@ def test_record_effect_receipt_direct_referential_guard_fires_even_when_mismatch
 
     outcome = service.record_effect_receipt(
         _PHANTOM_OPERATION_ID,
+        workspace_id=_WORKSPACE,
         action_id="act-orphan",
         effect_kind="source_card_created",
         effect_digest=_SHA("effect-phantom-operation-direct"),
@@ -800,7 +854,7 @@ def test_record_effect_receipt_direct_referential_guard_fires_even_when_mismatch
         generated_at="2026-07-29T00:00:06Z",
     )
     assert outcome.outcome == "denied"
-    assert outcome.reason_code == "internal_error"
+    assert outcome.reason_code == "not_found"
 
     conn = _raw_connect(tmp_foundry)
     try:
@@ -822,7 +876,7 @@ def test_write_checkpoint_denies_for_phantom_operation_id(tmp_foundry: FoundryPa
         non_cancelable=False,
     )
     assert outcome.outcome == "denied"
-    assert outcome.reason_code == "internal_error"
+    assert outcome.reason_code == "not_found"
     assert service.load_checkpoint(_PHANTOM_OPERATION_ID) is None
 
 
@@ -836,61 +890,154 @@ def test_finalize_terminal_receipt_denies_for_phantom_operation_id(tmp_foundry: 
         status="completed",
     )
     assert outcome.outcome == "denied"
-    assert outcome.reason_code == "internal_error"
+    assert outcome.reason_code == "not_found"
     assert service.load_terminal_receipt(_PHANTOM_OPERATION_ID) is None
 
 
-def test_gap_receipt_on_real_operation_is_permanently_unrecoverable(
+def test_gap_receipt_denies_at_write_time_operation_remains_resumable(
     tmp_foundry: FoundryPaths,
 ) -> None:
-    """Reproduces the P2 security gate's exact empirical "brick" repro on
-    a REAL, seeded operation (`_OPERATION_ID`, a real 4-action operation
-    per this test's own intent): a single out-of-turn receipt at index 3
-    (skipping 0-2) denies `resolve_resume_point` forever, and the
-    immutability triggers (already covered elsewhere for the golden path)
-    confirm there is genuinely no repair path -- this is why BLOCK-4's
-    referential-integrity guard on `record_action_receipt` matters even
-    though this specific scenario is a GAP, not a phantom-operation-id: it
-    documents the severity BLOCK-4 exists to prevent for that other case
-    (a phantom id's receipts are equally unrecoverable once written, since
-    `action_receipts` has no UPDATE/DELETE path at all).
+    """U5/REGATE-BLOCK-3: an earlier revision of this module ACCEPTED a
+    gap receipt (e.g. index 3 with 0-2 absent) on a real, healthy
+    operation, and -- because `action_receipts` is immutable (no
+    UPDATE/DELETE path, enforced by DB trigger) -- that single out-of-turn
+    write PERMANENTLY and IRREPARABLY bricked the operation:
+    `resolve_resume_point` denied forever, and both attempted repairs
+    (`DELETE`, `UPDATE`) raised `sqlite3.IntegrityError`.
+
+    A previous fix wave shipped a test named
+    `test_gap_receipt_on_real_operation_is_permanently_unrecoverable` that
+    ASSERTED this bricked state was the CORRECT, expected outcome --
+    pinning a bug as a feature (mandatory checklist item 3: never do this).
+    This test REPLACES it, in the opposite direction: the actual fix is to
+    reject the gap AT WRITE TIME, before a single row is written, so the
+    unrecoverable state can never be created at all -- proven here by the
+    operation staying fully healthy and resumable from index 0 afterward.
     """
 
     service = _service(tmp_foundry)
-    outcome = _record_action(service, action_id="act-3", action_index=3)
-    assert outcome.outcome == "created"
 
-    resume_point = service.resolve_resume_point(_OPERATION_ID)
-    assert resume_point.outcome == "denied"
-    assert resume_point.reason_code == "internal_error"
+    outcome = _record_action(service, action_id="act-3", action_index=3)
+    assert outcome.outcome == "denied"
+    assert outcome.reason_code == "internal_error"
 
     conn = _raw_connect(tmp_foundry)
     try:
-        with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                "DELETE FROM action_receipts WHERE operation_id = ? AND action_index = 3",
-                (_OPERATION_ID,),
-            )
-        with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                "UPDATE action_receipts SET action_index = 0"
-                " WHERE operation_id = ? AND action_index = 3",
-                (_OPERATION_ID,),
-            )
+        count = conn.execute(
+            "SELECT COUNT(*) FROM action_receipts WHERE operation_id = ?",
+            (_OPERATION_ID,),
+        ).fetchone()[0]
+        assert count == 0
     finally:
         conn.close()
 
-    # Still denied after the failed repair attempts -- genuinely permanent.
-    assert service.resolve_resume_point(_OPERATION_ID).outcome == "denied"
+    # The operation is UNAFFECTED -- still cleanly resumable from index 0,
+    # never bricked. This is the actual proof of the fix: the denied write
+    # left nothing behind for `resolve_resume_point`/reconciliation to
+    # ever discover as corrupt.
+    resume_point = service.resolve_resume_point(_OPERATION_ID)
+    assert resume_point.outcome == "ok"
+    assert resume_point.next_action_index == 0
+
+    # A normal, correctly-contiguous write for the SAME operation still
+    # succeeds -- the guard rejects only the out-of-order index, never the
+    # operation itself.
+    normal = _record_action(service, action_id="act-0", action_index=0)
+    assert normal.outcome == "created"
 
 
 # ---------------------------------------------------------------------------
-# P2S-BLOCK-3: identity/workspace seam.
+# U2/REGATE-BLOCK-2: `record_action_receipt`/`record_effect_receipt` must
+# be workspace-AUTHORIZED, not merely accepted, for a REAL operation that
+# exists in a DIFFERENT workspace than the caller-supplied `workspace_id`
+# -- distinct from the phantom-operation-id tests above (which prove
+# ABSENCE denies; these prove a wrong-but-real workspace also denies, and
+# indistinguishably from absence).
+# ---------------------------------------------------------------------------
+
+
+def test_record_action_receipt_denies_wrong_workspace_not_phantom(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """`_OPERATION_ID` is real and seeded into `_WORKSPACE` -- a caller
+    asserting a DIFFERENT, wrong workspace_id must be refused, exactly as
+    if the operation did not exist at all."""
+
+    service = _service(tmp_foundry)
+    outcome = _record_action(
+        service, workspace_id="ws-attacker", action_id="act-0", action_index=0
+    )
+    assert outcome.outcome == "denied"
+    assert outcome.reason_code == "not_found"
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM action_receipts WHERE operation_id = ?",
+            (_OPERATION_ID,),
+        ).fetchone()[0]
+        assert count == 0
+    finally:
+        conn.close()
+
+    # The legitimate owner, presenting the REAL workspace_id, still
+    # succeeds -- the fix denies the WRONG workspace, not the operation.
+    legit = _record_action(service, action_id="act-0", action_index=0)
+    assert legit.outcome == "created"
+
+
+def test_record_effect_receipt_denies_wrong_workspace_not_phantom(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    service = _service(tmp_foundry)
+    _record_action(service, action_id="act-0", action_index=0)
+
+    outcome = service.record_effect_receipt(
+        _OPERATION_ID,
+        workspace_id="ws-attacker",
+        action_id="act-0",
+        effect_kind="source_card_created",
+        effect_digest=_SHA("effect-wrong-workspace"),
+        effect_ref="source_card:abc123",
+        generated_at="2026-07-29T00:00:06Z",
+    )
+    assert outcome.outcome == "denied"
+    assert outcome.reason_code == "not_found"
+
+    conn = _raw_connect(tmp_foundry)
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM effect_receipts").fetchone()[0]
+        assert count == 0
+    finally:
+        conn.close()
+
+    legit = service.record_effect_receipt(
+        _OPERATION_ID,
+        workspace_id=_WORKSPACE,
+        action_id="act-0",
+        effect_kind="source_card_created",
+        effect_digest=_SHA("effect-wrong-workspace-legit"),
+        effect_ref="source_card:abc123",
+        generated_at="2026-07-29T00:00:07Z",
+    )
+    assert legit.outcome == "created"
+
+
+# ---------------------------------------------------------------------------
+# U1/REGATE-BLOCK-2 + P2S-BLOCK-3: identity/workspace seam.
 #
-# Write side: `write_checkpoint`/`finalize_terminal_receipt` DERIVE
-# `workspace_id` from the real `operations` row rather than trusting the
-# caller-supplied parameter (so a wrong/forged value can never be
-# persisted into these otherwise-immutable rows).
+# Write side: `write_checkpoint`/`finalize_terminal_receipt` AUTHORIZE
+# `workspace_id` against the real `operations` row and DENY (never
+# silently correct) on disagreement -- so a wrong/forged value can never
+# be attributed OR persisted into these otherwise-immutable rows. An
+# earlier revision of this module DERIVED the real value and used it
+# anyway on a mismatch (logging only a warning) -- that is attribution,
+# not authorization, and the two tests immediately below used to assert
+# exactly that vulnerable "creates despite the forged workspace_id, but
+# silently substitutes the truth" behavior as correct (mandatory
+# checklist item 3: never pin unsafe behavior with a test). They are
+# INVERTED here to assert the fix: a forged `workspace_id` now denies,
+# with zero effect, full stop.
 #
 # Read side: `load_terminal_receipt`/`load_checkpoint`/`resolve_resume_point`
 # accept `identity: AuthIdentity | None`; a wrong-workspace `identity`
@@ -900,12 +1047,19 @@ def test_gap_receipt_on_real_operation_is_permanently_unrecoverable(
 # ---------------------------------------------------------------------------
 
 
-def test_write_checkpoint_derives_workspace_from_operation_not_caller(
+def test_write_checkpoint_denies_forged_workspace_not_derives(
     tmp_foundry: FoundryPaths,
 ) -> None:
     """`_OPERATION_ID` is seeded (by the autouse fixture) into `_WORKSPACE`
-    -- a caller asserting a DIFFERENT workspace_id must not be able to
-    misattribute the persisted checkpoint row."""
+    -- a caller asserting a DIFFERENT workspace_id is the caller's OWN
+    claimed authority to write this checkpoint, and a wrong one must be
+    REFUSED, not silently corrected. (Inverted from this test's own former
+    name/behavior -- `..._derives_workspace_from_operation_not_caller` --
+    which asserted the pre-fix vulnerability: the write succeeded anyway,
+    just with the truth quietly substituted for storage. REGATE-BLOCK-2's
+    empirical attack showed exactly why that is unsafe: it let a caller
+    holding only an `operation_id` -- not a secret -- attribute writes
+    into ANOTHER workspace's checkpoint at will.)"""
 
     service = _service(tmp_foundry)
     outcome = service.write_checkpoint(
@@ -917,25 +1071,49 @@ def test_write_checkpoint_derives_workspace_from_operation_not_caller(
         total_action_count=3,
         non_cancelable=False,
     )
-    assert outcome.outcome == "created"
-    # The RETURNED receipt reflects the DERIVED (real) workspace, not the
-    # caller's forged one.
-    assert outcome.receipt["workspace_id"] == _WORKSPACE
+    assert outcome.outcome == "denied"
+    assert outcome.reason_code == "not_found"
+    assert outcome.receipt is None
 
+    # ZERO effect: no checkpoint row at all -- not one attributed to the
+    # forger, not one (silently corrected) attributed to the real owner.
     conn = _raw_connect(tmp_foundry)
     try:
-        row = conn.execute(
-            "SELECT workspace_id FROM checkpoints WHERE operation_id = ?",
+        count = conn.execute(
+            "SELECT COUNT(*) FROM checkpoints WHERE operation_id = ?",
             (_OPERATION_ID,),
-        ).fetchone()
-        assert row["workspace_id"] == _WORKSPACE
+        ).fetchone()[0]
+        assert count == 0
     finally:
         conn.close()
 
+    # The legitimate owner, presenting its OWN real workspace_id, still
+    # succeeds normally -- the fix denies the FORGED case, not writing in
+    # general.
+    legit = service.write_checkpoint(
+        _OPERATION_ID,
+        workspace_id=_WORKSPACE,
+        status="pending",
+        next_action_index=1,
+        completed_action_count=0,
+        total_action_count=3,
+        non_cancelable=False,
+    )
+    assert legit.outcome == "created"
+    assert legit.receipt["workspace_id"] == _WORKSPACE
 
-def test_finalize_terminal_receipt_derives_workspace_from_operation_not_caller(
+
+def test_finalize_terminal_receipt_denies_forged_workspace_not_derives(
     tmp_foundry: FoundryPaths,
 ) -> None:
+    """Inverted from `..._derives_workspace_from_operation_not_caller` --
+    see the section header and `test_write_checkpoint_denies_forged_
+    workspace_not_derives` above for the full rationale. This is the
+    EXACT X2 attack REGATE-BLOCK-2 demonstrated: a forged `workspace_id`
+    on `finalize_terminal_receipt` used to plant a PERMANENT, IMMUTABLE
+    terminal receipt that the operation's own later, legitimate,
+    successful run would then read back as truth."""
+
     service = _service(tmp_foundry)
     _record_action(service, action_id="act-0", action_index=0)
 
@@ -946,18 +1124,34 @@ def test_finalize_terminal_receipt_derives_workspace_from_operation_not_caller(
         expected_action_count=1,
         status="completed",
     )
-    assert outcome.outcome == "created"
-    assert outcome.receipt["workspace_id"] == _WORKSPACE
+    assert outcome.outcome == "denied"
+    assert outcome.reason_code == "not_found"
+    assert outcome.receipt is None
 
+    # ZERO effect: no terminal_receipts row at all, and the operation is
+    # still NOT terminal -- the legitimate owner can still finalize it for
+    # real afterward (proves the forged attempt left no trace to collide
+    # with, not merely that the row was attributed correctly).
     conn = _raw_connect(tmp_foundry)
     try:
-        row = conn.execute(
-            "SELECT workspace_id FROM terminal_receipts WHERE operation_id = ?",
+        count = conn.execute(
+            "SELECT COUNT(*) FROM terminal_receipts WHERE operation_id = ?",
             (_OPERATION_ID,),
-        ).fetchone()
-        assert row["workspace_id"] == _WORKSPACE
+        ).fetchone()[0]
+        assert count == 0
     finally:
         conn.close()
+    assert service.load_terminal_receipt(_OPERATION_ID) is None
+
+    legit = service.finalize_terminal_receipt(
+        _OPERATION_ID,
+        workspace_id=_WORKSPACE,
+        operation_kind="run.plan",
+        expected_action_count=1,
+        status="completed",
+    )
+    assert legit.outcome == "created"
+    assert legit.receipt["workspace_id"] == _WORKSPACE
 
 
 def test_load_terminal_receipt_wrong_workspace_indistinguishable_from_missing(

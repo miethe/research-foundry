@@ -45,6 +45,9 @@ Scenario -> test mapping
 9  policy/sensitivity change before resume requires fresh preflight and
    confirmation
    -> `test_scenario9_policy_change_before_resume_denies_via_fresh_authorization`
+      and (U7, the negative case: presenting the ORIGINAL/stale
+      confirmation itself must deny, not merely "a fresh one works")
+      `test_scenario9_original_now_consumed_confirmation_cannot_resume`
 10 non-cancelable atomic publication completes or fails without a partial
    artifact
    -> `test_scenario10_non_cancelable_atomic_publication_completes_before_cancellation_is_observed`
@@ -88,7 +91,7 @@ from research_foundry.services.operator_cancel_resume_service import (
     OperatorCancelResumeService,
 )
 from research_foundry.services.operator_operation_service import OperatorOperationService
-from research_foundry.services.operator_receipt_service import OperatorReceiptService
+from research_foundry.services.operator_receipt_service import OperatorReceiptService, ReceiptOutcome
 
 # Reuse, never reinvent (per this task's instructions and the project's own
 # convention -- see `test_operator_operation_service.py`'s own docstring):
@@ -294,6 +297,7 @@ def test_scenario7_process_loss_after_effect_receipt_before_checkpoint_resumes_w
     # writes, not a simulated in-memory state.
     receipt_service.record_action_receipt(
         operation_id,
+        workspace_id=workspace_id,
         action_id="act-0",
         action_index=0,
         status="completed",
@@ -303,6 +307,7 @@ def test_scenario7_process_loss_after_effect_receipt_before_checkpoint_resumes_w
     )
     receipt_service.record_effect_receipt(
         operation_id,
+        workspace_id=workspace_id,
         action_id="act-0",
         effect_kind="source_card_created",
         effect_digest=_sha("act-0-effect"),
@@ -361,9 +366,11 @@ def test_scenario8_extended_corrupt_receipt_state_denies_resolve_resume_point(
     ctx = _basic_ctx(targets=_run_targets())
     outcome = _consume(tmp_foundry, op_service, ctx)
     operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
 
     receipt_service.record_action_receipt(
         operation_id,
+        workspace_id=workspace_id,
         action_id="act-0",
         action_index=0,
         status="completed",
@@ -372,11 +379,13 @@ def test_scenario8_extended_corrupt_receipt_state_denies_resolve_resume_point(
         completed_at=ids.now_iso(),
     )
     # Directly corrupt persisted state via raw SQL: insert index 2,
-    # skipping index 1 -- a gap this module's own write-time guards
-    # (`record_action_receipt`'s PRIMARY KEY / UNIQUE constraints) only
-    # ever prevent for DUPLICATE/reordered-COLLIDING indices, never for an
-    # externally-inserted GAP. Mutating against real, already-committed
-    # persistence, per this task's proof requirement -- never a fake.
+    # skipping index 1. `record_action_receipt` NOW refuses this gap at
+    # write time (U5/REGATE-BLOCK-3) -- this raw-SQL insert deliberately
+    # bypasses that governed guard entirely (real, already-committed
+    # persistence, never a fake) so this test can isolate
+    # `resolve_resume_point`'s OWN reconciliation defense-in-depth against
+    # a state that reached the table by some OTHER means (e.g. a future
+    # bug, a direct DB access, a schema-compatible sibling writer).
     conn = _raw_connect(tmp_foundry)
     try:
         conn.execute(
@@ -411,6 +420,7 @@ def test_scenario8_extended_corrupt_receipt_state_denies_resume_operation(
 
     receipt_service.record_action_receipt(
         operation_id,
+        workspace_id=workspace_id,
         action_id="act-0",
         action_index=0,
         status="completed",
@@ -418,6 +428,9 @@ def test_scenario8_extended_corrupt_receipt_state_denies_resume_operation(
         started_at=ids.now_iso(),
         completed_at=ids.now_iso(),
     )
+    # Raw-SQL bypass of the write-time contiguity guard -- see
+    # `test_scenario8_extended_corrupt_receipt_state_denies_resolve_resume_point`
+    # above for why this is now necessary post-U5.
     conn = _raw_connect(tmp_foundry)
     try:
         conn.execute(
@@ -541,6 +554,98 @@ def test_scenario9_policy_change_before_resume_denies_via_fresh_authorization(
     assert resume_outcome.reason_code == "rbac_denied"
     assert resume_outcome.new_attempt is None
 
+    conn = _raw_connect(tmp_foundry)
+    try:
+        attempt_count = conn.execute(
+            "SELECT COUNT(*) FROM attempts WHERE operation_id = ?", (operation_id,)
+        ).fetchone()[0]
+        action_count = conn.execute(
+            "SELECT COUNT(*) FROM action_receipts WHERE operation_id = ?", (operation_id,)
+        ).fetchone()[0]
+        assert attempt_count == 0
+        assert action_count == 0
+    finally:
+        conn.close()
+
+
+def test_scenario9_original_now_consumed_confirmation_cannot_resume(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """U7 (H3 scenario 9's negative case): "resume requires a FRESH
+    confirmation" was, before this test, a property of every OTHER test's
+    HARNESS (each one deliberately mints a brand-new confirmation before
+    calling `resume_operation`) rather than a property the SERVICE itself
+    was ever shown to enforce. This test presents the ORIGINAL operation's
+    OWN, now-CONSUMED `confirmation_id`/token back to `resume_operation`
+    -- DUR-1's own one-time-consumption CAS
+    (`OperatorOperationService.consume_and_create_operation`) must refuse
+    it, so resume denies rather than reusing stale authority.
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+    attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    original_confirmation_id, original_token, original_record = _mint_and_record(op_service, ctx)
+    original_authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=original_record, presented_token=original_token
+    )
+    assert original_authorization.decision.allowed
+
+    created = op_service.consume_and_create_operation(
+        confirmation_id=original_confirmation_id,
+        presented_token=original_token,
+        ctx=ctx,
+        authorization=original_authorization,
+    )
+    assert created.outcome == "created"
+    operation_id = created.operation.operation_id
+    workspace_id = created.operation.workspace_id
+
+    # Read back the CURRENT (now "consumed") confirmation record -- what a
+    # real caller re-presenting a stale confirmation would have to work
+    # with, never the stale in-memory `original_record` from before
+    # consumption.
+    consumed_record = _load_confirmation_record(tmp_foundry, original_confirmation_id)
+
+    resume_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="job.resume",
+        idempotency_key="resume-stale-confirmation",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("agent_job", operation_id),),
+        resolved_target_workspaces=(_IDENTITY.workspace_id,),
+    )
+    stale_authorization = _authorize(
+        tmp_foundry, resume_ctx, confirmation_record=consumed_record, presented_token=original_token
+    )
+
+    resume_outcome = svc.resume_operation(
+        operation_id,
+        identity=_IDENTITY,
+        resume_ctx=resume_ctx,
+        resume_confirmation_id=original_confirmation_id,
+        resume_presented_token=original_token,
+        resume_authorization=stale_authorization,
+        actions=[_action("act-0", [])],
+        operation_kind=ctx.operation_kind,
+        workspace_id=workspace_id,
+        attempt_adapter=attempt_adapter,
+        attempt_provider="claude_agent_sdk",
+        attempt_model_profile="rf_synthesize_deep",
+        attempt_request_kind="research",
+        attempt_policy_snapshot=dict(_MINIMAL_POLICY_SNAPSHOT),
+    )
+
+    assert resume_outcome.outcome == "denied"
+    assert resume_outcome.new_attempt is None
+    assert resume_outcome.execution is None
+
+    # Zero effect: no NEW attempt was ever minted, and the original
+    # operation's own action ledger is untouched -- the stale confirmation
+    # bought the caller nothing.
     conn = _raw_connect(tmp_foundry)
     try:
         attempt_count = conn.execute(
@@ -1089,8 +1194,11 @@ def test_scenario10_non_cancelable_action_failure_leaves_no_partial_artifact(
     workspace_id = outcome.operation.workspace_id
 
     dest = tmp_path / "artifact2.txt"
+    call_count = 0
 
     def _atomic_publish_fails() -> ActionEffect:
+        nonlocal call_count
+        call_count += 1
         tmp = dest.with_suffix(".tmp")
         tmp.write_text("partial content that must never land at dest", encoding="utf-8")
         raise RuntimeError("simulated failure before the atomic rename")
@@ -1109,9 +1217,15 @@ def test_scenario10_non_cancelable_action_failure_leaves_no_partial_artifact(
         attempt_ref="attempt-1",
     )
 
-    # Never renamed into place -- no partial artifact at the real
-    # destination, even though the action itself failed mid-flight.
-    assert not dest.exists()
+    # U8: `assert not dest.exists()` is TAUTOLOGICAL here -- this action's
+    # own code never calls `os.replace(tmp, dest)` on the failure path (it
+    # raises first), so `dest` can NEVER exist regardless of anything
+    # `run_actions` does; the assertion cannot fail and pins nothing about
+    # the SERVICE. What the service actually controls, and what this test
+    # now pins instead: the failing action ran EXACTLY ONCE -- `run_actions`
+    # does not silently retry a raising action on its own (retry/resume is
+    # always a caller-driven decision via `start_index`, never internal).
+    assert call_count == 1
     assert execution.status == "failed"
     assert executed == []  # act-after never ran
 
@@ -1250,6 +1364,7 @@ def test_uninterrupted_and_resumed_operations_converge_to_identical_effects_and_
     effect0 = actions_b[0].run()  # action 0 genuinely executes once, here
     receipt_service.record_action_receipt(
         operation_b.operation_id,
+        workspace_id=operation_b.workspace_id,
         action_id=actions_b[0].action_id,
         action_index=0,
         status="completed",
@@ -1259,6 +1374,7 @@ def test_uninterrupted_and_resumed_operations_converge_to_identical_effects_and_
     )
     receipt_service.record_effect_receipt(
         operation_b.operation_id,
+        workspace_id=operation_b.workspace_id,
         action_id=actions_b[0].action_id,
         effect_kind=effect0.effect_kind,
         effect_digest=effect0.effect_digest,
@@ -1455,6 +1571,419 @@ def test_action_that_raises_stops_the_operation_and_finalizes_failed(
 
 
 # ---------------------------------------------------------------------------
+# U3/REGATE-BLOCK-1: `run_actions` must check the outcome of EVERY
+# receipt-service call it makes, not only `finalize_terminal_receipt`/the
+# success-branch `record_action_receipt`/`record_effect_receipt` (what a
+# prior fix wave checked). Six calls were left discarding their result:
+# ALL FIVE `write_checkpoint` calls, plus the failure-branch
+# `record_action_receipt`. A REAL workspace-mismatch/phantom-operation
+# denial (the only way these two methods deny in this codebase today)
+# never naturally occurs from inside a HEALTHY `run_actions` call -- every
+# operation_id/workspace_id it uses is already proven correct upstream --
+# so a black-box test cannot trigger these denials through normal
+# attacker-style setup the way U1/U2's tests do. `_ReceiptsFailureInjector`
+# below wraps the REAL `OperatorReceiptService` (delegating every call
+# EXCEPT the one this test wants to force) so each of the six call sites
+# can be exercised in isolation, one test per site, proving `run_actions`
+# reacts correctly to a denial AT THAT SPECIFIC POINT regardless of why a
+# real deployment might one day produce one there.
+# ---------------------------------------------------------------------------
+
+
+class _ReceiptsFailureInjector:
+    """Wraps a REAL `OperatorReceiptService`, delegating every call except
+    one that a test-supplied predicate matches -- that ONE call returns a
+    governed `ReceiptOutcome("denied", "internal_error", None)` instead of
+    reaching real persistence. Used ONLY to prove `run_actions` reacts
+    correctly to a receipt-service denial at each of its (previously
+    discarded) call sites; every call that does NOT match still goes to
+    the real service, against real sqlite persistence."""
+
+    def __init__(self, real: OperatorReceiptService) -> None:
+        self._real = real
+        self.deny_write_checkpoint_when = None
+        self.deny_record_action_receipt_when = None
+        self.write_checkpoint_calls: list[dict] = []
+        self.record_action_receipt_calls: list[dict] = []
+
+    def write_checkpoint(self, operation_id: str, **kwargs):  # noqa: ANN001, ANN201
+        self.write_checkpoint_calls.append(dict(kwargs))
+        if self.deny_write_checkpoint_when is not None and self.deny_write_checkpoint_when(kwargs):
+            return ReceiptOutcome("denied", "internal_error", None)
+        return self._real.write_checkpoint(operation_id, **kwargs)
+
+    def record_action_receipt(self, operation_id: str, **kwargs):  # noqa: ANN001, ANN201
+        self.record_action_receipt_calls.append(dict(kwargs))
+        if (
+            self.deny_record_action_receipt_when is not None
+            and self.deny_record_action_receipt_when(kwargs)
+        ):
+            return ReceiptOutcome("denied", "internal_error", None)
+        return self._real.record_action_receipt(operation_id, **kwargs)
+
+    def __getattr__(self, name: str):  # noqa: ANN001, ANN204
+        return getattr(self._real, name)
+
+
+def test_run_actions_denies_when_pre_action_non_cancelable_checkpoint_is_denied(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """U3/REGATE-BLOCK-1, call site 1 of 6: the `write_checkpoint` call
+    that marks a `non_cancelable` action's checkpoint BEFORE it runs (the
+    scenario-10 mechanism). Before this fix, its outcome was discarded --
+    the action would run regardless of whether that checkpoint was ever
+    durably written."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_receipts = OperatorReceiptService(tmp_foundry)
+    injector = _ReceiptsFailureInjector(real_receipts)
+    injector.deny_write_checkpoint_when = lambda kw: kw.get("non_cancelable") is True
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=injector)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    ran = False
+
+    def _must_not_run() -> ActionEffect | None:  # pragma: no cover - only fails the test
+        nonlocal ran
+        ran = True
+        return None
+
+    actions = [ActionSpec("act-0", _must_not_run, non_cancelable=True)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == "denied"
+    assert ran is False  # the action never ran once its own checkpoint denied
+    assert real_receipts.load_terminal_receipt(operation_id) is None
+
+
+def test_run_actions_denies_when_failure_branch_action_receipt_is_denied(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """U3/REGATE-BLOCK-1, call site 2 of 6: `record_action_receipt` on the
+    FAILURE branch (recording that a raising action failed). Before this
+    fix, a denied failure receipt still fell through to
+    `write_checkpoint`/`finalize_terminal_receipt`, which could persist a
+    terminal receipt claiming `status="failed"` with NO failure receipt
+    actually in the ledger (X4 in the finding's own empirical repro)."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_receipts = OperatorReceiptService(tmp_foundry)
+    injector = _ReceiptsFailureInjector(real_receipts)
+    injector.deny_record_action_receipt_when = lambda kw: kw.get("status") == "failed"
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=injector)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    def _raises() -> ActionEffect | None:
+        raise RuntimeError("simulated action failure")
+
+    actions = [ActionSpec("act-0", _raises)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == "denied"
+    assert execution.terminal_receipt is None
+    # No checkpoint or terminal receipt was ever written for a FAILURE the
+    # store itself refused to durably record.
+    assert real_receipts.load_checkpoint(operation_id) is None
+    assert real_receipts.load_terminal_receipt(operation_id) is None
+
+
+def test_run_actions_denies_when_failure_branch_checkpoint_is_denied(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """U3/REGATE-BLOCK-1, call site 3 of 6: `write_checkpoint` on the
+    FAILURE branch (the "converged" checkpoint written right before
+    `finalize_terminal_receipt(status="failed")`)."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_receipts = OperatorReceiptService(tmp_foundry)
+    injector = _ReceiptsFailureInjector(real_receipts)
+    injector.deny_write_checkpoint_when = lambda kw: kw.get("status") == "converged"
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=injector)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    def _raises() -> ActionEffect | None:
+        raise RuntimeError("simulated action failure")
+
+    actions = [ActionSpec("act-0", _raises)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == "denied"
+    assert execution.terminal_receipt is None
+    assert real_receipts.load_terminal_receipt(operation_id) is None
+
+
+def test_run_actions_denies_when_post_action_success_checkpoint_is_denied(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """U3/REGATE-BLOCK-1, call site 4 of 6: the `write_checkpoint` call
+    immediately after a SUCCESSFUL action (`status="pending"`,
+    `non_cancelable=False`) -- the loop's own per-iteration progress
+    checkpoint. Before this fix, `run_actions` would keep executing every
+    remaining action while persisting ZERO checkpoints if this denied,
+    leaving process-loss recovery entirely unrecoverable-by-checkpoint on
+    an operation nothing else flagged as wrong."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_receipts = OperatorReceiptService(tmp_foundry)
+    injector = _ReceiptsFailureInjector(real_receipts)
+    injector.deny_write_checkpoint_when = (
+        lambda kw: kw.get("status") == "pending" and kw.get("non_cancelable") is False
+    )
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=injector)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    executed: list[str] = []
+    actions = [_action("act-0", executed), _action("act-1", executed)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == "denied"
+    # THE actual defect this closes: act-0 already ran (its own action/
+    # effect receipts ARE durably persisted -- reconciliation would find
+    # them), but the operation must not silently continue to act-1 once
+    # its own progress checkpoint denies.
+    assert executed == ["act-0"]
+    assert real_receipts.load_terminal_receipt(operation_id) is None
+
+
+def test_run_actions_denies_when_completed_checkpoint_is_denied(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """U3/REGATE-BLOCK-1, call site 5 of 6: the `write_checkpoint` call in
+    the for-else "every action ran" branch (`status="converged"`, marking
+    the operation fully complete) -- BEFORE `finalize_terminal_receipt` is
+    even reached."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_receipts = OperatorReceiptService(tmp_foundry)
+    injector = _ReceiptsFailureInjector(real_receipts)
+    injector.deny_write_checkpoint_when = lambda kw: kw.get("status") == "converged"
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=injector)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    executed: list[str] = []
+    actions = [_action("act-0", executed)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == "denied"
+    assert executed == ["act-0"]  # the action DID run; the operation is not "completed"
+    assert real_receipts.load_terminal_receipt(operation_id) is None
+
+
+def test_run_actions_denies_when_canceled_checkpoint_is_denied(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """U3/REGATE-BLOCK-1, call site 6 of 6: the `write_checkpoint` call on
+    the durable-cancellation `break` branch (`status="converged"`,
+    marking the operation canceled) -- BEFORE `finalize_terminal_receipt`
+    is reached."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_receipts = OperatorReceiptService(tmp_foundry)
+    injector = _ReceiptsFailureInjector(real_receipts)
+    injector.deny_write_checkpoint_when = lambda kw: kw.get("status") == "converged"
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=injector)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    cancel = svc.request_cancellation(operation_id, workspace_id=workspace_id, requested_by="alice")
+    assert cancel.outcome == "created"
+
+    executed: list[str] = []
+    actions = [_action("act-0", executed), _action("act-1", executed)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == "denied"
+    assert executed == []  # canceled before the first action even started
+    assert real_receipts.load_terminal_receipt(operation_id) is None
+
+
+def test_run_actions_denies_start_index_exceeding_total_action_count(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """U4/REGATE-BLOCK-1: `run_actions` refuses `start_index > len(actions)`
+    on its OWN, independent of any upstream caller's bound.
+
+    This scenario is deliberately constructed so `finalize_terminal_
+    receipt`'s OWN reconciliation is NOT a redundant sibling guard here
+    (an earlier draft of this test used a FRESH, zero-receipt operation --
+    that is always independently caught as TRUNCATED by reconciliation
+    regardless of this guard, which is the exact "passes on revert because
+    a redundant sibling guard subsumes it" trap this task's proof
+    requirements warn against). Instead: `total`=5 real, correctly-
+    contiguous action_receipts (indices 0-4) are pre-seeded directly --
+    EXACTLY matching `len(actions)` -- then `run_actions` is called with a
+    caller-supplied `start_index=7` that has NOTHING to do with that real
+    persisted state (never derived from `resolve_resume_point`). Without
+    this guard, the loop's own `range(7, 5)` is empty, so the for-else
+    branch runs unconditionally and calls `finalize_terminal_receipt(
+    expected_action_count=5, status="completed")` -- reconciliation finds
+    EXACTLY 5 persisted receipts, matching the declared 5, and would
+    happily produce a genuine `"completed"` terminal receipt. `start_index`
+    itself is never checked against reality anywhere else in this module;
+    this guard is the ONLY thing standing between a caller-supplied
+    `start_index` that has drifted from reality and a falsely-"completed"
+    operation.
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    for i in range(5):
+        seeded = receipt_service.record_action_receipt(
+            operation_id,
+            workspace_id=workspace_id,
+            action_id=f"act-{i}",
+            action_index=i,
+            status="completed",
+            attempt_ref="attempt-pre-seed",
+            started_at=ids.now_iso(),
+            completed_at=ids.now_iso(),
+        )
+        assert seeded.outcome == "created"
+
+    executed: list[str] = []
+    actions = [_action(f"act-{i}", executed) for i in range(5)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+        start_index=7,  # > len(actions) == 5, and NOT derived from reality
+    )
+
+    assert execution.status == "denied"
+    assert execution.terminal_receipt is None
+    assert executed == []  # the loop body never ran at all
+    assert receipt_service.load_terminal_receipt(operation_id) is None
+
+
+def test_run_or_replay_calls_resolve_resume_point_with_declared_total_action_count(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """U4/REGATE-BLOCK-1, WIRING half: isolates the specific argument
+    `total_action_count=len(actions)` in `run_or_replay`'s call to
+    `resolve_resume_point`, independent of `run_actions`' own NEW
+    `start_index > total` guard
+    (`test_run_actions_denies_start_index_exceeding_total_action_count`
+    above). That guard makes the OBSERVABLE outcome of deleting this
+    argument harmless (denied either way, since the EXTRA-receipt case
+    still produces `start_index=7 > total=5`) -- which means an
+    outcome-only test can no longer detect the deletion on its own. This
+    is the EXACT redundant-sibling-guard trap this task's proof
+    requirements warn against, so this test isolates the WIRING directly
+    via a spy around the real receipts service: `resolve_resume_point`
+    MUST be called with `total_action_count == len(actions)`, full stop,
+    regardless of what any downstream guard does with the result.
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_receipts = OperatorReceiptService(tmp_foundry)
+
+    calls: list[dict] = []
+    _real_resolve_resume_point = real_receipts.resolve_resume_point
+
+    def _spy_resolve_resume_point(operation_id: str, **kwargs):  # noqa: ANN001, ANN201
+        calls.append(dict(kwargs))
+        return _real_resolve_resume_point(operation_id, **kwargs)
+
+    real_receipts.resolve_resume_point = _spy_resolve_resume_point  # type: ignore[method-assign]
+
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=real_receipts)
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation = outcome.operation
+
+    executed: list[str] = []
+    actions = [_action(f"act-{i}", executed) for i in range(5)]
+
+    execution = svc.run_or_replay(
+        operation,
+        is_replay=False,
+        workspace_id=operation.workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == "completed"
+    assert len(calls) == 1
+    assert calls[0].get("total_action_count") == len(actions) == 5
+
+
+# ---------------------------------------------------------------------------
 # P2S-BLOCK-2: `run_actions` must CHECK `finalize_terminal_receipt`'s
 # returned outcome, never assume it succeeded.
 # ---------------------------------------------------------------------------
@@ -1484,6 +2013,19 @@ def test_p2s_block2_extra_receipt_denies_run_actions_completed_branch(
     denied), fabricating a `"completed"` status with NO terminal receipt at
     all. The mutation-verification step for this task reverted exactly
     this check and confirmed THIS test fails as a result.
+
+    U5/REGATE-BLOCK-3 note: an earlier revision of this test planted the
+    EXTRA ghost receipt at index 5 BEFORE any of indices 0-4 existed --
+    that specific shape is now itself a GAP, refused at write time by
+    `record_action_receipt`'s own contiguity guard, so it can no longer be
+    used to set up this scenario. This version instead pre-seeds all 5
+    real actions' receipts directly (contiguous, valid writes, 0..4), THEN
+    plants the ghost at index 5 -- now correctly the next contiguous index
+    -- and calls `run_actions` with `start_index=5` so its own loop body
+    never runs (nothing left to execute) and falls straight to the
+    for-else "every action ran" branch this test targets, where
+    reconciliation discovers 6 persisted receipts against a declared total
+    of 5.
     """
 
     op_service = OperatorOperationService(tmp_foundry)
@@ -1494,13 +2036,27 @@ def test_p2s_block2_extra_receipt_denies_run_actions_completed_branch(
     operation_id = outcome.operation.operation_id
     workspace_id = outcome.operation.workspace_id
 
+    for i in range(5):
+        seeded = receipt_service.record_action_receipt(
+            operation_id,
+            workspace_id=workspace_id,
+            action_id=f"act-{i}",
+            action_index=i,
+            status="completed",
+            attempt_ref="attempt-pre-seed",
+            started_at=ids.now_iso(),
+            completed_at=ids.now_iso(),
+        )
+        assert seeded.outcome == "created"
+
     # Plant an EXTRA action_receipt at index 5, OUT OF BAND -- via the
-    # real, real-persistence `record_action_receipt` (never a fake), for
-    # an index this `run_actions` call (5 real actions, indices 0-4) will
-    # never itself write. This is exactly the "one out-of-turn receipt"
-    # shape the P2 security gate demonstrated.
+    # real, real-persistence `record_action_receipt` (never a fake), one
+    # index past the 5 real actions this `run_actions` call declares. This
+    # is exactly the "one out-of-turn receipt" shape the P2 security gate
+    # demonstrated.
     ghost_outcome = receipt_service.record_action_receipt(
         operation_id,
+        workspace_id=workspace_id,
         action_id="act-ghost",
         action_index=5,
         status="completed",
@@ -1519,12 +2075,14 @@ def test_p2s_block2_extra_receipt_denies_run_actions_completed_branch(
         operation_kind=ctx.operation_kind,
         actions=actions,
         attempt_ref="attempt-1",
+        start_index=5,
     )
 
-    # Every real action DID run (this is not a truncation/cancellation
-    # case) -- but the operation must NOT be reported "completed", because
-    # reconciliation (6 persisted action_receipts vs 5 declared) denies.
-    assert executed == [f"act-{i}" for i in range(5)]
+    # Nothing NEW executed this call (all 5 real actions' receipts were
+    # already pre-seeded above; `range(5, 5)` is empty) -- but the
+    # operation must NOT be reported "completed", because reconciliation
+    # (6 persisted action_receipts vs 5 declared) denies.
+    assert executed == []
     assert execution.status == "denied"
     assert execution.terminal_receipt is None
 
@@ -1563,6 +2121,7 @@ def test_p2s_block2_extra_receipt_denies_run_or_replay_before_any_action_execute
     for i in range(7):  # EXTRA: 7 persisted, operation below only declares 5
         receipt_outcome = receipt_service.record_action_receipt(
             operation.operation_id,
+            workspace_id=operation.workspace_id,
             action_id=f"act-{i}",
             action_index=i,
             status="completed",
