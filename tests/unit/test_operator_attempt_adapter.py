@@ -21,6 +21,7 @@ nothing to "call and observe" for an absent method.
 from __future__ import annotations
 
 import sqlite3
+from typing import Any
 
 import pytest
 
@@ -95,6 +96,87 @@ def test_adapter_does_not_expose_the_wrapped_job_service(tmp_foundry: FoundryPat
     for name in public_names:
         value = getattr(adapter, name)
         assert not isinstance(value, AgentJobService)
+
+
+def test_adapter_public_surface_never_calls_accept_job(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Call-spy supplement to the two structural tests above (A2, OPM Karen
+    finding). A substring name-ban plus ``dir()`` scan only proves no method
+    literally named "accept*" exists on the adapter -- it would NOT catch a
+    differently-named method that reaches ``accept_job`` internally. This
+    proves the module docstring's actual, stronger claim ("never calls
+    ``self._jobs.accept_job``") by monkeypatching the wrapped service's
+    ``accept_job`` with a call-counting spy and exercising the adapter's
+    entire public surface (every method exercised at least once, including
+    both writes and the create/list-for-operation paths), then asserting the
+    spy was never invoked. Follows the existing spy pattern in
+    ``test_workspace_isolation_enforcement.py::TestMutationDenySpies
+    ::test_accept_job_cross_workspace_never_calls_accept_job``.
+    """
+
+    calls = {"n": 0}
+    original = AgentJobService.accept_job
+
+    def spy(self: AgentJobService, job_id: str, **kwargs: Any) -> Any:
+        calls["n"] += 1
+        return original(self, job_id, **kwargs)
+
+    monkeypatch.setattr(AgentJobService, "accept_job", spy)
+
+    adapter = _adapter(tmp_foundry)
+    record = _create_attempt(adapter, identity=_WS_MINE)
+    attempt_id = record.attempt_id
+
+    adapter.load_attempt(attempt_id, identity=_WS_MINE)
+    adapter.load_events(attempt_id, identity=_WS_MINE)
+    adapter.persist_event(attempt_id, {"kind": "probe"}, identity=_WS_MINE)
+    adapter.list_artifacts(attempt_id, identity=_WS_MINE)
+    adapter.persist_artifact(
+        attempt_id, {"artifact_id": "spy-artifact", "artifact_kind": "claim"}, identity=_WS_MINE
+    )
+    adapter.get_status(attempt_id, identity=_WS_MINE)
+    adapter.update_status(attempt_id, AgentJobStatus.running, identity=_WS_MINE)
+    adapter.poll_attempt(attempt_id, identity=_WS_MINE)
+    adapter.list_attempts_for_operation(_OPERATION_ID, identity=_WS_MINE)
+    adapter.terminate_attempt(attempt_id, identity=_WS_MINE)
+    adapter.cleanup_attempt(attempt_id, identity=_WS_MINE)
+
+    assert calls["n"] == 0
+
+
+def test_accept_job_spy_sanity_check_fires_on_direct_service_call(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Proves the spy in the test above is actually live -- i.e. that a
+    ``calls["n"] == 0`` result there is meaningful evidence and not a
+    tautology of a spy that never fires. Calling ``AgentJobService
+    .accept_job`` directly (bypassing the adapter entirely, exactly as the
+    module docstring's third guarantee forbids the adapter itself from
+    doing) increments the counter. The freshly-created job is in the
+    default ``pending`` status, not ``waiting_for_approval``/``completed``,
+    so the real ``accept_job`` raises ``ValueError`` -- irrelevant here: the
+    spy increments BEFORE delegating to the original, so the counter proves
+    the call reached the spy regardless of what the wrapped call does next.
+    """
+
+    calls = {"n": 0}
+    original = AgentJobService.accept_job
+
+    def spy(self: AgentJobService, job_id: str, **kwargs: Any) -> Any:
+        calls["n"] += 1
+        return original(self, job_id, **kwargs)
+
+    monkeypatch.setattr(AgentJobService, "accept_job", spy)
+
+    adapter = _adapter(tmp_foundry)
+    record = _create_attempt(adapter, identity=_WS_MINE)
+
+    jobs = AgentJobService(tmp_foundry)
+    with pytest.raises(ValueError):
+        jobs.accept_job(record.attempt_id)
+
+    assert calls["n"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +361,13 @@ def test_load_attempt_wrong_workspace_denial_logged_missing_is_not(
     "call",
     [
         lambda adapter, attempt_id, identity: adapter.load_events(attempt_id, identity=identity),
+        lambda adapter, attempt_id, identity: adapter.persist_event(
+            attempt_id, {"kind": "probe"}, identity=identity
+        ),
         lambda adapter, attempt_id, identity: adapter.list_artifacts(attempt_id, identity=identity),
+        lambda adapter, attempt_id, identity: adapter.persist_artifact(
+            attempt_id, {"artifact_id": "probe-artifact", "artifact_kind": "claim"}, identity=identity
+        ),
         lambda adapter, attempt_id, identity: adapter.get_status(attempt_id, identity=identity),
         lambda adapter, attempt_id, identity: adapter.poll_attempt(attempt_id, identity=identity),
         lambda adapter, attempt_id, identity: adapter.terminate_attempt(attempt_id, identity=identity),
@@ -290,7 +378,9 @@ def test_load_attempt_wrong_workspace_denial_logged_missing_is_not(
     ],
     ids=[
         "load_events",
+        "persist_event",
         "list_artifacts",
+        "persist_artifact",
         "get_status",
         "poll_attempt",
         "terminate_attempt",
@@ -301,6 +391,21 @@ def test_load_attempt_wrong_workspace_denial_logged_missing_is_not(
 def test_every_lifecycle_wrapper_denies_wrong_workspace_when_isolation_active(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch, call
 ) -> None:
+    """Covers all 9 identity-gated lifecycle wrappers on the adapter (every
+    public method that operates on an EXISTING attempt via a bare
+    ``self._jobs.load_job(attempt_id, identity=identity)`` gate before
+    delegating). ``create_attempt`` (create path, DF-004 identity-override
+    tested separately), ``load_attempt`` (its own dedicated
+    indistinguishable-from-missing tests above), and
+    ``list_attempts_for_operation`` (filters rather than raises, its own
+    dedicated test below) are intentionally not parametrized here -- their
+    gating is proven by name-matched tests elsewhere in this file, not
+    omitted. ``persist_event``/``persist_artifact`` were the two ORIGINAL
+    gaps in this parametrize list: the gate existed in the adapter source
+    all along, but nothing exercised it, so a regression removing either
+    gate would previously pass this entire suite (see the per-wrapper
+    mutation verification performed for OPM Karen finding A1)."""
+
     adapter = _adapter(tmp_foundry)
     record = _create_attempt(adapter, identity=_WS_MINE)
 
