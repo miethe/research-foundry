@@ -30,12 +30,17 @@ tasks:
   - test: tests/unit/test_operator_operation_service.py
   - validation: 257 passed exit 0 (orchestrator-independent re-run)
 - id: OPM-2.2
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-2.1
   estimate: 1.5 pts
+  started: 2026-07-30T01:35Z
+  completed: 2026-07-30T02:05Z
+  evidence:
+  - test: tests/unit/test_operator_attempt_adapter.py
+  - validation: 319 passed 0 failures exit 0 (orchestrator-independent re-run)
 - id: OPM-2.3
   status: pending
   assigned_to:
@@ -61,10 +66,10 @@ parallelization:
   batch_4:
   - OPM-2.4
 total_tasks: 4
-completed_tasks: 1
+completed_tasks: 2
 in_progress_tasks: 0
 blocked_tasks: 0
-progress: 25
+progress: 50
 ---
 
 # Phase 2 Progress — Durable Operation Coordinator
