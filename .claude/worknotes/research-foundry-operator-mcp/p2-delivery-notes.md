@@ -539,3 +539,40 @@ Still to file once P2 closes: the `job.json`↔`attempts` cross-store atomicity 
 path on the frozen `agent_job_service.py`), and anything surviving the blocking-fix wave.
 
 Populated as execution proceeds; see the Next Actions table in the final response.
+
+## Round 3 — re-gate of `be6ba96`, and the K3 fix wave
+
+Full record in `.claude/findings/research-foundry-operator-mcp-findings.md` §`FIND-P2-REGATE-R3`.
+
+**Security gate (Opus, AC-mandated): `APPROVED`** — AC OPM-2 and AC OPM-3 both MET, 25 mutations,
+24 detected. **Karen (Opus): `CHANGES_REQUESTED`** — one blocker.
+
+Both lenses were run **sequentially**, each in its own `git archive` export, per this phase's own
+orchestration lesson. The live worktree stayed clean throughout (`git status` empty before and after).
+
+**K3-BLOCK-1** — the round-2 remediation asserted, in production source, that *"EVERY
+reachable-by-contention raw exception in this module (lock acquisition, ...) is now governed"*. The
+claim was false about the very method carrying it: `record_confirmation`'s own `_ensure_schema` /
+`BEGIN IMMEDIATE` sat outside any handler. Karen broke it in one probe. Seventh instance of the
+layer-below/sibling class, and the third *false-completeness-claim* rated blocking here.
+
+**The lesson this adds to the phase's three:** *a completeness claim is a testable assertion, and
+writing one down is taking on an obligation to have checked it.* Every prior instance of this class
+was a guard missing on a sibling. This one was a **sentence** missing a check — asserted about a whole
+module from inside the one method that falsified it. The corrected comment deliberately claims only
+what its own method does, and does not restate a module-wide property.
+
+**Two process notes worth carrying forward:**
+
+1. **The bg-session subagent write-block fired.** A background session whose shell merely `cd`s into
+   an existing worktree can edit files itself, but its *subagents* are blocked ("parent hasn't
+   isolated"), and `EnterWorktree` refuses when cwd already *is* the target. The dispatched
+   implementer hit this, **correctly refused to route around the guard via Bash**, and returned a
+   complete fix spec instead — which is the right failure mode and made the inline application cheap.
+   Already recorded in project memory; re-confirmed here.
+2. **Mutation verification happened inside the fix step, not the next review round** — the P1 lesson,
+   applied. Five mutations, five detections, caches purged every iteration, plus a **non-redundancy
+   cross-check** proving K3-BLOCK-1's two clauses each fail only their own test. The K3-NB-1 test
+   asserts the *effect* observable (`executed == []`) rather than the outcome, because the pre-fix
+   failure mode is a downstream guard objecting **after** the effect already ran — an outcome-only
+   assertion cannot distinguish those.

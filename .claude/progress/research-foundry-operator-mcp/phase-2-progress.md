@@ -96,3 +96,26 @@ progress: 100
 | OPM-2.4 | Cancel and resume state machine | H3 ten-scenario matrix converges with uninterrupted effects | 1 pt |
 
 Quality gate (per plan): process-loss, exact-retry, conflict, cancel, resume, policy-change, and reconciliation fixtures pass; operation receipt is primary (audit-service failure is explicit and cannot erase effect truth); `task-completion-validator` and `karen` approve the exact lifecycle candidate.
+
+## Carried deferrals P6 must read (do not treat AC OPM-2/OPM-3 as evidenced over these)
+
+Recorded here because `OPM-6.3`/`OPM-6.4` read this file, and a deferral recorded only in a source
+docstring is a silent gap (Karen K3-NB-4, round 3).
+
+| Id | Deferral | Lands |
+|---|---|---|
+| `P2S-NB-1` | **Read-path sensitivity threshold.** The execution-time sensitivity gate holds upstream in `operator_mcp_policy._check_guard`, but the receipt//operation **read** paths do not apply a sensitivity threshold. AC OPM-2 is MET for workspace scoping; the sensitivity half of the read path is deferred. | `OPM-5.4` |
+| `P2S-NB-9` | **Bounded attempts.** No `max_attempt`/`attempt_limit` exists anywhere yet (verified by grep). AC OPM-3's "bounded" clause is not evidenced by P2. | `OPM-3.4` |
+| `REGATE-NB-4` | The four receipt writers authorize against a caller-supplied **workspace string**, not an `AuthIdentity` (the reads use identity). Closes the hole; leaves a weaker attacker bar ("know the workspace name"). | P3 |
+| `K3-NB-5` | Nothing binds `action_id` to `action_index`, so an in-workspace caller writing the next contiguous index out of turn is accepted immutably and the real action is silently **skipped**. | P3 |
+
+## Gate record
+
+| Round | Lens | Tree | Verdict |
+|---|---|---|---|
+| 2 | Security (AC-mandated) | `2806ea5` | CHANGES_REQUESTED |
+| 2 | Karen | `2806ea5` | CHANGES_REQUESTED |
+| 3 | Security (AC-mandated) | `be6ba96` | **APPROVED** (AC OPM-2 MET, AC OPM-3 MET) |
+| 3 | Karen | `be6ba96` | CHANGES_REQUESTED — K3-BLOCK-1 |
+
+Detail: `.claude/findings/research-foundry-operator-mcp-findings.md` §`FIND-P2-REGATE-R3`.

@@ -549,16 +549,27 @@ class OperatorCancelResumeService:
         fired. This bound closes that gap at the layer that actually
         executes, independent of every upstream caller getting its own
         bound right.
+
+        **K3-NB-1 (the bound is two-sided)**: an earlier revision checked
+        only the UPPER half, which delivered half of the caller-independence
+        the paragraph above claims. `start_index=-1` on 3 actions makes
+        `range(-1, 3)` yield `-1` FIRST, so `actions[-1]` -- the LAST action
+        -- executes out of order; `record_action_receipt`'s own
+        `action_index >= 0` guard then raises a raw `ValueError` out of this
+        service, with no `ExecutionOutcome`, no receipt and no checkpoint,
+        AFTER a real effect has already been performed. The lower bound is
+        therefore not cosmetic: it is the only thing standing between a
+        negative index and an executed-but-unrecorded action.
         """
 
         total = len(actions)
-        if start_index > total:
+        if start_index < 0 or start_index > total:
             _logger.error(
                 "operator_cancel_resume_service: run_actions REJECTED -- "
-                "start_index=%d exceeds total action count=%d for "
-                "operation_id=%s (U4/REGATE-BLOCK-1: independent defense-in-"
-                "depth even when an upstream caller's own bound on "
-                "resolve_resume_point was bypassed, omitted, or wrong)",
+                "start_index=%d outside [0, total action count=%d] for "
+                "operation_id=%s (U4/REGATE-BLOCK-1 + K3-NB-1: independent "
+                "two-sided defense-in-depth even when an upstream caller's own "
+                "bound on resolve_resume_point was bypassed, omitted, or wrong)",
                 start_index,
                 total,
                 operation_id,

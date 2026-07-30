@@ -68,6 +68,7 @@ from research_foundry.services import operator_mcp_policy as policy
 from research_foundry.services import operator_operation_service as service_module
 from research_foundry.services.operator_operation_service import (
     AuthorizationProof,
+    ConfirmationPersistenceError,
     OperationOutcome,
     OperatorOperationService,
     authorize_for_consumption,
@@ -1702,3 +1703,134 @@ def test_db_rejects_delete_of_an_operations_row(tmp_foundry: FoundryPaths) -> No
     finally:
         conn.close()
     assert _count_operations(tmp_foundry) == 1
+
+
+# ---------------------------------------------------------------------------
+# K3-BLOCK-1 (Karen gate, tree `be6ba96`): `record_confirmation`'s OWN lock
+# acquisition and in-transaction contention must not escape raw.
+# ---------------------------------------------------------------------------
+#
+# U6 governed `consume_and_create_operation`'s two contention paths, and the
+# F4 enumeration comment in `record_confirmation` then claimed -- about the
+# module, from inside the method it was WRONG about -- that "EVERY
+# reachable-by-contention raw exception in this module (lock acquisition,
+# in-lock promotion, ...) is now governed". `record_confirmation`'s own
+# `_ensure_schema`/`BEGIN IMMEDIATE` sat outside any handler and its
+# `ROLLBACK` lacked U6's best-effort guard, so an ordinary "database is
+# locked" -- precisely the contention DUR-1 consumers create on this same
+# file for up to `_BUSY_TIMEOUT_MS` -- escaped raw. Two tests, one per half,
+# because governing only the acquisition half is the exact
+# layer-below/sibling miss the original G2 fix made and U6 had to return for.
+
+
+def test_record_confirmation_lock_acquisition_timeout_raises_bounded_error_not_raw(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K3-BLOCK-1, half 1 (the G2 analogue). Holds a REAL competing writer
+    lock and shrinks `_BUSY_TIMEOUT_MS` so `BEGIN IMMEDIATE` genuinely times
+    out, rather than simulating the exception.
+
+    MUST FAIL pre-fix: a raw `sqlite3.OperationalError` propagates out of
+    `record_confirmation`. Passes post-fix: a bounded, module-owned
+    `ConfirmationPersistenceError` is raised whose message carries no
+    driver text, no SQL and no file path (the
+    `operator_mcp_error.schema.yaml` bounded/redacted contract, AC OPM-7).
+    """
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    # Materialize the database/schema with an unrelated, successful record
+    # first -- the blocker connection below cannot open a file that does
+    # not exist yet, and this also proves the failure is contention and not
+    # a cold-start artifact.
+    _mint_and_record(service, ctx)
+
+    issued = policy.mint_confirmation(_basic_ctx(targets=_run_targets()), now=ids.now())
+
+    monkeypatch.setattr(service_module, "_BUSY_TIMEOUT_MS", 50)
+
+    blocker_conn = sqlite3.connect(str(tmp_foundry.operator_operations_db), isolation_level=None)
+    blocker_conn.execute("BEGIN IMMEDIATE")
+    try:
+        with pytest.raises(ConfirmationPersistenceError) as excinfo:
+            service.record_confirmation(issued.record)
+    finally:
+        blocker_conn.execute("ROLLBACK")
+        blocker_conn.close()
+
+    # Bounded/redacted: no driver detail, no SQL, no path leaks out.
+    message = str(excinfo.value)
+    assert "database is locked" not in message
+    assert "INSERT" not in message
+    assert str(tmp_foundry.operator_operations_db) not in message
+    # NOT the raw driver type -- the whole point of the finding.
+    assert not isinstance(excinfo.value, sqlite3.OperationalError)
+
+
+def test_record_confirmation_lock_contention_inside_transaction_raises_bounded_error_not_raw(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K3-BLOCK-1, half 2 (the U6 analogue). `BEGIN IMMEDIATE` takes
+    RESERVED immediately but SQLite promotes to EXCLUSIVE lazily, on the
+    first real write -- so contention can still fire AFTER a successful
+    `BEGIN IMMEDIATE`. Wraps the module's `_connect` in a proxy whose
+    `execute` raises the SAME exception class SQLite raises, on the INSERT
+    specifically (`sqlite3.Connection` is an immutable C type and cannot be
+    patched directly), so the transaction, the connection and the
+    surrounding handling are all real and only the failing statement is
+    simulated.
+
+    This is NOT redundant with half 1: half 1's guard sits around
+    `_ensure_schema`/`BEGIN IMMEDIATE` and cannot fire here, because
+    `BEGIN IMMEDIATE` succeeds on this path. Deleting only the in-lock
+    clause leaves half 1's test green and fails this one.
+    """
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+
+    rollbacks: list[str] = []
+
+    class _FailingInsertConnection:
+        """Real connection, one poisoned statement."""
+
+        def __init__(self, conn: sqlite3.Connection) -> None:
+            self._conn = conn
+
+        def execute(self, sql: str, *args: Any, **kwargs: Any) -> Any:
+            if sql.lstrip().upper().startswith("INSERT INTO CONFIRMATIONS"):
+                raise sqlite3.OperationalError("database is locked")
+            if sql.strip().upper() == "ROLLBACK":
+                rollbacks.append(sql)
+            return self._conn.execute(sql, *args, **kwargs)
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._conn, name)
+
+    real_connect = service_module._connect
+    monkeypatch.setattr(
+        service_module, "_connect", lambda paths: _FailingInsertConnection(real_connect(paths))
+    )
+
+    with pytest.raises(ConfirmationPersistenceError) as excinfo:
+        service.record_confirmation(issued.record)
+
+    assert not isinstance(excinfo.value, sqlite3.OperationalError)
+    assert "database is locked" not in str(excinfo.value)
+    # The transaction really was rolled back -- not merely abandoned.
+    assert rollbacks == ["ROLLBACK"]
+
+    monkeypatch.undo()
+    # Nothing was committed: the confirmation row is absent, so a retry once
+    # the lock clears is clean rather than colliding with a half-written row.
+    # (`_confirmation_status` asserts presence, so query raw here.)
+    conn = _raw_connect(tmp_foundry)
+    try:
+        row = conn.execute(
+            "SELECT status FROM confirmations WHERE confirmation_id = ?",
+            (issued.record["confirmation_id"],),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is None

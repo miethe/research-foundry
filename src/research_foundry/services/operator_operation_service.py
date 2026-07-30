@@ -636,6 +636,31 @@ class _ManifestValidationInvariantViolation(RuntimeError):
     """
 
 
+class ConfirmationPersistenceError(RuntimeError):
+    """`record_confirmation` could not durably persist a freshly minted
+    confirmation because the operations database was locked (K3-BLOCK-1).
+
+    PUBLIC, unlike this module's two internal-only invariant types above,
+    because it is the one exception here that is *meant* to cross the module
+    boundary: `record_confirmation` returns `None` and has no
+    `OperationOutcome` contract to deny into, and (as of this commit) no
+    production caller at all -- so inventing a governed-denial return value
+    would fabricate a contract nothing consumes, while leaving the raw
+    `sqlite3.OperationalError` in place would violate
+    `schemas/operator_mcp_error.schema.yaml`'s bounded/redacted requirement
+    (AC OPM-7) the moment a caller let it bubble into a caller-visible
+    message. A dedicated, bounded, module-owned type is the narrowest fix
+    that satisfies both: the caller-visible surface carries no driver text,
+    no SQL, and no file path, while the full un-redacted detail is logged
+    server-side via `_logger.error` at the raise site -- the same split
+    :class:`_Dur1InvariantViolation` already makes.
+
+    Retryable by contract: it means "the writer lock was unavailable within
+    `_BUSY_TIMEOUT_MS`", never "this record is invalid" (that is `ValueError`,
+    raised before any connection is opened).
+    """
+
+
 # ---------------------------------------------------------------------------
 # F1: authorization as a data dependency (DUR-1's other half)
 # ---------------------------------------------------------------------------
@@ -887,12 +912,25 @@ class OperatorOperationService:
         # exceptions could not otherwise cross this module's boundary, which
         # was disproven empirically (an `OperationalError` from the CAS
         # `UPDATE` killed a real child process in this tree's own
-        # full-suite run) BEFORE that sibling was closed. With U6 landed,
-        # the claim below is narrow and complete: EVERY reachable-by-
-        # contention raw exception in this module (lock acquisition,
-        # in-lock promotion, the two Python-raised invariants) is now
-        # governed; only this ONE, cryptographically-improbable collision
-        # remains raw, for the reasons that follow. Rationale, not a silent
+        # full-suite run) BEFORE that sibling was closed. U6 closed that
+        # sibling in `consume_and_create_operation` -- and an EARLIER
+        # revision of THIS note then claimed, on the strength of it, that
+        # "EVERY reachable-by-contention raw exception in this module (lock
+        # acquisition, in-lock promotion, ...) is now governed". That claim
+        # was FALSE about the very method it was attached to, and the Karen
+        # gate on tree `be6ba96` broke it in a single probe (K3-BLOCK-1):
+        # this method's own `_ensure_schema`/`BEGIN IMMEDIATE` sat outside
+        # any handler, and its `ROLLBACK` lacked U6's best-effort guard, so
+        # an ordinary `database is locked` -- exactly the contention DUR-1
+        # consumers create on this same file for up to `_BUSY_TIMEOUT_MS` --
+        # escaped RAW across this module's boundary. Do not restate a
+        # module-wide completeness claim here; claim only what this method
+        # does. What it now does: lock acquisition AND in-transaction
+        # contention are converted to a bounded, module-owned
+        # `ConfirmationPersistenceError` (see that class for why a typed
+        # raise rather than a governed-denial return), leaving only the ONE
+        # cryptographically-improbable collision below deliberately raw.
+        # Rationale, not a silent
         # gap: (1) `confirmation_id` is minted by `mint_confirmation` from a
         # `secrets.token_hex`-salted SHA-256 digest -- a collision is
         # cryptographic-strength improbable, a fundamentally different
@@ -906,8 +944,24 @@ class OperatorOperationService:
         # `consume_and_create_operation`/the receipt methods are.
         conn = _connect(self._paths)
         try:
-            _ensure_schema(conn)
-            conn.execute("BEGIN IMMEDIATE")
+            try:
+                _ensure_schema(conn)
+                conn.execute("BEGIN IMMEDIATE")
+            except sqlite3.OperationalError as exc:
+                # K3-BLOCK-1, half 1 (the G2 analogue for this method):
+                # `busy_timeout` exhausted acquiring the writer lock, or
+                # schema setup failed -- no transaction was ever opened, so
+                # there is nothing to roll back.
+                _logger.error(
+                    "operator_operation_service: record_confirmation lock acquisition "
+                    "failed (%s) for confirmation_id=%s -- busy_timeout exhausted or "
+                    "schema setup failed",
+                    type(exc).__name__,
+                    confirmation_id,
+                )
+                raise ConfirmationPersistenceError(
+                    "confirmation could not be persisted: operations database unavailable"
+                ) from None
             try:
                 conn.execute(
                     "INSERT INTO confirmations"
@@ -916,6 +970,36 @@ class OperatorOperationService:
                     (confirmation_id, workspace_id, status, json.dumps(dict(record)), issued_at),
                 )
                 conn.execute("COMMIT")
+            except sqlite3.OperationalError as exc:
+                # K3-BLOCK-1, half 2 (the U6 analogue): `BEGIN IMMEDIATE`
+                # takes RESERVED immediately but SQLite promotes to
+                # EXCLUSIVE lazily, on the first real write -- the INSERT
+                # below -- so `database is locked` can still fire AFTER a
+                # successful `BEGIN IMMEDIATE` if that promotion is blocked
+                # long enough to exhaust `_BUSY_TIMEOUT_MS`. Governing ONLY
+                # the acquisition half would repeat the exact
+                # layer-below/sibling miss the original G2 fix made and U6
+                # had to come back for.
+                _logger.error(
+                    "operator_operation_service: record_confirmation lock contention (%s) "
+                    "inside the locked transaction for confirmation_id=%s -- database is "
+                    "locked past BEGIN IMMEDIATE's own acquisition; raising a bounded "
+                    "ConfirmationPersistenceError rather than letting a raw "
+                    "sqlite3.OperationalError escape this module's boundary",
+                    type(exc).__name__,
+                    confirmation_id,
+                )
+                # Best-effort, for U6's reason: if the SAME contention that
+                # raised this also makes ROLLBACK raise, a second raw
+                # exception must not replace the bounded error about to be
+                # raised (COMMIT was never reached on this path either way).
+                try:
+                    conn.execute("ROLLBACK")
+                except sqlite3.OperationalError:
+                    pass
+                raise ConfirmationPersistenceError(
+                    "confirmation could not be persisted: operations database unavailable"
+                ) from None
             except Exception:
                 conn.execute("ROLLBACK")
                 raise

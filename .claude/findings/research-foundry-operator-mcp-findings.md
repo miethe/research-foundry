@@ -2054,3 +2054,109 @@ The wave nonetheless did not clear the bar, for the two reasons the mandate pred
 Every one of 1–4 must again be **mutation-verified inside the fix step**, and — the specific lesson of
 this round — the verification must break the **wiring**, not only the guard: M3b and M7c both prove
 that a guard with a passing unit test can be disconnected from its caller with the suite fully green.
+
+---
+
+## FIND-P2-REGATE-R3 — round-3 re-gate of tree `be6ba96`, and the K3 fix wave that closed it
+
+Two Mode-E lenses were run **sequentially** (never concurrently — mutation reviewers are *writers*,
+and round 2 lost a batch to exactly that mistake), each in its own
+`git archive be6ba96 | tar -x -C <tmpdir>` export. The live worktree was never touched by either;
+`git status` was empty before and after both.
+
+### Verdicts
+
+| Lens | Model | Tree | Verdict |
+|---|---|---|---|
+| Security gate (AC-mandated) | Opus | `be6ba96` | **APPROVED** — AC OPM-2 **MET**, AC OPM-3 **MET** |
+| Karen | Opus | `be6ba96` | **CHANGES_REQUESTED** — 1 blocking (K3-BLOCK-1) |
+
+The security lens ran 25 mutations (24 detected) and confirmed every round-2 blocker closed by
+demonstration: all 11 `run_actions` outcome guards pinned 1:1 to uniquely-named tests, all 4 receipt
+writers denying on workspace mismatch, the gap-receipt brick refused at write time, and DUR-1
+surviving the **exact** frozen wrong implementation (COMMIT hoisted above the locked section *and*
+`AND status = 'issued'` stripped) — 6 tests fail, 3 of them standalone.
+
+Karen independently reproduced all of that (32 mutations), confirmed its own round-2 blocker A1 and
+all four of its non-blocking items genuinely closed, and then found one new blocker.
+
+### K3-BLOCK-1 (blocking) — a false completeness claim in production source
+
+`operator_operation_service.py`, `record_confirmation`. The F4 enumeration comment asserted:
+
+> *"With U6 landed, the claim below is narrow and complete: EVERY reachable-by-contention raw
+> exception in this module (lock acquisition, in-lock promotion, the two Python-raised invariants) is
+> now governed."*
+
+**False about the very method it was attached to.** That method's own `_ensure_schema` /
+`BEGIN IMMEDIATE` sat outside any handler, and its `ROLLBACK` lacked U6's best-effort guard, so an
+ordinary `database is locked` — precisely the contention DUR-1 consumers create on this same file for
+up to `_BUSY_TIMEOUT_MS` — escaped **raw** across the module boundary. Karen demonstrated it in one
+probe (`RAW_ESCAPE: sqlite3.OperationalError: database is locked`).
+
+This is the same **false-self-claim** pattern already rated blocking twice in this ledger
+(`R5-BLOCK-1`, `P2R-BLOCK-1`), and the **seventh** instance of the layer-below/sibling class.
+
+### The K3 fix wave (this tree)
+
+Applied inline by the orchestrator — a bg-session harness guard blocks *subagent* writes to a
+worktree the parent did not itself enter, so the dispatched implementer could not write (it correctly
+refused to route around the guard via shell and returned a full fix spec instead).
+
+| Item | Fix |
+|---|---|
+| **K3-BLOCK-1** | Mirrored U6 in `record_confirmation`: lock acquisition and in-transaction contention now raise a bounded, module-owned `ConfirmationPersistenceError`; `ROLLBACK` made best-effort. A **typed raise**, not a governed-denial return — this method returns `None`, has no `OperationOutcome` contract and (verified by repo-wide grep) **no production caller**, so inventing a denial value would fabricate a contract nothing consumes. The false completeness sentence is replaced by a claim scoped to what this method actually does. |
+| **K3-NB-1** | `run_actions`' bound made two-sided (`start_index < 0 or start_index > total`). Pre-fix, `start_index=-1` made `range(-1, 3)` yield `-1` first, so the **last** action executed out of order before `record_action_receipt` raised a raw `ValueError` — an executed-but-unrecorded effect. |
+| **K3-NB-2** | Call-spy test pinning `resume_operation`'s `total_action_count=len(actions)` wiring (the sibling of the already-pinned `run_or_replay` call). |
+| **K3-NB-3** | Call-spy test pinning `run_actions`' safe-point `cancellation_requested(..., workspace_id=...)` kwarg (REGATE-NB-3, open since round 2). |
+
+### Mutation matrix — verified inside the fix step, per the round-2 lesson
+
+Caches purged and `PYTHONDONTWRITEBYTECODE=1` set on **every** iteration.
+
+| Mutation | Named test | pre | mutant | detected | file |
+|---|---|---|---|---|---|
+| M1 K3-BLOCK-1 half 1 (acquisition → raw) | `test_record_confirmation_lock_acquisition_timeout_raises_bounded_error_not_raw` | 0 | 1 | ✔ | RESTORED |
+| M2 K3-BLOCK-1 half 2 (in-lock → raw) | `test_record_confirmation_lock_contention_inside_transaction_raises_bounded_error_not_raw` | 0 | 1 | ✔ | RESTORED |
+| M3 K3-NB-1 (drop lower bound) | `test_run_actions_denies_negative_start_index_and_executes_nothing` | 0 | 1 | ✔ | RESTORED |
+| M4 K3-NB-2 (drop wiring) | `test_resume_operation_calls_resolve_resume_point_with_declared_total_action_count` | 0 | 1 | ✔ | RESTORED |
+| M5 K3-NB-3 (drop kwarg) | `test_run_actions_checks_cancellation_with_the_operations_workspace_id` | 0 | 1 | ✔ | RESTORED |
+
+**Non-redundancy cross-check** (the specific trap this ledger keeps hitting): K3-BLOCK-1 is guarded by
+two *separate* clauses, so each was verified to fail **only its own** test — M1 applied leaves half 2's
+test green, M2 applied leaves half 1's test green. Neither is a redundant sibling of the other.
+`test_run_actions_denies_negative_start_index_and_executes_nothing` asserts on the **effect**
+observable (`executed == []`), not the outcome, because the pre-fix failure mode is that a downstream
+guard *does* eventually object — by raising — but only after the effect already happened; an
+outcome-only assertion cannot tell those apart.
+
+### Validation
+
+```
+targeted operator suites (6 files)     -> REALEXIT=0, 291 dots, 0 F, 0 E
+full suite, both known --ignore files  -> REALEXIT=1, 16 distinct FAILED nodes,
+                                          ZERO operator nodes (= documented pre-P2 baseline)
+flake8 --select=E9,F63,F7,F82 (both touched modules) -> EXIT=0
+each of the 5 new tests run standalone -> EXIT=0
+```
+
+### Karen's recording corrections (both accepted, both closed here)
+
+1. **No round-3 entry existed in this ledger** — two rounds of gate verdicts on `be6ba96` were
+   recorded nowhere P6 would read them. This section closes that.
+2. **`p2-delivery-notes.md` was never updated for the round-2 remediation** — the U1–U10 numbers
+   existed only in code comments. Addressed in that file.
+3. **K3-NB-4** — the read-path sensitivity-threshold deferral (`P2S-NB-1`) was recorded only in a
+   source docstring. Now also recorded in `phase-2-progress.md`, which is what `OPM-6.3` reads.
+
+### Still open (carried, non-blocking)
+
+- **K3-NB-5** — an in-workspace caller writing the *next contiguous* index out of turn is accepted and
+  immutable, silently **skipping** the real action. Same residual bar as the accepted `REGATE-NB-4`
+  (authorization is a caller-supplied workspace *string*, not an `AuthIdentity`), but the *skip*
+  consequence is new: nothing binds `action_id` to `action_index`.
+- **REGATE-NB-4 / NB-D** — the four receipt writers should take an `AuthIdentity`, matching the reads.
+  P3 obligation.
+- **K3-NB-6** — the new `except sqlite3.OperationalError` is broader than "database is locked" (it
+  would also convert schema drift). Logged at ERROR, so not silent.
+- **K3-NB-7 / NB-8, P2S-NB-9 (bounded attempts, scheduled at `OPM-3.4`)** — unchanged.

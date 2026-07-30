@@ -2588,3 +2588,174 @@ def test_cancellation_requested_scoped_read_denies_cross_workspace(
     assert svc.cancellation_requested(operation_id) is True  # unscoped
     assert svc.cancellation_requested(operation_id, workspace_id=workspace_id) is True
     assert svc.cancellation_requested(operation_id, workspace_id="ws-attacker") is False
+
+
+# ---------------------------------------------------------------------------
+# K3-NB-1 / K3-NB-2 / K3-NB-3 (Karen gate, tree `be6ba96`)
+# ---------------------------------------------------------------------------
+
+
+def test_run_actions_denies_negative_start_index_and_executes_nothing(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """K3-NB-1: U4's bound was UPPER-only, delivering half the
+    caller-independence its own docstring claims. `start_index=-1` on 3
+    actions makes `range(-1, 3)` yield `-1` FIRST, so `actions[-1]` -- the
+    LAST action -- executes out of order; `record_action_receipt`'s
+    `action_index >= 0` guard then raises a raw `ValueError` out of this
+    service, AFTER a real effect has already been performed and with no
+    `ExecutionOutcome`, no receipt and no checkpoint to show for it.
+
+    NOT redundant with any downstream guard, and this is why the assertion
+    is on `executed`, not merely on the outcome: the pre-fix failure mode
+    is precisely that a downstream guard DOES eventually object -- by
+    raising -- but only after `act-2` already ran. An outcome-only
+    assertion cannot tell "denied before anything ran" from "blew up after
+    an effect". So this test pins the effect observable.
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    executed: list[str] = []
+    actions = [_action(f"act-{i}", executed) for i in range(3)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+        start_index=-1,
+    )
+
+    # Governed denial, not a raw ValueError escaping the service.
+    assert execution.status == "denied"
+    # THE load-bearing assertion: zero effects. Pre-fix, `executed ==
+    # ["act-2"]` -- the last action ran out of order before anything
+    # objected.
+    assert executed == []
+
+
+def test_resume_operation_calls_resolve_resume_point_with_declared_total_action_count(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """K3-NB-2: the sibling of the wiring pinned by
+    `test_run_or_replay_calls_resolve_resume_point_with_declared_total_action_count`.
+    `resume_operation`'s own `total_action_count=len(actions)` argument was
+    revert-undetectable -- setting it to `None` left the whole suite green,
+    because `run_actions`' K3-NB-1/U4 bound makes the OBSERVABLE outcome
+    identical either way. That is the redundant-sibling-guard trap, so this
+    test isolates the WIRING via a spy, exactly as its sibling does.
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_receipts = OperatorReceiptService(tmp_foundry)
+    attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
+
+    calls: list[dict] = []
+    _real_resolve_resume_point = real_receipts.resolve_resume_point
+
+    def _spy_resolve_resume_point(operation_id: str, **kwargs):  # noqa: ANN001, ANN201
+        calls.append(dict(kwargs))
+        return _real_resolve_resume_point(operation_id, **kwargs)
+
+    real_receipts.resolve_resume_point = _spy_resolve_resume_point  # type: ignore[method-assign]
+
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=real_receipts)
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    resume_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="job.resume",
+        idempotency_key="resume-k3nb2",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("agent_job", operation_id),),
+        resolved_target_workspaces=(_IDENTITY.workspace_id,),
+    )
+    resume_confirmation_id, resume_token, record = _mint_and_record(op_service, resume_ctx)
+    resume_authorization = _authorize(
+        tmp_foundry, resume_ctx, confirmation_record=record, presented_token=resume_token
+    )
+
+    actions = [_action(f"act-{i}", []) for i in range(3)]
+
+    svc.resume_operation(
+        operation_id,
+        identity=_IDENTITY,
+        resume_ctx=resume_ctx,
+        resume_confirmation_id=resume_confirmation_id,
+        resume_presented_token=resume_token,
+        resume_authorization=resume_authorization,
+        actions=actions,
+        operation_kind=ctx.operation_kind,
+        workspace_id=workspace_id,
+        attempt_adapter=attempt_adapter,
+        attempt_provider="claude_agent_sdk",
+        attempt_model_profile="rf_synthesize_deep",
+        attempt_request_kind="research",
+        attempt_policy_snapshot=dict(_MINIMAL_POLICY_SNAPSHOT),
+    )
+
+    assert len(calls) >= 1
+    assert calls[0].get("total_action_count") == len(actions) == 3
+
+
+def test_run_actions_checks_cancellation_with_the_operations_workspace_id(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """K3-NB-3 (REGATE-NB-3, still open at `be6ba96`): `run_actions`' safe-
+    point call `self.cancellation_requested(operation_id,
+    workspace_id=workspace_id)` was revert-undetectable -- the parameter
+    defaults to `None`, which means UNSCOPED, and dropping the kwarg left
+    the suite green.
+
+    Spies the method to pin the argument itself. An outcome-only test
+    cannot detect the loss: with only one workspace in play, scoped and
+    unscoped reads return the same row, so the observable is identical
+    while the cross-workspace guarantee is gone.
+    """
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets())
+    outcome = _consume(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    calls: list[dict] = []
+    _real_cancellation_requested = svc.cancellation_requested
+
+    def _spy_cancellation_requested(op_id: str, **kwargs):  # noqa: ANN001, ANN201
+        calls.append(dict(kwargs))
+        return _real_cancellation_requested(op_id, **kwargs)
+
+    svc.cancellation_requested = _spy_cancellation_requested  # type: ignore[method-assign]
+
+    executed: list[str] = []
+    actions = [_action(f"act-{i}", executed) for i in range(2)]
+
+    execution = svc.run_actions(
+        operation_id,
+        workspace_id=workspace_id,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == "completed"
+    # One safe-point check per action, each explicitly scoped.
+    assert len(calls) == len(actions)
+    for call in calls:
+        assert call.get("workspace_id") == workspace_id
