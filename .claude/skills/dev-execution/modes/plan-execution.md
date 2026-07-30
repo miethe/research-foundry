@@ -2,6 +2,12 @@
 
 Wave-driven orchestration for Tier 2/3 multi-phase plans via phase-owner agents.
 
+> **The run executes in a git worktree by default** per
+> [`../git-worktree-pr-protocol.md`](../git-worktree-pr-protocol.md) (run branch → PR to the parent
+> branch → squash-merge on approval, or an in-prompt override). The per-phase `isolation: worktree`
+> directive below is a separate, finer-grained control: it governs **wave-level sub-worktrees** for
+> individual phases *within* the run, not whether the run itself is isolated.
+
 ## When to Use
 
 Use this mode when the implementation plan has a `wave_plan` frontmatter block (Tier 2/3 plans) or when executing a cross-cutting refactor where multiple phases can run in parallel. Tier 0 uses `/dev:quick-feature`; Tier 1 uses `feature-sprint-executor`. Graduate to this mode when the plan's phase-dependency graph justifies parallel execution or when any phase carries >15K tokens of pattern context that would pollute the orchestrator window.
@@ -38,6 +44,16 @@ head -80 <plan_path> | sed -n '/^---$/,/^---$/p'
 # → parse wave_plan.waves  (list of lists: [[P1], [P2, P3], [P4]])
 # → if wave_plan absent → SEQUENTIAL FALLBACK (see §Sequential Fallback below)
 
+# 2a. Pre-Execution Artifact Provisioning (best-effort, ON BY DEFAULT)
+#     Runs BEFORE the wave loop below constructs any phase-owner dispatch — resolves the
+#     plan's required_artifacts frontmatter + the project manifest (.claude/aos-artifacts.yaml)
+#     and deploys any in-catalog gap. On by default (disable with AOS_ARTIFACT_PROVISION=0);
+#     silent no-op with no manifest and no required_artifacts. Non-fatal on infra failure;
+#     a NEEDED+unsatisfiable artifact is the one hard gate — engine exit 2 halts the run before
+#     any phase-owner spends budget. Gate + env resolution: .claude/rules/artifact-provisioning.md
+Bash(f'PROVISION_PLAN_FILE="{plan_path}" PROVISION_SCOPE="plan:{plan_slug}" '
+     f'.claude/skills/dev-execution/hooks/provision-artifacts.sh')
+
 # 3. For each wave in wave_plan.waves:
 for wave in waves:
 
@@ -69,19 +85,24 @@ for wave in waves:
     checkpoint_sha = Bash("git rev-parse HEAD")
     # Store in plan frontmatter commit_refs for rollback traceability
 
-    # 3c-sync. IntentTree SDLC Sync — after wave merge (best-effort, gated)
+    # 3c-sync. IntentTree SDLC Sync — after wave merge (best-effort, ON BY DEFAULT)
     # Propagates all phase progress files in the just-completed wave to bound nodes.
+    # On by default; disable with INTENTTREE_SDLC_SYNC=0. No-op without a binding.
     # Non-fatal: offline / CLI-missing → skip with warning, never block the wave loop.
-    #
-    #   if [ "${INTENTTREE_SDLC_SYNC:-0}" = "1" ]; then
-    #     for phase_id in wave:
-    #       progress_f=".claude/progress/${plan_slug}/phase-${N}-progress.md"
-    #       itt sync import "${progress_f}" --apply --tree "${INTENTTREE_TREE:-}" 2>&1 \
-    #           | head -5 || echo "[sdlc-sync] phase ${N} sync skipped (non-fatal)"
-    #   fi
+    # Gate + env resolution: .claude/rules/intenttree-integration.md
+    for phase_id in wave:
+        progress_f=f".claude/progress/{plan_slug}/phase-{N}-progress.md"
+        Bash(f'SDLC_SYNC_FILE="{progress_f}" INTENTTREE_TREE="${{INTENTTREE_TREE:-}}" '
+             f'.claude/skills/dev-execution/hooks/sdlc-sync.sh')
 
     # 3d. Worktree merge-back (for any worktree-isolated phase in this wave)
     #     See §Worktree Merge Protocol
+    #
+    #     NOTE: the dossier no longer regenerates per wave (bookkeeping demotion,
+    #     `references/execution-doctrine.md` — Bookkeeping demotions table: "every
+    #     phase boundary + every wave" -> "end of plan"). Stage-authoring at phase
+    #     close still happens inside the phase-owner (phase-execution.md §5.2b);
+    #     the regeneration call itself moves to step 7 below.
 
 # 4. Feature-level reviewer gate (after final wave)
 #    Tier 3 → karen; Tier 2 → task-completion-validator
@@ -91,21 +112,38 @@ if tier == 3:
 else:
     Task("task-completion-validator", "Mode E: Reviewer. Review plan-level completion …")
 
-# 5. IntentTree SDLC Sync — plan done (best-effort, gated)
+# 5. IntentTree SDLC Sync — plan done (best-effort, ON BY DEFAULT)
 # After the reviewer approves, sync the plan file itself so the feature root node
-# reflects the final status. Non-fatal.
-#
-#   if [ "${INTENTTREE_SDLC_SYNC:-0}" = "1" ]; then
-#     itt sync import "<plan_path>" --apply --tree "${INTENTTREE_TREE:-}" 2>&1 \
-#         | head -5 || echo "[sdlc-sync] plan-level sync skipped (non-fatal)"
-#   fi
+# reflects the final status. On by default (disable with INTENTTREE_SDLC_SYNC=0);
+# no-op without a binding. Non-fatal. Gate: .claude/rules/intenttree-integration.md
+Bash(f'SDLC_SYNC_FILE="{plan_path}" INTENTTREE_TREE="${{INTENTTREE_TREE:-}}" '
+     f'.claude/skills/dev-execution/hooks/sdlc-sync.sh')
 
-# 6. Write plan-level Completion Report
-Write(
-    path=f".claude/worknotes/{plan_slug}/completion-report.md",
-    content=<wave summary, reviewer verdict, commit_refs>
-)
+# 6. Plan-level Completion Report — RETIRED (bookkeeping demotion,
+#    `references/execution-doctrine.md` — Bookkeeping demotions table). The reviewer
+#    verdict from step 4 plus `commit_refs` recorded in plan frontmatter (step 3c) IS
+#    the record; nothing is written to `.claude/worknotes/{plan_slug}/completion-report.md`
+#    anymore. (This is distinct from the phase-owner's per-phase Completion Note —
+#    see §Phase-Owner Delegation Pattern — which survives unchanged.)
+
+# 7. Delivery Dossier — plan done (best-effort, ON BY DEFAULT)
+# Close the living dossier: the reviewer-approved plan-completion state and the
+# `validate` stage should now be authored into the manifest (evidence, screenshots,
+# the enforced-`feature`-report cross-link when applicable), then regenerated.
+# Recommended / non-blocking; disable with AOS_DELIVERY_DOSSIER=0; no-op without a
+# manifest. Spec: docs/skill-development/delivery-dossier/spec.md §A.6
+Bash(f'DELIVERY_DOSSIER_MANIFEST=".claude/reports/dossier/{feature_slug}/report.json" '
+     f'.claude/skills/dev-execution/hooks/update-dossier.sh')
 ```
+
+### Implementation Notes Over Halt
+
+Per `references/execution-doctrine.md` §"Implementation notes over halt-and-gate": phase-owners
+log a deviation — a conservative choice, an assumption, a discovered constraint — to
+`.claude/worknotes/<plan_slug>/implementation-notes.md` with its rationale and keep going, rather
+than halting the wave loop. The orchestrator reviews accumulated notes at the plan milestone
+boundary (not per-wave). This does **not** relax the three mid-milestone halt cases or the Mode-D
+boundaries below — those are unchanged and non-negotiable.
 
 ## Phase-Owner Delegation Pattern
 
@@ -156,40 +194,51 @@ Task(
 
 The orchestrator enumerates `files_affected` and `serialization_barriers` from `wave_plan` frontmatter before spawning. Parallel phase-owners cannot coordinate at runtime, so the constraint is expressed in the prompt upfront (OQ-2 mitigation, P1).
 
-### Per-Phase Model / Effort Propagation
+**Delta context only.** When the orchestrator or a phase-owner assembles input for a validator/
+reviewer gate dispatch (below, and in §Validator Gating), that packet carries the **delta** —
+failure summary, touched files, AC in question — never the full plan, the cumulative diff, or the
+progress file (`references/execution-doctrine.md` rule 2). If a reviewer needs the whole plan to
+judge one AC, that is a signal the AC is under-specified — fix the AC, don't widen the packet.
 
-`wave_plan.phases[]` entries may carry two optional fields that serve as dispatch defaults for all implementer `Task()` calls within that phase:
+### Dispatch-Time Routing
+
+Under the doctrine there are no plan-time model/effort pins (`references/execution-doctrine.md` —
+Bookkeeping demotions table, `orchestrator_model` row: "deleted — advisory, never read"). A
+`wave_plan.phases[]` entry carries **routing constraints**, not a resolved model:
 
 ```yaml
 wave_plan:
   phases:
     - id: P2
-      model: sonnet      # Optional. Default model for this phase's implementer dispatches.
-      effort: adaptive   # Optional. Default thinking budget for implementers in this phase.
+      routing_constraints:
+        must_stay_primary: false   # true -> MUST-stay-primary class (Mode-D, above-Sonnet-5-bar work); never offloaded
+        offload_eligible: true     # bounded, contract-clear work may resolve to ICA Sonnet 5
+        capability_bar: standard   # standard | hardest — hardest implies xhigh effort / Opus-5-spine legs
 ```
 
-**Override rule (per-task wins)**: Individual task rows in the phase task table carry `Model` and `Effort` columns. A per-task value overrides the phase default at dispatch time. The phase default overrides nothing above it — it is simply the fallback when no per-task value is set. If both are absent, the implementer's own agent frontmatter model applies and the model's built-in effort default is used.
+**Resolution happens at dispatch, not at plan-authoring time.** For every implementer `Task()`
+call, the phase-owner resolves provider + model through the `delegation-router` skill, passing
+the phase's `routing_constraints` plus the task's own shape; the orchestrator does the same for
+its own spine/cross-wave-merge legs. Forward whatever `delegation-router` returns for that
+specific dispatch as `Task(model=...)` — never a value copied verbatim from plan frontmatter. See
+[`MODEL-ROUTING.md`](../../../../docs/agentic-operator/MODEL-ROUTING.md) for the policy
+`delegation-router` applies (MUST-stay classes, the Cost/Intelligence/Taste/Speed scorecard,
+offload eligibility).
 
-**Forwarding mechanics**:
+**Backward compatibility — in-flight plans only.** A plan authored before this doctrine may still
+carry `phases[].model` / `phases[].effort` as a plan-time pin. Per
+`references/execution-doctrine.md` ("Applies to runs of new doctrine plans... in-flight plans
+finish under their own rules"), honor a legacy pin exactly as before — forward it as
+`Task(model=...)`, inject `Effort: <value>` in the prompt. **New plans must not emit
+`phases[].model` / `phases[].effort`** — author `routing_constraints` instead.
 
-- `model` — forwarded as the `model=` parameter on the `Task()` tool call (hard model override at the platform level). Omit the parameter entirely when no model is set.
-- `effort` — injected as `Effort: <value>` in the implementer prompt text, because `Task()` has no effort parameter today. The implementer reads it from the prompt and applies it to its own reasoning budget.
-
-**Fallback chain** (phase-owner applies this when dispatching implementers):
-
-| Priority | Source | Action |
-|----------|--------|--------|
-| 1 (highest) | Per-task `Model` / `Effort` column in task table | Use directly |
-| 2 | Phase model/effort from prompt (`Phase model default:` / `Phase effort default:`) | Use as fallback |
-| 3 (lowest) | Absent at both levels | Omit `model=`; omit `Effort:` line — implementer defaults apply |
-
-**Effort vocabulary**: Valid values are model-keyed. See `.claude/skills/planning/references/multi-model-guidance.md` for the full vocabulary per model (e.g., Claude models use `adaptive` / `extended`; Codex uses `none` / `low` / `medium` / `high` / `xhigh`).
-
-**Omission is correct**: Both fields are optional throughout. Plans that do not set them continue to work unchanged — phase-owners dispatch implementers at their pre-configured sonnet default with no effort override.
+**Omission is correct**: `routing_constraints` is optional throughout. Absent it,
+`delegation-router` applies its default resolution (subscription Sonnet 5 for implementation, Opus
+5 for spine/hardest legs) with no plan-authored override.
 
 ## Validator Gating
 
-**Per-wave (inside phase-owner)**: Each phase-owner runs `task-completion-validator` at the end of its phase before writing its Completion Note. Internal to the phase-owner; orchestrator does not run it directly. Gate matrix: `./validation/completion-criteria.md`.
+**Per-wave (inside phase-owner)**: Each phase-owner runs `task-completion-validator` at the end of its phase before writing its Completion Note. Internal to the phase-owner; orchestrator does not run it directly. Gate matrix: `./validation/completion-criteria.md`. Gate input is delta context only (see above) — the failure summary, touched files, and AC in question, never the full plan stack.
 
 **Plan-level (after final wave)**:
 
@@ -198,7 +247,13 @@ wave_plan:
 | Tier 2 | `task-completion-validator` |
 | Tier 3 | `karen` |
 
-A phase, wave, or plan is not complete until the applicable reviewer approves. If the reviewer finds required fixes, the original phase-owner addresses them; escalate to Opus only after 2+ failed fix cycles.
+A phase, wave, or plan is not complete until the applicable reviewer approves. **Gate budget**
+(`references/execution-doctrine.md` rule 1): a reviewer/validator gate on the **same scope x
+lens** gets at most **2 re-passes**. The original phase-owner addresses required fixes by
+continuing its existing session (see §Worktree Merge Protocol — fix loops continue, they do not
+re-dispatch). The **3rd failure against the same scope x lens does not escalate to "a human looks
+at it"** — it auto-escalates to re-scope/redesign of that phase. Count re-passes per scope x lens,
+not per dispatch: re-spawning the phase-owner does not reset the budget.
 
 ### Wave Wait Protocol
 
@@ -220,6 +275,12 @@ done
 ```
 
 ## Worktree Merge Protocol
+
+> **Canonical run-level protocol:** the run-wide git workflow (run branch → PR to the parent branch →
+> squash-merge on approval) lives in [`../git-worktree-pr-protocol.md`](../git-worktree-pr-protocol.md).
+> This section is the **per-wave** detail that operates **one level below** that protocol: each
+> worktree-isolated phase's wave branch is squash-merged back into the **run branch** here, and the run
+> branch is what later PRs to the parent.
 
 When a phase-owner returns after running with `isolation: "worktree"` (§2.5 + P3), the
 orchestrator handles integration explicitly — merge-back is NOT automated by the platform.
@@ -243,10 +304,23 @@ git diff HEAD..worktree-<slug>
 git merge --squash worktree-<slug>
 git commit -m "feat(scope): merge phase N worktree"
 
-# 4b. If validator failed: discard the worktree branch
-git branch -D worktree-<slug>
-# Re-spawn phase-owner with corrective prompt; or escalate to Opus
+# 4b. If validator failed: continue the SAME phase-owner session on the SAME
+# worktree branch — do NOT discard the branch or re-spawn. Per
+# references/execution-doctrine.md rule 3 ("Continue; don't re-dispatch"), the
+# phase-owner is cache-warm and already holds the context the fix depends on;
+# a fresh re-dispatch re-ingests everything to relearn what it already knew.
+# Hand the phase-owner the delta only (failure summary, touched files, AC in
+# question — see §Validator Gating) and let it commit a fix on worktree-<slug>.
+# git branch -D worktree-<slug> is NOT part of this path.
 ```
+
+**Discarding the branch is reserved for auto-escalation, not routine fix loops.** The gate budget
+(§Validator Gating) caps a scope x lens at 2 re-passes; only the **3rd failure** triggers
+re-scope/redesign, and only *that* path may abandon `worktree-<slug>` and restart the phase from a
+new scope. This is a different situation from **Resume Semantics** below (§Resume Semantics):
+resuming after an interrupted *session* (checkpoint restore) re-spawns phase-owners with the same
+prompt parameters because the prior in-flight session no longer exists to continue — it is not a
+fix loop and does not consume gate-budget re-passes.
 
 **Before next wave**: Verify the worktree's branch has been merged or explicitly preserved before
 proceeding. Record the merge commit SHA in the plan's `commit_refs` frontmatter.
@@ -286,6 +360,12 @@ re-read into this mode file). Core rules that apply specifically to plan executi
 - Inter-wave git checkpoint is one `Bash("git rev-parse HEAD")` call — not a full diff read.
 
 ## Resume Semantics
+
+> **Not a fix loop.** The re-spawn below is a **crash-recovery** action — the in-flight session
+> was killed by the checkpoint restore and no longer exists to continue. It is unrelated to the
+> validator fix-loop path in §Worktree Merge Protocol, where the phase-owner session is still
+> alive and continues on its own worktree branch. Do not conflate the two, and do not count a
+> resume re-spawn against the §Validator Gating gate budget.
 
 After `claude checkpoint restore`, background phase-owners that were in-flight at checkpoint
 time are NOT automatically resumed by the platform (P19 — canonical: L1). Phase-owners are

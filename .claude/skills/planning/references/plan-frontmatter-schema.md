@@ -1,5 +1,9 @@
 # Plan Frontmatter Schema (`it_schema: 1`)
 
+> The cross-app canonical contract now lives at
+> `docs/agentic-operator/contracts/frontmatter-schema.md`. Changes to this schema MUST land a
+> same-PR diff to that contract (OQ-4 gate).
+
 **Canonical, machine-readable reference for IntentTree plan-frontmatter.** This doc is the source
 of truth for what planning artifacts (PRDs, implementation plans, phase breakdowns, feature
 contracts, progress files) should author in YAML frontmatter so the IntentTree capture pipeline can
@@ -89,8 +93,8 @@ never as a non-zero MUST violation.
 | `findings_doc_ref` | path | plan | MAY | H | CR-3 → `meta` | `SourceReference(ref_kind="findings_doc")`. |
 | `test_plan_ref` | path | plan | MAY | H | CR-3 → `meta` | `SourceReference(ref_kind="test_plan")`. |
 | `branch` / `repo` | str | plan/task | SHOULD | H | CR-1 → `Node.branch`/`Node.repo` | Binds git evidence at capture. |
-| `intenttree_workspace` | str | plan | MAY | H/D | binding stamp (not node-captured) | Records the IntentTree **human** workspace the plan's nodes live in. Per-plan override at the top of the resolution precedence (D2). Stamped by `itt sync import --apply` or authored. See `.claude/rules/intenttree-integration.md`. |
-| `intenttree_tree` | str | plan | MAY | H/D | binding stamp (not node-captured) | Records the tree id the plan binds to; the sdlc-sync hooks pass it as `--tree`. Defaults to the project tree (`aos-intenttree`) when absent. See `.claude/rules/intenttree-integration.md`. |
+| `intenttree_workspace` | str | plan | MAY | H/D | binding stamp (not node-captured) | Records the IntentTree **human** workspace the plan's nodes live in. Per-plan override at the top of the resolution precedence (D2). **Not written by any code today** — `itt sync import --apply` records the binding only in IntentTree's `WorkItemBinding` DB table; the `--stamp-frontmatter` writeback (see `intenttree_tree` below) stamps `intenttree_tree`/`source_artifact_id`/`itt_node_id` but **not** `intenttree_workspace`. Must be hand-authored or env-supplied (`INTENTTREE_TREE`/`ITT_NODE_ID`). See the ratified contract `docs/agentic-operator/contracts/frontmatter-schema.md` (OQ-3). See `.claude/rules/intenttree-integration.md`. |
+| `intenttree_tree` | str | plan | MAY | H/D | binding stamp (opt-in writeback) | Records the tree id the plan binds to; the sdlc-sync hooks pass it as `--tree`. Defaults to the project tree (`aos-intenttree`) when absent. **Stamped by `itt sync import --apply --stamp-frontmatter`** — the opt-in flag (shipped 2026-07-21), not bare `--apply` (which stays DB-only, zero file writes). The same write stamps `source_artifact_id` and, for single-node imports only, `itt_node_id`, additive-only (never overwrites a present value; a mismatch prints a warning). Implementation: `client/src/intenttree_client/cli/frontmatter_stamp.py` + `sync_cmd.py` in the `intenttree` repo; contract `docs/project_plans/feature_contracts/enhancements/itt-sync-frontmatter-stampback.md`. Without the flag, still hand-authored or env-supplied. See `.claude/rules/intenttree-integration.md`. |
 
 ## §5.2 Lifecycle & maturity (plan level)
 
@@ -111,6 +115,7 @@ never as a non-zero MUST violation.
 |-------|------|-------|------|--------|---------|-------|
 | `points` / `effort_estimate` | num/str | plan | MUST | H | CR-1 → `Node.estimate_points` | Shipped. |
 | `risk_level` | enum | plan | MUST | H | CR-1 → `Node.meta` | Shipped. |
+| `context_class` | enum (C1, C2, C3, C4) | plan | SHOULD | H | CR-1 → `Node.meta` | New (Claude-5 doctrine). Sizes AGENT CONTEXT, not behavior — predicts burn where points do not; MAY also be set per-milestone via `wave_plan.phases[].context_class`. See `planning/references/plan-doctrine.md`. |
 | `estimate_minutes` | int | task | SHOULD | H | CR-1 → `Node.estimate_minutes` | Time scheduling; not synonymous with `points`. |
 | `spent_points` | num | task | MAY | A/D | CR-1 → `Node.spent_points` | Burn-down. |
 | `impact` | float (0–1) | plan/task | SHOULD | H | CR-1 → `Node.impact` | CC card; separate from `scores.strategic_value`. |
@@ -123,6 +128,10 @@ never as a non-zero MUST violation.
 The 5 flat keys from the design-spec (`strategic_value`, `urgency`, `leverage`, `readiness`, `risk`)
 map **into this bag** — never as flat top-level node fields. (`readiness` → `execution_readiness`.)
 
+**Context class** (new, Claude-5 doctrine). Points size human-scale scope; `context_class` sizes
+agent context — the actual burn predictor (C1 bounded/single-module through C4 cross-repo +
+adversarially gated + novel). Full class table + assignment drivers: `planning/references/plan-doctrine.md`.
+
 ## §5.4 Structural planning — the lens centerpiece (plan level)
 
 | Field | Type | Level | Tier | Author | Capture | Notes |
@@ -130,7 +139,7 @@ map **into this bag** — never as flat top-level node fields. (`readiness` → 
 | `open_questions` | `str[] \| {q,owner,status}[]` | plan | SHOULD | H/A | shipped (P3) | Primary enrichment target. |
 | `decisions` | `{decision,rationale,status}[]` | plan | SHOULD | H/A | same-body + link-follow (DI-140) | Canonical home = `decisions:` FM list; inline GFM table and `decisions-block.md` are derived sources feeding the same list. |
 | `decision_gates` | `{gate,status}[]` | plan | SHOULD | H/A | derived from `decisions` where `status=pending`, or explicit | |
-| `wave_plan` | `{waves[][],phases[]}` | plan | SHOULD | H | CR-1 → `Node.meta` | Shipped. |
+| `wave_plan` | `{waves[][],phases[]}` | plan | SHOULD | H | CR-1 → `Node.meta` | Shipped; the wave DAG itself is still consumed by IntentTree and is NOT deprecated. **DEPRECATED (Claude-5 doctrine)** — `.phases[].model`/`.provider`/`.profile` and any per-task model/agent pin: plans now carry routing *constraints*, not identities; `delegation-router` resolves provider+model at dispatch time (`planning/references/plan-doctrine.md` rule 3). Legacy plans carrying these sub-fields still parse and still execute — they are simply no longer emitted by new plans. |
 | `phases` | `map(id→{title,…})` | plan | SHOULD | H | CR-1 → phase container nodes | Shipped. |
 | `blockers` | `str[]` | plan/task | SHOULD | H | CR-2 → `Edge(BLOCKS)` | Capture emits `Edge` rows. |
 | `success_metrics` / `success_criteria` | `str[]` | plan | SHOULD | H/A | CR-3 → `Node.meta` | `success_criteria` → rename to `success_metrics` in linter. No column in v1. |
@@ -167,6 +176,32 @@ Capture projects these onto existing node columns (migration 0026 added them).
 | `delegation_mode` | enum (A–E) | plan/task | MAY | H | CR-3 → `Node.meta` | Maps to `.claude/rules/delegation-modes.md` A–E. |
 | `reviewer_actor` | str | task | MAY | H | CR-2 → `Node.reviewer_actor_id` | `agent:<handle>` or `human:<handle>`. |
 | `proposed_by_actor` | str | task | MAY | H | CR-2 → `Node.proposed_by_actor_id` | Attribution for proposal. |
+
+## §5.7 Required artifacts — the provisioning manifest (plan + phase level)
+
+The **declared** set of artifacts a plan needs — consumed by the dev-execution pre-execution
+provisioning gate (`hooks/provision-artifacts.sh`) and, once shipped, by `skillmeat project
+reconcile`. Complementary to (not a replacement for) the *derived* set a scanner extracts from
+`.claude/` conventions: the declared set can express artifacts that **do not exist yet**
+(`status: needs_creation`/`needs_enhancement`), which derivation cannot. Authoring workflow:
+`references/required-artifacts-guidance.md`. Design: PRD `docs/project_plans/PRDs/features/dynamic-artifact-provisioning.md`.
+
+| Field | Type | Level | Tier | Author | Capture | Notes |
+|-------|------|-------|------|--------|---------|-------|
+| `required_artifacts` | `{type,name,skillmeat_ref,status,lifecycle,scope,note}[]` | plan | SHOULD | H/A | CR-3 → `Node.meta` | Plan-level declared artifact set. Advisory (non-blocking) in v1. |
+| `wave_plan.phases[].required_artifacts` | same shape | phase | SHOULD | H | CR-3 → phase `Node.meta` | Per-phase generalization of `owner_skills` (which stays, for Claude-Code skill preload). |
+
+Entry shape:
+- `type` — `skill | agent | command | mcp | workflow | context_module`.
+- `name` — the artifact name as deployed under `.claude/{agents,skills,commands}` (or the MCP/context id).
+- `skillmeat_ref` — the SkillMeat catalog name to resolve/deploy; `null` when `status != available`.
+- `status` — `available` (in catalog / deployable now) · `needs_creation` (author before execution) · `needs_enhancement` (extend an existing artifact first). Non-`available` entries MUST become a `batch_0` provisioning task or a named blocker at plan authoring (planning skill "Required Artifacts Resolution" step).
+- `lifecycle` — `permanent` (belongs to the project's durable set) · `ephemeral` (epic/plan-scoped; torn down on completion).
+- `scope` — for `ephemeral`: `epic:<id>` | `plan:<feature_slug>` (the teardown trigger); `null` for permanent.
+- `note` — free text (why it's needed / which phase).
+
+The gate resolves `required_artifacts` against the durable per-project manifest
+`.claude/aos-artifacts.yaml` and SkillMeat enterprise; see `.claude/rules/artifact-provisioning.md`.
 
 ---
 
@@ -225,6 +260,7 @@ fields:
   - {name: points, level: plan, tier: must, author: H, capture: cr1, type: num}
   - {name: effort_estimate, level: plan, tier: must, author: H, capture: cr1, type: str}
   - {name: risk_level, level: plan, tier: must, author: H, capture: cr1, type: enum}
+  - {name: context_class, level: plan, tier: should, author: H, capture: cr1, type: str}
   - {name: estimate_minutes, level: task, tier: should, author: H, capture: cr1, type: int}
   - {name: spent_points, level: task, tier: may, author: A/D, capture: cr1, type: num}
   - {name: impact, level: plan/task, tier: should, author: H, capture: cr1, type: float}
@@ -234,7 +270,7 @@ fields:
   - {name: open_questions, level: plan, tier: should, author: H/A, capture: cr1, type: list}
   - {name: decisions, level: plan, tier: should, author: H/A, capture: cr1, type: list}
   - {name: decision_gates, level: plan, tier: should, author: H/A, capture: derived, type: list}
-  - {name: wave_plan, level: plan, tier: should, author: H, capture: cr1, type: map}
+  - {name: wave_plan, level: plan, tier: should, author: H, capture: cr1, type: map}  # .phases[].model/.provider/.profile DEPRECATED (Claude-5 doctrine) — see §5.4 notes; wave DAG itself not deprecated
   - {name: phases, level: plan, tier: should, author: H, capture: cr1, type: map}
   - {name: blockers, level: plan/task, tier: should, author: H, capture: cr2, type: str[]}
   - {name: success_metrics, level: plan, tier: should, author: H/A, capture: cr3, type: str[]}
@@ -261,6 +297,8 @@ fields:
   - {name: delegation_mode, level: plan/task, tier: may, author: H, capture: cr3, type: enum}
   - {name: reviewer_actor, level: task, tier: may, author: H, capture: cr2, type: str}
   - {name: proposed_by_actor, level: task, tier: may, author: H, capture: cr2, type: str}
+  # §5.7 required artifacts (provisioning manifest)
+  - {name: required_artifacts, level: plan, tier: should, author: H/A, capture: cr3, type: list}
 ```
 
 ---

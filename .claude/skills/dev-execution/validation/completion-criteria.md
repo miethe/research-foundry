@@ -9,15 +9,142 @@ Tiered features require reviewer-agent gates at specific checkpoints. Phases and
 | Tier | Gate | Reviewer | Inputs |
 |------|------|----------|--------|
 | 1 | end of sprint | `task-completion-validator` | contract + diff + Completion Report |
-| 2 | end of each phase | `task-completion-validator` | phase plan + diff + progress YAML |
-| 2 | end of feature | `karen` | full plan + cumulative diff |
-| 3 | end of each phase | `task-completion-validator` | phase plan + diff |
-| 3 | mid-feature milestones | `karen` | plan + cumulative diff |
-| 3 | end of feature | `karen` | full plan + cumulative diff |
+| 2 | end of each phase | `task-completion-validator` | failure summary (on a re-pass) + touched files + AC in question |
+| 2 | end of feature | `karen` | AC matrix + cumulative diff |
+| 3 | end of each phase | `task-completion-validator` | failure summary (on a re-pass) + touched files + AC in question |
+| 3 | mid-feature milestones | `karen` | AC matrix + cumulative diff |
+| 3 | end of feature | `karen` | AC matrix + cumulative diff |
 
 **Invariant**: This is non-optional. A phase/sprint cannot be marked complete until the reviewer at the listed checkpoint has approved.
 
+**Delta context, not the full stack** (execution-doctrine.md rule 2). Per-phase `task-completion-validator`
+gates carry the delta — the failure summary, the touched files, and the AC actually in question — never
+the full plan, the cumulative diff, or the progress file. `karen`'s whole-tree reality-check is the one
+legitimate exception: it keeps the cumulative diff, but trades "full plan" for the AC matrix so the
+packet stays bounded to what's actually being judged. A reviewer that needs the whole plan to judge one
+AC is a signal the AC is under-specified — fix the AC, do not widen the packet.
+
+**Gate budget** (execution-doctrine.md rule 1): max **2 re-passes** per scope × lens. The 3rd failure
+against the same scope × lens does not escalate to "a human/Opus looks at it" — it **auto-escalates to
+re-scope/redesign**. Re-passes count per scope × lens, not per dispatch: re-spawning the executor does
+not reset the budget. This is a hard cap, not an expectation — see `references/gate-risk-classes.md`
+§4 for the cost calibration it bounds.
+
+**Tier 1's Completion Report is a different artifact from the retired plan-level one.** The Tier 1 row
+above still carries a Completion Report because Tier 1 has no wave/phase record to fall back on — see
+the "### Completion Report" section under Tier 1 Sprint Completion below, and `dev-execution/SKILL.md`'s
+Exit Criteria note. The Tier 2/3 **plan-level** Completion Report (`.claude/worknotes/<slug>/completion-report.md`)
+is **retired**: the reviewer verdict + `commit_refs` is the record for those tiers (execution-doctrine.md,
+Bookkeeping demotions).
+
 See `.claude/rules/delegation-modes.md` (Mode E: Reviewer) for reviewer agent specifications and constraints.
+
+### Rich Feature Report Definition-of-Done
+
+At the **end-of-feature** gate, apply the `delivery-report` (route `feature`) eligibility policy.
+Dev-execution Tier 2/3 features require a validated rich report; Tier 1 features at 5+ points or with
+visible, cross-component, security, migration, high-risk, or material-finding signals are recommended.
+An explicit user request always makes the report required. Phase-only gates do not emit duplicate
+reports when the parent feature report covers them.
+
+The reviewer runs:
+
+```bash
+DELIVERY_REPORT_TIER_SYSTEM="dev-execution" DELIVERY_REPORT_TIER="${FEATURE_TIER:-0}" \
+DELIVERY_REPORT_POINTS="${FEATURE_POINTS:-0}" DELIVERY_REPORT_SIGNALS="${FEATURE_SIGNALS:-}" \
+DELIVERY_REPORT_MANIFEST="${DELIVERY_REPORT_MANIFEST:-}" DELIVERY_REPORT_HTML="${DELIVERY_REPORT_HTML:-}" \
+DELIVERY_REPORT_ASSET_ROOT="${DELIVERY_REPORT_ASSET_ROOT:-.}" \
+    .claude/skills/dev-execution/hooks/verify-delivery-report.sh
+```
+
+| Result | Gate |
+|---|---|
+| Required + manifest/HTML present and `delivery-report validate` passes | PASS |
+| Required + missing or invalid report | **FAIL — withhold APPROVED** |
+| Recommended/optional + no report | PASS with recommendation/status recorded |
+| Required + explicit `DELIVERY_REPORT_WAIVER_REASON` | WARN/pass; reviewer must quote the waiver in the final report |
+
+The report is derived evidence, not the completion authority. It must preserve exact git, test,
+review, deployment, and owner-held/private-execution truth. Place it in the repository's native
+completion-artifact directory, or `.claude/reports/<feature-slug>/` when no convention exists.
+
+### Forward Status Reports (recommended, non-blocking)
+
+The `feature` route above is the only **required** report gate. Its three forward-looking siblings —
+`delivery-report` routes `program` (end of a plan/epic), `phase` (end of a wave/phase), and
+`readiness` (a go/no-go decision) — are **recommended, never blocking**. They are point-in-time
+snapshots of work in flight, not completion authority, so:
+
+- A reviewer **never** withholds `APPROVED` because a forward report is absent. There is no
+  `verify-*.sh` gate for them by design.
+- Produce one when a shareable, evidence-backed status artifact is wanted (a milestone, a stakeholder
+  ask, a go/no-go). Skip for a quick conversational status.
+- The lifecycle → route map and the command touch-points live in `dev-execution/SKILL.md`
+  § "Forward-Looking Status Reports", the two `/dev:execute-*` commands, `/plan:explore` (readiness),
+  and the planning skill's "Status & Readiness Reporting" section.
+
+Record a produced forward report's HTML path in the closeout / tracker like any other artifact; do not
+add a DoD row for it.
+
+### AOS Writeback Definition-of-Done (gate, not prose — audit P3.9)
+
+A phase is **not done** until its work has landed back in the Agentic OS. This is a **reviewer gate**,
+not a remembered step: the reviewer MUST run the writeback check and withhold `APPROVED` on a FAIL.
+
+The reviewer runs, with the bound node/tree resolved per `.claude/rules/intenttree-integration.md`:
+
+```bash
+ITT_NODE_ID="${ITT_NODE_ID:-}" INTENTTREE_TREE="${INTENTTREE_TREE:-}" \
+    .claude/skills/dev-execution/hooks/verify-writeback.sh   # exit 1 ⇒ withhold APPROVED
+```
+
+The reviewer additionally runs, for any phase that built/updated a skill/agent/command/context
+artifact, the sibling **SkillMeat save-after** gate (aos-native-by-default P3; D2/D6 — the
+executor's look-first instruction is instruct-only per `dev-execution/SKILL.md`'s executor
+contract, this is the enforced check):
+
+```bash
+PHASE_FILES="${PHASE_FILES:-}" SKILLMEAT_PROJECT="${SKILLMEAT_PROJECT:-}" \
+    .claude/skills/dev-execution/hooks/verify-skillmeat-writeback.sh   # exit 1 ⇒ withhold APPROVED
+# or: --files-from <progress-or-plan-file>  (reads tasks[].files_affected / files_affected:)
+```
+
+| Signal | How verified | Gate |
+|---|---|---|
+| Bound IntentTree node is `completed` | `verify-writeback.sh` (`itt node get` status) | **HARD** — FAIL (exit 1) blocks APPROVED when a binding exists |
+| New AI artifact is checked-for-reuse + saved/updated in SkillMeat enterprise | `verify-skillmeat-writeback.sh` (`skillmeat show` against the enterprise instance) | **HARD** — FAIL (exit 1) blocks APPROVED when a new artifact path is present, `SKILLMEAT_PROJECT` resolves, and the endpoint is reachable |
+| AAR / story captured | reviewer confirms the Stop-event writeback hook ran (or `op story scan` shows the entry) | reviewer-confirmed |
+| Decisions ingested to the vault | reviewer confirms `meatywiki` ingest (Stop hook) for any decisions the phase made | reviewer-confirmed |
+
+**No-binding escape hatch:** in a repo with no AOS binding (`ITT_NODE_ID`/`INTENTTREE_TREE` unset), the
+IntentTree gate is **N/A and passes** — it never blocks a non-AOS project. When `itt` is unreachable
+the gate cannot verify and does not block, but the reviewer records writeback as *unverified*.
+Likewise, the SkillMeat gate is **N/A and passes** when the phase built no new AI artifact, and
+**WARN (unverified, non-blocking)** when the `skillmeat` CLI is missing, `SKILLMEAT_PROJECT` cannot
+be resolved, or the enterprise endpoint is unreachable — it never blocks on infra unavailability,
+only on a confirmed missing registration.
+
+### Ephemeral Artifact Teardown Definition-of-Done
+
+A plan/feature is **not done** until any artifact it provisioned only for its own duration has been
+undeployed — the teardown half of Pre-Execution Artifact Provisioning
+(`dev-execution/SKILL.md`'s "Pre-Execution Artifact Provisioning" section). This is a **reviewer
+gate**, same posture as the AOS Writeback DoD above: the reviewer runs the provisioning gate in
+teardown mode and withholds `APPROVED` on a FAIL.
+
+```bash
+PROVISION_TEARDOWN=1 PROVISION_SCOPE="plan:<slug>" \
+    .claude/skills/dev-execution/hooks/provision-artifacts.sh   # nonzero (non-2) ⇒ withhold APPROVED
+```
+
+| Signal | How verified | Gate |
+|---|---|---|
+| Plan-scoped `lifecycle: ephemeral` artifacts in `.claude/aos-artifacts.yaml` are undeployed | `provision-artifacts.sh --teardown` (`skillmeat undeploy` against the scope) | **HARD** — FAIL blocks APPROVED when the manifest lists a plan-scoped ephemeral still `status: active` after teardown |
+| Artifacts also referenced elsewhere as `permanent`, or with a different/wider `scope`, are left deployed | reviewer confirms via the manifest diff (teardown run is scope-filtered, not a blanket undeploy) | reviewer-confirmed |
+
+**No-manifest escape hatch:** in a repo/plan with no manifest and no ephemeral entries, this gate is
+**N/A and passes** — nothing was provisioned, so there is nothing to tear down. When SkillMeat is
+unreachable the gate cannot verify and does not block; the reviewer records teardown as *unverified*.
 
 ---
 
@@ -63,6 +190,18 @@ Reviewer agents must produce a structured report using this template:
 
 ## Documentation Updates Needed
 - [README, CHANGELOG, context files, ADRs, or "None"]
+
+## AOS Writeback DoD (P3.9)
+- [verify-writeback.sh (IntentTree): PASS / FAIL / N-A (no binding) / UNVERIFIED (itt offline)]
+- [node completed? AAR/story captured? decisions ingested? — a FAIL blocks APPROVE]
+- [verify-skillmeat-writeback.sh (SkillMeat): PASS / FAIL / N-A (no new artifact) / UNVERIFIED (CLI missing, project unresolved, or enterprise unreachable) — a FAIL blocks APPROVE]
+
+## Ephemeral Artifact Teardown DoD
+- [provision-artifacts.sh --teardown: PASS / FAIL / N-A (no manifest / no ephemerals) / UNVERIFIED (SkillMeat unreachable) — a FAIL blocks APPROVE]
+
+## Rich Feature Report DoD
+- [verify-delivery-report.sh: PASS / FAIL / RECOMMENDED / WAIVED — a required missing/invalid report blocks APPROVE]
+- [manifest path, HTML path, eligibility tier/size, and any exact waiver reason]
 
 ## Final Decision
 [One-line merge recommendation: "APPROVE" / "REQUEST CHANGES" / "BLOCK — <reason>"]
@@ -204,11 +343,20 @@ A Tier 1 feature sprint is complete when:
 
 ### Completion Report
 
+> This is the Tier 1 **contract-appended** Completion Report — it survives (execution-doctrine.md,
+> Bookkeeping demotions; `dev-execution/SKILL.md` Exit Criteria note). It is a different artifact from
+> the Tier 2/3 **plan-level** Completion Report (`.claude/worknotes/<slug>/completion-report.md`), which
+> is **retired**: for those tiers the reviewer verdict + `commit_refs` is the record instead.
+
 - [ ] Completion Report appended to Feature Contract with:
   - Files changed
   - Tests run and results
   - Validation results
-  - Deviations from contract (if any)
+  - Deviations from contract (if any) — sourced from `.claude/worknotes/<slug>/implementation-notes.md`:
+    per execution-doctrine.md's "Implementation notes over halt-and-gate", deviations (a conservative
+    choice, an assumption, a discovered constraint) are logged there continuously with rationale and
+    reviewed at the milestone boundary; this bullet is the summarized record of the survivors at
+    contract close, not a re-derivation from scratch
   - Risks/limitations
   - Follow-up recommendations
 
@@ -233,6 +381,7 @@ Summary:
 - [ ] Progress tracker at 100%
 - [ ] All commits pushed
 - [ ] **Reviewer pass complete per the Mandatory Reviewer Gates matrix above** (Tier 2/3: `task-completion-validator` per phase; `karen` at feature end; Tier 1: already covered above)
+- [ ] **End-of-feature rich report gate passed** when the feature meets `delivery-report` (route `feature`) tier/size eligibility; phase-only closeout does not duplicate the parent report
 
 ## Validation Templates
 
@@ -283,8 +432,9 @@ Validate complete implementation.
 
 Phase ${phase_num} FINAL VALIDATION
 
-Plan: ${plan_path}
-Progress: ${progress_file}
+Failure summary (if this is a re-pass): ${failure_summary}
+Touched files: ${touched_files}
+AC in question: ${ac_in_question}
 
 Validate:
 1. All tasks complete
@@ -293,6 +443,10 @@ Validate:
 4. No critical issues
 5. Ready for next phase
 ```
+
+Delta context per execution-doctrine.md rule 2 — never `Plan: ${plan_path}` or `Progress: ${progress_file}`
+in full. A reviewer that needs the whole plan/progress file to validate one phase is a signal the phase's
+ACs are under-specified; fix the ACs, do not widen the packet.
 
 ## Common Completion Blockers
 

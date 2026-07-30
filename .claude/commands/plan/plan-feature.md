@@ -14,6 +14,11 @@ You must use subagents to perform all tasks, only delegating work. Use them wise
 
 ## Phase 0 — Exploration Charter Check (First Action)
 
+> **Doctrine pointer**: this command follows the look-first/save-after doctrine indexed in
+> `.claude/rules/aos-operating-rules.md`. The planning surface's concrete implementation is the
+> `planning` skill's "Before You Scope" checks (MeatyWiki → SkillMeat → deferred backlog →
+> IntentTree) — see the Discovery Phase note in Tier 2/3 step 1 below.
+
 Before tier classification, check whether this idea has already been through `/plan:explore`. This enforces the "no re-exploration of settled ground" guard from the meta plan §9 and auto-imports feasibility evidence when an exploration has cleared the idea.
 
 **Steps**:
@@ -92,6 +97,10 @@ The `--impl-only`, `--plan-progress`, and `--all` flags are Tier 2/3-only and ar
 
 3. **After contract is approved**, use `/dev:execute-contract <contract-path>` to run the sprint. Do not start execution here — this command is planning-only.
 
+> **Dossier**: Tier 1 does **not** auto-seed a delivery dossier (spec OD-4 — a single-sprint contract
+> rarely needs a longitudinal record). Seed one only on explicit request:
+> `DOSSIER_SEED_FORCE=1 DOSSIER_PLAN_FILE="<contract-path>" .claude/skills/dev-execution/hooks/seed-dossier.sh`
+
 ---
 
 ### Tier 2 — PRD + Implementation Plan + Decisions Block
@@ -101,7 +110,9 @@ The `--impl-only`, `--plan-progress`, and `--all` flags are Tier 2/3-only and ar
 - `--plan-progress` or `-p`: Plan + Progress tracking artifacts only
 - `--all` or `-a` (default): Full process — PRD, Implementation Plan, progress files
 
-**Mandatory Opus decisions block** (before delegating to `implementation-planner`):
+**Doctrine — the thin plan.** New Tier 2/3 plans follow `.claude/skills/planning/references/plan-doctrine.md`: milestones (not phases), routing CONSTRAINTS (no plan-time model or agent pins), a **`context_class` (C1-C4) per milestone**, and a total mass target of **<=150 lines including frontmatter**. Default template: `.claude/skills/planning/templates/milestone-plan-template.md`.
+
+**Opus decisions block — legacy/expanded path only** (skip it on the default milestone path; doctrine rule 8 puts decisions IN the plan, not in a sibling worknote every leg must re-read):
 
 Opus authors the decisions block directly using the template at `.claude/skills/planning/templates/decisions-block-template.md`. Write it to `.claude/worknotes/[feature-slug]/decisions-block.md` **before** delegating to `implementation-planner`. Do not delegate the decisions block authoring itself — this is the architectural judgment Opus earns its premium on. See skill §2.5 for the full decisions-block step.
 
@@ -111,6 +122,9 @@ Opus authors the decisions block directly using the template at `.claude/skills/
    ```
    /mc search "feature-keyword" skillmeat
    ```
+   > This is a lighter pre-check, not a substitute for the full look-first pass: the `planning`
+   > skill's "Before You Scope" section (invoked in step 2 below) runs the concrete MeatyWiki →
+   > SkillMeat → deferred-backlog → IntentTree checks before any artifact is scoped.
 
 2. **Invoke planning skill**:
    ```
@@ -118,8 +132,8 @@ Opus authors the decisions block directly using the template at `.claude/skills/
    ```
    Follow the skill's Workflow 1 (PRD from Feature Request) and Workflow 2 (Implementation Plan from PRD). The skill directs delegation to `prd-writer` and `implementation-planner`.
 
-3. **Author decisions block** (Opus-direct, ~200 lines, before delegating to `implementation-planner`):
-   - Phase boundaries, agent routing, risk hotspots, estimation anchors, dependency map, model routing per phase.
+3. **Author the plan** (Opus-direct, against `milestone-plan-template.md`, <=150 lines). Only on the legacy/expanded path does this become a separate ~200-line decisions block handed to `implementation-planner`:
+   - Milestones with acceptance criteria, rubric, named risks, decisions-to-surface, references, routing CONSTRAINTS (which classes stay claude-primary, offload-eligibility, capability bar), and `context_class` (C1-C4) per milestone. Doctrine: `.claude/skills/planning/references/plan-doctrine.md`.
    - Output: `.claude/worknotes/[feature-slug]/decisions-block.md`
 
 4. **Invoke artifact-tracking skill** (if not `--impl-only`):
@@ -128,7 +142,22 @@ Opus authors the decisions block directly using the template at `.claude/skills/
    ```
    Follow skill's instructions to create progress files (ONE per phase) and context file (ONE per PRD).
 
+5. **Seed the delivery dossier** (default-on, non-blocking — planning skill Workflow 2 step 10):
+   ```bash
+   DOSSIER_PLAN_FILE="<plan-path>" .claude/skills/dev-execution/hooks/seed-dossier.sh
+   ```
+   Deterministic (no model call): derives the stage spine from the plan's phases so the
+   phase-boundary regeneration hooks are armed. Without it the dossier never accretes — the
+   execution hooks are binding-gated on this manifest existing. Skipping never blocks anything.
+   List the seeded `.claude/reports/dossier/<feature_slug>/index.html` as an artifact in the close.
+
 **Mandatory reviewer gate**: `task-completion-validator` per phase; `karen` at end of feature.
+
+6. **After the plan is approved**, emit the execution handoff and run the plan via `/dev:execute-plan`. Do not start execution here — this command is planning-only. Emit it verbatim:
+
+   > Execute: `/dev:execute-plan <plan-path>`
+
+   > **Doctrine**: `.claude/skills/planning/references/plan-doctrine.md` — new Tier 2/3 plans carry routing CONSTRAINTS, not model pins; provider/model resolves at dispatch time via `delegation-router`.
 
 ---
 
@@ -137,8 +166,14 @@ Opus authors the decisions block directly using the template at `.claude/skills/
 Same as Tier 2, plus:
 
 - **SPIKE reference required**: Confirm a SPIKE doc exists or is authored first. Do not start the PRD until the SPIKE is complete or explicitly waived by the user.
-- **`karen` per phase milestone** (not just at end): surface milestone checkpoints in the Implementation Plan.
-- All Tier 2 steps and the mandatory decisions block apply.
+- **`karen` at each plan-milestone boundary** (not just at end): the plan's `wave_plan.phases[]` entries ARE those boundaries. ("Plan milestone" = a reviewable state of the system, per `plan-doctrine.md` rule 2 — not the older within-phase "batch checkpoint" sense.)
+- All Tier 2 steps and the mandatory decisions block apply — including the Tier 2 step 5 dossier seed (the SPIKE becomes the dossier's `research` stage automatically when the plan carries `spike_ref`) and the step 6 execution handoff. Tier 3 also executes via `/dev:execute-plan`, so emit the same `Execute:` handoff string.
+
+---
+
+### Next Actions Table (all tiers — the standard close)
+
+Whatever the tier, end the response with the **Next Actions table** — spec: [.claude/skills/dev-execution/references/next-actions-table.md]. The execute handoff you emit above becomes the **first row**: `/dev:quick-feature` (T0), `/dev:execute-contract <contract>` (T1), or `/dev:execute-plan <plan>` (T2/3) — carrying the artifact path and bound ITT node. Add a row per prerequisite (e.g. a `/plan:spike` that must land first, ranked ahead of execution) and a `deferred` row per item the plan parked. This table is a standing close, not optional; it does not replace the verbatim `Execute:` string, it presents it.
 
 ---
 
@@ -181,6 +216,7 @@ Pass the full input to the skills — they will parse appropriately.
 
 3. **Implementation Plan Delegation**: Prompt = PRD path + decisions-block path + template path
    - **Target**: 40–60 lines. Reference subagent assignments and multi-model guidance by path
+   - **Default template for NEW Tier 2/3 plans**: `.claude/skills/planning/templates/milestone-plan-template.md` (thin milestones with AC, routing CONSTRAINTS, `context_class`, <=150 lines including frontmatter — per `.claude/skills/planning/references/plan-doctrine.md`). The legacy `.claude/skills/planning/templates/implementation-plan-template.md` remains for in-flight plans and for dispatch-time task expansion when an economy-class executor needs an expanded task list.
    - **DON'T**: Copy task descriptions, code snippets, or SPIKE content into the prompt
 
 4. **Progress File Delegation**: Prompt = implementation plan path + template path + output dir

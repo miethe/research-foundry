@@ -19,13 +19,28 @@
 #     .claude/skills/dev-execution/hooks/sdlc-sync.sh
 #
 # ENVIRONMENT:
-#   INTENTTREE_SDLC_SYNC  — must be exactly "1" to enable; any other value
-#                           (including unset) is a no-op.
-#   SDLC_SYNC_FILE        — path to the progress or plan file to sync.
-#                           Required when INTENTTREE_SDLC_SYNC=1.
-#   INTENTTREE_TREE       — target tree ID (passed to --tree).
-#                           Optional: omit to let the CLI infer from the
-#                           artifact's `intenttree_tree` frontmatter field.
+#   INTENTTREE_SDLC_SYNC  — ON BY DEFAULT (P1.2). Any unset / "1" / "true" /
+#                           "auto" value enables; only an explicit falsy value
+#                           ("0" / "false" / "no" / "off") disables. Rationale:
+#                           integration must be automatic, not opt-in prose that
+#                           decays (AOS integration-remediation P1.2). The sync
+#                           still no-ops safely when there is nothing to bind to
+#                           (see the binding guard below), so default-on is a
+#                           no-op in repos without a tree — never noise.
+#   SDLC_SYNC_FILE        — path to the progress or plan file to sync. Required.
+#   INTENTTREE_TREE       — target tree ID (passed to --tree). Optional: omit to
+#                           let the CLI infer from the artifact's
+#                           `intenttree_tree` frontmatter field.
+#   ITT_NODE_ID           — bound node id. Presence (with INTENTTREE_TREE) is the
+#                           "binding exists" signal that makes default-on fire.
+#
+# TARGET: sync targets whatever `itt` resolves as its API — with
+#   `aos-target set node` that is the node instance (10.42.10.76:8032), the
+#   standing default for all AOS work. No separate URL wiring here.
+#
+# RESOLUTION CONTRACT: env resolution (INTENTTREE_SDLC_SYNC default, ITT_NODE_ID,
+#   INTENTTREE_TREE, INTENTTREE_ACTOR) is defined once in
+#   `.claude/rules/intenttree-integration.md`.
 #
 # ERROR HANDLING:
 #   All errors are logged to stderr with a [sdlc-sync] prefix.
@@ -41,9 +56,19 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Guard: master switch
+# Guard: master switch — ON BY DEFAULT; only an explicit falsy value disables.
 # ---------------------------------------------------------------------------
-if [ "${INTENTTREE_SDLC_SYNC:-0}" != "1" ]; then
+case "$(printf '%s' "${INTENTTREE_SDLC_SYNC:-auto}" | tr '[:upper:]' '[:lower:]')" in
+    0 | false | no | off) exit 0 ;;
+esac
+
+# ---------------------------------------------------------------------------
+# Guard: binding must exist. Default-on is a no-op unless the run is bound to a
+# tree (INTENTTREE_TREE / ITT_NODE_ID set, or the file carries intenttree
+# frontmatter). Keeps default-on silent in repos with no IntentTree binding.
+# ---------------------------------------------------------------------------
+if [ -z "${INTENTTREE_TREE:-}" ] && [ -z "${ITT_NODE_ID:-}" ] \
+    && ! grep -qE '^(intenttree_tree|itt_node_id|source_artifact_id):' "${SDLC_SYNC_FILE:-/dev/null}" 2>/dev/null; then
     exit 0
 fi
 
@@ -64,11 +89,23 @@ if [ ! -f "${SDLC_SYNC_FILE}" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Resolve the target tree. `itt sync import --apply` REQUIRES --tree (it does
+# not infer from frontmatter), so when INTENTTREE_TREE is unset we read the
+# file's `intenttree_tree:` frontmatter ourselves and pass it explicitly.
+# ---------------------------------------------------------------------------
+TREE="${INTENTTREE_TREE}"
+if [ -z "${TREE}" ]; then
+    # `|| true`: under `set -o pipefail`, `head -1` closing the pipe early can surface a SIGPIPE
+    # (141) from sed on a multi-match file and abort the script before the safety net below.
+    TREE="$(sed -n 's/^intenttree_tree:[[:space:]]*//p' "${SDLC_SYNC_FILE}" 2>/dev/null | head -1 | tr -d '"'\''[:space:]' || true)"
+fi
+
+# ---------------------------------------------------------------------------
 # Build the itt sync command
 # ---------------------------------------------------------------------------
 ITT_ARGS=("sync" "import" "${SDLC_SYNC_FILE}" "--apply")
-if [ -n "${INTENTTREE_TREE}" ]; then
-    ITT_ARGS+=("--tree" "${INTENTTREE_TREE}")
+if [ -n "${TREE}" ]; then
+    ITT_ARGS+=("--tree" "${TREE}")
 fi
 
 # ---------------------------------------------------------------------------

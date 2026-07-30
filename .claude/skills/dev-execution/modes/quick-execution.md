@@ -2,6 +2,18 @@
 
 Streamlined planning and execution for simple, single-session features.
 
+> **Git workflow:** multi-step / multi-file quick features follow the canonical worktree →
+> PR-to-parent → squash-merge-on-approval protocol in
+> [`../git-worktree-pr-protocol.md`](../git-worktree-pr-protocol.md); a **true single-file,
+> single-commit change** may commit in place on a short-lived branch (the protocol's trivial
+> exception). The orchestrator is the only committer, and any PR targets the **parent branch**, not
+> hard-coded `main`.
+>
+> **Model selection** follows [`MODEL-ROUTING.md`](../../../../docs/agentic-operator/MODEL-ROUTING.md):
+> subscription default **Sonnet 5** (`claude-sonnet-5`) for implementation, **Opus 5** for spine,
+> `xhigh` effort for the hardest work; bounded waves offload to **ICA Sonnet 5**
+> (`claude-sonnet-5[1m]`, free-to-us; 4.6[1m]/Haiku for cheap fan-out) behind the reviewer gate.
+
 ## When to Use
 
 - Single-session implementation (~1-3 hours)
