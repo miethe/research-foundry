@@ -7,7 +7,7 @@ feature_slug: research-foundry-operator-mcp
 phase: 2
 status: pending
 created: '2026-07-28'
-updated: '2026-07-28'
+updated: '2026-07-29'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
 plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
 commit_refs: []
@@ -18,19 +18,24 @@ contributors:
 - data-layer-expert
 tasks:
 - id: OPM-2.1
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-1.G
-  estimate: "1.5 pts"
+  estimate: 1.5 pts
+  started: 2026-07-30T00:20Z
+  completed: 2026-07-30T01:15Z
+  evidence:
+  - test: tests/unit/test_operator_operation_service.py
+  - validation: 257 passed exit 0 (orchestrator-independent re-run)
 - id: OPM-2.2
   status: pending
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-2.1
-  estimate: "1.5 pts"
+  estimate: 1.5 pts
 - id: OPM-2.3
   status: pending
   assigned_to:
@@ -38,14 +43,14 @@ tasks:
   - data-layer-expert
   dependencies:
   - OPM-2.2
-  estimate: "1 pt"
+  estimate: 1 pt
 - id: OPM-2.4
   status: pending
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-2.3
-  estimate: "1 pt"
+  estimate: 1 pt
 parallelization:
   batch_1:
   - OPM-2.1
@@ -56,10 +61,10 @@ parallelization:
   batch_4:
   - OPM-2.4
 total_tasks: 4
-completed_tasks: 0
+completed_tasks: 1
 in_progress_tasks: 0
 blocked_tasks: 0
-progress: 0
+progress: 25
 ---
 
 # Phase 2 Progress — Durable Operation Coordinator
