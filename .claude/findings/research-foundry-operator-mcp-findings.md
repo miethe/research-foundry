@@ -1314,3 +1314,341 @@ first (small, single-field, matches the existing `not: pattern`/pattern preceden
 NB-11 decisions (both are one-line schema additions but each is a P2-owned product decision, not a pure
 bugfix), then P2R-NB-1 (checkpoint `allOf` widening), then the two coverage-only items (P2R-NB-3,
 P2R-NB-4) and P2R-NB-2 (documented as an application-layer item, not schema-fixable).
+
+---
+
+## FIND-P2-SECURITY-GATE — P2 (OPM-2.1–2.4) AC-mandated security gate, exact tree `4b1b6fd`: **CHANGES_REQUESTED**
+
+**Reviewer**: security lens, Mode E, explicit AC-mapping mandate (plan §"Revised gate structure
+(post-P1 retro)": *"a security reviewer carrying an explicit AC-mapping mandate reviews the exact
+lifecycle candidate, then Karen approves. Durability/atomicity is a security property, and a
+validator alone will approve a read-then-write compare-and-swap."*)
+**Exact tree**: branch `worktree-operator-mcp-v1`, HEAD `4b1b6fd`, 7 commits `55c341c..4b1b6fd`.
+Confirmed via `git log --oneline -1` before review; tree verified clean before and after the
+mutation sweep.
+**Verdict**: **CHANGES_REQUESTED** — 5 blocking, 10 non-blocking.
+
+### Acceptance-criteria mapping (the mandated deliverable)
+
+| AC | propagation_contract | resilience | Evidence verified (file:line) | Verdict |
+|---|---|---|---|---|
+| **OPM-2** — Workspace and sensitivity precede lookup and execution | **DOES NOT HOLD.** Holds for the operation store: `operator_operation_service.py:1263-1275` compares `row["workspace_id"] != identity.workspace_id` unconditionally (not flag-gated) and raises the byte-identical `KeyError` used for a missing row. Holds for attempts *structurally*: every wrapper in `operator_attempt_adapter.py:341-468` calls `load_job(attempt_id, identity=identity)` first. **Fails for receipts**: `operator_receipt_service.py` has no `identity` parameter on any method (`grep -n "identity\|sensitivity\|threshold"` over the module returns exactly one docstring hit, line 46); `workspace_id` is a *caller-asserted* argument at `:423` (`write_checkpoint`) and `:646` (`finalize_terminal_receipt`) and is written verbatim into rows the immutability triggers make permanent. **Fails for sensitivity everywhere**: `effective_sensitivity` is persisted (`operator_operation_service.py:1209`) and never read in any gate — the only sensitivity comparison in P2 is R1's resume-binding rank check (`operator_cancel_resume_service.py:267`). | **DOES NOT HOLD.** `load_terminal_receipt` (`operator_receipt_service.py:770-783`), `load_checkpoint` (`:785-798`) and `resolve_resume_point` (`:508-539`) take no identity and return full derived detail (`workspace_id`, `effect_receipt_refs`, `action_count_*`, `status`, `denial_reason_code`, `next_action_index`) for any `operation_id` in any workspace — no non-existence shape exists on these paths. The "above-threshold" half of the clause is unimplemented anywhere in P2. The attempt surface's *denial* is advisory in the default deployment (see P2S-NB-2). | **NOT MET** |
+| **OPM-3** — Jobs are idempotent, cancelable, and resumable | **PARTIAL.** Stable manifests: HOLDS — `UNIQUE (workspace_id, idempotency_key)` (`operator_operation_service.py:239`) + exact-replay/conflict routing at `:1087-1098`. Immutable effects: HOLDS — verified empirically, `DELETE`/`UPDATE` on `action_receipts` both rejected by `trg_action_receipts_immutable_no_*` (`:322-334`). Resume from first incomplete action: HOLDS for the contiguous case (`operator_receipt_service.py:521-539` reads real committed rows, never `checkpoint.next_action_index`). Safe cancellation: safe-point mechanics HOLD (`operator_cancel_resume_service.py:423-425`, `:429-438`) but cancellation is not ownership-gated (P2S-BLOCK-5). "**bounded** attempts": UNIMPLEMENTED — no attempt cap exists (`grep max_attempt\|attempt_limit` over `services/` → zero hits). | **DOES NOT HOLD.** "Exact replay returns prior state": HOLDS (`:1051-1064`, `:1169-1173`; `run_or_replay` terminal short-circuit `:633-641`). "Completed effects never replay": HOLDS (`start_index` never re-invokes `actions[i]`, `:423`). "**Conflicts and receipt corruption deny**": FAILS — the EXTRA corruption class does not deny; it reports `status="completed"` with no receipt at all. Demonstrated empirically (P2S-BLOCK-2). | **NOT MET** |
+
+### P2-specific gate obligations
+
+| # | Obligation | Result |
+|---|---|---|
+| 1 | DUR-1 CAS on `status` `issued`→`consumed`, same durable transaction as the manifest write, exclusive single-writer lock | **HOLDS IN CODE** — transaction boundary verified by reading, not by test outcome: `_connect` (`:973`) → `_ensure_schema` + `conn.execute("BEGIN IMMEDIATE")` (`:976-977`) → `moment = ids.now()` (`:995`) → `_consume_locked` (`:997-1004`, every read/write on the same `conn`: row read `:1033`, `verify_confirmation` `:1047`, existing-operation read `:1081`, `consume_confirmation` `:1105`, guarded `UPDATE ... WHERE status = 'issued'` `:1116-1120` with `rowcount != 1` → `_Dur1InvariantViolation`, manifest `INSERT` `:1196`) → `COMMIT` (`:1005`). One connection, one transaction, `isolation_level=None` + `BEGIN IMMEDIATE` (`:488-495`). Any non-`issued` status routes to replay/conflict/denial without executing (`:1051`, `:1066`, `:1093`, `:1108-1114`). **BUT the property is not test-enforced — see P2S-BLOCK-1.** |
+| 2 | Process-loss, exact-retry, conflict, cancel, resume, policy-change, reconciliation fixtures pass | **PASS as executed, but the conflict fixture does not discriminate.** Targeted run: 6 files, **EXIT=0, 317 dots, zero F/E/s**. However the two DUR-1 conflict fixtures both survive a full read-then-write mutation (P2S-BLOCK-1), and the EXTRA reconciliation fixture passes at the `finalize_terminal_receipt` unit level (`test_operator_receipt_service.py:211`) while the identical corruption is *not* denied through the lifecycle entrypoint (P2S-BLOCK-2). |
+| 3 | Operation receipt is primary; audit-service failure explicit and cannot erase effect truth | **HOLDS.** `_record_supplemental_audit_event` (`operator_receipt_service.py:597-641`) wraps both the lazy import and the `record_event` call in one `try/except`, never raises, and returns a schema-valid `audit_delivery` block (`delivered` / `unavailable`+`write_failed`); the receipt is built and persisted afterwards regardless (`:717-759`). Proven by a real monkeypatch of the actual `audit_service.record_event` (`test_operator_receipt_service.py:330-381`), asserting `audit_delivery.status == "unavailable"` while `effect_receipt_refs`/`action_count_*` stay intact and the receipt is durably persisted. Caveat: P2S-BLOCK-2 breaks the invariant from the *other* direction (a `"completed"` outcome with no receipt). |
+| 4 | H3 ten-scenario matrix converges, incl. uninterrupted-vs-resumed equality | **9 of 10 converge. Scenario 8 does not.** 1/3/4 (`test_operator_operation_service.py`, exact-retry / changed-payload conflict / expired-replayed-wrong-actor-wrong-workspace); 2 end-to-end (`test_operator_cancel_resume_service.py:1129`); 5 (`:175`); 6 (`:221`); 7 (`:277`, with an `AssertionError` tripwire on re-execution at `:325`); 9 (`:487`); 10 (`:1007`, `:1079`). Uninterrupted-vs-resumed equality of canonical effects **and** terminal receipt: present and passing (`:1196`). **Scenario 8** ("truncated, extra, duplicate, reordered, or mismatched effect receipts deny resume"): the *reordered/gap* variant denies (verified empirically), the *duplicate/mismatched* variants deny at write time (`:106`, `:125`, `:166`), but the **extra** variant does **not** deny resume — P2S-BLOCK-2. |
+
+### Blocking findings
+
+**P2S-BLOCK-1 — the DUR-1 property is not detected by any P2 test; the G5 real-multi-process test
+passes against a full read-then-write implementation.** (`tests/unit/test_operator_operation_service.py:652`,
+`:752`)
+
+This is the BLOCK-4 pattern, on the one property the plan singles out as *"the frozen acceptance bar
+for P2's closeout"*. Mutation applied in place (two edits, the literal defect the plan warns about):
+`conn.execute("COMMIT")` moved ahead of `_consume_locked` so no lock is held across the
+read→decide→write sequence, **and** the CAS predicate `AND status = 'issued'` removed from the
+`UPDATE` at `operator_operation_service.py:1117-1118`. Result:
+`test_two_real_os_processes_racing_the_same_confirmation_yield_one_success_one_conflict` **PASSED**
+— both when selected alone and in the full-file run. `test_concurrent_consumers_of_one_confirmation_yield_one_success_one_conflict`
+passed when selected alone and failed only under full-file ordering, i.e. it is timing-dependent,
+not a guard.
+
+Why it cannot fail: the two `spawn`ed children are released by a `multiprocessing.Barrier` but each
+`consume_and_create_operation` holds its lock for sub-millisecond, so they serialize in practice.
+The second child then reads an already-`consumed` row and takes the *legitimate* `exact_replay`
+branch — producing exactly the asserted observable (one `"created"`, one `"exact_replay"`, one
+`operations` row) with or without the CAS. What actually prevents a second manifest in the mutated
+build is `UNIQUE (workspace_id, idempotency_key)` (`:239`), not the compare-and-swap.
+
+Reachable wrong outcome: none today (the implementation is correct — obligation 1 above). The defect
+is that DUR-1 can be removed by any future refactor with a fully green suite, which is precisely the
+failure mode the frozen bar exists to prevent and precisely what this project's BLOCK-4 was.
+
+Recommended fix: make the interleaving deterministic instead of hoping for it. In one child,
+monkeypatch `policy.consume_confirmation` to `time.sleep(0.25)` before returning, then assert the
+*other* child's wall-clock duration is ≥ that sleep — proving it blocked on `BEGIN IMMEDIATE` rather
+than interleaving. Pair it with a direct mechanism assertion that `conn.in_transaction` is `True` on
+entry to and throughout `_consume_locked`. A test that cannot fail when the CAS is deleted is not
+evidence for the CAS.
+
+**P2S-BLOCK-2 — `run_actions` returns `status="completed"` with no terminal receipt when
+reconciliation denies; the EXTRA receipt-corruption class therefore does not deny resume.**
+(`src/research_foundry/services/operator_cancel_resume_service.py:550-558`; same pattern at
+`:472-481` and `:572-580`)
+
+All three `finalize_terminal_receipt` call sites discard the returned `ReceiptOutcome.outcome` and
+pass `outcome.receipt` straight into `ExecutionOutcome`. When `_reconcile` denies,
+`outcome.receipt is None` and the caller is told the operation **completed**.
+
+Concrete reachable path, executed against the real services (no fakes, no raw SQL — every receipt
+written through the module's own public API):
+1. Create an operation through the full mint→record→authorize→consume path (`outcome == "created"`).
+2. Record 7 contiguous `action_receipt`s via `record_action_receipt` (the EXTRA corruption relative
+   to a 5-action operation). All 7 return `"created"` — nothing rejects them.
+3. `resolve_resume_point` → `("ok", None, 7)`. It validates *contiguity only*
+   (`operator_receipt_service.py:530`) and has no knowledge of the operation's declared action
+   count, so EXTRA passes it.
+4. `run_or_replay(op, is_replay=True, actions=[5 actions], ...)` →
+   `ExecutionOutcome(status="completed", terminal_receipt=None, completed_action_count=5, replayed=False)`.
+   `load_terminal_receipt` → `None`. Zero actions executed. The only trace of the denial is a
+   server-side `ERROR` log line.
+
+Violates H3 scenario 8, AC OPM-3's resilience clause ("receipt corruption deny"), the P2 quality
+gate "operation receipt is primary", and `ExecutionOutcome`'s own docstring (`:150-166`: *"`terminal_receipt`
+is non-`None` in exactly those three cases"*). `completed_action_count=5` is also fabricated — it is
+`total`, not a reconciled count.
+
+Recommended fix: (a) check the outcome of every `finalize_terminal_receipt` and `write_checkpoint`
+call in `run_actions` and return `ExecutionOutcome("denied", None, ...)` when any denies — the module
+already does exactly this for `record_action_receipt`/`record_effect_receipt` at `:492` and `:514`,
+so this is the same guard one layer over; (b) give `resolve_resume_point` the declared
+`total_action_count` and deny when `len(indices) > total`, so EXTRA is caught before execution
+rather than at finalize.
+
+**P2S-BLOCK-3 — `OperatorReceiptService` has no identity/workspace seam anywhere: receipt
+`workspace_id` is caller-asserted and written into immutable rows; all three reads are unscoped.**
+(`src/research_foundry/services/operator_receipt_service.py:419-429`, `:643-653`, `:770-783`,
+`:785-798`, `:508-539`)
+
+`write_checkpoint(workspace_id=...)` and `finalize_terminal_receipt(workspace_id=...)` take the
+workspace as a plain caller argument, validate only that it is a non-empty string (`:447-448`,
+`:685-686`), and persist it into `checkpoints.workspace_id` / `terminal_receipts.workspace_id` and
+into the receipt JSON. `terminal_receipts` is immutable by trigger
+(`operator_operation_service.py:425-437`), so a wrong or forged attribution is **permanent**. The
+authoritative value is available on the very connection these methods already hold —
+`SELECT workspace_id FROM operations WHERE operation_id = ?` — and is never consulted. This is a
+fail-open default on a security-relevant field: the *producer* of the value is the caller
+(mandatory checklist item 1).
+
+The read side has no seam at all to thread an identity through: `load_terminal_receipt`,
+`load_checkpoint` and `resolve_resume_point` return full derived detail for any `operation_id`
+regardless of workspace, so AC OPM-2's non-existence shape cannot be produced by a P3–P5 caller
+without changing these signatures. Contrast `OperatorOperationService.load_operation:1229-1276`,
+which hard-enforces the compare and emits the identical `KeyError`.
+
+R2/R3 (`operator_cancel_resume_service.py:780-781`, `:657-658`) do derive the workspace from the
+manifest before calling into this service — but only on those two entrypoints. `OperatorReceiptService`
+is exported in `__all__` (`:105-109`) and directly reachable, so the derivation is a caller
+convention, not a property of the store. That is the same shape F1 and R1/R2/R3 were raised to close,
+one module over.
+
+Recommended fix: derive `workspace_id` inside the service by joining `operations` on `operation_id`
+inside the existing locked transaction and deny (governed) when the row is absent or the
+caller-supplied value disagrees; add `identity: AuthIdentity | None` to the three read methods with
+`load_operation`'s exact indistinguishable-from-missing shape.
+
+**P2S-BLOCK-4 — action/effect receipts accept an `operation_id` with no `operations` row; one
+out-of-turn receipt permanently and irreparably bricks an operation.**
+(`src/research_foundry/services/operator_receipt_service.py:272-314`, `:361-415`)
+
+Neither `record_action_receipt` nor `record_effect_receipt` checks that `operation_id` references a
+persisted manifest. `record_effect_receipt` *does* validate one referential edge —
+`action_id` → `action_receipts`, inside its own locked transaction (`:370-382`, the "MISMATCHED
+guard") — and then skips the layer below it. Verified empirically:
+
+* A receipt for `opm_bbbb…` (no manifest anywhere) returns `"created"`, and
+  `resolve_resume_point` on that phantom id reports `next_action_index = 1`.
+* On a real, freshly created 4-action operation, a single receipt at `action_index=3` returns
+  `"created"`; `resolve_resume_point` then denies (`internal_error`) and `run_or_replay` denies —
+  **forever**. Both `DELETE FROM action_receipts` and `UPDATE action_receipts SET action_index = 0`
+  are rejected by `trg_action_receipts_immutable_no_delete`/`_no_update`, so the ledger can never be
+  repaired. That operation can never resume and can never produce a terminal receipt.
+
+The receipt store is the designated primary record of effect truth; accepting unbacked rows into it,
+with no repair path, is an integrity failure of that store rather than a caller bug.
+
+Recommended fix: inside the same `BEGIN IMMEDIATE` transaction as each INSERT, require
+`SELECT 1 FROM operations WHERE operation_id = ?` and return the existing governed
+`ReceiptOutcome("denied", "internal_error", None)` when absent — mechanically identical to the
+MISMATCHED guard already present at `:370-382`.
+
+**P2S-BLOCK-5 — cross-workspace, irrevocable cancellation (severity re-rating of the disclosed
+known-open item).** (`src/research_foundry/services/operator_cancel_resume_service.py:299-353`,
+`:355-369`; `src/research_foundry/services/operator_operation_service.py:460-472`)
+
+Disclosed as *"`request_cancellation` trusts caller `workspace_id` (backs
+`idx_cancellation_requests_workspace`)"* — i.e. framed as an index-attribution issue. Evaluating
+severity as instructed, the reachable consequence is materially worse, because two other properties
+compose with it: `request_cancellation` performs **no operation-existence and no ownership check at
+all**, and `cancellation_requested` (`:355-369`) has **no workspace predicate whatsoever** —
+it is a bare `SELECT 1 ... WHERE operation_id = ?`, and it is what `run_actions` consults at every
+safe point (`:424`). The row is then immutable by trigger, so the request can never be rescinded.
+
+Verified empirically: `request_cancellation(victim_operation_id, workspace_id="ws-attacker",
+requested_by="mallory")` → `"created"`; `cancellation_requested(victim_operation_id)` → `True`; the
+victim operation (workspace `default`) then terminates `status="canceled"` with **zero** actions
+run; `DELETE FROM cancellation_requests` → `IntegrityError: cancellation_requests rows are immutable`.
+
+So any caller holding an `operation_id` permanently and irreversibly cancels that operation *and
+every future resume of it*, across workspace boundaries. That is a durable denial-of-service on the
+lifecycle, not a cosmetic index defect — re-rated to **blocking**. (Mitigation on the real severity:
+`operation_id` is a 64-hex random value, so this needs a leaked/observed id rather than enumeration
+— but the id appears in log lines, receipts, and every caller-visible envelope.)
+
+Recommended fix: load the manifest and derive the workspace exactly as R2 already does at `:780`,
+require it to match the caller identity, and scope `cancellation_requested` by the operation's own
+workspace. Separately, decide explicitly whether irrevocability is intended — as written, a single
+forged or mistaken request is an unrecoverable outage for that operation.
+
+### Non-blocking findings
+
+* **P2S-NB-1 — AC OPM-2's "above-threshold" half is unimplemented in P2.**
+  `operations.effective_sensitivity` is written (`operator_operation_service.py:1209`) and never read
+  in any gate; no P2 read path accepts a sensitivity threshold. Either add one to `load_operation`
+  and the receipt reads, or record an explicit deferral so P6's AC verification does not inherit a
+  silent gap.
+* **P2S-NB-2 — the attempt surface's workspace *denial* is advisory in the Operator MCP's own default
+  deployment.** `OperatorAttemptAdapter` delegates all scoping to `AgentJobService.load_job`
+  (`agent_job_service.py:989-1011`), which routes through `require_workspace_scope`
+  (`api/auth/scope.py:96-128`): a mismatch **allows** with a `WARNING` unless
+  `resolve_workspace_isolation_enforced` is truthy, and its documented `AUTO` truth table is
+  *advisory when `provider == "none"`* (`config.py:859-900`) — the local-stdio single-operator shape
+  this package targets. Meanwhile `resolve_operator_identity` always yields a non-`None`,
+  workspace-bearing identity independent of `auth.provider`
+  (`operator_mcp_policy.py:1120-1180`), so the advisory branch is the live one. Every adapter test
+  forces enforcement (`test_operator_attempt_adapter.py:45-55`) and the test names say so
+  (`..._when_isolation_active`) — honest, but OPM-2.2's acceptance criterion ("wrong-workspace
+  attempts are indistinguishable from missing") and AC OPM-2 are written unconditionally. Note the
+  asymmetry: `load_operation` hard-enforces, the attempt surface does not. Either bind the Operator
+  MCP path to enforcing mode explicitly, or amend the AC to state the precondition.
+* **P2S-NB-3 — `identity=None` means "no scoping" on `load_operation` (`:1229-1231`) and on every
+  `OperatorAttemptAdapter` wrapper.** A `None`-means-skip default on a security-relevant parameter
+  (checklist item 1). Deliberately mirrors `load_job`, so it is a consistency decision rather than an
+  oversight — flagged because P3–P5 callers inherit it and a forgotten keyword silently disables
+  scoping.
+* **P2S-NB-4 — new instances of the F4 raw-exception-across-the-boundary class.**
+  `operator_operation_service.py:1191` raises a bare `RuntimeError` on manifest schema failure which
+  propagates out through `:1014-1016`; `operator_receipt_service.py:811` does the same;
+  `record_confirmation` (`:861-877`) lets a duplicate-`confirmation_id` `sqlite3.IntegrityError`
+  escape raw. All are believed unreachable and annotated as such — but F4 was closed on a branch with
+  the same reachability argument.
+* **P2S-NB-5 — caller-supplied values echoed into exception messages**, against the repo's
+  NEW-8/NEW-13 convention: `operator_receipt_service.py:242` (`status`), `:244`, `:248`
+  (`reason_code`), `:674`, `:682`; `operator_operation_service.py:854-856` (`status`).
+* **P2S-NB-6 — a canceled terminal receipt loses the planned action total.** The cancel branch
+  finalizes with `expected_action_count=idx` (`operator_cancel_resume_service.py:576`), so
+  `action_count_total == action_count_completed` and the receipt is indistinguishable from a
+  completed one on the counts — while the checkpoint written one statement earlier (`:563-571`)
+  records `total_action_count=total` correctly. H3 scenario 6's "stopped at the next safe point" is
+  not recoverable from the terminal receipt alone.
+* **P2S-NB-7 — `run_or_replay` replaying a `denied` terminal receipt returns
+  `ExecutionOutcome(status="denied", terminal_receipt=<receipt>)`** (`:636-641`), contradicting
+  `ExecutionOutcome`'s own docstring (`:150-166`) that `"denied"` implies `terminal_receipt is None`.
+* **P2S-NB-8 — `resume_operation` consumes the fresh confirmation and commits a new operation
+  manifest (`:738-743`) BEFORE the R1 binding check (`:752`).** A bound-field mismatch therefore
+  burns a one-time confirmation and permanently occupies an idempotency key on a request that is then
+  denied. The R1 check needs only `load_operation`, which is already called at `:748` — move both
+  above the CAS.
+* **P2S-NB-9 — AC OPM-3's "bounded attempts" is unimplemented.** No attempt cap exists
+  (`grep -rn "max_attempt\|attempt_limit\|MAX_ATTEMPT" src/research_foundry/services/` → zero hits);
+  `create_attempt` may be called without limit per operation.
+* **P2S-NB-10 — audit-failure coverage is one-sided.** `test_audit_delivery_failure_never_blocks_terminal_receipt`
+  exercises `record_event` returning `None`; the raise / import-failure branch
+  (`operator_receipt_service.py:629-637`) is `# pragma: no cover`, so "even an import-time failure of
+  `audit_service` cannot prevent a terminal receipt" is asserted only by construction.
+
+### Previously-fixed findings: verification of whether each fix actually holds
+
+Each guard was reverted **in place** (files backed up to `/tmp/p2backup/`, restored and checksum-verified
+afterwards; `git status --porcelain src/ schemas/ tests/ docs/ .claude/progress/` empty before and after;
+`git stash` deliberately not used, per this gate's instructions). In-place mutation is the correct form
+here — `pyproject.toml`'s `pythonpath = ["src"]` means pytest tests the worktree source regardless of any
+`PYTHONPATH` prefix, so a scratch-tree sweep would have reported false negatives.
+
+| Fix | Mutation applied | Detecting test | Holds? |
+|---|---|---|---|
+| **DUR-1 same-transaction CAS** | `COMMIT` moved before `_consume_locked` | `test_concurrent_consumers_of_one_confirmation_yield_one_success_one_conflict` FAILED (full-file run) — but **passed in isolation**, and the G5 2-process test never failed | **Code holds; proof does not** — P2S-BLOCK-1 |
+| **G1 expiry TOCTOU** (clock after `BEGIN IMMEDIATE`) | `moment` captured before the lock wait | `test_expiry_checked_after_lock_acquired_not_before_the_wait_for_it` FAILED | **HOLDS** |
+| **F1 authorization as data dependency** | `authorization is None` auto-satisfied + `stage != "confirmation"` gate disabled | `test_missing_authorization_denies_without_touching_storage` and `test_authorization_denied_at_rbac_cannot_be_bypassed_by_a_valid_confirmation` FAILED | **HOLDS** |
+| **F1(c) proof↔ctx digest binding** | digest comparison disabled | `test_authorization_bound_to_a_different_ctx_denies` FAILED | **HOLDS** |
+| **R1 resume_ctx binds the operation** | binding check disabled | `test_r1_valid_low_sensitivity_resume_authorization_denied_against_higher_sensitivity_operation`, `test_r1_resume_ctx_targeting_a_different_operation_id_in_the_same_workspace_is_denied`, `test_r1_correct_target_but_weaker_sensitivity_is_denied` FAILED | **HOLDS** |
+| **R2 derive workspace/kind in `resume_operation`** | reverted to caller params | `test_r2_mismatched_caller_workspace_id_never_reaches_checkpoint_or_terminal_receipt` FAILED | **HOLDS** |
+| **R3 derive workspace/kind in `run_or_replay`** | reverted to caller params | `test_r3_run_or_replay_mismatched_caller_workspace_id_never_reaches_checkpoint` FAILED | **HOLDS** |
+| **G4 DB-level immutability/status triggers** | n/a — verified positively by raw SQL | `DELETE`/`UPDATE` on `action_receipts` and `cancellation_requests` both raise `IntegrityError` from SQLite itself | **HOLDS** |
+| **F2** (`now=` seam removed) | n/a — verified by reading | exactly one `ids.now()` in `consume_and_create_operation` (`:995`), no `now` parameter on the method | **HOLDS** |
+| **F3** (permissive `status`/`issued_at` defaults) | n/a — verified by reading | `:851-859` rejects any `status != "issued"` and any missing/empty `issued_at`, never defaults | **HOLDS** |
+| **F4** (raw `RuntimeError` at the boundary) | n/a — verified by reading | `_Dur1InvariantViolation` caught at `:1007-1013`; **but** sibling raw-raise sites remain — P2S-NB-4 | **PARTIAL** |
+| **G2** (lock-timeout escaping raw) | n/a — verified by reading | `sqlite3.OperationalError` caught around `_ensure_schema`+`BEGIN IMMEDIATE` (`:978-989`); `test_lock_acquisition_timeout_returns_governed_denial_not_raw_exception` present | **HOLDS** |
+| **G5** (real multi-process concurrency test) | see DUR-1 row | the added test passes against a full read-then-write implementation | **DOES NOT HOLD** — P2S-BLOCK-1 |
+| **P2R-BLOCK-1 / NB-11 / P2-ARCH-1** | n/a — verified by reading the schema and DDL | `operation_receipt.idempotency_key` now `pattern: "^[A-Za-z0-9_\-]+$"`; `checkpoint.workspace_id` required + guarded and enforced by `write_checkpoint:447-448`; `operation_receipt.denial_reason_code` with bidirectional `allOf` coupling; `_SCHEMA_VERSION = 3` in `operator_operation_service.py:163` is the sole authority — `operator_attempt_adapter.py`, `operator_receipt_service.py` and `operator_cancel_resume_service.py` all call `_ops_store._connect`/`_ensure_schema` and issue DML only (`grep "CREATE TABLE\|CREATE TRIGGER"` over the three → zero hits) | **HOLD** |
+
+### Validation transcript
+
+```
+# A) targeted P2 + P1 suites — the exact tree, before any mutation
+PYTHONPATH=$PWD/src .venv/bin/python -m pytest \
+  tests/unit/test_operator_operation_service.py tests/unit/test_operator_attempt_adapter.py \
+  tests/unit/test_operator_receipt_service.py tests/unit/test_operator_cancel_resume_service.py \
+  tests/unit/test_operator_mcp_schemas.py tests/unit/test_operator_mcp_policy.py \
+  --color=no -p no:warnings -q
+EXIT=0
+census: 317 '.', 0 'F', 0 'E', 0 's'
+(no "N passed" summary line is emitted in this environment; EXIT + census is the pass signal,
+ and `FAILED` lines carry ANSI so `grep "^FAILED"` is not a valid check here.)
+
+# A2) full suite minus the two known-collection-error files — regression check
+PYTHONPATH=$PWD/src .venv/bin/python -m pytest \
+  --ignore=tests/test_verification_pediatric_cds.py \
+  --ignore=tests/test_verification_seam001_gate_composition.py \
+  --color=no -p no:warnings -q
+EXIT=1
+16 distinct FAILED nodes — IDENTICAL to the 16-node pre-P2 baseline established at e5a2e6e.
+ZERO new regressions introduced by P2. (test_cli_rights, test_contract_drift_rf_schema_version,
+test_deployment_mode_cli_and_app, test_pediatric_cds_redteam_fixtures, test_serve_api x5,
+test_swarm_drive x2, test_verification_clinical_eligibility_regression x2,
+test_assertion_rollout x2, test_report_anchors — none touch any P2 surface.)
+
+# B) empirical reachability harness (standalone, no repo file written; /tmp only)
+#    replicates tests/conftest.py's tmp_foundry + pinned clock + resolve_operator_identity seam
+- EXTRA corruption via run_or_replay -> ExecutionOutcome(status='completed',
+  terminal_receipt=None, completed_action_count=5); load_terminal_receipt -> None;
+  actions executed: []                                              [P2S-BLOCK-2]
+- record_action_receipt against opm_bbbb… (no manifest) -> 'created';
+  resolve_resume_point(phantom) -> next_action_index=1               [P2S-BLOCK-4]
+- gap receipt at index 3 on a real op -> 'created'; resolve_resume_point -> denied;
+  run_or_replay -> denied; DELETE and UPDATE on action_receipts both
+  -> IntegrityError (rows are immutable) => unrecoverable             [P2S-BLOCK-4]
+- request_cancellation(victim, workspace_id='ws-attacker') -> 'created';
+  cancellation_requested -> True; victim run_actions -> 'canceled', 0 actions run;
+  DELETE FROM cancellation_requests -> IntegrityError (immutable)     [P2S-BLOCK-5]
+
+# C) mutation sweep — 7 mutations, all restored; see the table above for per-fix results
+shasum verified identical to /tmp/p2backup/ after restore for all three mutated modules
+git status --porcelain src/ schemas/ tests/ docs/ .claude/progress/  -> empty
+
+# D) tree state
+git log --oneline -1 -> 4b1b6fd  (exact-tree gate confirmed at start and end of review)
+```
+
+### Verdict and recommended fix order
+
+**CHANGES_REQUESTED.** Both AC OPM-2 and AC OPM-3 are **NOT MET** — each fails its resilience clause
+with a concretely demonstrated wrong outcome, and AC OPM-2 additionally fails its propagation
+contract on the `receipts` surface named in the contract text.
+
+DUR-1 itself — the property this gate exists for — **is correctly implemented**; the transaction
+boundary was verified by reading the code rather than by trusting the suite, exactly as the gate
+mandate requires. It is simply not defended by any test that can fail.
+
+Recommended order:
+1. **P2S-BLOCK-2** (smallest, highest-severity-to-effort: check the outcomes `run_actions` already
+   discards, and bound `resolve_resume_point` by the declared total).
+2. **P2S-BLOCK-4** (one `SELECT 1 FROM operations` inside two existing locked transactions; the
+   MISMATCHED guard is the template).
+3. **P2S-BLOCK-3** (derive the workspace inside the receipt service; add the identity seam to the
+   three reads).
+4. **P2S-BLOCK-5** (derive + match the workspace; scope `cancellation_requested`; make the
+   irrevocability decision explicit).
+5. **P2S-BLOCK-1** (the discriminating durability test — do this one last but do not defer it; a
+   fix cycle that lands 1–4 without it leaves the frozen bar unproven, which is how BLOCK-4
+   happened).
+
+Per the plan's own fix-cycle rule, each of 1–4 must be **mutation-verified inside the fix step** —
+revert the new guard, confirm the new test fails, restore — not deferred to the next review round.
