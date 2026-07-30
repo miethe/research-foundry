@@ -1705,8 +1705,46 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(catalog_app, name="catalog")
 
-    # ----- workspace (public-multiuser-release Phase 5, WKSP-301) -----
+    # ----- workspace (public-multiuser-release Phase 5, WKSP-301 / DF-004) -----
     workspace_app = typer.Typer(help="Workspace isolation management.")
+
+    def _workspace_run_link_path(paths: Any, migration_run_id: str) -> Path:
+        """Path to the small CLI-owned linkage file for a combined migrate --apply.
+
+        NOT part of workspace_migration_service.py's manifest schema — this is a
+        CLI-only breadcrumb (written by ``rf workspace migrate --apply``) that
+        associates the *drafts* ``migration_run_id`` with the *runs*
+        ``migration_run_id`` produced by the same invocation, so a single
+        ``rf workspace rollback <drafts_migration_run_id>`` can reverse both.
+        """
+        return Path(paths.rf_state) / "migrations" / f"{migration_run_id}-linked-run-backfill.json"
+
+    def _write_workspace_run_link(
+        paths: Any, draft_migration_run_id: str, run_migration_run_id: str
+    ) -> None:
+        import json as _json
+
+        link_path = _workspace_run_link_path(paths, draft_migration_run_id)
+        link_path.parent.mkdir(parents=True, exist_ok=True)
+        link_path.write_text(
+            _json.dumps(
+                {"linked_migration_run_id": run_migration_run_id}, indent=2
+            ),
+            encoding="utf-8",
+        )
+
+    def _read_workspace_run_link(paths: Any, migration_run_id: str) -> str | None:
+        import json as _json
+
+        link_path = _workspace_run_link_path(paths, migration_run_id)
+        if not link_path.exists():
+            return None
+        try:
+            payload = _json.loads(link_path.read_text(encoding="utf-8"))
+            linked = payload.get("linked_migration_run_id")
+            return str(linked) if linked else None
+        except Exception:  # noqa: BLE001 — malformed/missing link; degrade gracefully
+            return None
 
     @workspace_app.command("migrate-dry-run")
     def workspace_migrate_dry_run(
@@ -1715,18 +1753,22 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         """Dry-run workspace isolation migration: report what would change (no writes).
 
         Counts on-disk ``draft.yaml`` files missing ``workspace_id``/``created_by``
-        fields and the total ``catalog_items`` row count (all workspace-less pre-
-        migration).  Performs **zero writes** to any file or database.
+        fields, the total ``catalog_items`` row count (all workspace-less pre-
+        migration), and legacy ``run.yaml`` files missing ``workspace_id`` (DF-004).
+        Performs **zero writes** to any file or database.
 
-        Use ``--json`` for the machine-parseable ``DryRunReport`` payload.
+        Use ``--json`` for the machine-parseable payload (``DryRunReport`` fields
+        plus ``total_runs``/``runs_missing_workspace_id`` from ``RunDryRunReport``).
         """
         import json as _json
 
         from .paths import FoundryPaths
         from .services.workspace_migration_service import dry_run as _dry_run
+        from .services.workspace_migration_service import dry_run_runs as _dry_run_runs
 
         paths = FoundryPaths.discover()
         report = _dry_run(paths)
+        run_report = _dry_run_runs(paths)
 
         if json_out:
             typer.echo(
@@ -1736,6 +1778,8 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                         "drafts_missing_workspace_id": report.drafts_missing_workspace_id,
                         "drafts_missing_created_by": report.drafts_missing_created_by,
                         "total_catalog_items": report.total_catalog_items,
+                        "total_runs": run_report.total_runs,
+                        "runs_missing_workspace_id": run_report.runs_missing_workspace_id,
                         "target_workspace_id": report.target_workspace_id,
                         "caller_impact_summary": report.caller_impact_summary,
                     }),
@@ -1758,6 +1802,8 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             str(report.drafts_missing_created_by),
         )
         table.add_row("total_catalog_items", str(report.total_catalog_items))
+        table.add_row("total_runs", str(run_report.total_runs))
+        table.add_row("runs_missing_workspace_id", str(run_report.runs_missing_workspace_id))
         table.add_row("target_workspace_id", report.target_workspace_id)
         console.print(table)
         console.print(f"[dim]{report.caller_impact_summary}[/dim]")
@@ -1781,10 +1827,13 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         Without ``--apply``: equivalent to ``migrate-dry-run`` — shows what
         would change without writing anything (zero writes).
 
-        With ``--apply``: stamps ``workspace_id`` on every legacy record that
-        lacks one, rebuilds the catalog with the new ``workspace_id`` column,
-        and writes a rollback manifest to
-        ``<workspace>/.rf_state/migrations/<run_id>-workspace-backfill.json``.
+        With ``--apply``: stamps ``workspace_id`` on every legacy draft/run
+        record that lacks one, rebuilds the catalog with the new
+        ``workspace_id`` column, and writes rollback manifests to
+        ``<workspace>/.rf_state/migrations/<run_id>-workspace-backfill.json``
+        (one for drafts, one for runs — DF-004). The two manifests are linked
+        so a single ``rf workspace rollback <migration_run_id>`` (the drafts
+        id, printed as ``migration_run_id``) reverses both.
 
         Idempotent: if all records already have ``workspace_id`` set, reports
         "already migrated" and exits 0 without writing a new manifest.
@@ -1799,13 +1848,16 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         from .services.workspace_migration_service import (
             _catalog_has_workspace_id_column,
             backfill as _backfill,
+            backfill_runs as _backfill_runs,
             dry_run as _dry_run,
+            dry_run_runs as _dry_run_runs,
         )
 
         paths = FoundryPaths.discover()
 
         # Always run a dry-run first to assess the current state.
         preview = _dry_run(paths)
+        run_preview = _dry_run_runs(paths)
 
         if not apply:
             # Dry-run-only mode: display the preview without writing anything.
@@ -1818,6 +1870,8 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                             "drafts_missing_workspace_id": preview.drafts_missing_workspace_id,
                             "drafts_missing_created_by": preview.drafts_missing_created_by,
                             "total_catalog_items": preview.total_catalog_items,
+                            "total_runs": run_preview.total_runs,
+                            "runs_missing_workspace_id": run_preview.runs_missing_workspace_id,
                             "target_workspace_id": preview.target_workspace_id,
                             "caller_impact_summary": preview.caller_impact_summary,
                         }),
@@ -1833,18 +1887,28 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             table.add_row("drafts_missing_workspace_id", str(preview.drafts_missing_workspace_id))
             table.add_row("drafts_missing_created_by", str(preview.drafts_missing_created_by))
             table.add_row("total_catalog_items", str(preview.total_catalog_items))
+            table.add_row("total_runs", str(run_preview.total_runs))
+            table.add_row("runs_missing_workspace_id", str(run_preview.runs_missing_workspace_id))
             table.add_row("target_workspace_id", preview.target_workspace_id)
             console.print(table)
             console.print("[dim]Pass --apply to execute the migration.[/dim]")
             return
 
-        # Idempotency gate: skip the backfill only when BOTH conditions hold:
-        #   1. no draft records need workspace_id stamping, AND
-        #   2. the catalog schema already has the workspace_id column (v3+).
-        # If drafts are done but catalog is still pre-v3, fall through to
+        # Idempotency gate: skip the backfill only when ALL of the following hold:
+        #   1. no draft records need workspace_id stamping,
+        #   2. no run records need workspace_id stamping (DF-004), AND
+        #   3. the catalog schema already has the workspace_id column (v3+).
+        # If drafts/runs are done but catalog is still pre-v3, fall through to
         # backfill() which will trigger the catalog schema rebuild.
-        if preview.drafts_missing_workspace_id == 0 and _catalog_has_workspace_id_column(paths):
-            already_msg = "workspace migration already applied -- all draft records have workspace_id set"
+        if (
+            preview.drafts_missing_workspace_id == 0
+            and run_preview.runs_missing_workspace_id == 0
+            and _catalog_has_workspace_id_column(paths)
+        ):
+            already_msg = (
+                "workspace migration already applied -- all draft and run records "
+                "have workspace_id set"
+            )
             if json_out:
                 typer.echo(
                     _json.dumps(
@@ -1857,8 +1921,14 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                 console.print(f"[green]{already_msg}[/green]")
             return
 
-        # Apply the backfill.
+        # Apply the backfill (drafts + catalog rebuild, then runs — DF-004).
         report = _backfill(paths, workspace_id_arg)
+        run_report = _backfill_runs(paths, workspace_id_arg)
+
+        # Link the two manifests so a single `rf workspace rollback <migration_run_id>`
+        # (the drafts id below) reverses both. CLI-only breadcrumb; does not touch
+        # workspace_migration_service.py's manifest schema.
+        _write_workspace_run_link(paths, report.migration_run_id, run_report.migration_run_id)
 
         if json_out:
             typer.echo(
@@ -1866,10 +1936,14 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                     _stamp({
                         "status": "applied",
                         "migration_run_id": report.migration_run_id,
+                        "run_migration_run_id": run_report.migration_run_id,
                         "target_workspace_id": report.target_workspace_id,
                         "total_attempted": report.total_attempted,
                         "total_succeeded": report.total_succeeded,
                         "total_failed": report.total_failed,
+                        "total_runs_attempted": run_report.total_attempted,
+                        "total_runs_succeeded": run_report.total_succeeded,
+                        "total_runs_failed": run_report.total_failed,
                         "catalog_rebuild_ok": report.catalog_rebuild_ok,
                         "catalog_rebuild_error": report.catalog_rebuild_error,
                     }),
@@ -1877,19 +1951,27 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                     indent=2,
                 )
             )
-            if report.total_failed or not report.catalog_rebuild_ok:
+            if report.total_failed or run_report.total_failed or not report.catalog_rebuild_ok:
                 raise typer.Exit(1)
             return
 
-        color = "green" if not report.total_failed and report.catalog_rebuild_ok else "yellow"
+        color = (
+            "green"
+            if not report.total_failed and not run_report.total_failed and report.catalog_rebuild_ok
+            else "yellow"
+        )
         console.print(
             f"[{color}]workspace migrate (applied)[/{color}]  "
-            f"run={report.migration_run_id}"
+            f"run={report.migration_run_id}  runs_run={run_report.migration_run_id}"
         )
-        console.print(f"  attempted:  {report.total_attempted}")
-        console.print(f"  succeeded:  {report.total_succeeded}")
+        console.print(f"  attempted:       {report.total_attempted}")
+        console.print(f"  succeeded:       {report.total_succeeded}")
         if report.total_failed:
-            err_console.print(f"  [red]failed:     {report.total_failed}[/red]")
+            err_console.print(f"  [red]failed:          {report.total_failed}[/red]")
+        console.print(f"  runs attempted:  {run_report.total_attempted}")
+        console.print(f"  runs succeeded:  {run_report.total_succeeded}")
+        if run_report.total_failed:
+            err_console.print(f"  [red]runs failed:     {run_report.total_failed}[/red]")
         if not report.catalog_rebuild_ok:
             err_console.print(
                 Panel(
@@ -1901,7 +1983,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         console.print(
             f"  [dim]rollback: rf workspace rollback {report.migration_run_id}[/dim]"
         )
-        if report.total_failed or not report.catalog_rebuild_ok:
+        if report.total_failed or run_report.total_failed or not report.catalog_rebuild_ok:
             raise typer.Exit(1)
 
     @workspace_app.command("rollback")
@@ -1918,8 +2000,13 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         """Reverse a prior workspace backfill run (rollback runbook).
 
         Reads the manifest written by ``rf workspace migrate-dry-run`` /
-        ``backfill`` for ``MIGRATION_RUN_ID`` and restores each draft's
+        ``backfill`` for ``MIGRATION_RUN_ID`` and restores each draft's/run's
         ``workspace_id`` / ``created_by`` fields to their pre-migration values.
+
+        If ``MIGRATION_RUN_ID`` is a drafts id produced by ``rf workspace
+        migrate --apply`` (which backfills drafts and runs in one invocation),
+        the linked run-backfill manifest is also reversed automatically — no
+        need to pass both ids.
 
         For ``catalog_items``: there is no coded per-row reverter.  The rollback
         report's ``catalog_item_note`` explains the manual steps required
@@ -1943,14 +2030,36 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             err_console.print(f"[red]error:[/red] {exc}")
             raise typer.Exit(1) from exc
 
+        # If this migration_run_id has a linked run-backfill manifest (written by
+        # `rf workspace migrate --apply`), reverse it too so one rollback call
+        # undoes both the drafts and runs backfill from that invocation.
+        linked_run_id = _read_workspace_run_link(paths, migration_run_id)
+        linked_report = None
+        if linked_run_id:
+            try:
+                linked_report = _rollback(paths, linked_run_id, dry_run=dry_run_flag)
+            except FileNotFoundError:
+                linked_report = None  # linked manifest missing; degrade gracefully
+
+        total_attempted = report.total_attempted + (linked_report.total_attempted if linked_report else 0)
+        total_reverted_drafts = report.total_reverted_drafts + (
+            linked_report.total_reverted_drafts if linked_report else 0
+        )
+        total_reverted_runs = report.total_reverted_runs + (
+            linked_report.total_reverted_runs if linked_report else 0
+        )
+        total_failed = report.total_failed + (linked_report.total_failed if linked_report else 0)
+
         if json_out:
             typer.echo(
                 _json.dumps(
                     _stamp({
                         "migration_run_id": report.migration_run_id,
-                        "total_attempted": report.total_attempted,
-                        "total_reverted_drafts": report.total_reverted_drafts,
-                        "total_failed": report.total_failed,
+                        "linked_run_migration_run_id": linked_run_id,
+                        "total_attempted": total_attempted,
+                        "total_reverted_drafts": total_reverted_drafts,
+                        "total_reverted_runs": total_reverted_runs,
+                        "total_failed": total_failed,
                         "catalog_item_note": report.catalog_item_note,
                         "is_dry_run": report.is_dry_run,
                     }),
@@ -1958,22 +2067,24 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                     indent=2,
                 )
             )
-            if report.total_failed:
+            if total_failed:
                 raise typer.Exit(1)
             return
 
         mode_label = "dry-run" if report.is_dry_run else "applied"
-        color = "green" if not report.total_failed else "yellow"
+        color = "green" if not total_failed else "yellow"
         console.print(
             f"[{color}]workspace rollback ({mode_label})[/{color}] "
             f"run={migration_run_id}"
+            + (f" runs_run={linked_run_id}" if linked_run_id else "")
         )
-        console.print(f"  attempted:       {report.total_attempted}")
-        console.print(f"  reverted drafts: {report.total_reverted_drafts}")
-        if report.total_failed:
-            err_console.print(f"  [red]failed:          {report.total_failed}[/red]")
+        console.print(f"  attempted:       {total_attempted}")
+        console.print(f"  reverted drafts: {total_reverted_drafts}")
+        console.print(f"  reverted runs:   {total_reverted_runs}")
+        if total_failed:
+            err_console.print(f"  [red]failed:          {total_failed}[/red]")
         console.print(f"  [dim]{report.catalog_item_note}[/dim]")
-        if report.total_failed:
+        if total_failed:
             raise typer.Exit(1)
 
     app.add_typer(workspace_app, name="workspace")
