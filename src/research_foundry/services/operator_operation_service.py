@@ -132,7 +132,27 @@ __all__ = [
 
 #: Additive-only schema versioning, mirroring `rbac_store.py`'s convention:
 #: bump only when a real migration is applied; never drop/recreate.
-_SCHEMA_VERSION = 1
+#:
+#: **P2-ARCH-1 (OPM-2.3): this module's `_ensure_schema` is now the SOLE
+#: schema/migration authority for `paths.operator_operations_db`.** Before
+#: this version bump, `operator_attempt_adapter.py` independently created
+#: its own `attempts` table via a bare `CREATE TABLE IF NOT EXISTS`, never
+#: touching this counter -- a second, uncoordinated schema author on the
+#: SAME database file, with `IF NOT EXISTS` silently no-op-ing on an
+#: evolved definition rather than erroring. Version 2 folds that table's
+#: DDL into :data:`_DDL` below (verbatim, moved from
+#: `operator_attempt_adapter.py`) and adds OPM-2.3's four new tables
+#: (`action_receipts`, `effect_receipts`, `checkpoints`, `terminal_receipts`).
+#: Every OTHER module that touches this database (`operator_attempt_adapter.py`,
+#: `operator_receipt_service.py`) now opens it for DML ONLY -- via THIS
+#: module's `_connect`/`_ensure_schema`, imported directly (cross-module
+#: reach into a leading-underscore helper is intentional here, not an
+#: oversight: this is the one sanctioned way every sibling module shares
+#: schema ownership, mirroring how `rbac_store.py`'s own `_connect`/
+#: `_ensure_schema` idiom is the pattern every one of these modules already
+#: mirrors independently) -- never a second `CREATE TABLE` for any of these
+#: six tables anywhere else in the codebase.
+_SCHEMA_VERSION = 2
 
 #: Explicit busy-timeout (milliseconds) so lock contention under `BEGIN
 #: IMMEDIATE` resolves deterministically within a bounded window rather than
@@ -237,6 +257,174 @@ _DDL: tuple[str, ...] = (
     BEFORE DELETE ON operations
     BEGIN
         SELECT RAISE(ABORT, 'operations rows are immutable -- no DELETE path exists by design');
+    END
+    """,
+    # -----------------------------------------------------------------
+    # attempts (OPM-2.2): moved here verbatim from
+    # `operator_attempt_adapter.py` by the P2-ARCH-1 schema consolidation
+    # (see `_SCHEMA_VERSION`'s docstring) -- that module now opens this
+    # database for DML only, never DDL.
+    # -----------------------------------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS attempts (
+        attempt_id      TEXT PRIMARY KEY,
+        operation_id    TEXT NOT NULL,
+        workspace_id    TEXT,
+        created_at      TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_attempts_operation
+        ON attempts (operation_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_attempts_workspace
+        ON attempts (workspace_id)
+    """,
+    # -----------------------------------------------------------------
+    # action_receipts (OPM-2.3): immutable. PRIMARY KEY (operation_id,
+    # action_index) is the write-time REORDERED/DUPLICATE guard -- a
+    # second INSERT presenting an action_index already recorded for this
+    # operation_id raises `sqlite3.IntegrityError`, caught (never raw) by
+    # `operator_receipt_service.record_action_receipt` and turned into a
+    # governed denial. The UNIQUE index on (operation_id, action_id) is
+    # the same guard keyed on the OTHER identity a caller might duplicate.
+    # -----------------------------------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS action_receipts (
+        operation_id   TEXT NOT NULL,
+        action_id      TEXT NOT NULL,
+        action_index   INTEGER NOT NULL,
+        status         TEXT NOT NULL,
+        attempt_ref    TEXT NOT NULL,
+        started_at     TEXT NOT NULL,
+        completed_at   TEXT,
+        reason_code    TEXT,
+        retryable      INTEGER,
+        receipt_json   TEXT NOT NULL,
+        created_at     TEXT NOT NULL,
+        PRIMARY KEY (operation_id, action_index)
+    )
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_action_receipts_action_id
+        ON action_receipts (operation_id, action_id)
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS trg_action_receipts_immutable_no_update
+    BEFORE UPDATE ON action_receipts
+    BEGIN
+        SELECT RAISE(ABORT, 'action_receipts rows are immutable -- no UPDATE path exists by design');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS trg_action_receipts_immutable_no_delete
+    BEFORE DELETE ON action_receipts
+    BEGIN
+        SELECT RAISE(ABORT, 'action_receipts rows are immutable -- no DELETE path exists by design');
+    END
+    """,
+    # -----------------------------------------------------------------
+    # effect_receipts (OPM-2.3): immutable. `effect_digest` is the
+    # PRIMARY KEY -- a content-addressed identity, so a second INSERT of
+    # the SAME digest (the DUPLICATE fixture) raises `IntegrityError`,
+    # caught and turned into a governed denial exactly like
+    # `action_receipts` above. `action_id` is validated (referentially,
+    # in application code) against `action_receipts` BEFORE this INSERT
+    # is attempted -- the MISMATCHED fixture's guard.
+    # -----------------------------------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS effect_receipts (
+        operation_id  TEXT NOT NULL,
+        action_id     TEXT NOT NULL,
+        effect_digest TEXT NOT NULL PRIMARY KEY,
+        effect_kind   TEXT NOT NULL,
+        effect_ref    TEXT NOT NULL,
+        generated_at  TEXT NOT NULL,
+        receipt_json  TEXT NOT NULL,
+        created_at    TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_effect_receipts_operation
+        ON effect_receipts (operation_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_effect_receipts_action
+        ON effect_receipts (operation_id, action_id)
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS trg_effect_receipts_immutable_no_update
+    BEFORE UPDATE ON effect_receipts
+    BEGIN
+        SELECT RAISE(ABORT, 'effect_receipts rows are immutable -- no UPDATE path exists by design');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS trg_effect_receipts_immutable_no_delete
+    BEFORE DELETE ON effect_receipts
+    BEGIN
+        SELECT RAISE(ABORT, 'effect_receipts rows are immutable -- no DELETE path exists by design');
+    END
+    """,
+    # -----------------------------------------------------------------
+    # checkpoints (OPM-2.3): the ONE mutable receipt kind (mirrors
+    # `schemas/operator_mcp_receipt.schema.yaml`'s own "checkpoint is the
+    # ONE mutable, atomically-replaceable kind" contract). PRIMARY KEY
+    # `operation_id` -- a single row per operation, atomically REPLACED
+    # (`INSERT ... ON CONFLICT ... DO UPDATE`, one statement, one
+    # transaction) by `operator_receipt_service.write_checkpoint`, never
+    # appended to. Deliberately carries NO immutability trigger.
+    # -----------------------------------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS checkpoints (
+        operation_id            TEXT PRIMARY KEY,
+        workspace_id            TEXT NOT NULL,
+        status                  TEXT NOT NULL,
+        next_action_index       INTEGER,
+        completed_action_count  INTEGER NOT NULL,
+        total_action_count      INTEGER NOT NULL,
+        non_cancelable          INTEGER NOT NULL,
+        updated_at              TEXT NOT NULL,
+        checkpoint_json         TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_checkpoints_workspace
+        ON checkpoints (workspace_id)
+    """,
+    # -----------------------------------------------------------------
+    # terminal_receipts (OPM-2.3): immutable, one row per operation_id --
+    # `finalize_terminal_receipt` is idempotent (a second call for an
+    # operation_id that already has one returns the existing row rather
+    # than attempting a second INSERT, which the PRIMARY KEY would reject
+    # anyway).
+    # -----------------------------------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS terminal_receipts (
+        operation_id  TEXT PRIMARY KEY,
+        workspace_id  TEXT NOT NULL,
+        status        TEXT NOT NULL,
+        receipt_json  TEXT NOT NULL,
+        created_at    TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_terminal_receipts_workspace
+        ON terminal_receipts (workspace_id)
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS trg_terminal_receipts_immutable_no_update
+    BEFORE UPDATE ON terminal_receipts
+    BEGIN
+        SELECT RAISE(ABORT, 'terminal_receipts rows are immutable -- no UPDATE path exists by design');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS trg_terminal_receipts_immutable_no_delete
+    BEFORE DELETE ON terminal_receipts
+    BEGIN
+        SELECT RAISE(ABORT, 'terminal_receipts rows are immutable -- no DELETE path exists by design');
     END
     """,
 )

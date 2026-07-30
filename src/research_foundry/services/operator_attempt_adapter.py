@@ -13,14 +13,17 @@ adds exactly two things ``AgentJobService`` does not already provide:
    manifests already live in ``paths.operator_operations_db`` (see
    ``operator_operation_service.py``, OPM-2.1's module docstring for why
    that file, under ``.rf_state/``, is the sanctioned durable store for
-   Operator-MCP-owned state) -- this module adds one more additive table,
-   ``attempts``, to that SAME database file rather than inventing a second
-   store. It does NOT modify ``operator_operation_service.py`` to do this;
-   it opens its own connection to the same db path, mirroring that module's
-   own ``_connect``/``_ensure_schema``/``BEGIN IMMEDIATE`` idiom (which
-   itself mirrors ``services/rbac_store.py``) independently, so ownership of
-   the ``operations``/``confirmations`` tables stays exactly where OPM-2.1
-   left it.
+   Operator-MCP-owned state) -- the ``attempts`` table lives in that SAME
+   database file rather than a second store. **P2-ARCH-1 update**: this
+   module used to create that table itself, independently; it now opens
+   ``operator_operation_service._connect``'s connection and calls that
+   module's ``_ensure_schema`` (the SOLE schema authority for this database
+   file as of OPM-2.3 -- see that module's ``_SCHEMA_VERSION`` docstring)
+   before every DML statement, using the SAME ``BEGIN IMMEDIATE`` idiom
+   (which itself mirrors ``services/rbac_store.py``) it always has. Table
+   ownership (``operations``/``confirmations``/``attempts``/the four OPM-2.3
+   receipt tables) is now entirely OPM-2.1's; this module writes DML rows
+   into ``attempts`` only, never DDL.
 
 2. **A single, uniformly-applied identity/workspace-scoping gate** in front
    of every wrapped call. ``AgentJobService`` itself only threads
@@ -59,9 +62,9 @@ this adapter (OPM-2.2's plan row explicitly excludes it). This module:
 **Cross-store atomicity gap (documented, not silently papered over)**: an
 attempt's ``AgentJob`` record (``job.json``, a plain file under
 ``agent_jobs/<job_id>/``) and its link row in the ``attempts`` table (a
-SEPARATE sqlite database) are two different storage engines -- exactly the
-same limitation ``operator_operation_service.py``'s own module docstring
-calls out for why confirmations and operation manifests must live in ONE
+sqlite table) are two different storage engines -- exactly the same
+limitation ``operator_operation_service.py``'s own module docstring calls
+out for why confirmations and operation manifests must live in ONE
 database (they do; this module's own link write does not, and cannot,
 extend that same transaction to a plain JSON file write). If the job.json
 write in :meth:`OperatorAttemptAdapter.create_attempt` succeeds but the
@@ -75,18 +78,32 @@ is no ``AgentJobService.delete_job``. Flagged here rather than solved
 because solving it would require a delete/cleanup path on
 ``agent_job_service.py`` itself, a file this task's HARD CONSTRAINTS list as
 a serialization-barrier module this task must wrap, never edit.
+
+**P2-ARCH-1 (OPM-2.3 schema consolidation)**: this module used to own a
+private ``CREATE TABLE IF NOT EXISTS attempts`` DDL path (its own
+``_ensure_attempts_schema``), independent of and uncoordinated with
+``operator_operation_service.py``'s ``PRAGMA user_version``-gated
+migrations -- a second, uncoordinated schema author on the SAME database
+file. ``operator_operation_service._ensure_schema`` is now the SOLE schema/
+migration authority for ``paths.operator_operations_db`` (the ``attempts``
+table DDL moved there verbatim, under schema version 2); this module now
+imports and calls that module's ``_connect``/``_ensure_schema`` directly
+(a deliberate, directed cross-module reach into leading-underscore helpers
+-- see that module's ``_SCHEMA_VERSION`` docstring) for DML only. It never
+issues a ``CREATE TABLE``/``CREATE INDEX``/``CREATE TRIGGER`` of its own
+anymore.
 """
 
 from __future__ import annotations
 
 import logging
-import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from research_foundry import ids
 from research_foundry.paths import FoundryPaths
+from research_foundry.services import operator_operation_service as _ops_store
 from research_foundry.services.agent_job_schemas import AgentJob, AgentJobStatus
 from research_foundry.services.agent_job_service import AgentJobService
 
@@ -101,69 +118,13 @@ __all__ = [
 ]
 
 # ---------------------------------------------------------------------------
-# Storage: additive ``attempts`` table in the SAME db OPM-2.1 already owns.
+# Storage: the ``attempts`` table in the SAME db OPM-2.1 already owns.
+#
+# P2-ARCH-1: schema ownership (the ``CREATE TABLE``/``CREATE INDEX`` DDL,
+# and the `PRAGMA user_version`-gated migration counter) now lives SOLELY in
+# ``operator_operation_service._ensure_schema`` -- this module calls that
+# module's own ``_connect``/``_ensure_schema`` and issues DML only.
 # ---------------------------------------------------------------------------
-
-#: Explicit busy-timeout, matching ``operator_operation_service.py``'s own
-#: constant exactly -- both modules write to the SAME db file, so lock
-#: contention between them must resolve under the same deterministic window.
-_BUSY_TIMEOUT_MS = 15_000
-
-_ATTEMPTS_DDL: tuple[str, ...] = (
-    # attempt_id == the wrapped AgentJob's agent_job_id -- an "attempt" IS
-    # an AgentJob execution instance; there is no separate id namespace.
-    # workspace_id is nullable (mirrors AgentJob.workspace_id itself being
-    # nullable -- legacy/no-identity jobs have no workspace_id).
-    """
-    CREATE TABLE IF NOT EXISTS attempts (
-        attempt_id      TEXT PRIMARY KEY,
-        operation_id    TEXT NOT NULL,
-        workspace_id    TEXT,
-        created_at      TEXT NOT NULL
-    )
-    """,
-    """
-    CREATE INDEX IF NOT EXISTS idx_attempts_operation
-        ON attempts (operation_id)
-    """,
-    """
-    CREATE INDEX IF NOT EXISTS idx_attempts_workspace
-        ON attempts (workspace_id)
-    """,
-)
-
-
-def _connect(paths: FoundryPaths) -> sqlite3.Connection:
-    """Open (or create) the SAME durable db ``operator_operation_service.py``
-    owns (``paths.operator_operations_db``, under ``.rf_state/``).
-
-    An independent connection function rather than importing
-    ``operator_operation_service._connect`` -- this module must not modify
-    that module, and duplicating its short, already-mirrored-from-
-    ``rbac_store.py`` idiom locally keeps ownership of the ``operations``/
-    ``confirmations`` tables entirely with OPM-2.1 while still writing into
-    the same physical database file.
-    """
-
-    paths.rf_state.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(
-        str(paths.operator_operations_db),
-        isolation_level=None,
-        timeout=_BUSY_TIMEOUT_MS / 1000,
-    )
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
-    return conn
-
-
-def _ensure_attempts_schema(conn: sqlite3.Connection) -> None:
-    """Additive-only: every statement uses ``IF NOT EXISTS``, safe to call on
-    every connection open, mirroring ``operator_operation_service._ensure_schema``.
-    """
-
-    for stmt in _ATTEMPTS_DDL:
-        conn.execute(stmt)
 
 
 def _record_attempt_link(
@@ -182,9 +143,9 @@ def _record_attempt_link(
     COMMIT, ROLLBACK on any exception).
     """
 
-    conn = _connect(paths)
+    conn = _ops_store._connect(paths)
     try:
-        _ensure_attempts_schema(conn)
+        _ops_store._ensure_schema(conn)
         conn.execute("BEGIN IMMEDIATE")
         try:
             conn.execute(
@@ -212,9 +173,9 @@ def _lookup_operation_id(paths: FoundryPaths, attempt_id: str) -> str | None:
     still pass" true: the absence of a link is not an error condition.
     """
 
-    conn = _connect(paths)
+    conn = _ops_store._connect(paths)
     try:
-        _ensure_attempts_schema(conn)
+        _ops_store._ensure_schema(conn)
         row = conn.execute(
             "SELECT operation_id FROM attempts WHERE attempt_id = ?",
             (attempt_id,),
@@ -236,9 +197,9 @@ def _list_attempt_ids_for_operation(paths: FoundryPaths, operation_id: str) -> l
     from it.
     """
 
-    conn = _connect(paths)
+    conn = _ops_store._connect(paths)
     try:
-        _ensure_attempts_schema(conn)
+        _ops_store._ensure_schema(conn)
         rows = conn.execute(
             "SELECT attempt_id FROM attempts WHERE operation_id = ? ORDER BY created_at",
             (operation_id,),
