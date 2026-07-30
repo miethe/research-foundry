@@ -1175,3 +1175,142 @@ Captured through the Signal→System pipeline for the pre-P2 optimization pass:
 | Superseded duplicate (ignore) | `8ff0255b-0b0e-4e4f-8864-f6d2a82e2d1f` — status `hold`, untitled (captured before frontmatter was added) |
 | AAR source of truth | `.claude/worknotes/observations/2026-07.md` on branch `worktree-operator-mcp-v1` |
 | Cross-session memory | `~/.claude/projects/-Users-miethe-dev-homelab-development-research-foundry/memory/operator-mcp-p1-gate-economics.md` |
+
+---
+
+## FIND-P2-RECEIPT-REATTACK — `operator_mcp_receipt.schema.yaml` re-attack ahead of OPM-2.3 (2026-07-29): **CHANGES_REQUESTED**
+
+Source: Mode-E adversarial re-attack of `schemas/operator_mcp_receipt.schema.yaml` alone, commissioned
+because this single file has yielded a finding in **every round it has been examined** (NEW-20, NEW-21,
+BLOCK-1, BLOCK-2, BLOCK-3, R5-BLOCK-1, R5-BLOCK-3 — see `FIND-P1-R5`), the round-5 remediation's
+per-`$def` × per-property sweep was never itself reviewed, and P2 task OPM-2.3 is about to build durable
+receipt persistence directly on this contract (`OPM-DF-regate` deferred, see `FIND-P1-CLOSEOUT`).
+Read-only pass: no schema, source, or test file was modified by this review. Every finding below was
+confirmed **empirically** against the live schema via `SchemaRegistry().get("operator_mcp_receipt")` +
+`jsonschema.Draft202012Validator` (`PYTHONPATH=$PWD/src .venv/bin/python3`), not reasoned about in the
+abstract — instances and exact `n_errors` counts are recorded per finding.
+
+Tree examined: worktree `operator-mcp-v1`, working tree unchanged by this review.
+
+**Confirmed NOT reopened (checked, holds):** the `not: pattern` traceback/path guard on `audit_event_id`,
+`detail`, `action_id` (×2 `$def`s), `attempt_ref`, `workspace_id` (×2 `$def`s) is byte-identical across
+every site and matches `operator_mcp_error.schema.yaml`'s guard and the code-side
+`_PATH_LIKE`/`_TRACEBACK_LIKE` union (R5-NB-2 parity holds — the `[A-Za-z]:\\` Windows-drive branch is
+present schema-side too). `action_receipt.reason_code` / `terminal_receipt.denial_reason_code` enums are
+byte-identical to each other and to `operator_mcp_error.schema.yaml`'s `reason_code` (17 non-null members,
+verified by direct comparison), and both are pinned against `operator_mcp_policy.CLOSED_REASON_CODES` by
+`test_receipt_denial_reason_code_enum_matches_code_closed_reason_codes`. `additionalProperties: false` is
+present on all five `$defs` and on the nested `audit_delivery` object — no gap found there. The R5-BLOCK-3
+`allOf` presence-coupling on `action_receipt.status`/`reason_code` is present, correct, and tested in both
+directions.
+
+### Per-`$def` × per-property matrix
+
+| `$def` | property | type | pattern / enum | bounds | required | `allOf` coupling | tested (positive) | tested (negative) |
+|---|---|---|---|---|---|---|---|---|
+| audit_delivery | status | string (enum) | delivered / degraded / unavailable | — | yes | no | yes | yes |
+| audit_delivery | audit_event_id | string,null | `not:pattern` (traceback/path) | maxLength 128 | yes | no | yes (uuid, null) | yes (path, traceback) |
+| audit_delivery | detail | string | `not:pattern` (traceback/path) | maxLength 500 | no | no | partial (absence only) | yes (traceback, site-packages, absolute path) |
+| operation_receipt | schema_version | const `"1.0"` | — | — | yes | no | yes (golden) | no |
+| operation_receipt | kind | const | — | — | yes | no | yes | yes (top-level `oneOf` negative) |
+| operation_receipt | operation_id | string | `^opm_[a-f0-9]{64}$` | — | yes | no | yes (golden) | **no direct negative fixture in this file** |
+| operation_receipt | workspace_id | string | `not:pattern` | min 1 / max 128 | yes | no | yes | yes |
+| operation_receipt | operation_kind | string (enum, 13) | — | — | yes | no | yes (golden) | no |
+| operation_receipt | status | string (enum, 6) | — | — | yes | no | yes (golden) | no |
+| operation_receipt | **idempotency_key** | string | **none** | min 1 / max 128 | yes | no | yes (golden) | **NO — unguarded, see P2R-BLOCK-1** |
+| operation_receipt | canonical_input_digest | string | `^[a-f0-9]{64}$` | — | yes | no | yes (golden) | no |
+| operation_receipt | generated_at | string (date-time) | — | — | yes | no | yes (golden) | no |
+| action_receipt | schema_version | const | — | — | yes | no | yes | no |
+| action_receipt | kind | const | — | — | yes | no | yes | no (covered by top-level `oneOf` test) |
+| action_receipt | operation_id | string | `^opm_[a-f0-9]{64}$` | — | yes | no | yes | no |
+| action_receipt | action_id | string | `not:pattern` | min 1 / max 128 | yes | no | yes | yes |
+| action_receipt | action_index | integer | — | minimum 0 | yes | no | yes (0) | no |
+| action_receipt | status | string (enum, 3) | — | — | yes | yes (both directions) | yes | yes |
+| action_receipt | attempt_ref | string | `not:pattern` | min 1 / max 128 | yes | no | yes | yes |
+| action_receipt | started_at | string (date-time) | — | — | yes | no | yes | no |
+| action_receipt | completed_at | string,null (date-time) | — | — | yes | no | yes | no |
+| action_receipt | reason_code | string,null (enum 17+null) | — | — | no | yes (both directions) | yes | yes (extensive) |
+| action_receipt | retryable | boolean | — | — | no | no | no | no |
+| effect_receipt | schema_version | const | — | — | yes | no | yes | no |
+| effect_receipt | kind | const | — | — | yes | no | yes | no |
+| effect_receipt | operation_id | string | `^opm_[a-f0-9]{64}$` | — | yes | no | yes | no |
+| effect_receipt | action_id | string | `not:pattern` | min 1 / max 128 | yes | no | yes | yes |
+| effect_receipt | effect_kind | string | `^[a-z][a-z0-9_]{0,62}$` | — | yes | no | yes | yes (non-snake-case rejected) |
+| effect_receipt | effect_digest | string | `^[a-f0-9]{64}$` | — | yes | no | yes | no |
+| effect_receipt | effect_ref | string | `^[A-Za-z0-9_\-:.]+$` | min 1 / max 256 | yes | no | yes | no |
+| effect_receipt | generated_at | string (date-time) | — | — | yes | no | yes | no |
+| checkpoint | schema_version | const | — | — | yes | no | yes | no |
+| checkpoint | kind | const | — | — | yes | no | yes | no |
+| checkpoint | operation_id | string | `^opm_[a-f0-9]{64}$` | — | yes | no | yes | no |
+| checkpoint | status | string (enum, 2) | — | — | yes | yes (converged branch) | yes | yes |
+| checkpoint | next_action_index | integer,null | — | minimum 0 | yes | **one-directional** (converged→null only) | yes (1, null) | **partial — pending→non-null NOT enforced, see P2R-NB-1** |
+| checkpoint | completed_action_count | integer | — | minimum 0 | yes | no | yes | **no completed≤total relation anywhere in file, see P2R-NB-2** |
+| checkpoint | total_action_count | integer | — | minimum 0 | yes | no | yes | no |
+| checkpoint | non_cancelable | boolean | — | — | yes | yes (converged→false) | yes (false) | **no test that converged+`non_cancelable:true` is rejected** |
+| checkpoint | updated_at | string (date-time) | — | — | yes | no | yes | no |
+| terminal_receipt | schema_version | const | — | — | yes | no | yes | no |
+| terminal_receipt | kind | const | — | — | yes | no | yes | no |
+| terminal_receipt | operation_id | string | `^opm_[a-f0-9]{64}$` | — | yes | no | yes | no |
+| terminal_receipt | workspace_id | string | `not:pattern` | min 1 / max 128 | yes | no | yes | yes |
+| terminal_receipt | operation_kind | string (enum, 13) | — | — | yes | no | yes | no |
+| terminal_receipt | status | string (enum, 4) | — | — | yes | yes (both directions) | yes | yes |
+| terminal_receipt | effect_receipt_refs | array | items `^[a-f0-9]{64}$` | maxItems 200 | yes | no | yes (`[]`) | no (no malformed-item / oversized-array fixture) |
+| terminal_receipt | action_count_total | integer | — | minimum 0 | yes | no | yes | **no completed≤total relation, see P2R-NB-2** |
+| terminal_receipt | action_count_completed | integer | — | minimum 0 | yes | no | yes | no |
+| terminal_receipt | denial_reason_code | string,null (enum 17+null) | — | — | yes | yes (both directions) | yes | yes (extensive + drift-guard test) |
+| terminal_receipt | audit_delivery | object (`$ref`) | — | `additionalProperties:false` | yes | no | yes | yes (extensive) |
+| terminal_receipt | completed_at | string (date-time) | — | — | yes | no | yes | no |
+
+### BLOCKING
+
+| ID | Sev | Finding | Location | Concrete failing scenario | Required fix |
+|---|---|---|---|---|---|
+| **P2R-BLOCK-1** | **MED** | **`operation_receipt.idempotency_key` is a completely unguarded open string, one property below the now-guarded `workspace_id` in the SAME `$def` — the exact "fix-the-layer-below" sibling class that produced R5-BLOCK-1/BLOCK-2/BLOCK-3. The module description's own claim at `:62-66` ("Every open (non-enum, non-pattern-closed) string field below now carries the SAME `not: pattern`... guard `detail` uses") explicitly ENUMERATES six guarded fields and omits this seventh one, which meets the description's own stated definition of "open" — a self-description that is now false, the same class R5-BLOCK-1 found once already for the module's blanket "no field here ever..." claim.** Additionally, `operator_mcp_operation.schema.yaml`'s own `idempotency_key` (the value this field echoes) is already a CLOSED pattern (`^[A-Za-z0-9_\-]+$`); the receipt schema's copy of the same logical field is strictly weaker than the source schema's own definition of it. | `schemas/operator_mcp_receipt.schema.yaml:219-222` (`operation_receipt.idempotency_key`, no pattern / no `not:pattern`) vs `:181-195` (`workspace_id`, guarded, same `$def`) vs `operator_mcp_operation.schema.yaml:155-164` (`idempotency_key`, pattern `^[A-Za-z0-9_\-]+$`) | **Empirically verified** (`jsonschema.Draft202012Validator`, live schema). `idempotency_key: "/etc/passwd"` (11 chars, well under the 128-char cap) → `n_errors = 0`, validates. `idempotency_key: "Traceback: File x.py"` (20 chars) → `n_errors = 0`, validates. Control: the IDENTICAL string `"/etc/passwd"` placed in `workspace_id` instead, same `$def`, same instance shape → `n_errors = 1`, rejected — proving the asymmetry is field-specific, not a coincidence of the test instance. | Apply `operator_mcp_operation.schema.yaml`'s own `idempotency_key` pattern (`^[A-Za-z0-9_\-]+$`) to `operation_receipt.idempotency_key` — the tightest correct fix, since this field is defined to echo that exact source field. At minimum, apply the same `not: pattern` traceback/path guard the sibling `workspace_id` carries. Then correct the `:62-66` claim to either include `idempotency_key` in the enumerated list or state why it is exempt. |
+
+### NON-BLOCKING (new this pass)
+
+| ID | Sev | Finding | Location |
+|---|---|---|---|
+| P2R-NB-1 | LOW-MED | **`checkpoint`'s `next_action_index`/`status` coupling is one-directional and contradicts the `$def`'s own description.** `$defs.checkpoint.description` states "`next_action_index` is null only when `status` is `converged`" — the schema enforces converged→null (tested), but nothing enforces the converse: a `pending` checkpoint with `next_action_index: null` validates cleanly. **Empirically verified**: `{status:"pending", next_action_index:null, completed_action_count:1, total_action_count:3, non_cancelable:false, ...}` → `n_errors = 0`. Relevant to OPM-2.3: a durable checkpoint reader cannot distinguish "genuinely converged" from "pending with a null/missing index" by the invariant the docstring promises — P2's resume logic must not rely on `next_action_index == null` alone to mean converged. | `schemas/operator_mcp_receipt.schema.yaml:402-459` (`checkpoint`'s single `allOf` branch, keyed only on `status: converged`) |
+| P2R-NB-2 | LOW | **No relational invariant between "completed" and "total" counts, in either kind that carries both.** `checkpoint.completed_action_count` / `total_action_count` and `terminal_receipt.action_count_completed` / `action_count_total` are each independently `minimum: 0` integers with no cross-property comparison. **Empirically verified**: `checkpoint` with `completed_action_count:5, total_action_count:1` → `n_errors = 0`; `terminal_receipt` with `action_count_completed:99, action_count_total:1` → `n_errors = 0`. Standard JSON Schema (no `$data`/custom vocabulary in use here) cannot express `completed ≤ total` as a keyword constraint, so this is not schema-fixable without a vocabulary extension — flagging so P2's durable-store write path enforces it at the application layer instead of assuming the schema already does. | `schemas/operator_mcp_receipt.schema.yaml:429-437` (`checkpoint`), `:524-529` (`terminal_receipt`) |
+| P2R-NB-3 | LOW | **Regression-detection gap: none of the five `$defs`' `operation_id` fields (nor `operation_kind`, `status`, `canonical_input_digest`, and most `date-time` fields) have a direct negative fixture inside `test_operator_mcp_schemas.py`'s receipt-schema section.** Not a validation gap — every pattern/enum here is correctly closed and was read directly from the schema — but a future in-place mutation to any of these (e.g. widening `^opm_[a-f0-9]{64}$` or dropping an enum member) would not be caught by this file's own test suite; coverage currently relies on the analogous — but schema-distinct — fixtures in `operator_mcp_operation.schema.yaml`'s and `operator_mcp_error.schema.yaml`'s own test sections. See the matrix's `tested (negative)` column for the exhaustive "no" list. | `tests/unit/test_operator_mcp_schemas.py` (absence, receipt-schema section) |
+| P2R-NB-4 | LOW | **`checkpoint`'s `status: converged → non_cancelable: const false` coupling has no negative fixture.** The schema correctly forces `non_cancelable: false` when `status: converged` (read directly, not in dispute), but no test asserts `{status:"converged", non_cancelable:true}` is rejected — the existing converged-branch tests only vary `next_action_index`. Same regression-detection-gap class as P2R-NB-3, isolated separately because it sits on the one `allOf` branch in this file that mutates a *boolean* rather than a string enum. | `schemas/operator_mcp_receipt.schema.yaml:447-459`; `tests/unit/test_operator_mcp_schemas.py` (absence) |
+
+### NB-11 disposition — the two named P2 deferred decisions, assessed
+
+Per `FIND-P1-CLOSEOUT`'s residual-risk list, NB-11 named two receipt-shape gaps and deferred both to P2
+without a recommendation. Assessed here as requested by this pass's brief:
+
+1. **`checkpoint` lacks `workspace_id`.** Confirmed still true (see matrix — no such property, and
+   `additionalProperties: false` means one silently can't be attached later without a schema version
+   bump). Recommendation: **add it now, before P2 builds the durable checkpoint table.** WKSP-304
+   row-level workspace isolation needs a `workspace_id` column on every durable row that a
+   workspace-scoped query filters by; `operation_receipt` and `terminal_receipt` already carry it for
+   exactly this reason, and `checkpoint` is the one MUTABLE kind that P2's resume/cancel path will query
+   most frequently by workspace. Retrofitting a `NOT NULL workspace_id` onto a live checkpoint table after
+   P2 ships is materially more expensive than freezing it into the schema now, while the schema is still
+   pre-persistence and the cost is a one-line addition plus a golden-fixture update.
+2. **`operation_receipt.status: denied` has no reason field anywhere in the `$def`.** Confirmed still
+   true (see matrix — no `denial_reason_code`/`reason_code`/equivalent property on `operation_receipt` at
+   all, unlike its sibling `terminal_receipt.denial_reason_code`). No production code constructs an
+   `operation_receipt` with `status: "denied"` today (grepped repo-wide; zero hits outside this review's
+   own throwaway test instances), so there is no live behavior contradicting this — it is a pure contract
+   gap. Recommendation: **P2 must make this an explicit decision, not inherit the silent gap.** Either (a)
+   add a nullable reason field to `operation_receipt` with the same `allOf` presence-coupling pattern
+   `terminal_receipt.denial_reason_code` now uses (mirroring, not duplicating logic), if `operation_receipt`
+   is meant to be independently informative about *why* a denial happened; or (b) explicitly document in
+   this schema's module description that `operation_receipt.status: denied` is a bare "a denial occurred"
+   marker and the reason lives ONLY on the `terminal_receipt` that necessarily follows it — if that is the
+   intended contract, state it, since nothing here currently says so and a P2 reader would have no way to
+   tell the omission was deliberate.
+
+### Verdict
+
+**CHANGES_REQUESTED.** One blocking finding (P2R-BLOCK-1, MED — a fourth instance of the
+fix-the-layer-below sibling class this file has produced every round examined). Four non-blocking
+(P2R-NB-1 … P2R-NB-4), plus explicit recommendations on both previously-deferred NB-11 items. No
+previously-closed finding in this file was found to have regressed. Recommended fix order: P2R-BLOCK-1
+first (small, single-field, matches the existing `not: pattern`/pattern precedent exactly), then the two
+NB-11 decisions (both are one-line schema additions but each is a P2-owned product decision, not a pure
+bugfix), then P2R-NB-1 (checkpoint `allOf` widening), then the two coverage-only items (P2R-NB-3,
+P2R-NB-4) and P2R-NB-2 (documented as an application-layer item, not schema-fixable).
