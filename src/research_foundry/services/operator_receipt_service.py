@@ -104,6 +104,7 @@ _logger = logging.getLogger(__name__)
 
 __all__ = [
     "ReceiptOutcome",
+    "ResumePointOutcome",
     "OperatorReceiptService",
 ]
 
@@ -166,6 +167,38 @@ class ReceiptOutcome:
     outcome: Literal["created", "exact_replay", "denied"]
     reason_code: str | None
     receipt: Mapping[str, Any] | None
+
+
+@dataclass(frozen=True)
+class ResumePointOutcome:
+    """Result of :meth:`OperatorReceiptService.resolve_resume_point`
+    (OPM-2.4, H3 scenario 7/8-extended-to-resume).
+
+    `outcome`:
+        `"ok"`
+            `next_action_index` is the first action index with no
+            persisted `action_receipt` for this `operation_id` --
+            computed ENTIRELY from real, already-committed
+            `action_receipts` rows, never from `checkpoint`'s own
+            (possibly stale, possibly never-written-for-this-index)
+            `next_action_index`, and never from any in-process/surviving
+            Python object. This is what makes it safe to call after a
+            genuine process loss (scenario 7): the truth is reconstructed
+            entirely from what actually committed to disk before the loss.
+        `"denied"`
+            The persisted `action_index` sequence for this `operation_id`
+            is not the contiguous `range(0, N)` for its own length `N` --
+            corrupt receipt state (e.g. a gap from an out-of-band write).
+            `next_action_index` is `None`. A caller MUST NOT resume
+            execution when this denies (scenario 8, extended to the
+            resume path -- corrupt receipt state must deny resume, not
+            merely deny at write time, which the write-time
+            duplicate/mismatched guards in this module already cover).
+    """
+
+    outcome: Literal["ok", "denied"]
+    reason_code: str | None
+    next_action_index: int | None
 
 
 class OperatorReceiptService:
@@ -469,6 +502,41 @@ class OperatorReceiptService:
             conn.close()
 
         return ReceiptOutcome("created", None, checkpoint)
+
+    # -- resume point (OPM-2.4) -------------------------------------------
+
+    def resolve_resume_point(self, operation_id: str) -> ResumePointOutcome:
+        """Determine the first INCOMPLETE action index for `operation_id`,
+        reading real persisted `action_receipts` -- see
+        :class:`ResumePointOutcome` for the full contract and why this is
+        the resume-safe (process-loss-safe) way to ask this question,
+        instead of trusting `checkpoint.next_action_index` (which is a
+        SEPARATE, independently-written row that can be stale relative to
+        `action_receipts` if a process was lost between the two writes --
+        exactly the OPM-2.4 scenario-7 gap this method closes)."""
+
+        conn = _ops_store._connect(self._paths)
+        try:
+            _ops_store._ensure_schema(conn)
+            rows = conn.execute(
+                "SELECT action_index FROM action_receipts"
+                " WHERE operation_id = ? ORDER BY action_index",
+                (operation_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+
+        indices = [row["action_index"] for row in rows]
+        if indices != list(range(len(indices))):
+            _logger.error(
+                "operator_receipt_service: resolve_resume_point found a "
+                "non-contiguous action_index sequence %r for operation_id=%s "
+                "-- denying resume (corrupt receipt state)",
+                indices,
+                operation_id,
+            )
+            return ResumePointOutcome("denied", "internal_error", None)
+        return ResumePointOutcome("ok", None, len(indices))
 
     # -- reconciliation + terminal receipt -------------------------------
 

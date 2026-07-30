@@ -152,7 +152,15 @@ __all__ = [
 #: `_ensure_schema` idiom is the pattern every one of these modules already
 #: mirrors independently) -- never a second `CREATE TABLE` for any of these
 #: six tables anywhere else in the codebase.
-_SCHEMA_VERSION = 2
+#:
+#: Version 3 (OPM-2.4, cancel/resume state machine) adds ONE more table,
+#: `cancellation_requests` -- the durable persistence of a cancellation
+#: request (H3 scenario 5/6: it must survive process loss, not live only in
+#: memory). `operator_cancel_resume_service.py` opens this database via
+#: THIS module's `_connect`/`_ensure_schema`, DML only, exactly like
+#: `operator_attempt_adapter.py`/`operator_receipt_service.py` already do --
+#: P2-ARCH-1 is unchanged: this remains the ONE schema author for this file.
+_SCHEMA_VERSION = 3
 
 #: Explicit busy-timeout (milliseconds) so lock contention under `BEGIN
 #: IMMEDIATE` resolves deterministically within a bounded window rather than
@@ -425,6 +433,41 @@ _DDL: tuple[str, ...] = (
     BEFORE DELETE ON terminal_receipts
     BEGIN
         SELECT RAISE(ABORT, 'terminal_receipts rows are immutable -- no DELETE path exists by design');
+    END
+    """,
+    # -----------------------------------------------------------------
+    # cancellation_requests (OPM-2.4): immutable, one row per operation_id.
+    # PRIMARY KEY `operation_id` -- a second `request_cancellation` call for
+    # an operation that already has one resolves to the EXISTING row
+    # (idempotent "first request wins"), never a second row and never a
+    # raw `IntegrityError`. This is the durable record H3 scenarios 5/6
+    # require: a cancellation request MUST survive process loss, not live
+    # only in the calling process's memory.
+    # -----------------------------------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS cancellation_requests (
+        operation_id   TEXT PRIMARY KEY,
+        workspace_id   TEXT NOT NULL,
+        requested_at   TEXT NOT NULL,
+        requested_by   TEXT
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_cancellation_requests_workspace
+        ON cancellation_requests (workspace_id)
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS trg_cancellation_requests_immutable_no_update
+    BEFORE UPDATE ON cancellation_requests
+    BEGIN
+        SELECT RAISE(ABORT, 'cancellation_requests rows are immutable -- no UPDATE path exists by design');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS trg_cancellation_requests_immutable_no_delete
+    BEFORE DELETE ON cancellation_requests
+    BEGIN
+        SELECT RAISE(ABORT, 'cancellation_requests rows are immutable -- no DELETE path exists by design');
     END
     """,
 )
