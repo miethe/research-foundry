@@ -23,16 +23,20 @@ Also covers:
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
+from pathlib import Path
 
 import pytest
 
 from research_foundry.auth_identity import AuthIdentity
-from research_foundry.paths import FoundryPaths
+from research_foundry.paths import FoundryPaths, distribution_root
 from research_foundry.schemas import SchemaRegistry
+from research_foundry.services import operator_operation_service as ops_module
 from research_foundry.services.operator_receipt_service import (
     OperatorReceiptService,
     ReceiptOutcome,
+    ReceiptStoreUnavailableError,
     _validate_action_counts,
 )
 
@@ -1424,3 +1428,274 @@ def test_finalize_terminal_receipt_rejects_non_authidentity(tmp_foundry: Foundry
         assert count == 0
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# K4-NB-1 (P3 assignment): the SAME K4-BLOCK-1 class -- an unguarded
+# `_ensure_schema` on this module's shared SQLite file -- reproduced across
+# all 7 of this module's own `_ensure_schema` call sites. One cold-start
+# lock test per site, each proving the SAME shape K4-BLOCK-1's own regate
+# proved for `load_operation`: a genuinely COLD store (never schema'd),
+# held locked by a REAL competing writer, raises
+# `ReceiptStoreUnavailableError` -- never a raw `sqlite3.OperationalError`,
+# never folded into this module's own `not_found`/`internal_error`/`None`
+# "does not exist" shapes.
+#
+# Deliberately NOT layered onto `tmp_foundry` (this module's own
+# `_seed_operations` autouse fixture warms `tmp_foundry`'s operations db
+# before EVERY test body runs) -- a warm schema's `_ensure_schema` does
+# not need to acquire a write lock even under real contention (empirically
+# confirmed by K4-BLOCK-1's own regate: "warm -> plain KeyError, the
+# vacuous configuration an earlier draft had"), which would make these
+# tests pass for free without ever exercising the guard. `_cold_paths`
+# below builds a SEPARATE `FoundryPaths` rooted at a fresh subdirectory
+# this module's autouse fixture never touches, so its operator-operations
+# db is genuinely never schema'd until the method under test opens it.
+# ---------------------------------------------------------------------------
+
+
+def _cold_paths(tmp_path: Path) -> FoundryPaths:
+    """A genuinely-cold `FoundryPaths`, isolated from `tmp_foundry` (and
+    this module's autouse `_seed_operations` fixture). Mirrors
+    `tmp_foundry`'s own construction exactly (see conftest.py) -- same
+    schemas/config/templates copy, same foundry.yaml marker -- just rooted
+    at a directory this module's autouse fixture never touches."""
+
+    root = tmp_path / "cold_fdry"
+    root.mkdir(parents=True)
+    dist = distribution_root()
+    for sub in ("schemas", "config", "templates"):
+        src = dist / sub
+        if src.exists():
+            shutil.copytree(src, root / sub)
+    foundry_src = dist / "foundry.yaml"
+    if foundry_src.exists():
+        shutil.copyfile(foundry_src, root / "foundry.yaml")
+    else:  # pragma: no cover
+        (root / "foundry.yaml").write_text("foundry:\n  owner: Test\n", encoding="utf-8")
+    return FoundryPaths(root=root)
+
+
+def _block_operations_db(paths: FoundryPaths) -> sqlite3.Connection:
+    """Hold a REAL competing writer lock on the (genuinely unschema'd)
+    operations db -- identical technique to
+    `test_operator_cancel_resume_service._block_operations_db` (K4-BLOCK-1).
+    Caller must ROLLBACK + close. Materializes the db FILE first (a fresh,
+    empty file -- `_ensure_schema` has never run against it), then leaves
+    its OWN new table's DDL uncommitted so any OTHER connection's
+    `_ensure_schema` genuinely attempts DDL and blocks behind this real
+    lock, rather than a fake/monkeypatched stand-in."""
+
+    paths.operator_operations_db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(paths.operator_operations_db), isolation_level=None)
+    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("CREATE TABLE IF NOT EXISTS _k4nb1_blocker (x INTEGER)")
+    return conn
+
+
+def _assert_bounded_not_raw(excinfo: pytest.ExceptionInfo, paths: FoundryPaths) -> None:
+    """Shared assertion for every K4-NB-1 test below -- bounded per
+    `schemas/operator_mcp_error.schema.yaml` (AC OPM-7): no driver text, no
+    SQL, no path. Mirrors
+    `test_load_operation_raises_bounded_error_not_raw_driver_exception_when_locked`'s
+    own assertions in `test_operator_cancel_resume_service.py`."""
+
+    message = str(excinfo.value)
+    assert "database is locked" not in message
+    assert "SELECT" not in message
+    assert "INSERT" not in message
+    assert str(paths.operator_operations_db) not in message
+    assert not isinstance(excinfo.value, sqlite3.OperationalError)
+    assert not isinstance(excinfo.value, KeyError)
+
+
+def test_load_terminal_receipt_raises_bounded_error_not_raw_driver_exception_when_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K4-NB-1 (confirmed leak #1). Deliberately NOT `None` ("no receipt
+    yet") -- see `ReceiptStoreUnavailableError`."""
+
+    paths = _cold_paths(tmp_path)
+    service = OperatorReceiptService(paths)
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(paths)
+    try:
+        with pytest.raises(ReceiptStoreUnavailableError) as excinfo:
+            service.load_terminal_receipt("op-does-not-exist")
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    _assert_bounded_not_raw(excinfo, paths)
+
+
+def test_load_checkpoint_raises_bounded_error_not_raw_driver_exception_when_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K4-NB-1 (confirmed leak #2). Deliberately NOT `None` ("no checkpoint
+    yet") -- see `ReceiptStoreUnavailableError`."""
+
+    paths = _cold_paths(tmp_path)
+    service = OperatorReceiptService(paths)
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(paths)
+    try:
+        with pytest.raises(ReceiptStoreUnavailableError) as excinfo:
+            service.load_checkpoint("op-does-not-exist")
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    _assert_bounded_not_raw(excinfo, paths)
+
+
+def test_resolve_resume_point_raises_bounded_error_not_raw_driver_exception_when_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K4-NB-1 (confirmed leak #3). Deliberately NOT
+    `ResumePointOutcome("denied", "internal_error", ...)` -- that
+    reason_code already means PERMANENT corrupt receipt state in this
+    method (non-contiguous action_index sequence), not a transient lock."""
+
+    paths = _cold_paths(tmp_path)
+    service = OperatorReceiptService(paths)
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(paths)
+    try:
+        with pytest.raises(ReceiptStoreUnavailableError) as excinfo:
+            service.resolve_resume_point("op-does-not-exist")
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    _assert_bounded_not_raw(excinfo, paths)
+
+
+def test_record_action_receipt_raises_bounded_error_not_raw_driver_exception_when_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K4-NB-1 -- one of the 4 previously-unprobed sibling sites (same
+    shape as the 3 confirmed leaks above, per this task's own ledger
+    entry). No `operations` row need exist: `_ensure_schema` runs and
+    blocks BEFORE any referential-integrity check, exactly mirroring
+    `load_operation`'s own K4-BLOCK-1 ordering."""
+
+    paths = _cold_paths(tmp_path)
+    service = OperatorReceiptService(paths)
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(paths)
+    try:
+        # NB: `record_action_receipt` schema-validates the receipt (which
+        # pattern-checks `operation_id` against `^opm_[a-f0-9]{64}$`)
+        # BEFORE ever opening the connection -- so a non-conforming
+        # placeholder id would fail validation first and never reach the
+        # guard under test. `_OPERATION_ID` need not correspond to a real
+        # persisted `operations` row: the lock fires at `_ensure_schema`,
+        # strictly before any referential-integrity check.
+        with pytest.raises(ReceiptStoreUnavailableError) as excinfo:
+            service.record_action_receipt(
+                _OPERATION_ID,
+                identity=_IDENTITY,
+                action_id="act-0",
+                action_index=0,
+                status="completed",
+                attempt_ref="attempt-1",
+                started_at="2026-07-29T00:00:00Z",
+            )
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    _assert_bounded_not_raw(excinfo, paths)
+
+
+def test_record_effect_receipt_raises_bounded_error_not_raw_driver_exception_when_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K4-NB-1 sibling site. See
+    `test_record_action_receipt_raises_bounded_error_not_raw_driver_exception_when_locked`."""
+
+    paths = _cold_paths(tmp_path)
+    service = OperatorReceiptService(paths)
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(paths)
+    try:
+        # Same reason as `record_action_receipt`'s sibling test above:
+        # `operation_id` must satisfy the schema's pattern since
+        # `_validate_receipt` runs before the connection is opened.
+        with pytest.raises(ReceiptStoreUnavailableError) as excinfo:
+            service.record_effect_receipt(
+                _OPERATION_ID,
+                identity=_IDENTITY,
+                action_id="act-0",
+                effect_kind="write",
+                effect_digest=_SHA("k4nb1-effect"),
+                effect_ref="ref-1",
+                generated_at="2026-07-29T00:00:00Z",
+            )
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    _assert_bounded_not_raw(excinfo, paths)
+
+
+def test_write_checkpoint_raises_bounded_error_not_raw_driver_exception_when_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K4-NB-1 sibling site. See
+    `test_record_action_receipt_raises_bounded_error_not_raw_driver_exception_when_locked`."""
+
+    paths = _cold_paths(tmp_path)
+    service = OperatorReceiptService(paths)
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(paths)
+    try:
+        with pytest.raises(ReceiptStoreUnavailableError) as excinfo:
+            service.write_checkpoint(
+                "op-does-not-exist",
+                identity=_IDENTITY,
+                status="pending",
+                next_action_index=1,
+                completed_action_count=0,
+                total_action_count=3,
+                non_cancelable=False,
+            )
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    _assert_bounded_not_raw(excinfo, paths)
+
+
+def test_finalize_terminal_receipt_raises_bounded_error_not_raw_driver_exception_when_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """K4-NB-1 sibling site. See
+    `test_record_action_receipt_raises_bounded_error_not_raw_driver_exception_when_locked`."""
+
+    paths = _cold_paths(tmp_path)
+    service = OperatorReceiptService(paths)
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(paths)
+    try:
+        with pytest.raises(ReceiptStoreUnavailableError) as excinfo:
+            service.finalize_terminal_receipt(
+                "op-does-not-exist",
+                identity=_IDENTITY,
+                operation_kind="run.plan",
+                expected_action_count=1,
+                status="completed",
+            )
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    _assert_bounded_not_raw(excinfo, paths)

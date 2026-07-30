@@ -139,7 +139,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Literal, Mapping
+from typing import Any, Literal, Mapping, NoReturn
 
 from research_foundry import ids
 from research_foundry.auth_identity import AuthIdentity
@@ -170,9 +170,98 @@ _logger = logging.getLogger(__name__)
 #: module's docstring).
 _MAX_EFFECT_RECEIPTS_PER_OPERATION = 200
 
+class ReceiptStoreUnavailableError(RuntimeError):
+    """The operations database (the SAME file `operator_operation_service.py`
+    owns -- see module docstring's P2-ARCH-1) was unavailable (locked) for a
+    read or write this module could not complete (K4-NB-1: the same class
+    K4-BLOCK-1 fixed in `load_operation`, reproduced across all 7 of this
+    module's own `_ensure_schema` call sites -- 3 confirmed leaking raw,
+    the other 4 the same shape and unprobed until this fix).
+
+    Module-owned, deliberately NOT reused from `operator_operation_service.
+    OperationStoreUnavailableError` even though both wrap the identical
+    underlying `sqlite3.OperationalError` on the identical database file --
+    mirrors this codebase's own established convention (`operator_operation_
+    service.ConfirmationPersistenceError` is its own type, distinct from
+    `OperationStoreUnavailableError`, in that SAME module) of a bounded,
+    module-owned type per failure surface, rather than a shared cross-module
+    exception whose contract callers of ONE module would have to reason
+    about via the OTHER module's docstring.
+
+    PUBLIC and deliberately **not** folded into either of this module's
+    existing governed-denial shapes:
+
+    * NOT `ReceiptOutcome("denied", "not_found", None)` / `ResumePointOutcome
+      ("denied", "not_found", None)` (this module's workspace-authorization /
+      referential-integrity denial) -- `"not_found"` here means "this
+      operation_id does not exist, or belongs to a different workspace", a
+      PERMANENT fact about an already-resolved `operation_id`. Folding a
+      transient lock into that shape would report "this operation does not
+      exist" for an operation that plainly does, and a caller would stop
+      retrying rather than back off -- worse than the raw leak it replaces
+      (K4-BLOCK-1's own precedent, identical reasoning).
+    * NOT `ReceiptOutcome("denied", "internal_error", None)` /
+      `ResumePointOutcome("denied", "internal_error", None)` either, even
+      though that reason_code sounds more plausible -- in THIS module,
+      `"internal_error"` already means "the persisted receipt state is
+      corrupt/conflicting" (DUPLICATE/GAP/MISMATCHED/TRUNCATED/EXTRA/
+      REORDERED), all PERMANENT for the same already-written rows: retrying
+      the identical write denies again, forever. A transient lock is the
+      opposite -- retrying the identical write will very likely SUCCEED once
+      the contending writer releases it. Reusing that reason_code would
+      merge two outcomes with opposite retry semantics under one string,
+      exactly the conflation this finding's own writeup warns against for
+      the `not_found` case, just one reason_code over.
+    * NOT `None` from `load_terminal_receipt`/`load_checkpoint` -- that
+      return value already means "no such receipt exists yet", the
+      IDENTICAL non-existence-leak shape `ReceiptOutcome`'s `"not_found"`
+      protects on the write side (see `load_terminal_receipt`'s own
+      docstring). A caller could not tell "this operation never finalized"
+      from "the store was unreadable just now" without a distinguishable
+      raise.
+
+    Carries no driver text, no SQL, and no file path, per
+    `schemas/operator_mcp_error.schema.yaml` (AC OPM-7) -- the full
+    un-redacted detail (exception type/message) is logged server-side via
+    `_logger.error` at each raise site (see :func:`_raise_store_unavailable`),
+    mirroring `OperationStoreUnavailableError`'s and `ConfirmationPersistence
+    Error`'s own split.
+
+    Retryable by contract: means "the writer lock (or DDL/setup on a cold
+    start) was unavailable within `_BUSY_TIMEOUT_MS`", never "this record or
+    request is invalid".
+    """
+
+
+def _raise_store_unavailable(
+    exc: sqlite3.OperationalError, *, method: str, operation_id: str
+) -> NoReturn:
+    """Shared raise-site for K4-NB-1: every one of this module's 7
+    `_ensure_schema` call sites -- plus the bare reads / `BEGIN IMMEDIATE`
+    that share the SAME outer `try` as their own `_ensure_schema` call --
+    routes through here, so the classification, logging shape, and
+    redaction are identical everywhere rather than seven independently
+    drifting copies. See :class:`ReceiptStoreUnavailableError` for why this
+    is a distinct type, never an existing `ReceiptOutcome`/
+    `ResumePointOutcome` reason_code or a `None` read-miss.
+    """
+
+    _logger.error(
+        "operator_receipt_service: %s could not access the operations store "
+        "for operation_id=%s -- %s: %s (busy_timeout exhausted, or schema "
+        "setup failed on a cold start)",
+        method,
+        operation_id,
+        type(exc).__name__,
+        exc,
+    )
+    raise ReceiptStoreUnavailableError(f"{method}: operations database unavailable") from None
+
+
 __all__ = [
     "ReceiptOutcome",
     "ResumePointOutcome",
+    "ReceiptStoreUnavailableError",
     "OperatorReceiptService",
 ]
 
@@ -516,6 +605,17 @@ class OperatorReceiptService:
             except Exception:
                 conn.execute("ROLLBACK")
                 raise
+        except sqlite3.OperationalError as exc:
+            # K4-NB-1: `_ensure_schema` (DDL -> RESERVED lock on a cold
+            # start) and `BEGIN IMMEDIATE` both sit in this SAME outer
+            # `try` with no handler before this fix -- a raw
+            # `sqlite3.OperationalError` ("database is locked") could
+            # cross this method's boundary. See
+            # `ReceiptStoreUnavailableError` for why this is a distinct
+            # type, never folded into this method's own "internal_error"
+            # denial (which means persisted receipt-state corruption, a
+            # PERMANENT condition, not a transient/retryable lock).
+            _raise_store_unavailable(exc, method="record_action_receipt", operation_id=operation_id)
         finally:
             conn.close()
 
@@ -698,6 +798,10 @@ class OperatorReceiptService:
             except Exception:
                 conn.execute("ROLLBACK")
                 raise
+        except sqlite3.OperationalError as exc:
+            # K4-NB-1: see `record_action_receipt`'s identical guard --
+            # `_ensure_schema`/`BEGIN IMMEDIATE` share this outer `try`.
+            _raise_store_unavailable(exc, method="record_effect_receipt", operation_id=operation_id)
         finally:
             conn.close()
 
@@ -843,6 +947,12 @@ class OperatorReceiptService:
             except Exception:
                 conn.execute("ROLLBACK")
                 raise
+        except sqlite3.OperationalError as exc:
+            # K4-NB-1: `_ensure_schema`, `_derive_workspace_id`'s bare
+            # SELECT, and `BEGIN IMMEDIATE` all share this outer `try`
+            # with no handler before this fix. See `record_action_
+            # receipt`'s identical guard for the full rationale.
+            _raise_store_unavailable(exc, method="write_checkpoint", operation_id=operation_id)
         finally:
             conn.close()
 
@@ -926,6 +1036,15 @@ class OperatorReceiptService:
                 " WHERE operation_id = ? ORDER BY action_index",
                 (operation_id,),
             ).fetchall()
+        except sqlite3.OperationalError as exc:
+            # K4-NB-1 (confirmed leak): `_ensure_schema` and both bare
+            # SELECTs above share this outer `try` with no handler before
+            # this fix. See `ReceiptStoreUnavailableError` for why this
+            # raises rather than returning `ResumePointOutcome("denied",
+            # "internal_error", ...)` -- that reason_code already means
+            # PERMANENT corrupt receipt state in this method (non-
+            # contiguous indices), not a transient lock.
+            _raise_store_unavailable(exc, method="resolve_resume_point", operation_id=operation_id)
         finally:
             conn.close()
 
@@ -1233,6 +1352,13 @@ class OperatorReceiptService:
             except Exception:
                 conn.execute("ROLLBACK")
                 raise
+        except sqlite3.OperationalError as exc:
+            # K4-NB-1: `_ensure_schema`, the `_derive_workspace_id`/
+            # idempotency/`_reconcile` bare SELECTs, and `BEGIN IMMEDIATE`
+            # all share this outer `try` with no handler before this fix.
+            # See `record_action_receipt`'s identical guard for the full
+            # rationale.
+            _raise_store_unavailable(exc, method="finalize_terminal_receipt", operation_id=operation_id)
         finally:
             conn.close()
 
@@ -1266,6 +1392,11 @@ class OperatorReceiptService:
                 "SELECT receipt_json, workspace_id FROM terminal_receipts WHERE operation_id = ?",
                 (operation_id,),
             ).fetchone()
+        except sqlite3.OperationalError as exc:
+            # K4-NB-1 (confirmed leak): see `resolve_resume_point`'s
+            # identical guard. NOT folded into this method's own `None`
+            # ("no such receipt yet") -- see `ReceiptStoreUnavailableError`.
+            _raise_store_unavailable(exc, method="load_terminal_receipt", operation_id=operation_id)
         finally:
             conn.close()
         if row is None:
@@ -1305,6 +1436,11 @@ class OperatorReceiptService:
                 "SELECT checkpoint_json, workspace_id FROM checkpoints WHERE operation_id = ?",
                 (operation_id,),
             ).fetchone()
+        except sqlite3.OperationalError as exc:
+            # K4-NB-1 (confirmed leak): see `resolve_resume_point`'s
+            # identical guard. NOT folded into this method's own `None`
+            # ("no such checkpoint yet") -- see `ReceiptStoreUnavailableError`.
+            _raise_store_unavailable(exc, method="load_checkpoint", operation_id=operation_id)
         finally:
             conn.close()
         if row is None:
