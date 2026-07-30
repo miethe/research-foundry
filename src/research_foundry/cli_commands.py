@@ -769,8 +769,23 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             )
         result = svc.run_swarm(run, wanted, profile=profile, dry_run=dry_run)
         if result.dry_run:
+            # D1 (P3 cross-model audit finding): a dry run's `outcomes` DOES
+            # carry real typed denials for unknown/not-allowlisted adapter
+            # ids (swarm_service's own P3-F1 fix -- see that module's
+            # docstring) -- print them here too, the same as the non-dry-run
+            # branch below, rather than returning before this loop ever
+            # runs. "would run" is computed from `requested_adapter_ids`
+            # MINUS whichever ids were denied, so it never claims an
+            # adapter "would run" that a real (non-dry) call would refuse.
+            denied_ids = {o.adapter_id for o in result.outcomes if o.denial is not None}
+            for outcome in result.outcomes:
+                if outcome.denial is not None:
+                    err_console.print(
+                        f"[yellow]{outcome.denial.reason}: {outcome.adapter_id}[/yellow]"
+                    )
+            would_run = [aid for aid in result.requested_adapter_ids if aid not in denied_ids]
             console.print(
-                f"[cyan]dry-run[/cyan] would run: {', '.join(result.requested_adapter_ids)}"
+                f"[cyan]dry-run[/cyan] would run: {', '.join(would_run) if would_run else '(none)'}"
             )
             return
         for outcome in result.outcomes:

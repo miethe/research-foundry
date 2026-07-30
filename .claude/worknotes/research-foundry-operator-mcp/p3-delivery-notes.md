@@ -290,6 +290,58 @@ Two transferable lessons:
 Captured as ITT `node_01KYTGKRK7RW3NNDM1DFSW7DWW`. Fallback was a Claude implementer, chosen because
 it had already completed an identical task shape (the K4-NB-1 seven-site sweep) successfully.
 
+## Gate findings — what the two cheap lenses caught after every leg reported done
+
+Every one of these landed on a tree where the implementing agent had reported success **with its own
+mutation matrix**, and where my independent re-run of the suites was green. That is the headline
+number for the AAR: **five defects survived implementation + self-verification + orchestrator
+re-validation**, and were caught by two review passes costing a fraction of a full gate.
+
+| # | Lens | Defect | Class |
+|---|---|---|---|
+| G1 | gpt-5.6 | `run.plan` exact replay loses canonical refs → AC-1 only PARTIAL | known (P3-F3), confirmed |
+| G2 | gpt-5.6 | **CLI dry-run conceals service-level denials** | fail-open signal, layer-above |
+| G3 | gpt-5.6 | Adapter exception text returned **unbounded and unredacted** | NEW-21 class, AC OPM-7 |
+| G4 | gpt-5.6 | `job.status` does an **unbounded internal attempt-list read** behind a bounded response | AC OPM-3.4 |
+| G5 | ICA | **Attempt cap is a read-then-write** — concurrent `create_attempt` can exceed it | DUR-1 class |
+| G6 | ICA | `job_lifecycle`'s blanket `except Exception` collapses transient store-unavailable into permanent `not_found` | layer-below |
+
+### G2 is the orchestrator's own defect, and worth naming as such
+
+I found P3-F1 (the service returning no denial on dry-run), specified the fix, verified the fix, and
+**never checked the caller**. `cli_commands.py` returns on `result.dry_run` before the loop that
+prints denials, so the CLI still shows "would run: <disallowed-adapter>". The service is hardened and
+its caller still presents the unsafe answer — checklist item 2 applied to my own remediation. I had
+flagged that exact pattern twice in others' work the same session before reproducing it.
+
+### G6 undoes, one layer up, the contract the whole sqlite sweep exists to establish
+
+Four bounded `*StoreUnavailableError` types were added across three commits, each justified in its own
+docstring by "a transient lock must never be reported as permanent absence". `job_lifecycle`'s
+`except Exception: return None` then swallowed `OperationStoreUnavailableError` identically to a
+genuine miss. Fails closed, so not a privilege bug — a **retry-contract** bug that made the sweep
+partially decorative at the adapter boundary.
+
+### The fix for G6 introduced its own residual — caught on review, not by its tests
+
+Narrowing `except Exception` → `except KeyError` closed the retry-contract bug and opened a raw-leak
+bug: the wrapper caught only `OperationStoreUnavailableError`, and it runs *before* every `invoke_*`'s
+own `try`, so a third exception type escaped raw out of a public adapter surface. Reachable, not
+theoretical: `OperationRecord.from_manifest` does bare `manifest["operation_id"]` subscripting, so a
+manifest deserializing to a non-Mapping raises **`TypeError`**, not `KeyError` — the K4-NB-3 corrupt-
+manifest path. Closed with a bounded catch-all at `retryable=False`, deliberately distinct from the
+store-unavailable `retryable=True`; collapsing them would have undone the distinction the fix existed
+to create. Three envelopes are now pairwise distinct and tested as such.
+
+### The transferable pattern
+
+**Three separate times this phase, a fix needed its own layer-below check** — the serve-extra closure
+(one file named, three actually in the closure), P3-F1 (service fixed, CLI missed), and G6 (retry
+contract fixed, raw leak opened). On this codebase the checklist's item 2 is not a formality; it is
+where most of the remaining defects live, and it applies to *remediations* at least as much as to
+original code. The cheap pre-gate is worth its cost precisely because it re-attacks fixes, not just
+features.
+
 ## Timeline
 
 - **2026-07-30** — P3 opened. Baseline captured, surface mapped, implementer contract written,

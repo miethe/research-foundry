@@ -68,16 +68,41 @@ out for why confirmations and operation manifests must live in ONE
 database (they do; this module's own link write does not, and cannot,
 extend that same transaction to a plain JSON file write). If the job.json
 write in :meth:`OperatorAttemptAdapter.create_attempt` succeeds but the
-subsequent ``attempts`` table INSERT fails, the created ``AgentJob`` is left
-on disk with NO durable link to its ``operation_id`` -- an orphaned attempt,
-not a corrupted operation manifest (OPM-2.1's own durability guarantees are
-untouched). This module raises loudly (logs at ``ERROR`` with the orphaned
-``attempt_id``/``operation_id`` and re-raises) rather than swallowing that
-failure, but it cannot roll back the already-written ``job.json`` -- there
-is no ``AgentJobService.delete_job``. Flagged here rather than solved
-because solving it would require a delete/cleanup path on
-``agent_job_service.py`` itself, a file this task's HARD CONSTRAINTS list as
-a serialization-barrier module this task must wrap, never edit.
+subsequent ``attempts`` table INSERT fails -- INCLUDING the D4 case below,
+where the INSERT is refused because the atomic cap check lost a race --
+the created ``AgentJob`` is left on disk with NO durable link to its
+``operation_id`` -- an orphaned attempt, not a corrupted operation manifest
+(OPM-2.1's own durability guarantees are untouched). This module raises
+loudly (logs at ``ERROR`` with the orphaned ``attempt_id``/``operation_id``
+and re-raises) rather than swallowing that failure, but it cannot roll back
+the already-written ``job.json`` -- there is no ``AgentJobService.
+delete_job``. Flagged here rather than solved because solving it would
+require a delete/cleanup path on ``agent_job_service.py`` itself, a file
+this task's HARD CONSTRAINTS list as a serialization-barrier module this
+task must wrap, never edit.
+
+**D4 (P3 cross-model concurrency audit finding, same shape as this
+project's frozen DUR-1 requirement)**: the bounded-attempts cap
+(``MAX_ATTEMPTS_PER_OPERATION``, P2S-NB-9 below) used to be enforced as a
+plain read-then-write -- :meth:`OperatorAttemptAdapter.create_attempt`
+counted existing attempts via an UNGUARDED read, then, well after that read
+had already completed, wrote the new link row in its OWN, separate
+transaction. Two concurrent ``create_attempt`` calls for the SAME
+``operation_id`` could both pass that count check before either committed,
+exceeding the cap -- "a read-then-write implementation passes every test
+and is still wrong" (this project's own DUR-1 docstring, ``operator_
+operation_service.consume_and_create_operation``). The actual enforcement
+now lives inside :func:`_record_attempt_link`: the COUNT and the INSERT
+happen on ONE connection, inside ONE ``BEGIN IMMEDIATE`` transaction, the
+SAME CAS technique ``consume_and_create_operation`` already uses -- no
+other writer can insert a competing row between this function's own COUNT
+and its own INSERT. ``create_attempt``'s OWN pre-check (immediately below
+the docstring for that method) is kept, UNCHANGED, purely as a fast-path
+optimization that avoids the ``job.json`` write in the common, non-racing,
+already-over-cap case; it is explicitly NOT the enforcement boundary
+anymore -- a caller that only reads that pre-check's behavior and ignores
+:func:`_record_attempt_link`'s own atomic check would be reasoning about
+the wrong guard.
 
 **P2-ARCH-1 (OPM-2.3 schema consolidation)**: this module used to own a
 private ``CREATE TABLE IF NOT EXISTS attempts`` DDL path (its own
@@ -280,13 +305,34 @@ def _record_attempt_link(
     operation_id: str,
     workspace_id: str | None,
     created_at: str,
+    max_attempts: int,
 ) -> None:
-    """Durably persist the attempt<->operation link row.
+    """Atomically enforce ``max_attempts`` and durably persist the
+    attempt<->operation link row, IN THE SAME transaction.
 
-    A single ``INSERT`` under ``BEGIN IMMEDIATE``, mirroring
+    A single ``BEGIN IMMEDIATE`` critical section: ``SELECT COUNT(*)`` of
+    existing linked attempts for ``operation_id``, THEN (only if under
+    ``max_attempts``) the ``INSERT``, THEN ``COMMIT`` -- mirroring
     ``operator_operation_service.record_confirmation``'s own transaction
-    shape exactly (open -> ensure schema -> BEGIN IMMEDIATE -> INSERT ->
+    shape (open -> ensure schema -> BEGIN IMMEDIATE -> read+write ->
     COMMIT, ROLLBACK on any exception).
+
+    **D4 (P3 cross-model concurrency audit finding)**: this is the
+    AUTHORITATIVE cap enforcement -- see the module docstring's own D4
+    section for why a separate, earlier read-then-write pre-check is not
+    sufficient by itself. Because the COUNT and the INSERT run on the SAME
+    connection inside the SAME ``BEGIN IMMEDIATE`` transaction, no other
+    writer can insert a competing row for this ``operation_id`` between
+    them: ``BEGIN IMMEDIATE`` takes SQLite's RESERVED lock immediately, and
+    SQLite allows only one RESERVED holder at a time, so a second
+    concurrent caller's own ``BEGIN IMMEDIATE`` blocks (up to
+    ``operator_operation_service._BUSY_TIMEOUT_MS``) until this transaction
+    commits or rolls back, then re-counts against the freshly-committed
+    state -- never the stale count a pre-check might have seen.
+
+    Raises :class:`AttemptLimitExceededError` (ROLLBACK, no row written) if
+    ``operation_id`` already has ``max_attempts`` linked rows AT COMMIT
+    TIME, regardless of what any earlier, separate pre-check observed.
     """
 
     conn = _ops_store._connect(paths)
@@ -304,6 +350,19 @@ def _record_attempt_link(
                 exc, method="_record_attempt_link", detail=f"attempt_id={attempt_id}"
             )
         try:
+            # D4: the cap check and the INSERT are the SAME critical
+            # section -- see this function's own docstring.
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM attempts WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            existing_count = row["n"] if row is not None else 0
+            if existing_count >= max_attempts:
+                # Falls into the bare `except Exception` below, which issues
+                # the ONE ROLLBACK this path needs (no row was written) and
+                # re-raises this exact exception object -- never re-wrapped,
+                # never a second, redundant ROLLBACK.
+                raise AttemptLimitExceededError(operation_id, max_attempts)
             conn.execute(
                 "INSERT INTO attempts (attempt_id, operation_id, workspace_id, created_at)"
                 " VALUES (?, ?, ?, ?)",
@@ -313,12 +372,13 @@ def _record_attempt_link(
         except sqlite3.OperationalError as exc:
             # Promotion half (K3-BLOCK-1 half 2 analogue): `BEGIN IMMEDIATE`
             # takes RESERVED immediately but SQLite promotes to EXCLUSIVE
-            # lazily, on the first real write -- the INSERT above -- so
-            # contention can still fire AFTER a successful `BEGIN IMMEDIATE`.
-            # Best-effort ROLLBACK: if the SAME contention that raised this
-            # also makes ROLLBACK raise, a second raw exception must not
-            # replace the bounded error about to be raised (COMMIT was
-            # never reached either way).
+            # lazily, on the first real write -- the SELECT COUNT above is a
+            # read and does not force promotion, so this fires on the
+            # INSERT. Contention can still occur AFTER a successful `BEGIN
+            # IMMEDIATE`. Best-effort ROLLBACK: if the SAME contention that
+            # raised this also makes ROLLBACK raise, a second raw exception
+            # must not replace the bounded error about to be raised (COMMIT
+            # was never reached either way).
             try:
                 conn.execute("ROLLBACK")
             except sqlite3.OperationalError:
@@ -362,8 +422,34 @@ def _lookup_operation_id(paths: FoundryPaths, attempt_id: str) -> str | None:
     return row["operation_id"] if row is not None else None
 
 
+#: D3 (P3 cross-model audit finding): hard cap on the number of
+#: ``attempt_id`` rows a single :func:`_list_attempt_ids_for_operation` read
+#: will ever return for one *operation_id* -- independent of
+#: ``MAX_ATTEMPTS_PER_OPERATION`` (P2S-NB-9 above). That constant bounds
+#: attempt CREATION going forward (and, since D4, atomically); it does NOT
+#: bound this READ, which enumerates whatever is already durably persisted
+#: -- including any attempts written before the creation cap existed, by a
+#: caller/version that predates it, or (defense in depth) by any future
+#: creation-path regression. ``job_lifecycle.invoke_status``'s "bounded by
+#: construction" comment describing this read as "naturally capped by
+#: MAX_ATTEMPTS_PER_OPERATION" was therefore inaccurate before this fix (a
+#: read is a query over durable state, not a property the WRITE-time cap can
+#: enforce retroactively) -- flagged for that module's own owner to correct,
+#: not edited here (outside this fix's file-ownership boundary). AC OPM-3.4:
+#: "no unbounded pages" applies to the read path itself. A caller cannot
+#: raise, lower, or bypass this bound through any parameter this function
+#: accepts -- no fail-open on a missing/malformed bound, because there is no
+#: caller-suppliable bound at all. Sized well above
+#: ``MAX_ATTEMPTS_PER_OPERATION`` (5) so it never truncates legitimate
+#: usage under the current creation-time cap; mirrors
+#: ``operator_receipt_service._MAX_EFFECT_RECEIPTS_PER_OPERATION``'s own
+#: per-operation bound magnitude and naming convention.
+_MAX_ATTEMPT_ROWS_PER_READ = 200
+
+
 def _list_attempt_ids_for_operation(paths: FoundryPaths, operation_id: str) -> list[str]:
-    """Return every ``attempt_id`` linked to *operation_id*, oldest first.
+    """Return up to :data:`_MAX_ATTEMPT_ROWS_PER_READ` ``attempt_id`` values
+    linked to *operation_id*, oldest first.
 
     Deliberately does NOT filter by workspace here -- see
     :meth:`OperatorAttemptAdapter.list_attempts_for_operation`'s docstring
@@ -372,6 +458,17 @@ def _list_attempt_ids_for_operation(paths: FoundryPaths, operation_id: str) -> l
     policy truth the single-attempt read path uses, rather than a second,
     independently-maintained SQL-level predicate that could silently diverge
     from it.
+
+    **D3 bound**: the query itself is ``ORDER BY created_at DESC LIMIT``
+    :data:`_MAX_ATTEMPT_ROWS_PER_READ` -- the MOST RECENT rows, not the
+    oldest -- then reversed in Python before returning, so (a) this
+    function's own "oldest first" contract holds for whatever subset it
+    returns, and (b) in the pathological case where a single
+    *operation_id* somehow exceeds the bound, the retained rows are still
+    the newest ones, so ``job_lifecycle.invoke_status``'s
+    ``attempt_records[-1]`` ("the latest attempt") stays correct -- an
+    oldest-first-then-truncated read would silently make "latest" describe
+    a stale attempt instead.
     """
 
     conn = _ops_store._connect(paths)
@@ -379,8 +476,9 @@ def _list_attempt_ids_for_operation(paths: FoundryPaths, operation_id: str) -> l
         try:
             _ops_store._ensure_schema(conn)
             rows = conn.execute(
-                "SELECT attempt_id FROM attempts WHERE operation_id = ? ORDER BY created_at",
-                (operation_id,),
+                "SELECT attempt_id FROM attempts WHERE operation_id = ?"
+                " ORDER BY created_at DESC LIMIT ?",
+                (operation_id, _MAX_ATTEMPT_ROWS_PER_READ),
             ).fetchall()
         except sqlite3.OperationalError as exc:
             _raise_store_unavailable(
@@ -388,7 +486,15 @@ def _list_attempt_ids_for_operation(paths: FoundryPaths, operation_id: str) -> l
             )
     finally:
         conn.close()
-    return [row["attempt_id"] for row in rows]
+    if len(rows) == _MAX_ATTEMPT_ROWS_PER_READ:
+        logger.warning(
+            "operator_attempt_adapter: _list_attempt_ids_for_operation hit its "
+            "%d-row bound for operation_id=%s -- older linked attempts beyond "
+            "this bound, if any, were not returned",
+            _MAX_ATTEMPT_ROWS_PER_READ,
+            operation_id,
+        )
+    return [row["attempt_id"] for row in reversed(rows)]
 
 
 # ---------------------------------------------------------------------------
@@ -516,6 +622,7 @@ class OperatorAttemptAdapter:
                 operation_id=operation_id,
                 workspace_id=job.workspace_id,
                 created_at=ids.now_iso(),
+                max_attempts=MAX_ATTEMPTS_PER_OPERATION,
             )
         except Exception:
             # See module docstring's "cross-store atomicity gap" section:

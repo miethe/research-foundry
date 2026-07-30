@@ -54,9 +54,43 @@ from typing import Any, Sequence
 from research_foundry.adapters import get_adapter, load_all
 from research_foundry.frontmatter import load_md
 from research_foundry.paths import FoundryPaths
+from research_foundry.services.operator_mcp_policy import _redact_and_bound
 from research_foundry.yamlio import dump_yaml, load_yaml
 
 _logger = logging.getLogger(__name__)
+
+
+def _bound_adapter_error(exc: Exception) -> str:
+    """Bound and redact an adapter's raised exception before it reaches an
+    :class:`AdapterOutcome` (D2, P3 cross-model audit finding -- same defect
+    class as P1 blocking finding NEW-21 / ``operator_mcp_policy.
+    build_audit_delivery``'s ``audit_delivery.detail``). ``str(exc)`` is
+    unbounded, environment/caller-influenced text -- a filesystem path, a
+    URL, a SQL fragment, or a credential remnant an adapter's own exception
+    message happens to embed must never reach an Operator MCP caller
+    unredacted and uncapped (AC OPM-7).
+
+    Reuses ``operator_mcp_policy._redact_and_bound`` -- the SAME
+    redact-then-cap helper ``build_error``'s ``detail`` field already routes
+    through -- rather than inventing a second, independently-drifting
+    redaction scheme. That helper is private (leading underscore, not in
+    ``operator_mcp_policy.__all__``); this module does not edit
+    ``operator_mcp_policy.py`` to promote it (outside this task's file-
+    ownership boundary for this fix) and instead imports the private symbol
+    directly -- a deliberate, directed cross-module reach, mirroring this
+    codebase's own established convention for reusing another module's
+    leading-underscore helper rather than duplicating its logic (see e.g.
+    ``operator_attempt_adapter.py``'s own docstring on reaching into
+    ``operator_operation_service._connect``/``_ensure_schema``).
+
+    ``_redact_and_bound`` only returns ``None`` for falsy input; ``raw``
+    below always includes the exception's type name, so it is never falsy --
+    the ``or type(exc).__name__`` fallback is defense-in-depth, not a
+    reachable path today.
+    """
+
+    raw = f"{type(exc).__name__}: {exc}"
+    return _redact_and_bound(raw) or type(exc).__name__
 
 #: Policy allowlist (spec §10.6 / OPM-3.2 acceptance criteria). A literal
 #: constant, not derived from any external input -- there is no producer that
@@ -96,9 +130,11 @@ class AdapterOutcome:
     """Per-adapter result of one :func:`run_swarm` call.
 
     Exactly one of ``denial``, ``error``, or a successful dispatch (``ran``
-    True) applies. ``error`` is a bounded ``"ExceptionType: message"`` string
-    -- an adapter that raises never propagates a raw exception or traceback
-    out of this service.
+    True) applies. ``error`` is a bounded, redacted ``"ExceptionType:
+    message"`` string (D2: routed through ``operator_mcp_policy.
+    _redact_and_bound`` via :func:`_bound_adapter_error`) -- an adapter that
+    raises never propagates a raw, unbounded, or unredacted exception/
+    traceback out of this service.
     """
 
     adapter_id: str
@@ -208,7 +244,9 @@ def run_swarm(
                 AdapterOutcome(
                     adapter_id=aid,
                     ran=False,
-                    error=f"{type(exc).__name__}: {exc}",
+                    # D2: bounded + redacted, never raw str(exc) -- see
+                    # `_bound_adapter_error`'s own docstring.
+                    error=_bound_adapter_error(exc),
                 )
             )
             continue

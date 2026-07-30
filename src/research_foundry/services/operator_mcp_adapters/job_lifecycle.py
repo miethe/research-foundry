@@ -120,6 +120,7 @@ from research_foundry.services.operator_cancel_resume_service import (
     OperatorCancelResumeService,
 )
 from research_foundry.services.operator_operation_service import (
+    OperationStoreUnavailableError,
     OperatorOperationService,
     authorize_for_consumption,
 )
@@ -181,22 +182,109 @@ def _resolve_operation_workspace(operation_id: str, paths: FoundryPaths) -> str 
     `PolicyContext.resolved_target_workspaces` is a constructor argument, so
     the value must be known before `ctx` (and therefore identity) exists.
 
-    Swallows EVERY exception (missing `operation_id`, malformed store) and
-    returns `None` on any failure -- never a permissive default.
-    `PolicyContext`'s own H3/H6 gate (`_check_identity_and_rbac`) then
-    denies with the closed, no-existence-leak `not_found` reason code for
-    BOTH a genuinely missing operation and a wrong-workspace one; this
+    Catches ONLY `KeyError` (`load_operation`'s own documented, exhaustive
+    "genuinely missing, or -- not reachable here since `identity=None` --
+    wrong workspace" contract) and returns `None` -- never a permissive
+    default. `PolicyContext`'s own H3/H6 gate (`_check_identity_and_rbac`)
+    then denies with the closed, no-existence-leak `not_found` reason code
+    for BOTH a genuinely missing operation and a wrong-workspace one; this
     function never needs to (and must never) distinguish the two itself --
     that is exactly the AC's "no wrong-workspace detail" requirement,
     satisfied by REUSING the existing H3/H6 gate rather than re-implementing
     it here.
+
+    Deliberately does NOT catch `OperationStoreUnavailableError` -- a
+    transient SQLite lock on the operations store is NOT "genuinely
+    missing", and folding it into this function's `None` return would make
+    it indistinguishable from a real absence, which the H3/H6 gate then
+    reports as the SAME non-retryable `not_found` a permanently-missing
+    operation gets. That is precisely the retry-contract defect
+    `OperationStoreUnavailableError` exists to prevent (see its own
+    docstring in `operator_operation_service.py`): a caller cannot tell
+    "this will never exist" from "retry me" if both collapse to the same
+    denial. `OperationStoreUnavailableError` is left to propagate to the
+    caller; see `_resolve_operation_workspace_or_error` below, which every
+    `invoke_*` function in this module calls INSTEAD of this function
+    directly, specifically to convert that propagated exception into a
+    bounded, retryable result rather than letting it cross this module's
+    public surface raw.
     """
 
     try:
         record = OperatorOperationService(paths).load_operation(operation_id, identity=None)
-    except Exception:
+    except KeyError:
         return None
     return record.workspace_id
+
+
+def _resolve_operation_workspace_or_error(
+    operation_id: str, paths: FoundryPaths, *, now: datetime | None
+) -> tuple[str | None, base.OperatorAdapterResult | None]:
+    """Thin wrapper `invoke_status`/`invoke_cancel`/`invoke_resume` ALL call
+    instead of `_resolve_operation_workspace` directly -- the single place
+    that converts a propagated `OperationStoreUnavailableError` into a
+    bounded, retryable `internal_error` `OperatorAdapterResult`, the SAME
+    shape `invoke_status`'s own `except Exception` boundary below produces
+    for an in-body store failure. Centralized here (rather than duplicated
+    in three `try/except` blocks) so the classification is made ONCE and
+    applies identically to all three call sites -- see this module's P3
+    contract report for why enumerating every call site mattered here.
+
+    Returns `(workspace_id_or_None, None)` on a normal resolution --
+    including a genuinely missing/wrong-workspace operation, which still
+    resolves to `(None, None)` exactly as before this fix -- or
+    `(None, <bounded OperatorAdapterResult>)` when the operations store
+    itself was unavailable, OR when the persisted operation record was
+    unreadable for any OTHER reason (see the final `except Exception`
+    below). Callers MUST check the second element and return it
+    immediately rather than proceeding to build a `PolicyContext` with a
+    workspace value that was never actually resolved.
+
+    Two DELIBERATELY DISTINCT bounded outcomes, never collapsed into one:
+    `OperationStoreUnavailableError` (a transient SQLite lock) is
+    `retryable=True` -- ask again later, it may succeed. Anything else
+    (final `except Exception` -- e.g. `OperationRecord.from_manifest`'s
+    bare `manifest["operation_id"]`/`manifest["workspace_id"]`
+    subscripting raising `TypeError` on a corrupted, non-Mapping
+    persisted manifest, K4-NB-3) is `retryable=False` -- a corrupt record
+    will not fix itself on retry. Collapsing these two would repeat, one
+    level up, the EXACT retry-contract mistake this task's own fix
+    corrects at the `_resolve_operation_workspace` layer: two outcomes
+    with opposite retry semantics reported as the same thing.
+
+    This final `except Exception` is this module's OWN narrow, deliberate
+    boundary (not a reintroduction of the blanket catch this task
+    removed from `_resolve_operation_workspace` itself, which stays
+    scoped to `KeyError` only) -- it exists SPECIFICALLY so that nothing
+    `_resolve_operation_workspace`/`OperatorOperationService.load_operation`
+    can raise ever crosses this module's public surface raw, at the one
+    call site (before any `invoke_*` function's own `try:`) no other
+    handler in this file covers. Logged at ERROR (a corrupt manifest is a
+    real operational problem, unlike a transient lock's WARNING above),
+    exception TYPE NAME only -- never `str(exc)`, matching this module's
+    and `base.run_pipeline`'s own NEW-13 convention.
+    """
+
+    try:
+        return _resolve_operation_workspace(operation_id, paths), None
+    except OperationStoreUnavailableError as exc:
+        _logger.warning(
+            "operator_mcp_adapters.job_lifecycle: operations store unavailable while "
+            "resolving target workspace for operation_id=%s (%s)",
+            operation_id,
+            type(exc).__name__,
+        )
+        decision = policy.PolicyDecision(False, "confirmation", "internal_error", retryable=True)
+        return None, base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now))
+    except Exception as exc:
+        _logger.error(
+            "operator_mcp_adapters.job_lifecycle: unexpected error resolving target "
+            "workspace for operation_id=%s (%s)",
+            operation_id,
+            type(exc).__name__,
+        )
+        decision = policy.PolicyDecision(False, "confirmation", "internal_error", retryable=False)
+        return None, base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now))
 
 
 def _operation_kind_of(manifest: Mapping[str, Any]) -> Any:
@@ -240,7 +328,11 @@ def invoke_status(
     """
 
     resolved_paths = paths or FoundryPaths.discover()
-    owning_workspace = _resolve_operation_workspace(operation_id, resolved_paths)
+    owning_workspace, store_error = _resolve_operation_workspace_or_error(
+        operation_id, resolved_paths, now=now
+    )
+    if store_error is not None:
+        return store_error
     effective_sensitivity = policy.resolve_effective_sensitivity(None)
 
     input_payload: dict[str, Any] = {"operation_id": operation_id}
@@ -362,7 +454,11 @@ def invoke_cancel(
     """
 
     resolved_paths = paths or FoundryPaths.discover()
-    owning_workspace = _resolve_operation_workspace(operation_id, resolved_paths)
+    owning_workspace, store_error = _resolve_operation_workspace_or_error(
+        operation_id, resolved_paths, now=now
+    )
+    if store_error is not None:
+        return store_error
     effective_sensitivity = policy.resolve_effective_sensitivity(None)
 
     ctx = policy.PolicyContext.for_configured_operator(
@@ -456,7 +552,11 @@ def invoke_resume(
     does and does not do."""
 
     resolved_paths = paths or FoundryPaths.discover()
-    owning_workspace = _resolve_operation_workspace(operation_id, resolved_paths)
+    owning_workspace, store_error = _resolve_operation_workspace_or_error(
+        operation_id, resolved_paths, now=now
+    )
+    if store_error is not None:
+        return store_error
     effective_sensitivity = policy.resolve_effective_sensitivity(None)
 
     ctx = policy.PolicyContext.for_configured_operator(

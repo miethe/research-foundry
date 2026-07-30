@@ -19,6 +19,10 @@ from research_foundry.adapters.base import AdapterResult
 from research_foundry.paths import FoundryPaths
 from research_foundry.services import planning
 from research_foundry.services import swarm_service as svc
+from research_foundry.services.operator_mcp_policy import (
+    _ERROR_DETAIL_MAX,
+    _UNSAFE_DETAIL_MARKER,
+)
 from research_foundry.yamlio import dump_yaml, load_yaml
 
 _INTENT_ID = "intent_research_20260730_swarmsvc"
@@ -95,6 +99,24 @@ class _RaisingAdapter:
 
     def run(self, request: dict[str, Any]) -> AdapterResult:
         raise RuntimeError("boom: simulated adapter failure")
+
+
+class _MessageRaisingAdapter:
+    """A registered-shaped adapter whose ``run`` always raises a
+    caller-supplied exception (D2 tests: prove specific unsafe shapes get
+    bounded/redacted, not just that SOME error string comes back)."""
+
+    id = "message_raising_test_adapter"
+    requires: tuple[str, ...] = ()
+
+    def __init__(self, message: str) -> None:
+        self._message = message
+
+    def available(self) -> bool:
+        return True
+
+    def run(self, request: dict[str, Any]) -> AdapterResult:
+        raise RuntimeError(self._message)
 
 
 # ---------------------------------------------------------------------------
@@ -408,6 +430,106 @@ def test_raising_adapter_is_reported_as_typed_error_not_raised(
 
 
 # ---------------------------------------------------------------------------
+# D2 (P3 cross-model audit finding): adapter exception text must be bounded
+# AND redacted, not merely non-raising and single-line (the assertions
+# above prove "no traceback" -- these prove the SPECIFIC unsafe shapes
+# AC OPM-7 cares about: an embedded path, and an unbounded length).
+# ---------------------------------------------------------------------------
+
+
+def _dispatch_single_raising_adapter(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch, message: str
+) -> str:
+    """Shared plumbing for the two D2 tests below: register one
+    ``_MessageRaisingAdapter`` as the sole allowlisted/known adapter for
+    this call and dispatch it, returning the resulting ``outcome.error``.
+    """
+
+    adapters.load_all()
+    run_id = _planned_run(tmp_foundry)
+
+    raising = _MessageRaisingAdapter(message)
+    monkeypatch.setattr(svc, "ALLOWED_ADAPTER_IDS", svc.ALLOWED_ADAPTER_IDS | {raising.id})
+    monkeypatch.setattr(
+        svc,
+        "get_adapter",
+        lambda aid: raising if aid == raising.id else adapters.get_adapter(aid),
+    )
+
+    result = svc.run_swarm(run_id, [raising.id], profile="personal", dry_run=False, paths=tmp_foundry)
+
+    assert len(result.outcomes) == 1
+    outcome = result.outcomes[0]
+    assert outcome.ran is False
+    assert outcome.denial is None
+    assert outcome.error is not None
+    return outcome.error
+
+
+def test_adapter_exception_embedding_a_filesystem_path_is_fully_redacted(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D2's empirical repro shape, same as BLOCK-1's (round 4 gate) own
+    `build_audit_delivery` repro: a bare ``OSError``/``PermissionError``-
+    style message embeds an absolute filesystem path with NO traceback
+    framing at all. Before this fix, `f"{type(exc).__name__}: {exc}"` put
+    that path straight into `AdapterOutcome.error`, unredacted -- an MCP
+    caller reading a `job.status`/dry-run denial listing could learn a
+    workspace-local filesystem layout, or (for a credential-file read
+    failure) a path that itself names a secret. The WHOLE string must be
+    replaced by `_UNSAFE_DETAIL_MARKER`, per `_redact_and_bound`'s own
+    "never a partial per-match substitution" contract -- not just the path
+    span."""
+
+    secret_path = "/Users/alice/.config/research-foundry/serve.env"
+    error = _dispatch_single_raising_adapter(
+        tmp_foundry,
+        monkeypatch,
+        f"[Errno 2] No such file or directory: '{secret_path}'",
+    )
+
+    assert error == _UNSAFE_DETAIL_MARKER
+    assert secret_path not in error
+    assert "alice" not in error
+    assert "PermissionError" not in error and "OSError" not in error
+
+
+def test_adapter_exception_message_is_length_bounded(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An adapter's exception `str()` is unbounded by construction (it can
+    embed arbitrarily large caller/environment-influenced text, e.g. a
+    reflected request body). `AdapterOutcome.error` must never exceed
+    `operator_mcp_policy._ERROR_DETAIL_MAX` (the SAME bound `build_error`'s
+    own `detail` field enforces) -- an MCP response is not the place for an
+    unbounded string, capped or not."""
+
+    huge_message = "boom " * 400  # 2000 chars, well past the 500-char bound
+    assert len(huge_message) > _ERROR_DETAIL_MAX
+
+    error = _dispatch_single_raising_adapter(tmp_foundry, monkeypatch, huge_message)
+
+    assert len(error) <= _ERROR_DETAIL_MAX
+
+
+def test_adapter_exception_ordinary_message_still_survives_unredacted(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Non-regression companion to the two tests above: an ordinary,
+    non-path, non-traceback, well-under-the-bound message (the SAME shape
+    `test_raising_adapter_is_reported_as_typed_error_not_raised` already
+    pins) still comes back intact, type name and all -- D2's fix must not
+    turn every adapter error into the unsafe-content marker."""
+
+    error = _dispatch_single_raising_adapter(
+        tmp_foundry, monkeypatch, "simulated adapter failure, ordinary message"
+    )
+
+    assert error == "RuntimeError: simulated adapter failure, ordinary message"
+    assert error != _UNSAFE_DETAIL_MARKER
+
+
+# ---------------------------------------------------------------------------
 # Import cleanliness (requirement 5)
 # ---------------------------------------------------------------------------
 
@@ -417,3 +539,50 @@ def test_module_source_has_no_serve_extra_or_typer_import():
     source = module_path.read_text(encoding="utf-8")
     for banned in ("import typer", "import fastapi", "import uvicorn", "from fastapi", "from uvicorn"):
         assert banned not in source, f"swarm_service.py must not import {banned!r}"
+
+
+def test_module_imports_cleanly_with_the_serve_extra_unavailable():
+    """Runtime companion to the source-text check above (D2 regression
+    guard): this task added `swarm_service`'s first import FROM
+    `operator_mcp_policy` (for `_redact_and_bound`) -- a source-text scan of
+    `swarm_service.py` itself cannot catch a `fastapi`/`typer`/`starlette`
+    import newly introduced TRANSITIVELY through that (or any future)
+    import. Actually blocks those three modules at `sys.meta_path` and
+    forces a fresh import of both `swarm_service` and `operator_mcp_policy`
+    to prove the module docstring's "must import cleanly in a bare install"
+    claim at runtime, not just by grepping this one file's own source.
+    """
+
+    import importlib
+    import sys
+
+    banned_roots = {"fastapi", "starlette", "uvicorn", "typer"}
+
+    class _Blocker:
+        def find_module(self, name, path=None):  # noqa: ANN001 - importlib protocol
+            if name.split(".")[0] in banned_roots:
+                raise ImportError(f"blocked for this test: {name}")
+            return None
+
+    saved_modules = {
+        name: mod
+        for name, mod in sys.modules.items()
+        if name == "research_foundry.services.swarm_service"
+        or name.startswith("research_foundry.services.swarm_service.")
+        or name == "research_foundry.services.operator_mcp_policy"
+    }
+    for name in saved_modules:
+        del sys.modules[name]
+
+    blocker = _Blocker()
+    sys.meta_path.insert(0, blocker)
+    try:
+        reimported = importlib.import_module("research_foundry.services.swarm_service")
+        assert reimported.run_swarm is not None
+    finally:
+        sys.meta_path.remove(blocker)
+        for name in list(sys.modules):
+            if name == "research_foundry.services.swarm_service" or name == "research_foundry.services.operator_mcp_policy":
+                del sys.modules[name]
+        sys.modules.update(saved_modules)
+        importlib.import_module("research_foundry.services.swarm_service")

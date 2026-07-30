@@ -28,12 +28,15 @@ import pytest
 from research_foundry.api.auth.provider import AuthIdentity
 from research_foundry.config import FoundryConfig
 from research_foundry.paths import FoundryPaths
+from research_foundry.services import operator_attempt_adapter as attempt_adapter_module
 from research_foundry.services import operator_operation_service as ops_module
 from research_foundry.services.agent_job_schemas import AgentJobStatus
 from research_foundry.services.agent_job_service import AgentJobService
 from research_foundry.services.operator_attempt_adapter import (
+    AttemptLimitExceededError,
     AttemptRecord,
     AttemptStoreUnavailableError,
+    MAX_ATTEMPTS_PER_OPERATION,
     OperatorAttemptAdapter,
 )
 
@@ -231,6 +234,98 @@ def test_create_attempt_rejects_empty_operation_id(tmp_foundry: FoundryPaths) ->
     adapter = _adapter(tmp_foundry)
     with pytest.raises(ValueError):
         _create_attempt(adapter, operation_id="")
+
+
+# ---------------------------------------------------------------------------
+# D3 (P3 cross-model audit finding): `_list_attempt_ids_for_operation`'s
+# read must be bounded, independent of `MAX_ATTEMPTS_PER_OPERATION` -- rows
+# written before the creation-time cap existed (or, before D4, by a race
+# that slipped past it) can already exceed that cap. Every test below seeds
+# rows DIRECTLY into the `attempts` table via a raw connection, bypassing
+# `create_attempt` entirely -- `create_attempt` itself cannot produce more
+# than `MAX_ATTEMPTS_PER_OPERATION` (5) linked rows for one `operation_id`
+# (enforced atomically since D4), so this is the only way to exercise a
+# READ over more rows than the bound without faking the private helper.
+# ---------------------------------------------------------------------------
+
+
+def _seed_raw_attempt_rows(
+    paths: FoundryPaths, *, operation_id: str, count: int, workspace_id: str = "ws-mine"
+) -> list[str]:
+    """Insert *count* synthetic ``attempts`` rows for *operation_id* directly
+    (never through :meth:`OperatorAttemptAdapter.create_attempt`), with
+    zero-padded, lexicographically-sortable ``attempt_id``/``created_at``
+    values so insertion order, sort order, and numeric order all agree.
+    Returns the ids in insertion (oldest-first) order."""
+
+    ids = [f"seed-attempt-{i:06d}" for i in range(count)]
+    conn = ops_module._connect(paths)
+    try:
+        ops_module._ensure_schema(conn)
+        conn.execute("BEGIN IMMEDIATE")
+        for i, attempt_id in enumerate(ids):
+            conn.execute(
+                "INSERT INTO attempts (attempt_id, operation_id, workspace_id, created_at)"
+                " VALUES (?, ?, ?, ?)",
+                (attempt_id, operation_id, workspace_id, f"{i:06d}"),
+            )
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
+    return ids
+
+
+def test_list_attempt_ids_for_operation_read_is_bounded_past_the_limit(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """More rows durably exist than the read bound allows -- the read
+    returns AT MOST the bound, never every row, and the retained rows are
+    the NEWEST ``_MAX_ATTEMPT_ROWS_PER_READ`` (not an arbitrary or
+    oldest-truncated subset), still oldest-first among themselves -- proves
+    the DESC-then-reverse implementation, not merely a row count."""
+
+    bound = attempt_adapter_module._MAX_ATTEMPT_ROWS_PER_READ
+    operation_id = "opm_" + "f" * 64
+    total_rows = bound + 50
+
+    all_ids = _seed_raw_attempt_rows(tmp_foundry, operation_id=operation_id, count=total_rows)
+
+    result = attempt_adapter_module._list_attempt_ids_for_operation(tmp_foundry, operation_id)
+
+    assert len(result) == bound
+    assert result == all_ids[-bound:]
+
+
+def test_list_attempt_ids_for_operation_under_the_bound_is_unaffected(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """Non-regression companion: fewer rows than the bound -- every row
+    comes back, in the SAME oldest-first order as before this fix. D3's
+    change must not narrow the common case."""
+
+    operation_id = "opm_" + "g" * 64
+    all_ids = _seed_raw_attempt_rows(tmp_foundry, operation_id=operation_id, count=7)
+
+    result = attempt_adapter_module._list_attempt_ids_for_operation(tmp_foundry, operation_id)
+
+    assert result == all_ids
+
+
+def test_list_attempt_ids_for_operation_logs_when_the_bound_is_hit(
+    tmp_foundry: FoundryPaths, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Observability companion: hitting the bound is logged (best-effort
+    signal that truncation MAY have occurred), never silent."""
+
+    bound = attempt_adapter_module._MAX_ATTEMPT_ROWS_PER_READ
+    operation_id = "opm_" + "h" * 64
+    _seed_raw_attempt_rows(tmp_foundry, operation_id=operation_id, count=bound + 1)
+
+    caplog.set_level("WARNING", logger="research_foundry.services.operator_attempt_adapter")
+    caplog.clear()
+    attempt_adapter_module._list_attempt_ids_for_operation(tmp_foundry, operation_id)
+
+    assert any("bound" in r.getMessage() for r in caplog.records)
 
 
 def test_create_attempt_identity_overrides_client_workspace_id(
@@ -650,3 +745,104 @@ def test_record_attempt_link_promotion_raises_bounded_error_not_raw_driver_excep
     assert not isinstance(excinfo.value, sqlite3.OperationalError)
     assert "database is locked" not in str(excinfo.value)
     assert rollbacks == ["ROLLBACK"]
+
+
+
+# ---------------------------------------------------------------------------
+# D4 (P3 cross-model concurrency audit finding, same shape as this project's
+# frozen DUR-1 requirement): the bounded-attempts cap used to be a plain
+# read-then-write (a separate, unguarded COUNT before `create_attempt`'s own
+# job creation, then a SEPARATE transaction for the INSERT) -- closable only
+# by making the COUNT and the INSERT one atomic `BEGIN IMMEDIATE`
+# transaction, mirroring `operator_operation_service.
+# consume_and_create_operation`'s own CAS. A SERIAL test cannot prove this:
+# it would pass identically whether the cap check and the insert share a
+# transaction or not. Only REAL competing writers -- two threads racing the
+# same `operation_id`, each opening its OWN sqlite connection -- can expose
+# the pre-fix race window.
+# ---------------------------------------------------------------------------
+
+
+def test_create_attempt_cap_still_enforced_serially_after_the_atomicity_fix(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """Non-regression sanity companion to the real concurrency test below:
+    the ORDINARY, non-racing, serial case (already covered end-to-end via
+    `job.resume` in `test_operator_mcp_adapter_job_lifecycle.py::
+    test_job_resume_bounded_attempts_cap_denies_governed_not_infinite_retry`)
+    still denies the (N+1)th attempt directly through this adapter's own
+    `create_attempt`, unchanged by moving the enforcement point into
+    `_record_attempt_link`."""
+
+    adapter = _adapter(tmp_foundry)
+    operation_id = "opm_" + "i" * 64
+
+    for i in range(MAX_ATTEMPTS_PER_OPERATION):
+        _create_attempt(adapter, operation_id=operation_id, workspace_id=f"ws-serial-{i}")
+
+    assert len(adapter.list_attempts_for_operation(operation_id)) == MAX_ATTEMPTS_PER_OPERATION
+
+    with pytest.raises(AttemptLimitExceededError):
+        _create_attempt(adapter, operation_id=operation_id, workspace_id="ws-serial-overflow")
+
+    # No new attempt was linked past the cap.
+    assert len(adapter.list_attempts_for_operation(operation_id)) == MAX_ATTEMPTS_PER_OPERATION
+
+
+def test_create_attempt_cap_holds_under_concurrent_racing_writers(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """D4's actual proof: pre-seed `MAX_ATTEMPTS_PER_OPERATION - 1` attempts
+    (exactly one free slot), then fire TWO real threads at `create_attempt`
+    for the SAME `operation_id` simultaneously (a `threading.Barrier`
+    releases both at once, after each has already opened -- via
+    `AgentJobService.create_job` -- everything it needs up to the point of
+    racing the atomic cap-check-and-insert). Before the D4 fix, the
+    unguarded pre-check let both threads observe `count == cap - 1` and
+    both proceed to insert, landing the operation at `cap + 1` linked
+    attempts. After the fix, `_record_attempt_link`'s `BEGIN IMMEDIATE`
+    serializes the two INSERTs: exactly one thread's atomic transaction
+    commits first, so the second thread's OWN COUNT (taken after acquiring
+    the SAME exclusive lock) correctly sees the freshly-committed row and
+    denies. Exactly one thread must succeed, exactly one must raise
+    `AttemptLimitExceededError`, and the durable linked-attempt count must
+    land at EXACTLY the cap -- never over it."""
+
+    import threading
+
+    adapter = _adapter(tmp_foundry)
+    operation_id = "opm_" + "j" * 64
+
+    for i in range(MAX_ATTEMPTS_PER_OPERATION - 1):
+        _create_attempt(adapter, operation_id=operation_id, workspace_id=f"ws-preseed-{i}")
+
+    assert len(adapter.list_attempts_for_operation(operation_id)) == MAX_ATTEMPTS_PER_OPERATION - 1
+
+    barrier = threading.Barrier(2)
+    outcomes: list[tuple[str, str | None]] = []
+    outcomes_lock = threading.Lock()
+
+    def _race(tag: str) -> None:
+        barrier.wait(timeout=10)
+        try:
+            _create_attempt(adapter, operation_id=operation_id, workspace_id=f"ws-race-{tag}")
+            outcome = "ok"
+        except AttemptLimitExceededError:
+            outcome = "denied"
+        with outcomes_lock:
+            outcomes.append((tag, outcome))
+
+    threads = [threading.Thread(target=_race, args=(tag,)) for tag in ("a", "b")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+        assert not t.is_alive(), "racing create_attempt thread did not finish in time"
+
+    assert len(outcomes) == 2
+    results = [outcome for _tag, outcome in outcomes]
+    assert results.count("ok") == 1, f"expected exactly one success, got {results}"
+    assert results.count("denied") == 1, f"expected exactly one denial, got {results}"
+
+    final_count = len(adapter.list_attempts_for_operation(operation_id))
+    assert final_count == MAX_ATTEMPTS_PER_OPERATION

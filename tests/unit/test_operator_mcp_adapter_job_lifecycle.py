@@ -19,6 +19,7 @@ that test needs (out of this task's file ownership; reported, not made).
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -27,6 +28,7 @@ from research_foundry import ids
 from research_foundry.auth_identity import AuthIdentity
 from research_foundry.paths import FoundryPaths
 from research_foundry.services import operator_mcp_policy as policy
+from research_foundry.services import operator_operation_service as ops_module
 from research_foundry.services.operator_attempt_adapter import (
     MAX_ATTEMPTS_PER_OPERATION,
     OperatorAttemptAdapter,
@@ -48,6 +50,7 @@ from tests.unit.test_operator_mcp_policy import (  # noqa: F401
     _run_targets,
 )
 from tests.unit.test_operator_operation_service import _authorize, _mint_and_record
+from tests.unit.test_operator_receipt_service import _block_operations_db, _cold_paths
 
 # ---------------------------------------------------------------------------
 # Local helpers
@@ -96,6 +99,43 @@ def _resume_confirmation(
     )
     _confirmation_id, token, record = _mint_and_record(op_service, ctx)
     return record, token
+
+
+def _insert_corrupt_operation_row(paths: FoundryPaths, operation_id: str, workspace_id: str) -> None:
+    """Directly persists an `operations` row whose `manifest_json` is
+    valid JSON that deserializes to `None` (a non-Mapping) -- simulating
+    an on-disk corrupted manifest (K4-NB-3) that
+    `OperationRecord.from_manifest`'s bare `manifest["operation_id"]`/
+    `manifest["workspace_id"]` subscripting (`operator_operation_service.py`
+    `:811-816`) turns into a `TypeError`, not a `KeyError`.
+
+    Bypasses `OperatorOperationService`'s own write path entirely (a raw
+    `INSERT` against the same table/columns `_ensure_schema` creates) --
+    there is no legitimate way to produce this row through this module's
+    real API, which is the point: this simulates corruption, not a code
+    path this service would ever take itself."""
+
+    conn = ops_module._connect(paths)
+    try:
+        ops_module._ensure_schema(conn)
+        conn.execute(
+            "INSERT INTO operations (operation_id, workspace_id, idempotency_key, "
+            "canonical_input_digest, policy_snapshot_version, operation_kind, "
+            "effective_sensitivity, manifest_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                operation_id,
+                workspace_id,
+                "corrupt-idem-key",
+                "0" * 64,
+                "v1",
+                "run.plan",
+                "client_sensitive",
+                "null",  # valid JSON -> Python None, a non-Mapping
+                "2026-01-01T00:00:00Z",
+            ),
+        )
+    finally:
+        conn.close()
 
 
 class _DenyingCancelResumeService(OperatorCancelResumeService):
@@ -564,6 +604,250 @@ def test_job_resume_wrong_workspace_indistinguishable_from_missing_dry_run(
     assert wrong_workspace_result.ok is False
     assert missing_result.ok is False
     assert wrong_workspace_result.error == missing_result.error
+
+
+# ---------------------------------------------------------------------------
+# Retry-contract fix: operations-store transient unavailability must be
+# reported as a RETRYABLE `internal_error`, never folded into the SAME
+# non-retryable `not_found` a genuinely missing operation gets. Before this
+# fix, `_resolve_operation_workspace`'s blanket `except Exception` swallowed
+# `OperationStoreUnavailableError` identically to a real `KeyError`
+# ("genuinely missing"), so a transient SQLite lock on the operations store
+# was reported through the H3/H6 RBAC gate as a permanent, non-retryable
+# absence -- correct denial, wrong retryability, wrong reason code.
+#
+# Uses `test_operator_receipt_service.py`'s own established, non-vacuous
+# technique (`_cold_paths` + `_block_operations_db`) rather than `tmp_foundry`
+# -- per this task's own vacuity-trap warning, a WARM `_ensure_schema` does
+# not reliably block under contention, so a test against a warm schema would
+# pass for free without ever exercising the guard. `_cold_paths` builds a
+# `FoundryPaths` whose operations db has genuinely never been touched, so
+# `_ensure_schema`'s FIRST call attempts real DDL and blocks behind a REAL
+# competing writer lock, never a monkeypatched stand-in.
+# ---------------------------------------------------------------------------
+
+
+def test_job_status_reports_retryable_internal_error_when_store_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MUTATION-TESTED GUARD (see this task's report) for `invoke_status`'s
+    call site of `_resolve_operation_workspace_or_error`."""
+
+    cold_paths = _cold_paths(tmp_path)
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(cold_paths)
+    try:
+        result = job_lifecycle.invoke_status(
+            operation_id="op-does-not-matter",
+            idempotency_key="status-locked",
+            paths=cold_paths,
+            now=ids.now(),
+        )
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "internal_error"
+    assert result.error["retryable"] is True
+
+
+def test_job_cancel_reports_retryable_internal_error_when_store_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MUTATION-TESTED GUARD (see this task's report) for `invoke_cancel`'s
+    call site of `_resolve_operation_workspace_or_error` -- proves the fix
+    was applied to this sibling site too, not only `job.status`'s."""
+
+    cold_paths = _cold_paths(tmp_path)
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(cold_paths)
+    try:
+        result = job_lifecycle.invoke_cancel(
+            operation_id="op-does-not-matter",
+            idempotency_key="cancel-locked",
+            confirmation_record=None,
+            presented_token=None,
+            paths=cold_paths,
+            now=ids.now(),
+        )
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "internal_error"
+    assert result.error["retryable"] is True
+
+
+def test_job_resume_reports_retryable_internal_error_when_store_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MUTATION-TESTED GUARD (see this task's report) for `invoke_resume`'s
+    call site of `_resolve_operation_workspace_or_error` -- proves the fix
+    was applied to this sibling site too, not only `job.status`'s."""
+
+    cold_paths = _cold_paths(tmp_path)
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(cold_paths)
+    try:
+        result = job_lifecycle.invoke_resume(
+            operation_id="op-does-not-matter",
+            idempotency_key="resume-locked",
+            confirmation_record=None,
+            presented_token=None,
+            paths=cold_paths,
+            now=ids.now(),
+        )
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "internal_error"
+    assert result.error["retryable"] is True
+
+
+def test_store_locked_result_is_distinct_from_genuinely_missing_not_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The actual regression this task fixes, proven directly: a locked
+    store and a genuinely-missing operation used to produce the IDENTICAL
+    `not_found`/`retryable: false` envelope (both swallowed by
+    `_resolve_operation_workspace`'s old blanket `except Exception`). They
+    MUST now differ in BOTH `reason_code` and `retryable`."""
+
+    cold_paths = _cold_paths(tmp_path)
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(cold_paths)
+    try:
+        locked_result = job_lifecycle.invoke_status(
+            operation_id="op-does-not-matter",
+            idempotency_key="status-locked-vs-missing",
+            paths=cold_paths,
+            now=ids.now(),
+        )
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    # Lock released -- `_ensure_schema` now succeeds for real, and the
+    # SAME operation_id is a genuine `KeyError` ("not found") this time.
+    missing_result = job_lifecycle.invoke_status(
+        operation_id="op-does-not-matter",
+        idempotency_key="status-locked-vs-missing-2",
+        paths=cold_paths,
+        now=ids.now(),
+    )
+
+    assert locked_result.error is not None
+    assert missing_result.error is not None
+    assert locked_result.error["reason_code"] == "internal_error"
+    assert locked_result.error["retryable"] is True
+    assert missing_result.error["reason_code"] == "not_found"
+    assert missing_result.error["retryable"] is False
+    assert locked_result.error != missing_result.error
+
+
+def test_job_status_reports_bounded_nonretryable_error_for_corrupt_manifest(
+    tmp_path: Path,
+) -> None:
+    """K4-NB-3, MUTATION-TESTED GUARD (see this task's report): a
+    persisted `operations` row whose `manifest_json` deserializes to a
+    non-Mapping makes `OperationRecord.from_manifest`'s bare subscripting
+    raise `TypeError` -- `_resolve_operation_workspace_or_error`'s final
+    `except Exception` MUST turn this into a bounded, NON-retryable
+    `internal_error`, never a raw `TypeError` crossing `invoke_status`'s
+    public surface. If the guard were absent, THIS CALL ITSELF would
+    raise `TypeError` and the test would error out rather than reach any
+    assertion below -- that failure mode IS the proof of boundedness,
+    no separate `isinstance` check needed."""
+
+    cold_paths = _cold_paths(tmp_path)
+    operation_id = "corrupt-manifest-op"
+    _insert_corrupt_operation_row(cold_paths, operation_id, "ws-mine")
+
+    result = job_lifecycle.invoke_status(
+        operation_id=operation_id,
+        idempotency_key="status-corrupt",
+        paths=cold_paths,
+        now=ids.now(),
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "internal_error"
+    assert result.error["retryable"] is False
+
+
+def test_locked_missing_and_corrupt_manifest_produce_three_distinct_bounded_envelopes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The full retry-contract picture for the SAME `operation_id`, all
+    three states reachable through `_resolve_operation_workspace_or_error`:
+
+    1. Store LOCKED (transient) -> `internal_error`, `retryable: True`.
+    2. Genuinely MISSING (permanent absence) -> `not_found`,
+       `retryable: False`.
+    3. Persisted but CORRUPT (permanent, but NOT "missing") ->
+       `internal_error`, `retryable: False` -- same reason_code as (1),
+       opposite retryability; distinguishable from (2) by reason_code.
+
+    All three envelopes must be pairwise distinct, and NEITHER "locked"
+    NOR "corrupt" may ever collapse into `not_found`'s shape (the
+    original defect class this whole task addresses, one layer up)."""
+
+    operation_id = "three-way-op"
+    cold_paths = _cold_paths(tmp_path)
+
+    monkeypatch.setattr(ops_module, "_BUSY_TIMEOUT_MS", 50)
+    blocker = _block_operations_db(cold_paths)
+    try:
+        locked_result = job_lifecycle.invoke_status(
+            operation_id=operation_id,
+            idempotency_key="three-way-locked",
+            paths=cold_paths,
+            now=ids.now(),
+        )
+    finally:
+        blocker.execute("ROLLBACK")
+        blocker.close()
+
+    missing_result = job_lifecycle.invoke_status(
+        operation_id=operation_id,
+        idempotency_key="three-way-missing",
+        paths=cold_paths,
+        now=ids.now(),
+    )
+
+    _insert_corrupt_operation_row(cold_paths, operation_id, "ws-mine")
+    corrupt_result = job_lifecycle.invoke_status(
+        operation_id=operation_id,
+        idempotency_key="three-way-corrupt",
+        paths=cold_paths,
+        now=ids.now(),
+    )
+
+    for result in (locked_result, missing_result, corrupt_result):
+        assert result.ok is False
+        assert result.error is not None
+
+    assert locked_result.error["reason_code"] == "internal_error"
+    assert locked_result.error["retryable"] is True
+
+    assert missing_result.error["reason_code"] == "not_found"
+    assert missing_result.error["retryable"] is False
+
+    assert corrupt_result.error["reason_code"] == "internal_error"
+    assert corrupt_result.error["retryable"] is False
+
+    # Pairwise distinct envelopes -- no two of the three collapse together.
+    assert locked_result.error != missing_result.error
+    assert locked_result.error != corrupt_result.error
+    assert missing_result.error != corrupt_result.error
 
 
 # ---------------------------------------------------------------------------
