@@ -5,9 +5,9 @@ doc_type: progress
 prd: research-foundry-operator-mcp
 feature_slug: research-foundry-operator-mcp
 phase: 2
-status: in_progress
+status: completed
 created: '2026-07-28'
-updated: '2026-07-29'
+updated: '2026-07-30'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
 plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
 commit_refs: []
@@ -29,6 +29,10 @@ tasks:
   evidence:
   - test: tests/unit/test_operator_operation_service.py
   - validation: 257 passed exit 0 (orchestrator-independent re-run)
+  - gate: FIND-P2-REGATE-R4R5 both lenses APPROVED
+  verified_by:
+  - security-gate-opus-APPROVED-be6ba96
+  - karen-opus-APPROVED-ad7d461
 - id: OPM-2.2
   status: completed
   assigned_to:
@@ -41,6 +45,10 @@ tasks:
   evidence:
   - test: tests/unit/test_operator_attempt_adapter.py
   - validation: 319 passed 0 failures exit 0 (orchestrator-independent re-run)
+  - gate: FIND-P2-REGATE-R4R5 both lenses APPROVED
+  verified_by:
+  - security-gate-opus-APPROVED-be6ba96
+  - karen-opus-APPROVED-ad7d461
 - id: OPM-2.3
   status: completed
   assigned_to:
@@ -54,6 +62,10 @@ tasks:
   evidence:
   - test: tests/unit/test_operator_receipt_service.py
   - validation: 585 dots 0F 0E 0skip exit 0 (orchestrator-independent)
+  - gate: FIND-P2-REGATE-R4R5 both lenses APPROVED
+  verified_by:
+  - security-gate-opus-APPROVED-be6ba96
+  - karen-opus-APPROVED-ad7d461
 - id: OPM-2.4
   status: completed
   assigned_to:
@@ -66,6 +78,10 @@ tasks:
   evidence:
   - test: tests/unit/test_operator_cancel_resume_service.py
   - validation: 600 dots 0F 0E 0skip exit 0 (orchestrator-independent)
+  - gate: FIND-P2-REGATE-R4R5 both lenses APPROVED
+  verified_by:
+  - security-gate-opus-APPROVED-be6ba96
+  - karen-opus-APPROVED-ad7d461
 parallelization:
   batch_1:
   - OPM-2.1
