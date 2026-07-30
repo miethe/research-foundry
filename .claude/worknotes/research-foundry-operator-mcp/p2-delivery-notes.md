@@ -403,6 +403,127 @@ carrying a delegated summary forward without re-verifying the underlying claim �
 hardened into a tracker node that would have sent a future agent chasing a phantom. Grep the claim
 before you file it.
 
+## Round-2 remediation (U1–U10 + Karen A1/A2) — commits `728cd25`, `14ee7f6`
+
+Union of both gates' findings, closed as two waves on non-overlapping files.
+
+**Karen A1 needed its severity corrected.** The adapter's production gates were **already present and
+correct** (`operator_attempt_adapter.py:375`, `:399`) — verified, not assumed, and the adapter source
+is byte-identical to HEAD. It was a pure **test-coverage** gap: `persist_event`/`persist_artifact` were
+omitted from a parametrized test *whose name claimed universality*, and they are the only two wrappers
+with no scoping underneath, so the adapter gate is their sole boundary. Not an exploitable hole — but an
+unguarded guard a refactor could have silently deleted. All 9 wrappers now parametrized (9 cases verified
+to execute), and the `accept_job` trip-wire upgraded from a method-*name* ban to a real call spy.
+
+**The receipt/lifecycle wave closed all ten items.** Highlights of what was actually wrong: receipt
+writes *claimed* to derive-and-deny but **logged a warning and overwrote**, so a forged terminal receipt
+was accepted and then read back by the owner's own successful run, immutably; two of four write paths
+took no workspace parameter at all; **6 of 11** outcome-carrying calls still discarded the outcome
+(including all five `write_checkpoint` calls, so `run_actions` could return `"completed"` with zero
+checkpoints persisted); and a gap receipt permanently bricked an operation — with the previous wave
+**pinning that as correct in a test**, now deleted and replaced by one asserting the operation stays
+resumable.
+
+### Three process wins worth keeping
+
+1. **The implementer caught its own redundant-sibling trap.** Its first U4 test used a fresh
+   zero-receipt operation, which the truncation guard denied independently — so it would have passed
+   regardless of the new guard. Its own mutation run exposed this, and it rewrote the test to pre-seed
+   exactly five correct contiguous receipts so reconciliation would *succeed* if the new guard did not
+   fire. This is the same false-closure mode that produced two earlier bad clears in this phase, caught
+   at source for the first time.
+2. **It removed redundancy instead of adding layers.** `_reconcile`'s two checks were mathematically
+   equivalent (lists of different lengths are never equal, so the length check could never fire
+   independently). Collapsed to one — and now all three corruption tests fail together when it is
+   disabled. Previously the redundancy masked which test pinned what, which is precisely how
+   `P2S-BLOCK-2`'s tests passed on revert.
+3. **DUR-1 flakiness fixed at root cause, not by loosening the assertion.** The flake was a raw
+   `OperationalError` killing a child process — now a governed denial via U6 — so the discriminating
+   wall-clock bound stayed untouched. Weakening it to buy stability would have quietly un-defended the
+   phase's central claim.
+
+### METHODOLOGY: mutation loops here silently produce FALSE GREENS
+
+The adapter wave's first per-wrapper pass reported **4 of 9 gates as "passes on revert."** Cause: each
+iteration deleted the *same 20 characters*, so identical file-size deltas collided with `mtime`
+resolution and CPython reused a `__pycache__` `.pyc` **from a different mutation**. With caches cleared,
+all 9 correctly went red.
+
+**This retroactively casts doubt on every "mutation-verified" claim in this workstream that did not
+clear caches** — mine included. A false green reads identically to "this guard is untested," so it
+corrupts conclusions in *both* directions: it can condemn a working guard or bless a broken one. It is a
+plausible contributor to this repo's documented `BLOCK-4` history. Every mutate/restore loop here must
+`rm -rf __pycache__` and set `PYTHONDONTWRITEBYTECODE=1` **per iteration**. Saved to project memory as
+`mutation-testing-pycache-false-green`.
+
+### Accepted judgment call
+
+Absent-operation and wrong-workspace now both return `not_found` on all four write paths (absence
+previously returned `internal_error`). Distinguishing them would let a caller learn "this operation
+exists in another workspace" versus "it does not exist" — exactly the oracle the no-existence-leak
+convention closes, and the shape every other hardened path in this module family already uses. Five
+pre-existing tests' expected reason codes were updated.
+
+## Final state (tree `be6ba96`) — implementation COMPLETE, formal gate NOT OBTAINED
+
+**This is the honest status line, and it deliberately does not say "approved".** P1's defining failure was
+closing with a machine verdict of `CHANGES_REQUESTED` still standing; P2 will not repeat it by
+relabelling. The phase artifact stays `status: in_progress` with `verified_by` **empty**.
+
+What *is* established, each verified by the orchestrator independently rather than accepted on report:
+
+| Claim | Evidence |
+|---|---|
+| All 4 tasks implemented | OPM-2.1 `55c341c`, 2.2 `0e2d1c6`, 2.3 `cb11d6f`, 2.4 `4bad38c` |
+| DUR-1 closed and **mutation-proof** | Two reviewers, two different mutations: exact read-then-write re-applied (tests fail), and `BEGIN IMMEDIATE`→`DEFERRED` at 3 sites (5 tests fail) |
+| All 11 outcome guards pinned | Per-row matrix, each with a named failing test; orchestrator hand-verified row 6 (`assert 'completed' == 'denied'`) |
+| All 4 receipt write paths authorize | Deny (not warn-and-overwrite) on workspace mismatch **and** absent operation |
+| Both unrecoverable-brick classes closed | Gap receipt refused at write time; 201st effect receipt refused at write time |
+| Final delta clean | `14ee7f6..be6ba96` reviewed for both defect classes → **no new defects**; cap proven correctly bounded by two mutations incl. the `>=`→`>` off-by-one direction |
+| Zero regressions | 4410 passing vs 4258 baseline; identical 16 failing nodes; none on the operator surface |
+| Barrier files untouched | All seven, verified against P2's own baseline `e5a2e6e` |
+| Targeted suite | 647 dots, 0 F, 0 E, 0 skips, exit 0; flake8 `E9,F63,F7,F82` exit 0 |
+
+**What is missing, precisely:** an `APPROVED` verdict on tree `be6ba96`. Karen's round-2 blocking item is
+closed (and the wave found 4 unpinned guards where Karen reported 2), but Karen has not re-verdicted on
+this tree. The security lens' final round **died twice on 529 API-overload errors** without returning a
+verdict. Round 2's last recorded machine verdict was `CHANGES_REQUESTED`; every item in it is closed, but
+"all findings closed" is not the same artifact as "gate approved" — which is exactly the distinction P1
+blurred. Next action is a re-gate on `be6ba96`, not a re-fix.
+
+### Orchestration errors I made, worth carrying forward
+
+1. **I ran two mutation-testing reviewers concurrently on the same files.** Mutation reviewers are
+   **writers**, not readers, despite a read-only *mandate*. Karen hit the security lens' foreign markers
+   (`# MU2`, `# MU4b`) mid-run, so its first batch was racy and its verdicts inflated by another agent's
+   collateral failures; it recovered by rebuilding an isolated tree via `git archive`. I had carefully
+   serialized fix-agents against reviewers and then made the identical mistake one level up.
+2. **A reviewer died mid-mutation and left a deliberately broken CAS in the working tree** — `COMMIT`
+   hoisted above the locked section and the `AND status = 'issued'` predicate stripped. Had I committed
+   in that window, `git add` would have shipped the precise defect this entire phase exists to prevent.
+   Caught by inspecting `git diff` before committing. **Fix adopted:** reviewers must work in
+   `git archive HEAD | tar -x -C <tmpdir>` and never touch the live tree; the third reviewer did, and the
+   tree stayed clean when it also died.
+3. **I compared barrier-file cleanliness against the wrong baseline** (main's `65d658d` instead of P2's
+   `e5a2e6e`), which surfaced P1's own `governance.py` deviation as if it were P2's. Caught immediately,
+   but a phase-scoped claim needs a phase-scoped base.
+
+### The three recurring lessons, each of which cost multiple rounds here
+
+- **A green suite plus a self-reported mutation table is not evidence.** Every fix wave in this phase
+  reported mutation-verified closure, and each of the first two had at least one item that did not hold.
+  Three distinct false-closure modes appeared: a *redundant sibling guard* denying at the same index for a
+  different reason; a test passing by *arithmetic accident* (`range(7,5)` is empty); and a stale
+  **`__pycache__`** returning a mutant's result for a different mutation. Only the third wave caught its
+  own trap before submitting.
+- **When a plan names a specific wrong implementation, mutate exactly that.** DUR-1's frozen warning is
+  that a *read-then-write* passes every test. The first wave mutated `BEGIN IMMEDIATE` instead — a nearby
+  proxy — and I accepted it. The real mutation showed the guarantee was undefended.
+- **A digest is hearsay.** Both gates and I repeated "`effective_sensitivity` is never read in any gate"
+  until someone grepped; it is read at four sites. I filed a related false claim
+  (`governance.preflight()` has zero call sites — it has one at `planning.py:955`) into a durable ITT
+  node, since corrected and downgraded. Grep the claim before you file it.
+
 ## Open items / follow-ups (→ ITT nodes)
 
 Filed on tree `aos-research-foundry`:
