@@ -2431,3 +2431,200 @@ single lens found more than a subset. The cheap gpt-5.6/ICA pre-gate passes caug
 orchestrator re-verification. And the validator lens — the same lens this ledger's own record shows
 approved a critical authorization-bypass bug twice in P1 — is the lens that caught P3's most serious
 defect, the `sensitivity_ceiling` no-op that the security lens's own round did not surface.
+
+## FIND-M3-V1 — validator gate on c6df04d (2026-07-31)
+
+Mode E fresh-context validation of M3 (commits `a107d84` + `c6df04d` over base `a4e320e`),
+against the exact working tree on `worktree-operator-mcp-v1`. All pytest runs executed under
+`/tmp/opm-m3-pytest.lock` via `./.venv/bin/python -m pytest`. Whole-suite regression NOT re-run
+here per orchestrator instruction (handled separately); its status per
+`m3-evidence-reconciliation.md`/`m3-delivery-notes.md` O-3 is: single-tenant baseline is
+byte-identical to the M2 O-9 set (4691/23, 13 files, none on the operator surface) — the 23-vs-16
+discrepancy in older docs was a stale label, reconciled, not a live gap.
+
+### V1-M3-1 — BLOCKING (AC compliance) — `deferred_items_spec_refs` still `[]` on the exact tree M3 claims to close
+
+- **File/line:** `docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md:46`
+- **Failure scenario:** M3's own AC list states "`deferred_items_spec_refs` is populated with
+  both shaping-spec paths" and the phase-6 progress table's OPM-6.10 exit condition repeats it
+  ("Karen approves the final tree; `deferred_items_spec_refs` populated"). On HEAD `c6df04d` the
+  field is still the literal empty list `deferred_items_spec_refs: []`, even though both files it
+  should reference exist on disk and are otherwise wired in
+  (`docs/project_plans/design-specs/operator-mcp-remote-transport-shaping.md`,
+  `docs/project_plans/design-specs/operator-mcp-live-writeback-shaping.md`). Per
+  `.claude/skills/planning/references/deferred-items-and-findings.md:150`, "Leaving
+  `deferred_items_spec_refs: []` when deferred items exist" is a named anti-pattern. This is a
+  literal, named M3 AC bullet that is false on the exact tree under review — not inferred, not a
+  judgment call.
+- **Required fix:** append both spec paths to the plan frontmatter's `deferred_items_spec_refs`
+  list. One-line YAML edit (`.claude/rules/progress-cli-only.md` does not gate plan-file
+  frontmatter, only `.claude/progress/*`); no re-test needed. Re-run the M3 AC checklist read
+  after the edit lands.
+
+### V1-M3-2 — MEDIUM — receipt schema per-property re-attack does not cover numeric `minimum` or array `maxItems` bounds
+
+- **File/line:** `tests/unit/test_operator_mcp_schemas.py:1093-1244` (the 7-column sweep);
+  `schemas/operator_mcp_receipt.schema.yaml` (6 `minimum: 0` properties across
+  `action_receipt`/`checkpoint`/`terminal_receipt`, plus `effect_receipt_refs`'s
+  `maxItems: 200`).
+- **Failure scenario:** The M3 AC bullet requires "a per-property re-attack (not a
+  golden-instance pass)". The mechanism is real and genuinely programmatic — enumerated live via
+  `_def_properties(def_name)` over `SchemaRegistry`, not hand-copied — and covers 7 attack
+  categories (missing-required, wrong-type, out-of-enum/const, additional-property injection,
+  oversize string, control-char/unsafe string, bounded-or-closed) confirmed against
+  `m3-leg-a-completion.md`'s own coverage table. But that table's columns are all string- or
+  type-shaped attacks; no test asserts that `action_index: -1`,
+  `completed_action_count: -1`/`total_action_count: -1`, `action_count_total: -1`/
+  `action_count_completed: -1`, or `effect_receipt_refs` with 201 entries is rejected.
+  `test_receipt_every_property_rejects_a_wrong_type_value` only asserts a non-integer value is
+  rejected for these fields, never a negative in-type integer or an oversized array — the
+  `minimum`/`maxItems` constraints in the schema are currently unexercised by any test. Neither
+  the TERRA nor ICA M3 pre-gate caught this — ICA's Task 3 review (`m3-pregate-ica.md:197-229`)
+  checked only the `format: date-time` exemption list, not the numeric/array bounds.
+- **Required fix:** add `test_receipt_every_bounded_number_property_rejects_a_below_minimum_value`
+  and `test_receipt_every_bounded_array_property_rejects_an_oversized_value`, parametrized over
+  `_RECEIPT_KIND_DEFS` and iterating `_def_properties(def_name)` for `minimum`/`maxItems` keys,
+  mirroring the existing `test_receipt_every_open_string_property_rejects_oversized_values` shape.
+
+### V1-M3-3 — MEDIUM — `phase-6-progress.md` understates actual M3 completion ~7x
+
+- **File/line:** `.claude/progress/research-foundry-operator-mcp/phase-6-progress.md:36-114`
+  (frontmatter: `completed_tasks: 2`, `in_progress_tasks: 7`, `progress: 20`)
+- **Failure scenario:** OPM-6.2 through OPM-6.8 (confirmation-adversarial, workspace/sensitivity,
+  lifecycle-recovery, closed-adapter, import/stage-seam, preview-only, transport/error gates —
+  i.e. AC OPM-1 through OPM-7) are all still `status: in_progress` with no `started`/`completed`/
+  `evidence` fields, despite every one of the corresponding AC evidence commands passing green in
+  this validation pass (verified directly: OPM-1 33/33, OPM-2 28/28, OPM-3 44/44, OPM-4 152/152,
+  OPM-5 11/11, OPM-6 4/4, OPM-7 37/37 — see the evidence transcript below) and each being
+  independently documented complete in `m3-leg-a-completion.md`/`m3-leg-b-completion.md`. Only
+  OPM-6.1 and OPM-6.9 carry `started`/`completed`/`evidence` — the task item 4 instruction
+  ("completed tasks have started/completed/evidence") is satisfied for those two but the other
+  six completed-in-substance tasks were never transitioned, so the progress file is not usable as
+  a truthful completion signal for this milestone without cross-referencing the worknotes.
+- **Required fix:** `python .claude/skills/artifact-tracking/scripts/update-batch.py -f
+  .claude/progress/research-foundry-operator-mcp/phase-6-progress.md --updates
+  "OPM-6.2:completed,OPM-6.3:completed,OPM-6.4:completed,OPM-6.5:completed,OPM-6.6:completed,OPM-6.7:completed,OPM-6.8:completed"`
+  with evidence citations pointing at the AC matrix rows / commits `a107d84`/`c6df04d`. OPM-6.10
+  itself should transition once this validator gate's verdict is recorded.
+
+### V1-M3-4 — LOW — M1 "closed dispatch" row's evidence wording overstates what `rg` literally returns
+
+- **File/line:** `docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md:609`
+- **Failure scenario:** The row's "Evidence of pass" column says "Zero matches in registered
+  handler call paths"; the literal command
+  (`rg -n "typer|cli_commands|subprocess|os\.system|shell=True"
+  src/research_foundry/services/operator_mcp_adapters/ src/research_foundry/operator_mcp/`)
+  returns 11 matches on the current tree, independently reproduced. All 11 are inside module
+  docstrings/comments describing what is deliberately NOT imported (confirmed via a follow-up
+  anchored `rg -n "^\s*(import|from)\s+.*(typer|cli_commands|subprocess)"` — zero hits — and a
+  `shell=True`/`os.system(` call-site search — zero real call sites). Functionally sound; already
+  flagged in substance by `m3-evidence-reconciliation.md`'s Row: M1 section. No action required
+  beyond a wording tweak ("zero live-code matches" instead of "zero matches") if the matrix is
+  touched again — not gating.
+
+### AC evidence transcript (real re-run output, this session)
+
+```
+$ ./.venv/bin/python -m pytest tests/unit/test_operator_mcp_policy.py -q -k "confirm or replay or expiry or drift" --collect-only -q
+tests/unit/test_operator_mcp_policy.py: 33
+$ ./.venv/bin/python -m pytest tests/unit/test_operator_mcp_policy.py -q -k "confirm or replay or expiry or drift"
+EXIT=0  (33 dots, [100%])
+
+$ ./.venv/bin/python -m pytest tests/integration/test_operator_mcp_workspace_isolation.py -q
+EXIT=0  (28 dots, [100%])
+
+$ ./.venv/bin/python -m pytest tests/unit/test_operator_operation_service.py -q
+EXIT=0  (44 dots, [100%])
+
+$ ./.venv/bin/python -m pytest tests/unit/test_operator_operation_service.py -q -k "retry or cancel or resume or duplicate" --collect-only -q
+tests/unit/test_operator_operation_service.py: 8
+$ ./.venv/bin/python -m pytest tests/unit/test_operator_operation_service.py -q -k "retry or cancel or resume or duplicate"
+EXIT=0  (8 dots, [100%])   # non-vacuous per M3's own matrix note (was 0/33 through two prior milestones)
+
+$ ./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_*.py -q
+EXIT=0  (152 dots, [100%])
+
+$ ./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_*.py -q -k "import or stage or prerequisite" --collect-only -q
+tests/unit/test_operator_mcp_adapter_source_ingest.py: 1
+tests/unit/test_operator_mcp_adapter_swarm_start.py: 1
+tests/unit/test_operator_mcp_adapter_verify_bundle.py: 3
+tests/unit/test_operator_mcp_adapter_writeback_preview.py: 6
+$ ./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_*.py -q -k "import or stage or prerequisite"
+EXIT=0  (11 dots, [100%])
+
+$ ./.venv/bin/python -m pytest tests/integration/test_operator_mcp_writeback_preview.py -q
+EXIT=0  (4 dots, [100%])
+
+$ ./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py tests/integration/test_operator_mcp_workspace_isolation.py -q -k "limit or error or redact or oversize or payload or workspace" --collect-only -q
+tests/integration/test_operator_mcp_server.py: 9
+tests/integration/test_operator_mcp_workspace_isolation.py: 28
+$ ./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py tests/integration/test_operator_mcp_workspace_isolation.py -q -k "limit or error or redact or oversize or payload or workspace"
+EXIT=0  (37 dots, [100%])
+
+$ ./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py -q -k "inventory or introspect or overlap" --collect-only -q
+tests/integration/test_operator_mcp_server.py: 2
+$ ./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py -q -k "inventory or introspect or overlap"
+EXIT=0  (2 dots, [100%])   # matches M2's own documented "2 passed"
+
+$ ./.venv/bin/ruff check src/research_foundry --select E9,F63,F7,F82
+All checks passed!  EXIT=0
+
+$ rg -n "typer|cli_commands|subprocess|os\.system|shell=True" src/research_foundry/services/operator_mcp_adapters/ src/research_foundry/operator_mcp/
+11 matches, all docstring/comment (see V1-M3-4)
+$ rg -n "^\s*(import|from)\s+.*(typer|cli_commands|subprocess)" src/research_foundry/services/operator_mcp_adapters/ src/research_foundry/operator_mcp/
+0 matches (real-import check)
+
+$ ./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_swarm_start.py -q -k "probe"
+EXIT=0  (1 dot, [100%])   # test_swarm_start_invoke_probes_audit_health_exactly_once_per_successful_request
+
+$ ./.venv/bin/python -m pytest tests/integration/test_operator_mcp_workspace_isolation.py -q -k "test_operation_tool_missing_required_key_denies_typed_never_internal_error" --collect-only -q
+tests/integration/test_operator_mcp_workspace_isolation.py: 17   # matches commit c6df04d's own "17-case parametrized test" claim
+```
+
+### Positive confirmations (not findings — logged so the next reviewer doesn't re-derive them)
+
+- Confirmation adversarial matrix: real, covers missing identity / RBAC denial / expiry / replay
+  / wrong-actor-same-workspace / wrong-actor-and-workspace / payload drift / target drift / policy
+  drift / sensitivity drift / atomic-consumption-rebind / atomic-consumption-binding, each with an
+  explicit zero-effect assertion (`_assert_zero_effect`/`_snapshot_stores`) —
+  `tests/unit/test_operator_mcp_policy.py:1817-1860` (parametrized) plus the individually-named
+  tests listed in `m3-leg-a-completion.md`'s coverage table. Not golden-instance.
+- Receipt schema per-property sweep is genuinely programmatic (`_def_properties` +
+  `SchemaRegistry`, not hand-copied), with a justified, narrow, documented exemption list
+  (`_FORMAT_DATE_TIME_EXEMPT_PROPERTIES` — 4 date-time fields, unenforceable because no
+  `FormatChecker` is attached anywhere in this repo's `jsonschema` usage, and independently traced
+  by ICA's pre-gate to be sourced only from internal clock helpers, never caller input). Real gap
+  is V1-M3-2 above (numeric/array bounds), not the exemption list.
+- Fixtures (`tests/fixtures/operator_mcp/workspaces.json`,
+  `tests/fixtures/operator_mcp/interrupted_operations.json`) are grep-clean: independently
+  reproduced zero hits for `miethe|10\.42\.|ghp_|sk-|/Users/` (case-insensitive) directly against
+  the fixtures directory, matching the pinned guard test
+  `test_operator_mcp_fixtures_are_grep_clean_of_owner_or_private_data`
+  (`tests/unit/test_operator_operation_service.py:2098`).
+- Docs vs. shipped tool inventory: exact match, 14/14. `operator_mcp_policy.OPERATION_KINDS` (13)
+  + `PREFLIGHT_TOOL_NAME` (`operation.preflight`) = `TOOL_NAMES` (14), and
+  `docs/user/research-foundry-operator-mcp.md`'s "Closed tool inventory" table lists the same 14
+  names verbatim (`docs/user/research-foundry-operator-mcp.md:58-78`).
+- Deferred labels present and correctly worded in both docs:
+  `docs/user/research-foundry-operator-mcp.md:28-30` and
+  `docs/dev/architecture/operator-mcp-governance.md:106-108` both state remote transport
+  `deferred`, live writeback `deferred`, owner qualification `not_executed_owner_data_absent`. The
+  two shaping specs exist on disk (only the frontmatter pointer is missing — V1-M3-1).
+- The two production fixes claimed by commit `c6df04d` are real, not self-reported: (1)
+  `server.py:490-524`'s `_required_input_payload_keys` is derived via `inspect.signature`
+  (the same mechanism/cache as `_allowed_input_payload_keys`), gates at `server.py:759-786`, and
+  is pinned by a genuinely live-derived 17-case parametrized test
+  (`tests/integration/test_operator_mcp_workspace_isolation.py:416-469`) — reproduced 17/17
+  collected and green. (2) `check_capability_and_workspace`
+  (`src/research_foundry/services/operator_mcp_policy.py:1561-1626`) is a real narrowing (only
+  `_POLICY_STAGES[:2]`, never reaching `audit_health`), and its pinning test
+  (`tests/unit/test_operator_mcp_adapter_swarm_start.py:197-274`) spies on
+  `research_foundry.services.audit_service.health_check` — the actual store-layer probe function,
+  not a mock echo — and asserts `len(calls) == 1` across a full, real `swarm_start.invoke(...)`
+  call through `base.run_pipeline`. Reproduced green.
+- Worknotes: `m3-leg-a-completion.md`, `m3-leg-b-completion.md`, `m3-evidence-reconciliation.md`,
+  `m3-pregate-terra.md`, `m3-pregate-ica.md` all exist. TERRA's 3 pre-gate findings (1 MED, 2 LOW)
+  and ICA's 1 pre-gate finding (1 MED) all have explicit dispositions — all 4 are named in commit
+  `c6df04d`'s message as fixed (single-probe ordering gate = TERRA-M3-1; same-workspace positive
+  control = TERRA-M3-2; docs qualification = TERRA-M3-3, confirmed as an orchestrator doc edit in
+  the diff; typed required-key gate = ICA-M3-1) and independently re-verified above.

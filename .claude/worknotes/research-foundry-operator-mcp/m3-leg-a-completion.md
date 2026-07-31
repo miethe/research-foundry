@@ -686,3 +686,110 @@ None. All three assigned findings, plus the fourth self-discovered defect, were 
 this Leg's file ownership (`operator_mcp_policy.py`, `swarm_start.py`, `server.py` — `base.py`
 was not touched; the TERRA-M3-1 fix did not require it). No serialization-barrier file was
 implicated.
+
+---
+
+## Validator fix V1-M3-2 (fresh-context validator re-pass, 2026-07-31)
+
+`FIND-M3-V1` (`.claude/findings/research-foundry-operator-mcp-findings.md`), finding V1-M3-2
+(MEDIUM): the per-property re-attack sweep in `tests/unit/test_operator_mcp_schemas.py`
+attacked every STRING bound (`maxLength`/`pattern`/`minLength`) but never the NUMERIC
+(`minimum`/`maximum`) or ARRAY (`maxItems`/`minItems`) bounds the same schema also declares --
+6 `minimum: 0` properties and `effect_receipt_refs`'s `maxItems: 200` were reachable with an
+in-type-but-out-of-range value and no test ever tried it. Fix scope: `tests/unit/
+test_operator_mcp_schemas.py` only, per this work order (no other file touched, no git
+commands).
+
+### What changed
+
+Added a new "bounds-attack" section, schema-driven exactly like the existing string sweep
+(iterating `_def_properties(def_name)` and reading the LIVE `minimum`/`maximum`/`maxItems`/
+`minItems`/`minLength` keywords -- never a hand-copied list of "the 6 numeric properties"):
+
+| New test | Attacks | Currently exercises |
+|---|---|---|
+| `test_receipt_every_property_with_a_minimum_rejects_a_below_minimum_value` | `minimum` | `action_index`, `next_action_index`, `completed_action_count`, `total_action_count`, `action_count_total`, `action_count_completed` (all `minimum: 0` -> attacked with `-1`) |
+| `test_receipt_every_property_with_a_maximum_rejects_an_above_maximum_value` | `maximum` | none today (forward-looking; auto-skips, activates automatically if a future property adds `maximum`) |
+| `test_receipt_every_array_property_with_max_items_rejects_an_oversized_array` | `maxItems` | `effect_receipt_refs` (`maxItems: 200` -> attacked with 201 valid-shaped hex-digest items) |
+| `test_receipt_every_array_property_with_min_items_rejects_an_undersized_array` | `minItems` | none today (forward-looking; `effect_receipt_refs` has no `minItems`, `[]` is valid) |
+| `test_receipt_every_property_with_min_length_rejects_a_below_minlength_value` | `minLength` | `workspace_id` (x3: operation_receipt/checkpoint/terminal_receipt), `action_id` (x2: action_receipt/effect_receipt), `attempt_ref`, `effect_ref` (all `minLength: 1` -> attacked with `""`) |
+| `test_receipt_every_numeric_or_array_property_is_bounded` | completeness gate | every open integer/array property across all 5 `$defs` must declare `minimum`/`maximum` or `maxItems`/`minItems`, unless in `_BOUNDS_EXEMPT_PROPERTIES` (empty today) -- the numeric/array sibling of the existing `test_receipt_every_open_string_property_is_bounded_or_closed` |
+
+Array-bound attacks need a VALID-SHAPED item to isolate the count violation from an item-shape
+violation (an oversized array of garbage items would fail for the wrong reason). Added
+`_valid_array_item(items_schema)`, deliberately NOT a fully generic value synthesizer -- it
+looks up a known-valid value by the item's own `pattern` (`_KNOWN_ARRAY_ITEM_VALUES`) and
+raises loudly (a clear `AssertionError` naming the unrecognized shape) for any future `items`
+pattern it doesn't recognize, rather than silently generating a bogus item that would make a
+future maxItems test ambiguous.
+
+Net: 141 -> 171 tests in the file (+30 = 6 new parametrized tests x 5 `_RECEIPT_KIND_DEFS`).
+
+### Mutation-verify (real transcript)
+
+Per the work order's suggested approach ("monkeypatch the validator's schema dict in a
+throwaway assert"): monkeypatched `SchemaRegistry.get` in-process to return a deep-copied,
+mutated `operator_mcp_receipt` schema, then called the collected test functions directly
+(no fixtures needed -- `def_name` is a plain string parametrize value) to observe real
+pass/fail behavior, restoring the real method afterward.
+
+**Attempt 1 -- inflate `maxItems: 200` to `1000`:**
+
+```
+--- BEFORE mutation: real schema, maxItems=200 ---
+PASSED (expected)
+--- Monkeypatching SchemaRegistry.get to relax maxItems: 200 -> 1000 ---
+UNEXPECTED PASS -- mutation-verify FAILED (test did not catch the relaxed bound)
+--- AFTER restore: real schema again ---
+PASSED (expected, restored)
+```
+
+This is EXPECTED, not a gap: the attack test reads `max_items` from the LIVE schema and
+always generates `max_items + 1` -- it is self-relative, not a hardcoded "201 items" case. Any
+finite bound value it finds, it correctly attacks one-past. Inflating the number therefore
+never breaks the test; it just makes the test attack a different, still-correct boundary.
+This is a deliberate, positive property of the schema-driven design (a numeric bound EDIT
+never silently desyncs the test from reality), not the regression class this sweep exists to
+catch.
+
+**Attempt 2 -- strip `maxItems` entirely (the real regression: the bound silently removed):**
+
+```
+=== Mutation: strip maxItems entirely from effect_receipt_refs ===
+attack test: passed vacuously (0 array-bound properties left to attack in terminal_receipt --
+  the property is skipped, not asserted-against; expected, see note below)
+completeness gate: EXPECTED FAILURE (mutation-verify PASSED):
+  terminal_receipt.effect_receipt_refs: an array property declares neither maxItems nor
+  minItems -- structurally unguarded (unbounded length)
+=== Restored: real schema again ===
+both tests pass again with the real, unmutated schema
+```
+
+This is the meaningful mutation-verify result: when a bound is silently REMOVED (the actual
+failure mode V1-M3-2 is about), the attack test alone goes quiet (it has nothing left to
+iterate for that property), but `test_receipt_every_numeric_or_array_property_is_bounded` --
+the completeness gate this work order also required -- catches it immediately and loudly.
+This is exactly why the fix ships BOTH an attack sweep and a completeness gate, mirroring the
+existing string-bound pair (`test_receipt_every_open_string_property_rejects_oversized_values`
++ `test_receipt_every_open_string_property_is_bounded_or_closed`): the attack sweep alone is
+not sufficient evidence a bound exists; the completeness gate is what actually proves it.
+
+### Re-run under the lock (real output)
+
+```
+$ while ! mkdir /tmp/opm-m3-pytest.lock 2>/dev/null; do sleep 5; done; \
+  ./.venv/bin/python -m pytest tests/unit/test_operator_mcp_schemas.py -q; \
+  rmdir /tmp/opm-m3-pytest.lock
+
+.................................................................... [ 42%]
+.................................................................... [ 84%]
+..............................................                       [100%]
+EXIT_CODE=0
+```
+
+171 collected, 171 passed, 0 failed (confirmed via `--collect-only -q` total = 171, matching
+the dot count above).
+
+### Files touched (this fix)
+
+- `/Users/miethe/dev/homelab/development/research-foundry/.claude/worktrees/operator-mcp-v1/tests/unit/test_operator_mcp_schemas.py` (bounds-attack sweep + completeness gate; no other file touched, no git commands run)

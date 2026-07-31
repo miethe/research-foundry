@@ -5,7 +5,7 @@ doc_type: progress
 prd: research-foundry-operator-mcp
 feature_slug: research-foundry-operator-mcp
 phase: 6
-status: in_progress
+status: pending
 created: '2026-07-28'
 updated: '2026-07-31'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
@@ -34,56 +34,92 @@ tasks:
   - commit: a107d84
   - test: tests/fixtures/operator_mcp/ grep-clean guard mutation-verified
 - id: OPM-6.2
-  status: in_progress
+  status: completed
   assigned_to:
   - validation-implementer
   dependencies:
   - OPM-6.1
   estimate: 0.5 pt
+  started: 2026-07-31T17:40Z
+  completed: 2026-07-31T20:40Z
+  evidence:
+  - commit: a107d84
+  - validator: FIND-M3-V1 OPM-1 row 33/33 green, zero-effect assertions structural
 - id: OPM-6.3
-  status: in_progress
+  status: completed
   assigned_to:
   - validation-implementer
   dependencies:
   - OPM-6.1
   estimate: 0.5 pt
+  started: 2026-07-31T17:40Z
+  completed: 2026-07-31T20:40Z
+  evidence:
+  - commit: a107d84
+  - validator: FIND-M3-V1 OPM-2 row 28/28 green via registered server route
 - id: OPM-6.4
-  status: in_progress
+  status: completed
   assigned_to:
   - validation-implementer
   dependencies:
   - OPM-6.1
   estimate: 0.5 pt
+  started: 2026-07-31T17:40Z
+  completed: 2026-07-31T20:40Z
+  evidence:
+  - commit: a107d84
+  - validator: FIND-M3-V1 OPM-3 row 44/44 green, H3-01..H3-10 set-equality convergence
 - id: OPM-6.5
-  status: in_progress
+  status: completed
   assigned_to:
   - validation-implementer
   - senior-code-reviewer
   dependencies:
   - OPM-6.1
   estimate: 0.5 pt
+  started: 2026-07-31T17:40Z
+  completed: 2026-07-31T20:40Z
+  evidence:
+  - commit: a107d84
+  - validator: FIND-M3-V1 OPM-4 row 152/152 green + comment-only call-path scan
 - id: OPM-6.6
-  status: in_progress
+  status: completed
   assigned_to:
   - validation-implementer
   dependencies:
   - OPM-6.1
   estimate: 0.25 pt
+  started: 2026-07-31T17:40Z
+  completed: 2026-07-31T20:40Z
+  evidence:
+  - commit: a107d84
+  - validator: FIND-M3-V1 OPM-5 row 11/11 green
 - id: OPM-6.7
-  status: in_progress
+  status: completed
   assigned_to:
   - validation-implementer
   - senior-code-reviewer
   dependencies:
   - OPM-6.1
   estimate: 0.25 pt
+  started: 2026-07-31T17:40Z
+  completed: 2026-07-31T20:40Z
+  evidence:
+  - commit: a107d84
+  - validator: FIND-M3-V1 OPM-6 row 4/4 green, zero-call spies
 - id: OPM-6.8
-  status: in_progress
+  status: completed
   assigned_to:
   - validation-implementer
   dependencies:
   - OPM-6.1
   estimate: 0.25 pt
+  started: 2026-07-31T17:40Z
+  completed: 2026-07-31T20:40Z
+  evidence:
+  - commit: c6df04d
+  - validator: FIND-M3-V1 OPM-7 row 37/37 green (widened command) + 17-case required-key
+      gate
 - id: OPM-6.9
   status: completed
   assigned_to:
@@ -128,10 +164,10 @@ parallelization:
   batch_4:
   - OPM-6.10
 total_tasks: 10
-completed_tasks: 2
-in_progress_tasks: 7
+completed_tasks: 9
+in_progress_tasks: 0
 blocked_tasks: 0
-progress: 20
+progress: 90
 ---
 
 # Phase 6 Progress — Hardening, Documentation, and Exact-Tree Review

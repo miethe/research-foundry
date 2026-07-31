@@ -1242,6 +1242,208 @@ def test_receipt_every_open_string_property_is_bounded_or_closed(def_name: str) 
         )
 
 
+# ---------------------------------------------------------------------------
+# Validator fix V1-M3-2 (research-foundry-operator-mcp-v1 M3 pre-gate,
+# `.claude/findings/research-foundry-operator-mcp-findings.md` FIND-M3-V1):
+# the sweep above attacks every STRING bound (`maxLength`/`pattern`) but
+# never the NUMERIC (`minimum`/`maximum`) or ARRAY (`maxItems`/`minItems`)
+# bounds this same schema also declares -- `action_index`/
+# `completed_action_count`/`total_action_count`/`next_action_index`/
+# `action_count_total`/`action_count_completed` (all `minimum: 0`) and
+# `effect_receipt_refs` (`maxItems: 200`) were reachable with an
+# in-type-but-out-of-range value (`-1`, or 201 items) and no test ever
+# tried it -- `test_receipt_every_property_rejects_a_wrong_type_value`
+# only proves a NON-integer/NON-array value is rejected, which says
+# nothing about the `minimum`/`maxItems` keywords themselves. Same
+# enumerate-from-the-live-schema discipline as every sweep above: iterate
+# `_def_properties(def_name)` and look at the ACTUAL declared bound
+# keywords, never a hand-copied list of "the 6 numeric properties".
+# ---------------------------------------------------------------------------
+
+
+def _is_bounded_numeric_property(subschema: dict[str, Any]) -> bool:
+    """`True` for a property that is a genuinely open (non-const, non-enum,
+    non-`$ref`) integer -- the numeric sibling of `_is_open_string_property`."""
+
+    if "const" in subschema or "enum" in subschema or "$ref" in subschema:
+        return False
+    declared = _declared_json_types(subschema)
+    return "integer" in declared
+
+
+def _is_array_property(subschema: dict[str, Any]) -> bool:
+    if "const" in subschema or "enum" in subschema or "$ref" in subschema:
+        return False
+    declared = _declared_json_types(subschema)
+    return "array" in declared
+
+
+#: Best-effort valid-item generators keyed by the exact `items` sub-schema
+#: pattern this schema currently declares -- deliberately NOT a fully
+#: generic value synthesizer: producing a value that satisfies an
+#: ARBITRARY future `items` pattern without understanding its semantics is
+#: not reliably possible, so a future array property whose `items` shape
+#: is not registered here fails LOUDLY (a clear `AssertionError` naming
+#: the unknown shape), prompting a deliberate extension, rather than
+#: silently generating a bogus item that makes the maxItems test
+#: ambiguous between "rejected for count" and "rejected for item shape".
+_KNOWN_ARRAY_ITEM_VALUES: dict[str, Any] = {
+    "^[a-f0-9]{64}$": _SHA,
+}
+
+
+def _valid_array_item(items_schema: dict[str, Any]) -> Any:
+    pattern = items_schema.get("pattern")
+    if pattern in _KNOWN_ARRAY_ITEM_VALUES:
+        return _KNOWN_ARRAY_ITEM_VALUES[pattern]
+    raise AssertionError(
+        f"_valid_array_item: no known valid-item generator for items schema {items_schema!r} -- "
+        "extend _KNOWN_ARRAY_ITEM_VALUES so the maxItems/minItems bounds sweep can isolate the "
+        "count violation from an item-shape violation"
+    )
+
+
+@pytest.mark.parametrize("def_name", _RECEIPT_KIND_DEFS)
+def test_receipt_every_property_with_a_minimum_rejects_a_below_minimum_value(def_name: str) -> None:
+    """V1-M3-2 fix: for every numeric property that declares `minimum`, a
+    value one below that bound must invalidate (e.g. `action_index: -1`,
+    `completed_action_count: -1`)."""
+
+    for prop, subschema in _def_properties(def_name).items():
+        if not _is_bounded_numeric_property(subschema):
+            continue
+        minimum = subschema.get("minimum")
+        if minimum is None:
+            continue
+        instance = _GOLDEN_BUILDERS[def_name]()
+        instance[prop] = minimum - 1
+        assert _errors("operator_mcp_receipt", instance), (
+            f"{def_name}.{prop}: a value one below minimum={minimum} ({minimum - 1}) was accepted"
+        )
+
+
+@pytest.mark.parametrize("def_name", _RECEIPT_KIND_DEFS)
+def test_receipt_every_property_with_a_maximum_rejects_an_above_maximum_value(def_name: str) -> None:
+    """V1-M3-2 fix, forward-looking: no property in this schema currently
+    declares `maximum` (confirmed by `test_receipt_every_numeric_or_array_property_is_bounded`
+    below, which requires `minimum` OR `maximum` on every numeric property
+    -- today every one uses `minimum`), but this sweep is schema-driven,
+    not a hand-typed case list, so a future `maximum`-bounded property is
+    attacked automatically without anyone remembering to add a test."""
+
+    for prop, subschema in _def_properties(def_name).items():
+        if not _is_bounded_numeric_property(subschema):
+            continue
+        maximum = subschema.get("maximum")
+        if maximum is None:
+            continue
+        instance = _GOLDEN_BUILDERS[def_name]()
+        instance[prop] = maximum + 1
+        assert _errors("operator_mcp_receipt", instance), (
+            f"{def_name}.{prop}: a value one above maximum={maximum} ({maximum + 1}) was accepted"
+        )
+
+
+@pytest.mark.parametrize("def_name", _RECEIPT_KIND_DEFS)
+def test_receipt_every_array_property_with_max_items_rejects_an_oversized_array(def_name: str) -> None:
+    """V1-M3-2 fix: for every array property that declares `maxItems`, an
+    array of `maxItems + 1` VALID-SHAPED items (isolating the count
+    violation from any item-shape violation) must invalidate -- e.g.
+    `effect_receipt_refs` with 201 well-formed digest entries."""
+
+    for prop, subschema in _def_properties(def_name).items():
+        if not _is_array_property(subschema):
+            continue
+        max_items = subschema.get("maxItems")
+        if max_items is None:
+            continue
+        items_schema = subschema.get("items", {})
+        oversized = [_valid_array_item(items_schema) for _ in range(max_items + 1)]
+        instance = _GOLDEN_BUILDERS[def_name]()
+        instance[prop] = oversized
+        assert _errors("operator_mcp_receipt", instance), (
+            f"{def_name}.{prop}: an array of maxItems+1={max_items + 1} valid-shaped items was accepted"
+        )
+
+
+@pytest.mark.parametrize("def_name", _RECEIPT_KIND_DEFS)
+def test_receipt_every_array_property_with_min_items_rejects_an_undersized_array(def_name: str) -> None:
+    """V1-M3-2 fix, forward-looking: no array property in this schema
+    currently declares `minItems` (`effect_receipt_refs` is optional-empty
+    -- `[]` is valid, per its own golden default) -- schema-driven, so a
+    future `minItems`-bounded array property is attacked automatically."""
+
+    for prop, subschema in _def_properties(def_name).items():
+        if not _is_array_property(subschema):
+            continue
+        min_items = subschema.get("minItems")
+        if min_items is None or min_items == 0:
+            continue
+        items_schema = subschema.get("items", {})
+        undersized = [_valid_array_item(items_schema) for _ in range(min_items - 1)]
+        instance = _GOLDEN_BUILDERS[def_name]()
+        instance[prop] = undersized
+        assert _errors("operator_mcp_receipt", instance), (
+            f"{def_name}.{prop}: an array of minItems-1={min_items - 1} items was accepted"
+        )
+
+
+@pytest.mark.parametrize("def_name", _RECEIPT_KIND_DEFS)
+def test_receipt_every_property_with_min_length_rejects_a_below_minlength_value(def_name: str) -> None:
+    """V1-M3-2 fix: for every open string property that declares
+    `minLength` (e.g. `workspace_id`/`action_id`/`attempt_ref`/`effect_ref`,
+    all `minLength: 1`), a string one character SHORTER than that bound
+    must invalidate -- `minLength: 1` means the empty string `""`."""
+
+    for prop, subschema in _def_properties(def_name).items():
+        if not _is_open_string_property(subschema):
+            continue
+        min_length = subschema.get("minLength")
+        if min_length is None or min_length == 0:
+            continue
+        instance = _GOLDEN_BUILDERS[def_name]()
+        instance[prop] = "x" * (min_length - 1)
+        assert _errors("operator_mcp_receipt", instance), (
+            f"{def_name}.{prop}: a string one character under minLength={min_length} was accepted"
+        )
+
+
+#: Documented exemption list for `test_receipt_every_numeric_or_array_property_is_bounded`
+#: -- empty today (every numeric/array property in this schema already
+#: declares a bound). A future property judged intentionally unbounded
+#: (with a written justification, mirroring `_FORMAT_DATE_TIME_EXEMPT_PROPERTIES`'s
+#: own convention) is added here by property name, never by silently
+#: weakening the gate itself.
+_BOUNDS_EXEMPT_PROPERTIES: frozenset[str] = frozenset()
+
+
+@pytest.mark.parametrize("def_name", _RECEIPT_KIND_DEFS)
+def test_receipt_every_numeric_or_array_property_is_bounded(def_name: str) -> None:
+    """V1-M3-2 completeness gate -- the numeric/array sibling of
+    `test_receipt_every_open_string_property_is_bounded_or_closed`. Every
+    open (non-const/enum/$ref) integer property must declare `minimum` OR
+    `maximum`; every array property must declare `maxItems` OR `minItems`
+    -- otherwise the property is structurally unguarded (unbounded
+    magnitude, or an unbounded array a caller could pad indefinitely).
+    `_BOUNDS_EXEMPT_PROPERTIES` is the documented exemption list (empty
+    today) -- everything else must pass this gate now, and a FUTURE
+    numeric/array property added without a bound fails here immediately."""
+
+    for prop, subschema in _def_properties(def_name).items():
+        if prop in _BOUNDS_EXEMPT_PROPERTIES:
+            continue
+        if _is_bounded_numeric_property(subschema):
+            assert "minimum" in subschema or "maximum" in subschema, (
+                f"{def_name}.{prop}: an open integer property declares neither minimum nor "
+                "maximum -- structurally unguarded (unbounded magnitude)"
+            )
+        elif _is_array_property(subschema):
+            assert "maxItems" in subschema or "minItems" in subschema, (
+                f"{def_name}.{prop}: an array property declares neither maxItems nor minItems "
+                "-- structurally unguarded (unbounded length)"
+            )
+
+
 def test_receipt_schema_defs_are_exactly_the_known_set() -> None:
     """D3 completeness gate at the `$def` granularity: a future `$def`
     ADDED to `operator_mcp_receipt.schema.yaml` (a sixth receipt kind, or a

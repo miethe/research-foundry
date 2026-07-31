@@ -102,8 +102,14 @@ Running capture for the M3 delivery report + AAR. Continues the M2 pattern (`m2-
   in `operator-mcp-governance.md` — a 4-line qualification edit; dispatching a doc leg for it
   would have cost more than the edit. Conservative-choice note, not a scope change.
 
-## Follow-ups (ITT candidates)
+## Follow-ups (ITT nodes, created 2026-07-31)
 
-- Model-registry ICA sonnet id bump (see O-1).
-- Plan AC-matrix row repairs (vacuous/incomplete filters, lint command) — done in-branch this
-  milestone; upstream lesson for planning skill: collect-only audit at authoring time.
+- `node_01KYWYJR5PNBZYVDETQ89RWJZ8` (RF tree, child of C5) — run_plan `intent_id` has no
+  workspace-scoping check (pre-existing; found by the F6 enumeration).
+- `node_01KYWYK5V3MF12G9W395ERMGV2` (RF tree, child of C5) — dedicated malformed-input error
+  reason code when the error contract next reopens (currently reuses `payload_too_large`).
+- `node_01KYWYK6VDW5Z8FYP6GZ7CM9ER` (agentic_meta_dev tree) — model-registry ICA sonnet id bump
+  (see O-1).
+- `node_01KYWYK82E3RVF0AXJCH5A1PG6` (agentic_meta_dev tree) — planning-skill lesson: collect-only
+  audit of `-k` filters + executable-command check at plan authoring time (see O-2).
+- (Pre-existing from M2, unchanged): MCP SDK 2.0 migration for both servers.

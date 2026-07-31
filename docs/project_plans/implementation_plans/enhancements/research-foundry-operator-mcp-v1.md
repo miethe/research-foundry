@@ -43,7 +43,9 @@ references:
     - schemas/evidence_bundle.schema.yaml
 spike_ref: null
 adr_refs: []
-deferred_items_spec_refs: []
+deferred_items_spec_refs:
+  - docs/project_plans/design-specs/operator-mcp-remote-transport-shaping.md
+  - docs/project_plans/design-specs/operator-mcp-live-writeback-shaping.md
 findings_doc_ref: .claude/findings/research-foundry-operator-mcp-findings.md
 charter_ref: null
 changelog_ref: null
@@ -606,7 +608,7 @@ the repo root with the project venv (`./.venv/bin/python` — the pyenv shim wil
 
 | AC | Command | Evidence of pass |
 |---|---|---|
-| M1 — closed dispatch, no CLI reach | `rg -n "typer\|cli_commands\|subprocess\|os\.system\|shell=True" src/research_foundry/services/operator_mcp_adapters/` — extend with `src/research_foundry/operator_mcp/` once M2 creates it. Verify the paths exist first: `rg` on a missing path exits 0 with zero matches, which reads as a pass. | Zero matches in registered handler call paths, on paths confirmed to exist |
+| M1 — closed dispatch, no CLI reach | `rg -n "typer\|cli_commands\|subprocess\|os\.system\|shell=True" src/research_foundry/services/operator_mcp_adapters/` — extend with `src/research_foundry/operator_mcp/` once M2 creates it. Verify the paths exist first: `rg` on a missing path exits 0 with zero matches, which reads as a pass. | Zero matches in **live code** on paths confirmed to exist — comment/docstring hits are expected (11 as of M3) and must each be classified as non-code (see `m3-evidence-reconciliation.md`); an anchored real-import search returns 0 |
 | M1 — adapter/service parity | `./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_*.py -q` | Parity assertions compare canonical refs from direct-service vs adapter and match |
 | M1 — CLI unchanged after extraction | `./.venv/bin/python -m pytest tests/test_search_router_router.py tests/integration/test_run_launch_reuse.py -q` | Pre-existing CLI/run behavior green, no new failures vs the 4258-node baseline |
 | M1 — retry/cancel idempotency | `./.venv/bin/python -m pytest tests/unit/test_operator_operation_service.py -q -k "retry or cancel or resume or duplicate"` | Exact retry yields prior state; no duplicate card/claim/receipt/candidate. **This row was VACUOUS (0/33 selected) until M3**: the file had no test containing any filter term through two closed milestones (M3 Leg C reconciliation; the VAL-1 class hitting the plan itself). M3's H3 matrix (`test_h3_*` retry/cancel/resume/duplicate names) makes it select a real set — verify ≥8 selected via `--collect-only -q` before trusting a green run. |
