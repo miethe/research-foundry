@@ -33,6 +33,8 @@ tasks:
   evidence:
   - commit: a107d84
   - test: tests/fixtures/operator_mcp/ grep-clean guard mutation-verified
+  verified_by:
+  - OPM-6.10
 - id: OPM-6.2
   status: completed
   assigned_to:
@@ -45,6 +47,8 @@ tasks:
   evidence:
   - commit: a107d84
   - validator: FIND-M3-V1 OPM-1 row 33/33 green, zero-effect assertions structural
+  verified_by:
+  - OPM-6.10
 - id: OPM-6.3
   status: completed
   assigned_to:
@@ -57,6 +61,8 @@ tasks:
   evidence:
   - commit: a107d84
   - validator: FIND-M3-V1 OPM-2 row 28/28 green via registered server route
+  verified_by:
+  - OPM-6.10
 - id: OPM-6.4
   status: completed
   assigned_to:
@@ -69,6 +75,8 @@ tasks:
   evidence:
   - commit: a107d84
   - validator: FIND-M3-V1 OPM-3 row 44/44 green, H3-01..H3-10 set-equality convergence
+  verified_by:
+  - OPM-6.10
 - id: OPM-6.5
   status: completed
   assigned_to:
@@ -82,6 +90,8 @@ tasks:
   evidence:
   - commit: a107d84
   - validator: FIND-M3-V1 OPM-4 row 152/152 green + comment-only call-path scan
+  verified_by:
+  - OPM-6.10
 - id: OPM-6.6
   status: completed
   assigned_to:
@@ -94,6 +104,8 @@ tasks:
   evidence:
   - commit: a107d84
   - validator: FIND-M3-V1 OPM-5 row 11/11 green
+  verified_by:
+  - OPM-6.10
 - id: OPM-6.7
   status: completed
   assigned_to:
@@ -107,6 +119,8 @@ tasks:
   evidence:
   - commit: a107d84
   - validator: FIND-M3-V1 OPM-6 row 4/4 green, zero-call spies
+  verified_by:
+  - OPM-6.10
 - id: OPM-6.8
   status: completed
   assigned_to:
@@ -120,6 +134,8 @@ tasks:
   - commit: c6df04d
   - validator: FIND-M3-V1 OPM-7 row 37/37 green (widened command) + 17-case required-key
       gate
+  verified_by:
+  - OPM-6.10
 - id: OPM-6.9
   status: completed
   assigned_to:
@@ -140,6 +156,8 @@ tasks:
   - commit: a107d84
   - verify: 14/14 tool names match server registry; deferred + not_executed_owner_data_absent
       labels present
+  verified_by:
+  - OPM-6.10
 - id: OPM-6.10
   status: pending
   assigned_to:

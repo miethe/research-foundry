@@ -273,7 +273,23 @@ The critical path is serial: each stage establishes the trust contract the next 
 artifacts for P1-P2 are under `.claude/progress/research-foundry-operator-mcp/`; M1-M3 progress is
 initialized by the artifact tracker at dispatch.
 
-## Execution Status (as of 2026-07-30)
+## Execution Status (as of 2026-07-31, M3 close)
+
+- **P2 re-gate: CLOSED 2026-07-30** — both gates genuinely APPROVED (security on `be6ba96`, Karen
+  on `ad7d461`). **M1: CLOSED 2026-07-31**, validator APPROVED first round (`d447af9`/`053a2c8`,
+  12 adapters, 109 tests). **M2: CLOSED 2026-07-31** (`a4e320e`, pushed, PR #7; whole-tree
+  failure set byte-identical to baseline; stdio server, closed 14-tool registry, preview seam).
+- **M3: executed 2026-07-31** on this branch (commits `a107d84` wave 1 + fix, `c6df04d` pre-gate
+  fixes, `569879c` validator fixes). Pre-gate 0 BLOCKING/0 HIGH; validator APPROVED on `569879c`
+  (FIND-M3-V1 all resolved, FIND-M3-V2). Four real product defects found and mutation-verified
+  fixed during M3: `job.status` route TypeError-masking, `swarm_start` existence oracle (F6
+  class), required-key TypeError→internal_error masking (13-kind class fix), and `swarm.start`'s
+  preflight→execute route wholly broken (server-resolved governance fields unreachable). Karen
+  final-exact-tree verdict is the remaining gate; evidence artifact:
+  `.claude/worknotes/research-foundry-operator-mcp/m3-exact-tree-evidence.md`.
+- **Still not merged to main** — merge is a human decision on PR #7 after Karen's verdict.
+
+### Superseded status (as of 2026-07-30, retained for context)
 
 - **Branch/worktree**: `worktree-operator-mcp-v1`, worktree `.claude/worktrees/operator-mcp-v1`, based on
   main `65d658d`, draft PR [#7](https://github.com/miethe/research-foundry/pull/7).

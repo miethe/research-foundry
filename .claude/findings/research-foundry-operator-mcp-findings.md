@@ -2628,3 +2628,109 @@ tests/integration/test_operator_mcp_workspace_isolation.py: 17   # matches commi
   `c6df04d`'s message as fixed (single-probe ordering gate = TERRA-M3-1; same-workspace positive
   control = TERRA-M3-2; docs qualification = TERRA-M3-3, confirmed as an orchestrator doc edit in
   the diff; typed required-key gate = ICA-M3-1) and independently re-verified above.
+
+## FIND-M3-V2 — validator re-pass on 569879c (2026-07-31)
+
+Mode E fresh-context re-verdict of the M3 fix cycle (commit `569879c` over `c6df04d`, fixing
+FIND-M3-V1 findings V1-M3-1..4). Diff scope: `git diff c6df04d..569879c` — 6 files (findings doc,
+phase-6-progress.md, m3-delivery-notes.md, new m3-leg-a-completion.md, plan file, schema test
+file). All pytest runs executed under `/tmp/opm-m3-pytest.lock` via `./.venv/bin/python -m
+pytest`. Scoped files only; whole-suite regression not re-run here (out of scope for this
+delta-context re-pass).
+
+### V1-M3-1 — RESOLVED
+
+`docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md:46-48`
+now lists both shaping-spec paths under `deferred_items_spec_refs`. Both resolve on disk:
+`docs/project_plans/design-specs/operator-mcp-remote-transport-shaping.md` (2.5k) and
+`docs/project_plans/design-specs/operator-mcp-live-writeback-shaping.md` (2.3k), confirmed via
+`ls -la`. Closed as claimed.
+
+### V1-M3-2 — RESOLVED
+
+`tests/unit/test_operator_mcp_schemas.py:1246-1445` adds a numeric/array/minLength bounds sweep.
+Verified the mechanism is genuinely schema-derived, not hardcoded: `_def_properties(def_name)`
+(line 1029) reads live from `SchemaRegistry().get("operator_mcp_receipt")["$defs"][def_name]
+["properties"]` — no hand-copied per-property list anywhere in the new code. New tests:
+`test_receipt_every_property_with_a_minimum_rejects_a_below_minimum_value`,
+`..._with_a_maximum_rejects_an_above_maximum_value` (forward-looking, no `maximum` exists in the
+schema today), `test_receipt_every_array_property_with_max_items_rejects_an_oversized_array`,
+`..._with_min_items_rejects_an_undersized_array` (forward-looking, no `minItems` exists today),
+`test_receipt_every_property_with_min_length_rejects_a_below_minlength_value`, and the
+completeness gate `test_receipt_every_numeric_or_array_property_is_bounded` (asserts every open
+integer/array property declares a bound, `_BOUNDS_EXEMPT_PROPERTIES` empty today). Confirmed the
+completeness gate is non-vacuous: `action_receipt.action_index`,
+`checkpoint.{completed_action_count,total_action_count}`,
+`terminal_receipt.{action_count_total,action_count_completed}` (all `minimum: 0`) and
+`terminal_receipt.effect_receipt_refs` (`maxItems: 200`) all exist and are exercised. Ran
+`tests/unit/test_operator_mcp_schemas.py` under the lock: **171 passed, 0 failed, exit 0**
+(matches the ~171 expectation). Standard met — programmatic enumeration, not a
+hardcoded-per-property implementation.
+
+### V1-M3-3 — RESOLVED (with one orthogonal new gap — see NEW-M3-V2-1)
+
+`.claude/progress/research-foundry-operator-mcp/phase-6-progress.md`: OPM-6.2 through OPM-6.8 are
+now `status: completed` with `started`/`completed`/`evidence` populated (verified via diff — each
+carries a `commit` and a `validator: FIND-M3-V1 ...` evidence line). Frontmatter counters updated
+consistently (`completed_tasks: 9`, `in_progress_tasks: 0`, `progress: 90`). OPM-6.10 remains
+`status: pending` as expected — it is the final-gate task itself, not part of this fix's scope.
+
+Ran `python .claude/skills/artifact-tracking/scripts/validate-phase-completion.py -f
+.claude/progress/research-foundry-operator-mcp/phase-6-progress.md`:
+
+```
+Phase status: pending
+Completed tasks checked: 9
+Violations: 9
+✗ Gate FAILED — completed tasks missing required fields:
+  OPM-6.1 .. OPM-6.9  (all 9)   Missing fields: verified_by
+EXIT=1
+```
+
+The gate FAILS. Diagnosed the cause: `REQUIRED_COMPLETION_FIELDS = ["started", "completed",
+"verified_by", "evidence"]` in the validator script requires `verified_by` on every completed
+task — a field the M3-V1 finding's own required-fix text never mentioned (it only named
+`started`/`completed`/`evidence`). Reproduced the same script against the pre-fix tree
+(`git show c6df04d:.../phase-6-progress.md`): OPM-6.1 and OPM-6.9 (the two tasks that were already
+`completed` before this fix cycle) **already failed this same gate for the same reason** on
+`c6df04d`. This is a pre-existing gap, not a regression introduced by 569879c — the fix cycle
+correctly mirrored the pattern of the two already-completed tasks; that pattern itself was already
+short one required field. See NEW-M3-V2-1.
+
+### V1-M3-4 — RESOLVED
+
+`docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md:611`
+now reads "Zero matches in **live code** on paths confirmed to exist — comment/docstring hits are
+expected (11 as of M3) and must each be classified as non-code (see
+`m3-evidence-reconciliation.md`); an anchored real-import search returns 0" — no longer claims
+literal zero matches. Closed as claimed.
+
+### NEW-M3-V2-1 — MEDIUM — `phase-6-progress.md` still fails the canonical completion gate (`verified_by` missing on all 9 completed tasks)
+
+- **File/line:** `.claude/progress/research-foundry-operator-mcp/phase-6-progress.md` (OPM-6.1
+  through OPM-6.9); gate logic at
+  `.claude/skills/artifact-tracking/scripts/validate-phase-completion.py:24`.
+- **Failure scenario:** `validate-phase-completion.py` requires `started`, `completed`,
+  `verified_by`, and `evidence` on every completed task. None of the 9 completed OPM-6.x tasks
+  carry `verified_by` (only `started`/`completed`/`evidence`, which is what V1-M3-3 asked for and
+  got). This is pre-existing on OPM-6.1/OPM-6.9 (confirmed failing identically on `c6df04d`, before
+  this fix cycle touched the file) — not something 569879c introduced or regressed. But it means
+  the progress file still cannot pass the project's own mechanical completion gate, and OPM-6.10's
+  exit condition ("Karen approves the final tree") sits on top of a file that currently gates
+  RED. Not blocking this V1-M3-1..4 re-verdict (out of that delta's scope), but should close before
+  OPM-6.10 itself is marked complete.
+- **Suggested fix:** `update-status.py --verified-by <this-gate's-identity-or-commit-ref>` (or
+  equivalent) for OPM-6.1 through OPM-6.9, or a policy decision that `verified_by` is populated in
+  one batch alongside OPM-6.10's own close-out rather than per-task.
+
+### Spot-checks (fix cycle broke nothing)
+
+```
+$ ./.venv/bin/python -m pytest tests/unit/test_operator_mcp_policy.py -q -k "confirm or replay or expiry or drift"
+EXIT=0  (33 dots, [100%])   — OPM-1 row, matches FIND-M3-V1's transcript
+
+$ ./.venv/bin/python -m pytest tests/integration/test_operator_mcp_workspace_isolation.py -q -k "test_operation_tool_missing_required_key_denies_typed_never_internal_error"
+EXIT=0  (17 dots, [100%])   — matches commit c6df04d's own "17-case parametrized test" claim
+```
+
+Both green, counts unchanged from the prior pass. No regression from the fix cycle.
