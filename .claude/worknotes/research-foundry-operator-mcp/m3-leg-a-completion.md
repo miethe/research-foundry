@@ -423,3 +423,266 @@ visibility only, not as a blocking finding.
 - `/Users/miethe/dev/homelab/development/research-foundry/.claude/worktrees/operator-mcp-v1/src/research_foundry/services/operator_mcp_adapters/swarm_start.py` (defect fix)
 - `/Users/miethe/dev/homelab/development/research-foundry/.claude/worktrees/operator-mcp-v1/tests/unit/test_operator_mcp_adapter_swarm_start.py` (inverted pinned-wrong-behavior test; extended one-denial-shape comparison)
 - `/Users/miethe/dev/homelab/development/research-foundry/.claude/worktrees/operator-mcp-v1/tests/integration/test_operator_mcp_workspace_isolation.py` (xfail markers removed; docstrings updated)
+
+---
+
+## Pre-gate fix cycle (orchestrator work order, 2026-07-31)
+
+Two review lenses (TERRA, ICA) examined the M3 delta at commit `a107d84`: 0 BLOCKING / 0 HIGH
+overall, 2 MED + 1 LOW landing in this Leg's files
+(`.claude/worknotes/research-foundry-operator-mcp/m3-pregate-terra.md`,
+`.claude/worknotes/research-foundry-operator-mcp/m3-pregate-ica.md`). All three addressed below,
+plus a **fourth, previously-undiscovered defect** found while implementing TERRA-M3-2's own
+requested test.
+
+### TERRA-M3-1 (MED) — doubled mutating audit-health probe
+
+**Finding:** the F6 fix's ordering gate in `swarm_start.py` called the FULL `policy.
+evaluate_policy` (all six stages, including `_check_audit_health`'s live, mutating
+write-then-read-then-delete SQLite probe) as a pre-check, ahead of the budget/timeout/
+governance_profile precondition. A successful (or late-denied) request then proceeded into
+`base.run_pipeline`, whose own `authorize_operation` call runs the SAME full stack a SECOND
+time for the real accept/consume decision — doubling the probe's write load and opening an
+availability-failure window between the two probes (a transient lock/audit-store failure
+landing between them could turn an otherwise-authorized request into `audit_unhealthy`).
+
+**Fix (smallest structural fix — no `base.py` changes needed):** added
+`operator_mcp_policy.check_capability_and_workspace(ctx, *, paths=None) -> PolicyDecision`, a
+new, narrow, non-mutating ordering gate that runs ONLY the first two of the six fixed stages
+(`capability`, `rbac`) via `_POLICY_STAGES[:2]` — never `audit_health`/`guard`/`preflight`/
+`confirmation`. This is sufficient for the F6 convergence property, which depends only on
+`rbac`'s H3 cross-workspace comparison. `swarm_start.py`'s `invoke` now calls this instead of
+the full `evaluate_policy`; the real, full six-stage authorization still runs exactly once,
+inside `base.run_pipeline`, unchanged. Explicitly documented as **not authorization** — a
+caller must never treat its `allowed=True` as sufficient to execute any effect.
+
+**Mutation-verify (a) — probe count is 1 per successful request.** New test
+`test_swarm_start_invoke_probes_audit_health_exactly_once_per_successful_request` (counting
+spy around `audit_service.health_check`, real preflight-shaped mint + durable
+`record_confirmation` + `invoke` with a real confirmation). Reverted the ordering-gate call
+back to `policy.evaluate_policy` (the pre-this-fix, post-F6-fix shape) and re-ran under the
+lock:
+
+```
+$ ./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_swarm_start.py -q -k audit_health
+FAILED test_swarm_start_invoke_probes_audit_health_exactly_once_per_successful_request
+  - AssertionError: expected the mutating audit-health probe exactly ONCE per successful
+    request, observed 2 -- TERRA-M3-1 regression
+assert 2 == 1
+```
+
+Restored the fix, re-ran: `2 passed` (both `..._exactly_once_per_successful_request` and the
+companion `test_swarm_start_ordering_gate_never_reaches_audit_health_on_its_own`, which proves
+the narrowed gate costs ZERO probes for a missing-run denial that never reaches
+`base.run_pipeline` at all).
+
+**Mutation-verify (b) — F6 convergence still holds, and still fails if reverted to the
+pre-M3 shape.** Reverted `swarm_start.py` ALL THE WAY to the original pre-M3 shape (the
+budget/timeout/profile check moved back to BEFORE `ctx` construction, the very first defect
+this whole workstream started from) and re-ran the full F6-relevant set under the lock:
+
+```
+$ ./.venv/bin/python -m pytest \
+    tests/integration/test_operator_mcp_workspace_isolation.py -k swarm_start \
+    tests/unit/test_operator_mcp_adapter_swarm_start.py -q
+FAILED test_operator_mcp_workspace_isolation.py::test_swarm_start_wrong_workspace_is_indistinguishable_from_missing[B-against-A]
+FAILED test_operator_mcp_workspace_isolation.py::test_swarm_start_wrong_workspace_is_indistinguishable_from_missing[A-against-B]
+FAILED test_operator_mcp_adapter_swarm_start.py::test_swarm_start_ordering_gate_never_reaches_audit_health_on_its_own
+FAILED test_operator_mcp_adapter_swarm_start.py::test_missing_run_denies_with_not_found_never_preflight_failed
+FAILED test_operator_mcp_adapter_swarm_start.py::test_invoke_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing_run
+5 failed
+```
+
+All five correctly regress to `preflight_failed` (or the reason-code mismatch on it) once
+reverted. Restored the fix, re-ran: full green, byte-identical to the pre-mutation file
+(`diff` confirmed zero delta between the restored file and the fixed baseline).
+
+### ICA-M3-1 (MED) — required-field omission masks as `internal_error` for 8/13 kinds
+
+**Finding:** a direct operation-tool call (bypassing `operation.preflight`) that omits a
+kind-specific required `input_payload` key raises a raw `TypeError` inside
+`adapter.invoke(**invoke_kwargs)`, caught by the D7 `except Exception` boundary and
+misreported as a generic `internal_error` (`retryable=True`) — the exact class this M3 delta's
+own `job.status` fix (`confirmation_record`/`presented_token`) closed for exactly one
+(kind, parameter) pair, unfixed for the other 8/13 kinds' own required parameters. Not an
+existence leak (confirmed identical for foreign vs. missing on both sides of the bug), but a
+reliability/UX defect: `retryable: true` on what is actually a permanent caller-input error,
+and it bypasses the capability-stage schema-shaped denial a caller would reasonably expect.
+
+**Fix — the CLASS, at the shared dispatch layer (this is the third instance of this seam's
+sibling-parameter defect class; fixed generically, not per-kind):** added
+`server.py::_required_input_payload_keys(kind)` — the subset of `_allowed_input_payload_keys(kind)`
+that `kind`'s REAL `invoke*` function has no Python default for, derived via the SAME
+`inspect.signature` mechanism (and cache) `_allowed_input_payload_keys` already uses, so a
+future adapter parameter addition/removal is reflected automatically. `_operation_tool` now
+checks `_required_input_payload_keys(kind) - set(payload)` immediately after the existing
+rejected-keys check and denies `payload_too_large` (reused, not invented — the SAME code the
+sibling rejected-keys check right above it already uses for "input_payload does not conform to
+what capability accepts"; `retryable=False`, since resubmitting the identical request can never
+succeed) BEFORE `adapter.invoke` is ever called. Deliberately NOT fixed by adding Python
+defaults to any adapter signature — that would be a fail-open (a caller who forgot a genuinely
+required field would silently execute against a synthesized value instead of being denied).
+
+**13-kind required-key table** (derived live via `server_module._required_input_payload_keys`,
+the same mechanism the fix and the test both use — not a hand-typed list):
+
+| operation kind | required `input_payload` keys |
+|---|---|
+| `run.plan` | `intent_id` |
+| `swarm.start` | `adapter_ids`, `run_id` |
+| `job.status` | `operation_id` |
+| `job.cancel` | `operation_id` |
+| `job.resume` | `operation_id` |
+| `external_report.import` | `packet_dir`, `workspace_id` |
+| `source.ingest` | `locator`, `run_id` |
+| `run.extract` | `run_id` |
+| `run.claim_map` | `run_id` |
+| `run.synthesize` | `run_id` |
+| `run.verify` | `run_id` |
+| `run.bundle` | `run_id` |
+| `writeback.preview` | `run_id`, `targets` |
+
+**Test:** `test_operation_tool_missing_required_key_denies_typed_never_internal_error`, a
+single test parametrized over all 17 (kind, required-key) pairs above (13 kinds, 17 total
+required-key instances counting each kind's own set — `swarm.start`/`external_report.import`/
+`source.ingest`/`writeback.preview` each have 2, the other 9 kinds have 1) — each case supplies
+every OTHER required key for that kind (placeholder values; irrelevant, since the check runs
+before `adapter.invoke` on key presence alone) and omits exactly one, asserting
+`payload_too_large`/`retryable=False`/`operation_id=None`. A companion completeness test
+(`test_required_key_tables_are_non_empty_for_every_kind`) pins that all 13 kinds are covered
+and none resolved to an empty required-set.
+
+**Mutation-verify (all 17 cases in one run, ANSI-stripped `FAILED` count -- the known
+"FAILED carries ANSI, `grep "^FAILED"` returns 0 on a red suite" trap):** removed the
+`missing_keys` check from `server.py` and re-ran the full parametrized set under the lock:
+
+```
+$ ./.venv/bin/python -m pytest tests/integration/test_operator_mcp_workspace_isolation.py -k missing_required_key -q
+17 failed (ANSI-stripped FAILED-line count, verified programmatically)
+FAILED [run.plan-missing-intent_id] - AssertionError: ... expected payload_too_large, got 'internal_error'
+FAILED [swarm.start-missing-adapter_ids] - same shape
+FAILED [swarm.start-missing-run_id] - same shape
+FAILED [job.status-missing-operation_id] - same shape
+FAILED [job.cancel-missing-operation_id] - same shape
+FAILED [job.resume-missing-operation_id] - same shape
+FAILED [external_report.import-missing-packet_dir] - same shape
+FAILED [external_report.import-missing-workspace_id] - same shape
+FAILED [source.ingest-missing-locator] - same shape
+FAILED [source.ingest-missing-run_id] - same shape
+FAILED [run.extract-missing-run_id] - same shape
+FAILED [run.claim_map-missing-run_id] - same shape
+FAILED [run.synthesize-missing-run_id] - same shape
+FAILED [run.verify-missing-run_id] - same shape
+FAILED [run.bundle-missing-run_id] - same shape
+FAILED [writeback.preview-missing-run_id] - same shape
+FAILED [writeback.preview-missing-targets] - same shape
+```
+
+All 17 of 17 cases failed against the reverted code — complete coverage, no gap. Restored the
+fix, re-ran: all 28 tests in the file green (`diff` confirmed the restored `server.py` is
+byte-identical to the fixed baseline).
+
+### A fourth, previously-undiscovered defect: `swarm.start`'s real preflight -> execute route was completely broken
+
+Discovered while implementing TERRA-M3-2's requested positive control (below): a valid
+`operation.preflight` -> execute round-trip for `swarm.start`, through the REAL registered
+server route, with the SAME real run in the SAME workspace, failed with `confirmation_mismatch`
+**every time**, for every caller including a fully authorized one. Root cause:
+`swarm_start.invoke`'s canonical `input_payload` always includes `profile`/`budget_usd`/
+`timeout_minutes` — three fields resolved SERVER-SIDE from the target run's own `run.yaml`,
+never real `invoke` parameters at all (by design, per the module's own "Resolved, never
+caller-supplied" doctrine). `operation.preflight`'s generic tool has no knowledge of any
+adapter's internal resolution logic and builds its own `ctx.input_payload` from ONLY the
+caller's raw `input_payload` — for `swarm.start`, legally bounded to `run_id`/`adapter_ids`
+(this kind's only two real parameters). The two canonical digests could therefore never agree.
+
+**Repro (real, pre-fix, throwaway script):**
+
+```
+preflight.isError False
+execute.isError True {'reason_code': 'confirmation_mismatch',
+  'message': 'The confirmation token does not match the current request.', 'retryable': False, ...}
+```
+
+**Fix:** added `swarm_start.resolve_preflight_governance_inputs(run_id, paths) -> dict` — a
+PUBLIC function (not the private `_resolve_run_context`, mirroring this package's own
+no-underscore-cross-module-import convention) returning the SAME `profile`/`budget_usd`/
+`timeout_minutes` values `invoke` itself will independently recompute. `server.py`'s
+`_preflight_tool` calls it for `operation_kind == "swarm.start"` (a new augmentation block,
+mirroring the existing `writeback.preview` one immediately above it) to inject those three
+fields into `payload` before minting, so preflight's and execute's canonical digests always
+agree. Re-ran the SAME repro script post-fix:
+
+```
+preflight.isError False
+execute.isError False {'ok': True, 'operation_id': 'opm_e1220f6...',
+  'result': {'status': 'completed', 'replayed': False, ...}}
+```
+
+### TERRA-M3-2 (LOW) — same-workspace positive control for `swarm.start`
+
+**Test:** `test_swarm_start_same_workspace_server_route_completes` — real `operation.preflight`
+-> execute round-trip through `server.call_tool`, valid confirmation, `adapter_ids: []`
+(deterministic, zero real discovery-adapter dispatch), asserting `isError is False`, `ok is
+True`, a real `operation_id`, and `result["status"] == "completed"`. This test only became
+possible to write — and only passes — because of the fourth-defect fix immediately above; it
+would have failed with `confirmation_mismatch` against the pre-fix tree, which is itself
+retroactive proof the positive control is not vacuous.
+
+### Re-run under the lock (work order step 4) — full family + adapter-base siblings
+
+```
+$ while ! mkdir /tmp/opm-m3-pytest.lock 2>/dev/null; do sleep 5; done; \
+  ./.venv/bin/python -m pytest \
+    tests/unit/test_operator_mcp_policy.py tests/unit/test_operator_mcp_schemas.py \
+    tests/unit/test_operator_mcp_serve_extra_boundary.py \
+    tests/unit/test_operator_mcp_adapter_base.py \
+    tests/unit/test_operator_mcp_adapter_external_import.py \
+    tests/unit/test_operator_mcp_adapter_job_lifecycle.py \
+    tests/unit/test_operator_mcp_adapter_research_stages.py \
+    tests/unit/test_operator_mcp_adapter_run_plan.py \
+    tests/unit/test_operator_mcp_adapter_source_ingest.py \
+    tests/unit/test_operator_mcp_adapter_swarm_start.py \
+    tests/unit/test_operator_mcp_adapter_verify_bundle.py \
+    tests/unit/test_operator_mcp_adapter_writeback_preview.py \
+    tests/unit/test_operator_operation_service.py \
+    tests/unit/test_operator_cancel_resume_service.py \
+    tests/unit/test_operator_attempt_adapter.py \
+    tests/unit/test_operator_receipt_service.py \
+    tests/integration/test_operator_mcp_workspace_isolation.py \
+    tests/integration/test_operator_mcp_server.py \
+    tests/integration/test_operator_mcp_writeback_preview.py \
+    tests/integration/test_operator_mcp_preflight_execute_e2e.py \
+    -q; \
+  rmdir /tmp/opm-m3-pytest.lock
+
+.................................................................... [ 10%]
+.................................................................... [ 20%]
+.................................................................... [ 31%]
+.................................................................... [ 41%]
+.................................................................... [ 52%]
+.................................................................... [ 62%]
+.................................................................... [ 73%]
+.................................................................... [ 83%]
+.................................................................... [ 94%]
+....................................                                 [100%]
+EXIT_CODE=0
+```
+
+686 collected, 686 passed, 0 failed, 0 errors (verified via `--collect-only -q` total plus
+explicit `FAILED`/`ERROR` substring counts against the raw, ANSI-stripped output — both zero).
+
+### Files touched (pre-gate fix cycle)
+
+- `/Users/miethe/dev/homelab/development/research-foundry/.claude/worktrees/operator-mcp-v1/src/research_foundry/services/operator_mcp_policy.py` (new `check_capability_and_workspace` function)
+- `/Users/miethe/dev/homelab/development/research-foundry/.claude/worktrees/operator-mcp-v1/src/research_foundry/services/operator_mcp_adapters/swarm_start.py` (ordering-gate narrowed; new `resolve_preflight_governance_inputs` function; docstring updates)
+- `/Users/miethe/dev/homelab/development/research-foundry/.claude/worktrees/operator-mcp-v1/src/research_foundry/operator_mcp/server.py` (new `_required_input_payload_keys` + missing-key check; new `swarm.start` preflight augmentation block)
+- `/Users/miethe/dev/homelab/development/research-foundry/.claude/worktrees/operator-mcp-v1/tests/unit/test_operator_mcp_adapter_swarm_start.py` (2 new probe-count tests)
+- `/Users/miethe/dev/homelab/development/research-foundry/.claude/worktrees/operator-mcp-v1/tests/integration/test_operator_mcp_workspace_isolation.py` (positive control + 13-kind required-key matrix, 19 new tests)
+
+### Reported-not-fixed (none new this cycle)
+
+None. All three assigned findings, plus the fourth self-discovered defect, were fixed within
+this Leg's file ownership (`operator_mcp_policy.py`, `swarm_start.py`, `server.py` — `base.py`
+was not touched; the TERRA-M3-1 fix did not require it). No serialization-barrier file was
+implicated.

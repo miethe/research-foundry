@@ -418,6 +418,7 @@ __all__ = [
     "resolve_effective_sensitivity",
     "check_tool_name",
     "evaluate_policy",
+    "check_capability_and_workspace",
     "authorize_operation",
     "mint_confirmation",
     "verify_confirmation",
@@ -1551,6 +1552,75 @@ def evaluate_policy(ctx: PolicyContext, *, paths: FoundryPaths | None = None) ->
         # value echoed back out of a malformed governance.yaml).
         _logger.warning(
             "operator_mcp_policy.evaluate_policy: internal_error during %r stage (%s)",
+            current_stage,
+            type(exc).__name__,
+        )
+        return PolicyDecision(False, current_stage, "internal_error", retryable=True)
+
+
+def check_capability_and_workspace(
+    ctx: PolicyContext, *, paths: FoundryPaths | None = None
+) -> PolicyDecision:
+    """Non-mutating ORDERING GATE: runs ONLY the first two of the six fixed
+    stages (`capability`, `rbac`) -- deliberately via `_POLICY_STAGES[:2]`,
+    the SAME tuple `evaluate_policy` iterates, so this can never silently
+    drift out of the frozen stage order -- never `audit_health`/`guard`/
+    `preflight`/`confirmation`.
+
+    **Why this exists (M3 pre-gate fix cycle, TERRA-M3-1).** An adapter
+    whose own domain-specific prerequisite check must not itself become an
+    existence-of-target oracle (the F6 defect class -- see
+    `research_stages.py`'s and `swarm_start.py`'s own module docstrings)
+    needs the missing-vs-foreign convergence property BEFORE running that
+    check. That property depends ONLY on `_check_identity_and_rbac`'s H3
+    cross-workspace comparison -- never on a later stage. `swarm_start.py`'s
+    first F6 fix called the FULL `evaluate_policy` as that pre-check, which
+    genuinely works (a missing run and a foreign run both deny `not_found`
+    at `rbac`) but pays for `_check_audit_health`'s live, mutating
+    write-then-read-then-delete SQLite probe TWICE per request -- once here,
+    once again inside `authorize_operation`/`authorize_for_consumption`
+    (called by `base.run_pipeline` for the real accept/consume decision) --
+    for every request that reaches that second call. TERRA-M3-1 named two
+    concrete costs: doubled write load, and a new availability-failure
+    window (a transient lock/audit-store failure landing BETWEEN the two
+    probes can turn an otherwise-authorized request into `audit_unhealthy`
+    that a single-probe design would never have hit).
+
+    This function is the fix: it reaches exactly far enough (`capability`,
+    `rbac`) to guarantee the F6 convergence property, and no further, so it
+    costs NOTHING on the audit_health probe -- `audit_health` is stage 3,
+    never reached here. The eventual REAL accept/consume decision still
+    goes through `evaluate_policy`'s full six-stage stack exactly once,
+    inside `authorize_operation`/`authorize_for_consumption`, unchanged.
+
+    **This is NOT authorization.** `PolicyDecision(True, "rbac")` from this
+    function means only "capability-shape and cross-workspace ownership
+    both check out" -- `audit_health`/`guard`/`preflight`/`confirmation`
+    have not run. A caller MUST NOT treat an `allowed=True` result from
+    this function as sufficient to execute any effect; it exists ONLY to
+    let a caller order "does this even resolve to something in my own
+    workspace" ahead of a domain-specific, existence-revealing side check,
+    without paying for two full evaluations. The eventual effect-gating
+    decision MUST still come from `authorize_operation`
+    (`base.run_pipeline` / `authorize_for_consumption`), exactly as before
+    this function existed.
+
+    Same H8 exception boundary as `evaluate_policy` (log the failing
+    stage's TYPE NAME only, never `str(exc)`; never raise for those
+    causes)."""
+
+    current_stage = "capability"
+    try:
+        resolved_paths = paths if paths is not None else FoundryPaths.discover()
+        for check in _POLICY_STAGES[:2]:
+            current_stage = check.stage_name  # type: ignore[attr-defined,union-attr]
+            decision = check(ctx, resolved_paths)
+            if decision.denied:
+                return decision
+        return PolicyDecision(True, "rbac")
+    except Exception as exc:
+        _logger.warning(
+            "operator_mcp_policy.check_capability_and_workspace: internal_error during %r stage (%s)",
             current_stage,
             type(exc).__name__,
         )

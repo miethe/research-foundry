@@ -189,6 +189,120 @@ def test_invoke_dry_run_never_calls_run_swarm(
 
 
 # ---------------------------------------------------------------------------
+# M3 pre-gate fix cycle, TERRA-M3-1 (MED): the F6 ordering gate must not
+# double the mutating audit-health probe.
+# ---------------------------------------------------------------------------
+
+
+def test_swarm_start_invoke_probes_audit_health_exactly_once_per_successful_request(
+    tmp_foundry: FoundryPaths, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mutation-verify (a) for TERRA-M3-1: a counting spy around
+    `audit_service.health_check` (the live, mutating write-then-read-then-
+    delete SQLite probe `_check_audit_health` runs on every confirmation-
+    -requiring policy evaluation) proves a full, successful `swarm.start`
+    request -- mint a real confirmation, then `invoke` with it -- triggers
+    the probe exactly ONCE, not twice. Before this fix, `invoke`'s own F6
+    ordering gate called the FULL `policy.evaluate_policy` (which reaches
+    `audit_health`) as a pre-check, and `base.run_pipeline`'s own
+    `authorize_operation` call reached it AGAIN for the real accept/
+    consume decision -- two probes for the one request. See this test's
+    own revert/restore mutation-verify transcript in the M3 Leg A
+    completion note's "Pre-gate fix cycle" section."""
+
+    from research_foundry.services import audit_service
+
+    calls: list[FoundryPaths] = []
+    real_health_check = audit_service.health_check
+
+    def _counting_health_check(paths_arg: FoundryPaths) -> Any:
+        calls.append(paths_arg)
+        return real_health_check(paths_arg)
+
+    monkeypatch.setattr(audit_service, "health_check", _counting_health_check)
+
+    run_id = _planned_run(tmp_foundry, sample_idea_text)
+    run_ctx = swarm_start._resolve_run_context(run_id, tmp_foundry)
+    assert run_ctx.governance_profile is not None
+    assert run_ctx.budget_usd is not None
+    assert run_ctx.timeout_minutes is not None
+
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=swarm_start.OPERATION_KIND,
+        idempotency_key="idem-probe-count",
+        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("run", run_id),),
+        resolved_target_workspaces=(run_ctx.workspace_id,),
+        input_payload={
+            "run_id": run_id,
+            "adapter_ids": [],
+            "profile": run_ctx.governance_profile,
+            "budget_usd": run_ctx.budget_usd,
+            "timeout_minutes": run_ctx.timeout_minutes,
+        },
+        paths=tmp_foundry,
+    )
+    # `now=ids.now()` -- the SAME pinned test clock `authorize_for_consumption`
+    # reads via `ids.now()` internally -- mirrors `server.py`'s own F1.1
+    # companion fix: `mint_confirmation`'s default `now=None` falls back to
+    # a bare `datetime.now(timezone.utc)` wall-clock read, which disagrees
+    # with the test suite's autouse pinned clock and makes every minted
+    # confirmation read as `issued_at` in the future (`confirmation_expired`).
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    # `authorize_for_consumption` (called by `base.run_pipeline` inside
+    # `invoke`) looks the confirmation up by `confirmation_id` in the
+    # durable store -- a raw in-memory `issued.record` is not enough on
+    # its own, mirroring exactly what `operation.preflight` itself does
+    # (`operations.record_confirmation(issued.record)`) before returning
+    # a confirmation to a real caller.
+    OperatorOperationService(tmp_foundry).record_confirmation(issued.record)
+
+    result = swarm_start.invoke(
+        run_id=run_id,
+        adapter_ids=[],
+        idempotency_key="idem-probe-count",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        paths=tmp_foundry,
+    )
+
+    assert result.ok is True, result.error
+    assert len(calls) == 1, (
+        f"expected the mutating audit-health probe exactly ONCE per successful request, "
+        f"observed {len(calls)} -- TERRA-M3-1 regression"
+    )
+
+
+def test_swarm_start_ordering_gate_never_reaches_audit_health_on_its_own(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Direct proof that `policy.check_capability_and_workspace` (the
+    narrowed ordering gate `invoke` now calls) never itself triggers the
+    probe -- a genuinely missing run denies at `rbac`, one stage before
+    `audit_health`, so the whole request costs ZERO probes end to end
+    (never reaching `base.run_pipeline` at all)."""
+
+    from research_foundry.services import audit_service
+
+    calls: list[FoundryPaths] = []
+    monkeypatch.setattr(audit_service, "health_check", lambda p: calls.append(p) or MagicMock(healthy=True))
+
+    result = swarm_start.invoke(
+        run_id="does-not-exist-at-all",
+        adapter_ids=[],
+        idempotency_key="idem-probe-missing",
+        confirmation_record=None,
+        presented_token=None,
+        paths=tmp_foundry,
+    )
+
+    assert result.ok is False
+    assert result.error["reason_code"] == "not_found"
+    assert calls == [], "a missing-run denial must never reach the audit_health stage at all"
+
+
+# ---------------------------------------------------------------------------
 # No fail-open: budget/timeout/profile/run resolution (requirement 5)
 # ---------------------------------------------------------------------------
 

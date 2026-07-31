@@ -22,12 +22,17 @@ contributors:
 - karen
 tasks:
 - id: OPM-6.1
-  status: in_progress
+  status: completed
   assigned_to:
   - validation-implementer
   dependencies:
   - P5
   estimate: 0.5 pt
+  started: 2026-07-31T17:40Z
+  completed: 2026-07-31T18:20Z
+  evidence:
+  - commit: a107d84
+  - test: tests/fixtures/operator_mcp/ grep-clean guard mutation-verified
 - id: OPM-6.2
   status: in_progress
   assigned_to:
@@ -80,7 +85,7 @@ tasks:
   - OPM-6.1
   estimate: 0.25 pt
 - id: OPM-6.9
-  status: in_progress
+  status: completed
   assigned_to:
   - documentation-writer
   - changelog-generator
@@ -93,6 +98,12 @@ tasks:
   - OPM-6.7
   - OPM-6.8
   estimate: 0.5 pt
+  started: 2026-07-31T17:30Z
+  completed: 2026-07-31T18:00Z
+  evidence:
+  - commit: a107d84
+  - verify: 14/14 tool names match server registry; deferred + not_executed_owner_data_absent
+      labels present
 - id: OPM-6.10
   status: pending
   assigned_to:
@@ -117,10 +128,10 @@ parallelization:
   batch_4:
   - OPM-6.10
 total_tasks: 10
-completed_tasks: 0
-in_progress_tasks: 9
+completed_tasks: 2
+in_progress_tasks: 7
 blocked_tasks: 0
-progress: 0
+progress: 20
 ---
 
 # Phase 6 Progress — Hardening, Documentation, and Exact-Tree Review

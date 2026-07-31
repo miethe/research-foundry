@@ -80,6 +80,28 @@ Running capture for the M3 delivery report + AAR. Continues the M2 pattern (`m2-
   scope) still slip through. Sharper carry-in: read-only legs get "collect-only ONLY; never
   execute the suite" as an explicit prohibition, not an implication.
 
+- **O-4 — Wave 1 found and fixed two real product defects that had cleanly passed every prior
+  gate; both were found by driving the REAL registered route.** (a) `job.status` through
+  `server.call_tool` always raised `internal_error` (dispatcher passed confirmation kwargs to an
+  adapter that doesn't accept them) — every prior test drove the adapter directly. (b)
+  `swarm_start` existence oracle (missing vs foreign-workspace runs → distinguishable denial
+  codes) — the F6 class, already fixed once in `research_stages.py`; enumeration confirmed
+  swarm_start was the sole remaining instance. Both mutation-verified. M2's O-5 ("test the
+  product's own route") is now 2-for-2 across consecutive milestones as the highest-yield lens.
+- **O-5 — Pre-gate (terra + ICA, sequential after a parallel-launch kill): 0 BLOCKING / 0 HIGH /
+  2 MED / 2 LOW on wave 1 — the cleanest pre-gate of the workstream** (M2: 8 findings / 3
+  blocking). Notable: ICA-M3-1 is a *sibling of the class wave 1 itself fixed* (TypeError→
+  internal_error masking at the dispatch seam, 8/13 tools) — the class-not-instance rule
+  triggered a third time at the same seam. TERRA-M3-1: the F6 fix itself doubled the mutating
+  audit-health probe — a fix-introduced regression the implementer's own tests couldn't see
+  (probe count is invisible to envelope assertions); lens diversity caught it. Both parallel
+  external-lens launches were killed at ~0s (likely resource pressure; 94% swap earlier);
+  sequential relaunch worked — carry-in: don't launch codex + ICA simultaneously on this machine.
+- **O-6 — Orchestrator deviation (logged per execution-ledger rule):** TERRA-M3-3 (doc
+  overstatement about server-side ownership resolution) was fixed by the orchestrator directly
+  in `operator-mcp-governance.md` — a 4-line qualification edit; dispatching a doc leg for it
+  would have cost more than the edit. Conservative-choice note, not a scope change.
+
 ## Follow-ups (ITT candidates)
 
 - Model-registry ICA sonnet id bump (see O-1).

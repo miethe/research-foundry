@@ -47,8 +47,11 @@ stdio client
 ## Identity, workspace, and sensitivity
 
 Identity is resolved from the configured local operator, not accepted as a tool argument. The
-workspace is mandatory. Each target's owning workspace is resolved server-side and compared with
-the actor workspace. A missing target, wrong-workspace target, or target above the caller's
+workspace is mandatory. Where a target has a canonical owner record on disk, its owning workspace
+is resolved server-side and compared with the actor workspace. Staging-only targets that do not
+yet exist locally are the exception: `external_report.import`'s `import_packet` target binds the
+caller-declared workspace, which RBAC then validates against the configured local operator (only
+an optional `target_run_id` is resolved from canonical state). A missing target, wrong-workspace target, or target above the caller's
 sensitivity ceiling must be indistinguishable as a safe `not_found` denial; `identity_denied` is
 reserved for a wholly unresolved identity.
 

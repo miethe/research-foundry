@@ -486,6 +486,44 @@ def _allowed_input_payload_keys(kind: str) -> frozenset[str]:
     )
 
 
+@functools.lru_cache(maxsize=None)
+def _required_input_payload_keys(kind: str) -> frozenset[str]:
+    """The subset of `_allowed_input_payload_keys(kind)` that `kind`'s REAL
+    `invoke*` function has NO Python default for -- a caller-facing
+    `input_payload` key that MUST be supplied, or `adapter.invoke(
+    **invoke_kwargs)` raises a raw `TypeError: invoke_X() missing 1
+    required keyword-only argument: 'Y'`.
+
+    M3 pre-gate fix cycle, ICA-M3-1: this is the SAME `TypeError` ->
+    `internal_error` misreporting class the M3 delta's own `job.status`
+    fix (F1.3/TERRA-4's `confirmation_record`/`presented_token` gate,
+    immediately above in `_make_operation_tool`) closed for exactly ONE
+    (kind, parameter) pair -- unfixed for the other 8/13 kinds' own
+    kind-specific required parameters (`intent_id`, `adapter_ids`,
+    `operation_id` x3, `packet_dir`/`workspace_id`, `locator`, `targets`).
+    Fixed at THIS layer -- the kwargs-routing seam every operation tool
+    already shares -- rather than adding a Python default to any adapter
+    signature (which would be a fail-open: a caller who forgot to supply a
+    truly-required field would silently execute against a synthesized
+    value instead of being denied).
+
+    Derived via `inspect.signature`, the SAME mechanism (and the SAME
+    cache) `_allowed_input_payload_keys` already uses, so a future
+    parameter added to or removed from any adapter's real signature is
+    reflected here automatically -- never a second, independently
+    hand-typed required-field list that could drift from the real
+    function it describes."""
+
+    module_attr, func_name = _ADAPTER_INVOKE_TARGETS[kind]
+    func = getattr(getattr(adapters, module_attr), func_name)
+    allowed = _allowed_input_payload_keys(kind)
+    return frozenset(
+        name
+        for name, param in inspect.signature(func).parameters.items()
+        if name in allowed and param.default is inspect.Parameter.empty
+    )
+
+
 def _stdio_only_fastmcp_class(fastmcp_cls: type[Any]) -> type[Any]:
     """Return the `_StdioOnlyFastMCP` subclass of `fastmcp_cls` (cached).
     See this module's docstring's "Stdio-only transport guard" and
@@ -718,6 +756,35 @@ def build_server(paths: FoundryPaths | None = None) -> Any:
                 decision = policy.PolicyDecision(False, "capability", "payload_too_large", retryable=False)
                 return dual_encode(policy.build_error(decision), is_error=True)
 
+            missing_keys = _required_input_payload_keys(kind) - set(payload)
+            if missing_keys:
+                # M3 pre-gate fix cycle, ICA-M3-1: a caller that omits a
+                # kind-specific required `input_payload` key (e.g.
+                # `writeback.preview` without `targets`, `run.plan` without
+                # `intent_id`) previously reached `adapter.invoke(
+                # **invoke_kwargs)` missing that keyword entirely, raising a
+                # raw `TypeError: invoke_X() missing 1 required keyword-only
+                # argument: 'Y'` -- caught by this method's own D7 outer
+                # `except Exception` boundary and misreported as a generic
+                # `internal_error` (`retryable=True`), the EXACT class the
+                # `confirmation_record`/`presented_token` fix immediately
+                # below closes for `job.status` alone. Confirmed
+                # empirically for 8/13 kinds via AST/signature inspection
+                # (`_required_input_payload_keys`'s own docstring); this
+                # check closes the CLASS, at the shared dispatch layer,
+                # rather than adding a Python default to any adapter's own
+                # signature (which would silently execute against a
+                # synthesized value for a caller who forgot a genuinely
+                # required field -- a fail-open). `payload_too_large` is
+                # reused, not invented -- the SAME reason code the
+                # rejected-keys check immediately above already uses for
+                # the sibling "input_payload does not conform to what
+                # capability accepts" condition; `retryable=False` because
+                # resubmitting the identical (still-incomplete) request can
+                # never succeed.
+                decision = policy.PolicyDecision(False, "capability", "payload_too_large", retryable=False)
+                return dual_encode(policy.build_error(decision), is_error=True)
+
             # M3 Leg A fix: `CONFIRMATION_NOT_REQUIRED_KINDS`'s sole member
             # (`job.status`) is the ONE `OPERATION_KINDS` entry whose real
             # `invoke*` signature (`job_lifecycle.invoke_status`) has no
@@ -858,6 +925,37 @@ def build_server(paths: FoundryPaths | None = None) -> Any:
                     return dual_encode(policy.build_error(decision), is_error=True)
                 writeback_targets = normalized_preview_targets
                 payload = {**payload, "targets": list(normalized_preview_targets)}
+
+        # M3 pre-gate fix cycle, TERRA-M3-2 discovery: `swarm.start`'s
+        # `invoke` always bakes `profile`/`budget_usd`/`timeout_minutes`
+        # into its own `input_payload` (module docstring's "Resolved,
+        # never caller-supplied" section) -- none of the three is a real
+        # `invoke` parameter a caller could supply even if they wanted to,
+        # so this generic preflight tool's own raw `payload` (bounded to
+        # `run_id`/`adapter_ids`, this kind's only two real parameters by
+        # `_allowed_input_payload_keys`) could never match what execute
+        # independently reconstructs -- every real `swarm.start` preflight
+        # minted an UNCONSUMABLE confirmation (`confirmation_mismatch` at
+        # execute, always, even for a fully authorized, same-workspace
+        # caller) until this fix. Mirrors the `writeback.preview` block
+        # immediately above: inject the SAME three fields, by the SAME
+        # derivation (`swarm_start.resolve_preflight_governance_inputs`,
+        # a PUBLIC function this leg added specifically for this seam --
+        # never a private, underscore-prefixed cross-module import), so
+        # preflight's and execute's canonical digests always agree. A
+        # missing/non-string `run_id` is left to the existing required-
+        # target-kind / rbac `not_found` paths below -- never denied here.
+        if operation_kind == "swarm.start":
+            from research_foundry.services.operator_mcp_adapters import (  # lazy: mirrors the writeback.preview block's own lazy-import convention immediately above
+                swarm_start as _swarm_start,
+            )
+
+            raw_swarm_run_id = payload.get("run_id")
+            if isinstance(raw_swarm_run_id, str) and raw_swarm_run_id:
+                payload = {
+                    **payload,
+                    **_swarm_start.resolve_preflight_governance_inputs(raw_swarm_run_id, resolved_paths),
+                }
 
         # Judgment call -- see this module's docstring's "operation.preflight"
         # section and this task's completion note (D8 table): every

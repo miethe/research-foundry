@@ -62,6 +62,7 @@ pytest.importorskip("mcp", reason="optional 'mcp' extra not installed (uv sync -
 from research_foundry.auth_identity import AuthIdentity  # noqa: E402
 from research_foundry.operator_mcp import server as server_module  # noqa: E402
 from research_foundry.paths import FoundryPaths  # noqa: E402
+from research_foundry.services import operator_mcp_policy as policy  # noqa: E402
 from research_foundry.yamlio import dump_yaml, load_yaml  # noqa: E402
 
 from tests.integration.test_operator_mcp_writeback_preview import _build_run  # noqa: E402
@@ -339,6 +340,133 @@ def test_job_status_same_workspace_is_not_treated_as_missing(
     )
     assert result.isError is False, result.structuredContent
     assert result.structuredContent["result"]["operation_id"] == workspace_a_data["operation_id"]
+
+
+def test_swarm_start_same_workspace_server_route_completes(
+    tmp_foundry: FoundryPaths, workspace_a_data: dict[str, str]
+) -> None:
+    """TERRA-M3-2 (LOW): `swarm.start`'s own foreign/missing comparison
+    test proves the DENIAL shape converges, but proves nothing about the
+    ACCEPT path -- a regression that made `swarm.start`'s target-workspace
+    resolution always resolve to "missing" (denying every call as
+    `not_found`) would pass every existing `swarm.start` test in this file
+    without a same-workspace positive control. Valid confirmation,
+    deterministic/empty adapter set (`adapter_ids: []` -- no real
+    discovery-adapter dispatch, no network/subprocess reach, a single
+    fast, deterministic completed result since zero actions means
+    `run_actions` completes immediately), through the REAL registered
+    `operation.preflight` -> execute route.
+
+    Discovered while building this exact test: the real route was
+    ADDITIONALLY broken end-to-end (`confirmation_mismatch`, always, even
+    for this fully authorized case) because `operation.preflight`'s
+    generic tool had no way to supply `profile`/`budget_usd`/
+    `timeout_minutes` -- three fields `swarm.start`'s own `invoke` always
+    resolves server-side and bakes into its canonical digest, never a
+    caller-suppliable parameter. Fixed in `server.py`'s `_preflight_tool`
+    (a new swarm.start-specific augmentation block, mirroring the existing
+    `writeback.preview` one) and `swarm_start.py` (a new PUBLIC
+    `resolve_preflight_governance_inputs` function) -- see the M3 Leg A
+    completion note's "Pre-gate fix cycle" section for the full repro."""
+
+    server = _server_as(tmp_foundry, _IDENTITY_A)
+    run_id = workspace_a_data["run_id"]
+
+    preflight = _call(
+        server,
+        "operation.preflight",
+        {
+            "operation_kind": "swarm.start",
+            "idempotency_key": "swarm-own-workspace",
+            "effective_sensitivity": "personal",
+            "targets": [{"target_kind": "run", "target_ref": run_id}],
+            "input_payload": {"run_id": run_id, "adapter_ids": []},
+        },
+    )
+    assert preflight.isError is False, preflight.structuredContent
+    confirmation = preflight.structuredContent["confirmation"]
+    assert confirmation is not None
+
+    execute = _call(
+        server,
+        "swarm.start",
+        {
+            "idempotency_key": "swarm-own-workspace",
+            "input_payload": {"run_id": run_id, "adapter_ids": []},
+            "confirmation_record": confirmation["record"],
+            "presented_token": confirmation["token"],
+        },
+    )
+    assert execute.isError is False, execute.structuredContent
+    assert execute.structuredContent["ok"] is True
+    assert execute.structuredContent["operation_id"]
+    assert execute.structuredContent["result"]["status"] == "completed"
+
+
+# ---------------------------------------------------------------------------
+# ICA-M3-1 (MED): every direct tool call omitting a kind-specific required
+# `input_payload` key must yield a TYPED, non-retryable `payload_too_large`
+# denial -- never a raw TypeError misreported as a generic `internal_error`.
+# Enumerated over ALL 13 operation kinds x each kind's own required keys,
+# derived LIVE from `server_module._required_input_payload_keys` (the same
+# `inspect.signature`-driven mechanism the fix itself uses) -- never a
+# hand-typed table that could silently drift from the real fix.
+# ---------------------------------------------------------------------------
+
+_REQUIRED_KEYS_BY_KIND: dict[str, tuple[str, ...]] = {
+    kind: tuple(sorted(server_module._required_input_payload_keys(kind))) for kind in policy.OPERATION_KINDS
+}
+
+_REQUIRED_KEY_OMISSION_CASES = [
+    pytest.param(kind, missing_key, id=f"{kind}-missing-{missing_key}")
+    for kind in policy.OPERATION_KINDS
+    for missing_key in _REQUIRED_KEYS_BY_KIND[kind]
+]
+
+
+def test_required_key_tables_are_non_empty_for_every_kind() -> None:
+    """Completeness precondition: every one of the 13 kinds must have at
+    least one required key (true today -- `run_id` alone, at minimum, for
+    every kind) -- if a future kind's real `invoke*` signature ever made
+    EVERY parameter optional, `_REQUIRED_KEY_OMISSION_CASES` would
+    silently stop covering it at all, and this assertion is what would
+    catch that."""
+
+    assert set(_REQUIRED_KEYS_BY_KIND) == set(policy.OPERATION_KINDS)
+    for kind, required in _REQUIRED_KEYS_BY_KIND.items():
+        assert required, f"{kind}: no required input_payload keys derived -- suspicious, check by hand"
+
+
+@pytest.mark.parametrize("kind, missing_key", _REQUIRED_KEY_OMISSION_CASES)
+def test_operation_tool_missing_required_key_denies_typed_never_internal_error(
+    tmp_foundry: FoundryPaths, kind: str, missing_key: str
+) -> None:
+    """ICA-M3-1: for every one of the 13 kinds' own required
+    `input_payload` keys, a direct tool call (never through
+    `operation.preflight`) that omits exactly that one key must deny with
+    the typed, non-retryable `payload_too_large` envelope -- never the
+    generic `internal_error` a raw `TypeError` from `adapter.invoke(
+    **invoke_kwargs)` produced before this fix. Every OTHER required key
+    for `kind` is still supplied (with a placeholder value -- irrelevant,
+    since this check runs BEFORE `adapter.invoke` is ever called, purely
+    on key PRESENCE) so this proves the check operates per-key, not merely
+    "any payload smaller than N keys denies"."""
+
+    server = _server_as(tmp_foundry, _IDENTITY_A)
+    payload = {key: "placeholder" for key in _REQUIRED_KEYS_BY_KIND[kind] if key != missing_key}
+
+    result = _call(
+        server,
+        kind,
+        {"idempotency_key": f"missing-{missing_key}", "input_payload": payload},
+    )
+    envelope = _envelope(result)
+    assert envelope["reason_code"] == "payload_too_large", (
+        f"{kind} omitting {missing_key!r}: expected payload_too_large, got "
+        f"{envelope['reason_code']!r} (message: {envelope.get('message')!r})"
+    )
+    assert envelope["retryable"] is False
+    assert envelope["operation_id"] is None
 
 
 # ---------------------------------------------------------------------------

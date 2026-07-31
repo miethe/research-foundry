@@ -102,13 +102,42 @@ named this exact shape "F6", already fixed it in `research_stages.py`
 itself and in `verify_bundle.py`, and explicitly said the pre-fix ordering
 "mirror[s] `swarm_start.py`'s own budget/timeout preflight shape" --
 `swarm_start.py` was the one file that comparison named and never itself
-received the fix, until now. `invoke` below now builds `ctx` and calls
-`policy.evaluate_policy` FIRST, mirroring `research_stages.py`'s
-`invoke_extract`/`invoke_claim_map`/`invoke_synthesize` exactly: the
-budget/timeout/governance-profile check only runs for an ALREADY-authorized
-caller, so a missing run and a foreign-workspace run now deny identically,
-at rbac, with `not_found`, before this module's own domain-specific
-precondition is ever reached.
+received the fix, until now. `invoke` below now builds `ctx` and orders a
+cross-workspace ownership check FIRST -- originally via `policy.
+evaluate_policy` (the full six-stage stack), later narrowed by TERRA-M3-1
+(see immediately below) to `policy.check_capability_and_workspace` (just
+`capability`+`rbac`) -- so the budget/timeout/governance-profile check
+only runs for an ALREADY cross-workspace-authorized caller: a missing run
+and a foreign-workspace run now deny identically, at rbac, with
+`not_found`, before this module's own domain-specific precondition is
+ever reached.
+
+**TERRA-M3-1 fix (M3 pre-gate fix cycle).** The F6 fix's first version
+used the FULL `policy.evaluate_policy` as its pre-check -- correct for
+convergence, but it doubled `_check_audit_health`'s live, mutating SQLite
+probe for every request that goes on to reach `base.run_pipeline` below
+(whose own `authorize_operation` call runs the full stack a second time
+for the real accept/consume decision), and opened an availability-failure
+window between the two probes. `invoke` now calls `policy.
+check_capability_and_workspace` instead -- a narrower gate reaching only
+`capability`+`rbac`, never `audit_health`/`guard`/`preflight` -- which
+still guarantees the SAME F6 convergence property (it depends only on the
+`rbac` stage's H3 cross-workspace comparison) at zero probe cost; the
+real, full six-stage authorization still runs exactly once, inside
+`base.run_pipeline`, unchanged. See that function's own docstring for the
+complete rationale.
+
+**TERRA-M3-2 fix (same cycle).** `operation.preflight`'s generic tool has
+no knowledge of `profile`/`budget_usd`/`timeout_minutes` -- none of the
+three is a real `invoke` parameter, all three are resolved server-side
+from `run_id`'s own `run.yaml` -- so a preflight minted from ONLY the
+caller's raw `input_payload` could never produce a confirmation this
+function's own canonical digest would later match: `confirmation_mismatch`
+at execute, for EVERY real `swarm.start` preflight, even a fully
+authorized, same-workspace one. `resolve_preflight_governance_inputs`
+below is the fix -- a PUBLIC function `server.py`'s `_preflight_tool`
+calls to inject the SAME three fields, by the SAME derivation, before
+minting.
 
 **Degraded adapters remain typed (requirement 4).** `swarm_service.run_swarm`
 already guarantees this for an individual discovery adapter's own failure
@@ -160,7 +189,13 @@ from . import base
 
 _logger = logging.getLogger(__name__)
 
-__all__ = ["OPERATION_KIND", "SwarmStartAdapter", "ADAPTER", "invoke"]
+__all__ = [
+    "OPERATION_KIND",
+    "SwarmStartAdapter",
+    "ADAPTER",
+    "invoke",
+    "resolve_preflight_governance_inputs",
+]
 
 OPERATION_KIND = "swarm.start"
 
@@ -287,6 +322,53 @@ def _resolve_run_context(run_id: str, paths: FoundryPaths) -> _RunContext:
         governance_profile = allowed if isinstance(allowed, str) else None
 
     return _RunContext(sensitivity, workspace_id, budget_usd, timeout_minutes, governance_profile)
+
+
+def resolve_preflight_governance_inputs(run_id: str, paths: FoundryPaths) -> dict[str, Any]:
+    """Server-only preflight helper (M3 pre-gate fix cycle, TERRA-M3-2
+    discovery). `invoke`'s own `input_payload` -- the payload
+    `PolicyContext.canonical_digest()` hashes -- always includes
+    `profile`/`budget_usd`/`timeout_minutes`, resolved SERVER-SIDE from
+    `run_id`'s own `run.yaml` (module docstring's "Resolved, never
+    caller-supplied, governance inputs" section: none of the three is a
+    caller-facing `invoke` PARAMETER at all, unlike `run_plan.py`'s own
+    caller-suppliable optionals). `operation.preflight`'s generic tool
+    (`server.py`'s `_preflight_tool`) has no knowledge of any adapter's
+    internal resolution logic and builds `ctx.input_payload` from ONLY the
+    caller's raw `input_payload` -- which, for `swarm.start`, can legally
+    contain nothing but `run_id`/`adapter_ids` (this kind's only two real
+    function parameters; `_allowed_input_payload_keys` enforces this).
+
+    Left unfixed, this made EVERY real `swarm.start` `operation.preflight`
+    -> execute flow through the registered server route fail with
+    `confirmation_mismatch` -- preflight's ctx never included the three
+    server-resolved fields execute's ctx always does, so the two
+    canonical digests could never agree, for ANY caller including a fully
+    authorized, same-workspace one. Empirically confirmed via a direct
+    `server.call_tool` preflight -> execute round-trip before this fix
+    existed; see the M3 Leg A completion note's "Pre-gate fix cycle"
+    section for the repro transcript.
+
+    `server.py`'s `_preflight_tool` calls this (a PUBLIC function,
+    deliberately -- not the private `_resolve_run_context` this module
+    otherwise keeps to itself, mirroring this package's own "no
+    underscore-prefixed cross-module imports" convention) to inject the
+    IDENTICAL three fields, by the IDENTICAL derivation, that `invoke`
+    itself will independently recompute at execute time -- so the two
+    sides always agree. Returns a dict with `profile`/`budget_usd`/
+    `timeout_minutes` keys, each possibly `None` (mirroring `_RunContext`'s
+    own fields for a missing/malformed run) -- this function does NOT
+    itself validate or deny anything; `invoke`'s own preflight check
+    (`run_ctx.budget_usd is None or ...`) and the F6-fixed
+    `evaluate_policy` ordering both still run, unchanged, at real execute
+    time, over whatever this preview-time guess turns out to be."""
+
+    run_ctx = _resolve_run_context(run_id, paths)
+    return {
+        "profile": run_ctx.governance_profile,
+        "budget_usd": run_ctx.budget_usd,
+        "timeout_minutes": run_ctx.timeout_minutes,
+    }
 
 
 def _preflight_denial(reason_code: str) -> policy.PolicyDecision:
@@ -450,17 +532,31 @@ def invoke(
     # "Ordering (F6 lesson...)" docstring section, which named this precise
     # shape and said it mirrored "swarm_start.py's own budget/timeout
     # preflight shape" without swarm_start.py ever having been given the
-    # fix). Authorize FIRST (capability -> rbac -> audit_health -> guard ->
-    # preflight) -- an unauthorized caller now denies at `rbac`/`not_found`
-    # for EITHER a genuinely missing run OR a real, foreign-workspace one,
-    # identically, before this function ever learns whether the run has a
-    # budget/timeout/governance_profile at all. ONLY for an
-    # already-authorized caller does the budget/timeout/governance_profile
-    # precondition -- which has no equivalent existing `PolicyContext`-level
-    # gate (unlike sensitivity/workspace_id, which reuse H3/rbac) -- get
-    # checked, denying `preflight_failed` (never a permissive numeric/string
-    # default synthesized here).
-    decision = policy.evaluate_policy(ctx, paths=resolved_paths)
+    # fix). Order the caller's OWN cross-workspace ownership check ahead of
+    # this module's domain-specific precondition -- an unauthorized caller
+    # now denies at `rbac`/`not_found` for EITHER a genuinely missing run
+    # OR a real, foreign-workspace one, identically, before this function
+    # ever learns whether the run has a budget/timeout/governance_profile
+    # at all.
+    #
+    # M3 pre-gate fix cycle, TERRA-M3-1: this ordering gate previously
+    # called `policy.evaluate_policy` -- the FULL six-stage stack,
+    # including `audit_health`'s live, mutating SQLite probe -- as this
+    # pre-check. That doubled the probe for every request that goes on to
+    # reach `base.run_pipeline` below (whose own `authorize_operation` /
+    # `authorize_for_consumption` call runs the SAME full stack a second
+    # time for the real accept/consume decision), and opened an
+    # availability-failure window between the two probes. The F6
+    # convergence property this ordering gate exists for depends ONLY on
+    # `capability`+`rbac` (never on `audit_health`/`guard`/`preflight`), so
+    # `policy.check_capability_and_workspace` -- a narrower, non-mutating
+    # gate added specifically for this seam, reaching exactly `capability`
+    # and `rbac`, never further -- replaces the full `evaluate_policy` call
+    # here. The real, full six-stage authorization still runs exactly ONCE,
+    # inside `base.run_pipeline` below, unchanged. See that function's own
+    # docstring for the full rationale and the "this is NOT authorization"
+    # boundary a caller of it must respect.
+    decision = policy.check_capability_and_workspace(ctx, paths=resolved_paths)
     if decision.denied:
         return base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now))
     if run_ctx.budget_usd is None or run_ctx.timeout_minutes is None or run_ctx.governance_profile is None:
