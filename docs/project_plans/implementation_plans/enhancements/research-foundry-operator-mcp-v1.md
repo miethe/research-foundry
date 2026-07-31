@@ -80,7 +80,7 @@ files_affected:
   - schemas/operator_mcp_error.schema.yaml
   - src/research_foundry/services/operator_mcp_policy.py
   - src/research_foundry/services/operator_operation_service.py
-  - src/research_foundry/services/operator_tool_adapters.py
+  - src/research_foundry/services/operator_mcp_adapters/
   - src/research_foundry/services/agent_job_service.py
   - src/research_foundry/services/agent_job_schemas.py
   - src/research_foundry/services/swarm_service.py
@@ -148,7 +148,7 @@ wave_plan:
     - src/research_foundry/services/audit_service.py
     - src/research_foundry/services/writeback.py
     - src/research_foundry/services/operator_operation_service.py
-    - src/research_foundry/services/operator_tool_adapters.py
+    - src/research_foundry/services/operator_mcp_adapters/
     - src/research_foundry/operator_mcp/server.py
   phases:
     # P1/P2 are the executed record; their model/effort pins are deprecated-not-deleted and must
@@ -189,7 +189,7 @@ wave_plan:
         - "Exact retry creates no duplicate source card, claim, or import receipt"
       files_affected:
         - src/research_foundry/services/swarm_service.py
-        - src/research_foundry/services/operator_tool_adapters.py
+        - src/research_foundry/services/operator_mcp_adapters/
         - src/research_foundry/cli_commands.py
         - src/research_foundry/services/external_research_import.py
         - src/research_foundry/services/source_cards.py
@@ -213,7 +213,7 @@ wave_plan:
         - src/research_foundry/operator_mcp/__init__.py
         - src/research_foundry/operator_mcp/server.py
         - src/research_foundry/services/writeback.py
-        - src/research_foundry/services/operator_tool_adapters.py
+        - src/research_foundry/services/operator_mcp_adapters/
         - pyproject.toml
     - id: M3
       title: "One exact tree satisfies AC OPM-1..7"
@@ -231,7 +231,7 @@ wave_plan:
       files_affected:
         - tests/unit/test_operator_mcp_policy.py
         - tests/unit/test_operator_operation_service.py
-        - tests/unit/test_operator_tool_adapters.py
+        - tests/unit/test_operator_mcp_adapter_*.py
         - tests/integration/test_operator_mcp_server.py
         - tests/integration/test_operator_mcp_workspace_isolation.py
         - tests/integration/test_operator_mcp_writeback_preview.py
@@ -491,8 +491,8 @@ reads only the AC and this rubric should make the same calls the plan author wou
   findings in every round in which it was actually examined and was not attacked until P1 round 3.
   M3 must run a **per-property** matrix against it, not a golden-instance pass.
 - **Serialization barriers are shared with live code.** `writeback.py`,
-  `operator_tool_adapters.py`, `agent_job_service.py`, `governance.py`, and `audit_service.py` are
-  declared barriers. M1 and M2 both write `writeback.py` and `operator_tool_adapters.py`; that is
+  `operator_mcp_adapters/`, `agent_job_service.py`, `governance.py`, and `audit_service.py` are
+  declared barriers. M1 and M2 both write `writeback.py` and `operator_mcp_adapters/`; that is
   why they are sequential waves, not parallel ones.
 - **Verification failure must be a governed result, not an exception.** A verify failure that
   propagates as a raw error will be caught by a broad `except` somewhere upstream and read as
@@ -590,8 +590,8 @@ the repo root with the project venv (`./.venv/bin/python` — the pyenv shim wil
 
 | AC | Command | Evidence of pass |
 |---|---|---|
-| M1 — closed dispatch, no CLI reach | `rg -n "typer\|cli_commands\|subprocess\|os\.system\|shell=True" src/research_foundry/services/operator_tool_adapters.py src/research_foundry/operator_mcp/` | Zero matches in registered handler call paths |
-| M1 — adapter/service parity | `./.venv/bin/python -m pytest tests/unit/test_operator_tool_adapters.py -q` | Parity assertions compare canonical refs from direct-service vs adapter and match |
+| M1 — closed dispatch, no CLI reach | `rg -n "typer\|cli_commands\|subprocess\|os\.system\|shell=True" src/research_foundry/services/operator_mcp_adapters/` — extend with `src/research_foundry/operator_mcp/` once M2 creates it. Verify the paths exist first: `rg` on a missing path exits 0 with zero matches, which reads as a pass. | Zero matches in registered handler call paths, on paths confirmed to exist |
+| M1 — adapter/service parity | `./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_*.py -q` | Parity assertions compare canonical refs from direct-service vs adapter and match |
 | M1 — CLI unchanged after extraction | `./.venv/bin/python -m pytest tests/test_search_router_router.py tests/integration/test_run_launch_reuse.py -q` | Pre-existing CLI/run behavior green, no new failures vs the 4258-node baseline |
 | M1 — retry/cancel idempotency | `./.venv/bin/python -m pytest tests/unit/test_operator_operation_service.py -q -k "retry or cancel or resume or duplicate"` | Exact retry yields prior state; no duplicate card/claim/receipt/candidate |
 | M2 — exact tool inventory | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py -q -k "inventory or introspect"` | Introspected tool set diffs clean against the closed inventory; no Knowledge MCP overlap |
@@ -600,8 +600,8 @@ the repo root with the project venv (`./.venv/bin/python` — the pyenv shim wil
 | AC OPM-1 — confirmation binding | `./.venv/bin/python -m pytest tests/unit/test_operator_mcp_policy.py -q -k "confirm or replay or expiry or drift"` | Every adversarial case yields zero manifest **and** an explicit zero-effect assertion |
 | AC OPM-2 — workspace/sensitivity | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_workspace_isolation.py -q` | Two-identity matrix returns safe non-existence; no derived detail leaks |
 | AC OPM-3 — idempotent/cancel/resume | `./.venv/bin/python -m pytest tests/unit/test_operator_operation_service.py -q` | H3 ten-scenario matrix: interrupted and uninterrupted runs converge to identical canonical effects |
-| AC OPM-4 — closed adapters | `./.venv/bin/python -m pytest tests/unit/test_operator_tool_adapters.py -q` + handler call-path scan | Every tool resolves to one named canonical service; no arbitrary dispatch |
-| AC OPM-5 — import/stage seams | `./.venv/bin/python -m pytest tests/unit/test_operator_tool_adapters.py -q -k "import or stage or prerequisite"` | ERI receipts/prerequisites/provenance refs preserved; verify-failure blocks bundle |
+| AC OPM-4 — closed adapters | `./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_*.py -q` + handler call-path scan | Every tool resolves to one named canonical service; no arbitrary dispatch |
+| AC OPM-5 — import/stage seams | `./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_*.py -q -k "import or stage or prerequisite"` | ERI receipts/prerequisites/provenance refs preserved; verify-failure blocks bundle |
 | AC OPM-6 — preview-only | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_writeback_preview.py -q` + call-path scan | Static and runtime evidence both show zero external/mirror effect |
 | AC OPM-7 — bounded transport | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py -q -k "limit or error or redact"` | Oversize/internal-error/wrong-workspace all return bounded redacted envelopes |
 | Whole-suite regression | `./.venv/bin/python -m pytest` | 4410+ passing; the same 16 known-failing nodes, none on the operator surface |
@@ -618,7 +618,7 @@ Order is asserted only where it is real:
 - **P2 re-gate -> M1.** M1's adapters call the operation coordinator; dispatching M1 against an
   ungated lifecycle would build on an unverified trust contract.
 - **M1 -> M2.** M2 registers tools over M1's adapters; there is nothing to register before they
-  exist. Both also write `writeback.py` and `operator_tool_adapters.py` — declared serialization
+  exist. Both also write `writeback.py` and `operator_mcp_adapters/` — declared serialization
   barriers — so they cannot run concurrently regardless.
 - **M2 -> M3.** M3 evidences AC against the integrated surface; there is no exact tree to attack
   until the server and preview exist.
