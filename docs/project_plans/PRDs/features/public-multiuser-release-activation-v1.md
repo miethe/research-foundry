@@ -9,9 +9,9 @@ description: >
   presets (single_user | multi_user), (2) introducing dynamic non-human principals — service accounts
   and user-scoped PATs — backed by a new SQLite token store, and (3) closing the DI-1 full-surface
   workspace-scoping audit as a hard pre-multi-tenant deploy gate, plus the admin UI to manage both.
-status: draft
+status: completed
 created: 2026-07-22
-updated: 2026-07-22
+updated: 2026-07-31
 feature_slug: public-multiuser-release-activation
 feature_version: v1
 tier: 3
@@ -43,7 +43,9 @@ risk_level: high
 category: "product-planning"
 tags: [prd, planning, feature, auth, rbac, multi-user, activation, service-accounts, pat, di-1]
 milestone: "public-multiuser-activation"
-commit_refs: []
+commit_refs:
+  - 99ef69d  # feat(auth): activate public multi-user mode — deployment presets, non-human principals, DI-1 gate
+  - 08559a0  # feat(multi-user): workspace isolation for runs/claims/evidence + public visibility (DF-004)
 pr_refs: []
 files_affected:
   - src/research_foundry/config.py
