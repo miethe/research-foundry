@@ -5,9 +5,9 @@ doc_type: progress
 prd: research-foundry-operator-mcp
 feature_slug: research-foundry-operator-mcp
 phase: 4
-status: pending
+status: in_progress
 created: '2026-07-28'
-updated: '2026-07-28'
+updated: '2026-07-31'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
 plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
 commit_refs: []
@@ -25,28 +25,28 @@ tasks:
   dependencies:
   - ERI-5.G
   - OPM-2.4
-  estimate: "1 pt"
+  estimate: 1 pt
 - id: OPM-4.2
   status: pending
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-4.1
-  estimate: "1 pt"
+  estimate: 1 pt
 - id: OPM-4.3
   status: pending
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-4.2
-  estimate: "1.5 pts"
+  estimate: 1.5 pts
 - id: OPM-4.4
   status: pending
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-4.3
-  estimate: "1 pt"
+  estimate: 1 pt
 - id: OPM-4.5
   status: pending
   assigned_to:
@@ -57,7 +57,7 @@ tasks:
   - OPM-4.2
   - OPM-4.3
   - OPM-4.4
-  estimate: "0.5 pt"
+  estimate: 0.5 pt
 parallelization:
   batch_1:
   - OPM-4.1

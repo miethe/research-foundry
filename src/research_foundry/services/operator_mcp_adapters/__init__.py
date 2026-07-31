@@ -67,7 +67,8 @@ resolve_local_sensitivity_ceiling` inside its own `invoke*` function body
 (never at module level) -- the same lazy-import convention `run_plan.py`'s
 own module docstring documents for `planning`, required here because this
 package's own `__init__.py` (this file) imports `run_plan`/`swarm_start`/
-`job_lifecycle` for their registration side effect; a module-level import
+`job_lifecycle`/`external_import`/`source_ingest`/`research_stages`/
+`verify_bundle` for their registration side effect; a module-level import
 back from any of them would be circular.
 """
 
@@ -90,6 +91,10 @@ from .base import (
 from . import run_plan as _run_plan  # noqa: F401  -- import for registration side effect
 from . import swarm_start as _swarm_start  # noqa: F401  -- import for registration side effect
 from . import job_lifecycle as _job_lifecycle  # noqa: F401  -- import for registration side effect
+from . import external_import as _external_import  # noqa: F401  -- import for registration side effect
+from . import source_ingest as _source_ingest  # noqa: F401  -- import for registration side effect
+from . import research_stages as _research_stages  # noqa: F401  -- import for registration side effect
+from . import verify_bundle as _verify_bundle  # noqa: F401  -- import for registration side effect
 
 _logger = logging.getLogger(__name__)
 
