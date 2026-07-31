@@ -98,17 +98,29 @@ __all__ = ["OPERATION_KIND", "SourceIngestAdapter", "ADAPTER", "invoke"]
 OPERATION_KIND = "source.ingest"
 
 
-def _resolved_within(root: Path, candidate: Path) -> bool:
-    """M2 fix cycle 2, path-containment sweep (sibling to SEC-1) -- a
-    PURELY STRUCTURAL containment check, the exact resolve-then-contain
-    posture `verify_bundle._explicit_path_within_run` (F5) and
-    `external_import._resolved_within` (SEC-1) establish: resolves both
-    `root` and `candidate` (symlinks included) and requires `candidate` to
-    land AT `root` or somewhere BENEATH it. Never probes whether the
-    resolved `candidate` exists -- an existence check on a location outside
-    the authorized boundary would itself be an oracle (F6/H6's own class of
-    leak). `candidate` may be relative (joined under `root` first) or
-    absolute (resolved as given)."""
+def _resolved_within(root: Path, candidate: Path) -> Path | None:
+    """M2 fix cycle 3 (F3.1/SEC2-1) -- AUTHORITATIVE, not advisory: returns
+    the resolved, root-anchored `Path` when `candidate` is contained,
+    `None` otherwise. Originally bool-returning (M2 fix cycle 2); the
+    security re-gate found that a bool-returning validator lets the check
+    and the DOWNSTREAM USE disagree about what a RELATIVE `candidate` means
+    -- this function resolved a relative value against `root`, but the
+    caller then forwarded the ORIGINAL, UNRESOLVED string to
+    `source_cards.ingest_source`, which resolves relative paths against the
+    server PROCESS's CWD, a different anchor entirely (SEC2-1: `locator=
+    "secret.txt"` after chdir). Returning the resolved `Path` and requiring
+    the caller to forward THAT (never the raw string) closes the anchor
+    mismatch structurally.
+
+    The exact resolve-then-contain posture `verify_bundle.
+    _explicit_path_within_run` (F5) and `external_import._resolved_within`
+    (SEC-1) establish: resolves both `root` and `candidate` (symlinks
+    included) and requires `candidate` to land AT `root` or somewhere
+    BENEATH it. Never probes whether the resolved `candidate` exists -- an
+    existence check on a location outside the authorized boundary would
+    itself be an oracle (F6/H6's own class of leak). `candidate` may be
+    relative (joined under `root` first, still returned in resolved
+    absolute form) or absolute (resolved as given)."""
 
     try:
         root_resolved = root.resolve()
@@ -119,20 +131,52 @@ def _resolved_within(root: Path, candidate: Path) -> bool:
             "denying (never a permissive fallback)",
             type(exc).__name__,
         )
-        return False
-    return effective == root_resolved or root_resolved in effective.parents
+        return None
+    if effective == root_resolved or root_resolved in effective.parents:
+        return effective
+    return None
+
+
+#: F3.2 fix (M2 fix cycle 3, SEC2-2, BLOCKING) -- the ONLY URL schemes this
+#: adapter ever treats as "fetch over the network", checked explicitly and
+#: authoritatively HERE, before any dispatch to `source_cards.ingest_
+#: source`. `"file"` was PREVIOUSLY included alongside `"http"`/`"https"` in
+#: this family's own scheme check (M2 wave 1) on the reasoning that "its
+#: fetch ... goes over the network, a separate concern" -- that reasoning
+#: was wrong: `file:` is not a network scheme, and `source_cards._fetch_url`
+#: (a canonical service, off limits to this leg) has no scheme allowlist of
+#: its own, so a `file://` locator with `fetch=True` reached `urllib.
+#: request.urlopen`, whose built-in `FileHandler` reads local files --
+#: proven to read `/etc/passwd` verbatim, byte-identical, into a durable
+#: ledger artifact, across `file:///etc/passwd`, `file://localhost/...`,
+#: `FILE://...` (urlparse lowercases the scheme), and `file:/...`
+#: (single-slash) variants alike. The MCP surface must not depend on a
+#: downstream service being safe -- this allowlist is checked
+#: UNCONDITIONALLY before `ingest_source` is ever called, regardless of
+#: `fetch`, so `source_cards.py`'s own missing allowlist (filed separately,
+#: a canonical-service defect outside this leg's files) never matters on
+#: this route.
+_ALLOWED_LOCATOR_SCHEMES = frozenset({"http", "https"})
+
+
+def _locator_scheme(locator: str) -> str:
+    """The lowercase URL scheme `urlparse` detects for `locator` (empty
+    string if none). `urlparse` itself lowercases the scheme, so `FILE://
+    ...`/`file://...` are indistinguishable here -- matching what the
+    security re-gate proved: no case-based bypass is possible."""
+
+    return urlparse(locator).scheme
 
 
 def _looks_like_url(locator: str) -> bool:
-    """Mirrors `source_cards._is_url`'s own scheme check (`http`/`https`/
-    `file`) -- duplicated here rather than imported, since that helper is
-    module-private and adapter modules do not cross-import each other's (or
-    a canonical service's) private helpers, the established convention in
-    this family. Used ONLY to decide whether `locator` needs workspace
-    containment (a bare local path does; a URL locator does not -- its
-    fetch, when `fetch=True`, goes over the network, a separate concern)."""
+    """`locator` has an ALLOWED (http/https) scheme -- used to decide
+    whether `locator` needs workspace containment (a bare local path, or
+    any locator with a scheme outside the allowlist -- the latter is
+    refused outright before this even matters, see `_ALLOWED_LOCATOR_
+    SCHEMES` -- does; an allowed URL locator does not, since its fetch, when
+    `fetch=True`, goes over the network, a separate concern)."""
 
-    return urlparse(locator).scheme in ("http", "https", "file")
+    return _locator_scheme(locator) in _ALLOWED_LOCATOR_SCHEMES
 
 
 @dataclass(frozen=True)
@@ -305,28 +349,47 @@ def invoke(
 
     def _run() -> ActionEffect:
         assert ctx.identity is not None
-        # M2 fix cycle 2, path-containment sweep -- a NEW instance found
-        # beyond packet_dir, same class, arguably more severe: `source_cards.
-        # ingest_source` unconditionally treats `locator` as a local file
-        # (`Path(locator).exists() and .is_file()`) and reads its FULL
-        # CONTENT -- with NO containment at all -- whenever `content` is not
-        # already supplied and `locator` is not URL-shaped. `content is not
-        # None` bypasses that local-file branch entirely (source_cards.py's
-        # own precedence order), so this check only applies when the caller
-        # is relying on `ingest_source`'s own local-read behavior. Checked
-        # HERE, inside `_run()`, after authorization (F6 posture) -- a
-        # local-shaped `locator` that resolves outside the authorized
-        # workspace tree is denied before `ingest_source` ever touches it;
-        # genuine URL locators (`fetch=True` or not) are unaffected, since
-        # their content only ever reaches this process over the network,
-        # already gated by whatever network policy applies elsewhere.
-        if content is None and not _looks_like_url(locator):
-            if not _resolved_within(resolved_paths.root, Path(locator)):
+        # F3.2 fix (M2 fix cycle 3, SEC2-2, BLOCKING) -- an explicit scheme
+        # allowlist, checked UNCONDITIONALLY before any dispatch to
+        # `ingest_source`, regardless of `fetch`/`content`. See
+        # `_ALLOWED_LOCATOR_SCHEMES`'s own module-level docstring for the
+        # full `file://` bypass this closes. A locator with NO scheme at
+        # all (a bare local path) is not refused here -- it is handled by
+        # the resolve-and-substitute branch below instead.
+        locator_scheme = _locator_scheme(locator)
+        if locator_scheme and locator_scheme not in _ALLOWED_LOCATOR_SCHEMES:
+            raise RuntimeError(
+                f"source.ingest: locator scheme {locator_scheme!r} is not permitted -- "
+                "only http(s) URLs or local workspace paths are accepted"
+            )
+        # F3.1 fix (M2 fix cycle 3, SEC2-1) -- resolve-and-substitute, not
+        # merely validate: `source_cards.ingest_source` unconditionally
+        # treats `locator` as a local file (`Path(locator).exists() and
+        # .is_file()`) and reads its FULL CONTENT whenever `content` is not
+        # already supplied and `locator` has no (allowed) URL scheme.
+        # `content is not None` bypasses that local-file branch entirely
+        # (source_cards.py's own precedence order), so this only applies
+        # when the caller is relying on `ingest_source`'s own local-read
+        # behavior. The RESOLVED, root-anchored path is forwarded to
+        # `ingest_source` -- NEVER the caller's raw string -- closing the
+        # SAME check/use anchor mismatch SEC2-1 found for `packet_dir`: the
+        # old bool-returning guard resolved a relative `locator` against
+        # the workspace root, then forwarded the ORIGINAL unresolved string,
+        # which `Path(locator)` inside `ingest_source` resolves against the
+        # server PROCESS's CWD instead (`locator="secret.txt"` after
+        # `chdir`). Checked HERE, inside `_run()`, after authorization (F6
+        # posture). Genuine URL locators are unaffected -- their content
+        # only ever reaches this process over the network.
+        effective_locator = locator
+        if content is None and not locator_scheme:
+            resolved_locator = _resolved_within(resolved_paths.root, Path(locator))
+            if resolved_locator is None:
                 raise RuntimeError(
                     "source.ingest: locator escapes the authorized workspace tree"
                 )
+            effective_locator = str(resolved_locator)
         result = source_cards.ingest_source(
-            locator,
+            effective_locator,
             run_id=run_id,
             source_type=source_type,
             sensitivity=sensitivity,

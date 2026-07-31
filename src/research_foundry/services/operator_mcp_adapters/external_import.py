@@ -112,19 +112,40 @@ __all__ = ["OPERATION_KIND", "ExternalReportImportAdapter", "ADAPTER", "invoke"]
 OPERATION_KIND = "external_report.import"
 
 
-def _resolved_within(root: Path, candidate: Path) -> bool:
-    """M2 fix cycle 2, SEC-1/path-containment sweep -- a PURELY STRUCTURAL
-    containment check, the exact resolve-then-contain posture
-    `verify_bundle._explicit_path_within_run` established (F5): resolves
-    both `root` and `candidate` (symlinks included -- SEC-1's own PoC used a
-    symlink planted inside the workspace to reach `/etc`, so a lexical-only
-    check would not close it) and requires `candidate` to land AT `root` or
+def _resolved_within(root: Path, candidate: Path) -> Path | None:
+    """M2 fix cycle 3 (F3.1/SEC2-1) -- AUTHORITATIVE, not advisory: returns
+    the resolved, root-anchored `Path` when `candidate` is contained,
+    `None` otherwise. Originally bool-returning (M2 fix cycle 2); the
+    security re-gate found that a bool-returning validator lets the check
+    and the DOWNSTREAM USE disagree about what a RELATIVE `candidate` means
+    -- this function resolved a relative value against `root`, but the
+    caller then forwarded the ORIGINAL, UNRESOLVED string to
+    `import_external_report`, which resolves relative paths against the
+    server PROCESS's CWD, a different anchor entirely. A caller could name
+    a perfectly "contained" relative path (no `..` needed at all) and have
+    it read from wherever the process happened to be launched. Returning
+    the resolved `Path` and requiring the caller to forward THAT (never the
+    raw string) closes the anchor mismatch structurally: whatever
+    `import_external_report` does internally with an already-absolute path
+    cannot depend on CWD.
+
+    The exact resolve-then-contain posture `verify_bundle.
+    _explicit_path_within_run` established (F5): resolves both `root` and
+    `candidate` (symlinks included -- SEC-1's own PoC used a symlink
+    planted inside the workspace to reach `/etc`, so a lexical-only check
+    would not close it) and requires `candidate` to land AT `root` or
     somewhere BENEATH it. Deliberately never probes whether the resolved
     `candidate` exists -- an existence check on a location outside the
     authorized boundary would itself be an oracle (the same class of leak
-    F6/H6 close elsewhere in this family). `candidate` may be relative (then
-    joined under `root` first) or absolute (resolved as given, checked for
-    containment the same way)."""
+    F6/H6 close elsewhere in this family). `candidate` may be relative
+    (joined under `root` first, still returned as the resolved absolute
+    form) or absolute (resolved as given) -- callers that must reject a
+    relative `candidate` outright (see `packet_dir`'s own check in
+    `_run()`) do so themselves, BEFORE calling this function; this function
+    itself still accepts and resolves a relative candidate for the
+    `target_run_id` containment call site below, which never forwards its
+    own string anywhere -- only the resolved containment DECISION matters
+    there, not a substituted value."""
 
     try:
         root_resolved = root.resolve()
@@ -135,8 +156,10 @@ def _resolved_within(root: Path, candidate: Path) -> bool:
             "denying (never a permissive default)",
             type(exc).__name__,
         )
-        return False
-    return effective == root_resolved or root_resolved in effective.parents
+        return None
+    if effective == root_resolved or root_resolved in effective.parents:
+        return effective
+    return None
 
 
 def _resolve_run_workspace_id(run_id: str, paths: FoundryPaths) -> str | None:
@@ -161,7 +184,7 @@ def _resolve_run_workspace_id(run_id: str, paths: FoundryPaths) -> str | None:
     downstream rejection happens too late to prevent this read, exactly the
     ordering hazard SEC-1 named for `packet_dir`)."""
 
-    if not _resolved_within(paths.runs, Path(run_id)):
+    if _resolved_within(paths.runs, Path(run_id)) is None:
         _logger.warning(
             "operator_mcp_adapters.external_import: target_run_id=%s escapes the "
             "authorized runs/ tree -- resolving owning workspace to None (deny, "
@@ -302,29 +325,45 @@ def invoke(
     captured: list["external_research_import.ImportOutcome"] = []
 
     def _run() -> ActionEffect:
-        # SEC-1 fix (M2 fix cycle 2, BLOCKING): `packet_dir` must resolve
-        # inside the authorized workspace tree -- previously forwarded
-        # VERBATIM to `import_external_report`, which recursively
+        # SEC-1/SEC2-1 fix (M2 fix cycles 2+3, BLOCKING): `packet_dir` must
+        # resolve inside the authorized workspace tree -- originally
+        # forwarded VERBATIM to `import_external_report`, which recursively
         # `os.scandir`s it, making any absolute host path (`/etc`,
         # `~/.ssh`, `/var/root`, a symlink planted inside the workspace
         # pointing anywhere) a caller-reachable existence/type/symlink/
-        # content oracle over the ENTIRE host filesystem. Checked HERE,
-        # inside `_run()` -- after `base.run_pipeline` has already
-        # authorized and durably consumed the operation (F6 posture, mirrors
-        # `verify_bundle.py`'s own prerequisite-check placement) -- never
-        # before `ctx`, so an unauthorized caller learns nothing about
-        # `packet_dir` validity that authorization itself didn't already
-        # gate. Containment root is `resolved_paths.root` -- the ONE
-        # configured operator's own authorized workspace tree, re-derived
-        # here, never caller-supplied -- not merely a specific run's
-        # directory, since a staging-only import (`target_run_id=None`) has
-        # no run tree to bind to at all.
-        if not _resolved_within(resolved_paths.root, Path(packet_dir)):
+        # content oracle over the ENTIRE host filesystem (SEC-1). Cycle 2's
+        # bool-returning guard closed every ABSOLUTE escape but left a
+        # RELATIVE one open: the guard resolved a relative candidate
+        # against `resolved_paths.root`, then this closure forwarded the
+        # caller's ORIGINAL, unresolved string -- which
+        # `import_external_report` resolves against the server PROCESS's
+        # CWD, a different anchor (SEC2-1). Fixed by (a) rejecting a
+        # relative `packet_dir` OUTRIGHT -- there is no ambiguity to
+        # resolve if only an absolute, already-unambiguous value is ever
+        # accepted -- and (b) forwarding the RESOLVED, root-anchored `Path`
+        # `_resolved_within` returns, never the caller's raw string, so
+        # even a symlink or relative-looking segment inside an otherwise
+        # absolute `packet_dir` cannot reintroduce a CWD-dependent read.
+        # Checked HERE, inside `_run()` -- after `base.run_pipeline` has
+        # already authorized and durably consumed the operation (F6
+        # posture) -- never before `ctx`. Containment root is
+        # `resolved_paths.root` -- the ONE configured operator's own
+        # authorized workspace tree, re-derived here, never caller-supplied
+        # -- not merely a specific run's directory, since a staging-only
+        # import (`target_run_id=None`) has no run tree to bind to at all.
+        packet_path = Path(packet_dir)
+        if not packet_path.is_absolute():
+            raise RuntimeError(
+                "external_report.import: packet_dir must be an absolute, "
+                "in-workspace path (relative values are refused outright)"
+            )
+        resolved_packet_dir = _resolved_within(resolved_paths.root, packet_path)
+        if resolved_packet_dir is None:
             raise RuntimeError(
                 "external_report.import: packet_dir escapes the authorized workspace tree"
             )
         outcome = external_research_import.import_external_report(
-            packet_dir,
+            str(resolved_packet_dir),  # the RESOLVED, root-anchored path -- never the caller's raw string
             workspace_id=workspace_id,
             target_run_id=target_run_id,
             dry_run=False,  # substrate's dry-run is the ONE dry-run this adapter exposes (D3)

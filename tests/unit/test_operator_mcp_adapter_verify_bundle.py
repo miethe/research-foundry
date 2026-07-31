@@ -325,56 +325,63 @@ def test_invoke_verify_missing_report_denies_after_authorization_zero_effects(
 
 
 # ---------------------------------------------------------------------------
-# run.verify -- F5 regression: explicit report_path/claim_ledger_path must
-# not escape the authorized run's own directory tree
+# M2 fix cycle 3, F3.1/SEC2-1 (BLOCKING): report_path/claim_ledger_path
+# REMOVED from invoke_verify's signature entirely. This section REPLACES
+# the fix-cycle-1 (F5) and fix-cycle-2 (SEC-7) tests that used to exercise
+# those two explicit-path parameters -- both parameters are gone, so "an
+# authorized caller supplies a foreign explicit path and it is denied" is
+# no longer a reachable scenario to test; there is no explicit-path input
+# left to submit. See `invoke_verify`'s own docstring for why removal (not
+# another guard layer) is the fix: the security re-gate found the F5/SEC-7
+# guard checked containment anchored at the run's own directory but then
+# forwarded the caller's raw string to `verify_report`, which resolves a
+# relative value against the SERVER PROCESS'S CWD -- a different anchor
+# than the one the guard checked, so a caller could name a "contained"
+# relative path (no `..` needed) and have it read from -- and, for
+# `claim_ledger_path`, WRITTEN to -- wherever the process was launched.
 # ---------------------------------------------------------------------------
 
 
-def test_invoke_verify_foreign_report_path_denies_and_does_not_touch_foreign_run(
+def test_invoke_verify_rejects_report_path_and_claim_ledger_path_keywords() -> None:
+    """Structural proof the MCP surface no longer accepts either parameter
+    -- the strongest possible "not caller-reachable" proof: it is not
+    merely denied at runtime, the keyword does not exist on the function's
+    own signature at all (and `_allowed_input_payload_keys` on the MCP
+    route derives its allowlist from exactly this signature, so this
+    absence is what shrinks the real caller-reachable surface)."""
+
+    import inspect
+
+    sig = inspect.signature(verify_bundle.invoke_verify)
+    assert "report_path" not in sig.parameters
+    assert "claim_ledger_path" not in sig.parameters
+
+
+def test_invoke_verify_succeeds_using_only_run_id_no_explicit_path_needed(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """F5 regression. Before the fix: an authorized caller for run A could
-    supply an ABSOLUTE `report_path` pointing at run B's own report -- a
-    DIFFERENT run, owned by a DIFFERENT workspace -- and `verify_report`
-    would happily read it (its own explicit-path resolution accepts an
-    absolute path as-is with no ownership check), verify it under A's
-    identity, and write `verification_status` back into B's
-    `claim_ledger.yaml`. This test FAILS pre-fix (foreign write succeeds,
-    `ok=True`) and PASSES post-fix (`ok=False`, B's ledger untouched) --
-    confirmed by running it against the pre-fix code cited in the pregate
-    finding (see this task's completion note for the verified pre-fix
-    failure transcript)."""
+    """The positive counterpart: `invoke_verify` still verifies correctly
+    using ONLY `run_id` -- `verify_report`'s own default (`report_path=
+    None`, `claim_ledger_path=None`) auto-discovers from the run's own
+    directory, resolved at the SAME anchor (`resolved_paths`/`run_id`) the
+    prerequisite check already used, so there is no second anchor left to
+    mismatch. Proves removing the parameters did not break the ordinary,
+    legitimate "verify run X" case."""
 
     monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
-    run_a = _build_verified_run(tmp_foundry, identity=_IDENTITY, sensitivity="personal")
+    run_id = _build_verified_run(tmp_foundry, identity=_IDENTITY, sensitivity="personal")
 
-    # Run B: a DIFFERENT run, owned by a DIFFERENT workspace/identity, with
-    # its own real report + ledger.
-    run_b = _build_verified_run(
-        tmp_foundry, identity=_IDENTITY_OTHER_WORKSPACE, sensitivity="personal"
-    )
-    rp_b = tmp_foundry.run_paths(run_b)
-    ledger_b_before = load_yaml(rp_b.claim_ledger)
-    assert ledger_b_before.get("verification_status") != "failed"
-    assert ledger_b_before.get("verification_status") != "passed"
-    assert not rp_b.verification.exists()
-
-    foreign_report_path = rp_b.report_draft if rp_b.report_draft.exists() else rp_b.report_final
-    assert foreign_report_path.exists()
-
-    run_ctx = verify_bundle._resolve_run_context(run_a, tmp_foundry)
     ctx = policy.PolicyContext.for_configured_operator(
         operation_kind=verify_bundle.VERIFY_OPERATION_KIND,
-        idempotency_key="idem-verify-foreign-report-path",
-        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
+        idempotency_key="idem-f31-run-id-only",
+        effective_sensitivity=policy.resolve_effective_sensitivity("personal"),
         sensitivity_ceiling="client_sensitive",
-        targets=(policy.TargetRef("run", run_a),),
-        resolved_target_workspaces=(run_ctx.workspace_id,),
+        targets=(policy.TargetRef("run", run_id),),
+        resolved_target_workspaces=("ws-mine",),
         input_payload={
-            "run_id": run_a,
+            "run_id": run_id,
             "fail_on_unsupported": True,
             "disposition": "internal_capture",
-            "report_path": str(foreign_report_path),
         },
         paths=tmp_foundry,
     )
@@ -382,80 +389,18 @@ def test_invoke_verify_foreign_report_path_denies_and_does_not_touch_foreign_run
     record, token = _mint_and_record(ctx, op_service)
 
     result = verify_bundle.invoke_verify(
-        run_id=run_a,
-        idempotency_key="idem-verify-foreign-report-path",
+        run_id=run_id,
+        idempotency_key="idem-f31-run-id-only",
         confirmation_record=record,
         presented_token=token,
-        report_path=foreign_report_path,
         paths=tmp_foundry,
         now=ids.now(),
         operations=op_service,
     )
 
-    assert result.ok is False
-    assert result.error is not None
-    assert result.error["reason_code"] == "internal_error"
-    # The hard assertion: B's own ledger/verification state must be
-    # UNTOUCHED -- no cross-run/cross-workspace write occurred.
-    assert not rp_b.verification.exists()
-    ledger_b_after = load_yaml(rp_b.claim_ledger)
-    assert ledger_b_after == ledger_b_before
-    # A's own verification record was never written either -- verify_report
-    # was never reached at all.
-    assert not tmp_foundry.run_paths(run_a).verification.exists()
-
-
-def test_invoke_verify_foreign_claim_ledger_path_denies_and_does_not_touch_foreign_run(
-    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """F5 regression, `claim_ledger_path` variant -- same vulnerability
-    shape, the OTHER explicit-path sibling parameter the finding named."""
-
-    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
-    run_a = _build_verified_run(tmp_foundry, identity=_IDENTITY, sensitivity="personal")
-    run_b = _build_verified_run(
-        tmp_foundry, identity=_IDENTITY_OTHER_WORKSPACE, sensitivity="personal"
-    )
-    rp_b = tmp_foundry.run_paths(run_b)
-    ledger_b_before = load_yaml(rp_b.claim_ledger)
-    assert not rp_b.verification.exists()
-
-    run_ctx = verify_bundle._resolve_run_context(run_a, tmp_foundry)
-    ctx = policy.PolicyContext.for_configured_operator(
-        operation_kind=verify_bundle.VERIFY_OPERATION_KIND,
-        idempotency_key="idem-verify-foreign-ledger-path",
-        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
-        sensitivity_ceiling="client_sensitive",
-        targets=(policy.TargetRef("run", run_a),),
-        resolved_target_workspaces=(run_ctx.workspace_id,),
-        input_payload={
-            "run_id": run_a,
-            "fail_on_unsupported": True,
-            "disposition": "internal_capture",
-            "claim_ledger_path": str(rp_b.claim_ledger),
-        },
-        paths=tmp_foundry,
-    )
-    op_service = OperatorOperationService(tmp_foundry)
-    record, token = _mint_and_record(ctx, op_service)
-
-    result = verify_bundle.invoke_verify(
-        run_id=run_a,
-        idempotency_key="idem-verify-foreign-ledger-path",
-        confirmation_record=record,
-        presented_token=token,
-        claim_ledger_path=rp_b.claim_ledger,
-        paths=tmp_foundry,
-        now=ids.now(),
-        operations=op_service,
-    )
-
-    assert result.ok is False
-    assert result.error is not None
-    assert result.error["reason_code"] == "internal_error"
-    assert not rp_b.verification.exists()
-    assert load_yaml(rp_b.claim_ledger) == ledger_b_before
-    assert not tmp_foundry.run_paths(run_a).verification.exists()
+    assert result.ok is True, result.error
+    assert result.result is not None
+    assert result.result["passed"] is True
 
 
 def test_explicit_path_within_run_rejects_traversal_and_absolute_foreign_paths(
@@ -475,127 +420,6 @@ def test_explicit_path_within_run_rejects_traversal_and_absolute_foreign_paths(
     assert not verify_bundle._explicit_path_within_run(
         run_root, tmp_foundry.run_paths("rf_run_other").run / "reports" / "report_draft.md"
     )
-
-
-# ---------------------------------------------------------------------------
-# M2 fix cycle 2, SEC-7 (MED) -- `report_path`/`claim_ledger_path` must be
-# coerced to real `Path` objects before the F5 containment guard runs, so
-# the guard actually EXECUTES on the MCP route (which delivers JSON
-# strings), rather than dying on `AttributeError` before it can ever run.
-# Every test above/below this section passes a real `Path` object (the
-# direct-Python-caller shape); these tests pass a plain `str` instead --
-# the actual runtime shape an MCP `call_tool` dispatch produces -- and prove
-# BOTH that the guard now accepts a legitimate in-run string path (only
-# possible if coercion happened; pre-fix this crashed regardless of
-# validity) and still denies a foreign one.
-# ---------------------------------------------------------------------------
-
-
-def test_invoke_verify_accepts_string_report_path_shaped_like_mcp_json(
-    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A `report_path` supplied as a plain `str` (never a `Path` object --
-    the real shape MCP's JSON transport delivers) pointing INSIDE the
-    authorized run must succeed. Pre-fix, ANY string `report_path` crashed
-    with `AttributeError` inside `_explicit_path_within_run` regardless of
-    whether it was legitimate or foreign -- this is the proof the F5 guard
-    now actually differentiates, rather than uniformly type-crashing."""
-
-    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
-    run_id = _build_verified_run(tmp_foundry, identity=_IDENTITY, sensitivity="personal")
-    rp = tmp_foundry.run_paths(run_id)
-    own_report_path = rp.report_draft if rp.report_draft.exists() else rp.report_final
-    assert own_report_path.exists()
-
-    run_ctx = verify_bundle._resolve_run_context(run_id, tmp_foundry)
-    ctx = policy.PolicyContext.for_configured_operator(
-        operation_kind=verify_bundle.VERIFY_OPERATION_KIND,
-        idempotency_key="idem-sec7-string-inrun",
-        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
-        sensitivity_ceiling="client_sensitive",
-        targets=(policy.TargetRef("run", run_id),),
-        resolved_target_workspaces=(run_ctx.workspace_id,),
-        input_payload={
-            "run_id": run_id,
-            "fail_on_unsupported": True,
-            "disposition": "internal_capture",
-            "report_path": str(own_report_path),
-        },
-        paths=tmp_foundry,
-    )
-    op_service = OperatorOperationService(tmp_foundry)
-    record, token = _mint_and_record(ctx, op_service)
-
-    result = verify_bundle.invoke_verify(
-        run_id=run_id,
-        idempotency_key="idem-sec7-string-inrun",
-        confirmation_record=record,
-        presented_token=token,
-        report_path=str(own_report_path),  # plain str, not Path -- the MCP-route shape
-        paths=tmp_foundry,
-        now=ids.now(),
-        operations=op_service,
-    )
-
-    assert result.ok is True, result.error
-    assert result.result is not None
-    assert result.result["passed"] is True
-
-
-def test_invoke_verify_denies_string_foreign_report_path_shaped_like_mcp_json(
-    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The negative counterpart, mirroring `test_invoke_verify_foreign_
-    report_path_denies_and_does_not_touch_foreign_run` but with a plain
-    `str` `report_path` (the MCP-route shape) instead of a `Path` object --
-    proves the F5 guard, now actually executing, still correctly denies a
-    foreign path when it is a string."""
-
-    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
-    run_a = _build_verified_run(tmp_foundry, identity=_IDENTITY, sensitivity="personal")
-    run_b = _build_verified_run(
-        tmp_foundry, identity=_IDENTITY_OTHER_WORKSPACE, sensitivity="personal"
-    )
-    rp_b = tmp_foundry.run_paths(run_b)
-    ledger_b_before = load_yaml(rp_b.claim_ledger)
-    foreign_report_path = rp_b.report_draft if rp_b.report_draft.exists() else rp_b.report_final
-    assert foreign_report_path.exists()
-
-    run_ctx = verify_bundle._resolve_run_context(run_a, tmp_foundry)
-    ctx = policy.PolicyContext.for_configured_operator(
-        operation_kind=verify_bundle.VERIFY_OPERATION_KIND,
-        idempotency_key="idem-sec7-string-foreign",
-        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
-        sensitivity_ceiling="client_sensitive",
-        targets=(policy.TargetRef("run", run_a),),
-        resolved_target_workspaces=(run_ctx.workspace_id,),
-        input_payload={
-            "run_id": run_a,
-            "fail_on_unsupported": True,
-            "disposition": "internal_capture",
-            "report_path": str(foreign_report_path),
-        },
-        paths=tmp_foundry,
-    )
-    op_service = OperatorOperationService(tmp_foundry)
-    record, token = _mint_and_record(ctx, op_service)
-
-    result = verify_bundle.invoke_verify(
-        run_id=run_a,
-        idempotency_key="idem-sec7-string-foreign",
-        confirmation_record=record,
-        presented_token=token,
-        report_path=str(foreign_report_path),  # plain str, not Path
-        paths=tmp_foundry,
-        now=ids.now(),
-        operations=op_service,
-    )
-
-    assert result.ok is False
-    assert result.error is not None
-    assert result.error["reason_code"] == "internal_error"
-    assert not rp_b.verification.exists()
-    assert load_yaml(rp_b.claim_ledger) == ledger_b_before
 
 
 # ---------------------------------------------------------------------------

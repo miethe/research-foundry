@@ -36,6 +36,7 @@ regardless of where their `packet_dir` fixtures point.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -581,3 +582,102 @@ def test_invoke_denies_traversal_target_run_id_same_shape_as_missing_run(
     assert traversal_result.error["reason_code"] == "not_found"
     assert missing_run_result.ok is False
     assert traversal_result.error == missing_run_result.error
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 3, F3.1/SEC2-1 (BLOCKING) -- check/use anchor mismatch: the
+# cycle-2 guard resolved a RELATIVE packet_dir against the workspace root,
+# then forwarded the caller's ORIGINAL unresolved string to
+# `import_external_report`, which resolves it against the server process's
+# CWD instead. F3.3: every pre-existing test here runs with CWD INSIDE the
+# workspace, so none of them could ever observe this -- these tests chdir
+# OUTSIDE the workspace first, exactly like the security re-gate's own
+# reproduction (`packet_dir="."`).
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_denies_relative_packet_dir_outright(
+    tmp_foundry: FoundryPaths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gate's own exact reproduction: `packet_dir="."` with the process
+    CWD moved OUTSIDE the workspace. A relative `packet_dir` is now refused
+    OUTRIGHT (never resolved-and-substituted) -- proven here by planting a
+    canary directory at the CWD (structured to LOOK like a valid packet, so
+    a containment failure would be visible rather than masked by an
+    unrelated `unsupported_schema_version`/`required_member_missing`
+    denial) and asserting `import_external_report` is never reached."""
+
+    identity = _IDENTITY
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    # Plants a real, schema-valid (BLOCKED) packet directly AT the CWD
+    # candidate itself, so "." genuinely looks like a valid packet -- a
+    # containment failure would be visible (a real receipt/outcome), not
+    # masked by an unrelated "not a packet at all" denial.
+    outside_cwd = tmp_path / "outside-cwd-packet-root"
+    build_packet(outside_cwd, omit_member_role="report")
+
+    real_cwd = os.getcwd()
+    os.chdir(outside_cwd)
+    try:
+        calls: list[Any] = []
+
+        def _recording_import(*args: Any, **kwargs: Any) -> Any:
+            calls.append((args, kwargs))
+            raise AssertionError("import_external_report reached -- containment guard did not fire")
+
+        monkeypatch.setattr(eri_module, "import_external_report", _recording_import)
+
+        ctx = _basic_ctx(tmp_foundry, packet_dir=".", idempotency_key="idem-sec2-1-relative-cwd")
+        op_service = OperatorOperationService(tmp_foundry)
+        issued = policy.mint_confirmation(ctx, now=ids.now())
+        op_service.record_confirmation(issued.record)
+
+        result = external_import.invoke(
+            packet_dir=".",
+            workspace_id="ws-mine",
+            idempotency_key="idem-sec2-1-relative-cwd",
+            confirmation_record=issued.record,
+            presented_token=issued.token,
+            paths=tmp_foundry,
+            now=ids.now(),
+            operations=op_service,
+        )
+    finally:
+        os.chdir(real_cwd)
+
+    assert calls == [], "import_external_report must never be called for a relative packet_dir"
+    assert result.ok is False
+    assert result.result is None
+    assert result.error is not None
+    assert result.error["reason_code"] == "internal_error"
+
+
+def test_invoke_allows_relative_free_packet_dir_when_absolute_and_inside_workspace(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sanity companion: an ABSOLUTE, genuinely in-workspace `packet_dir`
+    still succeeds regardless of CWD -- proves the relative-rejection fix
+    does not break the legitimate case."""
+
+    identity = _IDENTITY
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+    packet_dir = _blocked_packet(tmp_foundry.root, "abs-still-works")
+
+    ctx = _basic_ctx(tmp_foundry, packet_dir=packet_dir, idempotency_key="idem-sec2-1-abs-ok")
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    result = external_import.invoke(
+        packet_dir=packet_dir,
+        workspace_id="ws-mine",
+        idempotency_key="idem-sec2-1-abs-ok",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is True, result.error

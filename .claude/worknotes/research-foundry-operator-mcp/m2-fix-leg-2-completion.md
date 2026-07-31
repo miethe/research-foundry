@@ -371,3 +371,197 @@ Two pre-existing tests in `test_operator_mcp_adapter_external_import.py` had the
 5. **`swarm_start.intent_id`'s "not directly caller-reachable today" claim** (row 13) — independently confirm there is truly no path from an MCP-supplied parameter to a caller-controlled `run.yaml`'s `intent_id` field that this fix's own `run_id` containment doesn't already close first.
 
 Nothing disputed. SEC-1 and SEC-7 fixed exactly as the coordinator specified (coerce-then-guard chosen for SEC-7, with rationale). All 9 newly-found instances fixed. No STOP-and-report triggered — no hard-boundary file needed editing, and the "genuinely requires an out-of-workspace packet directory" question resolved in favor of the coordinator's own default direction (workspace-tree containment) rather than escalating, since no functional requirement for out-of-workspace packets was found in the codebase, docs, or PRD beyond CLI convenience.
+
+---
+
+# Fix cycle 3 (FINAL) — F3.1/SEC2-1 + F3.2/SEC2-2: narrow the surface, don't guard it again
+
+Security re-gate: `.claude/findings/m2-security-regate.md`, sections SEC2-1 + SEC2-2 (both
+BLOCKING). Coordinator's explicit direction: no fourth guard layer — remove what can be removed,
+and where a value must survive (`packet_dir`), make the containment check AUTHORITATIVE
+(resolve-and-substitute) rather than advisory (bool-returning). SEC2-3 handled by the coordinator
+directly (not touched here). SEC2-4/SEC2-5 (MED) and SEC2-6/7/8 (LOW) — reported below, not fixed
+(scope discipline per the coordinator's explicit "do not expand scope for the LOW items").
+
+## What was removed vs. what was guarded
+
+**Removed (F3.1, run.verify):** `report_path`/`claim_ledger_path` deleted from `invoke_verify`'s
+own signature in `verify_bundle.py` — not merely rejected, GONE. Since `operator_mcp/server.py`'s
+`_allowed_input_payload_keys` derives its per-kind allowlist from `inspect.signature` of the real
+adapter function, this shrinks the real MCP-reachable surface with no server.py logic change
+needed. `verify_report`'s own default (`None` → auto-discover from the run's own directory, the
+same anchor the prerequisite check already uses) now runs unconditionally — there is no second
+anchor left to mismatch, because there is no caller-supplied path left to mismatch it with.
+`_verify_prerequisites_met` simplified to match (no more explicit-path skip branch). The F5
+containment helper (`_explicit_path_within_run`) is KEPT, unmodified — it is still reused for
+`run_id`'s own containment (cycle 2's fix), which the re-gate confirmed has no anchor-mismatch
+problem (both sides of that check share the same `paths`-derived anchor).
+
+**One necessary cross-boundary touch, disclosed:** `tests/integration/test_operator_mcp_server.py`'s
+`test_allowed_input_payload_keys_is_pinned_per_kind` hardcodes an exact frozenset per kind — its
+whole job is to mirror the real signature-derived allowlist, so removing the two parameters broke
+it mechanically. Updated the ONE `run.verify` entry (removed `report_path`/`claim_ledger_path`)
+with a comment explaining why; touched nothing else in that file or `server.py` itself. Fix cycle
+2's boundary explicitly named `operator_mcp/server.py` off-limits for "Leg 1 concurrent work"
+reasons; this cycle's boundary list did not repeat that file, the working tree showed no
+in-flight Leg 1 changes (fix cycle 2 already merged, `5025e97`), and the edit is a direct,
+mechanical, one-entry consequence of an explicitly directed fix — flagged here for the record
+rather than silently done.
+
+**Guarded, authoritatively (F3.1, `packet_dir` in `external_import.py`):** `_resolved_within` now
+RETURNS the resolved, root-anchored `Path` (was `bool`) — SEC2-1's core finding was that a
+bool-returning check and the caller's SEPARATE forwarding of the raw string could disagree about
+what a relative value means (the check resolved it against the workspace root; `import_external_
+report` then resolved the caller's original unresolved string against the server process's CWD).
+`_run()` now (a) rejects a relative `packet_dir` OUTRIGHT — no ambiguity to resolve if only an
+already-unambiguous absolute value is ever accepted — and (b) forwards the RESOLVED `Path`,
+never the caller's raw string, to `import_external_report`. `target_run_id`'s own containment call
+site (a pure decision, never a forwarded value) updated to the new `is None` check; unaffected
+otherwise, since the re-gate confirmed `run_id`-class values have no anchor-mismatch exposure.
+
+**Guarded, authoritatively (F3.1, `locator` in `source_ingest.py`, local-path branch):** same
+resolve-and-substitute treatment, but WITHOUT rejecting relative values outright (unlike
+`packet_dir`, a relative `locator` — e.g. "sources/foo.pdf" — is a legitimate, expected shape for
+this operation) — the resolved path is forwarded to `ingest_source` instead of the raw string, so
+a relative locator is now anchored at the WORKSPACE ROOT, never the process CWD.
+
+**Refused outright (F3.2/SEC2-2, `locator` scheme in `source_ingest.py`):** new
+`_ALLOWED_LOCATOR_SCHEMES = frozenset({"http", "https"})`, checked UNCONDITIONALLY at the top of
+`_run()`, before any dispatch, regardless of `fetch`/`content`. `"file"` removed from
+`_looks_like_url`'s own scheme tuple (previously `http`/`https`/`file` — the ORIGINAL M2-wave-1
+defect this re-gate found: "file" was never a network scheme, so treating it as one routed it
+straight around the local-path containment branch). `source_cards._fetch_url`'s own missing
+scheme allowlist is a canonical-service defect outside this leg's files — the coordinator is
+filing it separately; this fix does not depend on that file changing, since the ADAPTER now
+refuses the scheme before `ingest_source` is ever called at all.
+
+## Reproduction results — the coordinator's exact 5 attacks, through real `server.call_tool`
+
+Driven via `build_server(paths=...)` → `operation.preflight` → execute, each with a genuinely
+minted confirmation, mirroring `test_operator_mcp_preflight_execute_e2e.py`'s own pattern (scratch
+script, not committed — `/tmp/m2-fix-leg2-mutation/repro_cycle3.py`, deleted after use):
+
+```
+packet_dir="." (after chdir outside workspace, canary planted at CWD):
+  preflight: allowed=True (preflight never runs _run())
+  execute:   isError=True reason_code=internal_error -- REFUSED, zero effect
+             (relative packet_dir rejected outright; no scandir of anything)
+
+report_path="pwn_report.md" (run.verify):
+  preflight: isError=True reason_code=payload_too_large -- REFUSED AT PREFLIGHT
+             (key no longer in the allowlist at all -- never even reaches minting)
+
+claim_ledger_path="pwn_ledger.yaml" (run.verify):
+  preflight: isError=True reason_code=payload_too_large -- REFUSED AT PREFLIGHT (same)
+
+locator="secret.txt" (source.ingest, after chdir outside workspace, canary planted at CWD):
+  preflight: allowed=True
+  execute:   isError=False ok=True degraded=True extraction_status=locator_only
+             (resolved against the WORKSPACE ROOT -> nonexistent path -> never read)
+  canary content leaked into any source card: False
+
+locator="file:///etc/passwd" fetch=True (source.ingest):
+  preflight: allowed=True
+  execute:   isError=True reason_code=internal_error -- REFUSED, zero effect
+             (scheme rejected before ingest_source/urlopen ever called)
+  /etc/passwd content leaked into any source card: False
+```
+
+All 5 refused with zero effect through the genuine registered route. `file://localhost/...`,
+`FILE://...`, `file:/...` variants also covered (parametrized unit test, all four scheme forms
+denied identically — `urlparse` lowercases the scheme, matching the re-gate's own finding).
+
+## F3.3 — the CWD test-harness blind spot, closed and mutation-verified
+
+Every pre-existing test in this whole leg ran with CWD inside the workspace tree, so none of them
+could ever observe an anchor mismatch — proven by the FIRST mutation pass of this fix cycle (see
+below) initially reporting FALSE test failures for the wrong reason before the tests themselves
+were corrected. New CWD-outside tests added (5 new tests across 2 files): `test_invoke_denies_
+relative_packet_dir_outright` + its positive counterpart (external_import.py, chdir + planted
+canary packet at CWD); `test_invoke_never_reads_cwd_relative_canary_after_chdir_outside_workspace`
+(source_ingest.py, chdir + planted canary file, asserts the resolved locator is workspace-root-
+anchored and the canary content never appears in any source card); 4-variant parametrized
+`test_invoke_denies_file_scheme_locator_variants_with_fetch_true` (spies on BOTH `ingest_source`
+and `urllib.request.urlopen`, asserts neither is ever called) + `test_looks_like_url_no_longer_
+accepts_file_scheme` (direct unit proof).
+
+**Mutation-verified with CWD outside the tree** (the coordinator's own explicit requirement — "a
+mutation test run from inside the tree proves nothing here"): for `packet_dir`'s relative-
+rejection, reverted `if not packet_path.is_absolute():` to `if False:` in a scratch copy — the CWD
+test failed (`import_external_report` reached, canary packet's own directory scanned). For
+`locator`'s scheme allowlist, reverted `_ALLOWED_LOCATOR_SCHEMES` membership check to always pass
+— the file-scheme test failed (`urlopen` reached). For `locator`'s resolve-and-substitute, reverted
+`effective_locator = str(resolved_locator)` to forward the raw `locator` string instead — the CWD
+canary test failed (`captured_locator` no longer matched the workspace-root-anchored path; the
+real CWD-relative canary file would have been read by the unmocked `ingest_source` had the test
+continued). All three killed cleanly; `__pycache__` purged before and after each iteration.
+
+## Test counts (post fix cycle 3)
+
+```
+external_import.py:    14 tests (12 pre-existing (cycle 2) + 2 new: relative-rejection x2)
+source_ingest.py:      18 tests (12 pre-existing (cycle 2) + 6 new: CWD-canary x1, file-scheme x4
+                                  parametrized, _looks_like_url direct x1)
+verify_bundle.py:       20 tests (22 pre-existing (cycle 2) - 4 removed (obsolete F5/SEC-7 explicit-
+                                  path tests, surface no longer exists) + 2 new (signature-absence
+                                  proof + run-id-only positive case))
+```
+
+Full validation set: **358 passed** (up from cycle 2's 344; includes `test_operator_mcp_preflight_
+execute_e2e.py`, not run as part of cycle 2's own count). `flake8 --select=E9,F63,F7,F82` clean.
+Broader `-k "writeback or source_ingest"` sweep across the whole test tree: all green, unchanged
+count from prior cycles.
+
+## SEC2-4 / SEC2-5 — investigated, not fixed (reporting per the coordinator's instruction)
+
+**SEC2-4 (phantom write on `internal_error`):** confirmed real by re-reading `source_ingest.py`'s
+`_run()` and `operator_receipt_service`'s effect-digest uniqueness check ordering — `ingest_source`
+writes the source card to disk BEFORE the effect-receipt uniqueness check can reject a colliding
+`effect_digest` (same title+locator, different operation). The write is not transactional/rolled-
+back on receipt rejection. Closing this properly requires either reordering the uniqueness check
+before the write (inside `source_cards.ingest_source`, a canonical service — OFF LIMITS this
+cycle) or making the write itself transactional (also inside that same off-limits file). **Did not
+fall out cheaply** — every fix shape touches a file outside this leg's boundary. Reporting for a
+follow-up, not fixed.
+
+**SEC2-5 (`content`-supplied ingest permanently unconsumable):** confirmed real — `invoke`'s own
+`input_payload` construction binds `content` via `content_digest` (F4, cycle-1-era fix), but
+`operation.preflight`'s canonicalization (in `server.py`) hashes the caller's RAW `content` value
+directly (since `content` is itself an allowlisted real parameter name). The two canonical
+payloads can never match, so every content-bearing `source.ingest` call denies
+`confirmation_mismatch` before `_run()`, unconditionally. Confirmed via a scratch reproduction
+(preflight with `input_payload={"content": "x", ...}` vs. execute with the same — digests differ).
+**Did not fall out cheaply either** — the correct fix (per the finding's own "fix direction") is
+to change WHAT `operation.preflight` canonicalizes in `server.py`, i.e., make preflight digest
+`content` the SAME way `invoke()` does (via `content_digest`) before computing its own canonical
+payload — that is `operator_mcp/server.py` logic, a materially larger and more central change than
+the one mechanical test-frozenset edit made for F3.1, and risks the SAME kind of unreviewed
+allowlist-mechanism change the coordinator did not ask for this cycle. Reporting for a follow-up,
+not fixed. (Its own accidental silver lining — masking `source_cards.py:222`'s unconditional
+`Path(locator).exists()`/`.is_file()` stat when `content` is supplied — is now moot regardless,
+since that stat path is exactly what F3.1's own `locator` resolve-and-substitute fix already
+re-examined and closed.)
+
+## Not touched (LOW, explicit scope discipline)
+
+SEC2-6 (containment helpers catch only `OSError`, not `ValueError` for NUL-byte paths — absorbed
+safely one layer up regardless), SEC2-7 (SEC-7's `except TypeError` coercion block is now MOOT,
+not merely dead — the parameters it coerced no longer exist), SEC2-8 (`schemas.default_registry()`
+process-wide CWD-coupled cache) — all read and understood, none touched, per the coordinator's
+explicit "do not expand scope for the LOW items."
+
+## What the security gate should attack first
+
+1. **The `test_operator_mcp_server.py` cross-boundary edit** — confirm the one-entry `run.verify`
+   frozenset change is the ONLY change in that file (verified here via `git diff` scoped to that
+   file — one entry, plus the explanatory comment — but independent confirmation is warranted
+   given the file's normal off-limits status).
+2. **`packet_dir`'s "reject relative outright" vs. `locator`'s "resolve-and-substitute" asymmetry**
+   — independently confirm this split is correct: is there a legitimate MCP use case for a
+   relative `packet_dir` this fix now forecloses? (Research during this cycle found none — CLI
+   parity was never claimed for `packet_dir`'s relative form specifically, only for absolute
+   paths — but this is exactly the kind of judgment call worth a second look.)
+3. **SEC2-4/SEC2-5's "did not fall out cheaply" claim** — independently verify both genuinely
+   require an off-limits file, not merely that this leg judged the risk/reward unfavorable.
+
+Nothing disputed on F3.1/F3.2 themselves. No STOP-and-report triggered.

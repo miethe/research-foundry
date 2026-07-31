@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import os
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -664,3 +666,190 @@ def test_resolve_run_context_denies_traversal_run_id_before_read(tmp_foundry: Fo
     result = source_ingest._resolve_run_context("..", tmp_foundry)
     assert result.workspace_id is None
     assert result.sensitivity is None
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 3, F3.1/SEC2-1 (BLOCKING) -- check/use anchor mismatch: the
+# cycle-2 guard resolved a RELATIVE locator against the workspace root, then
+# forwarded the caller's ORIGINAL unresolved string to `ingest_source`,
+# which resolves it against the server process's CWD instead. F3.3: every
+# pre-existing test here runs with CWD INSIDE the workspace, so none of them
+# could ever observe this -- this test chdirs OUTSIDE the workspace first,
+# exactly like the security re-gate's own reproduction
+# (`locator="secret.txt"` after chdir).
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_never_reads_cwd_relative_canary_after_chdir_outside_workspace(
+    tmp_foundry: FoundryPaths, tmp_path: Path, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`locator="secret.txt"` (relative, no scheme) is resolve-and-
+    substituted against the WORKSPACE ROOT, never the process CWD -- so
+    with CWD moved outside the workspace and a canary planted only at the
+    CWD, `ingest_source` is still called (a relative locator is a
+    legitimate shape, unlike `packet_dir`'s "reject outright" treatment --
+    see F3.1's own scoping) but resolves to a NONEXISTENT path inside the
+    workspace, never the real canary. The real `ingest_source` runs
+    end-to-end (not mocked) so the produced source card is checked
+    directly: the canary's content must never appear anywhere, and the
+    result must be `degraded` (locator-only), not a real content read."""
+
+    identity = _IDENTITY
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+    run_id = _planned_run(tmp_foundry, sample_idea_text)
+
+    outside_cwd = tmp_path / "outside-cwd-locator-root"
+    outside_cwd.mkdir()
+    canary = outside_cwd / "secret.txt"
+    canary.write_text("CANARY: host-local content the adapter must never read", encoding="utf-8")
+
+    captured_locator: list[str] = []
+    real_ingest_source = source_cards_module.ingest_source
+
+    def _spy_ingest_source(locator: str, **kwargs: Any) -> Any:
+        captured_locator.append(locator)
+        return real_ingest_source(locator, **kwargs)
+
+    monkeypatch.setattr(source_cards_module, "ingest_source", _spy_ingest_source)
+
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=source_ingest.OPERATION_KIND,
+        idempotency_key="idem-sec2-1-cwd-relative-locator",
+        effective_sensitivity=policy.resolve_effective_sensitivity("personal"),
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("run", run_id),),
+        resolved_target_workspaces=("ws-mine",),
+        input_payload={
+            "locator": "secret.txt",
+            "run_id": run_id,
+            "source_type": "other",
+            "sensitivity": "personal",
+            "fetch": False,
+            "created_by_agent": "rf_source_carder",
+        },
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    real_cwd = os.getcwd()
+    os.chdir(outside_cwd)
+    try:
+        result = source_ingest.invoke(
+            locator="secret.txt",
+            run_id=run_id,
+            idempotency_key="idem-sec2-1-cwd-relative-locator",
+            confirmation_record=issued.record,
+            presented_token=issued.token,
+            paths=tmp_foundry,
+            now=ids.now(),
+            operations=op_service,
+        )
+    finally:
+        os.chdir(real_cwd)
+
+    # The resolved locator forwarded to ingest_source is anchored at the
+    # WORKSPACE ROOT, never the CWD where the real canary lives.
+    assert captured_locator == [str(tmp_foundry.root / "secret.txt")]
+    assert result.ok is True, result.error
+    assert result.result is not None
+    assert result.result["degraded"] is True  # nonexistent path -- locator-only, never read
+    # No source card anywhere in the run carries the canary's content.
+    run_paths = tmp_foundry.run_paths(run_id)
+    for card in run_paths.sources.glob("*.md"):
+        assert "CANARY" not in card.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 3, F3.2/SEC2-2 (BLOCKING) -- `file://` (and any other
+# non-http(s) scheme) locator must be refused outright, before any dispatch,
+# regardless of `fetch`. Covers every variant the security re-gate proved:
+# `file:///etc/passwd`, `file://localhost/...`, `FILE://...` (urlparse
+# lowercases), `file:/...` (single slash).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "malicious_locator",
+    [
+        "file:///etc/passwd",
+        "file://localhost/etc/passwd",
+        "FILE:///etc/passwd",
+        "file:/etc/passwd",
+    ],
+)
+def test_invoke_denies_file_scheme_locator_variants_with_fetch_true(
+    tmp_foundry: FoundryPaths,
+    sample_idea_text: str,
+    monkeypatch: pytest.MonkeyPatch,
+    malicious_locator: str,
+) -> None:
+    identity = _IDENTITY
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+    run_id = _planned_run(tmp_foundry, sample_idea_text)
+
+    ingest_calls: list[Any] = []
+
+    def _recording_ingest(*args: Any, **kwargs: Any) -> Any:
+        ingest_calls.append((args, kwargs))
+        raise AssertionError("ingest_source reached -- scheme allowlist did not fire")
+
+    monkeypatch.setattr(source_cards_module, "ingest_source", _recording_ingest)
+
+    urlopen_calls: list[Any] = []
+
+    def _recording_urlopen(*args: Any, **kwargs: Any) -> Any:
+        urlopen_calls.append((args, kwargs))
+        raise AssertionError("urlopen reached -- scheme allowlist did not fire")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _recording_urlopen)
+
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=source_ingest.OPERATION_KIND,
+        idempotency_key="idem-sec2-2-file-scheme",
+        effective_sensitivity=policy.resolve_effective_sensitivity("personal"),
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("run", run_id),),
+        resolved_target_workspaces=("ws-mine",),
+        input_payload={
+            "locator": malicious_locator,
+            "run_id": run_id,
+            "source_type": "other",
+            "sensitivity": "personal",
+            "fetch": True,
+            "created_by_agent": "rf_source_carder",
+        },
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    result = source_ingest.invoke(
+        locator=malicious_locator,
+        run_id=run_id,
+        idempotency_key="idem-sec2-2-file-scheme",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        fetch=True,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert ingest_calls == [], "ingest_source must never be called for a file: scheme locator"
+    assert urlopen_calls == [], "urlopen must never be called for a file: scheme locator"
+    assert result.ok is False
+    assert result.result is None
+    assert result.error is not None
+    assert result.error["reason_code"] == "internal_error"
+
+
+def test_looks_like_url_no_longer_accepts_file_scheme() -> None:
+    """Direct unit proof: `file:` is no longer treated as an allowed URL
+    scheme at all (M2 wave 1 originally included it alongside http/https)."""
+
+    assert source_ingest._looks_like_url("file:///etc/passwd") is False
+    assert source_ingest._looks_like_url("https://example.com/x") is True
+    assert source_ingest._looks_like_url("http://example.com/x") is True

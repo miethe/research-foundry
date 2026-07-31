@@ -394,11 +394,19 @@ def test_allowed_input_payload_keys_is_pinned_per_kind() -> None:
         "run.extract": frozenset({"run_id", "model_profile"}),
         "run.claim_map": frozenset({"run_id", "intent_id"}),
         "run.synthesize": frozenset({"run_id", "model_profile", "final", "audience", "sensitivity", "llm"}),
+        # M2 fix cycle 3, F3.1/SEC2-1 (BLOCKING): `report_path`/
+        # `claim_ledger_path` REMOVED from `invoke_verify`'s own signature
+        # entirely (verify_bundle.py) -- the MCP route has no legitimate
+        # need to say "verify run X using this arbitrary file". This
+        # pinned table is a mechanical mirror of that real, signature-
+        # derived allowlist (`_allowed_input_payload_keys`, above), so it
+        # shrinks with it; see verify_bundle.invoke_verify's own docstring
+        # for the full anchor-mismatch rationale (a caller-supplied
+        # relative path passed containment checked at the run's own
+        # directory, then was consumed at the server process's CWD).
         "run.verify": frozenset(
             {
                 "run_id",
-                "report_path",
-                "claim_ledger_path",
                 "fail_on_unsupported",
                 "exact_passage_override",
                 "disposition",

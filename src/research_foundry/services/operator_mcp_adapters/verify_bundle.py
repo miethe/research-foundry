@@ -278,10 +278,15 @@ def _resolve_run_context(run_id: str, paths: FoundryPaths) -> _RunContext:
 
 
 def _explicit_path_within_run(run_root: Path, candidate: Path) -> bool:
-    """F5 fix: a PURELY STRUCTURAL containment check for a caller-supplied
-    explicit `report_path`/`claim_ledger_path` -- required to resolve inside
-    `run_root` (the authorized run's own directory tree) before it is ever
-    forwarded to `verify_report`.
+    """Originally the F5 fix: a PURELY STRUCTURAL containment check for a
+    caller-supplied explicit `report_path`/`claim_ledger_path` before it was
+    ever forwarded to `verify_report`. M2 fix cycle 3 (F3.1/SEC2-1) REMOVED
+    both parameters from `invoke_verify`'s own signature entirely (the MCP
+    route has no legitimate need to say "verify run X using this arbitrary
+    file" -- see that function's docstring) rather than adding another layer
+    of guard on top of this one; this function is KEPT because
+    `_resolve_run_context` (M2 fix cycle 2) reuses it, unmodified, to contain
+    `run_id` itself against `paths.runs`.
 
     Mirrors `verify_report`'s own `_resolve_explicit_path` resolution ORDER
     (absolute-as-is vs. run-relative) but is intentionally STRICTER: it
@@ -315,13 +320,7 @@ def _explicit_path_within_run(run_root: Path, candidate: Path) -> bool:
     return effective == run_root_resolved or run_root_resolved in effective.parents
 
 
-def _verify_prerequisites_met(
-    run_id: str,
-    paths: FoundryPaths,
-    *,
-    report_path: Path | None,
-    claim_ledger_path: Path | None,
-) -> bool:
+def _verify_prerequisites_met(run_id: str, paths: FoundryPaths) -> bool:
     """Read-only, best-effort check that `verify_report` has real input to
     verify.
 
@@ -337,24 +336,20 @@ def _verify_prerequisites_met(
     is ever called in that case, per implementer contract D4 ("deny with
     reason codes rather than raising" for missing input).
 
-    When the caller supplies an EXPLICIT `report_path`/`claim_ledger_path`,
-    this function does not second-guess it (that path is skipped from the
-    auto-discovery check below) -- `verify_report`'s own explicit-path
-    resolution (`_resolve_explicit_path`) raises `RFError` for a genuinely
-    missing explicit path, which is handled the normal way: an exception
-    escaping `_run()` is caught by `operator_cancel_resume_service.
-    run_actions`'s own action-failure handling and turned into a governed
-    `"failed"` terminal outcome (U1's normal exception-based failure
-    channel) -- a materially different situation (a caller-supplied bad
-    path) than "this run has no report/ledger at all yet"."""
+    **M2 fix cycle 3 (F3.1/SEC2-1): no longer takes `report_path`/
+    `claim_ledger_path` parameters.** The MCP route no longer accepts either
+    as caller input at all (see `invoke_verify`'s own docstring) -- this
+    function now ALWAYS auto-discovers from the run's own directory, the
+    same check every caller effectively got already (the explicit-path
+    branch this function used to skip is gone with the parameters)."""
 
     try:
         rp = paths.run_paths(run_id)
         if not rp.run.exists():
             return False
-        if report_path is None and not (rp.report_draft.exists() or rp.report_final.exists()):
+        if not (rp.report_draft.exists() or rp.report_final.exists()):
             return False
-        if claim_ledger_path is None and not rp.claim_ledger.exists():
+        if not rp.claim_ledger.exists():
             return False
     except Exception as exc:
         _logger.warning(
@@ -426,8 +421,6 @@ def invoke_verify(
     idempotency_key: str,
     confirmation_record: Mapping[str, Any] | None,
     presented_token: str | None,
-    report_path: Path | None = None,
-    claim_ledger_path: Path | None = None,
     fail_on_unsupported: bool = True,
     exact_passage_override: str | None = None,
     disposition: str = "internal_capture",
@@ -445,20 +438,41 @@ def invoke_verify(
     structurally, exactly like every other adapter in this family (see
     module docstring).
 
+    **M2 fix cycle 3 (F3.1/SEC2-1) -- `report_path`/`claim_ledger_path`
+    REMOVED from this function's signature entirely, never accepted as
+    caller input on the MCP route.** The security re-gate found that the
+    F5/SEC-7 containment guard those two parameters previously went through
+    checked containment anchored at the authorized run's own directory, but
+    then forwarded the caller's RAW string to `verify_report`, which
+    resolves a relative value against the SERVER PROCESS'S CWD -- a
+    different anchor than the one the guard checked. A caller could name a
+    perfectly "contained" relative path (no `..` needed at all) and have it
+    read (and, for `claim_ledger_path`, WRITTEN) from wherever the MCP
+    server process happened to be launched, entirely outside the workspace.
+    Adding a fourth guard layer on the same surface was rejected as the fix:
+    an MCP caller has no legitimate reason to say "verify run X using this
+    arbitrary file" in the first place -- it can only ever mean "verify run
+    X" -- so the parameters are gone, not re-guarded. `_run()` below never
+    passes `report_path`/`claim_ledger_path` to `verify_report` at all,
+    letting that function's own default (`None` -> auto-discover from the
+    run's own directory, the SAME structural resolution `_verify_
+    prerequisites_met` already checked for) run unconditionally. Direct/CLI
+    callers of `verification.verify_report` itself are completely
+    unaffected -- that function's own two parameters are untouched; only
+    this ADAPTER stopped accepting caller overrides for them.
+
     A non-passing verification is a governed RESULT, not a denial: this
     function returns `ok=True` with `result["passed"] is False` when
     `verify_report` ran and produced a failing verdict (implementer
     contract D4) -- it denies (`ok=False`, always `reason_code=
     "internal_error"`, via the exception channel inside `_run()`) for a
     prerequisite failure (no report/no claim ledger at all -- see
-    `_verify_prerequisites_met`), an explicit `report_path`/
-    `claim_ledger_path` that escapes the authorized run's own directory
-    tree (F5 fix, see `_explicit_path_within_run`), or the standard H7
-    above-ceiling guard (that one denies earlier, at the guard stage, with
-    `reason_code="not_found"`, before `_run()` is ever invoked). See module
-    docstring's "Fix cycle 1" section: BOTH prerequisite checks now run
-    INSIDE `_run()`, after `base.run_pipeline` has already authorized and
-    durably consumed the operation -- never before `ctx` (F6 fix).
+    `_verify_prerequisites_met`), or the standard H7 above-ceiling guard
+    (that one denies earlier, at the guard stage, with `reason_code=
+    "not_found"`, before `_run()` is ever invoked). See module docstring's
+    "Fix cycle 1" section: the prerequisite check runs INSIDE `_run()`,
+    after `base.run_pipeline` has already authorized and durably consumed
+    the operation -- never before `ctx` (F6 fix).
     """
 
     from research_foundry.services import verification
@@ -476,10 +490,6 @@ def invoke_verify(
         "fail_on_unsupported": fail_on_unsupported,
         "disposition": disposition,
     }
-    if report_path is not None:
-        input_payload["report_path"] = str(report_path)
-    if claim_ledger_path is not None:
-        input_payload["claim_ledger_path"] = str(claim_ledger_path)
     if exact_passage_override is not None:
         input_payload["exact_passage_override"] = exact_passage_override
     if evidence_judgment_bases is not None:
@@ -507,67 +517,29 @@ def invoke_verify(
     captured: list["verification.VerificationResult"] = []
 
     def _run() -> ActionEffect:
-        nonlocal report_path, claim_ledger_path
-        # SEC-7 fix (M2 fix cycle 2): MCP delivers `report_path`/
-        # `claim_ledger_path` as JSON strings, never actual `Path` objects
-        # -- this function's OWN parameter annotations (`Path | None`) were
-        # therefore never true at runtime over that transport, and the F5
-        # containment guard below died on a raw `AttributeError`
-        # ('str' object has no attribute 'is_absolute') BEFORE it could
-        # ever execute -- "safe today by type crash, not by the guard"
-        # (SEC-7's own finding: no green test on the MCP route could attest
-        # to F5 actually running). Coerced HERE, unconditionally, BEFORE
-        # either the prerequisite check or the F5 guard ever inspects these
-        # values, so BOTH now execute for real on every route. A direct
-        # Python caller already passing a real `Path` (every pre-existing
-        # test in this file) is unaffected -- `Path(Path(...))` is a no-op.
-        try:
-            if report_path is not None:
-                report_path = Path(report_path)
-            if claim_ledger_path is not None:
-                claim_ledger_path = Path(claim_ledger_path)
-        except TypeError as exc:
-            raise RuntimeError(
-                "run.verify: report_path/claim_ledger_path must be a string or "
-                "path-like value"
-            ) from exc
         # F6 fix: the prerequisite check now runs HERE -- after
         # `base.run_pipeline` has already run `authorize_for_consumption` +
         # `consume_and_create_operation`, i.e. only for an ALREADY-
         # authorized caller -- never before `ctx` is constructed. An
         # unauthorized caller for a foreign run is denied earlier, at the
         # RBAC/guard stage, and never reaches this check at all.
-        if not _verify_prerequisites_met(
-            run_id, resolved_paths, report_path=report_path, claim_ledger_path=claim_ledger_path
-        ):
+        if not _verify_prerequisites_met(run_id, resolved_paths):
             raise RuntimeError(
                 f"run.verify: prerequisites not met for run_id={run_id!r} -- no report "
                 "and/or no claim ledger; verify_report was never called"
             )
-        # F5 fix: an explicit report_path/claim_ledger_path must resolve
-        # inside THIS run's own directory tree -- verify_report's own
-        # explicit-path resolution accepts an absolute path as-is with no
-        # ownership check, which let an authorized caller for this run
-        # reference a DIFFERENT run's (possibly different-workspace) report/
-        # ledger and have verify_report write verification_status back into
-        # that foreign ledger. See `_explicit_path_within_run`'s own
-        # docstring for why this is a purely structural check.
-        run_root = resolved_paths.run_paths(run_id).run
-        if report_path is not None and not _explicit_path_within_run(run_root, report_path):
-            raise RuntimeError(
-                "run.verify: report_path escapes the authorized run's own directory tree"
-            )
-        if claim_ledger_path is not None and not _explicit_path_within_run(run_root, claim_ledger_path):
-            raise RuntimeError(
-                "run.verify: claim_ledger_path escapes the authorized run's own directory tree"
-            )
-        # D4: ALWAYS returns normally past this point, regardless of
-        # `.passed` -- a non-passing verdict is a governed RESULT, not
+        # F3.1/SEC2-1 fix (M2 fix cycle 3): report_path/claim_ledger_path are
+        # NEVER passed here -- see this function's own docstring for why the
+        # parameters were removed from the MCP surface entirely rather than
+        # re-guarded. `verify_report`'s own default (`None`) auto-discovers
+        # from `run_id`'s own directory -- the same structural resolution
+        # `_verify_prerequisites_met` already checked for above, at the SAME
+        # anchor (`resolved_paths`/`run_id`), so there is no anchor to
+        # mismatch. D4: ALWAYS returns normally past this point, regardless
+        # of `.passed` -- a non-passing verdict is a governed RESULT, not
         # raised as a failure.
         result = verification.verify_report(
             run_id,
-            report_path=report_path,
-            claim_ledger_path=claim_ledger_path,
             fail_on_unsupported=fail_on_unsupported,
             exact_passage_override=exact_passage_override,
             paths=resolved_paths,
