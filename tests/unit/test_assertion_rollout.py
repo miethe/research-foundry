@@ -7,7 +7,9 @@ import json
 import pytest
 
 from research_foundry.config import FoundryConfig
+from research_foundry.services.assertion_registry import AssertionRegistry
 from research_foundry.services.assertion_rollout import (
+    _ingest_run_source_cards,
     backfill_dry_run,
     readiness_metrics,
     rollback_disable_rehearsal,
@@ -92,6 +94,63 @@ def test_write_and_automated_reuse_consumers_fail_closed_by_default(tmp_foundry)
         paths=tmp_foundry,
     )
     assert not list((tmp_foundry.root / "assertion_ledger" / "workspaces").glob("*/sources/*/source.yaml"))
+
+
+def test_backfill_passes_recorded_extraction_status_when_present(tmp_foundry) -> None:
+    """FIX-4: a historical card's own recorded extraction_status is authoritative
+    (written down at capture time, not inferred here) and must reach the registry.
+    """
+
+    run_id = "rf_p8_backfill_status_present"
+    tmp_foundry.run_paths(run_id).ensure_scaffold()
+    card = ingest_source(
+        "backfill-status.txt",
+        run_id=run_id,
+        content="Historical card with a recorded status.",
+        paths=tmp_foundry,
+    )
+    from research_foundry.frontmatter import load_md
+
+    metadata, _body = load_md(card.path)
+    assert metadata.get("extraction_status") == "full_text"
+
+    registry = AssertionRegistry(workspace_id="workspace-backfill", paths=tmp_foundry)
+    counts = _ingest_run_source_cards(run_id, registry=registry, paths=tmp_foundry)
+    assert counts["created"] == 1
+
+    matches = registry.find_exact_passages(card.source_card_id, "Historical card with a recorded status.")
+    assert len(matches) == 1
+    edition, _passage = matches[0]
+    assert registry.get_extraction_status(card.source_card_id, edition["source_edition_id"]) == "full_text"
+
+
+def test_backfill_records_no_status_when_historical_card_lacks_one(tmp_foundry) -> None:
+    """A card written before extraction_status existed lacks the field -- per the
+    plan's 'never infer' decision, the backfill must pass nothing, not guess.
+    """
+
+    run_id = "rf_p8_backfill_status_absent"
+    tmp_foundry.run_paths(run_id).ensure_scaffold()
+    card = ingest_source(
+        "backfill-no-status.txt",
+        run_id=run_id,
+        content="Historical card with no recorded status.",
+        paths=tmp_foundry,
+    )
+    from research_foundry.frontmatter import dump_md, load_md
+
+    metadata, body = load_md(card.path)
+    del metadata["extraction_status"]
+    dump_md(metadata, body, card.path)
+
+    registry = AssertionRegistry(workspace_id="workspace-backfill", paths=tmp_foundry)
+    counts = _ingest_run_source_cards(run_id, registry=registry, paths=tmp_foundry)
+    assert counts["created"] == 1
+
+    matches = registry.find_exact_passages(card.source_card_id, "Historical card with no recorded status.")
+    assert len(matches) == 1
+    edition, _passage = matches[0]
+    assert registry.get_extraction_status(card.source_card_id, edition["source_edition_id"]) is None
 
 
 def test_readiness_receipts_are_idempotent_and_exclude_sensitive_text(tmp_foundry) -> None:

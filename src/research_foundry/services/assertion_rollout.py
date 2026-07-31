@@ -284,6 +284,16 @@ def _ingest_run_source_cards(
             counts["not_reusable"] += 1
             continue
         content = "\n\n".join(quotes)
+        # A recorded extraction_status on the historical card is authoritative
+        # (it was written down at capture time, not guessed here) -- pass it
+        # through. Cards written before the field existed lack it; per the
+        # plan's "never infer" decision, those pass nothing rather than a
+        # guessed value. An out-of-vocabulary recorded value is rejected by
+        # the registry itself and simply counts as not_reusable below, same
+        # as any other typed ingest() rejection this loop already handles.
+        recorded_extraction_status = metadata.get("extraction_status")
+        if not isinstance(recorded_extraction_status, str):
+            recorded_extraction_status = None
         result = registry.ingest(
             source_card_id,
             content,
@@ -293,6 +303,7 @@ def _ingest_run_source_cards(
             retrieval_locator=dict(locator) if isinstance(locator, Mapping) else {},
             passages=quotes,
             source_card_snapshot=snapshot,
+            extraction_status=recorded_extraction_status,
         )
         if not result.reusable:
             counts["not_reusable"] += 1

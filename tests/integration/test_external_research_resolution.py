@@ -570,27 +570,75 @@ class TestPromotion:
         assert result.receipt["target_run_id"] is None
 
     def test_reused_edition_with_no_content_quarantines_instead_of_crashing(
-        self, tmp_path: Path, workspace: FoundryPaths
+        self, tmp_path: Path, workspace: FoundryPaths, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Regression: a `passage_resolved` candidate bound to an
-        EXISTING-EDITION-REUSE `_SourceOutcome` (content=None,
-        extraction_status=None -- `_existing_edition_reuse` never
-        re-extracts source text) must fail closed into quarantine when
-        promotion is attempted (target_run_id set, non-dry-run, promote
-        wired), not crash the whole import with an AssertionError. A second,
-        freshly-acquired candidate in the same import must still promote
-        normally, proving the guard is scoped to the None-content case.
+        """Regression + M2 (eri-reused-edition-promotion): a reused edition's
+        `_SourceOutcome` now rehydrates `content`/`extraction_status` from the
+        registry's own public accessors (`load_edition_content` /
+        `get_extraction_status`, M1) rather than always leaving them `None`.
+
+        This test covers BOTH halves of that change, in one import so the
+        contrast is direct:
+
+        * `cand_001` reuses an edition seeded with NO recorded extraction
+          status -- seeded directly via `AssertionRegistry.ingest(...)` with
+          no `extraction_status` argument, standing in for a genuinely
+          legacy edition (one written before this field existed, or by a
+          caller with no authoritative value -- e.g. `assertion_rollout.py`
+          reconstructing from a pre-M1 source card). Since M2 FIX-A, the
+          resolver's OWN fresh-acquisition path always passes
+          `extraction_status=extraction.status`, so a resolver-acquired
+          edition can no longer be used to construct the "no recorded
+          status" case -- that half is covered end-to-end instead by
+          `test_fresh_acquire_then_resume_promotes_reused_candidate` below.
+          This candidate must still fail closed into quarantine when
+          promotion is attempted, not crash the whole import with an
+          AssertionError.
+        * `cand_recorded` reuses a DIFFERENT edition seeded directly via
+          `AssertionRegistry.ingest(..., extraction_status="full_text")`
+          (standing in for a caller that already had an authoritative
+          status) -- it must now promote to a run source card, matching a
+          freshly-acquired candidate (`cand_fresh`) in outcome.
+
+        Neither reused source's acquisition callable nor `extract_bytes` may
+        be invoked -- the reuse path is read-only and performs no
+        re-extraction; only `cand_fresh`'s locator/content may pass through
+        either.
         """
 
         run_id = "rf_run_reuse_promote"
         (workspace.runs / run_id).mkdir(parents=True)
 
-        # Seed import: fresh acquisition binds the edition/passage that the
-        # second import below will reuse read-only.
+        # Seed a FIRST edition directly via the registry (bypassing the
+        # resolver entirely -- no acquisition, no `extract_bytes`) with NO
+        # `extraction_status` argument at all -- a genuinely legacy/
+        # unrecorded edition, which (post FIX-A) the resolver's own
+        # acquisition path can no longer produce.
+        from research_foundry.services.assertion_registry import AssertionRegistry
+
+        registry = AssertionRegistry(workspace_id="ws_demo", paths=workspace)
         reused_sources, reused_candidates = _one_source_one_candidate()
-        seed_root = build_packet(tmp_path / "packet_seed", sources=reused_sources, candidates=reused_candidates)
-        seed_resolver = _resolver(workspace, reused_candidates, content_by_locator={_SOURCE_URL: _SOURCE_TEXT.encode()})
-        _stage(workspace, seed_root, seed_resolver)
+        registry.ingest(
+            "url:" + _SOURCE_URL,
+            _SOURCE_TEXT,
+            access_scope="private",
+            allowed_use={"basis": "producer_declared_access_status", "access_status": "open-access"},
+            retrieval_locator={"url": _SOURCE_URL, "doi": None},
+            passages=[_QUOTE],
+            # No extraction_status -- deliberately unrecorded.
+        )
+        recorded_url = "https://example.test/articles/recorded-status"
+        recorded_text = "A recorded-status source with its own unique sentence to match."
+        recorded_quote = "its own unique sentence to match"
+        registry.ingest(
+            "url:" + recorded_url,
+            recorded_text,
+            access_scope="private",
+            allowed_use={"basis": "producer_declared_access_status", "access_status": "open-access"},
+            retrieval_locator={"url": recorded_url, "doi": None},
+            passages=[recorded_quote],
+            extraction_status="full_text",
+        )
 
         fresh_url = "https://example.test/articles/fresh"
         fresh_text = "A freshly acquired second source with its own distinct sentence."
@@ -601,6 +649,13 @@ class TestPromotion:
                 "source_id": "src_fresh",
                 "title": "Fresh source",
                 "locator": {"doi": None, "url": fresh_url},
+                "publication_year": 2024,
+                "access_status": "open-access",
+            },
+            {
+                "source_id": "src_recorded",
+                "title": "Recorded-status source",
+                "locator": {"doi": None, "url": recorded_url},
                 "publication_year": 2024,
                 "access_status": "open-access",
             },
@@ -616,26 +671,60 @@ class TestPromotion:
                 "quote": fresh_quote,
                 "selector": None,
             },
+            {
+                "candidate_id": "cand_recorded",
+                "statement": "A reused-with-recorded-status candidate.",
+                "classification": "assertion",
+                "source_refs": ["src_recorded"],
+                "relation": "supports",
+                "quote": recorded_quote,
+                "selector": None,
+            },
         ]
         second_root = build_packet(tmp_path / "packet_reuse", sources=second_sources, candidates=second_candidates)
-        # No acquire content for the reused source's URL -- forces cand_001
-        # through `_existing_edition_reuse` (content=None) rather than fresh
-        # acquisition. `src_fresh`/`cand_fresh` DOES have acquire content, to
-        # prove the guard below is scoped to the None-content case, not a
-        # blanket block on all promotion in this import.
+        # No acquire content for EITHER reused source's URL -- forces both
+        # cand_001 and cand_recorded through `_existing_edition_reuse` rather
+        # than fresh acquisition. `src_fresh`/`cand_fresh` DOES have acquire
+        # content, to prove the guard is scoped to the no-recorded-status
+        # case, not a blanket block on all promotion in this import.
         second_resolver = _resolver(workspace, second_candidates, content_by_locator={fresh_url: fresh_text.encode()})
 
-        # Must not raise AssertionError -- the whole point of the fix.
+        # Spy on `extract_bytes` to prove no re-extraction happens for either
+        # reused source -- only the freshly-acquired source's bytes may ever
+        # reach it.
+        import research_foundry.services.external_research_resolution as resolution_module
+
+        original_extract_bytes = resolution_module.extract_bytes
+        extract_calls: list[bytes] = []
+
+        def _spy_extract_bytes(content: bytes, content_type: str):
+            extract_calls.append(content)
+            return original_extract_bytes(content, content_type)
+
+        monkeypatch.setattr(resolution_module, "extract_bytes", _spy_extract_bytes)
+
+        sources_dir = workspace.runs / run_id / "sources"
+        cards_before = set(sources_dir.glob("*.md")) if sources_dir.exists() else set()
+
+        # Must not raise AssertionError -- the whole point of the original fix.
         result = _stage(workspace, second_root, second_resolver, target_run_id=run_id)
 
         reused_outcome = _outcome_for(result.receipt, second_root, "candidate", "candidate_id", "cand_001")
-        assert reused_outcome["outcome"] == "quarantined"  # fails closed, never a fabricated promotion
+        assert reused_outcome["outcome"] == "quarantined"  # no recorded status: fails closed, never fabricated
         assert reused_outcome["completeness_tier"] is None
         assert reused_outcome["audit_ref"] is not None
 
         fresh_outcome = _outcome_for(result.receipt, second_root, "candidate", "candidate_id", "cand_fresh")
         assert fresh_outcome["outcome"] == "completed"
         assert fresh_outcome["completeness_tier"] == "passage_resolved"  # unaffected by the guard above
+
+        recorded_outcome = _outcome_for(result.receipt, second_root, "candidate", "candidate_id", "cand_recorded")
+        assert recorded_outcome["outcome"] == "completed"
+        assert recorded_outcome["completeness_tier"] == "passage_resolved"
+        # A reused edition WITH a recorded status promotes exactly like a
+        # freshly-acquired one -- same outcome and completeness tier.
+        assert recorded_outcome["outcome"] == fresh_outcome["outcome"]
+        assert recorded_outcome["completeness_tier"] == fresh_outcome["completeness_tier"]
 
         # Exact reason code, via a direct (idempotent, read-only-at-this-point)
         # call into the same resolver -- the receipt itself never surfaces
@@ -645,6 +734,323 @@ class TestPromotion:
         direct_resolution = second_resolver.resolve_candidate(second_candidates[0], sources_by_id, context)
         assert direct_resolution.outcome == "quarantined"
         assert direct_resolution.reason_code == "verification_failed"
+
+        # No network I/O for either reused source: only src_fresh's locator
+        # was ever passed to acquire().
+        assert second_resolver._acquire.calls == [fresh_url]  # type: ignore[attr-defined]
+        # No re-extraction for either reused source: only the freshly
+        # acquired bytes ever reached extract_bytes.
+        assert extract_calls == [fresh_text.encode()]
+
+        # Promoted run source cards land on disk: exactly two new cards
+        # (fresh + reused-with-recorded-status); the no-recorded-status
+        # reused candidate quarantined and produced none.
+        cards_after = set(sources_dir.glob("*.md"))
+        assert len(cards_after - cards_before) == 2
+
+    def test_fresh_acquire_then_resume_promotes_reused_candidate(
+        self, tmp_path: Path, workspace: FoundryPaths
+    ) -> None:
+        """M2 FIX-B: the ACTUAL end-to-end journey the plan targets --
+        "most of the --resume population" -- exercised through the real
+        resolver on both ends, not a direct registry seed.
+
+        Stage 1 FRESHLY ACQUIRES `src_001` through the resolver (real
+        acquisition + `extract_bytes` + `AssertionRegistry.ingest`, exactly
+        the `_resolve_source_impl` path FIX-A patched). Stage 2, a SEPARATE
+        resolver instance simulating a `--resume` run, reuses that same
+        edition read-only via `_existing_edition_reuse` -- no acquire content
+        is supplied for it — and its candidate must PROMOTE to a run source
+        card. Without FIX-A (`extraction_status=extraction.status` at the
+        fresh-acquisition `ingest` call sites), stage 1's edition would carry
+        no recorded status and stage 2's candidate would quarantine instead
+        -- this test is the one that must fail without that fix.
+        """
+
+        run_id = "rf_run_fresh_then_resume"
+        (workspace.runs / run_id).mkdir(parents=True)
+
+        sources, candidates = _one_source_one_candidate()
+
+        # Stage 1: real fresh acquisition through the resolver, no run
+        # target -- staging-only, matching the plan's "batch 1 acquires
+        # fresh" description of the pre-resume population step.
+        stage1_root = build_packet(tmp_path / "packet_stage1", sources=sources, candidates=candidates)
+        stage1_resolver = _resolver(workspace, candidates, content_by_locator={_SOURCE_URL: _SOURCE_TEXT.encode()})
+        stage1_result = _stage(workspace, stage1_root, stage1_resolver)
+        stage1_outcome = _outcome_for(stage1_result.receipt, stage1_root, "candidate", "candidate_id", "cand_001")
+        assert stage1_outcome["completeness_tier"] == "passage_resolved"
+
+        # Stage 2: a SEPARATE resolver instance (simulating `--resume`'s
+        # fresh-process reconstruction), target_run_id set, NO acquire
+        # content available for src_001's URL -- forces the candidate
+        # through `_existing_edition_reuse` rather than fresh acquisition.
+        stage2_root = build_packet(tmp_path / "packet_stage2", sources=sources, candidates=candidates)
+        stage2_resolver = _resolver(workspace, candidates, content_by_locator={})
+        stage2_result = _stage(workspace, stage2_root, stage2_resolver, target_run_id=run_id)
+
+        stage2_outcome = _outcome_for(stage2_result.receipt, stage2_root, "candidate", "candidate_id", "cand_001")
+        assert stage2_outcome["outcome"] == "completed"
+        assert stage2_outcome["completeness_tier"] == "passage_resolved"
+        assert stage2_resolver._acquire.calls == []  # type: ignore[attr-defined]  # no network I/O on resume
+
+    def test_reused_edition_matching_multiple_distinct_editions_quarantines_not_promotes(
+        self, tmp_path: Path, workspace: FoundryPaths
+    ) -> None:
+        """M2 FIX-C: `find_exact_passages` returning matches that span more
+        than one DISTINCT edition is the registry's own definition of
+        ambiguity. Before M2 an arbitrary `matches[0][0]` pick in
+        `_existing_edition_reuse` was inert (content was always `None`, so
+        the candidate always quarantined regardless of which edition was
+        picked). Post-M2, with BOTH editions carrying a recorded
+        `extraction_status`, an unguarded arbitrary pick could PROMOTE,
+        staging evidence from possibly the wrong edition. This seeds two
+        DISTINCT editions (different overall content, hence different
+        `source_edition_id`) that each independently contain a passage whose
+        exact text matches the candidate's quote, and asserts the candidate
+        still quarantines (`verification_failed`) rather than promoting.
+        """
+
+        run_id = "rf_run_ambiguous_edition"
+        (workspace.runs / run_id).mkdir(parents=True)
+
+        from research_foundry.services.assertion_registry import AssertionRegistry
+
+        registry = AssertionRegistry(workspace_id="ws_demo", paths=workspace)
+        ambiguous_url = "https://example.test/articles/ambiguous"
+        source_key = "url:" + ambiguous_url
+        shared_quote = "a sentence shared verbatim across two distinct editions"
+
+        # Two editions with DIFFERENT overall content (so they get distinct
+        # `source_edition_id`s -- editions are content-addressed) that each
+        # independently contain a passage whose raw text is byte-identical
+        # to `shared_quote`. Both carry a recorded status -- the exact
+        # post-FIX-A condition that makes the hazard live.
+        result_a = registry.ingest(
+            source_key,
+            f"Edition A preamble. {shared_quote} Edition A trailer.",
+            access_scope="private",
+            allowed_use={"basis": "producer_declared_access_status", "access_status": "open-access"},
+            retrieval_locator={"url": ambiguous_url, "doi": None},
+            passages=[shared_quote],
+            extraction_status="full_text",
+        )
+        result_b = registry.ingest(
+            source_key,
+            f"Edition B preamble, worded quite differently. {shared_quote} Edition B trailer, also different.",
+            access_scope="private",
+            allowed_use={"basis": "producer_declared_access_status", "access_status": "open-access"},
+            retrieval_locator={"url": ambiguous_url, "doi": None},
+            passages=[shared_quote],
+            extraction_status="full_text",
+        )
+        assert result_a.edition is not None and result_b.edition is not None
+        assert result_a.edition["source_edition_id"] != result_b.edition["source_edition_id"]
+
+        # Sanity: the registry itself now reports two distinct-edition matches
+        # for the shared quote -- confirming this test actually constructs
+        # the ambiguity FIX-C guards against, not a vacuous single match.
+        matches = registry.find_exact_passages(source_key, shared_quote)
+        distinct_ids = {m[0]["source_edition_id"] for m in matches}
+        assert len(distinct_ids) == 2
+
+        sources = [
+            {
+                "source_id": "src_ambiguous",
+                "title": "Ambiguous-edition source",
+                "locator": {"doi": None, "url": ambiguous_url},
+                "publication_year": 2024,
+                "access_status": "open-access",
+            }
+        ]
+        candidates = [
+            {
+                "candidate_id": "cand_ambiguous",
+                "statement": "A candidate whose quote matches two distinct editions.",
+                "classification": "assertion",
+                "source_refs": ["src_ambiguous"],
+                "relation": "supports",
+                "quote": shared_quote,
+                "selector": None,
+            }
+        ]
+        root = build_packet(tmp_path / "packet_ambiguous", sources=sources, candidates=candidates)
+
+        def _acquire_should_not_run(locator: str, *, policy: Any, **_kwargs: Any) -> AcquisitionOutcome:
+            raise AssertionError("acquire must not run for a source with pre-existing exact-match editions")
+
+        resolver = ExternalResearchResolver(
+            workspace_id="ws_demo",
+            acquisition_policy=VALID_POLICY,
+            candidate_records=candidates,
+            registry=AssertionRegistry(workspace_id="ws_demo", paths=workspace),
+            acquire=_acquire_should_not_run,
+            dry_run=False,
+            promote=default_promote,
+            paths=workspace,
+        )
+
+        result_stage = _stage(workspace, root, resolver, target_run_id=run_id)
+
+        outcome = _outcome_for(result_stage.receipt, root, "candidate", "candidate_id", "cand_ambiguous")
+        assert outcome["outcome"] == "quarantined"
+        assert outcome["completeness_tier"] is None
+        assert outcome["audit_ref"] is not None
+
+        # Exact reason code, via a direct (idempotent, read-only-at-this-point)
+        # call into a fresh resolver instance over the same registry state.
+        direct_resolver = ExternalResearchResolver(
+            workspace_id="ws_demo",
+            acquisition_policy=VALID_POLICY,
+            candidate_records=candidates,
+            registry=AssertionRegistry(workspace_id="ws_demo", paths=workspace),
+            acquire=_acquire_should_not_run,
+            dry_run=False,
+            promote=default_promote,
+            paths=workspace,
+        )
+        context = ResolutionContext(workspace_id="ws_demo", target_run_id=run_id, policy=VALID_POLICY)
+        direct_resolution = direct_resolver.resolve_candidate(candidates[0], {"src_ambiguous": sources[0]}, context)
+        assert direct_resolution.outcome == "quarantined"
+        assert direct_resolution.reason_code == "verification_failed"
+
+    def test_reused_edition_with_corrupt_content_quarantines_instead_of_crashing(
+        self, tmp_path: Path, workspace: FoundryPaths
+    ) -> None:
+        """M2 FIX-D: a REAL on-disk corruption of an edition's rendition
+        bytes -- not a registry double -- must not crash the resolver.
+
+        `AssertionRegistry._load_edition` (which BOTH `find_exact_passages`
+        and the two M1 accessors route through) validates the content hash
+        on every read, so a tampered `content.bin` makes `find_exact_
+        passages` itself raise `RegistryIntegrityError` -- BEFORE either M1
+        accessor is ever reached. Pre-FIX-D, that call was unguarded and the
+        exception propagated out of `_existing_edition_reuse` through
+        `resolve_source`/`stage()`, aborting the whole import. FIX-D widens
+        the guard to cover `find_exact_passages` too, and -- since every
+        quote for this source hits the same damaged edition -- the source
+        now fails closed into a QUARANTINED outcome (`edition_binding_
+        conflict`, an existing, previously-unused member of
+        `SOURCE_REASON_CODES` -- no reason-code vocabulary change) rather
+        than silently falling through to a fresh network acquisition for a
+        source whose existing-edition state could not even be inspected.
+        The dependent candidate quarantines in turn (`citation_unresolved`,
+        via the ordinary "no source_resolved outcome" path -- unchanged).
+        """
+
+        run_id = "rf_run_corrupt_edition"
+        (workspace.runs / run_id).mkdir(parents=True)
+
+        from research_foundry.services.assertion_registry import AssertionRegistry, RegistryIntegrityError
+
+        registry = AssertionRegistry(workspace_id="ws_demo", paths=workspace)
+        corrupt_url = "https://example.test/articles/corrupt"
+        corrupt_text = "Content that will be corrupted on disk after ingest completes."
+        corrupt_quote = "will be corrupted on disk after ingest"
+        source_key = "url:" + corrupt_url
+        result = registry.ingest(
+            source_key,
+            corrupt_text,
+            access_scope="private",
+            allowed_use={"basis": "producer_declared_access_status", "access_status": "open-access"},
+            retrieval_locator={"url": corrupt_url, "doi": None},
+            passages=[corrupt_quote],
+            extraction_status="full_text",
+        )
+        assert result.edition is not None
+        edition_id = result.edition["source_edition_id"]
+
+        # Tamper the persisted rendition bytes directly on disk -- the same
+        # technique `test_load_edition_content_raises_on_corrupted_content`
+        # in `tests/unit/test_assertion_registry.py` uses -- so the content
+        # hash recorded in the edition record no longer matches.
+        source_id = registry._source_id(source_key)  # noqa: SLF001 - test-only internal reach, matching existing precedent
+        content_path = registry.root / "sources" / source_id / "editions" / edition_id / "content.bin"
+        assert content_path.exists()
+        content_path.write_bytes(b"corrupted bytes that no longer match content_sha256")
+
+        # Sanity: the tamper actually trips the registry's own integrity
+        # check, and it does so from `find_exact_passages` itself (not from
+        # either M1 accessor) -- confirming this exercises FIX-D's new
+        # guard, not the mechanism M2's earlier test already covers.
+        with pytest.raises(RegistryIntegrityError):
+            registry.find_exact_passages(source_key, corrupt_quote)
+
+        sources = [
+            {
+                "source_id": "src_corrupt",
+                "title": "Corrupt source",
+                "locator": {"doi": None, "url": corrupt_url},
+                "publication_year": 2024,
+                "access_status": "open-access",
+            }
+        ]
+        candidates = [
+            {
+                "candidate_id": "cand_corrupt",
+                "statement": "A candidate bound to a source whose only edition is corrupted on disk.",
+                "classification": "assertion",
+                "source_refs": ["src_corrupt"],
+                "relation": "supports",
+                "quote": corrupt_quote,
+                "selector": None,
+            }
+        ]
+        root = build_packet(tmp_path / "packet_corrupt", sources=sources, candidates=candidates)
+
+        def _acquire_should_not_run(locator: str, *, policy: Any, **_kwargs: Any) -> AcquisitionOutcome:
+            raise AssertionError(
+                "acquire must not run -- FIX-D quarantines a source whose existing-edition "
+                "lookup failed rather than falling through to fresh acquisition"
+            )
+
+        resolver = ExternalResearchResolver(
+            workspace_id="ws_demo",
+            acquisition_policy=VALID_POLICY,
+            candidate_records=candidates,
+            registry=AssertionRegistry(workspace_id="ws_demo", paths=workspace),
+            acquire=_acquire_should_not_run,
+            dry_run=False,
+            promote=default_promote,
+            paths=workspace,
+        )
+
+        # Must not raise RegistryIntegrityError (or anything else) -- the
+        # whole point of this guard.
+        result_stage = _stage(workspace, root, resolver, target_run_id=run_id)
+
+        source_outcome = _outcome_for(result_stage.receipt, root, "source", "source_id", "src_corrupt")
+        assert source_outcome["outcome"] == "quarantined"
+        assert source_outcome["completeness_tier"] is None
+        assert source_outcome["audit_ref"] is not None
+
+        candidate_outcome = _outcome_for(result_stage.receipt, root, "candidate", "candidate_id", "cand_corrupt")
+        assert candidate_outcome["outcome"] == "quarantined"
+        assert candidate_outcome["completeness_tier"] is None
+        assert candidate_outcome["audit_ref"] is not None
+
+        # Exact reason codes, via direct (idempotent, read-only-at-this-point)
+        # calls into a FRESH resolver instance over the same tampered
+        # registry state -- the receipt itself never surfaces `reason_code`
+        # (only an opaque `audit_ref`, contract §4.6).
+        direct_resolver = ExternalResearchResolver(
+            workspace_id="ws_demo",
+            acquisition_policy=VALID_POLICY,
+            candidate_records=candidates,
+            registry=AssertionRegistry(workspace_id="ws_demo", paths=workspace),
+            acquire=_acquire_should_not_run,
+            dry_run=False,
+            promote=default_promote,
+            paths=workspace,
+        )
+        context = ResolutionContext(workspace_id="ws_demo", target_run_id=run_id, policy=VALID_POLICY)
+        source_resolution = direct_resolver.resolve_source(sources[0], context)
+        assert source_resolution.outcome == "quarantined"
+        assert source_resolution.reason_code == "edition_binding_conflict"
+
+        candidate_resolution = direct_resolver.resolve_candidate(candidates[0], {"src_corrupt": sources[0]}, context)
+        assert candidate_resolution.outcome == "quarantined"
+        assert candidate_resolution.reason_code == "citation_unresolved"
 
 
 # ---------------------------------------------------------------------------

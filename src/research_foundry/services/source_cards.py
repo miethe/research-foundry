@@ -252,12 +252,26 @@ def ingest_source(
         ExtractionStatus.locator_only.value if (degraded or not content) else ExtractionStatus.full_text.value
     )
     eff_extraction_status = derived_extraction_status
+    # Tracks whether eff_extraction_status is genuinely authoritative for the
+    # registry write below: true when no override was supplied (the derived
+    # value stands) or the supplied override was recognized. False only when
+    # an override was supplied but unrecognized -- in that fail-open case
+    # eff_extraction_status still gets the derived value for source-card
+    # front matter (unchanged, existing behavior), but that value must NOT be
+    # forwarded to the registry, or a caller's typo/garbage override would
+    # silently promote as full-text (or locator-only) fidelity inside
+    # edition_binding_sha256 -- worse than before, since previously a bad
+    # override only ever reached source-card front matter, never the
+    # provenance digest.
+    extraction_status_is_authoritative = True
     if extraction_status is not None:
         try:
             eff_extraction_status = ExtractionStatus(extraction_status).value
         except ValueError:
             # Fail-open: unrecognized override -> fall back to the derived value.
+            # This front-matter behavior is unchanged and out of scope here.
             eff_extraction_status = derived_extraction_status
+            extraction_status_is_authoritative = False
 
     eff_title = title or (local_path.stem if is_local_file else None) or locator
     src_id = source_card_id(eff_title, locator)
@@ -428,6 +442,16 @@ def ingest_source(
             retrieval_locator={"url": loc_url, "file_path": loc_file},
             passages=quote_passages or None,
             source_card_snapshot=registry.source_card_snapshot(src_id, front_matter),
+            # eff_extraction_status is NOT always authoritative: when a caller
+            # supplies an override this function does not recognize, it fails
+            # open to the derived value for source-card front matter (existing
+            # behavior, unchanged). That derived fallback is a guess about what
+            # the caller meant, not a fact -- forwarding it here would let a
+            # bad override reach edition_binding_sha256 as fabricated fidelity.
+            # Only pass it through when nothing needed guessing: no override
+            # was given (the derived value stands on its own), or the given
+            # override was recognized.
+            extraction_status=eff_extraction_status if extraction_status_is_authoritative else None,
         )
     elif workspace_resolution.allowed and content is not None and not degraded:
         _trace(run_paths, stage="ingest", assertion_ledger_write_disabled=True)

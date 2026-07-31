@@ -1,0 +1,37 @@
+# Frozen, hand-authored fixture (see edition.yaml in this directory for the
+# rationale). edition_binding below is the pre-change binding shape: it has
+# NO extraction_status key. edition_binding_sha256 is the real
+# _canonical_digest() of that exact mapping, computed by hand -- this test
+# must fail the moment _edition_binding ever includes extraction_status
+# unconditionally, because the freshly recomputed binding would then gain a
+# key this frozen record does not have.
+schema_version: "1.0"
+type: source_edition_provenance
+source_id: src_a9557df21213ce50cd69b4bdcb6696559f91fd583a1034f9dd67a9cb964f74bd
+source_edition_id: sed_94cc54f687ce1ce60e65f01775b4bb7a1133e573ce6b163f2042703817af9f3c
+content_sha256: 94cc54f687ce1ce60e65f01775b4bb7a1133e573ce6b163f2042703817af9f3c
+edition_binding:
+  source_id: src_a9557df21213ce50cd69b4bdcb6696559f91fd583a1034f9dd67a9cb964f74bd
+  source_edition_id: sed_94cc54f687ce1ce60e65f01775b4bb7a1133e573ce6b163f2042703817af9f3c
+  content_sha256: 94cc54f687ce1ce60e65f01775b4bb7a1133e573ce6b163f2042703817af9f3c
+  media_type: text/plain
+  access_scope: private
+  retrieval_locator:
+    url: "https://example.test/legacy-fixture"
+    file_path: null
+  allowed_use:
+    sensitivity: personal
+    allowed_for_work_output: true
+  raw_content_sha256: 94cc54f687ce1ce60e65f01775b4bb7a1133e573ce6b163f2042703817af9f3c
+  normalized_content_sha256: 521f7c815ece0f622b3b3004988e41d718bc46f0596a6bb6a3e9becfc0fceec8
+edition_binding_sha256: 27400e7aff6a0bd84036a963a76d0b583daf53a352c9d2fd86907beecd59e515
+source_card_snapshot:
+  source_card_id: "paper:legacy-fixture"
+  access_scope: personal
+  allowed_use:
+    sensitivity: personal
+    allowed_for_work_output: true
+  retrieval_locator:
+    url: "https://example.test/legacy-fixture"
+    file_path: null
+  evidence_points: []

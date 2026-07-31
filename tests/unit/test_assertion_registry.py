@@ -3,18 +3,35 @@
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 
 import pytest
 
 from research_foundry.paths import FoundryPaths
 from research_foundry.schemas import SchemaRegistry
-from research_foundry.services.assertion_registry import AssertionRegistry
+from research_foundry.services.assertion_registry import (
+    AssertionRegistry,
+    RegistryIntegrityError,
+    _canonical_digest,
+)
 from research_foundry.services.source_cards import ingest_source
 from research_foundry.yamlio import dump_yaml, load_yaml
 
 RIGHTS = {"sensitivity": "personal", "allowed_for_work_output": True}
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "assertion_ledger" / "p2_formats"
+
+
+def _edition_manifest_path(registry: AssertionRegistry, source_id: str, edition_id: str) -> Path:
+    return registry.root / "sources" / source_id / "editions" / f"{edition_id}.yaml"
+
+
+def _provenance_path(registry: AssertionRegistry, source_id: str, edition_id: str) -> Path:
+    return registry.root / "sources" / source_id / "editions" / edition_id / "provenance.yaml"
+
+
+def _content_path(registry: AssertionRegistry, source_id: str, edition_id: str) -> Path:
+    return registry.root / "sources" / source_id / "editions" / edition_id / "content.bin"
 
 
 def _tree(root: Path) -> dict[str, bytes]:
@@ -200,3 +217,281 @@ def test_source_card_first_ingest_accepts_later_granular_passages(tmp_foundry) -
     assert len(granular.passages) == 3
     assert len({passage["passage_id"] for passage in granular.passages}) == 3
     assert granular.passages == repeated.passages
+
+
+def _source_card(source_card_id: str, url: str) -> dict:
+    return {
+        "source_card_id": source_card_id,
+        "source": {"locator": {"url": url, "file_path": None}},
+        "usage": RIGHTS,
+        "sensitivity": "personal",
+        "extracted_points": [],
+    }
+
+
+def test_extraction_status_round_trips_and_is_covered_by_binding(tmp_foundry) -> None:
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    source_card = _source_card("paper:1", "https://example.test")
+    result = registry.ingest(
+        "paper:1",
+        "Full text content.",
+        allowed_use=RIGHTS,
+        extraction_status="full_text",
+        source_card_snapshot=registry.source_card_snapshot("paper:1", source_card),
+    )
+
+    assert result.edition is not None
+    edition_id = result.edition["source_edition_id"]
+    assert result.edition["metadata_extensions"]["extraction_status"] == "full_text"
+    assert registry.get_extraction_status("paper:1", edition_id) == "full_text"
+
+    provenance = load_yaml(_provenance_path(registry, result.source_id, edition_id))
+    assert provenance["edition_binding"]["extraction_status"] == "full_text"
+    assert provenance["edition_binding_sha256"] == _canonical_digest(provenance["edition_binding"])
+
+    # verify_source_card_binding still succeeds with a status-bearing edition.
+    registry.verify_source_card_binding("paper:1", result.edition, source_card)
+
+
+def test_ingest_without_status_records_nothing(tmp_foundry) -> None:
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    source_card = _source_card("paper:1", "https://example.test")
+    result = registry.ingest(
+        "paper:1",
+        "No status supplied.",
+        allowed_use=RIGHTS,
+        source_card_snapshot=registry.source_card_snapshot("paper:1", source_card),
+    )
+
+    assert result.edition is not None
+    edition_id = result.edition["source_edition_id"]
+    assert "extraction_status" not in result.edition["metadata_extensions"]
+    assert registry.get_extraction_status("paper:1", edition_id) is None
+
+    provenance = load_yaml(_provenance_path(registry, result.source_id, edition_id))
+    assert "extraction_status" not in provenance["edition_binding"]
+
+    # A no-status edition's binding is exactly the shape a pre-existing (legacy)
+    # edition already on disk has -- proof that this decision needs no backfill.
+    registry.verify_source_card_binding("paper:1", result.edition, source_card)
+
+
+def test_out_of_vocabulary_status_rejected_on_write(tmp_foundry) -> None:
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    result = registry.ingest(
+        "paper:1", "Some content.", allowed_use=RIGHTS, extraction_status="bogus_status"
+    )
+
+    assert result.reusable is False
+    assert result.reason == "invalid_extraction_status"
+    assert result.edition is None and result.passages == ()
+    assert not registry.root.exists()
+
+
+def test_out_of_vocabulary_status_rejected_on_read(tmp_foundry) -> None:
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    result = registry.ingest(
+        "paper:1", "Readable content.", allowed_use=RIGHTS, extraction_status="full_text"
+    )
+    assert result.edition is not None
+    edition_id = result.edition["source_edition_id"]
+
+    manifest_path = _edition_manifest_path(registry, result.source_id, edition_id)
+    manifest = load_yaml(manifest_path)
+    manifest["metadata_extensions"]["extraction_status"] = "not_a_real_status"
+    dump_yaml(manifest, manifest_path)
+
+    with pytest.raises(RegistryIntegrityError, match="tri-state"):
+        registry.get_extraction_status("paper:1", edition_id)
+
+
+LEGACY_FIXTURE = Path(__file__).parents[1] / "fixtures" / "assertion_ledger" / "legacy_edition"
+LEGACY_WORKSPACE_ID = "legacy-fixture-workspace"
+LEGACY_SOURCE_KEY = "paper:legacy-fixture"
+
+
+def test_legacy_edition_still_verifies_unbackfilled(tmp_foundry) -> None:
+    """Sharpest named risk: conditional inclusion must not disturb legacy editions.
+
+    This is a FROZEN, checked-in fixture (tests/fixtures/assertion_ledger/legacy_edition/)
+    hand-authored to look exactly like a pre-existing on-disk edition written before
+    ``extraction_status`` existed -- it is never produced by calling the (changed)
+    ``ingest()``, so an implementation that started writing ``extraction_status``
+    unconditionally (even as ``null``) would change what ``_edition_binding``
+    recomputes and this test would correctly fail, instead of vacuously passing.
+    """
+
+    registry = AssertionRegistry(workspace_id=LEGACY_WORKSPACE_ID, paths=tmp_foundry)
+    source_id = registry._source_id(LEGACY_SOURCE_KEY)
+    edition = load_yaml(LEGACY_FIXTURE / "edition.yaml")
+    provenance = load_yaml(LEGACY_FIXTURE / "provenance.yaml")
+    assert edition["source_id"] == source_id, "fixture source_id must match this workspace/source_key pair"
+    assert "extraction_status" not in edition["metadata_extensions"]
+    assert "extraction_status" not in provenance["edition_binding"]
+
+    edition_dir = registry.root / "sources" / source_id / "editions"
+    edition_id = edition["source_edition_id"]
+    edition_dir.mkdir(parents=True, exist_ok=True)
+    dump_yaml(edition, edition_dir / f"{edition_id}.yaml")
+    (edition_dir / edition_id).mkdir(parents=True, exist_ok=True)
+    shutil.copy(LEGACY_FIXTURE / "content.bin", edition_dir / edition_id / "content.bin")
+    dump_yaml(provenance, edition_dir / edition_id / "provenance.yaml")
+
+    source_card = _source_card("paper:legacy-fixture", "https://example.test/legacy-fixture")
+    before = _tree(registry.root)
+    registry.verify_source_card_binding(LEGACY_SOURCE_KEY, edition, source_card)
+    # No write occurred as a side effect of verification.
+    assert _tree(registry.root) == before
+
+
+def test_tampered_persisted_extraction_status_raises_integrity_error(tmp_foundry) -> None:
+    """Tampering the persisted EDITION's status must be caught by the status guard
+    itself (``_extraction_status`` inside ``_edition_binding``), not merely by the
+    generic stored-vs-recomputed binding mismatch every other tamper already trips.
+
+    Both the edition's ``metadata_extensions.extraction_status`` AND provenance's
+    ``edition_binding.extraction_status``/``edition_binding_sha256`` are tampered
+    to the SAME out-of-vocabulary value, so the two records stay mutually
+    consistent -- if the tri-state guard were removed, this would NOT raise via
+    the generic stored-vs-recomputed mismatch (both sides would agree), proving
+    the raise below can only come from the guard itself. Confirmed by
+    mutation-verify (see implementation-notes.md).
+    """
+
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    source_card = _source_card("paper:1", "https://example.test")
+    result = registry.ingest(
+        "paper:1",
+        "Tamper target.",
+        allowed_use=RIGHTS,
+        extraction_status="locator_only",
+        source_card_snapshot=registry.source_card_snapshot("paper:1", source_card),
+    )
+    assert result.edition is not None
+    edition_id = result.edition["source_edition_id"]
+
+    manifest_path = _edition_manifest_path(registry, result.source_id, edition_id)
+    manifest = load_yaml(manifest_path)
+    manifest["metadata_extensions"]["extraction_status"] = "an_invalid_status_value"
+    dump_yaml(manifest, manifest_path)
+
+    provenance_path = _provenance_path(registry, result.source_id, edition_id)
+    provenance = load_yaml(provenance_path)
+    provenance["edition_binding"]["extraction_status"] = "an_invalid_status_value"
+    provenance["edition_binding_sha256"] = _canonical_digest(provenance["edition_binding"])
+    dump_yaml(provenance, provenance_path)
+
+    with pytest.raises(RegistryIntegrityError, match="tri-state"):
+        registry.verify_source_card_binding("paper:1", result.edition, source_card)
+
+
+def test_tampered_provenance_extraction_status_mismatch_still_raises(tmp_foundry) -> None:
+    """A plausible-looking (valid tri-state) but WRONG persisted provenance status
+    is still caught -- by the general stored-vs-recomputed binding mismatch, since
+    the edition's real recorded status disagrees with what provenance now claims.
+    """
+
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    source_card = _source_card("paper:1", "https://example.test")
+    result = registry.ingest(
+        "paper:1",
+        "Tamper target.",
+        allowed_use=RIGHTS,
+        extraction_status="locator_only",
+        source_card_snapshot=registry.source_card_snapshot("paper:1", source_card),
+    )
+    assert result.edition is not None
+    edition_id = result.edition["source_edition_id"]
+
+    provenance_path = _provenance_path(registry, result.source_id, edition_id)
+    provenance = load_yaml(provenance_path)
+    provenance["edition_binding"]["extraction_status"] = "full_text"
+    dump_yaml(provenance, provenance_path)
+
+    with pytest.raises(RegistryIntegrityError):
+        registry.verify_source_card_binding("paper:1", result.edition, source_card)
+
+
+def test_sibling_metadata_extensions_cannot_bypass_status_validation(tmp_foundry) -> None:
+    """FIX-1 regression: an invalid status smuggled in via metadata_extensions
+    (instead of the explicit extraction_status parameter) must be rejected the
+    same way -- a typed non-reusable result, not an uncaught RegistryIntegrityError
+    escaping out of _provenance_record for a caller that only expects
+    RegistryImportResult back from a public ingest() call.
+    """
+
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    result = registry.ingest(
+        "paper:1",
+        "Sibling bypass attempt.",
+        allowed_use=RIGHTS,
+        metadata_extensions={"extraction_status": "bogus"},
+    )
+
+    assert result.reusable is False
+    assert result.reason == "invalid_extraction_status"
+    assert result.edition is None and result.passages == ()
+    assert not registry.root.exists()
+
+
+def test_unhashable_persisted_status_raises_integrity_error_not_typeerror(tmp_foundry) -> None:
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    result = registry.ingest(
+        "paper:1", "Unhashable status target.", allowed_use=RIGHTS, extraction_status="full_text"
+    )
+    assert result.edition is not None
+    edition_id = result.edition["source_edition_id"]
+
+    manifest_path = _edition_manifest_path(registry, result.source_id, edition_id)
+    manifest = load_yaml(manifest_path)
+    manifest["metadata_extensions"]["extraction_status"] = ["not", "a", "string"]
+    dump_yaml(manifest, manifest_path)
+
+    with pytest.raises(RegistryIntegrityError, match="tri-state"):
+        registry.get_extraction_status("paper:1", edition_id)
+
+
+def test_ingest_source_unrecognized_override_records_no_status_in_registry(tmp_foundry) -> None:
+    """FIX-3 regression: an unrecognized ingest_source() override must not reach the
+    registry at all. ingest_source()'s existing front-matter fail-open behavior
+    (unchanged, still full_text there) must not leak the guessed derived value into
+    edition_binding_sha256.
+    """
+
+    run_id = "rf_run_p2_bad_override"
+    tmp_foundry.run_paths(run_id).ensure_scaffold()
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"]["assertion_ledger"] = {"ledger_write_enabled": True}
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
+
+    result = ingest_source(
+        "bad-override.txt",
+        run_id=run_id,
+        content="Some content.",
+        extraction_status="not_a_real_status",
+        paths=tmp_foundry,
+        assertion_registry_workspace_id="workspace-a",
+    )
+    # Front-matter fail-open is unchanged and out of scope: still full_text.
+    assert result.extraction_status == "full_text"
+
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    edition_id = registry.ingest(
+        result.source_card_id, "Some content.", allowed_use=RIGHTS
+    ).edition["source_edition_id"]
+    assert registry.get_extraction_status(result.source_card_id, edition_id) is None
+
+
+def test_load_edition_content_raises_on_corrupted_content(tmp_foundry) -> None:
+    registry = AssertionRegistry(workspace_id="workspace-a", paths=tmp_foundry)
+    result = registry.ingest("paper:1", "Original bytes.", allowed_use=RIGHTS)
+    assert result.edition is not None
+    edition_id = result.edition["source_edition_id"]
+
+    assert registry.load_edition_content("paper:1", edition_id) == b"Original bytes."
+
+    content_path = _content_path(registry, result.source_id, edition_id)
+    content_path.write_bytes(b"corrupted bytes")
+
+    with pytest.raises(RegistryIntegrityError):
+        registry.load_edition_content("paper:1", edition_id)

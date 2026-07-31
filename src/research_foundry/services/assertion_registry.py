@@ -29,6 +29,14 @@ _EDITION_ID_RE = re.compile(r"^sed_[a-f0-9]{64}$")
 _PASSAGE_ID_RE = re.compile(r"^psg_[a-f0-9]{64}$")
 _GENERATION_ID_RE = re.compile(r"^gen_[a-f0-9]{64}$")
 
+# Tri-state extraction fidelity vocabulary, deliberately duplicated from
+# ``source_cards.ExtractionStatus`` rather than imported: this module is not
+# allowed to depend on source_cards's fail-open override handling (see
+# ``_edition_binding``/``_extraction_status`` below), and source_cards already
+# imports AssertionRegistry lazily to avoid a circular import. Keep these three
+# values in sync with ``source_cards.ExtractionStatus`` by hand.
+_EXTRACTION_STATUSES = frozenset({"full_text", "partial", "locator_only"})
+
 
 class RegistryIntegrityError(ValueError):
     """A persisted registry pointer is malformed or escapes its workspace."""
@@ -240,6 +248,29 @@ class AssertionRegistry:
         }
 
     @staticmethod
+    def _extraction_status(extensions: Mapping[str, Any]) -> str | None:
+        """Return the recorded tri-state status, or ``None`` if the caller never gave one.
+
+        Validated on every read through ``_edition_binding`` (write and read both
+        route through it — ``_provenance_record`` at ingest time and
+        ``_load_provenance``/``verify_source_card_binding`` afterwards), so a
+        corrupt or out-of-vocabulary persisted value raises here rather than
+        silently promoting as a derived status the way
+        ``source_cards.ingest_source``'s fail-open override handling would.
+        """
+
+        if "extraction_status" not in extensions:
+            return None
+        value = extensions.get("extraction_status")
+        # Type-check before the membership test: a persisted list/dict is
+        # unhashable, and `value not in frozenset` would raise a raw TypeError
+        # instead of the RegistryIntegrityError every other integrity failure
+        # in this module raises.
+        if not isinstance(value, str) or value not in _EXTRACTION_STATUSES:
+            raise RegistryIntegrityError("source edition extraction status is not a recognized tri-state value")
+        return value
+
+    @staticmethod
     def _edition_binding(edition: Mapping[str, Any]) -> dict[str, Any]:
         source_edition_id = edition.get("source_edition_id")
         source_id = edition.get("source_id")
@@ -259,7 +290,13 @@ class AssertionRegistry:
             raise RegistryIntegrityError("source edition omits immutable rights metadata")
         if not isinstance(raw_content_sha256, str) or not isinstance(normalized_content_sha256, str):
             raise RegistryIntegrityError("source edition omits immutable content metadata")
-        return {
+        # Conditional inclusion is load-bearing: an edition ingested before this
+        # field existed has no "extraction_status" key in metadata_extensions,
+        # so it must be absent here too -- otherwise every legacy edition's
+        # recomputed edition_binding_sha256 diverges from its stored one and
+        # verify_source_card_binding fails fleet-wide with no backfill available.
+        extraction_status = AssertionRegistry._extraction_status(extensions)
+        binding = {
             "source_id": source_id,
             "source_edition_id": source_edition_id,
             "content_sha256": content_sha256,
@@ -270,6 +307,9 @@ class AssertionRegistry:
             "raw_content_sha256": raw_content_sha256,
             "normalized_content_sha256": normalized_content_sha256,
         }
+        if extraction_status is not None:
+            binding["extraction_status"] = extraction_status
+        return binding
 
     def _read_regular_file(self, path: Path, expected_directory: Path) -> bytes:
         """Read one in-root regular file without following path substitutions.
@@ -374,6 +414,7 @@ class AssertionRegistry:
         passages: Sequence[str] | None = None,
         metadata_extensions: Mapping[str, Any] | None = None,
         source_card_snapshot: Mapping[str, Any] | None = None,
+        extraction_status: str | None = None,
         _interrupt_after_edition_write: bool = False,
         _interrupt_before_generation_publish: bool = False,
     ) -> RegistryImportResult:
@@ -381,9 +422,30 @@ class AssertionRegistry:
 
         Unsupported or missing content is a typed non-reusable result.  The
         existing source manifest is untouched in that case.
+
+        ``extraction_status`` is OPTIONAL and never inferred: pass it only when
+        the caller already has an authoritative tri-state value (``full_text``,
+        ``partial``, or ``locator_only``) for this content -- e.g. a source-card
+        ingest call site that already computed and validated one. A caller
+        without one must pass nothing rather than guess; the resulting edition
+        simply records no status, exactly like editions ingested before this
+        parameter existed. An out-of-vocabulary value is rejected as a typed
+        non-reusable result rather than silently coerced to a derived status
+        (do not depend on ``source_cards.ingest_source``'s fail-open override
+        handling for this -- that is the hazard this validation routes around).
+        This validation is on the value that will actually be persisted, not
+        merely the explicit parameter: a caller cannot bypass it by smuggling
+        an out-of-vocabulary status inside ``metadata_extensions`` instead
+        (``extraction_status`` wins when both are given, matching the
+        precedence the edition record is built with below).
         """
 
         source_id = self._source_id(source_key)
+        merged_extraction_status = extraction_status
+        if merged_extraction_status is None and metadata_extensions is not None:
+            merged_extraction_status = metadata_extensions.get("extraction_status")
+        if merged_extraction_status is not None and merged_extraction_status not in _EXTRACTION_STATUSES:
+            return RegistryImportResult(source_id, None, (), False, False, "invalid_extraction_status")
         if media_type not in self._SUPPORTED_MEDIA_TYPES or content is None:
             return RegistryImportResult(source_id, None, (), False, False, "unsupported_or_missing_content")
         if not allowed_use:
@@ -440,17 +502,24 @@ class AssertionRegistry:
 
         predecessor = edition_ids[-1] if edition_ids else None
         normalized_content = _normalise(raw_text)
+        extensions: dict[str, Any] = {
+            **dict(metadata_extensions or {}),
+            "raw_content_sha256": content_sha256,
+            "normalized_content_sha256": _digest(normalized_content),
+            "allowed_use": dict(allowed_use),
+        }
+        # Present only when the caller supplied one -- absence must be
+        # indistinguishable from an edition ingested before this field existed,
+        # or _edition_binding's conditional inclusion has nothing to be
+        # conditional on.
+        if extraction_status is not None:
+            extensions["extraction_status"] = extraction_status
         edition = {
             "schema_version": "1.0", "type": "source_edition", "source_edition_id": edition_id,
             "content_sha256": content_sha256, "source_id": source_id, "media_type": media_type,
             "captured_at": now_iso(), "retrieval_locator": dict(retrieval_locator or {}),
             "predecessor_edition_id": predecessor, "access_scope": access_scope,
-            "metadata_extensions": {
-                **dict(metadata_extensions or {}),
-                "raw_content_sha256": content_sha256,
-                "normalized_content_sha256": _digest(normalized_content),
-                "allowed_use": dict(allowed_use),
-            },
+            "metadata_extensions": extensions,
         }
         provenance = self._provenance_record(edition, source_card_snapshot)
         # Write immutable children first; publish the manifest last.
@@ -539,6 +608,37 @@ class AssertionRegistry:
     def list_passages(self, source_key: str, edition_id: str) -> tuple[dict[str, Any], ...]:
         """Return only the atomically published passage generation."""
         return tuple(self._load_passages(self._source_id(source_key), edition_id))
+
+    def load_edition_content(self, source_key: str, edition_id: str) -> bytes:
+        """Return an edition's stored rendition bytes, hash-verified.
+
+        Reuses the same integrity path ``ingest``/``verify_source_card_binding``
+        rely on (``_load_edition`` -> ``_load_edition_content``): a corrupted
+        ``content.bin``, or one that no longer matches the edition's recorded
+        ``content_sha256``, raises ``RegistryIntegrityError`` rather than
+        returning bytes.
+        """
+
+        source_id = self._source_id(source_key)
+        edition = self._load_edition(source_id, edition_id)
+        return self._load_edition_content(source_id, edition_id, edition)
+
+    def get_extraction_status(self, source_key: str, edition_id: str) -> str | None:
+        """Return the edition's recorded tri-state extraction status, or ``None``.
+
+        ``None`` means the edition was ingested without an authoritative status
+        (either it predates this field, or its caller had none to give) -- it is
+        never inferred here. A stored value outside the tri-state vocabulary
+        raises ``RegistryIntegrityError`` instead of being returned, so a caller
+        can never silently receive a corrupted status.
+        """
+
+        source_id = self._source_id(source_key)
+        edition = self._load_edition(source_id, edition_id)
+        extensions = edition.get("metadata_extensions")
+        if not isinstance(extensions, Mapping):
+            raise RegistryIntegrityError("source edition omits immutable provenance metadata")
+        return self._extraction_status(extensions)
 
     def _publish_passages(self, source_id: str, edition_id: str, passages: Mapping[str, dict[str, Any]], interrupt: bool) -> None:
         passage_ids = sorted(passages)

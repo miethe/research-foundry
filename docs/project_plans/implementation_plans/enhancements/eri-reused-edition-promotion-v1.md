@@ -3,7 +3,12 @@ it_schema: 1
 feature_slug: eri-reused-edition-promotion
 title: "ERI reused-edition promotion recovery — implementation plan"
 doc_type: implementation_plan
-status: draft
+status: completed
+oq_resolutions:
+  - "OQ-1 RESOLVED (owner, 2026-07-31): keep reusing verification_failed. No member added to CANDIDATE_REASON_CODES; the versioned vocab contract is untouched."
+  - "OQ-2 RESOLVED (owner, 2026-07-31): packet dir is ~/Downloads/knitwit-s1/packet (digest 35d50aeaab09b7b6..., matches the plan's 35d50aea...)."
+open_items:
+  - "M3 live-checkpoint AC NOT met, and unmeetable for this packet without a Mode-D backfill. The fix is forward-looking: 16/16 editions ingested after the change record a status and promote correctly, but the 487 edition records already on disk (2026-07-17, 2026-07-29) have none, are immutable and content-addressed, and so fail closed permanently. The 4 verification_failed candidates in the live run are exactly that population. Escalated per this plan's own Mode-D rule rather than acted on. Evidence: .claude/worknotes/eri-reused-edition-promotion/implementation-notes.md (M3 section)."
 tier: 2
 priority: P2
 points: 13

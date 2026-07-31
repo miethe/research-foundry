@@ -1,0 +1,25 @@
+# Frozen, hand-authored fixture: a source_edition record as it looked BEFORE
+# the extraction_status field existed. Do not regenerate via AssertionRegistry
+# .ingest() -- that would make this fixture vacuous (see eri-reused-edition-
+# promotion-v1.md, M1 named risk "Breaking provenance verification for every
+# legacy edition"). content_sha256/normalized_content_sha256 are the real
+# sha256 digests of content.bin in this same directory; recompute by hand if
+# content.bin ever changes.
+schema_version: "1.0"
+type: source_edition
+source_edition_id: sed_94cc54f687ce1ce60e65f01775b4bb7a1133e573ce6b163f2042703817af9f3c
+content_sha256: 94cc54f687ce1ce60e65f01775b4bb7a1133e573ce6b163f2042703817af9f3c
+source_id: src_a9557df21213ce50cd69b4bdcb6696559f91fd583a1034f9dd67a9cb964f74bd
+media_type: text/plain
+captured_at: "2026-01-01T00:00:00+00:00"
+retrieval_locator:
+  url: "https://example.test/legacy-fixture"
+  file_path: null
+predecessor_edition_id: null
+access_scope: private
+metadata_extensions:
+  raw_content_sha256: 94cc54f687ce1ce60e65f01775b4bb7a1133e573ce6b163f2042703817af9f3c
+  normalized_content_sha256: 521f7c815ece0f622b3b3004988e41d718bc46f0596a6bb6a3e9becfc0fceec8
+  allowed_use:
+    sensitivity: personal
+    allowed_for_work_output: true

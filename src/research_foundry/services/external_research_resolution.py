@@ -97,7 +97,7 @@ from typing import Any
 
 from ..errors import NotFoundError
 from ..paths import FoundryPaths
-from .assertion_registry import AssertionRegistry
+from .assertion_registry import AssertionRegistry, RegistryIntegrityError
 from .external_research_interchange import (
     CANDIDATE_REASON_CODES,
     SOURCE_REASON_CODES,
@@ -689,27 +689,106 @@ class ExternalResearchResolver:
         reused by :meth:`_ensure_source_outcome` to reconstruct a source's
         outcome across a batch-call boundary without ever touching the
         network or writing to the registry.
+
+        M2 FIX-D hardening: every registry call in this method (both
+        ``find_exact_passages`` calls, plus the two M1 accessors) is wrapped
+        against ``RegistryIntegrityError`` *and* ``OSError`` -- a corrupted
+        edition on disk, OR one whose files are concurrently deleted mid-read
+        (``AssertionRegistry._read_regular_file`` re-raises a raw
+        ``FileNotFoundError`` rather than wrapping it), must never crash this
+        resolver or the whole import. Each catch fails closed to the most
+        conservative value at its own granularity (treat the quote as
+        unmatched; leave content/status unrehydrated; classify a sibling
+        quote as ``not_found``). If every quote's initial lookup fails this
+        way and none finds a usable match, this method returns a QUARANTINED
+        source outcome (``edition_binding_conflict`` -- an existing,
+        previously-unused member of ``SOURCE_REASON_CODES``, not a new one)
+        instead of ``None``, so a genuinely corrupted registry state fails
+        closed into quarantine rather than silently falling through to a
+        fresh network acquisition attempt for a source whose exact-match
+        lookup could not even be completed.
         """
 
         quotes = self._quotes_by_source_id.get(normalized.source_id, [])
+        lookup_failed = False
         for quote in quotes:
-            matches = self._registry.find_exact_passages(source_key, quote)
+            try:
+                matches = self._registry.find_exact_passages(source_key, quote)
+            except (RegistryIntegrityError, OSError):
+                # This quote's own lookup hit a corrupted/vanished edition --
+                # treat it exactly like "no match for this quote" and try the
+                # next one; a DIFFERENT quote may still resolve cleanly
+                # against an unrelated, undamaged edition. Only if every
+                # quote fails or finds nothing does the fallback below fire.
+                lookup_failed = True
+                continue
             if matches:
+                # M2 FIX-C: `find_exact_passages` returning matches that span
+                # more than one DISTINCT edition is the registry's OWN
+                # definition of ambiguity (mirrored in the `same_edition`
+                # classification below for every OTHER quote). Before M2 an
+                # arbitrary `matches[0][0]` pick here was inert -- `content`
+                # was unconditionally `None`, so `_finish_passage_resolved`'s
+                # guard always quarantined it regardless of which edition was
+                # picked. After M2 rehydrates a recorded status, that same
+                # arbitrary pick could PROMOTE, staging evidence from
+                # possibly the wrong edition. Fail closed instead: never
+                # rehydrate for an ambiguous pick, so the existing
+                # None-content guard still quarantines it
+                # (`verification_failed`, unchanged, no new reason code).
                 edition = matches[0][0]
-                # `content=None, extraction_status=None`: `AssertionRegistry`
-                # persists the immutable rendition bytes (`_load_edition_content`
-                # / `_content_path`) but exposes no PUBLIC getter for them --
-                # and never persists extraction_status at all -- so a reused
-                # edition's content is genuinely unrecoverable here without a
-                # forbidden re-fetch/re-extract; promotion of this outcome
-                # fails closed via quarantine in `_finish_passage_resolved`.
-                outcome = _SourceOutcome(source_key, "source_resolved", edition, None, None, normalized.title, normalized.locator)
+                distinct_edition_ids = {m[0].get("source_edition_id") for m in matches}
+                ambiguous_edition = len(distinct_edition_ids) > 1
+
+                # M2 (eri-reused-edition-promotion): rehydrate the immutable
+                # rendition bytes and the recorded tri-state extraction
+                # status from the registry's OWN public accessors
+                # (`load_edition_content` / `get_extraction_status`, both
+                # added in M1) -- never by re-fetching or re-extracting.
+                # `get_extraction_status` returns `None` (not inferred) for
+                # an edition ingested without an authoritative status; that
+                # `None` is deliberately left as-is so `_finish_passage_
+                # resolved`'s guard still quarantines it below. A corrupt
+                # edition (bad content hash, an out-of-vocabulary stored
+                # status, or a concurrently deleted file) raises
+                # `RegistryIntegrityError`/`OSError` from either accessor --
+                # caught here so a single damaged edition quarantines its
+                # candidates rather than crashing the run; both values are
+                # reset to `None` together so a partially recovered pair is
+                # never staged for promotion. `_SourceOutcome.content` is
+                # `str` (matching the fresh-acquisition path's
+                # `extraction.text`), so the registry's raw stored bytes are
+                # decoded utf-8/replace -- the SAME lossy-but-deterministic
+                # decode `AssertionRegistry.ingest` itself already applies to
+                # build `raw_text` from arbitrary raw bytes, not a new one.
+                edition_id = edition.get("source_edition_id")
+                content: str | None = None
+                extraction_status: str | None = None
+                if not ambiguous_edition and isinstance(edition_id, str):
+                    try:
+                        raw_content = self._registry.load_edition_content(source_key, edition_id)
+                        extraction_status = self._registry.get_extraction_status(source_key, edition_id)
+                        content = raw_content.decode("utf-8", errors="replace")
+                    except (RegistryIntegrityError, OSError):
+                        content = None
+                        extraction_status = None
+                outcome = _SourceOutcome(
+                    source_key, "source_resolved", edition, content, extraction_status, normalized.title, normalized.locator
+                )
                 for q in quotes:
-                    same_edition = [
-                        (ed, ps)
-                        for ed, ps in self._registry.find_exact_passages(source_key, q)
-                        if ed.get("source_edition_id") == edition.get("source_edition_id")
-                    ]
+                    try:
+                        same_edition = [
+                            (ed, ps)
+                            for ed, ps in self._registry.find_exact_passages(source_key, q)
+                            if ed.get("source_edition_id") == edition.get("source_edition_id")
+                        ]
+                    except (RegistryIntegrityError, OSError):
+                        # Corruption while classifying a SIBLING quote must
+                        # not crash the run either -- fail closed to
+                        # "not_found", the same conservative default an
+                        # absent match already produces.
+                        outcome.passage_status[q] = "not_found"
+                        continue
                     if len(same_edition) == 1:
                         outcome.passage_status[q] = "resolved"
                     elif len(same_edition) > 1:
@@ -717,6 +796,16 @@ class ExternalResearchResolver:
                     else:
                         outcome.passage_status[q] = "not_found"
                 return outcome
+        if lookup_failed:
+            # Every quote either found nothing or hit a corrupted/vanished
+            # edition, and at least one was the latter: fail closed into a
+            # quarantined source outcome (M2 FIX-D) rather than returning
+            # `None`, which would let `_resolve_source_impl` silently
+            # attempt a fresh network acquisition for a source whose
+            # existing-edition state could not even be safely inspected.
+            return _SourceOutcome(
+                source_key, None, None, None, None, normalized.title, normalized.locator, reason_code="edition_binding_conflict"
+            )
         return None
 
     def _resolve_source_impl(self, normalized: NormalizedSource) -> _SourceOutcome:
@@ -778,6 +867,17 @@ class ExternalResearchResolver:
             # module must not trigger. `passages=None` reuses the registry's
             # own well-exercised default (the whole raw text as one initial
             # passage) so the publication pointer is never empty.
+            # `extraction_status=extraction.status` (M2 FIX-A): `extract_bytes`
+            # already computed an authoritative tri-state status for THIS
+            # content -- the plan's own scope note ("passing an authoritative
+            # status at the ingest call sites that have one") names exactly
+            # this site. Without it, every ERI-acquired edition persisted NO
+            # status, so a later `--resume` call's rehydration
+            # (`_existing_edition_reuse`) always found `get_extraction_status
+            # is None` and quarantined -- making M2's reuse-promotion path
+            # unreachable for the fresh-acquire-then-resume journey the plan
+            # calls "most of the --resume population."
+            extraction_status=extraction.status,
         )
         if result.edition is None:
             reason = "rights_metadata_missing" if result.reason == "missing_rights_metadata" else "source_unavailable"
@@ -801,6 +901,13 @@ class ExternalResearchResolver:
                 allowed_use=allowed_use,
                 retrieval_locator=retrieval_locator,
                 passages=[quote],
+                # Same authoritative status as the edition ingest above (M2
+                # FIX-A) -- this per-quote call reuses the SAME already-bound
+                # edition (`ingest`'s existing-edition early return), so the
+                # status is redundant-but-harmless to repeat and keeps this
+                # call site consistent with the one above rather than
+                # leaving a second silent status-drop.
+                extraction_status=extraction.status,
             )
             if quoted.created or quoted.reusable:
                 outcome.passage_status[quote] = "resolved"
@@ -946,16 +1053,18 @@ class ExternalResearchResolver:
             return ResolvedActionResolution("completed", "passage_resolved", None, canonical_refs=refs)
 
         if bound.content is None or bound.extraction_status is None:
-            # `bound` came from `_existing_edition_reuse` (either the in-call
-            # reuse path or `_ensure_source_outcome`'s cross-batch resume
-            # reconstruction) -- that path is read-only and never
-            # re-extracts source text, and `AssertionRegistry` exposes no
-            # public getter for the immutable rendition bytes it stores (see
-            # the comment at its call site above). A legitimately-resolvable
-            # candidate whose bound edition was reused rather than freshly
-            # acquired therefore has no content to stage into a source card;
-            # fail closed into quarantine instead of crashing the import or
-            # fabricating evidence.
+            # `bound` may come from a fresh acquisition (both always set) or
+            # from `_existing_edition_reuse`'s read-only rehydration (M2):
+            # that path now populates both fields from the registry's own
+            # accessors when the reused edition has a recorded, validated
+            # extraction status. This guard therefore only still fires for
+            # editions with genuinely NO recorded status (predate the field,
+            # or their original caller had none to give) or a corrupt
+            # edition caught as `RegistryIntegrityError` at rehydration time
+            # -- in both cases there is nothing honest to stage into a
+            # source card. Fail closed into quarantine rather than crashing
+            # the import or fabricating evidence (the `7e2c1e1` property this
+            # guard preserves).
             return _candidate_quarantine("verification_failed")
 
         request = PromotionRequest(
