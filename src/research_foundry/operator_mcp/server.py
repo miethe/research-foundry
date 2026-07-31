@@ -718,14 +718,42 @@ def build_server(paths: FoundryPaths | None = None) -> Any:
                 decision = policy.PolicyDecision(False, "capability", "payload_too_large", retryable=False)
                 return dual_encode(policy.build_error(decision), is_error=True)
 
-            outcome = adapter.invoke(
-                idempotency_key=idempotency_key,
-                confirmation_record=confirmation_record,
-                presented_token=presented_token,
-                dry_run=dry_run,
-                paths=resolved_paths,
+            # M3 Leg A fix: `CONFIRMATION_NOT_REQUIRED_KINDS`'s sole member
+            # (`job.status`) is the ONE `OPERATION_KINDS` entry whose real
+            # `invoke*` signature (`job_lifecycle.invoke_status`) has no
+            # `confirmation_record`/`presented_token` parameter at all --
+            # `policy.verify_confirmation` already short-circuits to
+            # `"accepted"` for this kind without ever reading either (see
+            # that function's own docstring), so nothing upstream of this
+            # dispatch needed them threaded through. Every OTHER kind still
+            # gets both, unconditionally, exactly as before. Unconditionally
+            # passing both here for EVERY kind (the pre-fix shape) made every
+            # real call to the `job.status` TOOL raise
+            # `TypeError: invoke_status() got an unexpected keyword argument
+            # 'confirmation_record'`, caught by this method's own D7 outer
+            # boundary and misreported as a generic `internal_error` --
+            # discovered empirically via `server.call_tool("job.status",
+            # ...)`, the ONE call shape the M2/M3 suites never exercised
+            # (every prior `job.status` test drove `invoke_status`/
+            # `JobStatusAdapter.invoke` directly, or drove
+            # `operation.preflight` with `operation_kind="job.status"` --
+            # the server-implemented meta tool, a separate code path that
+            # never calls `adapter.invoke` at all). Gated on the SAME closed
+            # `CONFIRMATION_NOT_REQUIRED_KINDS` set `operator_mcp_policy`
+            # itself uses for the identical distinction, not a second,
+            # independently-hand-typed kind name -- a future addition to
+            # that set is covered here for free, never silently reopening
+            # this gap for a new read-only kind.
+            invoke_kwargs: dict[str, Any] = {
+                "idempotency_key": idempotency_key,
+                "dry_run": dry_run,
+                "paths": resolved_paths,
                 **payload,
-            )
+            }
+            if kind not in policy.CONFIRMATION_NOT_REQUIRED_KINDS:
+                invoke_kwargs["confirmation_record"] = confirmation_record
+                invoke_kwargs["presented_token"] = presented_token
+            outcome = adapter.invoke(**invoke_kwargs)
             if not outcome.ok:
                 # D7: adapter-returned error envelopes pass through
                 # UNTOUCHED -- outcome.error is already a build_error-built

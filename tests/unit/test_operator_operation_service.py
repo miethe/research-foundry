@@ -51,8 +51,10 @@ section's own docstring for detail):
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 import multiprocessing
+import re
 import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
@@ -62,10 +64,17 @@ from typing import Any, Mapping
 import pytest
 
 from research_foundry import ids
+from research_foundry.auth_identity import AuthIdentity
 from research_foundry.paths import FoundryPaths
 from research_foundry.schemas import SchemaRegistry
 from research_foundry.services import operator_mcp_policy as policy
 from research_foundry.services import operator_operation_service as service_module
+from research_foundry.services.operator_attempt_adapter import OperatorAttemptAdapter
+from research_foundry.services.operator_cancel_resume_service import (
+    ActionEffect,
+    ActionSpec,
+    OperatorCancelResumeService,
+)
 from research_foundry.services.operator_operation_service import (
     AuthorizationProof,
     ConfirmationPersistenceError,
@@ -73,6 +82,7 @@ from research_foundry.services.operator_operation_service import (
     OperatorOperationService,
     authorize_for_consumption,
 )
+from research_foundry.services.operator_receipt_service import OperatorReceiptService
 
 # Reuse, never reinvent (per this task's instructions): the policy test
 # module's identity fixtures/helpers. `_default_operator_identity` is an
@@ -1834,3 +1844,1119 @@ def test_record_confirmation_lock_contention_inside_transaction_raises_bounded_e
     finally:
         conn.close()
     assert row is None
+
+
+# ---------------------------------------------------------------------------
+# OPM-6.1 / OPM-6.4 (AC OPM-3): the H3 ten-scenario lifecycle recovery
+# matrix, driven by the public-safe fixture matrix under
+# tests/fixtures/operator_mcp/ (D4/D6, m3-implementer-contract.md).
+#
+# Scenario -> interruption point / property
+# -------------------------------------------------------------------------
+# H3-01  after the operation manifest is durably written, before
+#        run_actions is ever called
+# H3-02  mid-attempt -- an attempt is minted but crashes before its action
+#        produces any receipt; resume mints a NEW attempt, never reuses it
+# H3-03  after an effect_receipt is durably committed, before the
+#        following checkpoint write
+# H3-04  after every action's receipts + checkpoint are committed, before
+#        finalize_terminal_receipt is ever reached
+# H3-05  during a cancel -- the cancellation request and one action's
+#        receipts are committed, but the CANCELED checkpoint/terminal
+#        receipt write is lost
+# H3-06  exact-retry idempotency: `run_or_replay(is_replay=True)` against
+#        an already-completed operation returns the identical terminal
+#        receipt with zero re-execution
+# H3-07  cancel semantics: cancellation observed before the first action
+#        -> canceled, zero effects (explicit D2 zero-effect assertion)
+# H3-08  resume-after-cancel refusal: `resume_operation` against a
+#        terminal-canceled operation resolves to `already_terminal`, never
+#        re-executing and never minting a new attempt
+# H3-09  duplicate suppression: a SECOND, freshly-minted confirmation
+#        under the SAME (workspace_id, idempotency_key, digest) resolves
+#        to `exact_replay` against the SAME operation -- zero duplicate
+#        action/effect receipts, zero duplicate `operations` rows
+# H3-10  the full D6 convergence requirement over the largest fixture (5
+#        actions): an uninterrupted control run and a run interrupted
+#        after action 2's effect_receipt (then resumed on a fresh service
+#        instance) converge to SET-EQUAL canonical effects, identical
+#        receipt counts, and an identical normalized terminal receipt.
+#
+# Every H3 test below drives the SAME public entry surface a real caller
+# uses (`OperatorOperationService.consume_and_create_operation`,
+# `OperatorCancelResumeService.run_actions` / `run_or_replay` /
+# `resume_operation`) against REAL sqlite persistence (`tmp_foundry`) --
+# process loss is simulated the same way
+# `test_operator_cancel_resume_service.py` does: durably write the
+# pre-loss receipts via one service instance, then resolve/resume via
+# BRAND-NEW service instances backed by the same durable files, never an
+# in-process continuation. Convergence is asserted as SET equality on
+# canonical (effect_kind, effect_ref) pairs and exact receipt counts
+# (D6), not merely matching terminal status.
+# ---------------------------------------------------------------------------
+
+_FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "operator_mcp"
+
+_FORBIDDEN_FIXTURE_SUBSTRINGS: tuple[str, ...] = (
+    "miethe",
+    "10.42.",
+    "/users/",
+    "/home/",
+    "ghp_",
+    "sk-ant-",
+    "sk-proj-",
+    "bearer ",
+    "akia",
+)
+
+# Any private/LAN-shaped IPv4 literal (10.x, 192.168.x, 172.16-31.x) -- a
+# regex sibling to the plain "10.42." substring check above, so a fixture
+# using a DIFFERENT private range still fails the grep-clean property.
+_PRIVATE_IPV4_RE = re.compile(
+    r"\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|192\.168\.\d{1,3}\.\d{1,3}"
+    r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b"
+)
+
+
+def _load_json_fixture(name: str) -> dict[str, Any]:
+    return json.loads((_FIXTURES_DIR / name).read_text(encoding="utf-8"))
+
+
+def _workspaces_fixture() -> dict[str, Any]:
+    return _load_json_fixture("workspaces.json")
+
+
+def _scenario(scenario_id: str) -> dict[str, Any]:
+    scenarios = _load_json_fixture("interrupted_operations.json")["scenarios"]
+    for scenario in scenarios:
+        if scenario["scenario_id"] == scenario_id:
+            return scenario
+    raise KeyError(f"no such fixture scenario: {scenario_id}")
+
+
+def _fixture_identity(scenario: Mapping[str, Any]) -> AuthIdentity:
+    """The `AuthIdentity` a scenario's `workspace_id` resolves to, sourced
+    entirely from `workspaces.json` -- makes the fixture matrix
+    load-bearing for identity resolution too, not merely for action/effect
+    content."""
+
+    workspace_id = scenario["workspace_id"]
+    for ws in _workspaces_fixture()["workspaces"]:
+        if ws["workspace_id"] == workspace_id:
+            return AuthIdentity(ws["user_id"], ws["workspace_id"], tuple(ws["roles"]))
+    raise KeyError(f"no such fixture workspace: {workspace_id}")
+
+
+def _fixture_actions(scenario: Mapping[str, Any], executed: list[str]) -> list[ActionSpec]:
+    """Build the `ActionSpec` sequence declared by `scenario["actions"]` --
+    each action appends its own `action_id` to `executed` and produces the
+    fixture's declared `(effect_kind, effect_ref)` pair. `effect_digest` is
+    freshly minted per call (it is a GLOBAL primary key across every
+    operation in `effect_receipts` -- see
+    `test_operator_cancel_resume_service.py`'s own module docstring for
+    why two operations can never share one), never read from the fixture."""
+
+    specs: list[ActionSpec] = []
+    for action in scenario["actions"]:
+        action_id = action["action_id"]
+        effect_kind = action["effect_kind"]
+        effect_ref = action["effect_ref"]
+
+        def _run(
+            action_id: str = action_id, effect_kind: str = effect_kind, effect_ref: str = effect_ref
+        ) -> ActionEffect:
+            executed.append(action_id)
+            return ActionEffect(
+                effect_kind=effect_kind,
+                effect_digest=hashlib.sha256(
+                    f"{effect_ref}-{ids.now_iso()}-{id(executed)}".encode("utf-8")
+                ).hexdigest(),
+                effect_ref=effect_ref,
+            )
+
+        specs.append(ActionSpec(action_id=action_id, run=_run))
+    return specs
+
+
+def _must_not_run(action_id: str, *, scenario_id: str, reason: str) -> Any:
+    """An `ActionSpec.run` callable that fails the test loudly if invoked
+    -- the assertion mechanism for "this action must not be (re-)executed"
+    used throughout the H3 matrix below."""
+
+    def _run() -> None:  # pragma: no cover - only reached on test failure
+        raise AssertionError(f"{scenario_id}: {action_id} must not run -- {reason}")
+
+    return _run
+
+
+def _canonical_effects(paths: FoundryPaths, operation_id: str) -> set[tuple[str, str]]:
+    """The (effect_kind, effect_ref) pairs persisted for `operation_id` --
+    the CANONICAL, operation-id-independent content of its effects
+    (excludes `effect_digest`, content-addressed against `operation_id`
+    and therefore never comparable across two distinct operations)."""
+
+    conn = _raw_connect(paths)
+    try:
+        rows = conn.execute(
+            "SELECT effect_kind, effect_ref FROM effect_receipts WHERE operation_id = ?",
+            (operation_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {(row["effect_kind"], row["effect_ref"]) for row in rows}
+
+
+def _action_receipt_count(paths: FoundryPaths, operation_id: str) -> int:
+    conn = _raw_connect(paths)
+    try:
+        return conn.execute(
+            "SELECT COUNT(*) FROM action_receipts WHERE operation_id = ?", (operation_id,)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def _effect_receipt_count(paths: FoundryPaths, operation_id: str) -> int:
+    conn = _raw_connect(paths)
+    try:
+        return conn.execute(
+            "SELECT COUNT(*) FROM effect_receipts WHERE operation_id = ?", (operation_id,)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def _normalize_terminal_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:
+    """Strip the two fields that MUST differ between any two distinct
+    operations (`operation_id`, and the content-addressed
+    `effect_receipt_refs` digests, which embed `operation_id`) and reduce
+    `audit_delivery` to its comparable `status` -- mirrors
+    `test_operator_cancel_resume_service.py`'s own `_normalize_terminal`."""
+
+    d = dict(receipt)
+    for key in ("operation_id", "effect_receipt_refs"):
+        d.pop(key, None)
+    audit_delivery = d.get("audit_delivery")
+    if isinstance(audit_delivery, Mapping):
+        d["audit_delivery"] = {"status": audit_delivery.get("status")}
+    return d
+
+
+def _consume_op(
+    paths: FoundryPaths, op_service: OperatorOperationService, ctx: policy.PolicyContext
+) -> OperationOutcome:
+    """Mint + record + authorize + consume in one call -- the full
+    P1/OPM-2.1 entry surface a real caller goes through."""
+
+    confirmation_id, token, record = _mint_and_record(op_service, ctx)
+    authorization = _authorize(paths, ctx, confirmation_record=record, presented_token=token)
+    return op_service.consume_and_create_operation(
+        confirmation_id=confirmation_id, presented_token=token, ctx=ctx, authorization=authorization
+    )
+
+
+def _assert_scenario_convergence(
+    paths: FoundryPaths,
+    scenario: Mapping[str, Any],
+    *,
+    control_operation_id: str,
+    control_execution: Any,
+    subject_operation_id: str,
+    subject_execution: Any,
+) -> None:
+    """D6: assert SET equality on canonical (effect_kind, effect_ref)
+    pairs and exact receipt counts between an uninterrupted control run
+    and an interrupted-then-resumed subject run, both checked against the
+    fixture's own declared oracle -- never merely that both report the
+    same terminal status."""
+
+    expected = scenario["expected"]
+    expected_pairs = {tuple(pair) for pair in expected["effect_pairs"]}
+
+    assert control_execution.status == expected["terminal_status"]
+    assert subject_execution.status == expected["terminal_status"]
+
+    control_effects = _canonical_effects(paths, control_operation_id)
+    subject_effects = _canonical_effects(paths, subject_operation_id)
+    assert control_effects == expected_pairs
+    assert subject_effects == expected_pairs
+    assert control_effects == subject_effects  # D6: SET equality, control vs subject
+
+    assert _action_receipt_count(paths, control_operation_id) == expected["action_receipt_count"]
+    assert _action_receipt_count(paths, subject_operation_id) == expected["action_receipt_count"]
+    assert _effect_receipt_count(paths, control_operation_id) == expected["effect_receipt_count"]
+    assert _effect_receipt_count(paths, subject_operation_id) == expected["effect_receipt_count"]
+
+    assert control_execution.terminal_receipt is not None
+    assert subject_execution.terminal_receipt is not None
+    assert _normalize_terminal_receipt(control_execution.terminal_receipt) == _normalize_terminal_receipt(
+        subject_execution.terminal_receipt
+    )
+
+
+def test_operator_mcp_fixtures_are_grep_clean_of_owner_or_private_data() -> None:
+    """D4: pins the fixture matrix's public-safety property, rather than
+    merely checking it once by inspection at authoring time -- a future
+    edit to `tests/fixtures/operator_mcp/` that reintroduces an owner
+    string, a real run id shaped like this repo's own, a LAN address, a
+    home path, or a token-shaped literal fails THIS test, not a human
+    reviewer's memory."""
+
+    fixture_files = sorted(p for p in _FIXTURES_DIR.rglob("*") if p.is_file())
+    assert fixture_files, f"no fixture files found under {_FIXTURES_DIR}"
+    for path in fixture_files:
+        text = path.read_text(encoding="utf-8")
+        lowered = text.lower()
+        for forbidden in _FORBIDDEN_FIXTURE_SUBSTRINGS:
+            assert forbidden not in lowered, f"{path}: forbidden pattern {forbidden!r} found"
+        assert not _PRIVATE_IPV4_RE.search(text), f"{path}: private/LAN IPv4 address found"
+
+
+# ---------------------------------------------------------------------------
+# H3-01: interrupted after the manifest write, before run_actions ever runs.
+# ---------------------------------------------------------------------------
+
+
+def test_h3_01_interrupted_after_manifest_write_resumes_identically_to_uninterrupted(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _scenario("H3-01")
+    identity = _fixture_identity(scenario)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    # Control: a twin operation run straight through, uninterrupted.
+    ctx_control = _basic_ctx(targets=_run_targets(), idempotency_key="h3-01-control")
+    outcome_control = _consume_op(tmp_foundry, op_service, ctx_control)
+    assert outcome_control.outcome == "created"
+    executed_control: list[str] = []
+    execution_control = svc.run_actions(
+        outcome_control.operation.operation_id,
+        identity=identity,
+        operation_kind=ctx_control.operation_kind,
+        actions=_fixture_actions(scenario, executed_control),
+        attempt_ref="attempt-control",
+    )
+
+    # Subject: the manifest is committed, then the process is lost before
+    # run_actions is ever called at all.
+    ctx_subject = _basic_ctx(targets=_run_targets(), idempotency_key="h3-01-subject")
+    outcome_subject = _consume_op(tmp_foundry, op_service, ctx_subject)
+    assert outcome_subject.outcome == "created"
+    operation_id = outcome_subject.operation.operation_id
+
+    fresh_receipts = OperatorReceiptService(tmp_foundry)
+    fresh_ops = OperatorOperationService(tmp_foundry)
+    fresh_svc = OperatorCancelResumeService(tmp_foundry, operations=fresh_ops, receipts=fresh_receipts)
+    resume_point = fresh_receipts.resolve_resume_point(operation_id)
+    assert resume_point.outcome == "ok"
+    assert resume_point.next_action_index == 0
+
+    executed_subject: list[str] = []
+    execution_subject = fresh_svc.run_actions(
+        operation_id,
+        identity=identity,
+        operation_kind=ctx_subject.operation_kind,
+        actions=_fixture_actions(scenario, executed_subject),
+        attempt_ref="attempt-subject",
+        start_index=resume_point.next_action_index,
+    )
+
+    _assert_scenario_convergence(
+        tmp_foundry,
+        scenario,
+        control_operation_id=outcome_control.operation.operation_id,
+        control_execution=execution_control,
+        subject_operation_id=operation_id,
+        subject_execution=execution_subject,
+    )
+
+
+# ---------------------------------------------------------------------------
+# H3-02: interrupted mid-attempt -- resume mints a NEW attempt, never
+# reuses or resurrects the stale one.
+# ---------------------------------------------------------------------------
+
+
+def test_h3_02_interrupted_mid_attempt_mints_a_fresh_attempt_and_resumes_identically(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _scenario("H3-02")
+    identity = _fixture_identity(scenario)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+    policy_snapshot = {"allowed_tools": ["search"], "data_scopes": []}
+
+    # Control
+    ctx_control = _basic_ctx(targets=_run_targets(), idempotency_key="h3-02-control")
+    outcome_control = _consume_op(tmp_foundry, op_service, ctx_control)
+    executed_control: list[str] = []
+    execution_control = svc.run_actions(
+        outcome_control.operation.operation_id,
+        identity=identity,
+        operation_kind=ctx_control.operation_kind,
+        actions=_fixture_actions(scenario, executed_control),
+        attempt_ref="attempt-control",
+    )
+
+    # Subject: an attempt is minted, then the process is lost before that
+    # attempt's action produces any action_receipt at all.
+    ctx_subject = _basic_ctx(targets=_run_targets(), idempotency_key="h3-02-subject")
+    outcome_subject = _consume_op(tmp_foundry, op_service, ctx_subject)
+    operation_id = outcome_subject.operation.operation_id
+    stale_attempt = attempt_adapter.create_attempt(
+        operation_id,
+        "claude_agent_sdk",
+        "rf_synthesize_deep",
+        "research",
+        dict(policy_snapshot),
+        workspace_id=identity.workspace_id,
+        identity=identity,
+    )
+    assert _action_receipt_count(tmp_foundry, operation_id) == 0  # the "loss" gap
+
+    fresh_receipts = OperatorReceiptService(tmp_foundry)
+    fresh_ops = OperatorOperationService(tmp_foundry)
+    fresh_attempts = OperatorAttemptAdapter(tmp_foundry)
+    fresh_svc = OperatorCancelResumeService(tmp_foundry, operations=fresh_ops, receipts=fresh_receipts)
+    resume_point = fresh_receipts.resolve_resume_point(operation_id)
+    assert resume_point.outcome == "ok"
+    assert resume_point.next_action_index == 0
+
+    new_attempt = fresh_attempts.create_attempt(
+        operation_id,
+        "claude_agent_sdk",
+        "rf_synthesize_deep",
+        "research",
+        dict(policy_snapshot),
+        workspace_id=identity.workspace_id,
+        identity=identity,
+    )
+    assert new_attempt.attempt_id != stale_attempt.attempt_id
+
+    executed_subject: list[str] = []
+    execution_subject = fresh_svc.run_actions(
+        operation_id,
+        identity=identity,
+        operation_kind=ctx_subject.operation_kind,
+        actions=_fixture_actions(scenario, executed_subject),
+        attempt_ref=new_attempt.attempt_id,
+        start_index=resume_point.next_action_index,
+    )
+
+    _assert_scenario_convergence(
+        tmp_foundry,
+        scenario,
+        control_operation_id=outcome_control.operation.operation_id,
+        control_execution=execution_control,
+        subject_operation_id=operation_id,
+        subject_execution=execution_subject,
+    )
+    # The stale, never-used attempt is never deleted (immutable ledger) --
+    # both attempts remain durably linked to the SAME operation.
+    linked = attempt_adapter.list_attempts_for_operation(operation_id, identity=identity)
+    assert {a.attempt_id for a in linked} == {stale_attempt.attempt_id, new_attempt.attempt_id}
+
+
+# ---------------------------------------------------------------------------
+# H3-03: interrupted after an effect_receipt, before the following
+# checkpoint write -- resume must not replay the already-completed action.
+# ---------------------------------------------------------------------------
+
+
+def test_h3_03_interrupted_after_effect_receipt_resumes_without_replay(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _scenario("H3-03")
+    identity = _fixture_identity(scenario)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx_control = _basic_ctx(targets=_run_targets(), idempotency_key="h3-03-control")
+    outcome_control = _consume_op(tmp_foundry, op_service, ctx_control)
+    executed_control: list[str] = []
+    execution_control = svc.run_actions(
+        outcome_control.operation.operation_id,
+        identity=identity,
+        operation_kind=ctx_control.operation_kind,
+        actions=_fixture_actions(scenario, executed_control),
+        attempt_ref="attempt-control",
+    )
+
+    ctx_subject = _basic_ctx(targets=_run_targets(), idempotency_key="h3-03-subject")
+    outcome_subject = _consume_op(tmp_foundry, op_service, ctx_subject)
+    operation_id = outcome_subject.operation.operation_id
+
+    first = scenario["actions"][0]
+    receipt_service.record_action_receipt(
+        operation_id,
+        identity=identity,
+        action_id=first["action_id"],
+        action_index=0,
+        status="completed",
+        attempt_ref="attempt-precrash",
+        started_at=ids.now_iso(),
+        completed_at=ids.now_iso(),
+    )
+    receipt_service.record_effect_receipt(
+        operation_id,
+        identity=identity,
+        action_id=first["action_id"],
+        effect_kind=first["effect_kind"],
+        effect_digest=hashlib.sha256(f"{operation_id}-{first['action_id']}".encode("utf-8")).hexdigest(),
+        effect_ref=first["effect_ref"],
+        generated_at=ids.now_iso(),
+    )
+    assert receipt_service.load_checkpoint(operation_id) is None  # the "loss" gap
+
+    fresh_receipts = OperatorReceiptService(tmp_foundry)
+    fresh_ops = OperatorOperationService(tmp_foundry)
+    fresh_svc = OperatorCancelResumeService(tmp_foundry, operations=fresh_ops, receipts=fresh_receipts)
+    resume_point = fresh_receipts.resolve_resume_point(operation_id)
+    assert resume_point.outcome == "ok"
+    assert resume_point.next_action_index == 1
+
+    executed_subject: list[str] = [first["action_id"]]  # already ran, pre-loss
+    subject_actions = [
+        ActionSpec(
+            action_id=first["action_id"],
+            run=_must_not_run(first["action_id"], scenario_id="H3-03", reason="already committed pre-loss"),
+        )
+    ]
+    subject_actions.extend(
+        _fixture_actions({"actions": scenario["actions"][1:]}, executed_subject)
+    )
+
+    execution_subject = fresh_svc.run_actions(
+        operation_id,
+        identity=identity,
+        operation_kind=ctx_subject.operation_kind,
+        actions=subject_actions,
+        attempt_ref="attempt-postcrash",
+        start_index=resume_point.next_action_index,
+    )
+
+    _assert_scenario_convergence(
+        tmp_foundry,
+        scenario,
+        control_operation_id=outcome_control.operation.operation_id,
+        control_execution=execution_control,
+        subject_operation_id=operation_id,
+        subject_execution=execution_subject,
+    )
+
+
+# ---------------------------------------------------------------------------
+# H3-04: interrupted before the terminal receipt -- every action's
+# receipts and checkpoint are committed, but finalize is never reached.
+# ---------------------------------------------------------------------------
+
+
+def test_h3_04_interrupted_before_terminal_receipt_finalizes_identically(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _scenario("H3-04")
+    identity = _fixture_identity(scenario)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx_control = _basic_ctx(targets=_run_targets(), idempotency_key="h3-04-control")
+    outcome_control = _consume_op(tmp_foundry, op_service, ctx_control)
+    executed_control: list[str] = []
+    execution_control = svc.run_actions(
+        outcome_control.operation.operation_id,
+        identity=identity,
+        operation_kind=ctx_control.operation_kind,
+        actions=_fixture_actions(scenario, executed_control),
+        attempt_ref="attempt-control",
+    )
+
+    ctx_subject = _basic_ctx(targets=_run_targets(), idempotency_key="h3-04-subject")
+    outcome_subject = _consume_op(tmp_foundry, op_service, ctx_subject)
+    operation = outcome_subject.operation
+    operation_id = operation.operation_id
+
+    # Every action's action_receipt + effect_receipt + post-action
+    # checkpoint is durably committed by hand -- exactly what a real,
+    # completed `run_actions` loop would have produced up to, but not
+    # including, `finalize_terminal_receipt` -- then the process is lost.
+    total = len(scenario["actions"])
+    for idx, action in enumerate(scenario["actions"]):
+        receipt_service.record_action_receipt(
+            operation_id,
+            identity=identity,
+            action_id=action["action_id"],
+            action_index=idx,
+            status="completed",
+            attempt_ref="attempt-precrash",
+            started_at=ids.now_iso(),
+            completed_at=ids.now_iso(),
+        )
+        receipt_service.record_effect_receipt(
+            operation_id,
+            identity=identity,
+            action_id=action["action_id"],
+            effect_kind=action["effect_kind"],
+            effect_digest=hashlib.sha256(f"{operation_id}-{action['action_id']}".encode("utf-8")).hexdigest(),
+            effect_ref=action["effect_ref"],
+            generated_at=ids.now_iso(),
+        )
+    receipt_service.write_checkpoint(
+        operation_id,
+        identity=identity,
+        status="converged",
+        next_action_index=None,
+        completed_action_count=total,
+        total_action_count=total,
+        non_cancelable=False,
+    )
+    assert receipt_service.load_terminal_receipt(operation_id) is None  # the "loss" gap
+
+    fresh_receipts = OperatorReceiptService(tmp_foundry)
+    fresh_ops = OperatorOperationService(tmp_foundry)
+    fresh_svc = OperatorCancelResumeService(tmp_foundry, operations=fresh_ops, receipts=fresh_receipts)
+
+    subject_actions = [
+        ActionSpec(
+            action_id=a["action_id"],
+            run=_must_not_run(a["action_id"], scenario_id="H3-04", reason="already committed pre-loss"),
+        )
+        for a in scenario["actions"]
+    ]
+
+    execution_subject = fresh_svc.run_or_replay(
+        operation,
+        is_replay=False,
+        identity=identity,
+        operation_kind=ctx_subject.operation_kind,
+        actions=subject_actions,
+        attempt_ref="attempt-postcrash",
+    )
+
+    _assert_scenario_convergence(
+        tmp_foundry,
+        scenario,
+        control_operation_id=outcome_control.operation.operation_id,
+        control_execution=execution_control,
+        subject_operation_id=operation_id,
+        subject_execution=execution_subject,
+    )
+
+
+# ---------------------------------------------------------------------------
+# H3-05: interrupted during a cancel -- the cancellation request and one
+# action's receipts are committed, but the CANCELED checkpoint/terminal
+# receipt write is lost.
+# ---------------------------------------------------------------------------
+
+
+def test_h3_05_interrupted_during_cancel_finalizes_canceled_without_replaying_remaining_actions(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _scenario("H3-05")
+    identity = _fixture_identity(scenario)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    # Control: cancellation observed inside action 0's own run() callback --
+    # one continuous process, the "cancel during a multi-action operation"
+    # shape.
+    ctx_control = _basic_ctx(targets=_run_targets(), idempotency_key="h3-05-control")
+    outcome_control = _consume_op(tmp_foundry, op_service, ctx_control)
+    control_operation_id = outcome_control.operation.operation_id
+    control_workspace_id = outcome_control.operation.workspace_id
+    executed_control: list[str] = []
+    control_raw_actions = scenario["actions"]
+
+    def _control_run_first() -> ActionEffect:
+        executed_control.append(control_raw_actions[0]["action_id"])
+        svc.request_cancellation(control_operation_id, workspace_id=control_workspace_id)
+        return ActionEffect(
+            effect_kind=control_raw_actions[0]["effect_kind"],
+            effect_digest=hashlib.sha256(
+                f"{control_operation_id}-{control_raw_actions[0]['action_id']}".encode("utf-8")
+            ).hexdigest(),
+            effect_ref=control_raw_actions[0]["effect_ref"],
+        )
+
+    control_actions = [ActionSpec(control_raw_actions[0]["action_id"], _control_run_first)]
+    control_actions.extend(_fixture_actions({"actions": control_raw_actions[1:]}, executed_control))
+
+    execution_control = svc.run_actions(
+        control_operation_id,
+        identity=identity,
+        operation_kind=ctx_control.operation_kind,
+        actions=control_actions,
+        attempt_ref="attempt-control",
+    )
+
+    # Subject: the cancellation request AND action 0's receipts are
+    # durably committed, but the process is lost before the CANCELED
+    # checkpoint/terminal receipt is written.
+    ctx_subject = _basic_ctx(targets=_run_targets(), idempotency_key="h3-05-subject")
+    outcome_subject = _consume_op(tmp_foundry, op_service, ctx_subject)
+    operation_id = outcome_subject.operation.operation_id
+    workspace_id = outcome_subject.operation.workspace_id
+
+    cancel_outcome = svc.request_cancellation(operation_id, workspace_id=workspace_id)
+    assert cancel_outcome.outcome == "created"
+
+    first = scenario["actions"][0]
+    receipt_service.record_action_receipt(
+        operation_id,
+        identity=identity,
+        action_id=first["action_id"],
+        action_index=0,
+        status="completed",
+        attempt_ref="attempt-precrash",
+        started_at=ids.now_iso(),
+        completed_at=ids.now_iso(),
+    )
+    receipt_service.record_effect_receipt(
+        operation_id,
+        identity=identity,
+        action_id=first["action_id"],
+        effect_kind=first["effect_kind"],
+        effect_digest=hashlib.sha256(f"{operation_id}-{first['action_id']}".encode("utf-8")).hexdigest(),
+        effect_ref=first["effect_ref"],
+        generated_at=ids.now_iso(),
+    )
+    assert receipt_service.load_checkpoint(operation_id) is None  # the "loss" gap
+
+    fresh_receipts = OperatorReceiptService(tmp_foundry)
+    fresh_ops = OperatorOperationService(tmp_foundry)
+    fresh_svc = OperatorCancelResumeService(tmp_foundry, operations=fresh_ops, receipts=fresh_receipts)
+    resume_point = fresh_receipts.resolve_resume_point(operation_id)
+    assert resume_point.outcome == "ok"
+    assert resume_point.next_action_index == 1
+
+    remaining = scenario["actions"][1:]
+    subject_actions = [
+        ActionSpec(
+            first["action_id"],
+            _must_not_run(first["action_id"], scenario_id="H3-05", reason="already committed pre-loss"),
+        )
+    ]
+    subject_actions.extend(
+        ActionSpec(
+            a["action_id"],
+            _must_not_run(a["action_id"], scenario_id="H3-05", reason="cancellation was already observed"),
+        )
+        for a in remaining
+    )
+
+    execution_subject = fresh_svc.run_actions(
+        operation_id,
+        identity=identity,
+        operation_kind=ctx_subject.operation_kind,
+        actions=subject_actions,
+        attempt_ref="attempt-postcrash",
+        start_index=resume_point.next_action_index,
+    )
+
+    _assert_scenario_convergence(
+        tmp_foundry,
+        scenario,
+        control_operation_id=control_operation_id,
+        control_execution=execution_control,
+        subject_operation_id=operation_id,
+        subject_execution=execution_subject,
+    )
+
+
+# ---------------------------------------------------------------------------
+# H3-06: exact-retry idempotency after completion, via run_or_replay.
+# ---------------------------------------------------------------------------
+
+
+def test_h3_06_exact_retry_after_completion_is_idempotent_via_run_or_replay(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _scenario("H3-06")
+    identity = _fixture_identity(scenario)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+    expected = scenario["expected"]
+    expected_pairs = {tuple(p) for p in expected["effect_pairs"]}
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets(), idempotency_key="h3-06")
+    outcome = _consume_op(tmp_foundry, op_service, ctx)
+    operation = outcome.operation
+    operation_id = operation.operation_id
+    executed: list[str] = []
+    first_execution = svc.run_or_replay(
+        operation,
+        is_replay=False,
+        identity=identity,
+        operation_kind=ctx.operation_kind,
+        actions=_fixture_actions(scenario, executed),
+        attempt_ref="attempt-1",
+    )
+    assert first_execution.status == expected["terminal_status"]
+    assert first_execution.replayed is False
+    assert _canonical_effects(tmp_foundry, operation_id) == expected_pairs
+    assert _action_receipt_count(tmp_foundry, operation_id) == expected["action_receipt_count"]
+    assert _effect_receipt_count(tmp_foundry, operation_id) == expected["effect_receipt_count"]
+
+    # Exact retry: the SAME operation object, as a real caller
+    # re-presenting the SAME already-consumed confirmation would resolve
+    # to via `consume_and_create_operation`'s own `exact_replay` outcome.
+    executed.clear()
+    second_execution = svc.run_or_replay(
+        operation,
+        is_replay=True,
+        identity=identity,
+        operation_kind=ctx.operation_kind,
+        actions=_fixture_actions(scenario, executed),
+        attempt_ref="attempt-2",
+    )
+
+    assert second_execution.replayed is True
+    assert executed == []  # zero re-execution
+    assert second_execution.terminal_receipt == first_execution.terminal_receipt
+    assert _canonical_effects(tmp_foundry, operation_id) == expected_pairs
+    assert _action_receipt_count(tmp_foundry, operation_id) == expected["action_receipt_count"]
+    assert _effect_receipt_count(tmp_foundry, operation_id) == expected["effect_receipt_count"]
+
+
+# ---------------------------------------------------------------------------
+# H3-07: cancel semantics -- canceled before the first action, zero
+# effects (explicit D2 zero-effect assertion).
+# ---------------------------------------------------------------------------
+
+
+def test_h3_07_cancel_before_first_action_produces_canceled_receipt_with_zero_effects(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _scenario("H3-07")
+    identity = _fixture_identity(scenario)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+    expected = scenario["expected"]
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets(), idempotency_key="h3-07")
+    outcome = _consume_op(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    cancel_outcome = svc.request_cancellation(operation_id, workspace_id=workspace_id)
+    assert cancel_outcome.outcome == "created"
+
+    actions = [
+        ActionSpec(
+            a["action_id"],
+            _must_not_run(a["action_id"], scenario_id="H3-07", reason="canceled before the first action"),
+        )
+        for a in scenario["actions"]
+    ]
+    execution = svc.run_actions(
+        operation_id,
+        identity=identity,
+        operation_kind=ctx.operation_kind,
+        actions=actions,
+        attempt_ref="attempt-1",
+    )
+
+    assert execution.status == expected["terminal_status"] == "canceled"
+    assert execution.completed_action_count == 0
+    # D2: explicit zero-effect assertion, not merely "the right terminal
+    # status" -- zero rows in every receipt table this operation touches.
+    assert _canonical_effects(tmp_foundry, operation_id) == set() == {tuple(p) for p in expected["effect_pairs"]}
+    assert _action_receipt_count(tmp_foundry, operation_id) == expected["action_receipt_count"] == 0
+    assert _effect_receipt_count(tmp_foundry, operation_id) == expected["effect_receipt_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# H3-08: resume-after-cancel refusal -- resume_operation against a
+# terminal-canceled operation resolves to already_terminal, never
+# re-executing and never minting a new attempt.
+# ---------------------------------------------------------------------------
+
+
+def test_h3_08_resume_after_terminal_cancel_is_refused_not_re_executed(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _scenario("H3-08")
+    identity = _fixture_identity(scenario)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets(), idempotency_key="h3-08")
+    outcome = _consume_op(tmp_foundry, op_service, ctx)
+    operation_id = outcome.operation.operation_id
+    workspace_id = outcome.operation.workspace_id
+
+    svc.request_cancellation(operation_id, workspace_id=workspace_id)
+    setup_actions = [
+        ActionSpec(
+            a["action_id"],
+            _must_not_run(a["action_id"], scenario_id="H3-08", reason="canceled before the first action"),
+        )
+        for a in scenario["actions"]
+    ]
+    execution = svc.run_actions(
+        operation_id,
+        identity=identity,
+        operation_kind=ctx.operation_kind,
+        actions=setup_actions,
+        attempt_ref="attempt-1",
+    )
+    assert execution.status == "canceled"
+    canceled_receipt = execution.terminal_receipt
+
+    # Attempt to RESUME the canceled operation with a genuinely FRESH,
+    # otherwise-valid confirmation -- the resume-authority gate itself
+    # would happily accept it (this is not a scenario-9 policy-denial
+    # case); the operation's own TERMINAL state is what must refuse it.
+    resume_ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind="job.resume",
+        idempotency_key="h3-08-resume",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("agent_job", operation_id),),
+        resolved_target_workspaces=(identity.workspace_id,),
+    )
+    resume_confirmation_id, resume_token, resume_record = _mint_and_record(op_service, resume_ctx)
+    resume_authorization = _authorize(
+        tmp_foundry, resume_ctx, confirmation_record=resume_record, presented_token=resume_token
+    )
+    assert resume_authorization.decision.allowed
+
+    resume_actions = [
+        ActionSpec(
+            a["action_id"],
+            _must_not_run(
+                a["action_id"], scenario_id="H3-08", reason="resume-after-terminal-cancel must be refused"
+            ),
+        )
+        for a in scenario["actions"]
+    ]
+    resume_outcome = svc.resume_operation(
+        operation_id,
+        identity=identity,
+        resume_ctx=resume_ctx,
+        resume_confirmation_id=resume_confirmation_id,
+        resume_presented_token=resume_token,
+        resume_authorization=resume_authorization,
+        actions=resume_actions,
+        operation_kind=ctx.operation_kind,
+        workspace_id=workspace_id,
+        attempt_adapter=attempt_adapter,
+        attempt_provider="claude_agent_sdk",
+        attempt_model_profile="rf_synthesize_deep",
+        attempt_request_kind="research",
+        attempt_policy_snapshot={"allowed_tools": ["search"], "data_scopes": []},
+    )
+
+    assert resume_outcome.outcome == "already_terminal"
+    assert resume_outcome.new_attempt is None
+    assert resume_outcome.execution is None
+    assert resume_outcome.terminal_receipt == canceled_receipt
+    assert attempt_adapter.list_attempts_for_operation(operation_id, identity=identity) == []
+    assert _action_receipt_count(tmp_foundry, operation_id) == 0
+    assert _effect_receipt_count(tmp_foundry, operation_id) == 0
+
+
+# ---------------------------------------------------------------------------
+# H3-09: duplicate suppression -- a SECOND, freshly-minted confirmation
+# under the SAME (workspace_id, idempotency_key, digest) resolves to
+# exact_replay against the SAME operation; zero duplicate receipts, zero
+# duplicate `operations` rows.
+# ---------------------------------------------------------------------------
+
+
+def test_h3_09_duplicate_suppression_on_fresh_confirmation_same_idempotency_key(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _scenario("H3-09")
+    identity = _fixture_identity(scenario)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+    expected = scenario["expected"]
+    expected_pairs = {tuple(p) for p in expected["effect_pairs"]}
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    ctx = _basic_ctx(targets=_run_targets(), idempotency_key="h3-09")
+    outcome = _consume_op(tmp_foundry, op_service, ctx)
+    operation = outcome.operation
+    operation_id = operation.operation_id
+    executed: list[str] = []
+    first_execution = svc.run_or_replay(
+        operation,
+        is_replay=False,
+        identity=identity,
+        operation_kind=ctx.operation_kind,
+        actions=_fixture_actions(scenario, executed),
+        attempt_ref="attempt-1",
+    )
+    assert first_execution.status == "completed"
+    assert _canonical_effects(tmp_foundry, operation_id) == expected_pairs
+    assert _action_receipt_count(tmp_foundry, operation_id) == expected["action_receipt_count"]
+    assert _effect_receipt_count(tmp_foundry, operation_id) == expected["effect_receipt_count"]
+    assert _count_operations(tmp_foundry) == 1
+
+    # A SECOND, freshly-minted confirmation for the IDENTICAL ctx (same
+    # workspace_id, idempotency_key, canonical_input_digest) -- the exact
+    # shape of a caller retrying a request whose response it never saw.
+    second_confirmation_id, second_token, second_record = _mint_and_record(op_service, ctx)
+    second_authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=second_record, presented_token=second_token
+    )
+    retry_outcome = op_service.consume_and_create_operation(
+        confirmation_id=second_confirmation_id,
+        presented_token=second_token,
+        ctx=ctx,
+        authorization=second_authorization,
+    )
+    assert retry_outcome.outcome == "exact_replay"
+    assert retry_outcome.operation.operation_id == operation_id
+    assert _count_operations(tmp_foundry) == 1  # no second `operations` row
+
+    executed.clear()
+    second_execution = svc.run_or_replay(
+        retry_outcome.operation,
+        is_replay=True,
+        identity=identity,
+        operation_kind=ctx.operation_kind,
+        actions=_fixture_actions(scenario, executed),
+        attempt_ref="attempt-2",
+    )
+    assert second_execution.replayed is True
+    assert executed == []  # zero re-execution -- no duplicate card/claim/candidate
+    assert second_execution.terminal_receipt == first_execution.terminal_receipt
+    assert _canonical_effects(tmp_foundry, operation_id) == expected_pairs
+    assert _action_receipt_count(tmp_foundry, operation_id) == expected["action_receipt_count"]
+    assert _effect_receipt_count(tmp_foundry, operation_id) == expected["effect_receipt_count"]
+    assert _count_operations(tmp_foundry) == 1
+
+
+# ---------------------------------------------------------------------------
+# H3-10: the full D6 convergence requirement over the largest fixture --
+# an uninterrupted control run and a run interrupted after action 2's
+# effect_receipt, then resumed on a fresh service instance.
+# ---------------------------------------------------------------------------
+
+
+def test_h3_10_full_convergence_uninterrupted_vs_interrupted_after_effect_receipt(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _scenario("H3-10")
+    identity = _fixture_identity(scenario)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    svc = OperatorCancelResumeService(tmp_foundry, operations=op_service, receipts=receipt_service)
+
+    # Control
+    ctx_control = _basic_ctx(targets=_run_targets(), idempotency_key="h3-10-control")
+    outcome_control = _consume_op(tmp_foundry, op_service, ctx_control)
+    executed_control: list[str] = []
+    execution_control = svc.run_actions(
+        outcome_control.operation.operation_id,
+        identity=identity,
+        operation_kind=ctx_control.operation_kind,
+        actions=_fixture_actions(scenario, executed_control),
+        attempt_ref="attempt-control",
+    )
+
+    # Subject: interrupted after action index 2's effect_receipt -- no
+    # checkpoint.
+    ctx_subject = _basic_ctx(targets=_run_targets(), idempotency_key="h3-10-subject")
+    outcome_subject = _consume_op(tmp_foundry, op_service, ctx_subject)
+    operation_id = outcome_subject.operation.operation_id
+
+    for idx in range(3):
+        action = scenario["actions"][idx]
+        receipt_service.record_action_receipt(
+            operation_id,
+            identity=identity,
+            action_id=action["action_id"],
+            action_index=idx,
+            status="completed",
+            attempt_ref="attempt-precrash",
+            started_at=ids.now_iso(),
+            completed_at=ids.now_iso(),
+        )
+        receipt_service.record_effect_receipt(
+            operation_id,
+            identity=identity,
+            action_id=action["action_id"],
+            effect_kind=action["effect_kind"],
+            effect_digest=hashlib.sha256(f"{operation_id}-{action['action_id']}".encode("utf-8")).hexdigest(),
+            effect_ref=action["effect_ref"],
+            generated_at=ids.now_iso(),
+        )
+    assert receipt_service.load_checkpoint(operation_id) is None  # the "loss" gap
+
+    fresh_receipts = OperatorReceiptService(tmp_foundry)
+    fresh_ops = OperatorOperationService(tmp_foundry)
+    fresh_svc = OperatorCancelResumeService(tmp_foundry, operations=fresh_ops, receipts=fresh_receipts)
+    resume_point = fresh_receipts.resolve_resume_point(operation_id)
+    assert resume_point.outcome == "ok"
+    assert resume_point.next_action_index == 3
+
+    executed_subject: list[str] = [a["action_id"] for a in scenario["actions"][:3]]
+    subject_actions = [
+        ActionSpec(
+            a["action_id"],
+            _must_not_run(a["action_id"], scenario_id="H3-10", reason="already committed pre-loss"),
+        )
+        for a in scenario["actions"][:3]
+    ]
+    subject_actions.extend(_fixture_actions({"actions": scenario["actions"][3:]}, executed_subject))
+
+    execution_subject = fresh_svc.run_actions(
+        operation_id,
+        identity=identity,
+        operation_kind=ctx_subject.operation_kind,
+        actions=subject_actions,
+        attempt_ref="attempt-postcrash",
+        start_index=resume_point.next_action_index,
+    )
+
+    _assert_scenario_convergence(
+        tmp_foundry,
+        scenario,
+        control_operation_id=outcome_control.operation.operation_id,
+        control_execution=execution_control,
+        subject_operation_id=operation_id,
+        subject_execution=execution_subject,
+    )
+
+    # Explicit, standalone D6 SET-equality re-assertion (redundant with
+    # `_assert_scenario_convergence` above, kept literal here since H3-10
+    # is this matrix's designated "the hard requirement" scenario).
+    control_set = _canonical_effects(tmp_foundry, outcome_control.operation.operation_id)
+    subject_set = _canonical_effects(tmp_foundry, operation_id)
+    assert control_set == subject_set
+    assert len(control_set) == len(subject_set) == 5

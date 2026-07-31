@@ -48,7 +48,9 @@ resolution unit tests immediately below bypass the patch by calling
 
 from __future__ import annotations
 
+import copy
 import dataclasses
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -69,6 +71,11 @@ from research_foundry.yamlio import dump_yaml, load_yaml
 _IDENTITY = AuthIdentity("alice", "ws-mine", ("owner",))
 _IDENTITY_OTHER_WORKSPACE = AuthIdentity("bob", "ws-other", ("owner",))
 _VIEWER_IDENTITY = AuthIdentity("carol", "ws-mine", ("viewer",))
+#: D2 "wrong actor" case: SAME workspace as `_IDENTITY`, DIFFERENT user_id
+#: -- deliberately distinct from `_IDENTITY_OTHER_WORKSPACE`, which differs
+#: in BOTH fields at once and therefore cannot, on its own, prove the
+#: binding check catches a user_id mismatch independent of a workspace one.
+_IDENTITY_SAME_WORKSPACE_DIFFERENT_ACTOR = AuthIdentity("mallory", "ws-mine", ("owner",))
 
 # NEW-18: captured at import time, BEFORE the `_default_operator_identity`
 # autouse fixture below ever runs -- lets the identity-resolution unit
@@ -161,6 +168,148 @@ def _basic_ctx(**overrides: Any) -> policy.PolicyContext:
 
 def _run_targets() -> tuple[policy.TargetRef, ...]:
     return (policy.TargetRef("run", "run_demo"),)
+
+
+# ---------------------------------------------------------------------------
+# D2 (M3, OPM-6.2): structural zero-effect snapshot/diff harness.
+#
+# This module's own docstring is explicit that `operator_mcp_policy` mints/
+# verifies/consumes confirmations as PURE functions -- "no effect adapter,
+# AgentJob attempt, or MCP server exists in this module" and
+# `consume_confirmation` "is a PURE function -- it returns a new dict ...
+# and touches no disk". The manifest/receipt/job/attempt/confirmation-store
+# durable rows D2 requires a snapshot of therefore do not exist AT THIS
+# LAYER (they belong to `operator_operation_service.py`, P2's persistence
+# owner, exercised by the sibling `test_operator_operation_service.py`
+# suite) -- what this module CAN, and does, touch on disk is: (a) the
+# `audit_event` log via `audit_service.health_check`'s write-then-read-
+# then-DELETE probe (`_check_audit_health`, gating every confirmation-
+# requiring evaluation) -- that probe never calls `record_event()`, so a
+# denied adversarial attempt must produce ZERO new audit-log entries; and
+# (b) `governance.guard_check`'s read of workspace `governance.yaml` (read-
+# only, never a write). `_snapshot_stores` below captures BOTH: the full
+# audit-event log (proving no durable audit trail is created for a denied
+# operation) and a content-hash manifest of every file under the workspace
+# root (proving no filesystem artifact -- config, confirmation-adjacent, or
+# otherwise -- is created or mutated). The ONE store this module
+# legitimately, intentionally, and unconditionally writes on every
+# confirmation-requiring evaluation -- the single `audit_health` row the
+# health probe upserts (`id=1`, `last_probe_at` advances every call,
+# allow or deny) -- is captured SEPARATELY (`_snapshot_audit_health`) and
+# deliberately EXCLUDED from `_assert_zero_effect`'s comparison: it is not
+# an operation effect (no manifest, no receipt, nothing a caller could
+# observe as "this adversarial request did something"), it is a documented
+# policy-evaluation side channel that changes identically whether the
+# request is ultimately allowed or denied -- see the module docstring's
+# "Audit-health is a LIVE, UNCONDITIONAL probe" paragraph. Using it as the
+# vacuity-detection POSITIVE CONTROL instead (below) turns this
+# by-design exclusion into the proof that the diff mechanism actually
+# works, rather than leaving it as an unexplained gap in the comparison.
+# ---------------------------------------------------------------------------
+
+
+def _snapshot_audit_health(paths: FoundryPaths) -> tuple[Any, ...]:
+    state = audit_service.get_health_state(paths)
+    return (state.healthy, state.last_probe_at, state.last_success_at, state.error_detail)
+
+
+def _snapshot_stores(paths: FoundryPaths) -> dict[str, Any]:
+    """Structural before/after snapshot of every durable store an
+    adversarial `operator_mcp_policy` call could conceivably touch, per D2.
+    See the section docstring above for what is (audit log, filesystem) and
+    is not (the `audit_health` probe row) part of the zero-EFFECT
+    comparison `_assert_zero_effect` performs.
+
+    `paths.rbac_db` is excluded from the raw file-hash walk below: it is
+    the SAME physical SQLite file `audit_service`'s `audit_event` table AND
+    `audit_health` row both live in (`audit_service` imports `rbac_store.
+    _connect`) -- the `audit_health` upsert changes this file's on-disk
+    bytes (page writes, not merely a logical row) on every confirmation-
+    -requiring evaluation regardless of allow/deny, which would otherwise
+    make EVERY zero-effect assertion in this file spuriously fail on a
+    documented, expected side channel. Its two logically distinct halves
+    are captured precisely instead: `audit_events` above (the real,
+    durable audit trail -- must never gain an entry) and
+    `_snapshot_audit_health` (the excluded, expected-to-change probe row,
+    used only by the positive control)."""
+
+    events = audit_service.list_events(paths, limit=10_000)["items"]
+    excluded = {paths.rbac_db.resolve()} if paths.rbac_db.exists() else set()
+    files: dict[str, str] = {}
+    if paths.root.exists():
+        for file_path in sorted(paths.root.rglob("*")):
+            if not file_path.is_file() or file_path.resolve() in excluded:
+                continue
+            try:
+                digest = hashlib.sha256(file_path.read_bytes()).hexdigest()
+            except OSError:
+                digest = "<unreadable>"
+            files[str(file_path.relative_to(paths.root))] = digest
+    return {"audit_events": events, "files": files}
+
+
+def _assert_zero_effect(before: dict[str, Any], after: dict[str, Any]) -> None:
+    """D2: an adversarial (denied) case must leave every durable store this
+    module can touch byte-identical -- zero new/changed files, zero new
+    audit-log entries. Deliberately does NOT compare `audit_health` -- see
+    the section docstring above; `test_audit_health_probe_is_the_positive_control_...`
+    below proves that omission is a documented exclusion, not a blind spot
+    that would let a REAL effect slip through unnoticed."""
+
+    assert after["files"] == before["files"], (
+        "adversarial case produced a filesystem delta -- diff: "
+        f"{ {k: v for k, v in after['files'].items() if before['files'].get(k) != v} !r}"
+    )
+    assert after["audit_events"] == before["audit_events"], (
+        "adversarial case produced a durable audit-log entry (a denied "
+        "operation must never appear in the audit trail)"
+    )
+
+
+def test_snapshot_diff_mechanism_detects_a_real_effect_positive_control(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """D2's mandatory positive control: a zero-effect assertion that can
+    never fail is vacuous. This proves `_snapshot_stores`/`_assert_zero_effect`
+    are NOT that -- `evaluate_policy` for a confirmation-requiring kind
+    (`run.plan`, allowed) legitimately writes exactly one thing to disk:
+    the `audit_health` row `_check_audit_health`'s live probe upserts on
+    EVERY such evaluation (module docstring: "Audit-health is a LIVE,
+    UNCONDITIONAL probe"). `_snapshot_audit_health` (excluded from
+    `_assert_zero_effect`'s own comparison, by design -- see that
+    function's docstring) DOES detect this real, expected change, proving
+    the diffing mechanism this file's whole adversarial matrix relies on
+    can distinguish "something happened" from "nothing happened" -- it is
+    not comparing `None == None` or some other tautology. The files/
+    audit-log halves stay at zero delta even for this ALLOWED call
+    (`evaluate_policy` mints nothing and writes no audit-log event by
+    itself; only `mint_confirmation`+`operator_operation_service`, outside
+    this module, would produce a manifest/receipt), which is itself a
+    second, independent confirmation that `_assert_zero_effect` measures a
+    real, non-trivial property rather than always vacuously passing."""
+
+    ctx = _basic_ctx(targets=_run_targets())
+    audit_health_before = _snapshot_audit_health(tmp_foundry)
+    stores_before = _snapshot_stores(tmp_foundry)
+
+    decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    assert decision.allowed
+
+    audit_health_after = _snapshot_audit_health(tmp_foundry)
+    stores_after = _snapshot_stores(tmp_foundry)
+
+    # The positive control: a REAL, expected effect (the health-probe
+    # upsert) that the mechanism must detect.
+    assert audit_health_after != audit_health_before, (
+        "the audit-health probe did not advance on a confirmation-requiring "
+        "evaluation -- either the probe stopped running (a policy-stage "
+        "regression) or _snapshot_audit_health stopped observing it (a test-"
+        "harness regression); either way this positive control has gone "
+        "silent and every zero-effect assertion in this file is now unproven"
+    )
+    # The by-design exclusions: no OTHER store moved for this allowed,
+    # pre-mint evaluation.
+    _assert_zero_effect(stores_before, stores_after)
 
 
 # ---------------------------------------------------------------------------
@@ -667,12 +816,20 @@ def test_check_tool_name_rejects_unknown_and_wildcard() -> None:
 def test_missing_identity_denied_with_identity_denied_code(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """D2 (missing identity): the denial is asserted below AND the durable
+    stores this module could touch are proven to have zero delta -- a
+    missing identity denies at `rbac`, before the LATER `audit_health`
+    stage ever runs, so this is expected to be a true no-op on disk."""
+
     monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: None)
     ctx = _basic_ctx(targets=_run_targets(), resolved_target_workspaces=(None,))
+    before = _snapshot_stores(tmp_foundry)
     decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    after = _snapshot_stores(tmp_foundry)
     assert decision.denied
     assert decision.stage == "rbac"
     assert decision.reason_code == "identity_denied"
+    _assert_zero_effect(before, after)
 
 
 def test_matching_resolved_target_workspace_is_not_denied(tmp_foundry: FoundryPaths) -> None:
@@ -684,12 +841,17 @@ def test_matching_resolved_target_workspace_is_not_denied(tmp_foundry: FoundryPa
 def test_rbac_denies_insufficient_role_for_mutating_kind(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """D2 (denial): general RBAC denial, zero-effect asserted."""
+
     monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _VIEWER_IDENTITY)
     ctx = _basic_ctx()
+    before = _snapshot_stores(tmp_foundry)
     decision = policy.evaluate_policy(ctx, paths=tmp_foundry)
+    after = _snapshot_stores(tmp_foundry)
     assert decision.denied
     assert decision.stage == "rbac"
     assert decision.reason_code == "rbac_denied"
+    _assert_zero_effect(before, after)
 
 
 def test_rbac_denies_viewer_for_read_only_job_status(
@@ -1324,11 +1486,18 @@ def test_wrong_workspace_above_ceiling_and_genuinely_missing_target_share_one_de
         targets=_run_targets(), effective_sensitivity="client_sensitive", sensitivity_ceiling="public"
     )
 
+    # D2 (wrong workspace): snapshot once, run all three denials, snapshot
+    # once more -- proves the whole batch of H6 no-existence-leak cases is
+    # collectively a zero-effect no-op, not merely that each individually
+    # "returns the right error".
+    before = _snapshot_stores(tmp_foundry)
     decisions = [
         policy.evaluate_policy(wrong_workspace_ctx, paths=tmp_foundry),
         policy.evaluate_policy(genuinely_missing_ctx, paths=tmp_foundry),
         policy.evaluate_policy(above_ceiling_ctx, paths=tmp_foundry),
     ]
+    after = _snapshot_stores(tmp_foundry)
+    _assert_zero_effect(before, after)
     for decision in decisions:
         assert decision.denied
         assert decision.reason_code == "not_found"
@@ -1605,17 +1774,27 @@ def test_verify_confirmation_wrong_token_digest_is_missing() -> None:
     assert verification.decision.reason_code == "confirmation_missing"
 
 
-def test_verify_confirmation_expired_token() -> None:
+def test_verify_confirmation_expired_token(tmp_foundry: FoundryPaths) -> None:
+    """D2 (expiry): zero-effect proven over the record dict itself (never
+    mutated by a failed verification) plus every durable store."""
+
     ctx = _basic_ctx(targets=_run_targets())
     minted_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     issued = policy.mint_confirmation(ctx, now=minted_at)
+    record_before = copy.deepcopy(issued.record)
     later = minted_at + policy.CONFIRMATION_TTL + timedelta(seconds=1)
+
+    before = _snapshot_stores(tmp_foundry)
     verification = policy.verify_confirmation(
         issued.record, presented_token=issued.token, ctx=ctx, now=later
     )
+    after = _snapshot_stores(tmp_foundry)
+
     assert verification.outcome == "expired"
     assert verification.decision.reason_code == "confirmation_expired"
     assert verification.decision.retryable is True
+    assert issued.record == record_before, "verify_confirmation must never mutate the record it reads"
+    _assert_zero_effect(before, after)
 
 
 def test_verify_confirmation_revoked_status_denies_non_retryable_not_expired() -> None:
@@ -1644,18 +1823,41 @@ def test_verify_confirmation_revoked_status_denies_non_retryable_not_expired() -
         lambda ctx: dataclasses.replace(ctx, effective_sensitivity="work_sensitive"),
         lambda ctx: dataclasses.replace(ctx, targets=(policy.TargetRef("run", "run_other"),)),
         lambda ctx: _forge_identity(ctx, _IDENTITY_OTHER_WORKSPACE),
+        lambda ctx: _forge_identity(ctx, _IDENTITY_SAME_WORKSPACE_DIFFERENT_ACTOR),
         lambda ctx: dataclasses.replace(ctx, input_payload={"changed": True}),
     ],
-    ids=["idempotency_key", "operation_kind", "policy_snapshot_version", "effective_sensitivity", "targets", "actor_workspace", "input_payload"],
+    ids=[
+        "idempotency_key_drift",
+        "operation_kind_drift",
+        "policy_snapshot_version_drift",
+        "effective_sensitivity_drift",
+        "target_drift",
+        "wrong_actor_and_workspace",
+        "wrong_actor_same_workspace",
+        "payload_drift",
+    ],
 )
-def test_verify_confirmation_mismatched_bound_field_denies(mutate) -> None:
+def test_verify_confirmation_mismatched_bound_field_denies(mutate, tmp_foundry: FoundryPaths) -> None:
+    """D2: this single parametrized test covers SIX of the required
+    matrix categories in one place -- payload drift, target drift, policy
+    drift, sensitivity drift, and (across the two actor-identity cases)
+    wrong actor / wrong workspace -- each with an explicit zero-effect
+    assertion, not merely a typed-error assertion."""
+
     ctx = _basic_ctx(targets=_run_targets())
     issued = policy.mint_confirmation(ctx)
+    record_before = copy.deepcopy(issued.record)
     changed_ctx = mutate(ctx)
+
+    before = _snapshot_stores(tmp_foundry)
     verification = policy.verify_confirmation(issued.record, presented_token=issued.token, ctx=changed_ctx)
+    after = _snapshot_stores(tmp_foundry)
+
     assert verification.outcome == "mismatched"
     assert verification.decision.reason_code == "confirmation_mismatch"
     assert verification.decision.retryable is False
+    assert issued.record == record_before, "a denied verification must never mutate the record it read"
+    _assert_zero_effect(before, after)
 
 
 def test_exact_replay_after_consumption_is_not_an_error_but_is_non_accepting() -> None:
@@ -1724,6 +1926,11 @@ def test_authorize_operation_full_success_path(tmp_foundry: FoundryPaths) -> Non
 
 
 def test_authorize_operation_denies_exact_replay_never_returns_accept(tmp_foundry: FoundryPaths) -> None:
+    """D2 (replay): zero-effect asserted around the SECOND (replay)
+    `authorize_operation` call specifically -- the first call is the
+    legitimate accept this test needs to set up the replay scenario, so
+    only the replay attempt itself is required to be a store no-op."""
+
     ctx = _basic_ctx(targets=_run_targets())
     issued = policy.mint_confirmation(ctx)
 
@@ -1734,6 +1941,7 @@ def test_authorize_operation_denies_exact_replay_never_returns_accept(tmp_foundr
 
     consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64, ctx=ctx)
     assert consumed is not None
+    consumed_before = copy.deepcopy(consumed)
 
     # verify_confirmation directly: outcome is still correctly "not an
     # error" (NEW-1: but `.decision` itself is now a real, non-accepting
@@ -1741,6 +1949,7 @@ def test_authorize_operation_denies_exact_replay_never_returns_accept(tmp_foundr
     # EXACTLY the shape a naive caller following round 1's own docstring
     # instruction to "call verify_confirmation directly" would read as a
     # fresh accept, skipping capability/RBAC/audit-health/guard/preflight).
+    before = _snapshot_stores(tmp_foundry)
     direct_verification = policy.verify_confirmation(consumed, presented_token=issued.token, ctx=ctx)
     assert direct_verification.outcome == "exact_replay"
     assert direct_verification.decision.allowed is False
@@ -1752,10 +1961,16 @@ def test_authorize_operation_denies_exact_replay_never_returns_accept(tmp_foundr
     replay_decision = policy.authorize_operation(
         ctx, confirmation_record=consumed, presented_token=issued.token, paths=tmp_foundry
     )
+    after = _snapshot_stores(tmp_foundry)
     assert replay_decision.denied
     assert replay_decision.allowed is False
     assert replay_decision.reason_code == "confirmation_replayed"
     assert replay_decision.retryable is False
+    # D2 (replay): neither the direct `verify_confirmation` replay call nor
+    # the `authorize_operation` replay call produced any durable-store
+    # delta, and neither mutated the already-consumed record it read.
+    assert consumed == consumed_before, "a replayed verify/authorize call must never mutate the consumed record"
+    _assert_zero_effect(before, after)
 
     # NEW-1: the two entry points now agree EXACTLY -- verify_confirmation's
     # own decision for the replay is dataclass-`==`-equal to
@@ -1860,18 +2075,36 @@ def test_forged_future_issued_at_does_not_extend_the_ttl_window() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_consume_confirmation_refuses_to_rebind_an_already_consumed_record() -> None:
+def test_consume_confirmation_refuses_to_rebind_an_already_consumed_record(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """D2 (atomic token consumption): the SECOND consumption attempt is the
+    adversarial case under test -- it must be refused (CAS precondition
+    failure) AND leave zero effect: no durable-store delta, and the
+    already-consumed record it was handed must come back byte-identical
+    (never silently rebound to the second, attacker-supplied operation_id).
+    The FIRST consumption is legitimate setup, not part of the assertion."""
+
     ctx = _basic_ctx(targets=_run_targets())
     issued = policy.mint_confirmation(ctx)
     consumed = policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64, ctx=ctx)
     assert consumed is not None
     assert consumed["consumed_by_operation_id"] == "opm_" + "a" * 64
+    consumed_before = copy.deepcopy(consumed)
 
     # A second consumption attempt against the now-consumed record must be
     # refused (CAS precondition failure), never silently rebound to a new
     # operation_id.
+    before = _snapshot_stores(tmp_foundry)
     second = policy.consume_confirmation(consumed, operation_id="opm_" + "b" * 64, ctx=ctx)
+    after = _snapshot_stores(tmp_foundry)
+
     assert second is None
+    assert consumed == consumed_before, (
+        "a refused (already-consumed) re-consumption must never rebind or otherwise mutate "
+        "the record it was handed -- this is the atomic-single-use property DUR-1 freezes"
+    )
+    _assert_zero_effect(before, after)
 
 
 def test_consume_confirmation_refuses_expired_record() -> None:
@@ -1909,28 +2142,37 @@ def test_consume_confirmation_returns_a_deep_copy_not_a_shared_shallow_one() -> 
     assert issued.record["targets"][0]["target_ref"] != "mutated"
 
 
-def test_consume_confirmation_ctx_binding_denies_mismatch() -> None:
+def test_consume_confirmation_ctx_binding_denies_mismatch(tmp_foundry: FoundryPaths) -> None:
     """NEW-12 (round 2, hardening) added `consume_confirmation`'s binding
     check (`_bindings_match(record, ctx)`) but left `ctx` OPTIONAL --
     BLOCK-9 (round 4 gate) made it REQUIRED, folding the binding predicate
     into the frozen DUR-1 compare-and-swap text. This test now pins BOTH
     halves: a mismatched `ctx` denies, and `ctx` is no longer omittable at
-    all (a `TypeError`, not a silent skip)."""
+    all (a `TypeError`, not a silent skip). D2 (atomic token consumption,
+    binding variant): the mismatched-`ctx` denial is a store no-op and
+    never mutates the still-`issued` record."""
+
     ctx = _basic_ctx(targets=_run_targets())
     issued = policy.mint_confirmation(ctx)
+    record_before = copy.deepcopy(issued.record)
 
     mismatched_ctx = dataclasses.replace(ctx, idempotency_key="a-different-key")
+    before = _snapshot_stores(tmp_foundry)
     denied = policy.consume_confirmation(
         issued.record, operation_id="opm_" + "a" * 64, ctx=mismatched_ctx
     )
+    after = _snapshot_stores(tmp_foundry)
     assert denied is None
+    assert issued.record == record_before, "a binding-mismatch denial must never mutate the still-issued record"
+    _assert_zero_effect(before, after)
 
     # BLOCK-9: `ctx` is a REQUIRED keyword argument -- omitting it is a
     # TypeError, not a silent "skip the binding check" default.
     with pytest.raises(TypeError):
         policy.consume_confirmation(issued.record, operation_id="opm_" + "a" * 64)  # type: ignore[call-arg]
 
-    # A MATCHING ctx succeeds.
+    # A MATCHING ctx succeeds -- proves the denial above was a genuine
+    # binding check, not an unconditionally-broken consumption path.
     matching = policy.consume_confirmation(issued.record, operation_id="opm_" + "b" * 64, ctx=ctx)
     assert matching is not None
     assert matching["status"] == "consumed"

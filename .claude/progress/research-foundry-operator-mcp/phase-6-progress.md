@@ -5,9 +5,9 @@ doc_type: progress
 prd: research-foundry-operator-mcp
 feature_slug: research-foundry-operator-mcp
 phase: 6
-status: pending
+status: in_progress
 created: '2026-07-28'
-updated: '2026-07-28'
+updated: '2026-07-31'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
 plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
 commit_refs: []
@@ -22,65 +22,65 @@ contributors:
 - karen
 tasks:
 - id: OPM-6.1
-  status: pending
+  status: in_progress
   assigned_to:
   - validation-implementer
   dependencies:
   - P5
-  estimate: "0.5 pt"
+  estimate: 0.5 pt
 - id: OPM-6.2
-  status: pending
+  status: in_progress
   assigned_to:
   - validation-implementer
   dependencies:
   - OPM-6.1
-  estimate: "0.5 pt"
+  estimate: 0.5 pt
 - id: OPM-6.3
-  status: pending
+  status: in_progress
   assigned_to:
   - validation-implementer
   dependencies:
   - OPM-6.1
-  estimate: "0.5 pt"
+  estimate: 0.5 pt
 - id: OPM-6.4
-  status: pending
+  status: in_progress
   assigned_to:
   - validation-implementer
   dependencies:
   - OPM-6.1
-  estimate: "0.5 pt"
+  estimate: 0.5 pt
 - id: OPM-6.5
-  status: pending
+  status: in_progress
   assigned_to:
   - validation-implementer
   - senior-code-reviewer
   dependencies:
   - OPM-6.1
-  estimate: "0.5 pt"
+  estimate: 0.5 pt
 - id: OPM-6.6
-  status: pending
+  status: in_progress
   assigned_to:
   - validation-implementer
   dependencies:
   - OPM-6.1
-  estimate: "0.25 pt"
+  estimate: 0.25 pt
 - id: OPM-6.7
-  status: pending
+  status: in_progress
   assigned_to:
   - validation-implementer
   - senior-code-reviewer
   dependencies:
   - OPM-6.1
-  estimate: "0.25 pt"
+  estimate: 0.25 pt
 - id: OPM-6.8
-  status: pending
+  status: in_progress
   assigned_to:
   - validation-implementer
   dependencies:
   - OPM-6.1
-  estimate: "0.25 pt"
+  estimate: 0.25 pt
 - id: OPM-6.9
-  status: pending
+  status: in_progress
   assigned_to:
   - documentation-writer
   - changelog-generator
@@ -92,7 +92,7 @@ tasks:
   - OPM-6.6
   - OPM-6.7
   - OPM-6.8
-  estimate: "0.5 pt"
+  estimate: 0.5 pt
 - id: OPM-6.10
   status: pending
   assigned_to:
@@ -100,7 +100,7 @@ tasks:
   - karen
   dependencies:
   - OPM-6.9
-  estimate: "0.25 pt"
+  estimate: 0.25 pt
 parallelization:
   batch_1:
   - OPM-6.1
@@ -118,7 +118,7 @@ parallelization:
   - OPM-6.10
 total_tasks: 10
 completed_tasks: 0
-in_progress_tasks: 0
+in_progress_tasks: 9
 blocked_tasks: 0
 progress: 0
 ---

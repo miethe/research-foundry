@@ -198,6 +198,15 @@ the [architecture doc](docs/dev/architecture/knowledge-mcp.md) for the service/D
 design. It is **local, stdio-only, and schema-aligned only** in v1 — no remote transport, no
 canonical HTTPS namespace, and no OpenAI/ChatGPT compatibility claim.
 
+### Operator MCP (Governed Local Operations)
+
+`rf-operator-mcp` is a separate optional, local stdio-only process for a closed 14-tool governed
+operation surface. It uses local identity/workspace/sensitivity resolution, bound confirmations,
+durable operation receipts, and a preview-only writeback tool. Remote transport and live writeback
+are **deferred**; owner qualification is `not_executed_owner_data_absent`. See the
+[operator guide](docs/user/research-foundry-operator-mcp.md) and
+[governance architecture](docs/dev/architecture/operator-mcp-governance.md).
+
 ### Serving Runs Live (Loopback API)
 
 Alternatively, run a local HTTP server to serve live run data without pre-exporting:

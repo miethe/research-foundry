@@ -202,10 +202,19 @@ def test_resolve_run_context_swallows_lookup_failure_for_a_missing_run(tmp_found
     assert ctx.governance_profile is None
 
 
-def test_missing_run_denies_with_preflight_failed_no_confirmation_needed(tmp_foundry: FoundryPaths) -> None:
-    """A wholly nonexistent `run_id` denies via THIS adapter's own
-    budget/timeout/profile preflight -- reachable with no `ctx`/confirmation
-    ever minted, since the check runs before either exists."""
+def test_missing_run_denies_with_not_found_never_preflight_failed(tmp_foundry: FoundryPaths) -> None:
+    """F6 fix (M3 Leg A). INVERTS the prior version of this test, which
+    pinned the exact existence-leak this fix closes: a wholly nonexistent
+    `run_id` used to deny via THIS adapter's own budget/timeout/profile
+    preflight (`preflight_failed`, `retryable=True`), reachable with no
+    `ctx`/confirmation ever minted, BECAUSE that check ran before `ctx` --
+    and therefore authorization -- was ever evaluated. `invoke` now builds
+    `ctx` and runs `policy.evaluate_policy` FIRST (mirroring
+    `research_stages.py`'s already-fixed F6 shape), so a missing run denies
+    at the SAME `rbac`/`not_found` stage a foreign-workspace run denies at
+    -- see `test_invoke_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing_run`
+    below, which now folds this exact case into its one-denial-shape
+    comparison instead of treating it as a deliberately distinct reason."""
 
     result = swarm_start.invoke(
         run_id="does-not-exist-at-all",
@@ -219,7 +228,11 @@ def test_missing_run_denies_with_preflight_failed_no_confirmation_needed(tmp_fou
     assert result.ok is False
     assert result.result is None
     assert result.error is not None
-    assert result.error["reason_code"] == "preflight_failed"
+    assert result.error["reason_code"] == "not_found"
+    assert result.error["retryable"] is False
+    assert result.error["operation_id"] is None
+    assert result.error["receipt_ref"] is None
+    assert "detail" not in result.error
 
 
 def test_missing_budget_denies_with_preflight_failed_not_a_default(
@@ -458,18 +471,21 @@ def test_invoke_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missi
     Also proves the SAME H6/H7 one-denial-shape guarantee `run_plan.py`'s
     sibling test proves, via the comparison that actually applies to THIS
     adapter: this above-ceiling denial (real run, guard stage) is
-    byte-identical to a wrong-workspace denial for the SAME real run
-    (rbac stage, earlier in the fixed pipeline order) -- a caller cannot
-    tell "this run exists but you are not cleared for it" from "this run
-    exists but is not yours" from the response alone. A genuinely-missing
-    `run_id` is deliberately NOT used for this comparison: it denies via
-    this adapter's OWN budget/timeout/profile preflight check (module
-    docstring's "resolved, never caller-supplied" section) BEFORE `ctx` --
-    and therefore the ceiling -- is ever constructed, a different,
-    intentionally distinct denial reason (`preflight_failed`, see
-    `test_missing_run_denies_with_preflight_failed_no_confirmation_needed`
-    above), not a second instance of the SAME guard/rbac `not_found`
-    family."""
+    byte-identical to a wrong-workspace denial for the SAME real run (rbac
+    stage, earlier in the fixed pipeline order) -- a caller cannot tell
+    "this run exists but you are not cleared for it" from "this run exists
+    but is not yours" from the response alone.
+
+    F6 fix (M3 Leg A): a genuinely-missing `run_id` is now FOLDED INTO this
+    same comparison as a third, byte-identical case -- prior to the F6 fix
+    it was deliberately excluded here because it denied via this adapter's
+    OWN budget/timeout/profile preflight check BEFORE `ctx` (and therefore
+    the ceiling/rbac stages) was ever constructed, a different,
+    `preflight_failed` reason. `invoke` now runs `policy.evaluate_policy`
+    before that check, so all three -- above-ceiling, wrong-workspace, and
+    genuinely-missing -- deny identically. See
+    `test_missing_run_denies_with_not_found_never_preflight_failed` for the
+    isolated single-case version of this same assertion."""
 
     run_id = _planned_run(tmp_foundry, sample_idea_text)
     run_ctx = swarm_start._resolve_run_context(run_id, tmp_foundry)
@@ -523,14 +539,7 @@ def test_invoke_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missi
     # SAME real run denies at the EARLIER `rbac` stage (fixed pipeline
     # order: capability -> rbac -> audit_health -> guard -> ...), never
     # even reaching the guard/ceiling check -- yet produces the
-    # BYTE-IDENTICAL envelope. A genuinely-missing `run_id` is NOT a valid
-    # comparison here (unlike `run_plan.py`'s sibling test): this adapter's
-    # own budget/timeout/profile preflight (module docstring's "resolved,
-    # never caller-supplied" section) denies with `preflight_failed` for a
-    # missing run BEFORE `ctx` -- and therefore the ceiling -- is ever
-    # reached (see `test_missing_run_denies_with_preflight_failed_no_
-    # confirmation_needed` above), a DIFFERENT, deliberately distinct
-    # denial reason this adapter also implements.
+    # BYTE-IDENTICAL envelope.
     monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY_OTHER_WORKSPACE)
     wrong_workspace_result = swarm_start.invoke(
         run_id=run_id,
@@ -546,12 +555,34 @@ def test_invoke_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missi
     assert wrong_workspace_result.error["reason_code"] == "not_found"
     assert above_ceiling_result.error == wrong_workspace_result.error
 
+    # F6 fix (M3 Leg A): a genuinely-missing `run_id`, called under the
+    # SAME wrong-workspace identity still installed above, produces the
+    # IDENTICAL envelope too -- the third leg of the one-denial-shape
+    # guarantee this test now proves. Restoring the default identity first
+    # is deliberately NOT done: this exercises the "doesn't exist" case
+    # from the same caller the wrong-workspace case just used, closest to
+    # a real attacker's actual vantage point.
+    missing_run_result = swarm_start.invoke(
+        run_id="does-not-exist-at-all",
+        adapter_ids=[_ADAPTER_A],
+        idempotency_key="idem-above-ceiling-missing",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+    assert missing_run_result.ok is False
+    assert missing_run_result.error is not None
+    assert missing_run_result.error["reason_code"] == "not_found"
+    assert above_ceiling_result.error == missing_run_result.error
+
     # HIGH-1 fix, direct proof: `resolve_local_sensitivity_ceiling` was
-    # called with the REAL `paths` value (`tmp_foundry`) both times
-    # `invoke()` ran above -- if `invoke()`'s own call site ever dropped its
-    # `paths=resolved_paths` argument, the double would have recorded
-    # `[None, None]` instead.
-    assert ceiling_calls == [tmp_foundry, tmp_foundry]
+    # called with the REAL `paths` value (`tmp_foundry`) all three times
+    # `invoke()` ran above (above-ceiling, wrong-workspace, and -- F6 fix,
+    # M3 Leg A -- now also the genuinely-missing-run call) -- if
+    # `invoke()`'s own call site ever dropped its `paths=resolved_paths`
+    # argument, the double would have recorded a `None` entry instead.
+    assert ceiling_calls == [tmp_foundry, tmp_foundry, tmp_foundry]
 
 
 # ---------------------------------------------------------------------------

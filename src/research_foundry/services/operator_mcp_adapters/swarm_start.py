@@ -84,8 +84,31 @@ equivalent existing substrate-level gate (`PolicyContext` carries no budget/
 timeout field at all), so THIS module adds one explicit, bounded preflight
 check of its own (built via `operator_mcp_policy.build_error`, exactly like
 every other denial in this family): any of the three resolving to `None`
-denies with `preflight_failed` BEFORE `ctx` is even constructed -- never a
-permissive numeric/string default synthesized here.
+denies with `preflight_failed`.
+
+**F6 fix (M3 Leg A, research-foundry-operator-mcp-v1).** The paragraph
+above previously ended "... BEFORE `ctx` is even constructed" -- that
+ordering was itself an F6-shaped existence leak, discovered while building
+`tests/integration/test_operator_mcp_workspace_isolation.py`: a genuinely
+missing run resolves every `_RunContext` field to `None` and denied
+`preflight_failed` (`retryable=True`) at this check, while a real,
+well-formed, FOREIGN-workspace run (one whose `run.yaml` legitimately has
+`budget_usd`/`timeout_minutes`/`governance_profile` populated) passed this
+check and denied `not_found` (`retryable=False`) only later, at the rbac
+stage -- two different envelopes for "doesn't exist" vs "exists but isn't
+mine", reason-code-observable by an unauthorized caller. `research_stages.py`'s
+own module docstring (its "Ordering (F6 lesson...)" section) had already
+named this exact shape "F6", already fixed it in `research_stages.py`
+itself and in `verify_bundle.py`, and explicitly said the pre-fix ordering
+"mirror[s] `swarm_start.py`'s own budget/timeout preflight shape" --
+`swarm_start.py` was the one file that comparison named and never itself
+received the fix, until now. `invoke` below now builds `ctx` and calls
+`policy.evaluate_policy` FIRST, mirroring `research_stages.py`'s
+`invoke_extract`/`invoke_claim_map`/`invoke_synthesize` exactly: the
+budget/timeout/governance-profile check only runs for an ALREADY-authorized
+caller, so a missing run and a foreign-workspace run now deny identically,
+at rbac, with `not_found`, before this module's own domain-specific
+precondition is ever reached.
 
 **Degraded adapters remain typed (requirement 4).** `swarm_service.run_swarm`
 already guarantees this for an individual discovery adapter's own failure
@@ -387,28 +410,25 @@ def invoke(
     sensitivity_ceiling = resolve_local_sensitivity_ceiling(resolved_paths)
     run_ctx = _resolve_run_context(run_id, resolved_paths)
 
-    # No fail-open (requirement 5): budget, timeout, and governance profile
-    # have no existing PolicyContext-level gate (unlike sensitivity/
-    # workspace_id below, which reuse the substrate's own H3/rbac
-    # mechanism) -- this adapter denies, before `ctx` is even constructed,
-    # rather than defaulting any of the three.
-    if run_ctx.budget_usd is None or run_ctx.timeout_minutes is None or run_ctx.governance_profile is None:
-        decision = _preflight_denial("preflight_failed")
-        return base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now))
-
-    budget_usd: float = run_ctx.budget_usd
-    timeout_minutes: int = run_ctx.timeout_minutes
-    governance_profile: str = run_ctx.governance_profile
-
     effective_sensitivity = policy.resolve_effective_sensitivity(run_ctx.sensitivity)
 
+    # M3 Leg A fix (F6 recurrence -- see module docstring's "Resolved,
+    # never caller-supplied, governance inputs" section, now updated).
+    # `budget_usd`/`timeout_minutes`/`governance_profile` are bound into
+    # `input_payload` BEFORE the preflight check below, using whatever
+    # `_resolve_run_context` actually returned (possibly `None` for a
+    # missing/foreign/malformed run) -- never coerced to a placeholder
+    # value. This is required so `ctx.canonical_digest()` reflects the
+    # SAME `input_payload` regardless of which branch (allowed vs denied)
+    # this function takes below; only an ALLOWED request ever reads past
+    # the coercion a few lines down.
     requested_ids = tuple(adapter_ids)
     input_payload: dict[str, Any] = {
         "run_id": run_id,
         "adapter_ids": list(requested_ids),
-        "profile": governance_profile,
-        "budget_usd": budget_usd,
-        "timeout_minutes": timeout_minutes,
+        "profile": run_ctx.governance_profile,
+        "budget_usd": run_ctx.budget_usd,
+        "timeout_minutes": run_ctx.timeout_minutes,
     }
 
     ctx = policy.PolicyContext.for_configured_operator(
@@ -424,6 +444,32 @@ def invoke(
         input_payload=input_payload,
         paths=resolved_paths,
     )
+
+    # F6 fix (M3 Leg A; mirrors research_stages.py's invoke_extract/
+    # invoke_claim_map/invoke_synthesize EXACTLY -- see that module's own
+    # "Ordering (F6 lesson...)" docstring section, which named this precise
+    # shape and said it mirrored "swarm_start.py's own budget/timeout
+    # preflight shape" without swarm_start.py ever having been given the
+    # fix). Authorize FIRST (capability -> rbac -> audit_health -> guard ->
+    # preflight) -- an unauthorized caller now denies at `rbac`/`not_found`
+    # for EITHER a genuinely missing run OR a real, foreign-workspace one,
+    # identically, before this function ever learns whether the run has a
+    # budget/timeout/governance_profile at all. ONLY for an
+    # already-authorized caller does the budget/timeout/governance_profile
+    # precondition -- which has no equivalent existing `PolicyContext`-level
+    # gate (unlike sensitivity/workspace_id, which reuse H3/rbac) -- get
+    # checked, denying `preflight_failed` (never a permissive numeric/string
+    # default synthesized here).
+    decision = policy.evaluate_policy(ctx, paths=resolved_paths)
+    if decision.denied:
+        return base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now))
+    if run_ctx.budget_usd is None or run_ctx.timeout_minutes is None or run_ctx.governance_profile is None:
+        decision = _preflight_denial("preflight_failed")
+        return base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now))
+
+    budget_usd: float = run_ctx.budget_usd
+    timeout_minutes: int = run_ctx.timeout_minutes
+    governance_profile: str = run_ctx.governance_profile
 
     # Captures each per-adapter dispatch's own `SwarmRunResult`, in action
     # order, so `_build_result` can report a real, bounded per-adapter

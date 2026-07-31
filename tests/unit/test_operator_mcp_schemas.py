@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 import jsonschema
+import pytest
 
 from research_foundry.schemas import SchemaRegistry
 
@@ -272,6 +273,26 @@ def _valid_terminal_receipt(**overrides: Any) -> dict[str, Any]:
         "denial_reason_code": None,
         "audit_delivery": {"status": "delivered", "audit_event_id": "audit_1"},
         "completed_at": "2026-07-28T00:00:00Z",
+    }
+    instance.update(overrides)
+    return instance
+
+
+def _valid_effect_receipt(**overrides: Any) -> dict[str, Any]:
+    """D3 (M3, per-property re-attack): `effect_receipt` had no named
+    `_valid_*` helper -- both existing effect_receipt fixtures build the
+    dict inline. Added so the generic per-property sweep below can drive
+    it the same way it drives the other four `$defs`."""
+
+    instance = {
+        "schema_version": "1.0",
+        "kind": "effect_receipt",
+        "operation_id": f"opm_{_SHA}",
+        "action_id": "action-1",
+        "effect_kind": "source_card_created",
+        "effect_digest": _SHA,
+        "effect_ref": "run_demo",
+        "generated_at": "2026-07-28T00:00:00Z",
     }
     instance.update(overrides)
     return instance
@@ -942,6 +963,390 @@ def test_receipt_rejects_additional_properties() -> None:
     instance = _valid_operation_receipt()
     instance["unexpected_field"] = "nope"
     assert _errors("operator_mcp_receipt", instance)
+
+
+# ---------------------------------------------------------------------------
+# D3 (M3, Leg A, OPM-6.2): PER-PROPERTY generic re-attack, driven by the
+# LIVE schema, not a hand-maintained list. Named Risks (implementation
+# plan): "the receipt schema is still under-reviewed ... M3 must run a
+# per-property matrix against it, not a golden-instance pass."
+#
+# Everything above this section is exactly that -- a golden-instance pass
+# plus a large, valuable, but HAND-WRITTEN set of negative fixtures. Every
+# test below instead ENUMERATES `schema["$defs"][def_name]["properties"]`
+# at run time and attacks each one mechanically: wrong type, out-of-
+# enum/const, missing-required (where applicable), and oversize/pattern-
+# violating strings (where applicable). Per the M3 contract's explicit
+# instruction, this means a FUTURE property added to any of these five
+# `$defs` is attacked automatically, with no matching hand-written test
+# required -- and, via `test_receipt_every_open_string_property_is_bounded_or_closed`
+# below, a future property that is NOT given a `maxLength`/`pattern`/enum/
+# const guard FAILS this suite outright, rather than silently shipping
+# unguarded until a future review round finds it (the exact R5-BLOCK-1
+# defect class every hand-written test above this section was fixing one
+# property at a time).
+# ---------------------------------------------------------------------------
+
+_RECEIPT_KIND_DEFS: tuple[str, ...] = (
+    "operation_receipt",
+    "action_receipt",
+    "effect_receipt",
+    "checkpoint",
+    "terminal_receipt",
+)
+
+#: Golden-instance builders, one per `$def` above -- the base every
+#: mutation in this section is applied to.
+_GOLDEN_BUILDERS: dict[str, Any] = {
+    "operation_receipt": _valid_operation_receipt,
+    "action_receipt": _valid_action_receipt,
+    "effect_receipt": _valid_effect_receipt,
+    "checkpoint": _valid_checkpoint,
+    "terminal_receipt": _valid_terminal_receipt,
+}
+
+#: `format: date-time` fields (`generated_at`/`started_at`/`completed_at`/
+#: `updated_at`) are the ONE documented, deliberate exception to "every
+#: open string is bounded or closed" -- see the NOTE above
+#: `test_audit_delivery_builder_never_leaks_exception_derived_content`
+#: (~line 763 in this file): this repo's `jsonschema.Draft202012Validator`
+#: usage never attaches a `FormatChecker`, so `format: date-time` is
+#: annotation-only, and wiring one is out of THIS schema file's scope
+#: (flagged for OPM-2.3/a). Excluded here so that ALREADY-DOCUMENTED,
+#: ALREADY-DEFERRED gap does not make the completeness gate fail on
+#: something this task cannot fix without touching validator plumbing
+#: outside `schemas/operator_mcp_receipt.schema.yaml`.
+_FORMAT_DATE_TIME_EXEMPT_PROPERTIES: frozenset[str] = frozenset(
+    {"generated_at", "started_at", "completed_at", "updated_at"}
+)
+
+
+def _def_schema(def_name: str) -> dict[str, Any]:
+    schema = SchemaRegistry().get("operator_mcp_receipt")
+    return schema["$defs"][def_name]
+
+
+def _def_properties(def_name: str) -> dict[str, Any]:
+    return dict(_def_schema(def_name).get("properties", {}))
+
+
+def _def_required(def_name: str) -> tuple[str, ...]:
+    return tuple(_def_schema(def_name).get("required", ()))
+
+
+def _json_type_name(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, dict):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    return "unknown"  # pragma: no cover - defensive only
+
+
+def _declared_json_types(subschema: dict[str, Any]) -> set[str]:
+    """Best-effort set of JSON types `subschema` accepts, inferred the same
+    way for `type`, `const`, `enum`, and `$ref` (the four shapes every
+    property in this file's five `$defs` uses -- there is no `oneOf`/
+    `anyOf` property inside any of them)."""
+
+    if "type" in subschema:
+        declared = subschema["type"]
+        return set(declared) if isinstance(declared, list) else {declared}
+    if "const" in subschema:
+        return {_json_type_name(subschema["const"])}
+    if "enum" in subschema:
+        return {_json_type_name(v) for v in subschema["enum"]}
+    if "$ref" in subschema:
+        return {"object"}
+    return set()  # pragma: no cover - every property in this schema matches one of the above
+
+
+#: One sample value per JSON type, used to pick a value of a type NOT in a
+#: property's own declared type set.
+_TYPE_SAMPLE_VALUES: dict[str, Any] = {
+    "string": "zzz-wrong-type-zzz",
+    "integer": 987654321,
+    "boolean": True,
+    "object": {"unexpected": "shape"},
+    "array": ["unexpected"],
+    "null": None,
+}
+
+
+def _wrong_type_value(subschema: dict[str, Any]) -> Any:
+    declared = _declared_json_types(subschema)
+    for candidate_type, sample in _TYPE_SAMPLE_VALUES.items():
+        if candidate_type not in declared:
+            return sample
+    raise AssertionError(f"no wrong-type sample available for declared types {declared!r}")  # pragma: no cover
+
+
+@pytest.mark.parametrize("def_name", _RECEIPT_KIND_DEFS)
+def test_receipt_every_required_property_is_actually_enforced(def_name: str) -> None:
+    """D3 (missing-required): for EVERY property `def_name` declares
+    `required`, deleting it from an otherwise-golden instance must
+    invalidate -- enumerated from the live schema's own `required` list,
+    not a hand-copied one that could silently drift shorter."""
+
+    required = _def_required(def_name)
+    assert required, f"{def_name}: schema declares no required properties at all -- suspicious, check by hand"
+    for prop in required:
+        instance = _GOLDEN_BUILDERS[def_name]()
+        del instance[prop]
+        assert _errors("operator_mcp_receipt", instance), (
+            f"{def_name}.{prop}: deleting a REQUIRED property did not invalidate the instance"
+        )
+
+
+@pytest.mark.parametrize("def_name", _RECEIPT_KIND_DEFS)
+def test_receipt_every_property_rejects_a_wrong_type_value(def_name: str) -> None:
+    """D3 (wrong type): for EVERY property `def_name` declares, assigning a
+    value whose JSON type is NOT among the property's own declared types
+    must invalidate."""
+
+    for prop, subschema in _def_properties(def_name).items():
+        instance = _GOLDEN_BUILDERS[def_name]()
+        instance[prop] = _wrong_type_value(subschema)
+        assert _errors("operator_mcp_receipt", instance), (
+            f"{def_name}.{prop}: wrong-type value {instance[prop]!r} did not invalidate the instance "
+            f"(declared types: {_declared_json_types(subschema)!r})"
+        )
+
+
+@pytest.mark.parametrize("def_name", _RECEIPT_KIND_DEFS)
+def test_receipt_every_const_or_enum_property_rejects_an_undeclared_value(def_name: str) -> None:
+    """D3 (out-of-enum): for EVERY property with a `const` (treated as a
+    one-member enum, e.g. `schema_version`/`kind`) or `enum` (e.g.
+    `status`/`operation_kind`/every `*reason_code`), a value outside that
+    closed vocabulary must invalidate."""
+
+    for prop, subschema in _def_properties(def_name).items():
+        if "const" in subschema:
+            declared_values = {subschema["const"]}
+        elif "enum" in subschema:
+            declared_values = set(subschema["enum"])
+        else:
+            continue
+        bogus = "zzz_not_a_declared_value_zzz"
+        if bogus in declared_values:  # pragma: no cover - defensive only
+            bogus = "zzz_not_a_declared_value_zzz_2"
+        instance = _GOLDEN_BUILDERS[def_name]()
+        instance[prop] = bogus
+        assert _errors("operator_mcp_receipt", instance), (
+            f"{def_name}.{prop}: an out-of-vocabulary value ({bogus!r}) did not invalidate the instance"
+        )
+
+
+@pytest.mark.parametrize("def_name", _RECEIPT_KIND_DEFS)
+def test_receipt_every_def_rejects_additional_property_injection(def_name: str) -> None:
+    """D3 (additional-property injection): one injected, unrelated key must
+    invalidate every `$def` (each declares `additionalProperties: false`)."""
+
+    assert _def_schema(def_name).get("additionalProperties") is False, (
+        f"{def_name}: additionalProperties is no longer false -- this $def's closed-object "
+        "guarantee has regressed; every negative fixture in this file assumes it"
+    )
+    instance = _GOLDEN_BUILDERS[def_name]()
+    instance["zzz_injected_extra_property"] = "malicious"
+    assert _errors("operator_mcp_receipt", instance), (
+        f"{def_name}: an injected additional property was accepted"
+    )
+
+
+def _is_open_string_property(subschema: dict[str, Any]) -> bool:
+    """`True` for a property that is a genuinely open (non-const, non-enum,
+    non-`$ref`) string -- the shape every R5-BLOCK-1-class finding in this
+    schema's history was about."""
+
+    if "const" in subschema or "enum" in subschema or "$ref" in subschema:
+        return False
+    declared = _declared_json_types(subschema)
+    return "string" in declared
+
+
+@pytest.mark.parametrize("def_name", _RECEIPT_KIND_DEFS)
+def test_receipt_every_open_string_property_rejects_oversized_values(def_name: str) -> None:
+    """D3 (oversize strings): for every open string property that declares
+    a `maxLength`, a value one character over that bound must invalidate."""
+
+    for prop, subschema in _def_properties(def_name).items():
+        if not _is_open_string_property(subschema):
+            continue
+        max_length = subschema.get("maxLength")
+        if max_length is None:
+            continue
+        instance = _GOLDEN_BUILDERS[def_name]()
+        instance[prop] = "x" * (max_length + 1)
+        assert _errors("operator_mcp_receipt", instance), (
+            f"{def_name}.{prop}: a string one character over maxLength={max_length} was accepted"
+        )
+
+
+@pytest.mark.parametrize("def_name", _RECEIPT_KIND_DEFS)
+def test_receipt_every_open_string_property_rejects_control_or_unsafe_content(def_name: str) -> None:
+    """D3 (control-char / unsafe strings): for every open string property
+    guarded by a `not: {pattern: ...}` denylist (the traceback-/path-shape
+    guard), an unsafe value (embedding a control character AND an absolute
+    path) must invalidate. For a property guarded by a `pattern`
+    ALLOWLIST instead (e.g. a closed id/digest shape), a value violating
+    that allowlist (embedding a control character) must invalidate."""
+
+    for prop, subschema in _def_properties(def_name).items():
+        if not _is_open_string_property(subschema):
+            continue
+        instance = _GOLDEN_BUILDERS[def_name]()
+        if "not" in subschema:
+            # Denylist guard (traceback-/absolute-path-shaped content).
+            instance[prop] = "boom\x00 at /etc/passwd"
+        elif "pattern" in subschema:
+            # Allowlist guard -- a control character can never match a
+            # whitelist pattern built from printable character classes.
+            instance[prop] = "not-a-\x00-valid-value!"
+        else:
+            continue
+        assert _errors("operator_mcp_receipt", instance), (
+            f"{def_name}.{prop}: an unsafe/control-character-bearing string was accepted"
+        )
+
+
+@pytest.mark.parametrize("def_name", _RECEIPT_KIND_DEFS)
+def test_receipt_every_open_string_property_is_bounded_or_closed(def_name: str) -> None:
+    """D3 completeness gate. Every open (non-const/enum/$ref) string
+    property in this schema must declare `maxLength` and/or `pattern` --
+    the property is otherwise structurally unguarded (unbounded length, no
+    content shape restriction), the EXACT shape every R5-BLOCK-1-class
+    finding in this schema's review history named and fixed one property
+    at a time. `format: date-time` fields are the one documented,
+    deliberate exception (see `_FORMAT_DATE_TIME_EXEMPT_PROPERTIES`'s own
+    comment) -- everything else must pass this gate today, and a FUTURE
+    property added without either guard fails here immediately, not
+    several security-review rounds later."""
+
+    for prop, subschema in _def_properties(def_name).items():
+        if not _is_open_string_property(subschema):
+            continue
+        if prop in _FORMAT_DATE_TIME_EXEMPT_PROPERTIES and subschema.get("format") == "date-time":
+            continue
+        assert "maxLength" in subschema or "pattern" in subschema, (
+            f"{def_name}.{prop}: an open string property declares neither maxLength nor "
+            "pattern -- structurally unguarded (unbounded length, unrestricted content)"
+        )
+
+
+def test_receipt_schema_defs_are_exactly_the_known_set() -> None:
+    """D3 completeness gate at the `$def` granularity: a future `$def`
+    ADDED to `operator_mcp_receipt.schema.yaml` (a sixth receipt kind, or a
+    new nested `$def` alongside `audit_delivery`) is not automatically
+    covered by `_RECEIPT_KIND_DEFS`/`_GOLDEN_BUILDERS` above -- this fails
+    loudly the moment one is added, rather than silently leaving it
+    unattacked by every sweep in this section."""
+
+    schema = SchemaRegistry().get("operator_mcp_receipt")
+    assert set(schema["$defs"]) == {"audit_delivery", *_RECEIPT_KIND_DEFS}, (
+        "operator_mcp_receipt.schema.yaml gained or lost a $def -- extend "
+        "_RECEIPT_KIND_DEFS/_GOLDEN_BUILDERS (or this file's audit_delivery-specific "
+        "tests) to cover it before updating this assertion"
+    )
+
+
+# ---------------------------------------------------------------------------
+# D3: the SAME per-property sweep, applied to `audit_delivery` -- a nested
+# `$def` (only reachable embedded in `terminal_receipt.audit_delivery`),
+# so it needs its own small harness rather than reusing `_GOLDEN_BUILDERS`
+# directly.
+# ---------------------------------------------------------------------------
+
+
+def _terminal_with_audit_delivery(**audit_delivery_overrides: Any) -> dict[str, Any]:
+    instance = _valid_terminal_receipt(status="completed")
+    instance["audit_delivery"] = {"status": "delivered", "audit_event_id": None, **audit_delivery_overrides}
+    return instance
+
+
+def test_audit_delivery_every_required_property_is_actually_enforced() -> None:
+    required = _def_required("audit_delivery")
+    assert required
+    base_block = {"status": "delivered", "audit_event_id": None}
+    for prop in required:
+        instance = _valid_terminal_receipt(status="completed")
+        block = dict(base_block)
+        del block[prop]
+        instance["audit_delivery"] = block
+        assert _errors("operator_mcp_receipt", instance), (
+            f"audit_delivery.{prop}: deleting a REQUIRED property did not invalidate the instance"
+        )
+
+
+def test_audit_delivery_every_property_rejects_a_wrong_type_value() -> None:
+    for prop, subschema in _def_properties("audit_delivery").items():
+        instance = _terminal_with_audit_delivery(**{prop: _wrong_type_value(subschema)})
+        assert _errors("operator_mcp_receipt", instance), (
+            f"audit_delivery.{prop}: wrong-type value did not invalidate the instance"
+        )
+
+
+def test_audit_delivery_every_enum_property_rejects_an_undeclared_value() -> None:
+    for prop, subschema in _def_properties("audit_delivery").items():
+        if "enum" not in subschema:
+            continue
+        instance = _terminal_with_audit_delivery(**{prop: "zzz_not_a_declared_value_zzz"})
+        assert _errors("operator_mcp_receipt", instance), (
+            f"audit_delivery.{prop}: an out-of-vocabulary value was accepted"
+        )
+
+
+def test_audit_delivery_rejects_additional_property_injection() -> None:
+    instance = _terminal_with_audit_delivery()
+    instance["audit_delivery"]["zzz_injected_extra_property"] = "malicious"
+    assert _errors("operator_mcp_receipt", instance)
+
+
+def test_audit_delivery_every_open_string_property_rejects_control_or_unsafe_content() -> None:
+    """The generic-sweep twin of the hand-written
+    `test_audit_delivery_detail_rejects_*`/`test_audit_delivery_audit_event_id_rejects_*`
+    tests above -- both `audit_delivery` open string properties are
+    `not:pattern`-guarded (denylist), so this mirrors
+    `test_receipt_every_open_string_property_rejects_control_or_unsafe_content`'s
+    denylist branch exactly."""
+
+    for prop, subschema in _def_properties("audit_delivery").items():
+        if not _is_open_string_property(subschema) or "not" not in subschema:
+            continue
+        instance = _terminal_with_audit_delivery(**{prop: "boom\x00 at /etc/passwd"})
+        assert _errors("operator_mcp_receipt", instance), (
+            f"audit_delivery.{prop}: an unsafe/control-character-bearing string was accepted"
+        )
+
+
+def test_audit_delivery_every_open_string_property_rejects_oversized_values() -> None:
+    for prop, subschema in _def_properties("audit_delivery").items():
+        if not _is_open_string_property(subschema):
+            continue
+        max_length = subschema.get("maxLength")
+        if max_length is None:
+            continue
+        instance = _terminal_with_audit_delivery(**{prop: "x" * (max_length + 1)})
+        assert _errors("operator_mcp_receipt", instance), (
+            f"audit_delivery.{prop}: a string one character over maxLength={max_length} was accepted"
+        )
+
+
+def test_audit_delivery_every_open_string_property_is_bounded_or_closed() -> None:
+    for prop, subschema in _def_properties("audit_delivery").items():
+        if not _is_open_string_property(subschema):
+            continue
+        assert "maxLength" in subschema or "pattern" in subschema, (
+            f"audit_delivery.{prop}: an open string property declares neither maxLength nor pattern"
+        )
 
 
 # ---------------------------------------------------------------------------
