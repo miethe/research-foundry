@@ -11,7 +11,9 @@ API keys are required. Verification (when requested) is delegated to the
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -291,8 +293,23 @@ def _render_meatywiki(
     sensitivity: str,
     ledger: dict[str, Any],
     requires_review: bool,
+    dest: Path | None = None,
+    stage_only: bool = False,
 ) -> Path:
-    """Write writebacks/meatywiki_writeback.md (+ mirror) from the template fields."""
+    """Write writebacks/meatywiki_writeback.md (+ mirror) from the template fields.
+
+    `dest`/`stage_only` (M2 leg A, orchestrator adjudication of JC-2): both
+    default to the pre-existing behavior -- every call site in this module
+    (`writeback()`) omits them, so `dest=None` resolves to `rp.
+    meatywiki_writeback` (unchanged) and `stage_only=False` runs the mirror
+    write exactly as before (`if not requires_review: ...`). The preview
+    seam (`preview_writeback`) is the ONLY caller that passes `dest=<a
+    staging path>, stage_only=True` -- which redirects the primary write and
+    unconditionally skips the mirror into `paths.meatywiki/sources/`,
+    regardless of `requires_review`. This is a destination override, not a
+    duplicated assembly: `writeback.preview`'s staged `meatywiki` output is
+    produced by this SAME function, so it can never drift from the live
+    render."""
 
     titles = _source_card_titles(rp, paths)
     supported = _supported_claims(ledger)
@@ -346,11 +363,12 @@ def _render_meatywiki(
         f"## Links\n\n- [[Research Foundry]]\n- [[Agentic Control Plane]]\n"
     )
 
-    dump_md(front, body, rp.meatywiki_writeback)
-    if not requires_review:
+    target_write = dest if dest is not None else rp.meatywiki_writeback
+    dump_md(front, body, target_write)
+    if not stage_only and not requires_review:
         mirror = paths.meatywiki / "sources" / f"{slug}.md"
         dump_md(front, body, mirror)
-    return rp.meatywiki_writeback
+    return target_write
 
 
 def _render_decision_record(
@@ -485,12 +503,23 @@ def _render_skillbom(
     ccdash_event_id_value: str,
     requires_review: bool,
     ledger: dict[str, Any] | None = None,
+    dest: Path | None = None,
+    stage_only: bool = False,
 ) -> Path:
     """Write writebacks/skillbom_candidate.md (+ mirror) from the template fields.
 
     When ``ledger`` is provided, ``purpose`` and ``known_failure_modes`` are
     populated from the run's recommendation/inference claims rather than the
     fixed stub.
+
+    `dest`/`stage_only` (M2 leg A, orchestrator adjudication of JC-2): see
+    `_render_meatywiki`'s own docstring for the shared rationale.
+    `stage_only=True` additionally suppresses the SkillBOM registry upsert
+    (`Registry.open(SKILLBOM_INDEX, ...).upsert(...)`) below -- a preview
+    must never register a candidate that was only ever staged, not written
+    to `writebacks/skillbom_candidate.md`. Both default to the pre-existing
+    behavior; every call site in this module (`writeback()`,
+    `skillbom_propose()`) omits them.
     """
 
     report_meta, _ = _report_meta(rp)
@@ -573,24 +602,27 @@ def _render_skillbom(
         f"## Performance evidence\n\n- CCDash event id: {ccdash_event_id_value}\n"
     )
 
-    dump_md(front, body, rp.skillbom_candidate)
-    mirror = paths.skillmeat / "skillboms" / f"{cand_ident}.md"
-    dump_md(front, body, mirror)
+    target_write = dest if dest is not None else rp.skillbom_candidate
+    dump_md(front, body, target_write)
 
-    Registry.open(SKILLBOM_INDEX, paths=paths).upsert(
-        {
-            "id": cand_ident,
-            "proposed_skillbom_id": "skill_research_swarm_v0",
-            "evidence_bundle_id": bundle_ident,
-            "status": front["status"],
-            "run_id": rp.run.name,
-            "path": str(mirror),
-        }
-    )
-    return rp.skillbom_candidate
+    if not stage_only:
+        mirror = paths.skillmeat / "skillboms" / f"{cand_ident}.md"
+        dump_md(front, body, mirror)
+
+        Registry.open(SKILLBOM_INDEX, paths=paths).upsert(
+            {
+                "id": cand_ident,
+                "proposed_skillbom_id": "skill_research_swarm_v0",
+                "evidence_bundle_id": bundle_ident,
+                "status": front["status"],
+                "run_id": rp.run.name,
+                "path": str(mirror),
+            }
+        )
+    return target_write
 
 
-def _render_intenttree_update(
+def _intenttree_update_payload(
     rp,
     paths: FoundryPaths,
     *,
@@ -598,15 +630,14 @@ def _render_intenttree_update(
     node_id: str,
     ledger: dict[str, Any],
     requires_review: bool,
-    profile: str = "personal",
-) -> Path:
-    """Write writebacks/intenttree_update.yaml (schema-valid candidate).
-
-    Always writes the candidate. When IntentTree is reachable AND node_id
-    resolves AND NOT requires_review AND profile is not offline_only, performs
-    the live PATCH + artifact POST. Any error during the live push is silently
-    swallowed — the candidate file is the authoritative record.
-    """
+) -> dict[str, Any]:
+    """Pure computation of the ``intenttree_update`` candidate payload
+    (research-foundry-operator-mcp-v1 M2 leg A, implementer contract D6
+    "layer-below refactor"). Zero client construction, zero network, zero
+    import of ``..integrations`` -- reads only local run-scoped files
+    already on disk (``rp.evidence_bundle``, ``rp.verification``). Shared by
+    the live path (:func:`_render_intenttree_update`) and the preview seam
+    (:func:`preview_writeback`) so the two can never drift."""
 
     from ..ids import now_iso
 
@@ -675,6 +706,39 @@ def _render_intenttree_update(
         "push_status": push_status,
     }
     _schema_or_raise(candidate, "intenttree_update")
+    return candidate
+
+
+def _render_intenttree_update(
+    rp,
+    paths: FoundryPaths,
+    *,
+    bundle_ident: str,
+    node_id: str,
+    ledger: dict[str, Any],
+    requires_review: bool,
+    profile: str = "personal",
+) -> Path:
+    """Write writebacks/intenttree_update.yaml (schema-valid candidate).
+
+    Always writes the candidate. When IntentTree is reachable AND node_id
+    resolves AND NOT requires_review AND profile is not offline_only, performs
+    the live PATCH + artifact POST. Any error during the live push is silently
+    swallowed — the candidate file is the authoritative record.
+
+    Candidate computation is delegated to :func:`_intenttree_update_payload`
+    (pure, zero client/network) -- this function only adds the write + live-
+    push orchestration around it (M2 leg A layer-below refactor, D6).
+    """
+
+    candidate = _intenttree_update_payload(
+        rp,
+        paths,
+        bundle_ident=bundle_ident,
+        node_id=node_id,
+        ledger=ledger,
+        requires_review=requires_review,
+    )
     dump_yaml(candidate, rp.intenttree_update)
 
     # Live push: only when conditions are met (all errors silently swallowed).
@@ -686,15 +750,15 @@ def _render_intenttree_update(
             client = IntentTreeClient.from_config()
             if client.available():
                 patch_payload: dict[str, Any] = {
-                    "status": node_status,
+                    "status": candidate["status"],
                     "progress": {
-                        "claims_total": claims_total,
-                        "claims_supported": claims_supported,
-                        "verification_passed": bool(verification_passed),
+                        "claims_total": candidate["claims_total"],
+                        "claims_supported": candidate["claims_supported"],
+                        "verification_passed": candidate["verification_passed"],
                     },
                 }
                 client.patch_node(node_id, patch_payload)
-                for art in artifact_links:
+                for art in candidate["artifact_links"]:
                     client.add_node_artifact(node_id, art)
                 # Update candidate to reflect successful push.
                 candidate = {**candidate, "push_status": "pushed"}
@@ -708,7 +772,7 @@ def _render_intenttree_update(
     return rp.intenttree_update
 
 
-def _render_arc_council(
+def _arc_review_payload(
     rp,
     paths: FoundryPaths,
     *,
@@ -717,15 +781,13 @@ def _render_arc_council(
     sensitivity: str,
     requires_review: bool,
     profile: str = "personal",
-) -> Path:
-    """Write writebacks/arc_review_request.yaml (schema-valid ARC review candidate).
-
-    ALWAYS writes the candidate (status: proposed). When ArcClient is reachable AND
-    profile is not offline_only AND NOT requires_review: POSTs to ARC to scaffold the
-    review, persists the arc_run_id, then GETs the run to read any available verdict;
-    maps verdict (approve -> rf_exit_code 0, concern/block -> 7). Offline/requires_review
-    path leaves the candidate at status 'proposed'. Never raises into the pipeline.
-    """
+) -> dict[str, Any]:
+    """Pure computation of the ``arc_review_request`` candidate payload
+    (research-foundry-operator-mcp-v1 M2 leg A, implementer contract D6
+    "layer-below refactor"). Zero client construction, zero network. See
+    :func:`_intenttree_update_payload`'s own docstring for the shared
+    rationale. Shared by the live path (:func:`_render_arc_council`) and the
+    preview seam (:func:`preview_writeback`)."""
 
     claims_for_review = [
         {
@@ -762,6 +824,41 @@ def _render_arc_council(
         },
     }
     _schema_or_raise(candidate, "arc_review_request")
+    return candidate
+
+
+def _render_arc_council(
+    rp,
+    paths: FoundryPaths,
+    *,
+    bundle_ident: str,
+    ledger: dict[str, Any],
+    sensitivity: str,
+    requires_review: bool,
+    profile: str = "personal",
+) -> Path:
+    """Write writebacks/arc_review_request.yaml (schema-valid ARC review candidate).
+
+    ALWAYS writes the candidate (status: proposed). When ArcClient is reachable AND
+    profile is not offline_only AND NOT requires_review: POSTs to ARC to scaffold the
+    review, persists the arc_run_id, then GETs the run to read any available verdict;
+    maps verdict (approve -> rf_exit_code 0, concern/block -> 7). Offline/requires_review
+    path leaves the candidate at status 'proposed'. Never raises into the pipeline.
+
+    Candidate computation is delegated to :func:`_arc_review_payload` (pure,
+    zero client/network) -- this function only adds the write + live-push
+    orchestration around it (M2 leg A layer-below refactor, D6).
+    """
+
+    candidate = _arc_review_payload(
+        rp,
+        paths,
+        bundle_ident=bundle_ident,
+        ledger=ledger,
+        sensitivity=sensitivity,
+        requires_review=requires_review,
+        profile=profile,
+    )
     dump_yaml(candidate, rp.arc_review_request)
 
     # Live push: only when conditions are met (all errors silently swallowed).
@@ -774,8 +871,8 @@ def _render_arc_council(
             if client.available():
                 arc_payload: dict[str, Any] = {
                     "council": candidate["council"],
-                    "target": target,
-                    "objective": objective,
+                    "target": candidate["target"],
+                    "objective": candidate["objective"],
                 }
                 response = client.scaffold_review(arc_payload)
                 if isinstance(response, dict):
@@ -809,6 +906,83 @@ def _render_arc_council(
     return rp.arc_review_request
 
 
+def _notebooklm_update_payload(
+    rp,
+    paths: FoundryPaths,
+    *,
+    bundle_ident: str,
+    ledger: dict[str, Any],
+    requires_review: bool,
+    notebook_id: str | None,
+    notebook_title: str | None,
+) -> dict[str, Any]:
+    """Pure computation of the ``notebooklm_update`` candidate payload GIVEN
+    an already-resolved ``notebook_id``/``notebook_title`` (research-
+    foundry-operator-mcp-v1 M2 leg A, implementer contract D6 "layer-below
+    refactor"). Performs no correlation lookup itself, no client
+    construction, no network, no import of ``..integrations`` -- callers
+    resolve correlation their own way:
+
+    * The live path (:func:`_render_notebooklm_update`) still calls
+      ``notebook_correlation.resolve_notebook(..., client=<real client>,
+      create=True, ...)`` UNCHANGED, preserving its create-on-first-push
+      behavior exactly as before this split.
+    * The preview seam (:func:`preview_writeback`) resolves via the
+      READ-ONLY ``notebook_correlation.notebook_for_run`` instead, which can
+      never create a notebook or write the correlation registry -- so
+      writeback.preview's notebooklm target is genuinely, structurally
+      client-free end to end (not merely "doesn't call `.available()`").
+    """
+
+    from ..ids import now_iso
+
+    run_meta = _run_meta(rp)
+    run_id = rp.run.name
+    project = str(run_meta.get("project") or "")
+
+    # Build artifact links for this run (mirrors _intenttree_update_payload).
+    artifact_links: list[dict[str, Any]] = [
+        {
+            "type": "evidence_bundle",
+            "path": f"runs/{run_id}/evidence_bundle.yaml",
+            "label": "Evidence Bundle",
+        },
+    ]
+    report_path = rp.report_final if rp.report_final.exists() else rp.report_draft
+    if report_path.exists():
+        artifact_links.append({
+            "type": "report",
+            "path": f"runs/{run_id}/{report_path.relative_to(rp.run)}",
+            "label": "Research Report",
+        })
+
+    # Resolve IntentTree node back-link (best-effort, local only).
+    _, _, node_id, _ = _intent_ibom_node(rp, paths)
+
+    if not notebook_id:
+        push_status = "skipped_no_notebook"
+    elif requires_review:
+        push_status = "skipped_requires_review"
+    else:
+        push_status = "proposed"
+
+    candidate: dict[str, Any] = {
+        "run_id": run_id,
+        "update_timestamp": now_iso(),
+        "status": "proposed",
+        "push_status": push_status,
+        "notebook_id": notebook_id,
+        "notebook_title": notebook_title,
+        "project": project or None,
+        "evidence_bundle_id": bundle_ident,
+        "pushed_source_ids": [],
+        "artifact_links": artifact_links,
+        "node_id": node_id or None,
+    }
+    _schema_or_raise(candidate, "notebooklm_update")
+    return candidate
+
+
 def _render_notebooklm_update(
     rp,
     paths: FoundryPaths,
@@ -828,33 +1002,20 @@ def _render_notebooklm_update(
     updates push_status to 'pushed'.  Any exception during the live push is
     silently swallowed — the candidate file is the authoritative record.
     Never raises into the pipeline.
+
+    Candidate-dict assembly is delegated to
+    :func:`_notebooklm_update_payload` (M2 leg A layer-below refactor, D6);
+    correlation resolution (which legitimately needs the real client for its
+    create-on-first-push behavior) stays here, UNCHANGED from before the
+    split.
     """
 
-    from ..ids import now_iso
     from ..integrations import get_notebooklm_client
 
     run_meta = _run_meta(rp)
     run_id = rp.run.name
     project = str(run_meta.get("project") or "")
-
-    # Build artifact links for this run (mirrors _render_intenttree_update).
-    artifact_links: list[dict[str, Any]] = [
-        {
-            "type": "evidence_bundle",
-            "path": f"runs/{run_id}/evidence_bundle.yaml",
-            "label": "Evidence Bundle",
-        },
-    ]
     report_path = rp.report_final if rp.report_final.exists() else rp.report_draft
-    if report_path.exists():
-        artifact_links.append({
-            "type": "report",
-            "path": f"runs/{run_id}/{report_path.relative_to(rp.run)}",
-            "label": "Research Report",
-        })
-
-    # Resolve IntentTree node back-link (best-effort).
-    _, _, node_id, _ = _intent_ibom_node(rp, paths)
 
     # Resolve notebook correlation (best-effort; never raises).
     notebook_id: str | None = None
@@ -879,28 +1040,15 @@ def _render_notebooklm_update(
     except Exception:  # noqa: BLE001 — correlation is best-effort
         pass
 
-    # Determine initial push_status before the live attempt.
-    if not notebook_id:
-        push_status = "skipped_no_notebook"
-    elif requires_review:
-        push_status = "skipped_requires_review"
-    else:
-        push_status = "proposed"
-
-    candidate: dict[str, Any] = {
-        "run_id": run_id,
-        "update_timestamp": now_iso(),
-        "status": "proposed",
-        "push_status": push_status,
-        "notebook_id": notebook_id,
-        "notebook_title": notebook_title,
-        "project": project or None,
-        "evidence_bundle_id": bundle_ident,
-        "pushed_source_ids": [],
-        "artifact_links": artifact_links,
-        "node_id": node_id or None,
-    }
-    _schema_or_raise(candidate, "notebooklm_update")
+    candidate = _notebooklm_update_payload(
+        rp,
+        paths,
+        bundle_ident=bundle_ident,
+        ledger=ledger,
+        requires_review=requires_review,
+        notebook_id=notebook_id,
+        notebook_title=notebook_title,
+    )
     dump_yaml(candidate, rp.notebooklm_update)
 
     # Live push: only when conditions are met (all exceptions silently swallowed).
@@ -959,6 +1107,294 @@ def _render_notebooklm_update(
             pass
 
     return rp.notebooklm_update
+
+
+# --------------------------------------------------------------------------- #
+# writeback.preview (research-foundry-operator-mcp-v1 M2 leg A, OPM-5.3) —
+# the pure, client-free preview seam AC OPM-6 requires ("writeback.preview
+# cannot execute a live or mirrored writeback").
+# --------------------------------------------------------------------------- #
+#
+# Scope (revised per orchestrator adjudication of the JC-2 flag, M2 leg A
+# completion note): `writeback()`'s own target vocabulary has six members
+# (`meatywiki`, `skillmeat`, `ccdash`, `intenttree`, `arc`, `notebooklm`).
+# `writeback.preview` supports FIVE of them:
+#   * `intenttree`/`arc`/`notebooklm` -- the three whose live render path
+#     constructs an integration client, via the pure payload functions the
+#     implementer contract's D6 "layer-below refactor" introduced
+#     (`_intenttree_update_payload`/`_arc_review_payload`/
+#     `_notebooklm_update_payload`).
+#   * `meatywiki`/`skillmeat` -- their renderers (`_render_meatywiki`,
+#     `_render_skillbom`) already had zero client construction, but wrote
+#     unconditionally to the LIVE `writebacks/` path (+ an unconditional
+#     mirror for skillmeat, a requires_review-gated mirror for meatywiki, and
+#     -- skillmeat only -- a SkillBOM registry upsert). Both functions now
+#     accept `dest`/`stage_only` parameters (default-preserving; every
+#     pre-existing call site omits them) so `writeback.preview` reuses the
+#     SAME render functions the live path calls, redirected to the staging
+#     root with the mirror/registry side effects suppressed -- a destination
+#     override, not a duplicated assembly, so staged content can never drift
+#     from what the live path would produce for the same inputs.
+# `ccdash` remains `unsupported_target`: its live render path
+# (`telemetry.emit_ccdash_event`) ALSO constructs a client (`CCDashClient`,
+# lazy import at `telemetry.py:266-270`) -- but `telemetry.py` is not in
+# this leg's file ownership (M2 implementer contract's leg-ownership table)
+# NOR in M2's declared `files_affected`. Splitting it would be both a file-
+# ownership violation and an undeclared scope expansion. Filed as a follow-
+# up ITT node by the orchestrator rather than carried here as a gap.
+
+#: Closed per-target status vocabulary for `writeback.preview` (D6: "come
+#: from a closed vocabulary defined as a module-level tuple in writeback.py
+#: (no open strings)"). NOT the same vocabulary as any live `push_status`
+#: field (those are schema-governed, per-target, `*_writeback.schema.yaml`
+#: strings) -- this is preview's own, narrower set.
+WRITEBACK_PREVIEW_TARGET_STATUSES: tuple[str, ...] = (
+    "staged",              # candidate rendered and written under the staging root
+    "missing_bundle",      # no evidence_bundle.yaml on disk yet for this run
+    "unsupported_target",  # target name outside writeback.preview's supported set
+    "degraded",            # rendered, but target-specific local correlation
+                            # (e.g. no bound IntentTree node, no NotebookLM
+                            # correlation) could not be resolved
+)
+
+#: The writeback target names `writeback.preview` can render. See the
+#: module-comment block immediately above for why this is five of
+#: `writeback()`'s own six-member target vocabulary (`ccdash` excluded,
+#: file-ownership boundary).
+WRITEBACK_PREVIEW_SUPPORTED_TARGETS: frozenset[str] = frozenset(
+    {"intenttree", "arc", "notebooklm", "meatywiki", "skillmeat"}
+)
+
+
+@dataclass(frozen=True)
+class WritebackPreviewTargetResult:
+    """One requested target's outcome inside a :class:`WritebackPreviewResult`."""
+
+    target: str
+    status: str  # one of WRITEBACK_PREVIEW_TARGET_STATUSES
+    staged_path: str | None  # path relative to the run directory, or None
+
+
+@dataclass(frozen=True)
+class WritebackPreviewResult:
+    """The bounded, JSON-safe outcome of :func:`preview_writeback`."""
+
+    run_id: str
+    bundle_id: str | None
+    bundle_found: bool
+    generated_at: str
+    staging_root: str  # path relative to the run directory
+    targets: tuple[WritebackPreviewTargetResult, ...]
+
+
+def preview_writeback(
+    run_id: str,
+    *,
+    targets: tuple[str, ...],
+    paths: FoundryPaths | None = None,
+    now: datetime | None = None,
+) -> WritebackPreviewResult:
+    """The ``writeback.preview`` pure-render seam (M2 leg A, implementer
+    contract D6).
+
+    Validates the run + requested targets, renders per-target CANDIDATES
+    using ONLY the client-free pure payload functions above, and writes them
+    under the run's own ``staging/writeback_preview/`` sub-tree -- NEVER the
+    live ``writebacks/`` paths, NEVER a ``paths.meatywiki``/``paths.skillmeat``
+    mirror. For every supported target this function's ENTIRE call graph
+    never constructs or calls an integration client.
+
+    **Governed-RESULT philosophy** (mirrors `run.verify`'s own D4 doctrine,
+    see `operator_mcp_adapters/verify_bundle.py`'s module docstring): a
+    missing bundle, an unsupported target name, or an unresolved target-
+    specific correlation are NEVER raised -- they are reported per-target via
+    :data:`WRITEBACK_PREVIEW_TARGET_STATUSES`, inside an otherwise-successful
+    result. This function raises ONLY for a genuinely nonexistent ``run_id``
+    (:class:`~research_foundry.errors.NotFoundError`, mirroring every other
+    `writeback.py` entry point) -- the Operator MCP adapter
+    (`operator_mcp_adapters/writeback_preview.py`) never reaches that raise
+    in practice: an unauthorized/nonexistent run already denies at the
+    policy layer's RBAC stage before `preview_writeback` is ever called (the
+    same F6-established convention every other M1/M2 adapter relies on).
+
+    A **review-required** sensitivity for the requested targets is NOT one
+    of this function's own statuses -- it denies the WHOLE operation, one
+    layer up, at `operator_mcp_policy._check_guard` (`guard_review_required`)
+    before this function is ever invoked (see
+    `operator_mcp_adapters/writeback_preview.py`'s own docstring for the
+    full mechanism). By the time `preview_writeback` runs, the request has
+    already cleared that gate.
+
+    ``targets`` MUST be non-empty for the adapter path (enforced upstream by
+    `operator_mcp_policy._check_preflight`); this function does not itself
+    re-validate emptiness -- an empty tuple simply yields zero target
+    results, so a future direct caller (e.g. a CLI) gets a well-formed, if
+    empty, result rather than an exception.
+
+    **Staging root** ("operation staging root", PRD OPM-OQ-7): resolves to
+    ``<run_dir>/staging/writeback_preview/``. NOTE (documented, flagged
+    deviation from the implementer contract's literal
+    ``<operation_dir>/staging/writeback_preview/<target>.md|.json`` phrasing
+    -- not a silent substitution): this codebase's operator operations are
+    DB-only (`operator_operations.db` under `.rf_state/`, see
+    `paths.FoundryPaths.operator_operations_db`'s own docstring) -- there is
+    no per-operation FILESYSTEM directory anywhere in this codebase for a
+    staging root to live under (`operator_operation_service.py` writes
+    manifests/receipts to SQLite exclusively, never to a per-operation
+    directory tree). This function anchors staging under the run's OWN
+    directory tree instead -- the one filesystem container every other
+    adapter already treats as the authorized/workspace-scoped boundary (see
+    `verify_bundle.py`'s F5 fix, `_explicit_path_within_run`) -- and is NOT
+    namespaced by `operation_id` (this function's signature has none, by
+    contract): a second preview call for the same run OVERWRITES the prior
+    staged files, the same idempotent-overwrite convention every other
+    writeback candidate file in this module already follows. See this leg's
+    completion note for the full rationale and the security-lens callout.
+    """
+
+    from ..ids import now_iso
+
+    resolved_paths = paths or FoundryPaths.discover()
+    rp = resolved_paths.run_paths(run_id)
+    if not rp.run.exists():
+        from ..errors import NotFoundError
+
+        raise NotFoundError(f"run not found: {run_id} ({rp.run})")
+
+    generated_at = now.replace(microsecond=0).isoformat() if now is not None else now_iso()
+    staging_root = rp.run / "staging" / "writeback_preview"
+
+    bundle_doc = _safe_load(rp.evidence_bundle)
+    bundle_found = isinstance(bundle_doc, dict) and bool(bundle_doc)
+    bundle_ident: str | None = None
+    if bundle_found:
+        bundle_ident = str(bundle_doc.get("id") or "") or None
+
+    ledger = _ledger(rp)
+    sensitivity = _sensitivity(rp)
+    requires_review = sensitivity in _WORK_SENSITIVITIES
+
+    seen: set[str] = set()
+    target_results: list[WritebackPreviewTargetResult] = []
+
+    for raw_target in targets:
+        target = str(raw_target)
+        if target in seen:
+            # De-duplicate; first occurrence wins (mirrors the adapter's own
+            # canonical-digest normalization).
+            continue
+        seen.add(target)
+
+        if not bundle_found:
+            target_results.append(
+                WritebackPreviewTargetResult(target=target, status="missing_bundle", staged_path=None)
+            )
+            continue
+
+        if target not in WRITEBACK_PREVIEW_SUPPORTED_TARGETS:
+            target_results.append(
+                WritebackPreviewTargetResult(target=target, status="unsupported_target", staged_path=None)
+            )
+            continue
+
+        staging_root.mkdir(parents=True, exist_ok=True)
+
+        # `meatywiki`/`skillmeat` are markdown+frontmatter targets rendered
+        # by the SAME functions the live path calls (`_render_meatywiki`/
+        # `_render_skillbom`), redirected via `dest`/`stage_only=True` --
+        # the write happens INSIDE the render call itself, so there is no
+        # separate JSON-serialize step for these two (orchestrator
+        # adjudication of JC-2). `intenttree`/`arc`/`notebooklm` are
+        # JSON-serialized dict candidates from the D6 pure payload
+        # functions, as before.
+        if target == "meatywiki":
+            staged_file = staging_root / f"{target}.md"
+            _render_meatywiki(
+                rp,
+                resolved_paths,
+                bundle_ident=bundle_ident or "",
+                sensitivity=sensitivity,
+                ledger=ledger,
+                requires_review=requires_review,
+                dest=staged_file,
+                stage_only=True,
+            )
+            degraded = False
+        elif target == "skillmeat":
+            staged_file = staging_root / f"{target}.md"
+            _render_skillbom(
+                rp,
+                resolved_paths,
+                bundle_ident=bundle_ident or "",
+                ccdash_event_id_value="",
+                requires_review=requires_review,
+                ledger=ledger,
+                dest=staged_file,
+                stage_only=True,
+            )
+            degraded = False
+        else:
+            if target == "intenttree":
+                _, _, node_id, _ = _intent_ibom_node(rp, resolved_paths)
+                candidate = _intenttree_update_payload(
+                    rp,
+                    resolved_paths,
+                    bundle_ident=bundle_ident or "",
+                    node_id=node_id,
+                    ledger=ledger,
+                    requires_review=requires_review,
+                )
+                degraded = candidate["push_status"] == "skipped_no_node"
+            elif target == "arc":
+                candidate = _arc_review_payload(
+                    rp,
+                    resolved_paths,
+                    bundle_ident=bundle_ident or "",
+                    ledger=ledger,
+                    sensitivity=sensitivity,
+                    requires_review=requires_review,
+                )
+                degraded = False
+            else:  # "notebooklm" -- the only remaining member of the supported set
+                from . import notebook_correlation
+
+                # READ-ONLY lookup -- never constructs a client, never creates a
+                # notebook, never writes the correlation registry (see
+                # `_notebooklm_update_payload`'s own docstring).
+                notebook_id = notebook_correlation.notebook_for_run(run_id, paths=resolved_paths)
+                candidate = _notebooklm_update_payload(
+                    rp,
+                    resolved_paths,
+                    bundle_ident=bundle_ident or "",
+                    ledger=ledger,
+                    requires_review=requires_review,
+                    notebook_id=notebook_id,
+                    notebook_title=None,
+                )
+                degraded = candidate["push_status"] == "skipped_no_notebook"
+
+            staged_file = staging_root / f"{target}.json"
+            staged_file.write_text(
+                json.dumps(candidate, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+
+        target_results.append(
+            WritebackPreviewTargetResult(
+                target=target,
+                status="degraded" if degraded else "staged",
+                staged_path=str(staged_file.relative_to(rp.run)),
+            )
+        )
+
+    return WritebackPreviewResult(
+        run_id=run_id,
+        bundle_id=bundle_ident,
+        bundle_found=bundle_found,
+        generated_at=generated_at,
+        staging_root=str(staging_root.relative_to(rp.run)),
+        targets=tuple(target_results),
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -2403,4 +2839,12 @@ __all__ = [
     "_render_intenttree_update",
     "_render_arc_council",
     "_render_notebooklm_update",
+    "_intenttree_update_payload",
+    "_arc_review_payload",
+    "_notebooklm_update_payload",
+    "WRITEBACK_PREVIEW_TARGET_STATUSES",
+    "WRITEBACK_PREVIEW_SUPPORTED_TARGETS",
+    "WritebackPreviewTargetResult",
+    "WritebackPreviewResult",
+    "preview_writeback",
 ]

@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-import test_claim_verifier as _tcv  # noqa: E402 - reuse the happy-path fixture
+from tests import test_claim_verifier as _tcv  # noqa: E402 - reuse the happy-path fixture
 from research_foundry.errors import ExitCode, RFError
 from research_foundry.frontmatter import dump_md, load_md
 from research_foundry.paths import FoundryPaths

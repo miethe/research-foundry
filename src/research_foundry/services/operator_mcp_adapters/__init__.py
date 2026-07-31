@@ -95,6 +95,7 @@ from . import external_import as _external_import  # noqa: F401  -- import for r
 from . import source_ingest as _source_ingest  # noqa: F401  -- import for registration side effect
 from . import research_stages as _research_stages  # noqa: F401  -- import for registration side effect
 from . import verify_bundle as _verify_bundle  # noqa: F401  -- import for registration side effect
+from . import writeback_preview as _writeback_preview  # noqa: F401  -- import for registration side effect
 
 _logger = logging.getLogger(__name__)
 

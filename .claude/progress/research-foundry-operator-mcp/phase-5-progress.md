@@ -7,7 +7,7 @@ feature_slug: research-foundry-operator-mcp
 phase: 5
 status: pending
 created: '2026-07-28'
-updated: '2026-07-28'
+updated: '2026-07-31'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
 plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
 commit_refs: []
@@ -20,42 +20,62 @@ contributors:
 - task-completion-validator
 tasks:
 - id: OPM-5.1
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - P4
-  estimate: "1.5 pts"
+  estimate: 1.5 pts
+  started: '2026-07-31T13:10:00Z'
+  completed: '2026-07-31T14:40:00Z'
+  evidence:
+  - test: tests/integration/test_operator_mcp_server.py+tests/test_operator_mcp_offline_import.py+tests/unit/test_operator_mcp_packaging.py
 - id: OPM-5.2
-  status: pending
+  status: completed
   assigned_to:
   - api-designer
   - python-backend-engineer
   dependencies:
   - OPM-5.1
   - KMCP-1.G
-  estimate: "1 pt"
+  estimate: 1 pt
+  started: '2026-07-31T13:10:00Z'
+  completed: '2026-07-31T14:40:00Z'
+  evidence:
+  - test: tests/integration/test_operator_mcp_server.py+tests/test_operator_mcp_offline_import.py+tests/unit/test_operator_mcp_packaging.py
 - id: OPM-5.3
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-5.2
-  estimate: "1.5 pts"
+  estimate: 1.5 pts
+  started: '2026-07-31T13:10:00Z'
+  completed: '2026-07-31T14:30:00Z'
+  evidence:
+  - test: tests/integration/test_operator_mcp_writeback_preview.py
 - id: OPM-5.4
-  status: pending
+  status: completed
   assigned_to:
   - api-designer
   dependencies:
   - OPM-5.2
-  estimate: "1 pt"
+  estimate: 1 pt
+  started: '2026-07-31T13:10:00Z'
+  completed: '2026-07-31T14:40:00Z'
+  evidence:
+  - test: tests/integration/test_operator_mcp_server.py -k limit_or_error_or_redact
 - id: OPM-5.5
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-5.1
-  estimate: "0.5 pt"
+  estimate: 0.5 pt
+  started: '2026-07-31T13:10:00Z'
+  completed: '2026-07-31T14:40:00Z'
+  evidence:
+  - test: tests/integration/test_operator_mcp_server.py+tests/test_operator_mcp_offline_import.py+tests/unit/test_operator_mcp_packaging.py
 - id: OPM-5.6
   status: pending
   assigned_to:
@@ -65,7 +85,7 @@ tasks:
   - OPM-5.3
   - OPM-5.4
   - OPM-5.5
-  estimate: "0.5 pt"
+  estimate: 0.5 pt
 parallelization:
   batch_1:
   - OPM-5.1
@@ -78,10 +98,10 @@ parallelization:
   batch_4:
   - OPM-5.6
 total_tasks: 6
-completed_tasks: 0
+completed_tasks: 5
 in_progress_tasks: 0
 blocked_tasks: 0
-progress: 0
+progress: 83
 ---
 
 # Phase 5 Progress — Stdio Server and Writeback Preview
