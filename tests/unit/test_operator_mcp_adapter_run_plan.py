@@ -14,7 +14,8 @@ is exercised against elsewhere in this suite) and
 
 from __future__ import annotations
 
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 
 import pytest
 
@@ -26,6 +27,7 @@ from research_foundry.services import operator_mcp_policy as policy
 import research_foundry.services.planning as planning_module
 from research_foundry.services.operator_mcp_adapters import run_plan
 from research_foundry.services.operator_operation_service import OperatorOperationService
+from research_foundry.yamlio import dump_yaml, load_yaml
 
 from tests.test_planning import _make_intent
 from tests.unit.test_operator_mcp_policy import _default_operator_identity  # noqa: F401
@@ -35,32 +37,83 @@ from tests.unit.test_operator_mcp_policy import _default_operator_identity  # no
 # `sensitivity_ceiling` structurally via `operator_mcp_adapters.
 # resolve_local_sensitivity_ceiling` instead of accepting it as a caller-
 # supplied parameter (see that function's own docstring in
-# `operator_mcp_adapters/__init__.py` for the full defect). Patch that ONE
-# seam to the loosest label by default, autouse, so every PRE-EXISTING test
-# in this module (none of which is testing the ceiling gate itself) keeps
-# exercising its own intended behavior without each writing a
-# `foundry.yaml` `operator_mcp.sensitivity_ceiling` block -- exactly the
-# same convention `test_operator_mcp_policy._default_operator_identity`
-# (imported above) already establishes for identity resolution. The
-# negative fixture below (`test_invoke_denies_above_ceiling_...`) re-patches
-# this to a LOWER ceiling to prove the H7 guard actually fires when it is
-# not overridden this way.
+# `operator_mcp_adapters/__init__.py` for the full defect).
+#
+# **P3 hardening pass, reviewer's fixture recommendation.** This autouse
+# fixture used to `monkeypatch.setattr(adapters_pkg,
+# "resolve_local_sensitivity_ceiling", lambda *a, **kw: "client_sensitive")`
+# -- discarding the double's own `paths` argument entirely. That kept the
+# suite green in a configuration NO real deployment has (the resolver
+# permanently replaced, never actually exercised against a real
+# `foundry.yaml` for the vast majority of this module's tests), which is
+# precisely what let the HIGH-2 sibling defect (job_lifecycle.py's three
+# `job.*` adapters hardcoding `effective_sensitivity` to the strictest
+# label) go unnoticed by every reviewer who read a green run against this
+# same masking pattern. Fixed: this fixture now WRITES the ceiling key into
+# `tmp_foundry`'s REAL `foundry.yaml` and lets every PRE-EXISTING test in
+# this module exercise the REAL `resolve_local_sensitivity_ceiling`
+# implementation end to end (paths threaded correctly or the write is never
+# seen -- this ALSO closes HIGH-1's "unprotected `paths` argument"
+# unit-level gap for the common/default path, not merely the explicit
+# negative-ceiling tests below). The negative fixture below (`test_invoke_
+# denies_above_ceiling_...`) still re-patches the resolver function itself
+# (via `_recording_ceiling`, HIGH-1 fix) to a LOWER ceiling, since that test
+# needs a value LOWER than this fixture's own default and re-patching after
+# this fixture already ran is the simplest way to override it per-test.
+#
+# The three `resolve_local_sensitivity_ceiling` direct unit tests
+# immediately below this fixture's own definition each build their OWN
+# ISOLATED `FoundryPaths` (a fresh `tmp_path`-rooted directory, NOT the
+# shared `tmp_foundry` this fixture also writes into) specifically so this
+# fixture's write can never pollute their own "unconfigured" assertion --
+# see `test_resolve_local_sensitivity_ceiling_returns_public_when_
+# unconfigured`'s own docstring below for why.
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
-def _default_sensitivity_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        adapters_pkg, "resolve_local_sensitivity_ceiling", lambda *a, **kw: "client_sensitive"
-    )
+def _default_sensitivity_ceiling(tmp_foundry: FoundryPaths) -> None:
+    data: dict[str, Any] = load_yaml(tmp_foundry.foundry_yaml) or {}
+    data.setdefault("foundry", {})
+    data["foundry"].setdefault("operator_mcp", {})
+    data["foundry"]["operator_mcp"]["sensitivity_ceiling"] = "client_sensitive"
+    dump_yaml(data, tmp_foundry.foundry_yaml)
+
+
+def _recording_ceiling(value: str) -> tuple[Callable[..., str], list[FoundryPaths | None]]:
+    """Test helper (P3 hardening pass, HIGH-1 defect fix): builds a
+    `resolve_local_sensitivity_ceiling`-shaped monkeypatch double that
+    RECORDS its `paths` argument instead of discarding it.
+
+    A `lambda *a, **kw: ...`-shaped double structurally CANNOT prove the
+    real `invoke*` call site threads `paths` through to the resolver
+    correctly -- three mutants survive all package tests with such a
+    double: an `invoke*` call site dropping the `paths=resolved_paths`
+    argument entirely, at ONE of the five real call sites (`run_plan.
+    invoke`, `swarm_start.invoke`, `job_lifecycle.invoke_status`/
+    `invoke_cancel`/`invoke_resume`), at ALL FIVE, or substituting
+    `FoundryPaths.discover()` for it -- because the discarding double
+    returns the SAME configured value regardless of what (if anything) it
+    was called with. Returns `(double, seen)`; callers assert
+    `seen == [<the paths value the real call site SHOULD have passed>,
+    ...]` (one entry per `invoke*`/`invoke_status`/etc. call under test)
+    after exercising the call under test."""
+
+    seen: list[FoundryPaths | None] = []
+
+    def _double(paths: FoundryPaths | None = None) -> str:
+        seen.append(paths)
+        return value
+
+    return _double, seen
 
 
 # Captured at import time, BEFORE `_default_sensitivity_ceiling` above ever
 # runs -- mirrors `test_operator_mcp_policy.py`'s own
 # `_REAL_RESOLVE_OPERATOR_IDENTITY` convention -- lets the direct unit tests
 # below exercise the REAL `resolve_local_sensitivity_ceiling` implementation,
-# independent of whatever it is monkeypatched to for every other test in
-# this module.
+# independent of whatever `foundry.yaml` state any given test's own
+# `FoundryPaths` carries.
 _REAL_RESOLVE_LOCAL_SENSITIVITY_CEILING = adapters_pkg.resolve_local_sensitivity_ceiling
 
 
@@ -74,9 +127,23 @@ _REAL_RESOLVE_LOCAL_SENSITIVITY_CEILING = adapters_pkg.resolve_local_sensitivity
 
 
 def test_resolve_local_sensitivity_ceiling_returns_public_when_unconfigured(
-    tmp_foundry: FoundryPaths,
+    tmp_path: Path,
 ) -> None:
-    assert _REAL_RESOLVE_LOCAL_SENSITIVITY_CEILING(tmp_foundry) == "public"
+    """Uses an ISOLATED `FoundryPaths` (NOT the shared `tmp_foundry`
+    fixture) because `_default_sensitivity_ceiling` (this module's own
+    autouse fixture, reviewer's fixture recommendation) now WRITES a
+    configured `sensitivity_ceiling` into `tmp_foundry`'s real
+    `foundry.yaml` for every other test in this module -- this test
+    specifically needs a genuinely UNCONFIGURED `foundry.yaml` to prove the
+    resolver's own fail-closed default, so it must not share that
+    instance."""
+
+    root = tmp_path / "fdry_unconfigured"
+    root.mkdir(exist_ok=True)
+    (root / "foundry.yaml").write_text("foundry:\n  owner: Test\n")
+    paths = FoundryPaths(root=root)
+
+    assert _REAL_RESOLVE_LOCAL_SENSITIVITY_CEILING(paths) == "public"
 
 
 def test_resolve_local_sensitivity_ceiling_returns_configured_value_when_valid(
@@ -128,13 +195,65 @@ def test_resolve_local_sensitivity_ceiling_fails_closed_on_malformed_config(
     from research_foundry.paths import FoundryPaths as _FoundryPaths
 
     root = tmp_path / "fdry"
-    root.mkdir()
+    root.mkdir(exist_ok=True)
     (root / "foundry.yaml").write_text(
         "foundry:\n  operator_mcp:\n   sensitivity_ceiling: [unclosed\n"
     )
     paths = _FoundryPaths(root=root)
 
     assert _REAL_RESOLVE_LOCAL_SENSITIVITY_CEILING(paths) == "public"
+
+
+def test_resolve_local_sensitivity_ceiling_fails_closed_when_foundry_block_is_not_a_dict(
+    tmp_path: Any,
+) -> None:
+    """MUTATION-TESTED GUARD (P3 hardening pass, MEDIUM-4 defect fix): a
+    `foundry.yaml` whose top-level `foundry:` value is a non-Mapping (a
+    scalar, here a plain string) must NOT crash this function. Removing
+    the `isinstance(foundry_block, dict)` guard (`operator_mcp_adapters/
+    __init__.py`) fails NO OTHER test in this suite -- `FoundryConfig.
+    foundry`'s own `data.get("foundry", data)` happily returns a bare `str`
+    for `foundry: hello`, no exception raised inside `.foundry` itself, so
+    without the guard `foundry_block.get(_CEILING_CONFIG_SECTION)` would
+    raise a raw `AttributeError` ('str' object has no attribute 'get')
+    AFTER this function's own `try` has already closed -- crossing this
+    function's public (`__all__`-listed), documented "Never raises"
+    boundary raw. This is the load-bearing, previously-untested guard the
+    P3 implementer contract's security lens flagged."""
+
+    from research_foundry.paths import FoundryPaths as _FoundryPaths
+
+    root = tmp_path / "fdry_nondict_foundry_block"
+    root.mkdir(exist_ok=True)
+    (root / "foundry.yaml").write_text("foundry: hello\n")
+    paths = _FoundryPaths(root=root)
+
+    assert _REAL_RESOLVE_LOCAL_SENSITIVITY_CEILING(paths) == "public"
+
+
+def test_resolve_local_sensitivity_ceiling_fails_closed_when_discover_itself_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MUTATION-TESTED GUARD (P3 hardening pass, MEDIUM-3 defect fix): calls
+    the REAL resolver with `paths=None` (forcing its own internal
+    `FoundryPaths.discover()` fallback) while `FoundryPaths.discover` is
+    patched to raise -- proving that call now happens INSIDE this
+    function's own `try` block (moved there by the MEDIUM-3 fix) rather
+    than before it. Before the fix, this raise crossed this function's
+    public, documented "Never raises" boundary raw; the caller would see an
+    uncaught exception instead of a bounded `"public"` fail-closed
+    return -- exactly the class of defect `resolve_operator_identity`'s own
+    R5-BLOCK-2 fix (`operator_mcp_policy.py`) already closed for the
+    sibling identity-resolution primitive."""
+
+    from research_foundry.paths import FoundryPaths as _FoundryPaths
+
+    def _raise_on_discover() -> "_FoundryPaths":
+        raise RuntimeError("simulated: cwd deleted / home unresolvable")
+
+    monkeypatch.setattr(_FoundryPaths, "discover", staticmethod(_raise_on_discover))
+
+    assert _REAL_RESOLVE_LOCAL_SENSITIVITY_CEILING(None) == "public"
 
 # ---------------------------------------------------------------------------
 # Acceptance criterion: direct-service call vs MCP-adapter call produce
@@ -370,7 +489,13 @@ def test_invoke_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missi
     intent_id, _ = _make_intent(sample_idea_text, sensitivity="personal", tmp_foundry=tmp_foundry)
     identity = AuthIdentity("alice", "ws-mine", ("owner",))
     monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
-    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", lambda *a, **kw: "public")
+
+    # HIGH-1 fix: a recording double, not a discarding `lambda *a, **kw:`
+    # -- proves `invoke()`'s own call site threads its resolved `paths`
+    # through to `resolve_local_sensitivity_ceiling`, not merely that SOME
+    # ceiling value comes back.
+    ceiling_double, ceiling_calls = _recording_ceiling("public")
+    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", ceiling_double)
 
     # Direct proof of STAGE: build the identical PolicyContext `invoke()`
     # would build internally and evaluate it directly, so the stage
@@ -419,3 +544,10 @@ def test_invoke_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missi
 
     assert missing_intent_result.ok is False
     assert above_ceiling_result.error == missing_intent_result.error
+
+    # HIGH-1 fix, direct proof: `resolve_local_sensitivity_ceiling` was
+    # called with the REAL `paths` value (`tmp_foundry`) both times `invoke()`
+    # ran above -- if `invoke()`'s own call site ever dropped its
+    # `paths=resolved_paths` argument (the exact mutant class this guards
+    # against), the double would have recorded `[None, None]` instead.
+    assert ceiling_calls == [tmp_foundry, tmp_foundry]

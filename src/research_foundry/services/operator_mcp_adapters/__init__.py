@@ -125,8 +125,22 @@ def resolve_local_sensitivity_ceiling(paths: FoundryPaths | None = None) -> str:
     contract.
     """
 
-    resolved_paths = paths if paths is not None else FoundryPaths.discover()
+    # P3 hardening pass, MEDIUM-3 fix: `FoundryPaths.discover()` moved
+    # INSIDE this try block. `discover()` can itself raise (`Path.cwd()` on
+    # a deleted cwd, `expanduser()` on an unresolvable home, `.resolve()`),
+    # and this function's own docstring/contract is "Never raises" -- the
+    # SAME contract `resolve_operator_identity` (operator_mcp_policy.py
+    # :1158-1160) upholds by putting its own identical `FoundryPaths.
+    # discover()` call inside its try for exactly this reason. Previously
+    # `discover()` sat BEFORE the try here, so a raise from it would cross
+    # this function's public (`__all__`-listed) boundary raw -- unreachable
+    # via the five current P3 adapters (which always pass a `paths` value
+    # already resolved earlier in their own call chain, or a test-supplied
+    # `tmp_foundry`), but this function is itself public, and a future
+    # caller passing `paths=None` (e.g. a P5 transport handler calling it
+    # directly) would inherit the raw raise.
     try:
+        resolved_paths = paths if paths is not None else FoundryPaths.discover()
         foundry_block = FoundryConfig(paths=resolved_paths).foundry
     except Exception as exc:
         # Mirrors resolve_operator_identity's own R5-BLOCK-2 boundary: log

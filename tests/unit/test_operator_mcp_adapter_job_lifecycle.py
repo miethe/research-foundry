@@ -43,7 +43,10 @@ from research_foundry.services.operator_operation_service import OperatorOperati
 from research_foundry.services.operator_receipt_service import OperatorReceiptService
 
 from tests.unit.test_operator_cancel_resume_service import _action, _consume
-from tests.unit.test_operator_mcp_adapter_run_plan import _default_sensitivity_ceiling  # noqa: F401
+from tests.unit.test_operator_mcp_adapter_run_plan import (  # noqa: F401
+    _default_sensitivity_ceiling,
+    _recording_ceiling,
+)
 from tests.unit.test_operator_mcp_policy import (  # noqa: F401
     _IDENTITY,
     _IDENTITY_OTHER_WORKSPACE,
@@ -59,12 +62,32 @@ from tests.unit.test_operator_receipt_service import _block_operations_db, _cold
 # ---------------------------------------------------------------------------
 
 
-def _target_operation_id(tmp_foundry: FoundryPaths, op_service: OperatorOperationService) -> str:
+def _target_operation_id(
+    tmp_foundry: FoundryPaths,
+    op_service: OperatorOperationService,
+    *,
+    effective_sensitivity: str = "public",
+) -> str:
     """Build and consume a real `run.plan`-kind operation via the exact
     P1/OPM-2.1 entry surface (`_consume`) -- the TARGET operation
-    `job.status`/`job.cancel`/`job.resume` poll/cancel/resume."""
+    `job.status`/`job.cancel`/`job.resume` poll/cancel/resume.
 
-    ctx = _basic_ctx(operation_kind="run.plan", targets=_run_targets())
+    `effective_sensitivity` (P3 hardening pass, HIGH-2 defect fix) is the
+    TARGET operation's own persisted sensitivity -- `_basic_ctx`'s own
+    default (`"public"`) unless a test explicitly builds a higher-
+    sensitivity target to prove the H7 guard still denies correctly against
+    a REAL, non-strictest-by-hardcoding value (see the `*_denies_above_
+    ceiling_*` tests below, which now build a `"client_sensitive"` target
+    specifically). Every caller of this helper that does NOT override this
+    parameter is asserting the target is `"public"` -- `_cancel_
+    confirmation`/`_resume_confirmation` below MUST be minted against the
+    SAME value, or the confirmation's canonical digest will not match what
+    `invoke_cancel`/`invoke_resume` compute internally post-fix (a
+    `confirmation_mismatch`, not a silent pass)."""
+
+    ctx = _basic_ctx(
+        operation_kind="run.plan", targets=_run_targets(), effective_sensitivity=effective_sensitivity
+    )
     outcome = _consume(tmp_foundry, op_service, ctx)
     assert outcome.outcome == "created"
     assert outcome.operation is not None
@@ -72,12 +95,27 @@ def _target_operation_id(tmp_foundry: FoundryPaths, op_service: OperatorOperatio
 
 
 def _cancel_confirmation(
-    tmp_foundry: FoundryPaths, op_service: OperatorOperationService, operation_id: str, idempotency_key: str
+    tmp_foundry: FoundryPaths,
+    op_service: OperatorOperationService,
+    operation_id: str,
+    idempotency_key: str,
+    *,
+    target_effective_sensitivity: str = "public",
 ) -> tuple[dict[str, Any], str]:
+    """`target_effective_sensitivity` (P3 hardening pass, HIGH-2 defect fix)
+    MUST equal the `effective_sensitivity` the TARGET operation
+    (`operation_id`, built via `_target_operation_id`) was itself created
+    with -- `invoke_cancel` now derives its own internal ctx's
+    `effective_sensitivity` from that TARGET's persisted manifest (no
+    longer a hardcoded constant), so the confirmation minted here must bind
+    to the SAME value for its canonical digest to match what `invoke_cancel`
+    recomputes, exactly like `run_plan.py`'s own equivalence test already
+    requires for intent-derived sensitivity."""
+
     ctx = policy.PolicyContext.for_configured_operator(
         operation_kind=job_lifecycle.CANCEL_OPERATION_KIND,
         idempotency_key=idempotency_key,
-        effective_sensitivity=policy.SENSITIVITY_LEVELS[-1],
+        effective_sensitivity=target_effective_sensitivity,
         sensitivity_ceiling="client_sensitive",
         targets=(policy.TargetRef("agent_job", operation_id),),
         resolved_target_workspaces=(_IDENTITY.workspace_id,),
@@ -88,12 +126,20 @@ def _cancel_confirmation(
 
 
 def _resume_confirmation(
-    tmp_foundry: FoundryPaths, op_service: OperatorOperationService, operation_id: str, idempotency_key: str
+    tmp_foundry: FoundryPaths,
+    op_service: OperatorOperationService,
+    operation_id: str,
+    idempotency_key: str,
+    *,
+    target_effective_sensitivity: str = "public",
 ) -> tuple[dict[str, Any], str]:
+    """See `_cancel_confirmation`'s own docstring immediately above --
+    identical `target_effective_sensitivity` contract, for `job.resume`."""
+
     ctx = policy.PolicyContext.for_configured_operator(
         operation_kind=job_lifecycle.RESUME_OPERATION_KIND,
         idempotency_key=idempotency_key,
-        effective_sensitivity=policy.SENSITIVITY_LEVELS[-1],
+        effective_sensitivity=target_effective_sensitivity,
         sensitivity_ceiling="client_sensitive",
         targets=(policy.TargetRef("agent_job", operation_id),),
         resolved_target_workspaces=(_IDENTITY.workspace_id,),
@@ -860,14 +906,19 @@ def test_locked_missing_and_corrupt_manifest_produce_three_distinct_bounded_enve
 def test_resolve_operation_workspace_swallows_lookup_failure(tmp_foundry: FoundryPaths) -> None:
     """MUTATION-TESTED GUARD (see this task's report): `_resolve_operation_
     workspace` swallows a failed `load_operation` lookup (missing
-    `operation_id`, malformed store) and returns `None` -- NEVER a
-    permissive/fabricated workspace id. `None` then makes `PolicyContext`'s
+    `operation_id`, malformed store) and returns `(None, <strictest>)` --
+    NEVER a permissive/fabricated workspace id, and NEVER a permissive
+    sensitivity pairing either (P3 hardening pass, HIGH-2 defect fix added
+    the second tuple element). `None` workspace then makes `PolicyContext`'s
     H3/H6 gate deny with `not_found`, the SAME shape a genuinely-missing
     operation produces -- mirrors `run_plan.py`'s own `test_resolve_intent_
     sensitivity_swallows_lookup_failure` convention exactly."""
 
-    result = job_lifecycle._resolve_operation_workspace("does-not-exist-at-all", tmp_foundry)
-    assert result is None
+    workspace_id, effective_sensitivity = job_lifecycle._resolve_operation_workspace(
+        "does-not-exist-at-all", tmp_foundry
+    )
+    assert workspace_id is None
+    assert effective_sensitivity == policy.SENSITIVITY_LEVELS[-1]
 
 
 def test_missing_operation_denies_via_h3_gate_not_a_fabricated_workspace_match(
@@ -901,25 +952,97 @@ def test_missing_operation_denies_via_h3_gate_not_a_fabricated_workspace_match(
 
 
 # ---------------------------------------------------------------------------
-# H7 defect fix: `job.status`/`job.cancel`/`job.resume` all resolve
-# `effective_sensitivity` to the STRICTEST label unconditionally
-# (`policy.resolve_effective_sensitivity(None)` -- these ops carry no
-# content of their own to inspect), so ANY ceiling below `"client_sensitive"`
-# denies all three. This is this task's negative fixture, one per entry
-# point, proving the fix -- not merely the absence of a crash.
+# H7/HIGH-2 defect fix: `job.status`/`job.cancel`/`job.resume` now resolve
+# `effective_sensitivity` from the TARGET operation's own persisted manifest
+# (`_operation_effective_sensitivity_of`), not from an unconditional
+# `policy.resolve_effective_sensitivity(None)` hardcode to the STRICTEST
+# label.
+#
+# **P3 hardening pass, HIGH-2 defect fix.** The three tests this section
+# used to contain (`test_job_*_denies_above_ceiling_h7_guard_stage_
+# indistinguishable_from_missing`) each built their target operation via
+# `_target_operation_id(tmp_foundry, op_service)` -- which, via `_basic_ctx`,
+# has ALWAYS defaulted to `effective_sensitivity="public"` -- and then
+# asserted a `"work_sensitive"` ceiling (one rank ABOVE `"public"`) DENIED
+# that target. That assertion was true ONLY because of the HIGH-2 defect
+# (every `job.*` call was judged against the hardcoded strictest label,
+# `"client_sensitive"`, regardless of the target's real, lower sensitivity)
+# -- it PINNED the bug as correct behavior. Per this task's own defect-class
+# checklist ("never pin unsafe behavior with a test"), these three tests are
+# inverted below into PAIRS:
+#
+#   *_allows_when_ceiling_covers_target_real_sensitivity -- the SAME
+#   `"public"`-sensitivity target, the SAME `"work_sensitive"` ceiling, but
+#   now ALLOWED -- this is the direct, mutation-provable proof of the
+#   HIGH-2 fix: reverting `_resolve_operation_workspace`'s
+#   `_operation_effective_sensitivity_of` call back to a hardcoded
+#   `policy.SENSITIVITY_LEVELS[-1]` makes this test FAIL (it would deny
+#   instead of allow).
+#
+#   *_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing --
+#   kept, but now built against a target whose OWN real, persisted
+#   sensitivity is EXPLICITLY `"client_sensitive"` (via `_target_operation_
+#   id`'s `effective_sensitivity` parameter), proving the guard still
+#   functions correctly against a genuinely HIGH-sensitivity target -- not
+#   merely because every target was judged at the strictest label by
+#   construction.
+#
+# Every ceiling override below also uses `_recording_ceiling` (HIGH-1 fix,
+# `test_operator_mcp_adapter_run_plan.py`) instead of a discarding
+# `lambda *a, **kw: ...`, proving each of `job_lifecycle`'s three
+# `resolve_local_sensitivity_ceiling` call sites (`invoke_status`/
+# `invoke_cancel`/`invoke_resume`) threads its resolved `paths` through
+# correctly.
 # ---------------------------------------------------------------------------
+
+
+def test_job_status_allows_when_ceiling_covers_target_real_sensitivity(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """HIGH-2 defect fix, direct proof: a `"public"`-sensitivity target
+    (this file's own default, see `_target_operation_id`) under a
+    `"work_sensitive"` ceiling -- one rank ABOVE `"public"` -- now ALLOWS.
+    Before this fix, `invoke_status` hardcoded `effective_sensitivity` to
+    the STRICTEST label regardless of the target's real content, so this
+    exact scenario incorrectly denied every time. MUTATION-TESTED GUARD
+    (see this task's report): reverting `_operation_effective_sensitivity_
+    of`'s use in `_resolve_operation_workspace` back to a hardcoded
+    `policy.SENSITIVITY_LEVELS[-1]` makes this test FAIL."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_operation_id = _target_operation_id(tmp_foundry, op_service, effective_sensitivity="public")
+
+    ceiling_double, ceiling_calls = _recording_ceiling("work_sensitive")
+    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", ceiling_double)
+
+    result = job_lifecycle.invoke_status(
+        operation_id=real_operation_id,
+        idempotency_key="idem-within-ceiling",
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is True, result.error
+    assert result.result is not None
+    assert result.result["operation_id"] == real_operation_id
+    assert result.result["operation_kind"] == "run.plan"
+    assert result.result["terminal"] is False
+
+    # HIGH-1 fix, direct proof: `resolve_local_sensitivity_ceiling` was
+    # called with the REAL `paths` value (`tmp_foundry`).
+    assert ceiling_calls == [tmp_foundry]
 
 
 def test_job_status_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Before this task's fix, all three `job.*` entry points accepted a
-    caller-supplied `sensitivity_ceiling` defaulting to `"client_sensitive"`
-    -- the SAME rank `resolve_effective_sensitivity(None)` always resolves
-    to for these three kinds (they carry no inspectable content of their
-    own), so `_check_guard`'s H7 comparison could never deny. Here the
-    LOCALLY CONFIGURED ceiling resolves to `"work_sensitive"` (one rank
-    below), denying a real, existing target operation.
+    """`job.status` sibling of the ALLOW test immediately above -- here the
+    TARGET operation's own real, persisted sensitivity is EXPLICITLY
+    `"client_sensitive"` (not merely a hardcoded judgment applied
+    regardless of content), one rank above the `"work_sensitive"` ceiling,
+    proving the H7 guard still denies correctly against a genuinely
+    HIGH-sensitivity target post-HIGH-2-fix.
 
     Also proves the SAME H6/H7 one-denial-shape guarantee this task's
     `run_plan.py`/`swarm_start.py` sibling tests prove: this above-ceiling
@@ -930,18 +1053,23 @@ def test_job_status_denies_above_ceiling_h7_guard_stage_indistinguishable_from_m
     does not exist" from the response alone."""
 
     op_service = OperatorOperationService(tmp_foundry)
-    real_operation_id = _target_operation_id(tmp_foundry, op_service)
-
-    monkeypatch.setattr(
-        adapters_pkg, "resolve_local_sensitivity_ceiling", lambda *a, **kw: "work_sensitive"
+    real_operation_id = _target_operation_id(
+        tmp_foundry, op_service, effective_sensitivity="client_sensitive"
     )
 
+    ceiling_double, ceiling_calls = _recording_ceiling("work_sensitive")
+    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", ceiling_double)
+
     # Direct proof of STAGE: build the identical PolicyContext `invoke_
-    # status` would build internally and evaluate it directly.
+    # status` would build internally and evaluate it directly. The target
+    # above was built with `effective_sensitivity="client_sensitive"`
+    # explicitly (`policy.SENSITIVITY_LEVELS[-1]`) -- this ctx mirrors THAT
+    # real, persisted value, not a `resolve_effective_sensitivity(None)`
+    # hardcode (removed by the HIGH-2 fix).
     direct_ctx = policy.PolicyContext.for_configured_operator(
         operation_kind=job_lifecycle.STATUS_OPERATION_KIND,
         idempotency_key="idem-above-ceiling",
-        effective_sensitivity=policy.resolve_effective_sensitivity(None),
+        effective_sensitivity=policy.SENSITIVITY_LEVELS[-1],
         sensitivity_ceiling="work_sensitive",
         targets=(policy.TargetRef(target_kind="agent_job", target_ref=real_operation_id),),
         resolved_target_workspaces=(_IDENTITY.workspace_id,),
@@ -978,21 +1106,56 @@ def test_job_status_denies_above_ceiling_h7_guard_stage_indistinguishable_from_m
     assert missing_result.ok is False
     assert above_ceiling_result.error == missing_result.error
 
+    # HIGH-1 fix, direct proof: `resolve_local_sensitivity_ceiling` was
+    # called with the REAL `paths` value (`tmp_foundry`) both times
+    # `invoke_status` ran above.
+    assert ceiling_calls == [tmp_foundry, tmp_foundry]
+
+
+def test_job_cancel_allows_when_ceiling_covers_target_real_sensitivity(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`job.cancel` sibling of `job.status`'s own ALLOW test above -- same
+    HIGH-2 fix, same proof, via `dry_run=True` so no confirmation needs
+    minting (mirrors this file's own `*_wrong_workspace_indistinguishable_
+    from_missing_dry_run` convention)."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_operation_id = _target_operation_id(tmp_foundry, op_service, effective_sensitivity="public")
+
+    ceiling_double, ceiling_calls = _recording_ceiling("work_sensitive")
+    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", ceiling_double)
+
+    result = job_lifecycle.invoke_cancel(
+        operation_id=real_operation_id,
+        idempotency_key="idem-within-ceiling-cancel",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+        operations=op_service,
+    )
+
+    assert result.ok is True, result.error
+    assert result.operation_id is None
+    assert result.result == {"dry_run": True, "operation_kind": "job.cancel"}
+    assert ceiling_calls == [tmp_foundry]
+
 
 def test_job_cancel_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`job.cancel` sibling of the `job.status` test immediately above --
-    same defect, same fix, same H6/H7 shape proof, via `dry_run=True` so no
-    confirmation ever needs to be minted (mirrors this file's own
-    `*_wrong_workspace_indistinguishable_from_missing_dry_run` convention)."""
+    """`job.cancel` sibling of `job.status`'s own DENY test above -- same
+    defect, same fix, same H6/H7 shape proof, via `dry_run=True` so no
+    confirmation ever needs to be minted."""
 
     op_service = OperatorOperationService(tmp_foundry)
-    real_operation_id = _target_operation_id(tmp_foundry, op_service)
-
-    monkeypatch.setattr(
-        adapters_pkg, "resolve_local_sensitivity_ceiling", lambda *a, **kw: "work_sensitive"
+    real_operation_id = _target_operation_id(
+        tmp_foundry, op_service, effective_sensitivity="client_sensitive"
     )
+
+    ceiling_double, ceiling_calls = _recording_ceiling("work_sensitive")
+    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", ceiling_double)
 
     above_ceiling_result = job_lifecycle.invoke_cancel(
         operation_id=real_operation_id,
@@ -1023,20 +1186,50 @@ def test_job_cancel_denies_above_ceiling_h7_guard_stage_indistinguishable_from_m
 
     assert missing_result.ok is False
     assert above_ceiling_result.error == missing_result.error
+    assert ceiling_calls == [tmp_foundry, tmp_foundry]
+
+
+def test_job_resume_allows_when_ceiling_covers_target_real_sensitivity(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`job.resume` sibling of `job.status`'s own ALLOW test above -- same
+    HIGH-2 fix, same proof, via `dry_run=True`."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_operation_id = _target_operation_id(tmp_foundry, op_service, effective_sensitivity="public")
+
+    ceiling_double, ceiling_calls = _recording_ceiling("work_sensitive")
+    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", ceiling_double)
+
+    result = job_lifecycle.invoke_resume(
+        operation_id=real_operation_id,
+        idempotency_key="idem-within-ceiling-resume",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+        operations=op_service,
+    )
+
+    assert result.ok is True, result.error
+    assert result.operation_id is None
+    assert result.result == {"dry_run": True, "operation_kind": "job.resume"}
+    assert ceiling_calls == [tmp_foundry]
 
 
 def test_job_resume_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`job.resume` sibling of the two tests immediately above -- same
+    """`job.resume` sibling of `job.status`'s own DENY test above -- same
     defect, same fix, same H6/H7 shape proof."""
 
     op_service = OperatorOperationService(tmp_foundry)
-    real_operation_id = _target_operation_id(tmp_foundry, op_service)
-
-    monkeypatch.setattr(
-        adapters_pkg, "resolve_local_sensitivity_ceiling", lambda *a, **kw: "work_sensitive"
+    real_operation_id = _target_operation_id(
+        tmp_foundry, op_service, effective_sensitivity="client_sensitive"
     )
+
+    ceiling_double, ceiling_calls = _recording_ceiling("work_sensitive")
+    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", ceiling_double)
 
     above_ceiling_result = job_lifecycle.invoke_resume(
         operation_id=real_operation_id,
@@ -1067,6 +1260,32 @@ def test_job_resume_denies_above_ceiling_h7_guard_stage_indistinguishable_from_m
 
     assert missing_result.ok is False
     assert above_ceiling_result.error == missing_result.error
+    assert ceiling_calls == [tmp_foundry, tmp_foundry]
+
+
+def test_operation_effective_sensitivity_of_fails_closed_on_missing_or_invalid_value() -> None:
+    """Direct unit test of `_operation_effective_sensitivity_of` (P3
+    hardening pass, HIGH-2 defect fix) -- the producer
+    `_resolve_operation_workspace` relies on. A missing field, a
+    non-string value, and an unrecognized label all fail closed to
+    `SENSITIVITY_LEVELS[-1]` (`"client_sensitive"`, the STRICTEST label);
+    only a genuinely valid member of `SENSITIVITY_LEVELS` passes through
+    unchanged."""
+
+    assert (
+        job_lifecycle._operation_effective_sensitivity_of({}) == policy.SENSITIVITY_LEVELS[-1]
+    )
+    assert (
+        job_lifecycle._operation_effective_sensitivity_of({"effective_sensitivity": 123})
+        == policy.SENSITIVITY_LEVELS[-1]
+    )
+    assert (
+        job_lifecycle._operation_effective_sensitivity_of(
+            {"effective_sensitivity": "not_a_real_label"}
+        )
+        == policy.SENSITIVITY_LEVELS[-1]
+    )
+    assert job_lifecycle._operation_effective_sensitivity_of({"effective_sensitivity": "public"}) == "public"
 
 
 def test_all_three_kinds_are_registered() -> None:

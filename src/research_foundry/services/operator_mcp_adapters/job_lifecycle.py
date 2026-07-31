@@ -171,27 +171,85 @@ class _JobLifecycleActionError(RuntimeError):
     """
 
 
-def _resolve_operation_workspace(operation_id: str, paths: FoundryPaths) -> str | None:
+def _operation_effective_sensitivity_of(manifest: Mapping[str, Any]) -> str:
+    """Bounded, fail-closed extraction of a persisted operation manifest's
+    OWN `effective_sensitivity` (P3 hardening pass, HIGH-2 defect fix).
+
+    `operator_operation_service._build_operation_manifest` writes the
+    ORIGINAL `ctx.effective_sensitivity` into the persisted manifest at BOTH
+    a top-level `manifest["effective_sensitivity"]` field and a nested
+    `manifest["operation"]["effective_sensitivity"]` duplicate
+    (`operator_operation_service.py` ~:582/:594) -- this reads the
+    top-level one, the SAME field `OperationRecord`'s own callers already
+    treat as authoritative.
+
+    Returns that value only when it is a `str` member of
+    `policy.SENSITIVITY_LEVELS`; otherwise -- a missing/absent field, a
+    non-string value, or an unknown label (a manifest this function did not
+    itself produce could in principle carry any of these, e.g. K4-NB-3-style
+    corruption that got past `OperationRecord.from_manifest`'s own
+    subscripting) -- returns `SENSITIVITY_LEVELS[-1]` (`"client_sensitive"`,
+    the STRICTEST label). This mirrors `policy.resolve_effective_
+    sensitivity`'s own "unresolvable content is maximally sensitive"
+    convention (`operator_mcp_policy.py`'s NEW-4 fix) -- the OPPOSITE
+    fail-closed direction from `resolve_local_sensitivity_ceiling`'s own
+    convention one module up (a ceiling is a GRANT of clearance and fails
+    closed toward the LOOSEST-denying value; this is a DESCRIPTION of
+    content risk and fails closed toward the STRICTEST-denying value).
+    Never raises.
+    """
+
+    value = manifest.get("effective_sensitivity")
+    if isinstance(value, str) and value in policy.SENSITIVITY_LEVELS:
+        return value
+    return policy.SENSITIVITY_LEVELS[-1]
+
+
+def _resolve_operation_workspace(
+    operation_id: str, paths: FoundryPaths
+) -> tuple[str | None, str]:
     """Bounded, read-only, pre-`ctx` lookup of the target operation's
-    owning workspace -- a single indexed-by-primary-key SQLite row read via
+    owning workspace AND its own persisted `effective_sensitivity` -- a
+    single indexed-by-primary-key SQLite row read via
     `OperatorOperationService.load_operation(identity=None)` (no workspace
     scoping applied at this unscoped read; the SAME "necessary before `ctx`
     exists" category of lookup `run_plan.py`'s own `_resolve_intent_
     sensitivity` performs, see that module's docstring's "Sensitivity
     resolution happens before authorization" section) -- required because
-    `PolicyContext.resolved_target_workspaces` is a constructor argument, so
-    the value must be known before `ctx` (and therefore identity) exists.
+    both `PolicyContext.resolved_target_workspaces` AND
+    `PolicyContext.effective_sensitivity` are constructor arguments, so both
+    values must be known before `ctx` (and therefore identity) exists.
+
+    Returns `(workspace_id, effective_sensitivity)`.
+
+    **P3 hardening pass, HIGH-2 defect fix.** Previously every `invoke_*`
+    call site in this module hardcoded `effective_sensitivity =
+    policy.resolve_effective_sensitivity(None)` -- unconditionally the
+    STRICTEST label (`"client_sensitive"`), regardless of what the TARGET
+    operation actually contains, because these three kinds carry no content
+    of their own to inspect. That judged a `job.status` poll of a `public`
+    run identically to one of a `client_sensitive` run: under ANY locally
+    configured ceiling below `client_sensitive`, 100% of `job.*` calls
+    denied, with zero diagnostic signal (the denial is deliberately
+    indistinguishable from `not_found`, per H6). The fix: derive the
+    target's real sensitivity from its own persisted manifest (via
+    `_operation_effective_sensitivity_of` above) instead of hardcoding the
+    strictest possible label -- a `job.status` on a `public` operation is
+    now judged against `public`, not against `client_sensitive`.
 
     Catches ONLY `KeyError` (`load_operation`'s own documented, exhaustive
     "genuinely missing, or -- not reachable here since `identity=None` --
-    wrong workspace" contract) and returns `None` -- never a permissive
-    default. `PolicyContext`'s own H3/H6 gate (`_check_identity_and_rbac`)
-    then denies with the closed, no-existence-leak `not_found` reason code
-    for BOTH a genuinely missing operation and a wrong-workspace one; this
-    function never needs to (and must never) distinguish the two itself --
-    that is exactly the AC's "no wrong-workspace detail" requirement,
-    satisfied by REUSING the existing H3/H6 gate rather than re-implementing
-    it here.
+    wrong workspace" contract) and returns `(None, SENSITIVITY_LEVELS[-1])`
+    -- never a permissive workspace default, and the STRICTEST (not a
+    permissive) sensitivity pairing for the missing case, fail-closed on
+    both axes. `PolicyContext`'s own H3/H6 gate (`_check_identity_and_rbac`)
+    denies on `resolved_target_workspaces` alone (via `workspace_id=None`)
+    BEFORE `effective_sensitivity` is ever compared against a ceiling for a
+    genuinely-missing/wrong-workspace operation, so the paired
+    `SENSITIVITY_LEVELS[-1]` value is inert on that path -- present only so
+    `PolicyContext.for_configured_operator` always receives a valid,
+    non-`None` member of `SENSITIVITY_LEVELS` and never raises `ValueError`
+    on this path.
 
     Deliberately does NOT catch `OperationStoreUnavailableError` -- a
     transient SQLite lock on the operations store is NOT "genuinely
@@ -213,13 +271,13 @@ def _resolve_operation_workspace(operation_id: str, paths: FoundryPaths) -> str 
     try:
         record = OperatorOperationService(paths).load_operation(operation_id, identity=None)
     except KeyError:
-        return None
-    return record.workspace_id
+        return None, policy.SENSITIVITY_LEVELS[-1]
+    return record.workspace_id, _operation_effective_sensitivity_of(record.manifest)
 
 
 def _resolve_operation_workspace_or_error(
     operation_id: str, paths: FoundryPaths, *, now: datetime | None
-) -> tuple[str | None, base.OperatorAdapterResult | None]:
+) -> tuple[str | None, str, base.OperatorAdapterResult | None]:
     """Thin wrapper `invoke_status`/`invoke_cancel`/`invoke_resume` ALL call
     instead of `_resolve_operation_workspace` directly -- the single place
     that converts a propagated `OperationStoreUnavailableError` into a
@@ -230,15 +288,21 @@ def _resolve_operation_workspace_or_error(
     applies identically to all three call sites -- see this module's P3
     contract report for why enumerating every call site mattered here.
 
-    Returns `(workspace_id_or_None, None)` on a normal resolution --
-    including a genuinely missing/wrong-workspace operation, which still
-    resolves to `(None, None)` exactly as before this fix -- or
-    `(None, <bounded OperatorAdapterResult>)` when the operations store
-    itself was unavailable, OR when the persisted operation record was
-    unreadable for any OTHER reason (see the final `except Exception`
-    below). Callers MUST check the second element and return it
-    immediately rather than proceeding to build a `PolicyContext` with a
-    workspace value that was never actually resolved.
+    Returns `(workspace_id_or_None, effective_sensitivity, None)` on a
+    normal resolution -- including a genuinely missing/wrong-workspace
+    operation, which still resolves to `(None, SENSITIVITY_LEVELS[-1],
+    None)` exactly as `_resolve_operation_workspace` itself documents -- or
+    `(None, SENSITIVITY_LEVELS[-1], <bounded OperatorAdapterResult>)` when
+    the operations store itself was unavailable, OR when the persisted
+    operation record was unreadable for any OTHER reason (see the final
+    `except Exception` below). Callers MUST check the third element and
+    return it immediately rather than proceeding to build a `PolicyContext`
+    with workspace/sensitivity values that were never actually resolved.
+    (P3 hardening pass, HIGH-2 defect fix: the second element is new --
+    see `_resolve_operation_workspace`'s own docstring for the full defect
+    and remediation rationale; every `invoke_*` call site now uses THIS
+    element instead of its own separate, hardcoded
+    `policy.resolve_effective_sensitivity(None)` call.)
 
     Two DELIBERATELY DISTINCT bounded outcomes, never collapsed into one:
     `OperationStoreUnavailableError` (a transient SQLite lock) is
@@ -266,7 +330,8 @@ def _resolve_operation_workspace_or_error(
     """
 
     try:
-        return _resolve_operation_workspace(operation_id, paths), None
+        workspace_id, effective_sensitivity = _resolve_operation_workspace(operation_id, paths)
+        return workspace_id, effective_sensitivity, None
     except OperationStoreUnavailableError as exc:
         _logger.warning(
             "operator_mcp_adapters.job_lifecycle: operations store unavailable while "
@@ -275,7 +340,11 @@ def _resolve_operation_workspace_or_error(
             type(exc).__name__,
         )
         decision = policy.PolicyDecision(False, "confirmation", "internal_error", retryable=True)
-        return None, base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now))
+        return (
+            None,
+            policy.SENSITIVITY_LEVELS[-1],
+            base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now)),
+        )
     except Exception as exc:
         _logger.error(
             "operator_mcp_adapters.job_lifecycle: unexpected error resolving target "
@@ -284,7 +353,11 @@ def _resolve_operation_workspace_or_error(
             type(exc).__name__,
         )
         decision = policy.PolicyDecision(False, "confirmation", "internal_error", retryable=False)
-        return None, base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now))
+        return (
+            None,
+            policy.SENSITIVITY_LEVELS[-1],
+            base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now)),
+        )
 
 
 def _operation_kind_of(manifest: Mapping[str, Any]) -> Any:
@@ -336,12 +409,11 @@ def invoke_status(
 
     resolved_paths = paths or FoundryPaths.discover()
     sensitivity_ceiling = resolve_local_sensitivity_ceiling(resolved_paths)
-    owning_workspace, store_error = _resolve_operation_workspace_or_error(
+    owning_workspace, effective_sensitivity, store_error = _resolve_operation_workspace_or_error(
         operation_id, resolved_paths, now=now
     )
     if store_error is not None:
         return store_error
-    effective_sensitivity = policy.resolve_effective_sensitivity(None)
 
     input_payload: dict[str, Any] = {"operation_id": operation_id}
 
@@ -470,12 +542,11 @@ def invoke_cancel(
 
     resolved_paths = paths or FoundryPaths.discover()
     sensitivity_ceiling = resolve_local_sensitivity_ceiling(resolved_paths)
-    owning_workspace, store_error = _resolve_operation_workspace_or_error(
+    owning_workspace, effective_sensitivity, store_error = _resolve_operation_workspace_or_error(
         operation_id, resolved_paths, now=now
     )
     if store_error is not None:
         return store_error
-    effective_sensitivity = policy.resolve_effective_sensitivity(None)
 
     ctx = policy.PolicyContext.for_configured_operator(
         operation_kind=CANCEL_OPERATION_KIND,
@@ -577,12 +648,11 @@ def invoke_resume(
 
     resolved_paths = paths or FoundryPaths.discover()
     sensitivity_ceiling = resolve_local_sensitivity_ceiling(resolved_paths)
-    owning_workspace, store_error = _resolve_operation_workspace_or_error(
+    owning_workspace, effective_sensitivity, store_error = _resolve_operation_workspace_or_error(
         operation_id, resolved_paths, now=now
     )
     if store_error is not None:
         return store_error
-    effective_sensitivity = policy.resolve_effective_sensitivity(None)
 
     ctx = policy.PolicyContext.for_configured_operator(
         operation_kind=RESUME_OPERATION_KIND,

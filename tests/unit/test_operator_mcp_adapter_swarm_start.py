@@ -43,7 +43,10 @@ from research_foundry.yamlio import dump_yaml, load_yaml
 
 from tests.test_planning import _make_intent
 from tests.unit.test_operator_cancel_resume_service import _consume
-from tests.unit.test_operator_mcp_adapter_run_plan import _default_sensitivity_ceiling  # noqa: F401
+from tests.unit.test_operator_mcp_adapter_run_plan import (  # noqa: F401
+    _default_sensitivity_ceiling,
+    _recording_ceiling,
+)
 from tests.unit.test_operator_mcp_policy import (  # noqa: F401
     _default_operator_identity,
     _IDENTITY,
@@ -472,7 +475,12 @@ def test_invoke_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missi
     run_ctx = swarm_start._resolve_run_context(run_id, tmp_foundry)
     assert run_ctx.sensitivity == "personal"
 
-    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", lambda *a, **kw: "public")
+    # HIGH-1 fix: a recording double, not a discarding `lambda *a, **kw:`
+    # -- proves `invoke()`'s own call site threads its resolved `paths`
+    # through to `resolve_local_sensitivity_ceiling`, not merely that SOME
+    # ceiling value comes back.
+    ceiling_double, ceiling_calls = _recording_ceiling("public")
+    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", ceiling_double)
 
     # Direct proof of STAGE: build the identical PolicyContext `invoke()`
     # would build internally and evaluate it directly.
@@ -537,3 +545,10 @@ def test_invoke_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missi
     assert wrong_workspace_result.error is not None
     assert wrong_workspace_result.error["reason_code"] == "not_found"
     assert above_ceiling_result.error == wrong_workspace_result.error
+
+    # HIGH-1 fix, direct proof: `resolve_local_sensitivity_ceiling` was
+    # called with the REAL `paths` value (`tmp_foundry`) both times
+    # `invoke()` ran above -- if `invoke()`'s own call site ever dropped its
+    # `paths=resolved_paths` argument, the double would have recorded
+    # `[None, None]` instead.
+    assert ceiling_calls == [tmp_foundry, tmp_foundry]
