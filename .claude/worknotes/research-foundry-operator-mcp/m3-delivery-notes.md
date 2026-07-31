@@ -102,6 +102,25 @@ Running capture for the M3 delivery report + AAR. Continues the M2 pattern (`m2-
   in `operator-mcp-governance.md` — a 4-line qualification edit; dispatching a doc leg for it
   would have cost more than the edit. Conservative-choice note, not a scope change.
 
+- **O-7 — The gate sequence converged in one re-pass, inside budget, for the first time in the
+  workstream.** Validator round 1: CHANGES_REQUESTED (1 BLOCKING — a literally-false frontmatter
+  AC bullet — + 2 MED + 1 LOW); round 2: APPROVED. Compare P1 (5 rounds, closed by owner
+  acceptance) and P2 (4 rounds, no verdict). What changed, in order of likely causal weight:
+  (1) the cheap diverse pre-gate absorbed the class-level defects before the validator saw them;
+  (2) fix cycles continued the implementer's live session (5 continuations of one Leg A session
+  across the milestone — existence-leak fix, pre-gate cycle, validator cycle — each at a fraction
+  of fresh-dispatch cost); (3) delta-scoped re-pass dispatch (the re-pass validated 4 dispositions,
+  not the whole milestone, ~131k tokens vs round 1's ~245k).
+- **O-8 — The validator's one BLOCKING was pure metadata (`deferred_items_spec_refs: []`) and its
+  best NEW find was tooling-shaped** (numeric-bounds hole in a sweep both pre-gate lenses passed
+  over; `verified_by` hygiene the phase-exit script catches mechanically). Reading: with the
+  pre-gate absorbing code defects, the validator lens's residual yield concentrates in
+  contract-vs-artifact consistency — worth keeping, but its scope could narrow further.
+- **O-9 — Evidence discipline note for the AAR**: the exact-tree evidence was captured at
+  `7c615a8` and committed as `fed265a` (docs-only delta), with the whole-suite `exit=` pipeline
+  caveat annotated in the artifact itself rather than left for a reviewer to trip over. Queued
+  as Karen adjudication (a) rather than self-cleared.
+
 ## Follow-ups (ITT nodes, created 2026-07-31)
 
 - `node_01KYWYJR5PNBZYVDETQ89RWJZ8` (RF tree, child of C5) — run_plan `intent_id` has no

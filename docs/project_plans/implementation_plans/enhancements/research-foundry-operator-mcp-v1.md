@@ -2,9 +2,9 @@
 title: "Implementation Plan: Research Foundry Operator MCP"
 schema_version: 2
 doc_type: implementation_plan
-status: in_progress
+status: completed
 created: 2026-07-18
-updated: 2026-07-30
+updated: 2026-07-31
 feature_slug: research-foundry-operator-mcp
 feature_version: v1
 tier: 3
@@ -73,7 +73,8 @@ routing_constraints:
   - "Mechanical work is offload-eligible: swarm-service extraction (M1), fixture assembly (M3), docs + CHANGELOG + deferred shaping specs (M3)."
   - "Capability bar — M1: workhorse-class, parity-test-driven. M2: frontier-class for the preview negative proof; workhorse for scaffold/packaging. M3: frontier-class for the final exact-tree verdict; economy-class for docs."
   - "Reviewers get findings-ledger write access ONLY (no source, no tests); the ledger must not round-trip through the orchestrator context."
-commit_refs: [41bcafb, f1bfa39, 725faba, 61c3691]
+# P1-era work-history SHAs, then per-milestone heads: M1 053a2c8 · M2 a4e320e · M3 a107d84/c6df04d/569879c/7c615a8/fed265a (K-M3-2: set merge_commit/merge_branch at PR #7 landing so branch SHAs stay resolvable post-squash)
+commit_refs: [41bcafb, f1bfa39, 725faba, 61c3691, 053a2c8, a4e320e, a107d84, c6df04d, 569879c, 7c615a8, fed265a]
 pr_refs: ["https://github.com/miethe/research-foundry/pull/7"]
 files_affected:
   - schemas/operator_mcp_operation.schema.yaml

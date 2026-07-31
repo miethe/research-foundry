@@ -2734,3 +2734,291 @@ EXIT=0  (17 dots, [100%])   — matches commit c6df04d's own "17-case parametriz
 ```
 
 Both green, counts unchanged from the prior pass. No regression from the fix cycle.
+
+## FIND-M3-KAREN — final exact-tree verdict on fed265a (2026-07-31)
+
+**VERDICT: APPROVED.** 0 Critical, 0 High, 0 Medium, 2 Low. This is the single Karen pass for
+M1-M3 per the revised gate structure, adjudicating the whole feature candidate on the final tree.
+
+The feature is **real**, not documented-real. I did not take the evidence artifact's word for
+anything material: I re-ran five of its highest-risk rows on `fed265a` and reproduced the dot
+counts exactly, I built the actual MCP server with the actual SDK and enumerated its actual tools,
+I verified all four M3 product fixes are physically present in the shipped source, I verified a
+closed High finding's countable claim by AST, and I reconstructed the whole-suite baseline from a
+scratch worktree at the pre-branch base commit. Everything load-bearing held. The two Low findings
+are evidence-framing and bookkeeping, not product.
+
+### What I independently verified (real command output, this session)
+
+**Evidence rows re-run on `fed265a`, not `7c615a8`** — all green, dot counts byte-matching the
+artifact: AC OPM-7 widened (37), AC OPM-3 lifecycle (44), AC OPM-1 full policy file (133),
+AC OPM-6 preview-only int+unit (20), receipt-schema per-property (171).
+
+**Non-vacuity of every `-k`-filtered row** (the VAL-1 class that bit this plan twice) via
+`--collect-only`: OPM-1 33 · M1 retry/cancel 8 · M2 inventory/overlap 2 · OPM-7 9+28=37 ·
+OPM-5 13+17+1+3=34. Every count matches the artifact. No row is a silent subset.
+
+**Whole operator-surface family, one run, `-rs`:**
+```
+20 files, 716 collected, 716 passed — FAILED 0 · ERROR 0 · SKIPPED 0 · PYTEST_EXIT=0
+```
+716 = Leg A's 686 + the 30 tests V1-M3-2's bounds sweep added. Zero skips is the point: no part of
+this surface is silently unexercised in the worktree venv.
+
+**The server is real.** Built it with the installed `mcp` SDK and introspected it:
+```
+server built: _StdioOnlyFastMCP | base: FastMCP
+registered tools: 14   (== sorted(policy.TOOL_NAMES), OPERATION_KINDS == 13)
+run_sse_async / run_streamable_http_async / sse_app / streamable_http_app
+  -> all four blocked: UnsupportedTransportError "stdio is the only enforced transport"
+```
+The stdio-only boundary is enforced at runtime by a genuine `FastMCP` subclass, not asserted in a
+docstring. `rf-operator-mcp = research_foundry.operator_mcp.process:main` is declared in
+`pyproject.toml:89` as an independent process boundary.
+
+**M1 closed-dispatch scan, reproduced myself** on both paths: anchored live-import form exits 1
+(zero matches); `shell=True|os.system(` has exactly one hit and it is `server.py:10`, a docstring;
+unanchored total is 11, matching the plan's stated comment/docstring count exactly.
+
+**Preview-only boundary at the symbol level.** `writeback_preview.py` reaches exactly one
+`writeback.*` symbol: `preview_writeback`. No client, mirror, or network import anywhere in the
+module. Four zero-call spy tests green.
+
+**K4-NB-1 (High, closed in P3) verified by AST, not by reading its closure note.** Claim was "all 7
+`operator_receipt_service.py` `_ensure_schema` sites guarded, plus 13 more across two sibling
+files". Parsed all three modules and located every `_ensure_schema` call relative to enclosing
+`Try` nodes: `operator_receipt_service.py` 7 sites / **0 unguarded**;
+`operator_cancel_resume_service.py` 2 / 0; `operator_attempt_adapter.py` 3 / 0. Claim holds.
+
+**`job.status`'s "`run_pipeline` bypass" (left open in P3) is not an authorization hole.**
+`invoke_status` builds a real `PolicyContext.for_configured_operator` and calls
+`authorize_for_consumption` before any read (`job_lifecycle.py:421-450`). What it bypasses is the
+operation-manifest/receipt machinery, correctly, for a read-only tool. Not a gate concern.
+
+### Adjudications
+
+#### (a) Exact-tree discipline of the `7c615a8` → `fed265a` split: **ACCEPT**
+
+`git show --name-status fed265a` is one line: `A .claude/worknotes/research-foundry-operator-mcp/
+m3-exact-tree-evidence.md`, +196/-0. A single added worknote. Nothing in the delta touches source,
+tests, schemas, config, or any document an AC row evidences. The "material change invalidates prior
+approval" bullet is not triggered.
+
+I did not rely on that reasoning alone — I re-ran five evidence rows **on `fed265a` itself** and
+reproduced the artifact's counts exactly, so the evidence is directly valid on the tree I am
+approving, independent of the docs-only argument.
+
+#### (b) `payload_too_large` reused for missing/colliding required input keys: **ACCEPT as shipped**
+
+Accept. Requiring a dedicated code now would reopen a frozen P1 contract at the final gate — the
+enum is closed and appears in `operator_mcp_error.schema.yaml` plus three sites in
+`operator_mcp_receipt.schema.yaml` — to improve a diagnostic label, not a safety property. That
+trade is backwards at this point in the plan.
+
+The reuse is semantically defensible rather than merely expedient: `operator_mcp_policy.
+_check_capability` already emits this same code for the sibling condition "input_payload does not
+conform to what capability accepts" (its own `maxProperties` bound), and both the rejected-keys and
+missing-keys checks are instances of exactly that condition. Critically, the field callers actually
+branch on is correct in both: `retryable=False`, because resubmitting an identical incomplete
+request can never succeed. The pre-fix behavior — a raw `TypeError` surfacing as
+`internal_error`/`retryable=True` — was a genuine fail-open in the caller's retry contract; the fix
+closes that. What remains is a naming imprecision with no behavioral consequence.
+
+Conditions, all already satisfied on this tree: the reuse is documented at every site
+(`server.py:750-756`, `:778-785`, `:873`) and in the module docstring's F1.3 section, it is
+mechanically pinned by a 17-case parametrized test, and a follow-up ITT node exists for a dedicated
+code when the contract next reopens. **The one thing that would flip this**: if `payload_too_large`
+ever became load-bearing for caller retry/backoff logic. It is not — `retryable` carries that
+signal and is identical across both conditions.
+
+#### (c) The four M3-discovered product defects: **no concern — and the premise needs correcting**
+
+The framing that these were "post-dated by the validator's APPROVED on `569879c`" is **inverted**.
+`git merge-base --is-ancestor` confirms both `a107d84` and `c6df04d` are strict ancestors of
+`569879c`, and `git log -S` places each fix precisely:
+
+| Defect | Fix symbol | Introduced in |
+|---|---|---|
+| `job.status` route `TypeError`-masking | `if kind not in policy.CONFIRMATION_NOT_REQUIRED_KINDS` | `a107d84` |
+| required-key masking class (13 kinds) | `_required_input_payload_keys` | `c6df04d` |
+| double audit-health probe / ordering gate | `check_capability_and_workspace` | `c6df04d` |
+| `swarm.start` preflight→execute route broken | `resolve_preflight_governance_inputs` | `c6df04d` |
+
+So the validator's APPROVED ran on a tree that **already contained all four**. There is no
+unreviewed-fix window. That materially strengthens the candidate rather than weakening it.
+
+On fix *quality*, which is the part that actually matters: all four are present in the shipped
+source on this tree (`server.py:820`, `server.py:490`, `operator_mcp_policy.py:1561` via
+`_POLICY_STAGES[:2]`, `swarm_start.py:559` gating **before** the `:562` budget precondition), and
+three of the four were fixed **at the class, at the shared dispatch layer**, not per-instance — the
+required-key fix closes 13 kinds / 17 (kind, key) pairs at once, and the `job.status` fix keys off
+the closed policy-level set so a future member is covered automatically. Two derive their behavior
+live from `inspect.signature`, so they self-maintain against adapter drift. This is the same-class
+stop rule applied correctly rather than a third round of the same defect.
+
+On test pinning: mutation-verification was done **inside the fix step**, per the standing rule, and
+the transcripts are specific enough to be falsifiable — 17/17 parametrized cases failing against
+the reverted `server.py` with the ANSI-stripped count called out, 5/5 regressing to
+`preflight_failed` on a full pre-M3 revert, `2 == 1` on the audit-probe counting spy. I spot-checked
+the strongest structural claim rather than the transcripts: the `swarm.start` positive control
+`test_swarm_start_same_workspace_server_route_completes` is retroactively non-vacuous because it
+*cannot* pass pre-fix (`confirmation_mismatch` every time), which is the right shape of proof.
+Notably, the TERRA-M3-1 follow-up is itself "fix the layer below" applied to a remediation — the F6
+fix introduced a double mutating audit probe, and that was caught and closed within the same cycle.
+No test asserts current-but-wrong behavior; one pre-existing test that did
+(`test_missing_run_denies_with_preflight_failed_no_confirmation_needed`) was correctly **inverted**,
+not deleted.
+
+#### (d) The 23 whole-suite failures: **confirmed — none load-bearing**, with one correction
+
+I did not accept "byte-identical to the M2 baseline" as sufficient, because the M2 baseline is
+*post-M1*, and M1 is the milestone that extracted swarm orchestration from the CLI — so the two
+`tests/test_swarm_drive.py` failures were the one genuinely load-bearing candidate. I built a
+scratch worktree at the **pre-branch base `65d658d`** and re-ran them there:
+
+```
+FAILED tests/test_swarm_drive.py::test_cli_drive_json_output
+FAILED tests/test_swarm_drive.py::test_cli_drive_ica_json
+```
+Both reproduce identically at the pre-M1 base. Also reproduced at `65d658d`: `test_serve_api` (5),
+`test_assertion_rollout` (2), `test_report_anchors` (1), `test_cli_rights` (1),
+`test_deployment_mode_cli_and_app` (1), `test_pediatric_cds_redteam_fixtures` (1),
+`test_verification_clinical_eligibility_regression` (2), `test_contract_drift...site_counts` (1) —
+16 of 23 are hard pre-branch.
+
+`test_contract_drift...sites_fully_accounted_for` does **not** fail at `65d658d`; it entered via the
+main merge `837b856`. `git blame` puts the unclassified `_json.dumps(` site at `3368084` (main,
+2026-07-30 — the workspace-migrate-covers-runs commit). I ran the guard's own classifier over both
+trees:
+```
+main tip 230b224 : stamped 28, array_excluded 5, field_echo 5, unclassified 1  (line 1730)
+branch HEAD      : stamped 28, array_excluded 5, field_echo 5, unclassified 1  (line 1743)
+```
+Identical classification; the branch adds **zero** `_json.dumps(` sites. Inherited from main, and
+main's to fix.
+
+The remaining 5 are **not a code baseline at all** — see K-M3-1.
+
+Nothing in the 23 touches the operator surface, and the operator family is 716/716 green with zero
+skips. Confirmed not load-bearing.
+
+#### (e) P1 `governance.py` `secret_patterns` UNION deviation: **RATIFY — and it stops riding here**
+
+Ratified, closed for this feature. The content was already adjudicated RATIFY WITH CONDITIONS at
+P1 round 5; I re-verified the current state rather than inheriting the conclusion:
+
+```
+builtin 22 · config 22 · merged 25 · regex-equivalent duplicate groups: 3
+```
+Exactly as characterized. `merged = list(_BUILTIN_SECRET_PATTERNS)` then append-if-absent
+(`governance.py:215-219`) — config can only **grow** the detection surface, never replace it, so the
+write is strictly fail-closed and restores `redact_payload`'s own documented "additional" contract.
+The 3 duplicate groups are escaping-only variants (`['\"]` vs `['"]`), regex-equivalent, so
+detection outcomes and gate decisions are unchanged; the only artifact is a cosmetic `len(hits)`
+double-count in `scan_paths` interpolation. **Accepted as cosmetic, deliberately not fixed** — I am
+not sending anyone back into a serialization-barrier file for a non-gating count string at the
+final gate.
+
+Condition (1), correcting the over-claim, is discharged in-ledger. Condition (2) is accepted as
+cosmetic above. I also confirmed the *related* Adjudication-2 condition is genuinely satisfied and
+not just promised: the required drift guard exists and is mechanical, at
+`tests/unit/test_operator_mcp_policy.py:937-982`, asserting per-kind alignment of `_OPERATION_ROLES`
+against `rbac.ROLE_PERMISSIONS` — the alignment is no longer a prose comment.
+
+Condition (3) — acknowledgement of the **ownership**-barrier waiver on `governance.py` — is not a
+reviewer's to give and never was. It is recorded below as the single owner-gated residual, and it
+is explicitly **not** a blocker on this verdict.
+
+### Findings
+
+#### K-M3-1 — LOW — 5 of the 23 "pre-existing baseline" failures are a worktree-venv gap, not a code baseline
+
+- **File/line:** `.claude/worknotes/research-foundry-operator-mcp/m3-exact-tree-evidence.md:155-194`
+  (the "Whole-suite regression" section and its orchestrator annotation);
+  `src/research_foundry/services/extractors/pdf_extractor.py:70-74`.
+- **What is actually true:** `tests/test_pdf_extractor.py` (3), `tests/test_pdf_fixture_suite.py`
+  (1), and `tests/test_search_router_pdf_wiring.py` (1) fail with `'pypdf not installed'` /
+  `assert 'locator_only' == 'full_text'` because **`pypdf` is absent from the worktree venv**, while
+  it is present in the main repo venv:
+  ```
+  main .venv     : pypdf 6.13.2  (.venv/lib/python3.14/site-packages/pypdf)
+  worktree .venv : ModuleNotFoundError: No module named 'pypdf'   (no pypdf* in site-packages)
+  ```
+  `pdf_extractor.py` is **byte-identical** across `65d658d`, main tip `230b224`, and `fed265a`
+  (`git diff --stat` empty for all pairs). These 5 nodes pass at the base worktree and fail here
+  purely on the optional `pdf` extra. The worktree has its own real `.venv` (not a symlink), which
+  is why the divergence is invisible from inside it.
+- **Why it is only LOW:** zero operator-surface impact; the `mcp` extra *is* present (I built the
+  server) and the operator family runs 716/716 with **zero skips**, so nothing in this feature is
+  silently unexercised. The direction is also safe — a missing optional dep can only *add*
+  failures, never mask one.
+- **What to correct:** the artifact's phrasing "23 FAILED nodes ... zero new, zero fixed" is
+  accurate as a *self-comparison between two runs in the same deficient environment*, but it reads
+  as a statement about the merge target. Either install the `pdf` extra in the worktree venv and
+  recapture the whole-suite row (expected: 18 failures, not 23), or annotate those 5 nodes as an
+  environment artifact. Recommend the annotation — cheaper, and the run is not being re-litigated.
+- **Not blocking.** No AC depends on this row, and no operator claim rests on it.
+
+#### K-M3-2 — LOW — post-squash traceability will not resolve
+
+- **File/line:** `docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md:76`
+  (`commit_refs: [41bcafb, f1bfa39, 725faba, 61c3691]`);
+  `.claude/progress/research-foundry-operator-mcp/phase-6-progress.md:13-14`
+  (`commit_refs: []`, `pr_refs: []`).
+- **Failure scenario:** the plan's `commit_refs` stops at four P1-era SHAs. None of M1/M2/M3
+  (`d447af9`, `053a2c8`, `a4e320e`, `a107d84`, `c6df04d`, `569879c`, `7c615a8`, `fed265a`) is
+  recorded, and phase-6 carries no refs at all. On squash-merge to `main` every branch SHA in this
+  ledger and in both leg-completion notes becomes unresolvable, and there is no `merge_commit` /
+  `merge_branch` landing pointer to recover them through — the exact gap `dev-execution`'s
+  completion criteria call out for direct squash-merges. This ledger's forensic value across five
+  gate rounds is unusually high; losing the SHA→finding linkage would be a real loss.
+- **Required fix (bookkeeping only, no re-test):** append the M1-M3 SHAs to the plan's
+  `commit_refs`, populate phase-6 `commit_refs`/`pr_refs` (PR #7), and set `merge_commit` /
+  `merge_branch` immediately after the squash lands.
+- **Not blocking** the code verdict; it is a condition on the *merge* step, not on the tree.
+
+### Positive confirmations (logged so nobody re-derives them)
+
+- **Docs match the shipped inventory exactly.** `docs/user/research-foundry-operator-mcp.md` names
+  all 14 live tool names and **zero** phantom tools (diffed programmatically against
+  `list_tools()`). `operator-mcp-governance.md` names 4 plus "closed 14-tool server registry" — a
+  governance-flow doc, not an inventory doc, and it invents no tool. AC bullet satisfied.
+- **Deferred labels present and honest:** `not_executed_owner_data_absent` at
+  `docs/user/research-foundry-operator-mcp.md:30` and in the remote-transport shaping spec;
+  remote transport and live writeback both labeled `deferred`.
+- **`deferred_items_spec_refs` populated** with both shaping-spec paths (plan frontmatter :46-48);
+  both resolve on disk.
+- **Progress hygiene now passes the project's own mechanical gate** — NEW-M3-V2-1 is closed at
+  `7c615a8`:
+  ```
+  $ validate-phase-completion.py -f .../phase-6-progress.md
+  Completed tasks checked: 9 · Violations: 0 · Phase gate PASSED · EXIT=0
+  ```
+  `OPM-6.10` correctly remains `pending` — it is this gate, and closes on this verdict.
+- **Lint gate:** `ruff check src/research_foundry --select E9,F63,F7,F82` — clean.
+- **Optional-SDK boundary:** base package imports with `mcp` blocked.
+
+### Owner-gated residual (single item, explicitly not a blocker)
+
+`governance.py` **ownership**-barrier waiver — Adjudication 1 condition (3), open since P1 round 5.
+The write's *content* is ratified (twice now, independently). Only the declared file owner can waive
+the ownership barrier; no agent in this loop can supply it. Carry it into the merge decision on
+PR #7, not into another review round.
+
+### Verdict
+
+**APPROVED** on `fed265a`. The feature does what it says on the tin: a local-stdio-only governed
+operator MCP with identity-bound preflight/confirmation, durable idempotent jobs with cancel/resume,
+closed canonical-service adapters, bounded errors/receipts, and a preview-only writeback proved
+negative by both static scan and zero-call runtime spies. I attacked the evidence rather than
+reading it and it survived every probe I aimed at it, including the one baseline claim
+(`test_swarm_drive`) that would have been genuinely load-bearing had it not reproduced at the
+pre-M1 base.
+
+M3's real accomplishment is not the evidence matrices — it is that **building them found four live
+product defects on a tree that had already passed a milestone gate**, three of which were then
+closed at the class rather than the instance. That is the milestone working as designed.
+
+Both findings are Low, both are documentation/bookkeeping, and neither touches behavior. Close
+`OPM-6.10`. Merge is an owner decision on PR #7; K-M3-2's traceability fix should land with it, and
+K-M3-1's annotation is a one-line correction to the evidence worknote.

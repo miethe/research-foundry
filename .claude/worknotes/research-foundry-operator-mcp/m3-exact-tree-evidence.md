@@ -194,3 +194,8 @@ exit=0
   baseline failures. Per-row `exit=` values above ARE the real pytest/ruff exit codes.
 - Code tree under review: `7c615a8`. This evidence file is committed immediately after capture as
   a docs-only delta; no source/test/schema file changes after capture.
+- **K-M3-1 disposition (Karen, LOW)**: 5 of the 23 whole-suite failures (`test_pdf_extractor` ×3,
+  `test_pdf_fixture_suite`, `test_search_router_pdf_wiring`) are a **worktree-venv gap** — `pypdf`
+  absent from this worktree's `.venv` but present in the main checkout's; `pdf_extractor.py` is
+  byte-identical across base/main/HEAD. True code-baseline failure count on a fully-provisioned
+  venv is 18, not 23. Zero operator-surface impact either way.
