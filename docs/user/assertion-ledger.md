@@ -46,5 +46,11 @@ workspace access, pilot authority, shared indexing, public promotion, or
 external writeback permission. Only the designated private-workspace owner can
 authorize those actions and observe any pilot health window.
 
+**Note on this deployment:** this codebase's default-off controls are code-level
+defaults, not this deployment's current state. This single-operator
+deployment's `foundry.yaml` deliberately sets all three
+`assertion_ledger.*_enabled` keys to `true` as an intentional, reversible local
+opt-in — set any or all of them back to `false` to return to the code default.
+
 For local operator recovery and aggregate-only readiness receipts, see the
 [assertion-ledger readiness runbook](../dev/architecture/runbooks/assertion-ledger-readiness.md).

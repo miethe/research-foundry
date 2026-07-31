@@ -35,6 +35,12 @@ foundry:
 but each fails closed until ledger writes are enabled. A configuration edit alone
 is not a rollout receipt.
 
+**Note on this deployment:** the code defaults above are all `false`, but this
+single-operator deployment's checked-in `foundry.yaml` deliberately sets all
+three `assertion_ledger.*_enabled` keys to `true` as an intentional, reversible
+local opt-in for the single-operator posture. To roll back to the code
+defaults, set any or all three keys back to `false`.
+
 ## Local dry-run and recovery rehearsal
 
 Use a synthetic or owner-authorized workspace root. These commands do not

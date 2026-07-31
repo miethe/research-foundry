@@ -3,9 +3,9 @@ schema_version: 2
 doc_type: implementation_plan
 title: "Implementation Plan: Reusable Assertion Ledger v1"
 description: "Tier 3 delivery plan for a private, passage-bound assertion ledger with governed reuse and lifecycle propagation."
-status: review
+status: completed
 created: 2026-07-12
-updated: 2026-07-15
+updated: 2026-07-31
 feature_slug: reusable-assertion-ledger
 feature_version: v1
 prd_ref: docs/project_plans/PRDs/features/reusable-assertion-ledger-v1.md

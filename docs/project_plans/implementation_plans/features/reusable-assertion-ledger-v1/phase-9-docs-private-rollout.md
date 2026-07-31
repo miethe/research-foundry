@@ -2,9 +2,9 @@
 schema_version: 2
 doc_type: phase_plan
 title: "Phase 9 (P8): Documentation and Private Rollout"
-status: review
+status: completed
 created: 2026-07-12
-updated: 2026-07-15
+updated: 2026-07-31
 feature_slug: reusable-assertion-ledger
 feature_version: v1
 phase: 9
@@ -18,6 +18,7 @@ entry_criteria:
 exit_criteria:
   - Docs, CHANGELOG, feature flags, migration/backfill, rollback, monitoring, and private-beta health evidence pass.
   - Shared-index and public-rights work remains deferred in design specs.
+  - "Health-evidence exit item deferred to operator-gated P8-004 (see Closeout note, 2026-07-31); all other exit items satisfied on main."
 related_documents:
   - docs/project_plans/reports/investigations/reusable-assertion-ledger-findings.md
 spike_ref: null
@@ -103,5 +104,15 @@ Make the private pilot operable, reversible, measurable, and understandable. Kee
 - Validate docs links, CLI/API examples, config defaults, and CHANGELOG placement.
 - Run migration/backfill dry-run, private enablement smoke, disable/rollback, and health queries.
 - Confirm no public corpus, shared index, external writeback, or broad production deployment occurred.
+
+## Closeout note (2026-07-31)
+
+Status flipped review → completed via bookkeeping + gate reconciliation, not a single phase run. P9 deliverables landed incrementally on main across the phase window: P8-001 (flags, migration/backfill, disable/rollback runbook), P8-002 (user/dev docs plus the `[Unreleased]` CHANGELOG entry), and DOC-006 (both deferred design specs, shared-index isolation and public-rights/promotion, referenced in the root plan's `deferred_items_spec_refs`) are all present on main.
+
+Flag-default deviation, documented not silently accepted: the `AssertionLedgerControls` code dataclass defaults all three controls (ledger-write, automated-reuse, canonical-claims) off, but the shipped single-operator `foundry.yaml` intentionally enables all three per an explicit operator decision for this trusted single-operator posture. `docs/user/assertion-ledger.md` and the readiness runbook both name this deviation. This closeout added two rollout unit tests that assert the code-level default-off contract independent of the deployed config; both pass.
+
+DEFERRED (sole open item): P8-004's live private-beta health-evidence artifact was not produced in this closeout. It requires explicit operator authorization to enable the ledger in an authorized private workspace and capture health/rollback receipts via `scripts/assertion_ledger_readiness.py`. Private rollout sequence steps 2-6 above remain operator-run, not agent-run.
+
+Shared-index and public-rights/promotion scope remains deferred to design specs only, as originally intended — no shared or public behavior shipped.
 
 [Return to parent plan](../reusable-assertion-ledger-v1.md)

@@ -19,6 +19,15 @@ from research_foundry.yamlio import dump_yaml, load_yaml
 
 
 def test_assertion_ledger_controls_are_independently_default_off(tmp_foundry) -> None:
+    # This project's own deployed `foundry.yaml` intentionally opts all three
+    # controls on for its single-operator deployment (see
+    # docs/user/assertion-ledger.md). `tmp_foundry` copies that real file, so
+    # the code-level "default off" contract has to be exercised against a
+    # clean/unconfigured `assertion_ledger` block, not the deployed opt-in.
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"].pop("assertion_ledger", None)
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
+
     config = FoundryConfig(paths=tmp_foundry)
     assert config.assertion_ledger_controls().ledger_write_enabled is False
     assert config.assertion_ledger_controls().automated_reuse_enabled is False
@@ -43,6 +52,12 @@ def test_assertion_ledger_controls_are_independently_default_off(tmp_foundry) ->
 
 
 def test_write_and_automated_reuse_consumers_fail_closed_by_default(tmp_foundry) -> None:
+    # Same rationale as the test above: exercise the code-level fail-closed
+    # default, not this project's deliberate single-operator opt-in.
+    foundry = load_yaml(tmp_foundry.foundry_yaml)
+    foundry["foundry"].pop("assertion_ledger", None)
+    dump_yaml(foundry, tmp_foundry.foundry_yaml)
+
     assertion = {
         "assertion_id": "ast_ready",
         "workspace_id": "workspace-a",
