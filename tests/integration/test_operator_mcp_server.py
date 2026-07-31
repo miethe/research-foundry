@@ -205,6 +205,29 @@ def test_transport_guard_server_is_a_genuine_fastmcp_subclass(server: Any) -> No
     assert server.call_tool.__self__ is server
 
 
+def test_transport_guard_unbound_base_class_call_bypasses_the_guard_by_design(server: Any) -> None:
+    """M2 fix cycle 1, F1.6 (TERRA-5) -- pins the documented, ADJUDICATED
+    limitation (see this module's docstring's "Scope of the stdio-only
+    guard" section, and `m2-fix-contract.md`'s TERRA-5 adjudication): an
+    UNBOUND base-class call on this SAME guarded instance is NOT blocked
+    and structurally CANNOT be blocked by this shape of guard -- only
+    REACHABLE activation paths (bound-method dispatch, `run()`, the
+    process entrypoint) are. Deliberately NOT redesigned this fix cycle:
+    reaching an unbound base-class call requires the caller to already be
+    executing arbitrary Python in this process, at which point this guard
+    is moot either way (they could `import socket` directly). This test
+    exists so no future reader mistakes the guard above for a sandbox."""
+
+    from mcp.server.fastmcp import FastMCP
+
+    # A real, unguarded Starlette app is returned -- confirms the bypass is
+    # genuine (would raise `UnsupportedTransportError` through the guarded,
+    # bound instance method; see `test_transport_guard_blocks_sse_app_
+    # directly` above for that contrast).
+    assert FastMCP.sse_app(server) is not None
+    assert FastMCP.streamable_http_app(server) is not None
+
+
 # ---------------------------------------------------------------------------
 # D7: transport-level error mapping (the ONE dispatch chokepoint)
 # ---------------------------------------------------------------------------
@@ -229,12 +252,23 @@ def test_oversized_payload_maps_to_payload_too_large_envelope(server: Any) -> No
     assert result.structuredContent["reason_code"] == "payload_too_large"
 
 
-def test_internal_error_envelope_for_unexpected_exception(server: Any) -> None:
-    """An `input_payload` key colliding with a server-reserved keyword
-    (`dry_run`) makes the `adapter.invoke(dry_run=..., **input_payload)`
-    call raise `TypeError` (duplicate keyword argument) at the transport
-    layer -- caught by the D7 chokepoint, never a raw traceback, never a
-    distinguishing message."""
+def test_reserved_input_payload_key_maps_to_payload_too_large_envelope(server: Any) -> None:
+    """M2 fix cycle 1, F1.3 (TERRA-4) -- **inverts** this test's own
+    pre-fix assertion (contract hard boundary 5: do not weaken/delete a
+    test that pins wrong behavior, invert it and say so loudly). Pre-fix,
+    an `input_payload` key colliding with a server-reserved keyword
+    (`dry_run`) reached `adapter.invoke(dry_run=..., **input_payload)` and
+    raised a raw `TypeError` (duplicate keyword argument), caught only
+    ACCIDENTALLY by the D7 `internal_error` boundary -- never a deliberate
+    rejection, and this collision-based mechanism did NOT close the
+    sharper sibling case (`now`, which never collides with an explicitly-
+    supplied server keyword and therefore reached the adapter completely
+    silently -- the actual TERRA-4 authorization-bypass vector; see
+    `test_di_only_input_payload_keys_are_rejected_before_reaching_the_adapter`
+    below). This test now asserts the CORRECT, deliberate behavior: every
+    non-semantic key is rejected BEFORE `adapter.invoke` is ever called,
+    with an explicit `payload_too_large` envelope (reused reason code, not
+    a raw exception leak either way)."""
 
     result = _call(
         server,
@@ -246,9 +280,155 @@ def test_internal_error_envelope_for_unexpected_exception(server: Any) -> None:
     )
     assert result.isError is True
     payload = result.structuredContent
+    assert payload["reason_code"] == "payload_too_large"
+    assert "TypeError" not in str(payload)  # never a raw exception name/message
+
+
+def test_di_only_input_payload_keys_are_rejected_before_reaching_the_adapter(
+    server: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M2 fix cycle 1, F1.3 (TERRA-4) -- the sharper reproduction. `now`
+    (and the other DI-only names) does NOT collide with any
+    server-reserved keyword, so pre-fix it reached `adapter.invoke(now=
+    <caller-controlled value>, **input_payload)` completely silently -- an
+    in-process MCP caller could supply `now` and control confirmation
+    expiry, an authorization bypass (TERRA-4's actual finding, not the
+    `dry_run` TypeError accident). Spies on `adapters.get_adapter` so this
+    proves `adapter.invoke` is NEVER called for any of these five names,
+    not merely that the final envelope happens to look right."""
+
+    real_get_adapter = adapters_pkg.get_adapter
+    invoked: list[str] = []
+
+    def _spy_get_adapter(kind: str) -> Any:
+        real_adapter = real_get_adapter(kind)
+        if real_adapter is None:
+            return None
+
+        class _InvokeSpy:
+            operation_kind = kind
+
+            def invoke(self, **kwargs: Any) -> Any:
+                invoked.append(kind)
+                return real_adapter.invoke(**kwargs)
+
+        return _InvokeSpy()
+
+    monkeypatch.setattr(adapters_pkg, "get_adapter", _spy_get_adapter)
+
+    for reserved_key in ("now", "operations", "cancel_resume", "receipts", "attempts"):
+        result = _call(
+            server,
+            "run.plan",
+            {
+                "idempotency_key": "idem-1",
+                "input_payload": {"intent_id": "does-not-matter", reserved_key: "hack"},
+            },
+        )
+        assert result.isError is True, reserved_key
+        assert result.structuredContent["reason_code"] == "payload_too_large", reserved_key
+
+    assert invoked == [], f"adapter.invoke was reached for a DI-only key: {invoked!r}"
+
+
+def test_legitimate_optional_adapter_parameter_still_reaches_the_adapter(
+    server: Any, tmp_foundry: FoundryPaths
+) -> None:
+    """The F1.3 allowlist must not become an accidental over-broad
+    rejection: a REAL, declared `run.plan` optional parameter (`depth`)
+    still reaches `adapter.invoke` -- denies downstream (no confirmation),
+    never at the allowlist gate itself."""
+
+    _configure_operator(tmp_foundry)
+    result = _call(
+        server,
+        "run.plan",
+        {
+            "idempotency_key": "idem-1",
+            "input_payload": {"intent_id": "does-not-exist", "depth": "quick"},
+        },
+    )
+    assert result.isError is True
+    assert result.structuredContent["reason_code"] == "confirmation_missing"
+
+
+def test_unknown_top_level_argument_is_silently_dropped_not_rejected(
+    server: Any, tmp_foundry: FoundryPaths
+) -> None:
+    """M2 fix cycle 1, F1.4/ICA E2 claim correction -- pins the ACTUAL
+    (silent-drop, not reject) behavior for an unrelated TOP-LEVEL key
+    alongside legitimate arguments (a DIFFERENT layer than F1.3's
+    `input_payload`-nested allowlist above: the SDK's own generated
+    pydantic arg model for each tool uses `extra='ignore'`, not
+    `'forbid'`). Denial here is for the UNRELATED reason
+    `confirmation_missing` -- the SAME denial an equivalent request with NO
+    extra key at all would get -- proving the extra key changed nothing
+    about how the request was processed, not merely that no error
+    escaped. See this module's docstring's "Unknown top-level tool
+    arguments" section."""
+
+    _configure_operator(tmp_foundry)
+    result = _call(
+        server,
+        "run.plan",
+        {
+            "idempotency_key": "idem-1",
+            "input_payload": {"intent_id": "does-not-exist"},
+            "EXTRA_UNDECLARED": "should be silently dropped, not rejected",
+        },
+    )
+    assert result.isError is True
+    assert result.structuredContent["reason_code"] == "confirmation_missing"
+
+
+def test_deeply_nested_argument_maps_to_payload_too_large_not_recursion_error(server: Any) -> None:
+    """M2 fix cycle 1, F1.4 (TERRA-6). Pre-fix, calling
+    `_check_transport_payload_size` directly on an equivalently deep
+    mapping raised `RecursionError` (TERRA-6's own reproduction, and this
+    module's PRE-fix `json.dumps`-based size check would do the same).
+    Drives the FULL transport path (`server.call_tool`, not the helper in
+    isolation) to prove a bounded envelope is returned instead."""
+
+    nested: dict[str, Any] = {}
+    cursor = nested
+    for _ in range(50_000):
+        cursor["n"] = {}
+        cursor = cursor["n"]
+
+    result = _call(server, "run.plan", {"idempotency_key": "idem-1", "input_payload": nested})
+    assert result.isError is True
+    assert result.structuredContent["reason_code"] == "payload_too_large"
+
+
+def test_internal_error_envelope_for_genuine_adapter_exception(
+    server: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D7's `internal_error` mapping, re-proven under a GENUINE unexpected
+    exception -- the pre-fix version of this coverage relied on an
+    ACCIDENTAL `TypeError` collision (see
+    `test_reserved_input_payload_key_maps_to_payload_too_large_envelope`'s
+    docstring for why that assertion was inverted, not merely renamed).
+    Here every `input_payload` key is legitimate; the exception comes from
+    a monkeypatched adapter's own `.invoke()` body, exactly like ICA's E6
+    reproduction."""
+
+    class _BoomAdapter:
+        operation_kind = "run.plan"
+
+        def invoke(self, **kwargs: Any) -> Any:
+            raise RuntimeError("/etc/shadow leaked path -- must never reach the caller")
+
+    monkeypatch.setitem(adapters_base._REGISTRY, "run.plan", _BoomAdapter())
+
+    result = _call(
+        server, "run.plan", {"idempotency_key": "idem-1", "input_payload": {"intent_id": "x"}}
+    )
+    assert result.isError is True
+    payload = result.structuredContent
     assert payload["reason_code"] == "internal_error"
     assert payload["retryable"] is True
-    assert "TypeError" not in str(payload)  # never a raw exception name/message
+    assert "shadow" not in str(payload)
+    assert "RuntimeError" not in str(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -349,6 +529,149 @@ def test_preflight_malformed_target_denies_target_invalid(server: Any, tmp_found
             "idempotency_key": "idem-1",
             "effective_sensitivity": "public",
             "targets": [{"target_kind": "run"}],  # missing target_ref
+        },
+    )
+    assert result.isError is True
+    assert result.structuredContent["reason_code"] == "target_invalid"
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 1, F1.1 (TERRA-1): preflight durably persists the minted
+# confirmation before returning it
+# ---------------------------------------------------------------------------
+
+
+def test_preflight_persists_minted_confirmation_for_later_consumption(
+    server: Any, tmp_foundry: FoundryPaths
+) -> None:
+    """Pre-fix, `record_confirmation` was never called anywhere on this
+    path (`grep -n record_confirmation src/.../operator_mcp/server.py`
+    returned nothing) -- a real `confirmations` row for the minted
+    `confirmation_id` never existed, so no normal preflight -> execute flow
+    through this transport could ever consume its own confirmation
+    (TERRA-1). Queries the SAME durable store `consume_and_create_
+    operation` reads from directly (mirrors
+    `tests/unit/test_operator_operation_service.py`'s own `_raw_connect`
+    convention) rather than re-deriving the full e2e execute path -- that
+    full preflight -> execute proof is `test_operator_mcp_preflight_
+    execute_e2e.py`'s job (F1.5)."""
+
+    _configure_operator(tmp_foundry)
+    result = _call(
+        server,
+        "operation.preflight",
+        {"operation_kind": "run.plan", "idempotency_key": "idem-persist", "effective_sensitivity": "public"},
+    )
+    assert result.isError is False
+    confirmation_id = result.structuredContent["confirmation"]["record"]["confirmation_id"]
+
+    from research_foundry.services import operator_operation_service as ops_module
+
+    conn = ops_module._connect(tmp_foundry)
+    try:
+        row = conn.execute(
+            "SELECT status FROM confirmations WHERE confirmation_id = ?", (confirmation_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is not None, "record_confirmation was never called -- TERRA-1 regression"
+    assert row[0] == "issued"
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 1, F1.2 (TERRA-2): writeback.preview preflight can mint a
+# USABLE confirmation (writeback_targets is no longer silently dropped)
+# ---------------------------------------------------------------------------
+
+
+def test_preflight_writeback_preview_allows_with_valid_targets(
+    server: Any, tmp_foundry: FoundryPaths
+) -> None:
+    """Pre-fix, `writeback.preview` could NEVER mint a confirmation through
+    this transport regardless of what the caller supplied -- `ctx.
+    writeback_targets` was always `()` (the field was never threaded from
+    `input_payload["targets"]`), and `_check_preflight` denies
+    `preflight_failed` whenever it is empty for this kind. This is the
+    positive proof TERRA-2 asked for: a real, valid `targets` list now
+    allows."""
+
+    _configure_operator(tmp_foundry)
+    result = _call(
+        server,
+        "operation.preflight",
+        {
+            "operation_kind": "writeback.preview",
+            "idempotency_key": "idem-wb-1",
+            "effective_sensitivity": "public",
+            "targets": [{"target_kind": "evidence_bundle", "target_ref": "rf_run_fake"}],
+            "input_payload": {"run_id": "rf_run_fake", "targets": ["meatywiki", "arc"]},
+        },
+    )
+    assert result.isError is False, result.structuredContent
+    assert result.structuredContent["allowed"] is True
+    assert result.structuredContent["confirmation"]["record"]["status"] == "issued"
+
+
+def test_preflight_writeback_preview_missing_targets_denies_preflight_failed(
+    server: Any, tmp_foundry: FoundryPaths
+) -> None:
+    """The pre-fix behavior (empty `writeback_targets`) stays reachable --
+    and correct -- when the caller genuinely omits `targets` from
+    `input_payload`; this is the honest `preflight_failed` denial, not a
+    regression."""
+
+    _configure_operator(tmp_foundry)
+    result = _call(
+        server,
+        "operation.preflight",
+        {
+            "operation_kind": "writeback.preview",
+            "idempotency_key": "idem-wb-2",
+            "effective_sensitivity": "public",
+            "targets": [{"target_kind": "evidence_bundle", "target_ref": "rf_run_fake"}],
+            "input_payload": {"run_id": "rf_run_fake"},
+        },
+    )
+    assert result.isError is True
+    assert result.structuredContent["reason_code"] == "preflight_failed"
+
+
+def test_preflight_writeback_preview_unknown_target_name_denies_target_invalid(
+    server: Any, tmp_foundry: FoundryPaths
+) -> None:
+    """Validated against `writeback.WRITEBACK_TARGET_NAMES` -- the closed,
+    six-member vocabulary Leg 2 owns -- never a second, independently
+    typed vocabulary this leg invents."""
+
+    _configure_operator(tmp_foundry)
+    result = _call(
+        server,
+        "operation.preflight",
+        {
+            "operation_kind": "writeback.preview",
+            "idempotency_key": "idem-wb-3",
+            "effective_sensitivity": "public",
+            "targets": [{"target_kind": "evidence_bundle", "target_ref": "rf_run_fake"}],
+            "input_payload": {"run_id": "rf_run_fake", "targets": ["not_a_real_target"]},
+        },
+    )
+    assert result.isError is True
+    assert result.structuredContent["reason_code"] == "target_invalid"
+
+
+def test_preflight_writeback_preview_malformed_targets_shape_denies_target_invalid(
+    server: Any, tmp_foundry: FoundryPaths
+) -> None:
+    _configure_operator(tmp_foundry)
+    result = _call(
+        server,
+        "operation.preflight",
+        {
+            "operation_kind": "writeback.preview",
+            "idempotency_key": "idem-wb-4",
+            "effective_sensitivity": "public",
+            "targets": [{"target_kind": "evidence_bundle", "target_ref": "rf_run_fake"}],
+            "input_payload": {"run_id": "rf_run_fake", "targets": "meatywiki"},  # str, not list
         },
     )
     assert result.isError is True

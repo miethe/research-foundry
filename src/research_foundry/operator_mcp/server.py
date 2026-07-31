@@ -119,19 +119,80 @@ unguarded object for a bound method's `__self__` to resolve to instead
 documents and closes). This module reimplements that shape independently,
 by value, rather than importing it, per this module's own import
 boundary (never `knowledge_mcp.*`).
+
+**Scope of the stdio-only guard (M2 fix cycle 1, F1.6/TERRA-5 -- READ
+BEFORE relying on this guard for anything stronger than defense in
+depth).** The guard above blocks every REACHABLE activation path a normal
+caller (a real stdio client, `process.main()`, or test code calling bound
+instance methods like `server.run(...)`/`server.sse_app()`) can drive: it
+is a genuine subclass, so ordinary virtual dispatch through the instance
+always resolves to the overriding method, never the base class's. It does
+**NOT** and structurally **CANNOT** prevent an UNBOUND base-class call --
+`FastMCP.sse_app(server_instance)` or `FastMCP.streamable_http_app(server_instance)`
+-- from returning a live, network-capable Starlette app for that same
+instance; Python has no mechanism to make a subclass override observable
+through an explicit unbound-base-method call (`Base.method(instance)`
+always resolves `method` on `Base`, never re-dispatches virtually). This is
+NOT a gap this task closes: reaching that call requires the caller to
+already be executing arbitrary Python in this process (there is no
+registered MCP tool, and no reachable code path from a real stdio request,
+that ever calls an unbound base method on `server`) -- at which point the
+attacker could `import socket` directly and mount a listener themselves,
+making the guard moot either way. The guard is therefore **defense in
+depth against every transport path a real caller can drive, not a sandbox
+against arbitrary in-process code execution** -- `test_transport_guard_
+unbound_base_class_call_bypasses_the_guard_by_design` below PINS this
+limitation explicitly (asserts the unbound call succeeds) so no future
+reader mistakes the guard for stronger than it is. The identical
+limitation exists, unfixed, in the already-shipped `knowledge_mcp` guard
+this module's shape mirrors; filed as a follow-up ITT node, not carried
+here as an open task -- see `m2-fix-contract.md`'s TERRA-5 adjudication for
+the full reasoning, including why redesigning the guard (e.g. a delegating
+wrapper) only trades this bypass class for the `__self__`/`_inner` bypass
+class `knowledge_mcp/registry.py`'s own docstring already rejected a
+wrapper to avoid.
+
+**Unknown top-level tool arguments (M2 fix cycle 1, F1.4/ICA E2 -- claim
+correction).** Every tool's ADVERTISED `list_tools()` schema declares
+`additionalProperties: false` (D4, `_close_input_schema`) -- but this is
+advisory to a well-behaved client, not a runtime rejection this module
+performs: the SDK validates real requests against a pydantic model
+generated FROM each handler's own signature
+(`mcp.server.fastmcp.utilities.func_metadata`), and that generated model's
+`extra` config is pydantic v2's own default (`"ignore"`), not `"forbid"`.
+A caller-supplied top-level key with no matching parameter (e.g. an
+`EXTRA_UNDECLARED` key alongside `idempotency_key`/`input_payload`) is
+therefore SILENTLY DROPPED before it ever reaches this module's own code
+-- never forwarded to an adapter (confirmed empirically: `adapter.invoke`
+never observes it), but also never surfaced to the caller as a validation
+error. Security-neutral (nothing downstream ever sees the dropped key),
+but reading D4's "closed input schemas" language as "the server rejects
+unknown fields" is incorrect; `test_unknown_top_level_argument_is_
+silently_dropped_not_rejected` below pins the actual (drop, not reject)
+behavior so this distinction stays test-enforced, not merely documented.
+This module does not attempt to override the SDK's own `extra="ignore"`
+default (a judgment call, not a limitation this task ran out of scope to
+fix: doing so would mean reaching into SDK-internal `func_metadata`
+construction, a materially larger and more fragile change than this fix
+cycle's scope, for a security-neutral gap) -- flagged for the security
+gate to weigh in on, per this task's own disposition table.
 """
 
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import logging
 from collections.abc import Mapping
 from typing import Any, Literal
 
+from research_foundry import ids
 from research_foundry.errors import RFError
 from research_foundry.paths import FoundryPaths
 from research_foundry.services import operator_mcp_adapters as adapters
 from research_foundry.services import operator_mcp_policy as policy
+from research_foundry.services.operator_operation_service import OperatorOperationService
 
 __all__ = ["UnsupportedTransportError", "build_server"]
 
@@ -170,7 +231,77 @@ _SensitivityLiteral = Literal[*policy.SENSITIVITY_LEVELS]  # type: ignore[valid-
 # request is rejected, never whether it eventually is).
 _MAX_TRANSPORT_ARGUMENT_BYTES = 65_536
 
+# M2 fix cycle 1, F1.4 (TERRA-6): an explicit-stack (never recursive)
+# nesting-depth cap, checked BEFORE `_check_transport_payload_size` ever
+# calls `json.dumps` on caller-supplied `arguments` -- a naive recursive
+# depth/size computation (or `json.dumps` itself, on sufficiently deep
+# input) raises `RecursionError` on adversarially nested input, which
+# escaped this module's D7 exception boundary entirely before this fix
+# (TERRA-6's reproduction: `_check_transport_payload_size` called directly
+# on a 100,000-level nested mapping). Generous headroom over any real tool
+# argument shape (`input_payload` itself is capped at 32 top-level
+# properties elsewhere; nothing in this transport's own schemas nests more
+# than a handful of levels).
+_MAX_ARGUMENT_DEPTH = 32
+
 _ALLOWED_TRANSPORTS: tuple[str | None, ...] = (None, "stdio")
+
+# M2 fix cycle 1, F1.3 (TERRA-4): keyword names `_operation_tool`/
+# `_preflight_tool` ALREADY supply explicitly and unconditionally to every
+# `adapter.invoke(...)` call -- never legitimate `input_payload` keys (a
+# caller-supplied duplicate collides as a raw `TypeError`, the exact
+# TERRA-4 pre-fix symptom `_allowed_input_payload_keys` below now prevents
+# by construction).
+_SERVER_SUPPLIED_KEYS: frozenset[str] = frozenset(
+    {"idempotency_key", "confirmation_record", "presented_token", "dry_run", "paths"}
+)
+
+# M2 fix cycle 1, F1.3 (TERRA-4): dependency-injection/test-only keyword
+# names every P3 adapter's own `invoke*` signature declares (`now` for
+# clock injection, `operations`/`cancel_resume`/`receipts`/`attempts` for
+# service-double injection) -- NONE of these is a real caller-facing
+# semantic parameter; TERRA-4's reproduction showed an in-process MCP
+# caller could supply `now` via `input_payload` and control confirmation
+# expiry, an authorization bypass. `now` in particular MUST always be
+# server-derived (real wall-clock time), never caller-influenced.
+_DI_ONLY_KEYS: frozenset[str] = frozenset({"now", "operations", "cancel_resume", "receipts", "attempts"})
+
+# M2 fix cycle 1, F1.3 (TERRA-4): (module attribute name on the `adapters`
+# package, real function name) for every `OPERATION_KINDS` member's REAL
+# `invoke*` function -- `_allowed_input_payload_keys` below derives each
+# kind's allowlist from `inspect.signature` of the ACTUAL function this
+# table points at, never a hand-typed, independently-driftable parameter
+# list (the exact "guard was right but the parameter inventory was
+# incomplete" defect class D8 warns about). Every `operator_mcp_adapters`
+# submodule listed here is ALREADY imported (as a side effect of
+# `operator_mcp_adapters/__init__.py`'s own registration-import block) by
+# the time this module's `from research_foundry.services import
+# operator_mcp_adapters as adapters` import above completes -- Python binds
+# every imported submodule as an attribute of its parent package
+# regardless of any `as`-alias used to import it, so `getattr(adapters,
+# <module attribute name>)` below never triggers a fresh import.
+_ADAPTER_INVOKE_TARGETS: dict[str, tuple[str, str]] = {
+    "run.plan": ("run_plan", "invoke"),
+    "swarm.start": ("swarm_start", "invoke"),
+    "job.status": ("job_lifecycle", "invoke_status"),
+    "job.cancel": ("job_lifecycle", "invoke_cancel"),
+    "job.resume": ("job_lifecycle", "invoke_resume"),
+    "external_report.import": ("external_import", "invoke"),
+    "source.ingest": ("source_ingest", "invoke"),
+    "run.extract": ("research_stages", "invoke_extract"),
+    "run.claim_map": ("research_stages", "invoke_claim_map"),
+    "run.synthesize": ("research_stages", "invoke_synthesize"),
+    "run.verify": ("verify_bundle", "invoke_verify"),
+    "run.bundle": ("verify_bundle", "invoke_bundle"),
+    "writeback.preview": ("writeback_preview", "invoke_preview"),
+}
+
+if set(_ADAPTER_INVOKE_TARGETS) != set(policy.OPERATION_KINDS):  # pragma: no cover - import-time invariant
+    raise RuntimeError(
+        "operator_mcp.server: _ADAPTER_INVOKE_TARGETS must cover exactly "
+        "operator_mcp_policy.OPERATION_KINDS -- no silent partial F1.3 "
+        f"allowlist coverage, ever (diff: {set(_ADAPTER_INVOKE_TARGETS) ^ set(policy.OPERATION_KINDS)!r})."
+    )
 
 # Cache for :func:`_stdio_only_fastmcp_class`, keyed by the real
 # `FastMCP` class it was derived from -- mirrors `knowledge_mcp/
@@ -221,26 +352,88 @@ def _build_dual_encoder(call_tool_result_cls: Any, text_content_cls: Any) -> Any
     return _dual_encode
 
 
+def _mapping_depth(value: Any, *, limit: int) -> int:
+    """Nesting depth of `value` (dict/list/tuple nesting only), computed
+    with an EXPLICIT stack rather than recursion -- short-circuits as soon
+    as `limit` is exceeded, so this can never itself raise `RecursionError`
+    on adversarially deep input (M2 fix cycle 1, F1.4/TERRA-6: the exact
+    failure mode this helper exists to prevent, previously reproduced by
+    calling `json.dumps` -- CPython's own recursive serializer -- directly
+    on a 100,000-level nested mapping)."""
+
+    stack: list[tuple[Any, int]] = [(value, 0)]
+    deepest = 0
+    while stack:
+        current, depth = stack.pop()
+        if depth > deepest:
+            deepest = depth
+            if deepest > limit:
+                return deepest
+        if isinstance(current, Mapping):
+            for nested in current.values():
+                stack.append((nested, depth + 1))
+        elif isinstance(current, (list, tuple)):
+            for nested in current:
+                stack.append((nested, depth + 1))
+    return deepest
+
+
 def _check_transport_payload_size(arguments: Mapping[str, Any]) -> policy.PolicyDecision | None:
     """`None` when `arguments` is within the transport-level bound;
     otherwise a `payload_too_large` denial. See this module's docstring's
-    "Transport error mapping" section."""
+    "Transport error mapping" section.
 
+    M2 fix cycle 1, F1.4 (TERRA-6): the depth cap below runs BEFORE
+    `json.dumps` ever touches `arguments`, using the non-recursive
+    `_mapping_depth` walk -- a pathologically deep (but otherwise
+    byte-small) argument mapping is rejected here, never reaches
+    `json.dumps`, and therefore can never raise `RecursionError` on this
+    path. This function's caller (`_StdioOnlyFastMCP.call_tool`) now also
+    wraps this ENTIRE call inside its own outer exception boundary (F1.4's
+    other half: "put all argument inspection inside the exception
+    boundary"), so even an exhaustive future change to this function's own
+    body cannot re-open TERRA-6 by escaping uncaught.
+    """
+
+    if _mapping_depth(arguments, limit=_MAX_ARGUMENT_DEPTH) > _MAX_ARGUMENT_DEPTH:
+        return policy.PolicyDecision(False, "capability", "payload_too_large", retryable=False)
     try:
         size = len(
             json.dumps(
                 dict(arguments), ensure_ascii=False, separators=(",", ":"), sort_keys=True, default=str
             ).encode("utf-8")
         )
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, RecursionError):
         # Not even measurable -- let the real dispatch attempt run; a
         # genuinely malformed argument mapping will fail there too, mapped
         # to internal_error by the SAME call_tool override's outer
-        # try/except.
+        # try/except (which now also wraps THIS call, per F1.4 above).
         return None
     if size > _MAX_TRANSPORT_ARGUMENT_BYTES:
         return policy.PolicyDecision(False, "capability", "payload_too_large", retryable=False)
     return None
+
+
+@functools.lru_cache(maxsize=None)
+def _allowed_input_payload_keys(kind: str) -> frozenset[str]:
+    """The set of semantic keyword-argument names `input_payload` may
+    supply for operation kind `kind` -- derived via `inspect.signature`
+    from the REAL `invoke*` function `_ADAPTER_INVOKE_TARGETS[kind]` names,
+    minus `_SERVER_SUPPLIED_KEYS` (already threaded explicitly by
+    `_make_operation_tool`/`_preflight_tool`) and `_DI_ONLY_KEYS`
+    (dependency-injection/test-only, never caller-facing). M2 fix cycle 1,
+    F1.3 (TERRA-4). Cached: `inspect.signature` is not free, and every
+    `OPERATION_KINDS` member's allowlist is fixed for the process lifetime
+    (the real functions it introspects are module-level, never
+    monkeypatched mid-process in production)."""
+
+    module_attr, func_name = _ADAPTER_INVOKE_TARGETS[kind]
+    func = getattr(getattr(adapters, module_attr), func_name)
+    return frozenset(
+        name
+        for name in inspect.signature(func).parameters
+        if name not in _SERVER_SUPPLIED_KEYS and name not in _DI_ONLY_KEYS
+    )
 
 
 def _stdio_only_fastmcp_class(fastmcp_cls: type[Any]) -> type[Any]:
@@ -293,17 +486,29 @@ def _stdio_only_fastmcp_class(fastmcp_cls: type[Any]) -> type[Any]:
             this method (`FastMCP.__init__` registers the OVERRIDDEN bound
             method -- `self._mcp_server.call_tool(...)(self.call_tool)` --
             as the low-level protocol server's own handler; confirmed
-            against the installed 1.x SDK's source)."""
+            against the installed 1.x SDK's source).
 
-            name_decision = policy.check_tool_name(name)
-            if name_decision.denied:
-                return dual_encode(policy.build_error(name_decision), is_error=True)
-
-            size_decision = _check_transport_payload_size(arguments or {})
-            if size_decision is not None:
-                return dual_encode(policy.build_error(size_decision), is_error=True)
+            M2 fix cycle 1, F1.4 (TERRA-6): the tool-name check and the
+            payload-size/depth check now run INSIDE the SAME outer
+            `try/except Exception` boundary as the real dispatch below --
+            previously `_check_transport_payload_size` ran BEFORE (outside)
+            this boundary, so an adversarially deep argument mapping could
+            raise `RecursionError` straight through this method, uncaught.
+            `_check_transport_payload_size` is now itself depth-capped
+            (never recurses), but this is defense in depth on top of that
+            fix, not a replacement for it: "put all argument inspection
+            inside the exception boundary" per the F1.4 disposition.
+            """
 
             try:
+                name_decision = policy.check_tool_name(name)
+                if name_decision.denied:
+                    return dual_encode(policy.build_error(name_decision), is_error=True)
+
+                size_decision = _check_transport_payload_size(arguments or {})
+                if size_decision is not None:
+                    return dual_encode(policy.build_error(size_decision), is_error=True)
+
                 return await super().call_tool(name, arguments)  # type: ignore[misc]
             except Exception as exc:  # noqa: BLE001 -- the ONE D7 internal_error boundary
                 logger.warning(
@@ -365,6 +570,18 @@ def build_server(paths: FoundryPaths | None = None) -> Any:
 
     resolved_paths = paths if paths is not None else FoundryPaths.discover()
 
+    # M2 fix cycle 1, F1.1 (TERRA-1): the ONE `OperatorOperationService`
+    # instance `_preflight_tool` durably persists every minted confirmation
+    # through (`record_confirmation`) -- built once per server, over the
+    # SAME `resolved_paths` every operation tool already dispatches
+    # against, so a confirmation minted by THIS server instance's preflight
+    # is persisted to the SAME `.rf_state/operator_operations.db` an
+    # execute call against THIS server instance's operation tools reads
+    # from (`operator_mcp_adapters.base.run_pipeline`'s own `operations or
+    # OperatorOperationService(resolved_paths)` fallback resolves to an
+    # equivalent connection over the same file).
+    operations = OperatorOperationService(resolved_paths)
+
     missing = [kind for kind in policy.OPERATION_KINDS if adapters.get_adapter(kind) is None]
     if missing:
         raise RuntimeError(
@@ -395,13 +612,35 @@ def build_server(paths: FoundryPaths | None = None) -> Any:
             if adapter is None:  # pragma: no cover - build_server's own fail-loud check makes this unreachable
                 decision = policy.PolicyDecision(False, "capability", "operation_unknown", retryable=False)
                 return dual_encode(policy.build_error(decision), is_error=True)
+
+            payload = input_payload or {}
+            rejected_keys = set(payload) - _allowed_input_payload_keys(kind)
+            if rejected_keys:
+                # M2 fix cycle 1, F1.3 (TERRA-4): explicit, bounded
+                # rejection of any `input_payload` key that is not a
+                # declared semantic parameter of `kind`'s REAL `invoke*`
+                # signature -- this closes BOTH the DI-injection bypass
+                # (e.g. a caller-supplied `now` reaching `verify_confirmation`
+                # and controlling confirmation expiry) AND the accidental,
+                # fragile "colliding key raises TypeError, which happens to
+                # get mapped to internal_error" behavior the pre-fix D7
+                # boundary relied on for the SAME collision (never a
+                # deliberate rejection). `payload_too_large` is reused here,
+                # not invented: `operator_mcp_policy._check_capability`
+                # already uses this SAME reason code for the sibling
+                # "input_payload does not conform to what capability
+                # accepts" condition (its own maxProperties bound) -- see
+                # this module's docstring's "F1.3" section.
+                decision = policy.PolicyDecision(False, "capability", "payload_too_large", retryable=False)
+                return dual_encode(policy.build_error(decision), is_error=True)
+
             outcome = adapter.invoke(
                 idempotency_key=idempotency_key,
                 confirmation_record=confirmation_record,
                 presented_token=presented_token,
                 dry_run=dry_run,
                 paths=resolved_paths,
-                **(input_payload or {}),
+                **payload,
             )
             if not outcome.ok:
                 # D7: adapter-returned error envelopes pass through
@@ -440,6 +679,21 @@ def build_server(paths: FoundryPaths | None = None) -> Any:
             decision = policy.PolicyDecision(False, "capability", "operation_unknown", retryable=False)
             return dual_encode(policy.build_error(decision), is_error=True)
 
+        # M2 fix cycle 1, F1.3 (TERRA-4): the SAME per-kind allowlist
+        # `_operation_tool` enforces, applied here too -- a preflight that
+        # accepted an `input_payload` shape execute would later reject
+        # could mint a confirmation for a request that can never actually
+        # be consumed, and (more sharply) preflight's `ctx.input_payload`
+        # feeds `canonical_digest()` the SAME way execute's does, so an
+        # unvalidated DI/reserved key here would poison the digest a real
+        # execute call could never reproduce anyway. Checked BEFORE the
+        # `targets` loop so a malformed `input_payload` is never partially
+        # processed.
+        payload = input_payload or {}
+        if set(payload) - _allowed_input_payload_keys(operation_kind):
+            decision = policy.PolicyDecision(False, "capability", "payload_too_large", retryable=False)
+            return dual_encode(policy.build_error(decision), is_error=True)
+
         target_refs: list[policy.TargetRef] = []
         for raw_target in targets or []:
             kind_value = raw_target.get("target_kind") if isinstance(raw_target, dict) else None
@@ -448,6 +702,50 @@ def build_server(paths: FoundryPaths | None = None) -> Any:
                 decision = policy.PolicyDecision(False, "capability", "target_invalid", retryable=False)
                 return dual_encode(policy.build_error(decision), is_error=True)
             target_refs.append(policy.TargetRef(kind_value, ref_value))
+
+        # M2 fix cycle 1, F1.2 (TERRA-2): `writeback.preview` cannot mint a
+        # USABLE confirmation without a non-empty `writeback_targets` --
+        # `_check_preflight` denies `preflight_failed` otherwise, and (even
+        # if it did not) an empty `writeback_targets` would leave every
+        # `governance.guard_check` writeback-review rule structurally
+        # unable to fire (see `PolicyContext`'s own docstring, "BLOCK-7").
+        # Sourced from `input_payload["targets"]` -- the SAME key
+        # `writeback_preview.invoke_preview`'s own `targets` parameter
+        # receives when a caller later presents this SAME `input_payload`
+        # to execute -- and normalized (sorted + deduplicated) the
+        # IDENTICAL way `invoke_preview` normalizes its own, so the
+        # `input_payload` baked into this ctx's canonical digest is
+        # byte-identical to the one execute independently reconstructs
+        # (F1.5's e2e test proves this binds). Validated against
+        # `writeback.WRITEBACK_TARGET_NAMES` -- the closed, six-member
+        # vocabulary Leg 2 owns and built specifically for this cross-leg
+        # coordination point (see `m2-fix-contract.md`'s "Cross-leg
+        # coordination" section and that constant's own docstring) -- never
+        # a second, independently-typed vocabulary.
+        writeback_targets: tuple[str, ...] = ()
+        if operation_kind == "writeback.preview":
+            from research_foundry.services import writeback as _writeback  # lazy: keeps this module's frozen module-level import boundary (D1) unchanged, mirrors every P3 adapter's own lazy-import convention for this exact module
+
+            raw_preview_targets = payload.get("targets")
+            # A genuinely ABSENT `targets` key is left to `_check_preflight`'s
+            # own existing empty-`writeback_targets` -> `preflight_failed`
+            # check below (unchanged pre-fix behavior for that specific
+            # case) -- `target_invalid` here is reserved for a `targets` key
+            # that IS present but malformed-shaped or names an out-of-
+            # vocabulary target, a DIFFERENT failure mode than "omitted
+            # entirely".
+            if raw_preview_targets is not None:
+                if not isinstance(raw_preview_targets, list) or not all(
+                    isinstance(t, str) for t in raw_preview_targets
+                ):
+                    decision = policy.PolicyDecision(False, "capability", "target_invalid", retryable=False)
+                    return dual_encode(policy.build_error(decision), is_error=True)
+                normalized_preview_targets = tuple(sorted({str(t) for t in raw_preview_targets}))
+                if any(t not in _writeback.WRITEBACK_TARGET_NAMES for t in normalized_preview_targets):
+                    decision = policy.PolicyDecision(False, "capability", "target_invalid", retryable=False)
+                    return dual_encode(policy.build_error(decision), is_error=True)
+                writeback_targets = normalized_preview_targets
+                payload = {**payload, "targets": list(normalized_preview_targets)}
 
         # Judgment call -- see this module's docstring's "operation.preflight"
         # section and this task's completion note (D8 table): every
@@ -470,7 +768,8 @@ def build_server(paths: FoundryPaths | None = None) -> Any:
             sensitivity_ceiling=adapters.resolve_local_sensitivity_ceiling(resolved_paths),
             targets=tuple(target_refs),
             resolved_target_workspaces=resolved_target_workspaces,
-            input_payload=input_payload or {},
+            input_payload=payload,
+            writeback_targets=writeback_targets,
             policy_snapshot_version=policy_snapshot_version,
             paths=resolved_paths,
         )
@@ -482,7 +781,48 @@ def build_server(paths: FoundryPaths | None = None) -> Any:
         if operation_kind in policy.CONFIRMATION_NOT_REQUIRED_KINDS:
             return dual_encode({"allowed": True, "confirmation": None}, is_error=False)
 
-        issued = policy.mint_confirmation(ctx, paths=resolved_paths)
+        # M2 fix cycle 1, F1.1 companion fix (discovered while proving F1.5's
+        # e2e test): `mint_confirmation`'s own docstring says its `now`
+        # parameter is the clock-injection seam "P2/P5 MUST NEVER thread a
+        # caller-/request-supplied timestamp through" -- but P5 (this
+        # server) still owns choosing WHICH clock source it threads by
+        # default, and `mint_confirmation` itself falls back to
+        # `datetime.now(timezone.utc)` (a bare wall-clock read) when `now`
+        # is omitted, while the P2 CONSUME side (`OperatorOperationService.
+        # consume_and_create_operation`) always uses `research_foundry.ids.
+        # now()` -- this repo's ONE injectable clock (`ids.set_clock()`,
+        # pinned for the whole test suite by `tests/conftest.py`'s autouse
+        # `_fixed_clock` fixture). Omitting `now=` here left mint and
+        # consume reading TWO DIFFERENT clocks: harmless in production
+        # (both read real wall time), but under the test suite's pinned
+        # clock every confirmation minted this way is `issued_at` in the
+        # FUTURE relative to consume's `moment` -- `operator_mcp_policy.
+        # _record_expiry`'s NEW-7 anti-forgery check (`if issued_at >
+        # moment: return None`) then treats it as unconditionally expired,
+        # regardless of order or elapsed time. `ids.now()` is this
+        # module's own top-level import (offline-safe, no `mcp` SDK
+        # dependency) -- passing it here makes mint and consume agree on
+        # the SAME clock source always, test or production.
+        issued = policy.mint_confirmation(ctx, paths=resolved_paths, now=ids.now())
+        # M2 fix cycle 1, F1.1 (TERRA-1): durably persist the minted
+        # confirmation BEFORE returning it -- the ONLY way a later execute
+        # call's `consume_and_create_operation` (which looks this record up
+        # by `confirmation_id` in the SAME `confirmations` table) can ever
+        # find it; pre-fix, NOTHING on this path ever called
+        # `record_confirmation`, so no normal preflight -> execute flow
+        # through this transport could ever consume its own confirmation
+        # (F1.5's e2e test proves the fix; the SAME test, run against a
+        # pre-fix scratch copy, fails with `confirmation_missing`). A
+        # persistence failure (e.g. `ConfirmationPersistenceError` on lock
+        # contention/store unavailability) is deliberately left to
+        # propagate OUT of this function -- through the SDK's own
+        # tool-dispatch wrapper, into `_StdioOnlyFastMCP.call_tool`'s outer
+        # `except Exception` boundary (F1.4) -- surfacing as a governed,
+        # bounded `internal_error` envelope, never a silent success. This
+        # preflight still performs NO OTHER effect: no operation manifest,
+        # no receipt, no adapter action -- only this one durable row, and
+        # only for confirmation-requiring kinds that reach this line.
+        operations.record_confirmation(issued.record)
         return dual_encode(
             {"allowed": True, "confirmation": {"token": issued.token, "record": issued.record}},
             is_error=False,

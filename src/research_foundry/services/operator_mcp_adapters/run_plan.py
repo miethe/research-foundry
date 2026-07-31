@@ -213,6 +213,15 @@ def invoke(
         "profile": profile,
         "project": project,
         "retrieval_policy": retrieval_policy,
+        # F2.1 fix (TERRA-3): retrieval_limits reaches planning.plan_run
+        # below (see _run()) exactly like every other keyword here -- it
+        # MUST be bound into the canonical digest, or a confirmation minted
+        # for one retrieval_limits value (including None/unset) could be
+        # replayed with a different one. Coerced to a plain dict (never the
+        # caller's own Mapping instance) so canonical_json() sees the same
+        # JSON-primitive shape every other adapter in this family already
+        # produces for its own dict-shaped optionals.
+        "retrieval_limits": dict(retrieval_limits) if retrieval_limits is not None else None,
     }
     # PolicyContext.canonical_digest() hashes input_payload verbatim -- drop
     # None-valued optionals so two callers who both omit the same optional

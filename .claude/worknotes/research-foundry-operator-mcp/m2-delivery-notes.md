@@ -74,6 +74,32 @@ adversarial-audit framing — pre-gate is framed as code review, which held fine
   no re-derivation. The M1-style "fix the sibling" discipline held: Leg A's extension added spy
   coverage for the new paths unprompted-in-detail (the instruction named it once).
 
+- **O-4 — The two pre-gate lenses CONTRADICTED each other, and both were right.** On the
+  stdio-only transport guard: ICA ran E4 empirically (`server.sse_app()`, `run(transport="sse")`,
+  `run_sse_async()`, mount_path variants — 8 attempts, zero sockets opened) and marked it
+  **VERIFIED clean**, explicitly asserting "genuine subclass, confirmed no separate wrapped
+  instance exists for `__self__` to resolve to". Terra called the SAME guard **BLOCKING**, having
+  tried the one thing ICA didn't: the *unbound base-class* call `FastMCP.sse_app(instance)`, which
+  returns a live Starlette app. Neither lens was wrong; they probed different bypass mechanics
+  (bound dispatch vs. unbound base invocation). **A "checked clean" from a competent lens is not a
+  clean bill** — it is one lens's coverage boundary, and coverage boundaries are invisible from
+  inside the lens. This is the strongest evidence yet for AAR carry-in #2 (two diverse cheap
+  pre-gates); it also means a *single* pre-gate would have shipped an overclaimed security
+  property with an empirical "verified" stamp on it.
+- **O-5 — 8 findings / 3 blocking on an all-green tree; 4 of them from one structural gap.**
+  47 M2 tests passed, flake8 clean, whole tree at baseline — and the registered MCP route had
+  never been driven end-to-end. Every test drove adapters directly with hand-built PolicyContexts
+  or made single isolated `server.call_tool` calls, so nothing exercised **preflight → persist →
+  execute** as a sequence. That one gap masked TERRA-1 (minted confirmations never persisted →
+  the product's core flow cannot work), TERRA-2 (`writeback_targets` dropped → preview can never
+  be preflighted), TERRA-3 (canonical-digest omission) and TERRA-4 (DI kwargs injectable through
+  the generic dispatcher). **Test the product's own route, not a hand-assembled proxy for it** —
+  a passing adapter-direct suite is not evidence the surface works.
+- **O-6 — The sibling-parameter class has now appeared FOUR times in this workstream** (M1 F2/F3/F5,
+  now TERRA-3). Fix cycle 1 therefore requires the full 13-adapter parameter×in-digest enumeration
+  rather than fixing the one named instance — applying the P2 lesson (three adversarial rounds
+  burned closing one pattern one instance at a time) before it costs a third round here.
+
 ## Follow-ups to file as ITT nodes at close
 
 - Unify the duplicated `_stdio_only_fastmcp_class` guard (knowledge_mcp + operator_mcp) into a

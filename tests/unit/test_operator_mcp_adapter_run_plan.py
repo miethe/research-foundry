@@ -551,3 +551,146 @@ def test_invoke_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missi
     # `paths=resolved_paths` argument (the exact mutant class this guards
     # against), the double would have recorded `[None, None]` instead.
     assert ceiling_calls == [tmp_foundry, tmp_foundry]
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 1, F2.1 (TERRA-3): retrieval_limits must be bound into the
+# canonical digest, exactly like every other keyword `_run()` forwards to
+# `planning.plan_run`. Before this fix, a confirmation minted with one
+# retrieval_limits value (including "unset") could be replayed at execute
+# time with a DIFFERENT retrieval_limits value -- the same canonical digest
+# either way, since the field was silently absent from `input_payload`.
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_retrieval_limits_bound_into_canonical_digest_confirmation_mismatch(
+    tmp_foundry: FoundryPaths, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A confirmation minted for `retrieval_limits=None` (the caller's own
+    `PolicyContext` never mentions the key at all -- the same shape a caller
+    who never supplies `retrieval_limits` produces) must NOT authorize an
+    execute call that supplies a REAL, non-empty `retrieval_limits` mapping.
+    `run_plan.invoke()` recomputes its own canonical digest from whatever
+    `retrieval_limits` the live call actually supplies (mirrors every other
+    F2.1-style optional in this module); a mismatched value must therefore
+    deny with `confirmation_mismatch` at the confirmation stage, and
+    `planning.plan_run` must never be called for that denied attempt --
+    TERRA-3's own "valid confirmation reused with changed retrieval limits"
+    scenario, closed."""
+
+    intent_id, _ = _make_intent(sample_idea_text, sensitivity="personal", tmp_foundry=tmp_foundry)
+    identity = AuthIdentity("alice", "ws-mine", ("owner",))
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    def _must_not_run(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError(
+            "plan_run must never be called for a request whose retrieval_limits "
+            "does not match the confirmation's own canonical digest"
+        )
+
+    monkeypatch.setattr(planning_module, "plan_run", _must_not_run)
+
+    effective_sensitivity = policy.resolve_effective_sensitivity(
+        run_plan._resolve_intent_sensitivity(intent_id, tmp_foundry)
+    )
+    # Mint against retrieval_limits=None (omitted) -- the SAME input_payload
+    # shape `run_plan.invoke()` itself builds when the caller never supplies
+    # retrieval_limits (the None-valued optional is dropped, see invoke()'s
+    # own comment on that pattern).
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=run_plan.OPERATION_KIND,
+        idempotency_key="idem-retrieval-limits-mismatch",
+        effective_sensitivity=effective_sensitivity,
+        sensitivity_ceiling="client_sensitive",
+        input_payload={
+            "intent_id": intent_id,
+            "depth": "standard",
+            "audience": "technical",
+            "max_cost_usd": 5.0,
+            "max_runtime_minutes": 60,
+            "freshness_days": 180,
+        },
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    # Present the SAME confirmation, but now supply a REAL retrieval_limits
+    # mapping the mint-time request never declared.
+    result = run_plan.invoke(
+        intent_id=intent_id,
+        idempotency_key="idem-retrieval-limits-mismatch",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        retrieval_limits={"max_questions": 999},
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is False
+    assert result.result is None
+    assert result.error is not None
+    assert result.error["reason_code"] == "confirmation_mismatch"
+    assert result.operation_id is None
+
+
+def test_invoke_retrieval_limits_reaches_plan_run_when_confirmation_matches(
+    tmp_foundry: FoundryPaths, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The positive counterpart: a confirmation minted WITH the real
+    `retrieval_limits` value authorizes an execute call presenting that SAME
+    value, and `planning.plan_run` receives it unchanged."""
+
+    intent_id, _ = _make_intent(sample_idea_text, sensitivity="personal", tmp_foundry=tmp_foundry)
+    identity = AuthIdentity("alice", "ws-mine", ("owner",))
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    captured_kwargs: list[dict[str, Any]] = []
+    real_plan_run = planning_module.plan_run
+
+    def _spy_plan_run(*args: Any, **kwargs: Any) -> Any:
+        captured_kwargs.append(kwargs)
+        return real_plan_run(*args, **kwargs)
+
+    monkeypatch.setattr(planning_module, "plan_run", _spy_plan_run)
+
+    effective_sensitivity = policy.resolve_effective_sensitivity(
+        run_plan._resolve_intent_sensitivity(intent_id, tmp_foundry)
+    )
+    retrieval_limits = {"max_questions": 7, "page_size": 3}
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=run_plan.OPERATION_KIND,
+        idempotency_key="idem-retrieval-limits-match",
+        effective_sensitivity=effective_sensitivity,
+        sensitivity_ceiling="client_sensitive",
+        input_payload={
+            "intent_id": intent_id,
+            "depth": "standard",
+            "audience": "technical",
+            "max_cost_usd": 5.0,
+            "max_runtime_minutes": 60,
+            "freshness_days": 180,
+            "retrieval_limits": dict(retrieval_limits),
+        },
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    result = run_plan.invoke(
+        intent_id=intent_id,
+        idempotency_key="idem-retrieval-limits-match",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        retrieval_limits=retrieval_limits,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is True, result.error
+    assert len(captured_kwargs) == 1
+    assert captured_kwargs[0]["retrieval_limits"] == retrieval_limits

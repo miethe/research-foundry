@@ -12,6 +12,7 @@ API keys are required. Verification (when requested) is delegated to the
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -1143,6 +1144,16 @@ def _render_notebooklm_update(
 # ownership violation and an undeclared scope expansion. Filed as a follow-
 # up ITT node by the orchestrator rather than carried here as a gap.
 
+#: F2.3 (TERRA-8) staging-namespace path segment -- a single, non-nested
+#: component only (no `/`, no `..`, no leading `.`). The one real production
+#: value is a 64-char lowercase hex sha256 (`ctx.canonical_digest()`), which
+#: trivially satisfies this, but the check is intentionally generic (alnum/
+#: underscore/hyphen) rather than hex-only, so a future caller passing a
+#: real `operation_id` (also alnum/underscore/hyphen-shaped, per
+#: `operator_mcp_policy._TARGET_REF_PATTERN`'s sibling convention) is not
+#: rejected either.
+_OPERATION_REF_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
 #: Closed per-target status vocabulary for `writeback.preview` (D6: "come
 #: from a closed vocabulary defined as a module-level tuple in writeback.py
 #: (no open strings)"). NOT the same vocabulary as any live `push_status`
@@ -1157,10 +1168,36 @@ WRITEBACK_PREVIEW_TARGET_STATUSES: tuple[str, ...] = (
                             # correlation) could not be resolved
 )
 
+#: THE closed, six-member writeback target-NAME vocabulary (M2 fix cycle 1,
+#: F2.2/TERRA-7) -- `writeback()`'s own six real target strings
+#: (`meatywiki`/`skillmeat`/`ccdash`/`intenttree`/`arc`/`notebooklm`), never
+#: previously named as a single frozen constant anywhere in this module
+#: (`writeback()` itself only ever tests `"X" in targets` membership
+#: per-name, with no closed-set validation of its own). This is the ONE
+#: constant `operator_mcp_adapters/writeback_preview.py` (this leg) validates
+#: an incoming `targets` request against BEFORE normalization -- any name
+#: outside this set denies the WHOLE request with `target_invalid`, never a
+#: per-target status row (that per-target-status-vs-whole-request-denial
+#: split is `WRITEBACK_PREVIEW_SUPPORTED_TARGETS`'s own distinction, one
+#: level narrower -- see that constant's own docstring immediately below).
+#: `operator_mcp/server.py`'s `operation.preflight` handler (Leg 1, a
+#: DIFFERENT file this leg does not own) imports THIS constant as the
+#: "closed, canonical source for preview target names" its own F1.2 fix
+#: needs -- see `m2-fix-contract.md`'s "Cross-leg coordination" section.
+WRITEBACK_TARGET_NAMES: frozenset[str] = frozenset(
+    {"meatywiki", "skillmeat", "ccdash", "intenttree", "arc", "notebooklm"}
+)
+
 #: The writeback target names `writeback.preview` can render. See the
 #: module-comment block immediately above for why this is five of
 #: `writeback()`'s own six-member target vocabulary (`ccdash` excluded,
-#: file-ownership boundary).
+#: file-ownership boundary). A SUBSET of :data:`WRITEBACK_TARGET_NAMES`
+#: above, never a disjoint or wider set -- `ccdash` is a real, recognized
+#: writeback target name (so a caller requesting it clears the
+#: `WRITEBACK_TARGET_NAMES` membership gate and is never denied
+#: `target_invalid` for it) that `writeback.preview` simply cannot RENDER
+#: yet (file-ownership boundary, `telemetry.py`) -- it still gets a real,
+#: honest per-target `"unsupported_target"` status row, by design.
 WRITEBACK_PREVIEW_SUPPORTED_TARGETS: frozenset[str] = frozenset(
     {"intenttree", "arc", "notebooklm", "meatywiki", "skillmeat"}
 )
@@ -1193,6 +1230,7 @@ def preview_writeback(
     targets: tuple[str, ...],
     paths: FoundryPaths | None = None,
     now: datetime | None = None,
+    operation_ref: str | None = None,
 ) -> WritebackPreviewResult:
     """The ``writeback.preview`` pure-render seam (M2 leg A, implementer
     contract D6).
@@ -1232,24 +1270,45 @@ def preview_writeback(
     empty, result rather than an exception.
 
     **Staging root** ("operation staging root", PRD OPM-OQ-7): resolves to
-    ``<run_dir>/staging/writeback_preview/``. NOTE (documented, flagged
-    deviation from the implementer contract's literal
-    ``<operation_dir>/staging/writeback_preview/<target>.md|.json`` phrasing
-    -- not a silent substitution): this codebase's operator operations are
-    DB-only (`operator_operations.db` under `.rf_state/`, see
-    `paths.FoundryPaths.operator_operations_db`'s own docstring) -- there is
-    no per-operation FILESYSTEM directory anywhere in this codebase for a
-    staging root to live under (`operator_operation_service.py` writes
-    manifests/receipts to SQLite exclusively, never to a per-operation
-    directory tree). This function anchors staging under the run's OWN
-    directory tree instead -- the one filesystem container every other
-    adapter already treats as the authorized/workspace-scoped boundary (see
-    `verify_bundle.py`'s F5 fix, `_explicit_path_within_run`) -- and is NOT
-    namespaced by `operation_id` (this function's signature has none, by
-    contract): a second preview call for the same run OVERWRITES the prior
-    staged files, the same idempotent-overwrite convention every other
-    writeback candidate file in this module already follows. See this leg's
-    completion note for the full rationale and the security-lens callout.
+    ``<run_dir>/staging/writeback_preview/`` when ``operation_ref`` is
+    ``None`` (every pre-existing direct caller of this function, and every
+    pre-existing test, omits it -- so this remains byte-identical, unnamespaced
+    behavior for them), or ``<run_dir>/staging/writeback_preview/<operation_ref>/``
+    when supplied. NOTE (documented, flagged deviation from the implementer
+    contract's literal ``<operation_dir>/staging/writeback_preview/
+    <target>.md|.json`` phrasing -- not a silent substitution): this
+    codebase's operator operations are DB-only (`operator_operations.db`
+    under `.rf_state/`, see `paths.FoundryPaths.operator_operations_db`'s
+    own docstring) -- there is no per-operation FILESYSTEM directory anywhere
+    in this codebase for a staging root to live under
+    (`operator_operation_service.py` writes manifests/receipts to SQLite
+    exclusively, never to a per-operation directory tree). This function
+    anchors staging under the run's OWN directory tree instead -- the one
+    filesystem container every other adapter already treats as the
+    authorized/workspace-scoped boundary (see `verify_bundle.py`'s F5 fix,
+    `_explicit_path_within_run`).
+
+    **M2 fix cycle 1, F2.3 (TERRA-8) -- operation namespacing.** The Operator
+    MCP adapter (`operator_mcp_adapters/writeback_preview.py`) now ALWAYS
+    passes `operation_ref=ctx.canonical_digest()` -- the same sha256 hex
+    digest (64 lowercase hex chars, already pattern-safe as a path
+    component) `PolicyContext.canonical_digest()` computes from the FULL
+    canonical request (operation_kind, actor, idempotency_key, targets,
+    input_payload, policy_snapshot_version, effective_sensitivity),
+    available BEFORE authorization/consumption -- so two DIFFERENT
+    operations (different idempotency_key, or a different targets/run_id
+    payload) for the SAME run stage under DIFFERENT sub-directories and can
+    never overwrite or be confused with each other's staged content. A
+    genuine exact-replay (identical idempotency_key AND identical canonical
+    payload) reuses the SAME `operation_ref` and therefore the SAME staged
+    files -- the idempotent-overwrite convention every other writeback
+    candidate file in this module already follows is preserved WITHIN one
+    operation's own digest-scoped sub-directory, never ACROSS two distinct
+    operations. `operation_ref=None` (the default, used by every pre-existing
+    direct caller/test) preserves the OLD, unnamespaced, run-scoped-only
+    staging root exactly -- this parameter is purely additive. See this
+    leg's completion note for the full rationale and cleanup/replay
+    semantics.
     """
 
     from ..ids import now_iso
@@ -1263,6 +1322,21 @@ def preview_writeback(
 
     generated_at = now.replace(microsecond=0).isoformat() if now is not None else now_iso()
     staging_root = rp.run / "staging" / "writeback_preview"
+    if operation_ref is not None:
+        # F2.3 (TERRA-8): a SINGLE path-safe segment only -- never `/`, `..`,
+        # or any other path-structuring character. This is an internal
+        # parameter (never a raw MCP-caller-facing field; the one real
+        # caller passes `ctx.canonical_digest()`, a 64-char lowercase hex
+        # sha256), but validated defensively anyway, the same "never trust
+        # a value merely because today's one caller happens to be safe"
+        # posture `verify_bundle.py`'s F5 fix documents for its own
+        # structural containment check.
+        if not _OPERATION_REF_PATTERN.match(operation_ref):
+            raise ValueError(
+                f"preview_writeback: operation_ref must match {_OPERATION_REF_PATTERN.pattern!r} "
+                f"(got {operation_ref!r})"
+            )
+        staging_root = staging_root / operation_ref
 
     bundle_doc = _safe_load(rp.evidence_bundle)
     bundle_found = isinstance(bundle_doc, dict) and bool(bundle_doc)
@@ -2843,6 +2917,7 @@ __all__ = [
     "_arc_review_payload",
     "_notebooklm_update_payload",
     "WRITEBACK_PREVIEW_TARGET_STATUSES",
+    "WRITEBACK_TARGET_NAMES",
     "WRITEBACK_PREVIEW_SUPPORTED_TARGETS",
     "WritebackPreviewTargetResult",
     "WritebackPreviewResult",

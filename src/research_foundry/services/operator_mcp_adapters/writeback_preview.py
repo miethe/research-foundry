@@ -109,6 +109,20 @@ __all__ = [
 
 OPERATION_KIND = "writeback.preview"
 
+#: M2 fix cycle 1, F2.2 (TERRA-7) -- bound the RAW caller-supplied `targets`
+#: sequence BEFORE normalization/dedup. `writeback.WRITEBACK_TARGET_NAMES`
+#: (the closed six-member vocabulary this leg owns, see that module's own
+#: docstring) has only six real members, so this cap is generous headroom
+#: over any legitimate request, never a practical constraint on real usage --
+#: its only job is to make a request of thousands of garbage strings cost
+#: O(cap), not O(caller-chosen), before any per-target processing happens.
+_MAX_PREVIEW_TARGETS = 32
+
+#: Per-name length bound (M2 fix cycle 1, F2.2/TERRA-7) -- every real target
+#: name is under 12 characters (`notebooklm` is the longest); this is ample
+#: headroom, never a practical constraint on any legitimate request.
+_MAX_TARGET_NAME_LENGTH = 64
+
 
 @dataclass(frozen=True)
 class _RunContext:
@@ -180,6 +194,20 @@ def invoke_preview(
     sensitivity denies one layer up, at the policy guard stage, before this
     function's `_run()` closure ever runs; the `evidence_bundle` target
     reference reuse; and the `targets` canonicalization.
+
+    **M2 fix cycle 1, F2.2 (TERRA-7).** `targets` is bounded BEFORE
+    normalization: the raw (pre-dedup) sequence must not exceed
+    `_MAX_PREVIEW_TARGETS` entries, and every individual name must be no
+    longer than `_MAX_TARGET_NAME_LENGTH` chars AND a member of
+    `writeback.WRITEBACK_TARGET_NAMES` (the closed, six-name writeback
+    target vocabulary this leg owns) -- any violation denies the WHOLE
+    request with `target_invalid`, never a per-target status row. This is
+    stricter than `WRITEBACK_PREVIEW_SUPPORTED_TARGETS` (five of those six
+    names): a recognized-but-not-yet-previewable name (`ccdash`) still
+    clears THIS gate and reaches `preview_writeback`'s own per-target
+    `"unsupported_target"` status, unchanged -- only a name outside the
+    real six-member vocabulary entirely (or a request with too many/too-long
+    names) is rejected here.
     """
 
     from research_foundry.services import writeback
@@ -192,10 +220,26 @@ def invoke_preview(
 
     effective_sensitivity = policy.resolve_effective_sensitivity(run_ctx.sensitivity)
 
+    # F2.2 (TERRA-7): bound the RAW caller-supplied sequence BEFORE
+    # normalization/dedup -- see this function's own docstring section
+    # above. A pure input-shape check (count/length/closed-vocabulary
+    # membership only); it never reads `run_id`'s own state, so running it
+    # before `ctx`/authorization leaks nothing an unauthorized caller could
+    # not already infer from the request they themselves constructed.
+    raw_targets = list(targets)
+    if len(raw_targets) > _MAX_PREVIEW_TARGETS:
+        decision = policy.PolicyDecision(False, "capability", "target_invalid", retryable=False)
+        return base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now))
+    for _raw_target in raw_targets:
+        _name = str(_raw_target)
+        if len(_name) > _MAX_TARGET_NAME_LENGTH or _name not in writeback.WRITEBACK_TARGET_NAMES:
+            decision = policy.PolicyDecision(False, "capability", "target_invalid", retryable=False)
+            return base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now))
+
     # Sorted + deduplicated so two callers requesting the same set in a
     # different order (or with a duplicate) collapse to the same canonical
     # digest (module docstring, "targets normalization").
-    normalized_targets = tuple(sorted({str(t) for t in targets}))
+    normalized_targets = tuple(sorted({str(t) for t in raw_targets}))
 
     input_payload: dict[str, Any] = {"run_id": run_id, "targets": list(normalized_targets)}
 
@@ -214,6 +258,17 @@ def invoke_preview(
         paths=resolved_paths,
     )
 
+    # F2.3 (TERRA-8): a stable digest of the FULL canonical request, computed
+    # here (before authorization/consumption -- `ctx` already carries every
+    # field the digest needs) and threaded into `preview_writeback` below as
+    # `operation_ref` -- namespaces this operation's staged artifacts from
+    # every OTHER operation's, for this same run, so a concurrently- or
+    # later-issued differently-scoped preview can never overwrite or be
+    # confused with this one's staged content. See `writeback.
+    # preview_writeback`'s own docstring, "M2 fix cycle 1, F2.3" section, for
+    # the full rationale.
+    operation_ref = ctx.canonical_digest()
+
     # Captures preview_writeback's own WritebackPreviewResult so
     # `_build_result` can read the real governed outcome after
     # `run_or_replay` executes this action -- empty on a genuine exact-
@@ -230,6 +285,7 @@ def invoke_preview(
             targets=normalized_targets,
             paths=resolved_paths,
             now=now,
+            operation_ref=operation_ref,
         )
         captured.append(result)
         # effect_digest must match `^[a-f0-9]{64}$` (operator_mcp_receipt

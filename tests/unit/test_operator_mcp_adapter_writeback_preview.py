@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -619,3 +620,233 @@ def test_invoke_preview_exact_retry_does_not_recall_preview_writeback(
     assert second.ok is True, second.error
     assert first.operation_id == second.operation_id
     assert call_count == 1, "preview_writeback must be called exactly once across both invocations"
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 1, F2.2 (TERRA-7): targets bounded BEFORE normalization --
+# count, per-name length, and closed six-member vocabulary membership. Any
+# violation denies the WHOLE request with target_invalid; preview_writeback
+# must never be called.
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_preview_too_many_targets_denies_target_invalid_before_preview_writeback_runs(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+    run_id = _build_verified_run(tmp_foundry)
+    writeback_module.build_bundle(run_id, verify=False, paths=tmp_foundry)
+
+    def _must_not_run(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("preview_writeback must never run for an over-count targets request")
+
+    monkeypatch.setattr(writeback_module, "preview_writeback", _must_not_run)
+
+    too_many = tuple("intenttree" for _ in range(writeback_preview._MAX_PREVIEW_TARGETS + 1))
+
+    result = writeback_preview.invoke_preview(
+        run_id=run_id,
+        idempotency_key="idem-preview-too-many-targets",
+        confirmation_record=None,
+        presented_token=None,
+        targets=too_many,
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+
+    assert result.ok is False
+    assert result.result is None
+    assert result.error is not None
+    assert result.error["reason_code"] == "target_invalid"
+
+
+def test_invoke_preview_unrecognized_target_name_denies_whole_request_not_a_per_target_status(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A name OUTSIDE the real six-member `writeback.WRITEBACK_TARGET_NAMES`
+    vocabulary must deny the WHOLE request with `target_invalid` -- it is
+    NOT the same as `ccdash` (a recognized name `writeback.preview` merely
+    cannot render yet, see `test_invoke_preview_unsupported_target_is_
+    governed_result` above), which still gets a per-target
+    `unsupported_target` status row inside an `ok=True` result."""
+
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+    run_id = _build_verified_run(tmp_foundry)
+    writeback_module.build_bundle(run_id, verify=False, paths=tmp_foundry)
+
+    def _must_not_run(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("preview_writeback must never run for an unrecognized target name")
+
+    monkeypatch.setattr(writeback_module, "preview_writeback", _must_not_run)
+
+    result = writeback_preview.invoke_preview(
+        run_id=run_id,
+        idempotency_key="idem-preview-unrecognized-target",
+        confirmation_record=None,
+        presented_token=None,
+        targets=("not_a_real_writeback_target",),
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+
+    assert result.ok is False
+    assert result.result is None
+    assert result.error is not None
+    assert result.error["reason_code"] == "target_invalid"
+
+
+def test_invoke_preview_overlong_target_name_denies_target_invalid(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+    run_id = _build_verified_run(tmp_foundry)
+    writeback_module.build_bundle(run_id, verify=False, paths=tmp_foundry)
+
+    def _must_not_run(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("preview_writeback must never run for an over-length target name")
+
+    monkeypatch.setattr(writeback_module, "preview_writeback", _must_not_run)
+
+    overlong = "a" * (writeback_preview._MAX_TARGET_NAME_LENGTH + 1)
+
+    result = writeback_preview.invoke_preview(
+        run_id=run_id,
+        idempotency_key="idem-preview-overlong-target",
+        confirmation_record=None,
+        presented_token=None,
+        targets=(overlong,),
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+
+    assert result.ok is False
+    assert result.result is None
+    assert result.error is not None
+    assert result.error["reason_code"] == "target_invalid"
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 1, F2.3 (TERRA-8): staged artifacts are namespaced per
+# operation (by canonical-digest `operation_ref`) -- two DIFFERENT operations
+# for the SAME run stage under different sub-directories and cannot
+# overwrite or be confused with each other's content; a genuine exact-replay
+# reuses the SAME staged files.
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_preview_two_different_operations_same_run_stage_under_different_paths(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two operations for the SAME run -- different `idempotency_key`,
+    different `targets` -- must stage under DIFFERENT sub-directories, and
+    the second operation's write must not disturb the first's already-staged
+    content (TERRA-8's own cross-operation overwrite/confusion scenario)."""
+
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+    run_id = _build_verified_run(tmp_foundry)
+    writeback_module.build_bundle(run_id, verify=False, paths=tmp_foundry)
+    rp = tmp_foundry.run_paths(run_id)
+
+    ctx_a = _preview_ctx(run_id, ("arc",), "idem-preview-op-a", tmp_foundry)
+    op_service = OperatorOperationService(tmp_foundry)
+    record_a, token_a = _mint_and_record(ctx_a, op_service)
+
+    result_a = writeback_preview.invoke_preview(
+        run_id=run_id,
+        idempotency_key="idem-preview-op-a",
+        confirmation_record=record_a,
+        presented_token=token_a,
+        targets=("arc",),
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+    assert result_a.ok is True, result_a.error
+    staged_path_a = result_a.result["targets"][0]["staged_path"]
+    content_a_before = (rp.run / staged_path_a).read_text(encoding="utf-8")
+
+    ctx_b = _preview_ctx(run_id, ("intenttree",), "idem-preview-op-b", tmp_foundry)
+    record_b, token_b = _mint_and_record(ctx_b, op_service)
+
+    result_b = writeback_preview.invoke_preview(
+        run_id=run_id,
+        idempotency_key="idem-preview-op-b",
+        confirmation_record=record_b,
+        presented_token=token_b,
+        targets=("intenttree",),
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+    assert result_b.ok is True, result_b.error
+    staged_path_b = result_b.result["targets"][0]["staged_path"]
+
+    assert staged_path_a != staged_path_b
+    # Different operation_ref sub-directory segment, not merely different
+    # filenames.
+    assert Path(staged_path_a).parent != Path(staged_path_b).parent
+    # The first operation's staged content is untouched by the second's write.
+    assert (rp.run / staged_path_a).read_text(encoding="utf-8") == content_a_before
+    assert (rp.run / staged_path_a).exists()
+    assert (rp.run / staged_path_b).exists()
+
+
+def test_invoke_preview_exact_replay_reuses_same_operation_ref_staged_path(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A genuine exact-replay (identical idempotency_key AND canonical
+    payload) must resolve to the SAME `operation_ref` -- and therefore the
+    SAME staged path -- as the original call, preserving the pre-existing
+    idempotent-overwrite convention WITHIN one operation's own scope.
+    `_run()` (and therefore `preview_writeback`) is never invoked a second
+    time on a genuine exact-replay (the same documented "replay result-
+    recovery gap" every other adapter in this family reports, see
+    `test_invoke_preview_exact_retry_does_not_recall_preview_writeback`
+    above) -- so this proves the SAME `operation_ref` two INDEPENDENT
+    computations would derive (mirroring what `invoke_preview` itself
+    computes internally, `ctx.canonical_digest()`), and that the first
+    call's staged file is still present and untouched, rather than
+    asserting on `second.result` (which is the bounded "replayed" partial
+    payload, not a fresh render)."""
+
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+    run_id = _build_verified_run(tmp_foundry)
+    writeback_module.build_bundle(run_id, verify=False, paths=tmp_foundry)
+    rp = tmp_foundry.run_paths(run_id)
+
+    ctx = _preview_ctx(run_id, ("arc",), "idem-preview-replay-ref", tmp_foundry)
+    op_service = OperatorOperationService(tmp_foundry)
+    record, token = _mint_and_record(ctx, op_service)
+
+    first = writeback_preview.invoke_preview(
+        run_id=run_id,
+        idempotency_key="idem-preview-replay-ref",
+        confirmation_record=record,
+        presented_token=token,
+        targets=("arc",),
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+    second = writeback_preview.invoke_preview(
+        run_id=run_id,
+        idempotency_key="idem-preview-replay-ref",
+        confirmation_record=record,
+        presented_token=token,
+        targets=("arc",),
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert first.ok is True, first.error
+    assert second.ok is True, second.error
+    assert first.operation_id == second.operation_id
+    assert second.result.get("replayed") is True
+    staged_path_first = first.result["targets"][0]["staged_path"]
+    # Independently recomputed operation_ref (mirrors invoke_preview's own
+    # `ctx.canonical_digest()` call) must match the digest segment actually
+    # used by the first (real) call, and that first call's staged file must
+    # still exist, untouched, after the replayed second call.
+    assert ctx.canonical_digest() in staged_path_first
+    assert (rp.run / staged_path_first).exists()
