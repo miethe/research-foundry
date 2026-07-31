@@ -1091,6 +1091,78 @@ class TestDryRun:
         assert candidate_outcome["completeness_tier"] == "passage_resolved"
         assert dry_resolver._acquire.calls == []  # type: ignore[attr-defined]
 
+    def test_dry_run_and_real_run_agree_on_no_recorded_status_reuse(self, tmp_path: Path, workspace: FoundryPaths) -> None:
+        """Preview-fidelity regression (eri-dryrun-preview-fidelity): before
+        this fix, `_finish_passage_resolved` returned `passage_resolved` for
+        `context.target_run_id is None or self._dry_run or self._promote is
+        None` BEFORE checking whether `bound.content`/`bound.extraction_
+        status` were recorded -- so a `--dry-run` preview of a reused
+        edition with NO recorded extraction status reported
+        `passage_resolved` while the exact same candidate, run for real,
+        would quarantine `verification_failed`. The verification-status
+        guard now runs first, so both paths must agree.
+
+        The edition is seeded directly via `AssertionRegistry.ingest(...)`
+        with no `extraction_status` argument -- a genuinely legacy/
+        unrecorded edition (same construction `TestExactResolution`'s
+        no-content-quarantine test uses) -- then reused, with NO acquire
+        content available, by two independent resolvers: one dry-run, one
+        real (with a run context and the default promoter). Neither can
+        fresh-acquire, so both must go through `_existing_edition_reuse`
+        and hit the same guard.
+        """
+
+        from research_foundry.services.assertion_registry import AssertionRegistry
+
+        registry = AssertionRegistry(workspace_id="ws_demo", paths=workspace)
+        sources, candidates = _one_source_one_candidate()
+        registry.ingest(
+            "url:" + _SOURCE_URL,
+            _SOURCE_TEXT,
+            access_scope="private",
+            allowed_use={"basis": "producer_declared_access_status", "access_status": "open-access"},
+            retrieval_locator={"url": _SOURCE_URL, "doi": None},
+            passages=[_QUOTE],
+            # No extraction_status -- deliberately unrecorded, standing in
+            # for a genuinely legacy edition.
+        )
+
+        dry_root = build_packet(tmp_path / "packet_dry", sources=sources, candidates=candidates)
+        dry_resolver = _resolver(workspace, candidates, content_by_locator={}, dry_run=True)
+        dry_result = _stage(workspace, dry_root, dry_resolver, target_run_id="rf_run_preview_dry", dry_run=True)
+        dry_outcome = _outcome_for(dry_result.receipt, dry_root, "candidate", "candidate_id", "cand_001")
+
+        real_root = build_packet(tmp_path / "packet_real", sources=sources, candidates=candidates)
+        real_resolver = _resolver(workspace, candidates, content_by_locator={}, dry_run=False, promote=default_promote)
+        real_result = _stage(workspace, real_root, real_resolver, target_run_id="rf_run_preview_real", dry_run=False)
+        real_outcome = _outcome_for(real_result.receipt, real_root, "candidate", "candidate_id", "cand_001")
+
+        # Same fixture, same missing extraction status -- the dry-run
+        # preview and the real run it previews must agree with EACH OTHER,
+        # not merely each happen to match a hardcoded literal.
+        assert dry_outcome["outcome"] == real_outcome["outcome"]
+        assert dry_outcome["completeness_tier"] == real_outcome["completeness_tier"]
+
+        # Direct (idempotent, read-only-at-this-point) resolve_candidate
+        # calls surface the exact reason code the receipt itself never does
+        # (contract §4.6) -- confirm both resolvers land on the SAME reason,
+        # anchored to `verification_failed` on one side so the agreement
+        # above isn't just two quarantines for unrelated reasons.
+        context_dry = ResolutionContext(workspace_id="ws_demo", target_run_id="rf_run_preview_dry", policy=VALID_POLICY)
+        dry_direct = dry_resolver.resolve_candidate(candidates[0], {"src_001": sources[0]}, context_dry)
+        context_real = ResolutionContext(workspace_id="ws_demo", target_run_id="rf_run_preview_real", policy=VALID_POLICY)
+        real_direct = real_resolver.resolve_candidate(candidates[0], {"src_001": sources[0]}, context_real)
+
+        assert dry_direct.outcome == real_direct.outcome
+        assert dry_direct.reason_code == real_direct.reason_code
+        assert real_direct.reason_code == "verification_failed"
+
+        # No network I/O on either side: no acquire content was ever made
+        # available, and both resolvers must resolve purely through
+        # existing-edition reuse.
+        assert dry_resolver._acquire.calls == []  # type: ignore[attr-defined]
+        assert real_resolver._acquire.calls == []  # type: ignore[attr-defined]
+
 
 # ---------------------------------------------------------------------------
 # Cross-workspace safety

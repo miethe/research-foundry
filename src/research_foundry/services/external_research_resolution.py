@@ -1047,10 +1047,19 @@ class ExternalResearchResolver:
         ``passage_resolved`` as-is. Never self-assigns ``verified`` -- only
         ``verify_report`` + the existing materializer hold that authority
         (contract §2.4.1); staging is as far as this seam goes.
-        """
 
-        if context.target_run_id is None or self._dry_run or self._promote is None:
-            return ResolvedActionResolution("completed", "passage_resolved", None, canonical_refs=refs)
+        The verification-status guard below runs BEFORE the dry-run/no-run
+        early return (not after, as it once did) so a `--dry-run` (or
+        no-`--run`, or `promote=None`) preview can never report
+        `passage_resolved` for a candidate a real run would quarantine.
+        `bound.content`/`bound.extraction_status` are populated identically
+        on both paths -- a fresh acquisition always sets both, and
+        `_existing_edition_reuse`'s read-only rehydration (M2) pulls the same
+        two fields from the registry's own accessors without consulting
+        `self._dry_run` -- so evaluating the guard here yields the exact same
+        verdict a real run would reach, keeping preview and real outcomes in
+        agreement (the property this hoist restores).
+        """
 
         if bound.content is None or bound.extraction_status is None:
             # `bound` may come from a fresh acquisition (both always set) or
@@ -1064,8 +1073,13 @@ class ExternalResearchResolver:
             # -- in both cases there is nothing honest to stage into a
             # source card. Fail closed into quarantine rather than crashing
             # the import or fabricating evidence (the `7e2c1e1` property this
-            # guard preserves).
+            # guard preserves) -- now checked unconditionally, before the
+            # dry-run/no-run short-circuit below, so a preview never claims
+            # more than a real run would honor.
             return _candidate_quarantine("verification_failed")
+
+        if context.target_run_id is None or self._dry_run or self._promote is None:
+            return ResolvedActionResolution("completed", "passage_resolved", None, canonical_refs=refs)
 
         request = PromotionRequest(
             workspace_id=self._workspace_id,
