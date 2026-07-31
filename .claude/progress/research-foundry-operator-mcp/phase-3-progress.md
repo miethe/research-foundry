@@ -5,7 +5,7 @@ doc_type: progress
 prd: research-foundry-operator-mcp
 feature_slug: research-foundry-operator-mcp
 phase: 3
-status: in_progress
+status: completed
 created: '2026-07-28'
 updated: '2026-07-30'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
@@ -17,6 +17,8 @@ commit_refs:
 - 8fe3a2c
 - 415fb5e
 - 22a75cc
+- 8b694d5
+- 90abeff
 pr_refs: []
 owners:
 - python-backend-engineer
@@ -36,6 +38,9 @@ tasks:
   - commit: 70c8a6f
   - test: tests/unit/test_operator_mcp_adapter_base.py
   - test: tests/unit/test_operator_mcp_adapter_run_plan.py
+  verified_by:
+  - validator-gate
+  - security-lens-90abeff
 - id: OPM-3.2
   status: completed
   assigned_to:
@@ -48,6 +53,9 @@ tasks:
   evidence:
   - commit: 70c8a6f
   - test: tests/unit/test_swarm_service.py
+  verified_by:
+  - validator-gate
+  - security-lens-90abeff
 - id: OPM-3.3
   status: completed
   assigned_to:
@@ -60,6 +68,9 @@ tasks:
   evidence:
   - commit: c88e77e
   - test: tests/unit/test_operator_mcp_adapter_swarm_start.py
+  - gate: APPROVED
+  verified_by:
+  - security-lens-90abeff
 - id: OPM-3.4
   status: completed
   assigned_to:
@@ -72,6 +83,9 @@ tasks:
   evidence:
   - commit: 9ddb087
   - test: tests/unit/test_operator_mcp_adapter_job_lifecycle.py
+  - gate: APPROVED
+  verified_by:
+  - security-lens-90abeff
 parallelization:
   batch_1:
   - OPM-3.1

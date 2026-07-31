@@ -2263,3 +2263,171 @@ Three consecutive blockers (K3-BLOCK-1, K4-BLOCK-1, K4-NB-1) are **one defect**:
 found the next. The generalizable rule: when a defect is a *property of a pattern* rather than a
 site, enumerate every occurrence of the pattern in the first round and fix them as a set — closing
 them one gate at a time costs a full adversarial round per instance.
+
+---
+
+## FIND-P3 — Phase 3 (Run Planning and Swarm Adapters): gate history, `OPM-3.G` APPROVED after two re-passes
+
+### Entry state and scope
+
+Opened 2026-07-30 on `worktree-operator-mcp-v1` @ `4e3e62f`. P1 gate `OPM-1.G` was closed by **owner
+acceptance**, not a machine APPROVE (last machine verdict `CHANGES_REQUESTED` at R5; the round-6
+re-gate was deferred as `OPM-DF-regate`). P2 was still finalizing when the owner authorized starting
+P3 without waiting. Baseline: 7 operator suites green, `REALEXIT=0`, 376 dots, 0 F, 0 E.
+
+Scope was OPM-3.1…OPM-3.4 plus two carried P2 obligations explicitly assigned here: **NB-D**
+(the four receipt writers authorize on a caller-supplied `workspace_id` string, not an
+`AuthIdentity`) and **P2S-NB-9** (bounded attempts, unimplemented — `OPM-3.4`). **K3-NB-5** (nothing
+binds `action_id` to `action_index`) was adjacent and deliberately *not* silently absorbed — close it
+only if cheap, else leave it open and say why.
+
+### Architecture finding (D1) — no adapter layer existed to wrap
+
+The plan's P3 rows read as "wrap X in an adapter," presuming an adapter layer. None existed —
+Operator MCP had no tool-registration/dispatch module analogous to Knowledge MCP's `registry.py`.
+Restructured from four parallel wrapping tasks into **one seam plus three consumers** (Wave 0: seam +
+`run.plan` + the receipt-identity change + swarm extraction, disjoint files; Wave 1: the two
+remaining consumers, both dependent on the Wave-0 seam). The substrate's invariants — identity
+derived structurally, fixed authorize-before-lookup order, all errors through `build_error`, dry-run
+proven zero-effect by spy, no fail-open on unknown kind/adapter/workspace/sensitivity — were
+specified by the orchestrator, not left to the leaf.
+
+### Routing
+
+OPM-3.1 (seam) and NB-D — the two surfaces where every P1/P2 defect has landed — stayed Claude/
+`sonnet-5`. OPM-3.2 (mechanical CLI→service extraction) went to ICA/`claude-sonnet-5[1m]`. AC
+cross-validation went to codex/`gpt-5.6-terra`, framed as AC validation, **not** adversarial security
+audit — `codex exec` refuses the adversarial-audit framing under its own safety classifier after a
+long reasoning trace (P1-era finding); concrete "validate these AC" / "fix this named defect"
+framings work fine. Final gate stayed Claude/`opus-5` (router rejects non-claude for `verdict`).
+
+### Wave 0 — landed `70c8a6f`
+
+10 operator suites `exit 0`, 393 tests, 0 F / 0 E; full suite (two known-uncollectable files ignored)
+→ 16 distinct FAILED nodes, zero operator/adapter/swarm nodes — matches the documented pre-P2
+baseline. Raised three findings during the leg, folded into the gate record below: **P3-F1** (swarm
+dry-run short-circuits before the allowlist/registry checks — fail-open signal), **P3-F2** (the
+`run.plan` adapter cannot import in a base install; serve-extra boundary leak through
+`assertion_catalog.py` → `planning.py`), **P3-F3** (no public reader to recover canonical effect refs
+on exact replay — reported, not fixed; bears on AC OPM-3's exact-replay clause).
+
+### Gate sequence — `OPM-3.G`: APPROVED after two re-passes
+
+| Round | Lens | Verdict | Findings |
+|---|---|---|---|
+| 1 | `task-completion-validator` | **CHANGES_REQUESTED** | 1 HIGH + 1 LOW |
+| fix | — | — | `8b694d5` |
+| 2 | Security (Opus) | **CHANGES_REQUESTED** | 2 HIGH + 2 MEDIUM |
+| fix | — | — | `90abeff` |
+| 3 | Security (Opus), re-pass | **APPROVED** | — |
+
+Two re-passes, within the 2-per-scope-x-lens gate budget.
+
+### Validator HIGH — the phase's most important defect: `sensitivity_ceiling` defaulted to maximum
+
+All five P3 adapter entry points declared `sensitivity_ceiling: str = "client_sensitive"`, the
+**highest** rank in `SENSITIVITY_LEVELS`. The sole above-ceiling guard is `_check_guard`
+(`operator_mcp_policy.py:1428-1433`, `rank(effective) > rank(ceiling)`), so with the ceiling defaulted
+to maximum it could **never fire** — a permanent no-op. P1 had deliberately made
+`PolicyContext.sensitivity_ceiling` required with no default under hardening item **H7**; P3's
+adapters reintroduced the permissive default at the new public boundary one layer up. Zero negative
+fixtures existed: all six `sensitivity_ceiling` occurrences in the adapter tests passed the maximum.
+**Survived four prior passes** — the implementing legs' own mutation matrices, the orchestrator's
+independent re-verification, the gpt-5.6 AC audit, and an ICA fail-open sweep.
+
+### Security HIGH-1 — `resolved_paths` was a zero-coverage invariant, fail-open when violated
+
+Every adapter test patched the seam with `lambda *a, **kw`, discarding the argument, so three mutants
+survived all 115 package tests — including one shown live to pick up a **looser foreign workspace
+ceiling** via `RESEARCH_FOUNDRY_HOME`.
+
+### Security HIGH-2 — the fix for the validator HIGH introduced an availability break
+
+`job.status` / `job.cancel` / `job.resume` hardcoded `resolve_effective_sensitivity(None)` = strictest
+regardless of target content, so against the new fail-closed `public` ceiling **100% of `job.*` calls
+denied** — indistinguishable from `not_found`, with the config key documented nowhere but a docstring,
+and the only value restoring the calls being `client_sensitive`, the defect value: a re-widening trap.
+Root cause was a category error — those ops carry no content, so gating them on a *content* ceiling is
+wrong. Fixed at the root: `_operation_effective_sensitivity_of` derives the target's real sensitivity
+from its persisted manifest, which required **inverting three tests** that had pinned the wrong
+behavior.
+
+### Mid-phase findings caught before the formal gate (G1–G6)
+
+Every one landed on a tree where the implementing leg had reported success with its own mutation
+matrix, and where the orchestrator's own re-run of the suites was green.
+
+| # | Lens | Defect | Class |
+|---|---|---|---|
+| G1 | gpt-5.6 | `run.plan` exact replay loses canonical refs → AC-1 only PARTIAL | known (P3-F3), confirmed |
+| G2 | gpt-5.6 | CLI dry-run conceals service-level denials — P3-F1's caller, missed by the orchestrator's own fix | fail-open, layer-above |
+| G3 | gpt-5.6 | Adapter exception text returned unbounded and unredacted | NEW-21 class, AC OPM-7 |
+| G4 | gpt-5.6 | `job.status` does an unbounded internal attempt-list read behind a bounded response | AC OPM-3.4 |
+| G5 | ICA | Attempt cap is read-then-write; concurrent `create_attempt` can exceed it | DUR-1 class |
+| G6 | ICA | `job_lifecycle`'s blanket `except Exception` collapses transient store-unavailable into permanent `not_found` | layer-below |
+
+G6's fix (`except Exception` → `except KeyError`) closed the retry-contract bug and opened a raw-leak
+residual: `OperationRecord.from_manifest` does bare `manifest["operation_id"]` subscripting, so a
+manifest deserializing to a non-Mapping raises `TypeError`, not `KeyError` — the K4-NB-3
+corrupt-manifest path — escaping raw out of a public adapter surface. Caught on review, not by its
+own tests. Closed with a bounded catch-all at `retryable=False`, kept pairwise distinct from the
+store-unavailable `retryable=True`.
+
+### Carried obligations closed this phase
+
+- **NB-D** — all four receipt writers now require a real `AuthIdentity`.
+- **P2S-NB-9** — bounded attempts, now an atomic COUNT+INSERT under `BEGIN IMMEDIATE` (DUR-1).
+- **K4-NB-1** — all 7 `operator_receipt_service.py` `_ensure_schema` sites guarded, **plus** the two
+  remaining files of the same defect class (`operator_cancel_resume_service.py`,
+  `operator_attempt_adapter.py`, 13 guards) — closed as a set rather than one-per-round, per this
+  ledger's own R3–R5 lesson.
+
+### Left open (carried forward, with reasons)
+
+- **K3-NB-5, K4-NB-2, K4-NB-3** — unchanged from P2.
+- **AC OPM-3.1** recorded **PARTIAL**: exact replay returns `canonical_refs_available: False` rather
+  than fabricating refs (P3-F3).
+- **`job.status`'s `run_pipeline` bypass** and **`job.resume` not re-executing actions** — both
+  reported, not fixed (tracker nodes below).
+
+### Tracker nodes opened
+
+- `node_01KYTT2KEA5G4DF67KC0Y1TXJH` — P5 confirmation-minting obligation (the one genuinely
+  schedulable item).
+- `node_01KYTT2KQBFQVQDNEW2KNT63QT` — no wet-path above-ceiling test (coverage gap, not an
+  enforcement gap; the guard was verified to fire on the wet path).
+- `node_01KYTT2KZEAJBJXXAK1N94T673` — top-level manifest field unvalidated (record only).
+- `node_01KYTT5ESTEBEM0GRD5W28ZX7K` — protocol variance.
+- `node_01KYTFXZYAMSCJ5MGC2R57TK60` — `_consume_locked` has no `CONFIRMATION_NOT_REQUIRED_KINDS`
+  short-circuit.
+- `node_01KYTFY0855KPSK1M81H8WXRKX` — `job.resume` action re-execution.
+- `node_01KYTDXMJ21ZZBWKAR6RMNFGWC` — 8 remaining `api.auth` service imports.
+- `node_01KYTDXMYQXGTJJP9KG0325RV2` — no effect-ref reader on replay.
+- `node_01KYTDXN8R957GFF3CQGRVPRKJ` — K3-NB-5.
+
+### Commits and validation
+
+```
+70c8a6f, c88e77e, 9ddb087, 8fe3a2c, 415fb5e, 22a75cc, 8b694d5, 90abeff
+
+12 operator suites -> exit 0, 461 tests
+full suite, two known-uncollectable files ignored -> 16 distinct FAILED,
+  identical to the documented pre-P2 baseline, zero operator/adapter/swarm
+```
+
+### The durable lesson — "fix the layer below" applies to remediations, not just original code
+
+Three times this phase a fix needed its own re-attack: the serve-extra closure (one file traced,
+three actually in the closure, because Python's import system stops at the first raise), the P3-F1
+dry-run fix (service hardened, its CLI caller missed — the orchestrator's own defect, caught by G2),
+and the G6 fix (retry contract closed, a raw `TypeError` leak opened on the corrupt-manifest path).
+The plan's own checklist item 2 ("fix the layer below") is not a formality on this codebase — it is
+where most of the remaining defects live, and it applies to *remediations* at least as much as to
+original code.
+
+**Corollary the gate history demonstrates: lens diversity, not lens depth, is what caught these.** No
+single lens found more than a subset. The cheap gpt-5.6/ICA pre-gate passes caught five defects
+(G1–G6) on a tree that had already passed mutation-matrixed implementation and independent
+orchestrator re-verification. And the validator lens — the same lens this ledger's own record shows
+approved a critical authorization-bypass bug twice in P1 — is the lens that caught P3's most serious
+defect, the `sensitivity_ceiling` no-op that the security lens's own round did not surface.

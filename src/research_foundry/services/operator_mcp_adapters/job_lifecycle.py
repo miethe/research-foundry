@@ -175,7 +175,8 @@ def _operation_effective_sensitivity_of(manifest: Mapping[str, Any]) -> str:
     """Bounded, fail-closed extraction of a persisted operation manifest's
     OWN `effective_sensitivity` (P3 hardening pass, HIGH-2 defect fix).
 
-    `operator_operation_service._build_operation_manifest` writes the
+    `operator_operation_service._build_manifest` (:541, sole caller
+    `_consume_locked` :1392) writes the
     ORIGINAL `ctx.effective_sensitivity` into the persisted manifest at BOTH
     a top-level `manifest["effective_sensitivity"]` field and a nested
     `manifest["operation"]["effective_sensitivity"]` duplicate
