@@ -270,3 +270,87 @@ command's own `| tail -60` before capture; the 23-count above is a direct
   (`retrieval_limits`) and F2.2 (`WRITEBACK_TARGET_NAMES`/count/length caps)
   fixes were both already present and exercised correctly by this leg's
   `run.plan` and `writeback.preview` e2e tests.
+
+---
+
+# Fix cycle 2 — security gate CHANGES_REQUESTED response
+
+Scope this cycle: SEC-2, SEC-3, SEC-4, SEC-5, SEC-6, SEC-8 (mine per the
+coordinator's assignment; SEC-1 is Leg 2's, fixed concurrently in
+`external_import.py`/`source_ingest.py` — not touched here). SEC-7/SEC-9/
+SEC-10 were not assigned to me and are not addressed in this cycle.
+
+The gate's TERRA-5 downgrade acceptance required no further action — it
+independently re-derived the live allowlist for all 13 kinds and confirmed
+no caller-reachable parameter is a callable/module/service instance, so
+this leg's F1.6 scoping work stands unchanged.
+
+## Per-SEC disposition
+
+| SEC | Severity | Disposition |
+|---|---|---|
+| SEC-2 | HIGH | **Partial fix, residual filed.** Per-workspace sliding-window cap (`_PREFLIGHT_MINT_MAX_PER_WINDOW=20` per `_PREFLIGHT_MINT_WINDOW_SECONDS=60.0`) enforced entirely in `server.py`, in-memory, per `build_server()` instance. Denies with `preflight_failed` (reused, closed enum) BEFORE `mint_confirmation`/`record_confirmation` run — zero effect on the throttled call itself. **Residual (see "Residual for follow-up" below):** does not evict/reclaim rows already on disk, does not dedupe by `(canonical_input_digest, idempotency_key)`, resets on process restart. The durable fix (a TTL sweep or upsert) requires `operator_operation_service.py`, which stays OFF LIMITS this cycle. |
+| SEC-3 | MED | **Fixed.** `server.py`'s module docstring and `__init__.py` no longer claim "(zero effect)" — corrected to "zero effect beyond one durable `confirmations` row". `test_preflight_allow_mints_confirmation_with_zero_effect` widened to snapshot `.rf_state`'s `confirmations` table before/after and assert exactly one new row (matching the returned `confirmation_id`, status `issued`), not merely `registries/`/`runs/`. |
+| SEC-4 | HIGH | **Fixed, no longer vacuous.** `test_deeply_nested_argument_maps_to_payload_too_large_not_recursion_error` rewritten to nest the deep structure under `input_payload.retrieval_limits` (a real `run.plan` parameter) instead of a bare top-level `"n"` key that F1.3's allowlist rejected first for an unrelated reason. Added a direct `_mapping_depth` assertion and a new test covering M6b (`_check_transport_payload_size` raising is still caught by the outer boundary). |
+| SEC-5 | MED | **Fixed via pinning test.** `test_allowed_input_payload_keys_is_pinned_per_kind` asserts `_allowed_input_payload_keys(kind) == <exact frozenset>` for all 13 kinds (values captured live off this tree, cross-checked with a standalone script before committing to the test body). Any future adapter signature drift for any kind now fails this test, converting the gate's S1 point-in-time negative into a durable one. Code mechanism unchanged (still a real positive derivation via `inspect.signature`, per the original F1.3 spec's "derived from the real adapter signature" — the gate's own concrete "Fix direction" text asked for exactly this test, not a mechanism rewrite). |
+| SEC-6 | MED | **Fixed.** Added `test_preflight_di_only_input_payload_key_denies_before_minting_with_zero_effect` (mirrors the execute-side test, covers the preflight-side check the gate's M5b mutation found uncovered) — spies on `policy.mint_confirmation` to prove it is never called, and asserts zero new `confirmations` rows on the denial. Softened the "authorization bypass" language at three sites (`_DI_ONLY_KEYS`'s comment, the `_operation_tool` rejection comment, and two test docstrings) to what the gate actually demonstrated: a caller-supplied `now` arrives as a JSON `str` and dies with `internal_error` before reaching expiry logic — this is digest-poisoning/write-amplification hygiene, not a proven expiry-authorization bypass on this transport. |
+| SEC-8 | LOW | **Fixed at all five named sites.** Added a scoping note to the M2 section body of the implementation plan (the substantive site) plus lightweight footnotes at the YAML `title:` field (line ~202) and the milestone summary table (line ~343); added a scoping note to `m2-implementer-contract.md`'s epigraph and `m2-delivery-notes.md`'s header. Disambiguated `test_operation_tool_without_confirmation_denies_confirmation_missing`'s docstring, which reused "provably cannot execute" for a different guarantee (no-effect-without-confirmation, not the transport-guard scope). |
+
+## Mutation-verification evidence (every new/changed test)
+
+All mutations applied via in-place edit of `src/research_foundry/operator_mcp/server.py`, `__pycache__` purged before each run (`find . -name "__pycache__" -path "*/research_foundry/*" -exec rm -rf {} +`), `PYTHONDONTWRITEBYTECODE=1` set, restored from a scratch copy (`/tmp/m2-leg1-fc2-scratch/server_fixed.py`, `diff -q`-verified byte-identical after each restore) — never `git stash`, no git commands run.
+
+1. **M6** (delete the `_mapping_depth(...) > _MAX_ARGUMENT_DEPTH` block): `test_deeply_nested_argument_maps_to_payload_too_large_not_recursion_error` **FAILS** — `AssertionError: assert 'internal_error' == 'payload_too_large'` (no depth cap, `json.dumps`/downstream processing hits `RecursionError`, caught by the outer boundary as `internal_error` instead).
+2. **M6b** (hoist name/size checks outside the `try`): `test_transport_size_check_exception_maps_to_internal_error_not_uncaught` **FAILS** — raw `RuntimeError: boom ...` propagates out of `asyncio.run(...)`, uncaught.
+3. **SEC-5 drift simulation** (`_DI_ONLY_KEYS` with `"now"` removed): `test_allowed_input_payload_keys_is_pinned_per_kind` **FAILS** — `AssertionError: run.plan … Extra items in the left set: 'now'`.
+4. **SEC-2** (`_preflight_mint_rate_limited` call short-circuited to always allow): `test_preflight_mint_is_rate_limited_per_workspace_with_zero_effect_on_throttle` **FAILS** — the throttled call succeeds (`isError=False`) instead of denying.
+5. **SEC-6 / M5b** (preflight-side allowlist check replaced with `if False:`): `test_preflight_di_only_input_payload_key_denies_before_minting_with_zero_effect` **FAILS** — `assert False is True` (the DI-poisoned preflight now allows).
+6. **SEC-3** (`operations.record_confirmation(issued.record)` call removed): `test_preflight_allow_mints_confirmation_with_zero_effect` **FAILS** on its new assertion — `assert 0 == (0 + 1)` (no new `confirmations` row).
+
+Every mutation reverted and restored (`diff -q` clean) before the next; full suite re-confirmed green after final restore.
+
+## Real command tails (post-fix-cycle-2, current HEAD)
+
+```
+$ ./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py \
+    tests/integration/test_operator_mcp_writeback_preview.py \
+    tests/integration/test_operator_mcp_preflight_execute_e2e.py \
+    tests/test_operator_mcp_offline_import.py \
+    tests/unit/test_operator_mcp_adapter_*.py tests/unit/test_operator_mcp_packaging.py \
+    tests/unit/test_operator_mcp_policy.py tests/unit/test_knowledge_mcp_registry.py -q
+............................................................................ [ 21%]
+............................................................................ [ 42%]
+............................................................................ [ 63%]
+............................................................................ [ 84%]
+..................................................                 [100%]
+342 passed in 25.78s
+
+$ uv run --with flake8 flake8 src/research_foundry --select=E9,F63,F7,F82
+(clean, no output)
+```
+
+## Residual for follow-up (SEC-2)
+
+The in-memory per-workspace mint cap is a genuine but PARTIAL bound. It does
+NOT: reclaim/evict the rows a pre-fix-cycle-2 run may already have written;
+dedupe repeated identical requests by `(canonical_input_digest,
+idempotency_key)`; survive a process restart (counter resets to zero). The
+durable fix — a `status='issued' AND expires_at < now` sweep on write, or a
+dedupe-upsert — requires editing `operator_operation_service.py`
+(`record_confirmation`'s own INSERT), which is OFF LIMITS this fix cycle
+per the coordinator's hard boundary. Requesting this be filed as a
+follow-up ITT node against that file, scoped narrowly to `record_confirmation`
+and the `confirmations` table only (no other P2 surface).
+
+## Disputed / flagged, with evidence
+
+- None of the six assigned SEC items are disputed. SEC-6's "authorization
+  bypass" language correction is a claim softening I fully agree with —
+  the gate's own reproduction (a caller-supplied `now` dying as `str` before
+  reaching expiry logic) is decisive and I found no counter-evidence.
+- SEC-2's cap values (20 per 60s per workspace) are a judgment call, not
+  independently validated against production traffic patterns — flagged
+  for the security gate to weigh in on if a different ceiling is preferred;
+  they are conservative enough that no existing test in the operator-mcp
+  suite comes close to tripping them (verified: the full suite run above
+  is green with these values in place).

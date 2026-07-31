@@ -54,6 +54,7 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
 
 from research_foundry.paths import FoundryPaths
@@ -129,12 +130,61 @@ def _plan_result_to_dict(result: "planning.PlanResult") -> dict[str, Any]:
     }
 
 
+def _resolved_within(root: Path, candidate: Path) -> bool:
+    """M2 fix cycle 2, path-containment sweep (sibling to SEC-1) -- the same
+    resolve-then-contain posture `external_import._resolved_within`/
+    `source_ingest._resolved_within` establish, duplicated here per this
+    family's own "adapter modules do not cross-import each other's private
+    helpers" convention. Never probes whether the resolved `candidate`
+    exists -- an existence check outside the authorized boundary would
+    itself be an oracle (F6/H6's own class of leak)."""
+
+    try:
+        root_resolved = root.resolve()
+        effective = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+    except OSError as exc:
+        _logger.warning(
+            "operator_mcp_adapters.run_plan: path resolution failed (%s) -- denying "
+            "(never a permissive fallback)",
+            type(exc).__name__,
+        )
+        return False
+    return effective == root_resolved or root_resolved in effective.parents
+
+
 def _resolve_intent_sensitivity(intent_id: str, paths: FoundryPaths) -> str | None:
     """Best-effort, read-only lookup of the target intent's declared
     `governance.sensitivity` -- swallows EVERY exception (missing intent,
     malformed YAML, anything else) and returns `None` on failure, which
     `policy.resolve_effective_sensitivity` resolves to the STRICTEST label
-    (fail-closed, never permissive) -- see module docstring."""
+    (fail-closed, never permissive) -- see module docstring.
+
+    **M2 fix cycle 2 (path-containment sweep, sibling to SEC-1) -- a NEW
+    instance found, same severity class as `packet_dir`.**
+    `planning.load_intent` builds `paths.intents_active / f"{intent_id}.
+    yaml"` -- an F-STRING join, not a single safe path component. Because
+    Python's `Path.__truediv__` treats a right-hand operand containing `/`
+    as sub-path segments (not a literal filename) and DISCARDS the left
+    operand entirely when the right-hand side is itself absolute, an
+    `intent_id` of `"/etc/passwd"` resolves `load_intent`'s own join to the
+    literal absolute path `/etc/passwd.yaml` -- a full escape, no
+    containment anywhere in that call chain, and `intent_id` is NEVER a
+    `TargetRef` for `run.plan` (module docstring's own "no targets at all"
+    section) so `operator_mcp_policy._TARGET_REF_PATTERN` never validates it
+    either, at any point. Contained HERE, to `paths.intents_active`,
+    BEFORE `load_intent` is ever called -- this is the FIRST thing `invoke()`
+    does (module docstring's "sensitivity resolution happens before
+    authorization" section), so this containment check is the only gate
+    that will ever run for this parameter."""
+
+    if not _resolved_within(paths.intents_active, Path(f"{intent_id}.yaml")):
+        _logger.warning(
+            "operator_mcp_adapters.run_plan: intent_id=%s escapes the authorized "
+            "intents/active/ tree -- resolving to strictest sensitivity (deny, "
+            "never a permissive fallback)",
+            intent_id,
+        )
+        return None
 
     from research_foundry.services import planning  # lazy: see module docstring
 
@@ -245,6 +295,22 @@ def invoke(
     captured: list["planning.PlanResult"] = []
 
     def _run() -> ActionEffect:
+        # M2 fix cycle 2, path-containment sweep -- closes the RESIDUAL
+        # exposure `_resolve_intent_sensitivity`'s own pre-auth containment
+        # check cannot fully close on its own: if a caller's local ceiling
+        # is permissive enough to admit the STRICTEST sensitivity label (the
+        # value a rejected `intent_id` resolves to), the guard stage would
+        # never deny, and this closure would otherwise reach `planning.
+        # plan_run`, which calls `planning.load_intent` again internally --
+        # the SAME vulnerable f-string join `_resolve_intent_sensitivity`'s
+        # own docstring documents, reachable a second time, this time past a
+        # real minted confirmation. `planning.py` is out of this leg's file
+        # ownership, so this module-level, adapter-side re-check is the only
+        # available closure point.
+        if not _resolved_within(resolved_paths.intents_active, Path(f"{intent_id}.yaml")):
+            raise RuntimeError(
+                "run.plan: intent_id escapes the authorized intents/active/ tree"
+            )
         result = planning.plan_run(
             intent_id,
             depth=depth,

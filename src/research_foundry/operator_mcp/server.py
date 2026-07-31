@@ -42,7 +42,17 @@ decision for a confirmation-requiring kind mints a confirmation via
 test_evaluate_policy_and_mint_confirmation_run_without_serve_extra`
 exercises. It NEVER calls `authorize_for_consumption`/
 `consume_and_create_operation`/`run_or_replay` -- no operation manifest, no
-receipt, no adapter action ever runs on this path (zero effect). Denials
+receipt, no adapter action ever runs on this path. M2 fix cycle 2, SEC-3
+correction: the parenthetical here used to read "(zero effect)" -- that
+became FALSE the moment F1.1 (TERRA-1) started durably persisting the
+minted confirmation (see the "F1.1" comments inside :func:`build_server`
+below). The accurate claim is **zero effect beyond one durable
+`confirmations` row**: no operation manifest, no receipt, no adapter
+action, no canonical/business-domain write of any kind -- only the single,
+bounded INSERT `record_confirmation` performs for a confirmation-requiring
+kind that clears policy (a `CONFIRMATION_NOT_REQUIRED_KINDS` member and
+every DENIED preflight write nothing at all, in `.rf_state` or anywhere
+else). Denials
 return the standard `build_error` envelope; a `CONFIRMATION_NOT_REQUIRED_KINDS`
 member (`job.status`) returns `{"allowed": True, "confirmation": None}`
 without minting (a token that could never be verified would be misleading,
@@ -246,6 +256,31 @@ _MAX_ARGUMENT_DEPTH = 32
 
 _ALLOWED_TRANSPORTS: tuple[str | None, ...] = (None, "stdio")
 
+# M2 fix cycle 2, SEC-2 (HIGH) -- partial, server-layer bound on preflight
+# mint volume. The security gate measured TERRA-1's persistence fix as an
+# UNBOUNDED durable write path: 200 preflights with distinct idempotency
+# keys -> 200 permanent `confirmations` rows (`confirmation_id` embeds
+# fresh randomness, so nothing collapses/dedupes), no quota, no eviction,
+# no expiry sweep anywhere in `operator_operation_service.py` -- measured
+# sustained throughput 25.5 MiB/min. `operator_operation_service.py` is
+# OFF LIMITS this fix cycle (hard boundary), so the durable fix this
+# defect really wants -- a `status='issued' AND expires_at < now` sweep on
+# write, or a dedupe-by-`(canonical_input_digest, idempotency_key)` upsert
+# -- cannot be implemented here. What CAN be owned entirely inside this
+# file: a per-workspace sliding-window CAP on how many confirmations THIS
+# process's preflight will mint, enforced BEFORE `mint_confirmation`/
+# `record_confirmation` ever run (so a throttled request writes ZERO
+# rows, the same "zero effect on denial" property every other preflight
+# denial already has). This is explicitly a PARTIAL fix, not a substitute
+# for the durable one: it is in-memory only (resets on process restart,
+# per-`build_server()`-instance, never touches the 200+ rows a pre-fix run
+# may have already written), and does not evict/reclaim anything already
+# on disk. See the fix-cycle-2 completion note's SEC-2 section for the
+# residual filed as a follow-up (a store-side TTL sweep or upsert, which
+# belongs in `operator_operation_service.py`).
+_PREFLIGHT_MINT_WINDOW_SECONDS = 60.0
+_PREFLIGHT_MINT_MAX_PER_WINDOW = 20
+
 # M2 fix cycle 1, F1.3 (TERRA-4): keyword names `_operation_tool`/
 # `_preflight_tool` ALREADY supply explicitly and unconditionally to every
 # `adapter.invoke(...)` call -- never legitimate `input_payload` keys (a
@@ -260,10 +295,25 @@ _SERVER_SUPPLIED_KEYS: frozenset[str] = frozenset(
 # names every P3 adapter's own `invoke*` signature declares (`now` for
 # clock injection, `operations`/`cancel_resume`/`receipts`/`attempts` for
 # service-double injection) -- NONE of these is a real caller-facing
-# semantic parameter; TERRA-4's reproduction showed an in-process MCP
-# caller could supply `now` via `input_payload` and control confirmation
-# expiry, an authorization bypass. `now` in particular MUST always be
-# server-derived (real wall-clock time), never caller-influenced.
+# semantic parameter. TERRA-4's reproduction showed an in-process MCP
+# caller could supply `now` via `input_payload` and reach a canonical
+# service call. M2 fix cycle 2, SEC-6 correction: the pre-gate framing of
+# this as "an authorization bypass" OVERSTATED what the security gate
+# actually demonstrated on this transport -- MCP delivers `input_payload`
+# values as JSON, so a caller-supplied `now` arrives as a `str`, not a
+# `datetime`, and dies with `internal_error` (`AttributeError`) BEFORE
+# reaching any expiry check; no expiry bypass was ever reachable this way.
+# What IS real, and why this key is still rejected: (1) it poisons the
+# canonical digest execute independently recomputes, so a preflighted
+# confirmation using this path can never actually be consumed
+# (`confirmation_mismatch`) -- an unconsumable, durably-persisted row, one
+# of the SEC-2 write-amplification levers; (2) it is dependency-injection/
+# test-only plumbing that has no caller-facing meaning at all, regardless
+# of whether misusing it happens to be exploitable today. `now` in
+# particular MUST always be server-derived (real wall-clock time, via
+# `ids.now()` -- see the F1.1 companion fix below), never caller-supplied,
+# as a matter of design hygiene, not because a live expiry-forgery path
+# was ever proven reachable through this transport.
 _DI_ONLY_KEYS: frozenset[str] = frozenset({"now", "operations", "cancel_resume", "receipts", "attempts"})
 
 # M2 fix cycle 1, F1.3 (TERRA-4): (module attribute name on the `adapters`
@@ -582,6 +632,37 @@ def build_server(paths: FoundryPaths | None = None) -> Any:
     # equivalent connection over the same file).
     operations = OperatorOperationService(resolved_paths)
 
+    # M2 fix cycle 2, SEC-2: per-`build_server()`-instance (never module-
+    # level -- module-level state would leak across tests/servers in the
+    # same process) sliding-window mint history, keyed by workspace_id.
+    # See `_PREFLIGHT_MINT_WINDOW_SECONDS`/`_PREFLIGHT_MINT_MAX_PER_WINDOW`'s
+    # own comment for the full SEC-2 rationale and residual.
+    _preflight_mint_history: dict[str, list[float]] = {}
+
+    def _preflight_mint_rate_limited(workspace_id: str | None) -> bool:
+        """`True` when minting one more confirmation for `workspace_id`
+        would exceed `_PREFLIGHT_MINT_MAX_PER_WINDOW` within the trailing
+        `_PREFLIGHT_MINT_WINDOW_SECONDS` -- records this attempt as
+        counting toward the window ONLY when it is allowed (a denied
+        attempt must not itself consume quota, mirroring every other
+        preflight denial's zero-effect property). Uses `ids.now()` -- the
+        SAME canonical clock `mint_confirmation`/`record_confirmation` are
+        threaded with above -- never a bare `time.time()`/`datetime.now()`
+        read, so this stays correctly inert under the test suite's pinned
+        clock rather than silently never expiring entries (or expiring
+        them all immediately) against a clock nothing else in this
+        request agrees with."""
+
+        key = workspace_id or ""
+        now_ts = ids.now().timestamp()
+        cutoff = now_ts - _PREFLIGHT_MINT_WINDOW_SECONDS
+        history = _preflight_mint_history.setdefault(key, [])
+        history[:] = [ts for ts in history if ts >= cutoff]
+        if len(history) >= _PREFLIGHT_MINT_MAX_PER_WINDOW:
+            return True
+        history.append(now_ts)
+        return False
+
     missing = [kind for kind in policy.OPERATION_KINDS if adapters.get_adapter(kind) is None]
     if missing:
         raise RuntimeError(
@@ -619,10 +700,13 @@ def build_server(paths: FoundryPaths | None = None) -> Any:
                 # M2 fix cycle 1, F1.3 (TERRA-4): explicit, bounded
                 # rejection of any `input_payload` key that is not a
                 # declared semantic parameter of `kind`'s REAL `invoke*`
-                # signature -- this closes BOTH the DI-injection bypass
-                # (e.g. a caller-supplied `now` reaching `verify_confirmation`
-                # and controlling confirmation expiry) AND the accidental,
-                # fragile "colliding key raises TypeError, which happens to
+                # signature -- this closes BOTH DI-injection (e.g. a
+                # caller-supplied `now` reaching a canonical service; see
+                # `_DI_ONLY_KEYS`'s own comment, M2 fix cycle 2/SEC-6, for
+                # why this is digest-poisoning/write-amplification hygiene
+                # rather than a proven expiry-authorization bypass on this
+                # transport) AND the accidental, fragile "colliding key
+                # raises TypeError, which happens to
                 # get mapped to internal_error" behavior the pre-fix D7
                 # boundary relied on for the SAME collision (never a
                 # deliberate rejection). `payload_too_large` is reused here,
@@ -780,6 +864,22 @@ def build_server(paths: FoundryPaths | None = None) -> Any:
 
         if operation_kind in policy.CONFIRMATION_NOT_REQUIRED_KINDS:
             return dual_encode({"allowed": True, "confirmation": None}, is_error=False)
+
+        # M2 fix cycle 2, SEC-2 (HIGH): the per-workspace mint-volume cap
+        # -- checked BEFORE `mint_confirmation`/`record_confirmation` run,
+        # so a throttled request writes ZERO rows, matching every other
+        # preflight denial's zero-effect property. `preflight_failed` is
+        # reused (not invented -- the closed reason-code enum is frozen):
+        # it is this module's existing general-purpose "the preflight
+        # stage cannot proceed" bucket (already used for missing required
+        # targets and empty `writeback_targets`), and this IS a
+        # preflight-stage-level condition, `retryable=True` because the
+        # window rolls forward. See `_PREFLIGHT_MINT_MAX_PER_WINDOW`'s own
+        # comment for why this is a PARTIAL bound, not the durable fix.
+        workspace_key = ctx.identity.workspace_id if ctx.identity is not None else None
+        if _preflight_mint_rate_limited(workspace_key):
+            decision = policy.PolicyDecision(False, "preflight", "preflight_failed", retryable=True)
+            return dual_encode(policy.build_error(decision), is_error=True)
 
         # M2 fix cycle 1, F1.1 companion fix (discovered while proving F1.5's
         # e2e test): `mint_confirmation`'s own docstring says its `now`

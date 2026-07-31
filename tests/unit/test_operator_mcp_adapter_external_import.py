@@ -18,6 +18,20 @@ Reuses, never reinvents: `tests.unit.test_external_research_interchange`'s
 `build_packet` helper, `tests.unit.test_operator_mcp_adapter_run_plan`'s
 `_default_sensitivity_ceiling`/`_recording_ceiling` fixtures, and
 `tests.unit.test_operator_mcp_policy`'s identity fixtures.
+
+**M2 fix cycle 2, SEC-1 test inversion (flagged loudly, per boundary rule 5
+-- "if a test pins wrong behavior, invert it").** `test_invoke_result_
+matches_direct_import_call` and `test_exact_retry_does_not_duplicate_import_
+receipt` are the only two tests here that reach `_run()` for a REAL (non-
+dry-run) execution; both previously built `packet_dir` at a sibling `tmp_
+path` location OUTSIDE `tmp_foundry.root` -- pinning the exact unbounded-
+path-reach behavior the security gate's SEC-1 finding determined was a
+defect, not intended design. Both now build `packet_dir` under `tmp_
+foundry.root` instead, via `_blocked_packet(tmp_foundry.root)`. The
+remaining four tests in this file are all `dry_run=True` (never reach
+`_run()`, per D3's own zero-effect guarantee) and are UNCHANGED -- the SEC-1
+containment check only runs inside `_run()`, so it is inert on those paths
+regardless of where their `packet_dir` fixtures point.
 """
 
 from __future__ import annotations
@@ -82,7 +96,10 @@ def test_invoke_result_matches_direct_import_call(
     identity = _IDENTITY
     monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
 
-    packet_dir = _blocked_packet(tmp_path)
+    # M2 fix cycle 2, SEC-1: packet_dir now must resolve inside the
+    # authorized workspace tree (tmp_foundry.root), not a sibling tmp_path
+    # location -- see the module-level note at the top of this file.
+    packet_dir = _blocked_packet(tmp_foundry.root)
 
     captured_direct: list[Any] = []
     real_import = eri_module.import_external_report
@@ -169,7 +186,8 @@ def test_exact_retry_does_not_duplicate_import_receipt(
 ) -> None:
     identity = _IDENTITY
     monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
-    packet_dir = _blocked_packet(tmp_path)
+    # M2 fix cycle 2, SEC-1: packet_dir must resolve inside the workspace.
+    packet_dir = _blocked_packet(tmp_foundry.root)
 
     call_count = 0
     real_import = eri_module.import_external_report
@@ -348,3 +366,218 @@ def test_invoke_denies_foreign_target_run_id_despite_matching_workspace_id(
     assert result.ok is False
     assert result.error is not None
     assert result.error["reason_code"] == "not_found"
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 2, SEC-1 (BLOCKING): packet_dir must resolve inside the
+# authorized workspace tree. Before this fix, an MCP caller could name any
+# absolute host path as packet_dir and it reached import_external_report
+# verbatim -- an existence/type/symlink/content oracle over the entire host
+# filesystem, empirically demonstrated by the security gate against /etc,
+# ~/.ssh, /var/root, and a workspace-planted symlink escape.
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_denies_packet_dir_outside_workspace_tree(
+    tmp_foundry: FoundryPaths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A real, authorized (non-dry-run) call whose `packet_dir` resolves
+    OUTSIDE `tmp_foundry.root` must deny with a bounded `internal_error`
+    envelope, and `import_external_report` must never be called for it --
+    the containment check runs INSIDE `_run()`, before the canonical service
+    is ever reached.
+
+    MUTATION NOTE: the spy RECORDS (never raises) so this test is sensitive
+    to the guard's ABSENCE, not merely to *some* exception firing inside
+    `_run()` -- an earlier draft used an assertion-raising spy, whose crash
+    ALSO produces `ok=False`/`internal_error`, making the reason-code
+    assertion alone unable to distinguish "the guard denied" from "the
+    guard was removed and this trap fired instead" (both converge to the
+    same envelope via `run_actions`'s own exception boundary). The load-
+    bearing assertion here is `calls == []`, verified by killing this exact
+    mutation (commenting out the `_resolved_within` check) in a scratch
+    copy and confirming `calls` becomes non-empty."""
+
+    identity = _IDENTITY
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    # Deliberately a SIBLING of tmp_foundry.root, not beneath it.
+    outside_packet_dir = _blocked_packet(tmp_path, "outside-packet")
+
+    calls: list[Any] = []
+
+    def _recording_import(*args: Any, **kwargs: Any) -> Any:
+        calls.append((args, kwargs))
+        raise AssertionError("import_external_report reached -- containment guard did not fire")
+
+    monkeypatch.setattr(eri_module, "import_external_report", _recording_import)
+
+    ctx = _basic_ctx(tmp_foundry, packet_dir=outside_packet_dir, idempotency_key="idem-sec1-outside")
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    result = external_import.invoke(
+        packet_dir=outside_packet_dir,
+        workspace_id="ws-mine",
+        idempotency_key="idem-sec1-outside",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert calls == [], "import_external_report must never be called for an out-of-workspace packet_dir"
+    assert result.ok is False
+    assert result.result is None
+    assert result.error is not None
+    assert result.error["reason_code"] == "internal_error"
+
+
+def test_invoke_denies_packet_dir_symlink_escape(
+    tmp_foundry: FoundryPaths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `packet_dir` that is LEXICALLY inside the workspace but a symlink
+    resolving OUTSIDE it must deny identically -- SEC-1's own PoC used
+    exactly this shape (`<ws>/evil_link` -> `/etc`) to reach `os.scandir`
+    on `/private/etc`. Proves the containment check resolves symlinks,
+    never trusts the lexical path alone."""
+
+    identity = _IDENTITY
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    outside_target = tmp_path / "outside-target"
+    outside_target.mkdir()
+    evil_link = tmp_foundry.root / "evil_link"
+    evil_link.symlink_to(outside_target, target_is_directory=True)
+    packet_dir = str(evil_link)
+
+    calls: list[Any] = []
+
+    def _recording_import(*args: Any, **kwargs: Any) -> Any:
+        calls.append((args, kwargs))
+        raise AssertionError("import_external_report reached -- containment guard did not fire")
+
+    monkeypatch.setattr(eri_module, "import_external_report", _recording_import)
+
+    ctx = _basic_ctx(tmp_foundry, packet_dir=packet_dir, idempotency_key="idem-sec1-symlink")
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    result = external_import.invoke(
+        packet_dir=packet_dir,
+        workspace_id="ws-mine",
+        idempotency_key="idem-sec1-symlink",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert calls == [], "import_external_report must never be called for a symlink-escaped packet_dir"
+    assert result.ok is False
+    assert result.result is None
+    assert result.error is not None
+    assert result.error["reason_code"] == "internal_error"
+
+
+def test_invoke_allows_packet_dir_inside_workspace_tree(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The positive counterpart: a `packet_dir` genuinely inside
+    `tmp_foundry.root` reaches `import_external_report` normally -- the
+    SEC-1 fix bounds, it does not break, the legitimate in-workspace case."""
+
+    identity = _IDENTITY
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    packet_dir = _blocked_packet(tmp_foundry.root, "inside-packet")
+
+    ctx = _basic_ctx(tmp_foundry, packet_dir=packet_dir, idempotency_key="idem-sec1-inside")
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    result = external_import.invoke(
+        packet_dir=packet_dir,
+        workspace_id="ws-mine",
+        idempotency_key="idem-sec1-inside",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is True, result.error
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 2 -- path-containment sweep: target_run_id's own read-before-
+# validate hazard (a NEW instance found beyond packet_dir, same class).
+# `_resolve_run_workspace_id` reads `paths.run_paths(run_id).run_yaml`
+# BEFORE `ctx`/`operator_mcp_policy._TARGET_REF_PATTERN` ever validates
+# `run_id` -- a traversal-shaped `target_run_id` (e.g. ".." -- legal against
+# that pattern, since it contains no "/") could therefore trigger a read
+# one level above `runs/` before any policy stage ever runs.
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_run_workspace_id_denies_traversal_before_read(tmp_foundry: FoundryPaths) -> None:
+    """Direct unit proof: `_resolve_run_workspace_id("..", ...)` resolves to
+    `None` -- the SAME fail-closed sentinel a genuinely missing run gets --
+    without ever attempting `load_yaml` outside `runs/`.
+
+    MUTATION NOTE: `run_id=".."` resolves (`paths.runs / ".."`) to
+    `paths.root` -- a directory that normally has NO `run.yaml` of its own,
+    so a plain "does the containment check fire" assertion would pass
+    EVEN WITHOUT the guard (the read would simply hit `FileNotFoundError`
+    and fall through to the SAME pre-existing `None` return the guard also
+    produces -- a vacuous test, indistinguishable from a real guard). A
+    real `run.yaml` is planted AT the escape target
+    (`tmp_foundry.root/run.yaml`) with a MATCHING `workspace_id` so an
+    unguarded read would return a REAL, non-`None` value -- only the
+    containment check itself can make this assertion hold."""
+
+    (tmp_foundry.root / "run.yaml").write_text("workspace_id: ws-mine\n", encoding="utf-8")
+
+    result = external_import._resolve_run_workspace_id("..", tmp_foundry)
+    assert result is None
+
+
+def test_invoke_denies_traversal_target_run_id_same_shape_as_missing_run(
+    tmp_foundry: FoundryPaths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identity = _IDENTITY
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+    packet_dir = _blocked_packet(tmp_foundry.root)
+
+    traversal_result = external_import.invoke(
+        packet_dir=packet_dir,
+        workspace_id="ws-mine",
+        target_run_id="..",
+        idempotency_key="idem-sec1-traversal-run",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+    missing_run_result = external_import.invoke(
+        packet_dir=packet_dir,
+        workspace_id="ws-mine",
+        target_run_id="does-not-exist-at-all",
+        idempotency_key="idem-sec1-missing-run",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+
+    assert traversal_result.ok is False
+    assert traversal_result.error is not None
+    assert traversal_result.error["reason_code"] == "not_found"
+    assert missing_run_result.ok is False
+    assert traversal_result.error == missing_run_result.error

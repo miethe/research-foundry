@@ -160,6 +160,7 @@ import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from research_foundry.paths import FoundryPaths
@@ -211,12 +212,45 @@ class _RunContext:
     workspace_id: str | None
 
 
+def _resolved_within(root: Path, candidate: Path) -> bool:
+    """M2 fix cycle 2, path-containment sweep (sibling to SEC-1) -- the same
+    resolve-then-contain posture every other adapter module in this family
+    establishes, duplicated here per convention (adapter modules do not
+    cross-import each other's private helpers)."""
+
+    try:
+        root_resolved = root.resolve()
+        effective = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+    except OSError as exc:
+        _logger.warning(
+            "operator_mcp_adapters.research_stages: path resolution failed (%s) -- "
+            "denying (never a permissive fallback)",
+            type(exc).__name__,
+        )
+        return False
+    return effective == root_resolved or root_resolved in effective.parents
+
+
 def _resolve_run_context(run_id: str, paths: FoundryPaths) -> _RunContext:
     """See `_RunContext`'s own docstring. Swallows EVERY exception loading
     `run.yaml` and resolves both fields to `None` on failure -- mirrors
     `swarm_start._resolve_run_context`'s own fail-closed convention (a
     strict subset of its fields: this family has no budget/timeout/
-    governance-profile concept)."""
+    governance-profile concept).
+
+    **M2 fix cycle 2 (path-containment sweep, sibling to SEC-1).** `run_id`
+    is contained to `paths.runs` FIRST -- before `run.yaml` is ever read --
+    see `external_import._resolve_run_workspace_id`'s identical fix for the
+    full rationale."""
+
+    if not _resolved_within(paths.runs, Path(run_id)):
+        _logger.warning(
+            "operator_mcp_adapters.research_stages: run_id=%s escapes the authorized "
+            "runs/ tree -- resolving sensitivity/workspace_id to None (deny, never "
+            "a permissive fallback)",
+            run_id,
+        )
+        return _RunContext(None, None)
 
     try:
         run_doc = load_yaml(paths.run_paths(run_id).run_yaml)

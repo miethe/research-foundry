@@ -88,6 +88,7 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Mapping
 
 from research_foundry.paths import FoundryPaths
@@ -111,6 +112,33 @@ __all__ = ["OPERATION_KIND", "ExternalReportImportAdapter", "ADAPTER", "invoke"]
 OPERATION_KIND = "external_report.import"
 
 
+def _resolved_within(root: Path, candidate: Path) -> bool:
+    """M2 fix cycle 2, SEC-1/path-containment sweep -- a PURELY STRUCTURAL
+    containment check, the exact resolve-then-contain posture
+    `verify_bundle._explicit_path_within_run` established (F5): resolves
+    both `root` and `candidate` (symlinks included -- SEC-1's own PoC used a
+    symlink planted inside the workspace to reach `/etc`, so a lexical-only
+    check would not close it) and requires `candidate` to land AT `root` or
+    somewhere BENEATH it. Deliberately never probes whether the resolved
+    `candidate` exists -- an existence check on a location outside the
+    authorized boundary would itself be an oracle (the same class of leak
+    F6/H6 close elsewhere in this family). `candidate` may be relative (then
+    joined under `root` first) or absolute (resolved as given, checked for
+    containment the same way)."""
+
+    try:
+        root_resolved = root.resolve()
+        effective = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+    except OSError as exc:
+        _logger.warning(
+            "operator_mcp_adapters.external_import: path resolution failed (%s) -- "
+            "denying (never a permissive default)",
+            type(exc).__name__,
+        )
+        return False
+    return effective == root_resolved or root_resolved in effective.parents
+
+
 def _resolve_run_workspace_id(run_id: str, paths: FoundryPaths) -> str | None:
     """Read-only, best-effort lookup of `run_id`'s own declared
     `workspace_id` field (from `run.yaml`) -- swallows EVERY exception
@@ -118,8 +146,29 @@ def _resolve_run_workspace_id(run_id: str, paths: FoundryPaths) -> str | None:
     on ANY failure, including a non-dict document or a non-string/blank
     field -- never a permissive fallback. Mirrors
     `source_ingest._resolve_run_context`/`swarm_start._resolve_run_context`'s
-    identical field resolution (F2 fix, module docstring)."""
+    identical field resolution (F2 fix, module docstring).
 
+    **M2 fix cycle 2 (path-containment sweep, sibling to SEC-1).**
+    `target_run_id` reaches `paths.run_paths(run_id).run_yaml` the exact
+    same way EVERY `run_id`-accepting adapter in this family resolves its
+    own run context, and does so BEFORE `ctx`/authorization exists (the
+    identical "necessary before `ctx` exists" category `run_plan.py`'s own
+    docstring documents for its own intent lookup). Contained to
+    `paths.runs` FIRST -- before the read is even attempted -- so a
+    traversal-shaped `target_run_id` (e.g. `".."`) can never cause a read
+    outside the `runs/` tree, regardless of what `operator_mcp_policy`'s own
+    `_TARGET_REF_PATTERN` would eventually reject it for downstream (that
+    downstream rejection happens too late to prevent this read, exactly the
+    ordering hazard SEC-1 named for `packet_dir`)."""
+
+    if not _resolved_within(paths.runs, Path(run_id)):
+        _logger.warning(
+            "operator_mcp_adapters.external_import: target_run_id=%s escapes the "
+            "authorized runs/ tree -- resolving owning workspace to None (deny, "
+            "never a fallback)",
+            run_id,
+        )
+        return None
     try:
         run_doc = load_yaml(paths.run_paths(run_id).run_yaml)
     except Exception as exc:
@@ -253,6 +302,27 @@ def invoke(
     captured: list["external_research_import.ImportOutcome"] = []
 
     def _run() -> ActionEffect:
+        # SEC-1 fix (M2 fix cycle 2, BLOCKING): `packet_dir` must resolve
+        # inside the authorized workspace tree -- previously forwarded
+        # VERBATIM to `import_external_report`, which recursively
+        # `os.scandir`s it, making any absolute host path (`/etc`,
+        # `~/.ssh`, `/var/root`, a symlink planted inside the workspace
+        # pointing anywhere) a caller-reachable existence/type/symlink/
+        # content oracle over the ENTIRE host filesystem. Checked HERE,
+        # inside `_run()` -- after `base.run_pipeline` has already
+        # authorized and durably consumed the operation (F6 posture, mirrors
+        # `verify_bundle.py`'s own prerequisite-check placement) -- never
+        # before `ctx`, so an unauthorized caller learns nothing about
+        # `packet_dir` validity that authorization itself didn't already
+        # gate. Containment root is `resolved_paths.root` -- the ONE
+        # configured operator's own authorized workspace tree, re-derived
+        # here, never caller-supplied -- not merely a specific run's
+        # directory, since a staging-only import (`target_run_id=None`) has
+        # no run tree to bind to at all.
+        if not _resolved_within(resolved_paths.root, Path(packet_dir)):
+            raise RuntimeError(
+                "external_report.import: packet_dir escapes the authorized workspace tree"
+            )
         outcome = external_research_import.import_external_report(
             packet_dir,
             workspace_id=workspace_id,

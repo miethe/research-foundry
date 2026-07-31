@@ -73,7 +73,9 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlparse
 
 from research_foundry.paths import FoundryPaths
 from research_foundry.services import operator_mcp_policy as policy
@@ -96,6 +98,43 @@ __all__ = ["OPERATION_KIND", "SourceIngestAdapter", "ADAPTER", "invoke"]
 OPERATION_KIND = "source.ingest"
 
 
+def _resolved_within(root: Path, candidate: Path) -> bool:
+    """M2 fix cycle 2, path-containment sweep (sibling to SEC-1) -- a
+    PURELY STRUCTURAL containment check, the exact resolve-then-contain
+    posture `verify_bundle._explicit_path_within_run` (F5) and
+    `external_import._resolved_within` (SEC-1) establish: resolves both
+    `root` and `candidate` (symlinks included) and requires `candidate` to
+    land AT `root` or somewhere BENEATH it. Never probes whether the
+    resolved `candidate` exists -- an existence check on a location outside
+    the authorized boundary would itself be an oracle (F6/H6's own class of
+    leak). `candidate` may be relative (joined under `root` first) or
+    absolute (resolved as given)."""
+
+    try:
+        root_resolved = root.resolve()
+        effective = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+    except OSError as exc:
+        _logger.warning(
+            "operator_mcp_adapters.source_ingest: path resolution failed (%s) -- "
+            "denying (never a permissive fallback)",
+            type(exc).__name__,
+        )
+        return False
+    return effective == root_resolved or root_resolved in effective.parents
+
+
+def _looks_like_url(locator: str) -> bool:
+    """Mirrors `source_cards._is_url`'s own scheme check (`http`/`https`/
+    `file`) -- duplicated here rather than imported, since that helper is
+    module-private and adapter modules do not cross-import each other's (or
+    a canonical service's) private helpers, the established convention in
+    this family. Used ONLY to decide whether `locator` needs workspace
+    containment (a bare local path does; a URL locator does not -- its
+    fetch, when `fetch=True`, goes over the network, a separate concern)."""
+
+    return urlparse(locator).scheme in ("http", "https", "file")
+
+
 @dataclass(frozen=True)
 class _RunContext:
     """Read-only, best-effort resolution of everything `source.ingest` needs
@@ -113,7 +152,24 @@ def _resolve_run_context(run_id: str, paths: FoundryPaths) -> _RunContext:
     """See `_RunContext`'s own docstring. Swallows EVERY exception (missing
     run, malformed YAML, filesystem error) and resolves BOTH fields to
     `None` on ANY failure -- never a permissive fallback. Mirrors
-    `swarm_start._resolve_run_context`'s identical field resolution."""
+    `swarm_start._resolve_run_context`'s identical field resolution.
+
+    **M2 fix cycle 2 (path-containment sweep, sibling to SEC-1).** `run_id`
+    is contained to `paths.runs` FIRST -- before `paths.run_paths(run_id)`
+    is ever read -- so a traversal-shaped `run_id` (e.g. `".."`, legal
+    against `operator_mcp_policy._TARGET_REF_PATTERN` since it contains no
+    `/`) can never cause a read outside the `runs/` tree before that
+    pattern would eventually (too late) reject it. See
+    `external_import._resolve_run_workspace_id`'s identical fix for the
+    full rationale."""
+
+    if not _resolved_within(paths.runs, Path(run_id)):
+        _logger.warning(
+            "operator_mcp_adapters.source_ingest: run_id=%s escapes the authorized "
+            "runs/ tree -- resolving context to None (deny, never a fallback)",
+            run_id,
+        )
+        return _RunContext(None, None)
 
     try:
         run_doc = load_yaml(paths.run_paths(run_id).run_yaml)
@@ -249,6 +305,26 @@ def invoke(
 
     def _run() -> ActionEffect:
         assert ctx.identity is not None
+        # M2 fix cycle 2, path-containment sweep -- a NEW instance found
+        # beyond packet_dir, same class, arguably more severe: `source_cards.
+        # ingest_source` unconditionally treats `locator` as a local file
+        # (`Path(locator).exists() and .is_file()`) and reads its FULL
+        # CONTENT -- with NO containment at all -- whenever `content` is not
+        # already supplied and `locator` is not URL-shaped. `content is not
+        # None` bypasses that local-file branch entirely (source_cards.py's
+        # own precedence order), so this check only applies when the caller
+        # is relying on `ingest_source`'s own local-read behavior. Checked
+        # HERE, inside `_run()`, after authorization (F6 posture) -- a
+        # local-shaped `locator` that resolves outside the authorized
+        # workspace tree is denied before `ingest_source` ever touches it;
+        # genuine URL locators (`fetch=True` or not) are unaffected, since
+        # their content only ever reaches this process over the network,
+        # already gated by whatever network policy applies elsewhere.
+        if content is None and not _looks_like_url(locator):
+            if not _resolved_within(resolved_paths.root, Path(locator)):
+                raise RuntimeError(
+                    "source.ingest: locator escapes the authorized workspace tree"
+                )
         result = source_cards.ingest_source(
             locator,
             run_id=run_id,

@@ -478,6 +478,127 @@ def test_explicit_path_within_run_rejects_traversal_and_absolute_foreign_paths(
 
 
 # ---------------------------------------------------------------------------
+# M2 fix cycle 2, SEC-7 (MED) -- `report_path`/`claim_ledger_path` must be
+# coerced to real `Path` objects before the F5 containment guard runs, so
+# the guard actually EXECUTES on the MCP route (which delivers JSON
+# strings), rather than dying on `AttributeError` before it can ever run.
+# Every test above/below this section passes a real `Path` object (the
+# direct-Python-caller shape); these tests pass a plain `str` instead --
+# the actual runtime shape an MCP `call_tool` dispatch produces -- and prove
+# BOTH that the guard now accepts a legitimate in-run string path (only
+# possible if coercion happened; pre-fix this crashed regardless of
+# validity) and still denies a foreign one.
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_verify_accepts_string_report_path_shaped_like_mcp_json(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `report_path` supplied as a plain `str` (never a `Path` object --
+    the real shape MCP's JSON transport delivers) pointing INSIDE the
+    authorized run must succeed. Pre-fix, ANY string `report_path` crashed
+    with `AttributeError` inside `_explicit_path_within_run` regardless of
+    whether it was legitimate or foreign -- this is the proof the F5 guard
+    now actually differentiates, rather than uniformly type-crashing."""
+
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+    run_id = _build_verified_run(tmp_foundry, identity=_IDENTITY, sensitivity="personal")
+    rp = tmp_foundry.run_paths(run_id)
+    own_report_path = rp.report_draft if rp.report_draft.exists() else rp.report_final
+    assert own_report_path.exists()
+
+    run_ctx = verify_bundle._resolve_run_context(run_id, tmp_foundry)
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=verify_bundle.VERIFY_OPERATION_KIND,
+        idempotency_key="idem-sec7-string-inrun",
+        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("run", run_id),),
+        resolved_target_workspaces=(run_ctx.workspace_id,),
+        input_payload={
+            "run_id": run_id,
+            "fail_on_unsupported": True,
+            "disposition": "internal_capture",
+            "report_path": str(own_report_path),
+        },
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    record, token = _mint_and_record(ctx, op_service)
+
+    result = verify_bundle.invoke_verify(
+        run_id=run_id,
+        idempotency_key="idem-sec7-string-inrun",
+        confirmation_record=record,
+        presented_token=token,
+        report_path=str(own_report_path),  # plain str, not Path -- the MCP-route shape
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is True, result.error
+    assert result.result is not None
+    assert result.result["passed"] is True
+
+
+def test_invoke_verify_denies_string_foreign_report_path_shaped_like_mcp_json(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The negative counterpart, mirroring `test_invoke_verify_foreign_
+    report_path_denies_and_does_not_touch_foreign_run` but with a plain
+    `str` `report_path` (the MCP-route shape) instead of a `Path` object --
+    proves the F5 guard, now actually executing, still correctly denies a
+    foreign path when it is a string."""
+
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+    run_a = _build_verified_run(tmp_foundry, identity=_IDENTITY, sensitivity="personal")
+    run_b = _build_verified_run(
+        tmp_foundry, identity=_IDENTITY_OTHER_WORKSPACE, sensitivity="personal"
+    )
+    rp_b = tmp_foundry.run_paths(run_b)
+    ledger_b_before = load_yaml(rp_b.claim_ledger)
+    foreign_report_path = rp_b.report_draft if rp_b.report_draft.exists() else rp_b.report_final
+    assert foreign_report_path.exists()
+
+    run_ctx = verify_bundle._resolve_run_context(run_a, tmp_foundry)
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=verify_bundle.VERIFY_OPERATION_KIND,
+        idempotency_key="idem-sec7-string-foreign",
+        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("run", run_a),),
+        resolved_target_workspaces=(run_ctx.workspace_id,),
+        input_payload={
+            "run_id": run_a,
+            "fail_on_unsupported": True,
+            "disposition": "internal_capture",
+            "report_path": str(foreign_report_path),
+        },
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    record, token = _mint_and_record(ctx, op_service)
+
+    result = verify_bundle.invoke_verify(
+        run_id=run_a,
+        idempotency_key="idem-sec7-string-foreign",
+        confirmation_record=record,
+        presented_token=token,
+        report_path=str(foreign_report_path),  # plain str, not Path
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "internal_error"
+    assert not rp_b.verification.exists()
+    assert load_yaml(rp_b.claim_ledger) == ledger_b_before
+
+
+# ---------------------------------------------------------------------------
 # run.verify -- dry run: zero effects
 # ---------------------------------------------------------------------------
 
@@ -1163,3 +1284,31 @@ def test_invoke_bundle_exact_retry_does_not_recall_build_bundle(
     assert second.ok is True, second.error
     assert first.operation_id == second.operation_id
     assert call_count == 1, "build_bundle must be called exactly once across both invocations"
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 2 -- path-containment sweep: run_id's own read-before-
+# validate hazard (a NEW instance found beyond packet_dir, same class).
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_run_context_denies_traversal_run_id_before_read(tmp_foundry: FoundryPaths) -> None:
+    """Direct unit proof: a traversal-shaped `run_id` (`".."`, legal against
+    `operator_mcp_policy._TARGET_REF_PATTERN` since it contains no `/`)
+    resolves both `_RunContext` fields to `None` -- the SAME fail-closed
+    sentinel a genuinely missing run gets -- without ever attempting
+    `load_yaml` outside `runs/`.
+
+    MUTATION NOTE: a real `run.yaml` (matching workspace_id/sensitivity) is
+    planted AT the escape target (`tmp_foundry.root/run.yaml`, what
+    `paths.runs / ".."` resolves to) so an UNGUARDED read would return REAL,
+    non-`None` values -- a bare "resolves to None" assertion without this
+    plant would pass vacuously even with the guard removed."""
+
+    (tmp_foundry.root / "run.yaml").write_text(
+        "workspace_id: ws-mine\nsensitivity: public\n", encoding="utf-8"
+    )
+
+    result = verify_bundle._resolve_run_context("..", tmp_foundry)
+    assert result.sensitivity is None
+    assert result.workspace_id is None

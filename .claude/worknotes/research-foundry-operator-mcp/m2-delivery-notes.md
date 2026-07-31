@@ -11,6 +11,11 @@ updated: '2026-07-31'
 
 # M2 delivery notes — stdio surface exists and provably cannot execute
 
+> **Scoping note (fix cycle 1/2, TERRA-5/SEC-8):** "provably cannot execute" is scoped to every
+> path a real caller can drive through the registered stdio surface, not to arbitrary in-process
+> code execution — see `server.py`'s module docstring, "Scope of the stdio-only guard" section, and
+> `m2-fix-contract.md`'s TERRA-5 adjudication for the full reasoning.
+
 Running capture for the M2 delivery report + AAR. Continues the M1 pattern
 (`m1-remainder-delivery-notes.md`).
 
@@ -99,6 +104,77 @@ adversarial-audit framing — pre-gate is framed as code review, which held fine
   now TERRA-3). Fix cycle 1 therefore requires the full 13-adapter parameter×in-digest enumeration
   rather than fixing the one named instance — applying the P2 lesson (three adversarial rounds
   burned closing one pattern one instance at a time) before it costs a third round here.
+
+- **O-7 — The orchestrator (me) published a wrong baseline number, twice, from bad measurement
+  hygiene.** I reported "5 pre-existing whole-tree failures" — read off a `tail -12`, so it was
+  only the *last five* FAILED lines of a longer summary — and that figure went into the wave-1
+  commit message before Leg 1's independent count of 23 exposed it. Trying to verify, I then ran
+  two full suites **concurrently in the same worktree**; these tests write shared run/ccdash
+  state, so they polluted each other and produced a spurious operator-surface failure
+  (`test_job_resume_wrong_workspace_indistinguishable_from_missing_dry_run`, which passes 31/31
+  in isolation). A third attempt was killed at 7%. Corrected in the fix-cycle commit message
+  rather than by rewriting history. **Three compounding lessons:** (1) never read a count off a
+  truncated tail — `grep -c` the whole file, ANSI-stripped, or read the summary line; (2) never
+  run two full suites concurrently in one worktree in this repo; (3) the number that actually
+  answers the milestone's question was cheap and reliable all along — **the operator surface run
+  as one invocation: 416/416**. Reach for the scoped, reproducible measurement before the
+  expensive global one.
+- **O-8 — There is no honest whole-tree baseline to compare against, and that is itself the
+  finding.** The M1-head baseline worktree could not even *collect* (it aborts on the same two
+  import errors this milestone fixed), which proves O-2 conclusively: from `2d40f1f` until now,
+  **no whole-tree run has been possible in this repo**, so every "full suite / N passed" figure
+  in this workstream's notes was `tests/unit` only. Establishing the real number is delegated to
+  the validator gate (V5) rather than asserted here.
+
+- **O-9 — RESOLVED: the honest whole-tree baseline, established for the first time since
+  2026-07-22.** Method that finally worked: (1) scratch worktree at the M1 head with *only* the
+  2-line collection fix applied, so it can collect at all; (2) extract the failing set from a
+  clean serialized M2 run; (3) re-run **exactly that file set** at the baseline — 10 seconds, not
+  12 minutes; (4) `comm` the two sorted failure lists. Result: **byte-identical, 23 = 23, zero
+  new, zero fixed, zero on the operator surface.** M2 HEAD whole tree = **4691 passed / 23 failed
+  / 5 skipped / 1 xfailed**; the 23 span 13 files M2 never touched (serve_api 5, pdf 3,
+  assertion_rollout 2, verification 2, swarm_drive 2, contract_drift 2, + 7 singletons).
+  **The diff of failure *sets* is the answer; the comparison of failure *counts* never was** —
+  and the set diff cost a fraction of the runs I burned chasing counts.
+- **O-10 — A third measurement trap, distinct from the ANSI one: non-UTF8 bytes.** `sed` on the
+  raw pytest log dies with `RE error: illegal byte sequence` and — piped into `grep -c` — silently
+  yields **0**, reading exactly like a green suite. This is a *different* failure mode from the
+  known "FAILED lines carry ANSI" trap and defeats the usual `sed`-strip remedy. Working form:
+  `LC_ALL=C perl -pe 's/\e\[[0-9;]*[A-Za-z]//g'` plus `grep -a`. Two of my three bad readings this
+  milestone came from tooling that fails **toward green**; assume any zero-count is a lie until a
+  positive control proves the pipeline can count.
+
+- **O-11 — The security gate found a BLOCKING arbitrary-path escape that my fix contract's
+  enumeration boundary structurally could not catch.** SEC-1: `packet_dir` in
+  `external_import.py` is an unchecked caller-supplied absolute path; the gate drove it through
+  the real MCP route with a genuine minted confirmation and got recursive `scandir` of `/etc`,
+  `~/.ssh`, `/var/root`, a symlink escape, and content-parsing outside the workspace — four
+  distinguishable envelopes, i.e. a filesystem **oracle**, falsifying M2's "no arbitrary-path
+  reach from any registered handler" AC. The sibling `verify_bundle.py:261` has exactly this
+  guard, added by **M1's own F5 fix** — which bounded one adapter's paths and left another's.
+  **My fix contract then asked Leg 2 to enumerate exactly one class (digest omission).** Leg 2
+  did that completely and correctly (the gate independently audited 7 modules / 12 of 13 kinds
+  and confirmed the zero-further-instances result) — but a correct, complete enumeration of the
+  *wrong* class cannot find the right one. **Lesson, sharper than M1's O-5: it is not enough for
+  a contract to demand "enumerate the pattern" — the contract author picks WHICH pattern, and
+  that choice is itself the highest-leverage decision. The instruction "fix the sibling" applies
+  to defect *classes*, not just fields.** Fifth occurrence of guard-right/inventory-incomplete.
+- **O-12 — Two mutations survived, and both were tests passing for the wrong reason.** SEC-4:
+  the TERRA-6 depth-cap test nests under key `"n"`, which TERRA-4's allowlist rejects *first*
+  with the *same* `payload_too_large` code — so the test never reached the depth cap and would
+  pass with the cap deleted. The shipped code is in fact correct (the gate proved it positively
+  at depth 50,000), so this is purely an evidence defect — the most expensive kind, because it
+  reads as coverage. **Root cause is reason-code overloading**: one code answering five distinct
+  conditions makes "the right envelope came back" worthless as a discriminator. A frozen enum
+  bought contract stability and paid for it in diagnostic resolution.
+- **O-13 — The gate improved on my own reasoning for a call I made.** I downgraded TERRA-5 on
+  threat-model grounds ("no stdio client can execute in-process Python"). The gate accepted it
+  but supplied a stronger, checkable proof: it re-derived the live caller-reachable parameter
+  allowlist for all 13 kinds and showed none accepts a callable, module, or service instance —
+  so there is no code-execution *primitive* to reach the unbound call with. Mine was an argument
+  from architecture; the gate's is an enumeration over the actual surface. **Adjudications made
+  by the party running the milestone should be routed to an independent lens precisely because a
+  better proof may exist than the one that satisfied the decider.**
 
 ## Follow-ups to file as ITT nodes at close
 

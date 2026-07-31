@@ -694,3 +694,119 @@ def test_invoke_retrieval_limits_reaches_plan_run_when_confirmation_matches(
     assert result.ok is True, result.error
     assert len(captured_kwargs) == 1
     assert captured_kwargs[0]["retrieval_limits"] == retrieval_limits
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 2 -- path-containment sweep: intent_id's own unbounded escape
+# through `planning.load_intent` (a NEW instance found beyond packet_dir,
+# same severity class: `paths.intents_active / f"{intent_id}.yaml"` is an
+# f-string join, so an absolute-path-shaped intent_id fully escapes it, and
+# intent_id was NEVER validated by any policy-layer pattern at all).
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_intent_sensitivity_denies_absolute_path_escape_before_read(
+    tmp_foundry: FoundryPaths, tmp_path: Path,
+) -> None:
+    """Direct unit proof: an absolute-path-shaped `intent_id` resolves to
+    `None` (the SAME fail-closed sentinel a genuinely missing intent gets)
+    without `planning.load_intent` ever being reached.
+
+    MUTATION NOTE: a real, well-formed intent YAML (`governance.sensitivity:
+    public`) is planted AT the escape target so an UNGUARDED read would
+    return a REAL, non-`None` value -- a bare "resolves to None" assertion
+    against a target that genuinely has nothing there (e.g. `/etc/passwd.
+    yaml`, which never exists) would pass vacuously even with the guard
+    removed. `tmp_path` (writable, NOT `/etc`) stands in for "anywhere the
+    absolute-path escape can reach"; the escape MECHANISM under test
+    (pathlib's `Path.__truediv__` discarding the left operand for an
+    absolute right-hand side) is identical regardless of which absolute
+    target is used."""
+
+    evil_target = tmp_path / "evil_intent"
+    (tmp_path / "evil_intent.yaml").write_text(
+        "governance:\n  sensitivity: public\n", encoding="utf-8"
+    )
+
+    result = run_plan._resolve_intent_sensitivity(str(evil_target), tmp_foundry)
+    assert result is None
+
+
+def test_resolve_intent_sensitivity_denies_traversal_escape_before_read(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """MUTATION NOTE: a real intent YAML is planted at `paths.intents/
+    evil_intent.yaml` -- what `paths.intents_active / "../evil_intent.yaml"`
+    resolves to -- so an unguarded read returns a REAL, non-`None` value."""
+
+    tmp_foundry.intents.mkdir(parents=True, exist_ok=True)
+    (tmp_foundry.intents / "evil_intent.yaml").write_text(
+        "governance:\n  sensitivity: public\n", encoding="utf-8"
+    )
+
+    result = run_plan._resolve_intent_sensitivity("../evil_intent", tmp_foundry)
+    assert result is None
+
+
+def test_invoke_denies_malicious_intent_id_even_under_a_permissive_ceiling(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The residual-exposure closure: even with the LOOSEST possible ceiling
+    (`client_sensitive`, which would admit the strictest-sensitivity label a
+    rejected `intent_id` resolves to, so the guard stage does NOT deny), a
+    malicious `intent_id` must still be denied INSIDE `_run()` before
+    `planning.plan_run` -- and therefore `planning.load_intent` a second
+    time -- is ever reached.
+
+    MUTATION NOTE: the spy RECORDS (never raises) so this test is sensitive
+    to the guard's ABSENCE, not merely to *some* exception firing inside
+    `_run()` -- see `test_operator_mcp_adapter_external_import.py`'s
+    identical note for the full rationale."""
+
+    identity = AuthIdentity("alice", "ws-mine", ("owner",))
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    malicious_intent_id = "/etc/passwd"
+
+    calls: list[Any] = []
+
+    def _recording_plan_run(*args: Any, **kwargs: Any) -> Any:
+        calls.append((args, kwargs))
+        raise AssertionError("plan_run reached -- containment guard did not fire")
+
+    monkeypatch.setattr(planning_module, "plan_run", _recording_plan_run)
+
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=run_plan.OPERATION_KIND,
+        idempotency_key="idem-malicious-intent",
+        effective_sensitivity=policy.SENSITIVITY_LEVELS[-1],  # what a rejected intent_id resolves to
+        sensitivity_ceiling="client_sensitive",  # loosest -- guard stage does NOT deny this
+        input_payload={
+            "intent_id": malicious_intent_id,
+            "depth": "standard",
+            "audience": "technical",
+            "max_cost_usd": 5.0,
+            "max_runtime_minutes": 60,
+            "freshness_days": 180,
+        },
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    result = run_plan.invoke(
+        intent_id=malicious_intent_id,
+        idempotency_key="idem-malicious-intent",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert calls == [], "plan_run must never be called for a path-escaping intent_id"
+    assert result.ok is False
+    assert result.result is None
+    assert result.error is not None
+    assert result.error["reason_code"] == "internal_error"

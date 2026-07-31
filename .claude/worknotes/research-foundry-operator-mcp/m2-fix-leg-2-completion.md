@@ -9,6 +9,9 @@ created: '2026-07-31'
 updated: '2026-07-31'
 ---
 
+<!-- FIX CYCLE 2 SECTION APPENDED BELOW THE ORIGINAL FIX-CYCLE-1 NOTE -->
+
+
 # M2 fix cycle 1, Leg 2 completion note — adapters/writeback
 
 Scope: F2.1 (TERRA-3), F2.2 (TERRA-7), F2.3 (TERRA-8), F2.4. Files touched:
@@ -251,3 +254,120 @@ the list in `server.py`.
 Nothing disputed. All four items (F2.1-F2.4) fixed as specified in the
 contract; no STOP-and-report triggered (no hard-boundary file needed
 editing).
+
+---
+
+# Fix cycle 2 — SEC-1 (BLOCKING) + SEC-7 (MED) + path-containment sweep
+
+Security gate: `.claude/findings/m2-security-gate.md`. Scope: SEC-1
+(BLOCKING, `external_import.py` `packet_dir`), SEC-7 (MED, `verify_bundle.py`
+`report_path`/`claim_ledger_path`), and the full 13-adapter path-containment
+enumeration the coordinator's fix-cycle-2 message required (the actual
+point of this cycle, mirroring F2.1's treatment). No hard-boundary file
+edited; `operator_mcp/server.py` untouched (Leg 1's concurrent territory).
+
+## SEC-1 / SEC-7 disposition
+
+| Finding | Disposition |
+|---|---|
+| **SEC-1 (BLOCKING)** — `packet_dir` unbounded arbitrary-path reach | **FIXED.** `external_import.py`'s `_run()` now requires `packet_dir` to resolve (symlinks included) inside `resolved_paths.root` before `import_external_report` is ever called. Containment root is the WHOLE configured workspace tree (`paths.root`), re-derived, never caller-supplied — not merely one run's directory, since staging-only imports (`target_run_id=None`) have no run tree to bind to. Two pre-existing tests (`test_invoke_result_matches_direct_import_call`, `test_exact_retry_does_not_duplicate_import_receipt`) had their `packet_dir` fixture moved from a sibling `tmp_path` location to inside `tmp_foundry.root` — flagged loudly (boundary rule 5: "invert a test that pins wrong behavior") — those two are the ONLY pre-existing tests that reach `_run()` for a real execution; the other four are `dry_run=True` and were never affected. |
+| **SEC-7 (MED)** — `report_path`/`claim_ledger_path` unusable over MCP; F5 guard dead code on that route | **FIXED via coerce-then-guard** (the first of the gate's two offered directions). `invoke_verify`'s `_run()` now coerces both to real `Path` objects (`Path(value)`, wrapped so a genuinely uncoercible JSON type denies the same way a containment violation does) BEFORE either the prerequisite check or the F5 `_explicit_path_within_run` guard ever inspects them — making that guard actually EXECUTE on the MCP route (JSON strings) instead of type-crashing before it can run. Chose coercion over "reject those keys on the MCP route" because rejecting would remove real, documented functionality (explicit report/ledger overrides) that has nothing wrong with it once the guard actually runs. |
+
+## Full 13-adapter path-containment table
+
+For every adapter: every caller-supplied value that becomes, joins, or resolves to a filesystem path, and what structurally bounds it.
+
+| # | operation_kind | File | Path-bearing input(s) | Reaches | Bound by |
+|---|---|---|---|---|---|
+| 1 | `run.plan` | `run_plan.py` | `intent_id` | `planning.load_intent` (`paths.intents_active / f"{intent_id}.yaml"` — an f-string join; absolute `intent_id` DISCARDS the left operand entirely, per `Path.__truediv__` semantics) | **FIXED (NEW instance)** — `_resolved_within(paths.intents_active, ...)` in BOTH `_resolve_intent_sensitivity` (pre-auth) AND again inside `_run()` (closes the residual exposure: a permissive ceiling could otherwise let `_run()` reach `planning.plan_run`, which calls `load_intent` a second time) |
+| 2 | `external_report.import` | `external_import.py` | `packet_dir`; `target_run_id` | `import_external_report` (recursive `os.scandir`); `_resolve_run_workspace_id` → `run_dir` | **FIXED**: `packet_dir` = SEC-1 (this cycle's assigned BLOCKING finding). `target_run_id` = **NEW instance**, `_resolved_within(paths.runs, ...)` in `_resolve_run_workspace_id`, before the read |
+| 3 | `writeback.preview` | `writeback_preview.py` | `run_id` | `_resolve_run_context` → `run_dir`; ALSO a write-side exposure — `writeback.preview_writeback`'s own staging root derives from the same unguarded `run_dir` | **FIXED (NEW instance)** — `_resolved_within(paths.runs, ...)`; closes both the read (context resolution) and, transitively, the write (RBAC denies before `_run()`/`preview_writeback` for a `None` workspace_id) |
+| 4 | `source.ingest` | `source_ingest.py` | `run_id`; `locator` | `_resolve_run_context` → `run_dir`; `source_cards.ingest_source` (`Path(locator).exists()` — unconditionally reads ANY existing local file as full text content, no containment at all, whenever `content` is not already supplied) | **FIXED (2 NEW instances)** — `run_id` via `_resolved_within(paths.runs, ...)`; `locator` via `_resolved_within(paths.root, ...)` inside `_run()`, gated on `content is None and not _looks_like_url(locator)` (URL locators and caller-supplied content are unaffected) |
+| 5 | `job.status` | `job_lifecycle.py` | `operation_id` | `OperatorOperationService`/`OperatorReceiptService`/`OperatorAttemptAdapter` — SQLite-backed (`operator_operations.db`), no filesystem path built from `operation_id` anywhere | **Checked, safe — no fix needed.** Empty row. |
+| 6 | `job.cancel` | `job_lifecycle.py` | `operation_id` | same DB-only surface | **Checked, safe — no fix needed.** |
+| 7 | `job.resume` | `job_lifecycle.py` | `operation_id` | same DB-only surface | **Checked, safe — no fix needed.** |
+| 8 | `run.extract` | `research_stages.py` | `run_id` | `_resolve_run_context` → `run_dir` (shared helper, also used by `run.claim_map`/`run.synthesize`) | **FIXED (NEW instance)** — `_resolved_within(paths.runs, ...)` |
+| 9 | `run.claim_map` | `research_stages.py` | `run_id`; `intent_id` | `run_id` as above; `intent_id` reaches `claim_mapping.build_claim_ledger` but is stored ONLY as a plain metadata string field in the ledger YAML — traced its full use, never reaches `Path(...)`/`open`/anywhere | `run_id` FIXED (shared helper above); **`intent_id` checked, safe — no fix needed** (verified by reading `claim_mapping.py` end to end: `intent_id` is written into `{"intent_id": intent_id}` dict entries only) |
+| 10 | `run.synthesize` | `research_stages.py` | `run_id`; `model_profile` | `run_id` as above; `model_profile` reaches `synthesis.synthesize_report` but is "recorded for provenance only" (per that module's own docstring) — never path-joined | `run_id` FIXED (shared helper above); **`model_profile` checked, safe — no fix needed** |
+| 11 | `run.verify` | `verify_bundle.py` | `run_id`; `report_path`; `claim_ledger_path` | `run_id` via `_resolve_run_context` → `run_dir` (shared with `run.bundle`); `report_path`/`claim_ledger_path` via `verification.verify_report` (F5's own pre-existing containment target) | `run_id` **FIXED (NEW instance)** — reused THIS module's own `_explicit_path_within_run` (F5's primitive, generic over its `run_root` argument, applied here to `paths.runs`) instead of duplicating a new helper. `report_path`/`claim_ledger_path` = **SEC-7** (coerce-then-guard, above) |
+| 12 | `run.bundle` | `verify_bundle.py` | `run_id` | `_resolve_run_context` → `run_dir` (same shared helper as #11) | **FIXED** (same fix as #11, shared helper) |
+| 13 | `swarm.start` | `swarm_start.py` | `run_id`; `intent_id` (read from `run.yaml`, not directly caller-supplied); `adapter_ids` | `run_id` via `_resolve_run_context` → `run_dir`; `intent_id` via `planning.load_intent` (same vulnerable f-string join as #1, reached one hop indirectly); `adapter_ids` reaches `swarm_service.run_swarm`, which checks each id against a REGISTRY/allowlist gate (`swarm_service.py`'s own docstring) — never path-joined, confirmed by reading `run_swarm`'s own validation | `run_id` **FIXED (NEW instance)** — `_resolved_within(paths.runs, ...)`. `intent_id` **FIXED (NEW instance, defense-in-depth)** — same `_resolved_within` helper applied before the intent lookup inside `_resolve_run_context`; sourced from an already-contained `run.yaml`, not directly caller-reachable today, but this module does not assume that pipeline integrity holds forever. `adapter_ids` **checked, safe — no fix needed** |
+
+**Count of NEW unbounded-path instances found beyond `packet_dir` (SEC-1): 9** — `external_import.target_run_id`, `writeback_preview.run_id`, `source_ingest.run_id`, `source_ingest.locator`, `run_plan.intent_id`, `swarm_start.run_id`, `swarm_start.intent_id` (defense-in-depth), `research_stages.run_id`, `verify_bundle.run_id`. (SEC-7's `report_path`/`claim_ledger_path` was already the coordinator's OWN assigned finding, not counted as a "new" discovery here.) Every adapter's declared caller-facing parameters were traced end-to-end to their canonical-service call site or metadata-only use before being marked "safe" — three rows (`run.claim_map.intent_id`, `run.synthesize.model_profile`, `swarm.start.adapter_ids`) are explicit checked-safe results, not omissions.
+
+## Method
+
+For every `invoke*`/`_resolve_run_context`-style function: traced every caller-supplied parameter to (a) whether it is ever passed to `Path(...)`, `open`, `os.scandir`, `.exists()`, `.glob()`, or a canonical-service function whose OWN docstring/body does so, and (b) whether ANY structural check bounds it before that point. The `run_id` class was found by re-deriving `FoundryPaths.run_dir`'s implementation (`self.runs / run_id`) and noting `Path.__truediv__`'s two hazards: an absolute right-hand operand discards the left entirely, and `".."`/`"."` are legal single-path-component strings that `operator_mcp_policy._TARGET_REF_PATTERN` (no `/` allowed) does not reject — but that pattern only runs during `_check_capability`, well AFTER every `_resolve_run_context`-style function has already attempted its read. The `intent_id` class was found the same way, one hop through `planning.load_intent`'s own `paths.intents_active / f"{intent_id}.yaml"` join. The `locator` class was found by reading `source_cards.ingest_source`'s full body (not just its signature) and noting the unconditional `Path(locator).exists() and .is_file()` branch.
+
+## Containment helper — one shape, six independent copies
+
+Every fix uses the SAME resolve-then-contain shape `verify_bundle.py`'s pre-existing F5 `_explicit_path_within_run` established: resolve both root and candidate (symlinks included), require the candidate to land at or beneath root, never probe existence on a path outside the boundary (an existence check itself would be an F6/H6-shaped oracle). Duplicated independently in `external_import.py`, `source_ingest.py`, `run_plan.py`, `swarm_start.py`, and `research_stages.py` as `_resolved_within`; `verify_bundle.py` and `writeback_preview.py` reuse/mirror the SAME shape (`verify_bundle.py` literally reuses its own pre-existing `_explicit_path_within_run` for the new `run_id` check rather than duplicating; `writeback_preview.py` has its own `_resolved_within` copy). This is deliberate, matching the established "adapter modules do not cross-import each other's private helpers" convention this whole family already follows — flagged in case the security lens would prefer a shared module instead.
+
+## Mutation-verification evidence (per new guard, done INSIDE this fix step)
+
+All 12 guards below were verified by reverting ONLY that guard's specific condition (`if not X:` → `if False and not X:`, or removing the coercion block) in the live source file (never `git stash`), clearing `__pycache__` before AND after every iteration (per the coordinator's explicit note that stale `.pyc` has produced false greens in this repo before), running the specific new test(s), confirming a REAL failure, then restoring from an in-memory backup and clearing `__pycache__` again.
+
+**A design flaw was caught and fixed during this process itself**: the first mutation pass (all 12) showed EVERY guard's tests still passing under mutation — a false "mutation survived" signal. Root cause: several "denies X" tests used an assertion-RAISING spy (`_must_not_run`) on the canonical service, and that spy's OWN crash converges to the exact SAME `ok=False`/`internal_error` envelope a genuine guard denial produces (via `run_actions`'s shared exception boundary) — so the reason-code assertion alone could not distinguish "the guard denied" from "the guard was removed and the trap fired instead." Separately, several direct-unit-level tests (`_resolve_run_context("..", ...)` → asserts `None`) were VACUOUSLY true even with the guard removed, because the escape target (`tmp_foundry.root`, one level above `runs/`) normally has no `run.yaml` of its own — the pre-existing exception handler masked the missing guard by returning `None` anyway, for an unrelated reason. Both classes of test were redesigned: (1) assertion-raising spies converted to RECORDING spies plus an explicit `assert calls == []`, and (2) direct-unit tests now PLANT a real, well-formed YAML file AT the escape target with content that would produce a REAL, non-`None` result if read unguarded. After the redesign, the SAME 12-mutation sweep killed every single one:
+
+```
+M1  external_import.py packet_dir guard (SEC-1)              -> KILLED (2 tests failed)
+M2  external_import.py target_run_id guard                   -> KILLED (assert 'ws-mine' is None)
+M3  source_ingest.py run_id guard                             -> KILLED (assert 'ws-mine' is None)
+M4  source_ingest.py locator guard                            -> KILLED (1 test failed)
+M5  run_plan.py intent_id pre-auth guard                      -> KILLED (2 tests failed, assert 'public' is None)
+M6  run_plan.py intent_id residual _run() guard                -> KILLED (1 test failed)
+M7  swarm_start.py run_id guard                                -> KILLED (_RunContext mismatch)
+M8  swarm_start.py intent_id defense-in-depth guard            -> KILLED (assert 'personal' is None)
+M9  research_stages.py run_id guard                            -> KILLED (assert 'public' is None)
+M10 verify_bundle.py run_id guard                              -> KILLED (assert 'public' is None)
+M11 verify_bundle.py SEC-7 coercion                             -> KILLED (AttributeError surfaced, ok flipped False)
+M12 writeback_preview.py run_id guard                          -> KILLED (assert 'public' is None)
+```
+
+12 of 12 mutations killed, zero survivors, zero vacuous passes, on the SECOND pass (after the test-design fix above). The FIRST pass's 12-of-12 false-survival result is itself reported here rather than silently corrected, per the coordinator's own standard ("a fix whose test passes against the reverted source is not fixed") — the tests, not the source fixes, were the defect that pass caught.
+
+## Test counts (post-redesign, full files)
+
+```
+external_import.py:    12 tests (6 pre-existing + 6 new: SEC-1 x3, target_run_id x2, +1 shared)
+source_ingest.py:      12 tests (8 pre-existing + 4 new: locator x2, run_id x1, +existing extended)
+run_plan.py:           17 tests (14 pre-existing F2.1 + 3 new: intent_id x3)
+swarm_start.py:        11 tests (9 pre-existing + 2 new: run_id x1, intent_id x1)
+research_stages.py:    18 tests (17 pre-existing + 1 new: run_id x1)
+verify_bundle.py:      22 tests (19 pre-existing F2.1 + 3 new: SEC-7 x2, run_id x1)
+writeback_preview.py:  17 tests (15 pre-existing F2.1-F2.4 + 2 new: run_id x1, +1 F2.1 leftover)
+```
+
+## Full validation run (post fix cycle 2)
+
+```
+$ ./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py \
+    tests/integration/test_operator_mcp_writeback_preview.py \
+    tests/test_operator_mcp_offline_import.py \
+    tests/unit/test_operator_mcp_adapter_*.py tests/unit/test_operator_mcp_packaging.py \
+    tests/unit/test_operator_mcp_policy.py tests/unit/test_knowledge_mcp_registry.py
+344 passed in 18.15s          # up from fix-cycle-1's 311
+
+$ flake8 src/research_foundry --select=E9,F63,F7,F82
+(clean, exit 0)
+
+$ ./.venv/bin/python -m pytest tests -q -k "writeback" \
+    --ignore=tests/test_search_router_mcp_launcher.py \
+    --ignore=tests/test_verification_pediatric_cds.py \
+    --ignore=tests/test_verification_seam001_gate_composition.py
+(all green, unmodified count from fix cycle 1)
+```
+
+## Test inversions (boundary rule 5, flagged loudly)
+
+Two pre-existing tests in `test_operator_mcp_adapter_external_import.py` had their `packet_dir` fixture moved from outside the workspace to inside it (`test_invoke_result_matches_direct_import_call`, `test_exact_retry_does_not_duplicate_import_receipt`) — documented in a new module-docstring paragraph in that test file explaining WHY (SEC-1 determined the old, unbounded-by-design behavior was a defect, not intended design). No other pre-existing test in any of the 7 touched files needed modification — everywhere else, the fix's containment root (workspace/`runs/`/`intents/`) already matched what every existing fixture already used.
+
+## What the security gate should attack first
+
+1. **The workspace-root containment scope decision for `packet_dir`** (SEC-1) — re-verify this reading is what was actually wanted: containment to `paths.root` (the WHOLE workspace), not something narrower. The gate's own evidence included "packet_dir pointed at another run in the same workspace still causes 8 recursive scandirs" — this fix does NOT add per-run isolation for `packet_dir` (judged out of scope: in this single-trusted-operator system, all runs under one workspace already belong to the one caller who could reach any of them by other means anyway) — confirm this reading, or push back.
+2. **The `_resolved_within`/`_explicit_path_within_run` helper's SIX independent copies** — verify none of the 6 duplicates drifted from the canonical shape during the mechanical repetition across 7 files.
+3. **SEC-7's coercion boundary** — confirm `Path(value)` for a caller-supplied JSON value cannot itself be abused (e.g. a very long string, unusual Unicode) in a way the subsequent `_explicit_path_within_run` call doesn't already bound.
+4. **The count-9 "new instances beyond packet_dir" claim** — independently re-derive at least 2-3 of the 9 from source, the same spot-check discipline the gate applied to Leg 2's F2.1 table last round.
+5. **`swarm_start.intent_id`'s "not directly caller-reachable today" claim** (row 13) — independently confirm there is truly no path from an MCP-supplied parameter to a caller-controlled `run.yaml`'s `intent_id` field that this fix's own `run_id` containment doesn't already close first.
+
+Nothing disputed. SEC-1 and SEC-7 fixed exactly as the coordinator specified (coerce-then-guard chosen for SEC-7, with rationale). All 9 newly-found instances fixed. No STOP-and-report triggered — no hard-boundary file needed editing, and the "genuinely requires an out-of-workspace packet directory" question resolved in favor of the coordinator's own default direction (workspace-tree containment) rather than escalating, since no functional requirement for out-of-workspace packets was found in the codebase, docs, or PRD beyond CLI convenience.

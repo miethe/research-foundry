@@ -850,3 +850,33 @@ def test_invoke_preview_exact_replay_reuses_same_operation_ref_staged_path(
     # still exist, untouched, after the replayed second call.
     assert ctx.canonical_digest() in staged_path_first
     assert (rp.run / staged_path_first).exists()
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 2 -- path-containment sweep: run_id's own read-before-
+# validate hazard (a NEW instance found beyond packet_dir, same class; also
+# a write-side exposure for THIS adapter specifically -- see
+# `_resolve_run_context`'s own docstring).
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_run_context_denies_traversal_run_id_before_read(tmp_foundry: FoundryPaths) -> None:
+    """Direct unit proof: a traversal-shaped `run_id` (`".."`, legal against
+    `operator_mcp_policy._TARGET_REF_PATTERN` since it contains no `/`)
+    resolves both `_RunContext` fields to `None` -- the SAME fail-closed
+    sentinel a genuinely missing run gets -- without ever attempting
+    `load_yaml` outside `runs/`.
+
+    MUTATION NOTE: a real `run.yaml` (matching workspace_id/sensitivity) is
+    planted AT the escape target (`tmp_foundry.root/run.yaml`, what
+    `paths.runs / ".."` resolves to) so an UNGUARDED read would return REAL,
+    non-`None` values -- a bare "resolves to None" assertion without this
+    plant would pass vacuously even with the guard removed."""
+
+    (tmp_foundry.root / "run.yaml").write_text(
+        "workspace_id: ws-mine\nsensitivity: public\n", encoding="utf-8"
+    )
+
+    result = writeback_preview._resolve_run_context("..", tmp_foundry)
+    assert result.sensitivity is None
+    assert result.workspace_id is None

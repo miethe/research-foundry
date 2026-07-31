@@ -11,7 +11,10 @@ updated: '2026-07-31'
 
 # M2 — implementer contract (DECIDED)
 
-Authoritative for the M2 legs ("The stdio surface exists and provably cannot execute"; supersedes
+Authoritative for the M2 legs ("The stdio surface exists and provably cannot execute" — scoped to
+every path a real caller can drive, not to arbitrary in-process code execution; see `m2-fix-contract.md`'s
+TERRA-5 adjudication and `server.py`'s module docstring, "Scope of the stdio-only guard" section,
+added in fix cycle 1/2, SEC-8; supersedes
 P5; tasks OPM-5.1..5.6). Design questions are **already decided here** — do not re-open them; if
 you believe a decision is wrong, STOP and report rather than deviating. A non-blocking judgment
 call gets logged in your completion note and you keep going.

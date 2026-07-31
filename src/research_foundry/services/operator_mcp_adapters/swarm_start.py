@@ -118,6 +118,7 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from research_foundry.paths import FoundryPaths
@@ -157,12 +158,55 @@ class _RunContext:
     governance_profile: str | None
 
 
+def _resolved_within(root: Path, candidate: Path) -> bool:
+    """M2 fix cycle 2, path-containment sweep (sibling to SEC-1) -- the same
+    resolve-then-contain posture `external_import._resolved_within`/
+    `source_ingest._resolved_within`/`run_plan._resolved_within` establish,
+    duplicated here per this family's own "adapter modules do not
+    cross-import each other's private helpers" convention."""
+
+    try:
+        root_resolved = root.resolve()
+        effective = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+    except OSError as exc:
+        _logger.warning(
+            "operator_mcp_adapters.swarm_start: path resolution failed (%s) -- denying "
+            "(never a permissive fallback)",
+            type(exc).__name__,
+        )
+        return False
+    return effective == root_resolved or root_resolved in effective.parents
+
+
 def _resolve_run_context(run_id: str, paths: FoundryPaths) -> _RunContext:
     """See `_RunContext`'s own docstring. Swallows EVERY exception at EVERY
     hop (`run.yaml` load, intent load) and resolves the corresponding
     field(s) to `None` on failure -- mirrors `run_plan._resolve_intent_
     sensitivity`'s own fail-closed convention, one hop further (`run.yaml`
-    -> its own `intent_id` -> that intent's `governance.key_profile_allowed`)."""
+    -> its own `intent_id` -> that intent's `governance.key_profile_allowed`).
+
+    **M2 fix cycle 2 (path-containment sweep, sibling to SEC-1).** `run_id`
+    is contained to `paths.runs` FIRST -- before `run.yaml` is ever read --
+    see `external_import._resolve_run_workspace_id`'s identical fix for the
+    full rationale (a traversal-shaped `run_id` reads before
+    `operator_mcp_policy._TARGET_REF_PATTERN` would eventually reject it).
+    The originating `intent_id` this function reads FROM that already-
+    contained `run.yaml` is ALSO contained before `planning.load_intent` is
+    called, mirroring `run_plan._resolve_intent_sensitivity`'s own fix for
+    the identical vulnerable f-string join -- defense-in-depth: this
+    `intent_id` is sourced from a file this operator's own prior `run.plan`
+    call wrote (already gated by that adapter's own containment fix), not
+    directly caller-supplied, but this module does not assume that pipeline
+    integrity holds forever."""
+
+    if not _resolved_within(paths.runs, Path(run_id)):
+        _logger.warning(
+            "operator_mcp_adapters.swarm_start: run_id=%s escapes the authorized "
+            "runs/ tree -- resolving every run-context field to None (deny, never "
+            "a permissive fallback)",
+            run_id,
+        )
+        return _RunContext(None, None, None, None, None)
 
     try:
         run_doc = load_yaml(paths.run_paths(run_id).run_yaml)
@@ -201,7 +245,7 @@ def _resolve_run_context(run_id: str, paths: FoundryPaths) -> _RunContext:
 
     governance_profile: str | None = None
     intent_id = run_doc.get("intent_id")
-    if isinstance(intent_id, str) and intent_id:
+    if isinstance(intent_id, str) and intent_id and _resolved_within(paths.intents_active, Path(f"{intent_id}.yaml")):
         from research_foundry.services import planning  # lazy: see run_plan.py's own rationale
 
         try:

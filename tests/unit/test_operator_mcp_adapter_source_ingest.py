@@ -515,3 +515,152 @@ def test_default_literal_absent_from_source_ingest_module() -> None:
 
     source = inspect.getsource(source_ingest)
     assert "default" not in source.lower()
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 2 -- path-containment sweep (a NEW instance found beyond
+# packet_dir, same class, arguably more severe): `source_cards.ingest_source`
+# unconditionally reads ANY existing local file named by `locator` as FULL
+# TEXT CONTENT whenever `content` is not already supplied -- no containment
+# at all before this fix. `content=_SAMPLE_CONTENT` in every test above
+# bypasses that branch entirely (source_cards.py's own precedence order),
+# so none of them exercise it; these tests target it directly.
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_denies_local_locator_outside_workspace_tree(
+    tmp_foundry: FoundryPaths, tmp_path: Path, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MUTATION NOTE: the spy RECORDS (never raises) so this test is
+    sensitive to the guard's ABSENCE, not merely to *some* exception firing
+    inside `_run()` -- see `test_operator_mcp_adapter_external_import.py`'s
+    identical note for the full rationale (an assertion-raising spy's own
+    crash converges to the SAME `internal_error` envelope a real guard
+    denial produces, so the reason-code assertion alone cannot tell them
+    apart)."""
+
+    identity = _IDENTITY
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+    run_id = _planned_run(tmp_foundry, sample_idea_text)
+
+    outside_file = tmp_path / "outside_secret.txt"
+    outside_file.write_text("host-local content the adapter must never read", encoding="utf-8")
+
+    calls: list[Any] = []
+
+    def _recording_ingest(*args: Any, **kwargs: Any) -> Any:
+        calls.append((args, kwargs))
+        raise AssertionError("ingest_source reached -- containment guard did not fire")
+
+    monkeypatch.setattr(source_cards_module, "ingest_source", _recording_ingest)
+
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=source_ingest.OPERATION_KIND,
+        idempotency_key="idem-sec-locator-outside",
+        effective_sensitivity=policy.resolve_effective_sensitivity("personal"),
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("run", run_id),),
+        resolved_target_workspaces=("ws-mine",),
+        input_payload={
+            "locator": str(outside_file),
+            "run_id": run_id,
+            "source_type": "other",
+            "sensitivity": "personal",
+            "fetch": False,
+            "created_by_agent": "rf_source_carder",
+        },
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    result = source_ingest.invoke(
+        locator=str(outside_file),
+        run_id=run_id,
+        idempotency_key="idem-sec-locator-outside",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert calls == [], "ingest_source must never be called for a locator outside the workspace"
+    assert result.ok is False
+    assert result.result is None
+    assert result.error is not None
+    assert result.error["reason_code"] == "internal_error"
+
+
+def test_invoke_allows_local_locator_inside_workspace_tree(
+    tmp_foundry: FoundryPaths, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The positive counterpart: a `locator` genuinely inside
+    `tmp_foundry.root` is read normally -- the fix bounds, it does not
+    break, the legitimate in-workspace local-file case."""
+
+    identity = _IDENTITY
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+    run_id = _planned_run(tmp_foundry, sample_idea_text)
+
+    inside_file = tmp_foundry.root / "inside_source.txt"
+    inside_file.write_text(_SAMPLE_CONTENT, encoding="utf-8")
+
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=source_ingest.OPERATION_KIND,
+        idempotency_key="idem-sec-locator-inside",
+        effective_sensitivity=policy.resolve_effective_sensitivity("personal"),
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("run", run_id),),
+        resolved_target_workspaces=("ws-mine",),
+        input_payload={
+            "locator": str(inside_file),
+            "run_id": run_id,
+            "source_type": "other",
+            "sensitivity": "personal",
+            "fetch": False,
+            "created_by_agent": "rf_source_carder",
+        },
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    result = source_ingest.invoke(
+        locator=str(inside_file),
+        run_id=run_id,
+        idempotency_key="idem-sec-locator-inside",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is True, result.error
+
+
+def test_resolve_run_context_denies_traversal_run_id_before_read(tmp_foundry: FoundryPaths) -> None:
+    """Direct unit proof: a traversal-shaped `run_id` (`".."`, legal against
+    `operator_mcp_policy._TARGET_REF_PATTERN` since it contains no `/`)
+    resolves to `_RunContext(None, None)` -- the SAME fail-closed sentinel a
+    genuinely missing run gets -- without ever attempting `load_yaml`
+    outside `runs/`.
+
+    MUTATION NOTE: a real `run.yaml` (matching workspace_id/sensitivity) is
+    planted AT the escape target (`tmp_foundry.root/run.yaml`, what
+    `paths.runs / ".."` resolves to) so an UNGUARDED read would return REAL,
+    non-`None` values -- a bare "resolves to None" assertion without this
+    plant would pass vacuously even with the guard removed, since
+    `tmp_foundry.root` normally has no `run.yaml` of its own and the
+    pre-existing exception handler would mask the missing guard."""
+
+    (tmp_foundry.root / "run.yaml").write_text(
+        "workspace_id: ws-mine\nsensitivity: public\n", encoding="utf-8"
+    )
+
+    result = source_ingest._resolve_run_context("..", tmp_foundry)
+    assert result.workspace_id is None
+    assert result.sensitivity is None

@@ -199,6 +199,9 @@ wave_plan:
         - src/research_foundry/services/verification.py
         - src/research_foundry/services/writeback.py
     - id: M2
+      # Scoping note (M2 fix cycle 1/2, TERRA-5/SEC-8): "provably cannot execute" is scoped to
+      # every path a real caller can drive, not to arbitrary in-process code execution -- see the
+      # "### M2" section body below (its own scoping note) and server.py's module docstring.
       title: "The stdio surface exists and provably cannot execute"
       depends_on: [M1, KMCP-1.G]
       isolation: worktree
@@ -340,9 +343,12 @@ appears, the dependent milestone stays pending; no temporary duplicate schema or
 | Milestone | Reviewable state | Estimate | Context class | Gate lens |
 |---|---|---:|---|---|
 | M1 | Every mutation runs through a canonical service adapter | 10 pts | C3 | validator |
-| M2 | The stdio surface exists and provably cannot execute | 6 pts | C3 | security + validator |
+| M2 | The stdio surface exists and provably cannot execute\* | 6 pts | C3 | security + validator |
 | M3 | One exact tree satisfies AC OPM-1..7 | 4 pts | C4 | validator, then Karen on the final tree only |
 | **Total** | — | **20 pts** | — | — |
+
+\* Scoped to every path a real caller can drive (M2 fix cycle 1/2, TERRA-5/SEC-8) — see the "### M2"
+section body's own scoping note, and `server.py`'s module docstring, "Scope of the stdio-only guard".
 
 > H1-H7 detail is in the Human Brief. Excludes remote transport, live writeback, arbitrary execution,
 > approval UI, schedules, hosted/public qualification. **Points did not change**: 5+5+6+4 across
@@ -535,6 +541,16 @@ against the wrong one.
 
 *(supersedes P5; 6 pts; context class C3; gate: security + validator — do not cut)*
 
+> **Scoping note (M2 fix cycle 1/2, TERRA-5/SEC-8):** "provably cannot execute" means no registered
+> tool, and no code path reachable from a real stdio request, can mount a network transport or
+> execute an effect without a bound confirmation — it is provable and holds against every path a
+> real caller can drive. It does **not** mean the stdio-only transport guard survives arbitrary
+> in-process code execution (an unbound `FastMCP.sse_app(instance)`-style base-class call is a known,
+> accepted, documented limitation — see `src/research_foundry/operator_mcp/server.py`'s own
+> module docstring, "Scope of the stdio-only guard" section, for the precise boundary). Reaching that
+> call already requires arbitrary code execution in-process, at which point the guard is moot either
+> way.
+
 A thin FastMCP stdio server registers exactly the closed tool inventory over the M1 adapters, with
 bounded inputs, results, events, and errors. The MCP SDK is an optional dependency: the base package
 and CLI work without it. Writeback is exposed as a **pure preview** that validates bundle, targets,
@@ -594,7 +610,7 @@ the repo root with the project venv (`./.venv/bin/python` — the pyenv shim wil
 | M1 — adapter/service parity | `./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_*.py -q` | Parity assertions compare canonical refs from direct-service vs adapter and match |
 | M1 — CLI unchanged after extraction | `./.venv/bin/python -m pytest tests/test_search_router_router.py tests/integration/test_run_launch_reuse.py -q` | Pre-existing CLI/run behavior green, no new failures vs the 4258-node baseline |
 | M1 — retry/cancel idempotency | `./.venv/bin/python -m pytest tests/unit/test_operator_operation_service.py -q -k "retry or cancel or resume or duplicate"` | Exact retry yields prior state; no duplicate card/claim/receipt/candidate |
-| M2 — exact tool inventory | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py -q -k "inventory or introspect"` | Introspected tool set diffs clean against the closed inventory; no Knowledge MCP overlap |
+| M2 — exact tool inventory | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py -q -k "inventory or introspect or overlap"` | Introspected tool set diffs clean against the closed inventory; no Knowledge MCP overlap. **2 passed** — the `overlap` term is load-bearing: without it the filter selects only `test_exact_14_tool_inventory` and silently drops `test_zero_overlap_with_knowledge_mcp_tool_names`, so the command reports `1 passed` while proving only half the row's claim (VAL-1, M2 validator gate). |
 | M2 — preview cannot execute | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_writeback_preview.py -q` | Network/client/mirror spies assert **zero** calls on every preview path |
 | M2 — optional-SDK behavior | `./.venv/bin/python -c "import sys; sys.modules['mcp']=None; import research_foundry; print('base ok')"` then `./.venv/bin/rf --help` | Base package and CLI both succeed with the SDK absent |
 | AC OPM-1 — confirmation binding | `./.venv/bin/python -m pytest tests/unit/test_operator_mcp_policy.py -q -k "confirm or replay or expiry or drift"` | Every adversarial case yields zero manifest **and** an explicit zero-effect assertion |

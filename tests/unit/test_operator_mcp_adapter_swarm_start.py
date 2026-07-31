@@ -552,3 +552,62 @@ def test_invoke_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missi
     # `paths=resolved_paths` argument, the double would have recorded
     # `[None, None]` instead.
     assert ceiling_calls == [tmp_foundry, tmp_foundry]
+
+
+# ---------------------------------------------------------------------------
+# M2 fix cycle 2 -- path-containment sweep: run_id's own read-before-
+# validate hazard (a NEW instance found beyond packet_dir, same class).
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_run_context_denies_traversal_run_id_before_read(tmp_foundry: FoundryPaths) -> None:
+    """Direct unit proof: a traversal-shaped `run_id` (`".."`, legal against
+    `operator_mcp_policy._TARGET_REF_PATTERN` since it contains no `/`)
+    resolves every `_RunContext` field to `None` -- the SAME fail-closed
+    sentinel a genuinely missing run gets -- without ever attempting
+    `load_yaml` outside `runs/`.
+
+    MUTATION NOTE: a real `run.yaml` (matching workspace_id/sensitivity/
+    profile) is planted AT the escape target (`tmp_foundry.root/run.yaml`,
+    what `paths.runs / ".."` resolves to) so an UNGUARDED read would return
+    REAL, non-`None` values -- a bare "resolves to None" assertion without
+    this plant would pass vacuously even with the guard removed."""
+
+    (tmp_foundry.root / "run.yaml").write_text(
+        "workspace_id: ws-mine\nsensitivity: public\n"
+        "profile:\n  max_cost_usd: 5.0\n  max_runtime_minutes: 60\n",
+        encoding="utf-8",
+    )
+
+    result = swarm_start._resolve_run_context("..", tmp_foundry)
+    assert result == swarm_start._RunContext(None, None, None, None, None)
+
+
+def test_resolve_run_context_denies_traversal_intent_id_before_read(tmp_foundry: FoundryPaths) -> None:
+    """Direct unit proof of the defense-in-depth intent_id containment
+    (distinct from the outer run_id check above): a REAL, `runs/`-contained
+    run whose OWN `run.yaml` declares a traversal-shaped `intent_id`
+    (`"../evil_intent"`) must resolve `governance_profile` to `None` --
+    never read the escaped intent file.
+
+    MUTATION NOTE: a real intent YAML (`governance.key_profile_allowed`) is
+    planted at the escape target (`tmp_foundry.intents/evil_intent.yaml`,
+    what `paths.intents_active / "../evil_intent.yaml"` resolves to) so an
+    unguarded read would return a REAL, non-`None` `governance_profile`."""
+
+    tmp_foundry.intents.mkdir(parents=True, exist_ok=True)
+    (tmp_foundry.intents / "evil_intent.yaml").write_text(
+        "governance:\n  key_profile_allowed: personal\n", encoding="utf-8"
+    )
+
+    run_id = "rf_run_intent_traversal_probe"
+    rp = tmp_foundry.run_paths(run_id)
+    rp.run.mkdir(parents=True, exist_ok=True)
+    (rp.run_yaml).write_text(
+        "workspace_id: ws-mine\nsensitivity: public\nintent_id: ../evil_intent\n"
+        "profile:\n  max_cost_usd: 5.0\n  max_runtime_minutes: 60\n",
+        encoding="utf-8",
+    )
+
+    result = swarm_start._resolve_run_context(run_id, tmp_foundry)
+    assert result.governance_profile is None

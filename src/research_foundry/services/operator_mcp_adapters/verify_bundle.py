@@ -233,7 +233,26 @@ def _resolve_run_context(run_id: str, paths: FoundryPaths) -> _RunContext:
     """Swallows EVERY exception (`run.yaml` load/parse failure) and resolves
     both fields to `None` on failure -- mirrors `run_plan._resolve_intent_
     sensitivity`/`swarm_start._resolve_run_context`'s own fail-closed
-    convention."""
+    convention.
+
+    **M2 fix cycle 2 (path-containment sweep, sibling to SEC-1/F5).**
+    `run_id` is contained to `paths.runs` FIRST -- before `run.yaml` is ever
+    read -- reusing THIS module's own `_explicit_path_within_run` (the F5
+    fix's containment primitive is generic over its `run_root` argument, so
+    this is the SAME function, not a duplicate, applied to `paths.runs`
+    instead of one specific run's own directory). See
+    `external_import._resolve_run_workspace_id`'s identical fix for the
+    full rationale (a traversal-shaped `run_id` reads before
+    `operator_mcp_policy._TARGET_REF_PATTERN` would eventually reject it)."""
+
+    if not _explicit_path_within_run(paths.runs, Path(run_id)):
+        _logger.warning(
+            "operator_mcp_adapters.verify_bundle: run_id=%s escapes the authorized "
+            "runs/ tree -- resolving sensitivity/workspace_id to None (deny, never "
+            "a permissive fallback)",
+            run_id,
+        )
+        return _RunContext(None, None)
 
     try:
         run_doc = load_yaml(paths.run_paths(run_id).run_yaml)
@@ -488,6 +507,30 @@ def invoke_verify(
     captured: list["verification.VerificationResult"] = []
 
     def _run() -> ActionEffect:
+        nonlocal report_path, claim_ledger_path
+        # SEC-7 fix (M2 fix cycle 2): MCP delivers `report_path`/
+        # `claim_ledger_path` as JSON strings, never actual `Path` objects
+        # -- this function's OWN parameter annotations (`Path | None`) were
+        # therefore never true at runtime over that transport, and the F5
+        # containment guard below died on a raw `AttributeError`
+        # ('str' object has no attribute 'is_absolute') BEFORE it could
+        # ever execute -- "safe today by type crash, not by the guard"
+        # (SEC-7's own finding: no green test on the MCP route could attest
+        # to F5 actually running). Coerced HERE, unconditionally, BEFORE
+        # either the prerequisite check or the F5 guard ever inspects these
+        # values, so BOTH now execute for real on every route. A direct
+        # Python caller already passing a real `Path` (every pre-existing
+        # test in this file) is unaffected -- `Path(Path(...))` is a no-op.
+        try:
+            if report_path is not None:
+                report_path = Path(report_path)
+            if claim_ledger_path is not None:
+                claim_ledger_path = Path(claim_ledger_path)
+        except TypeError as exc:
+            raise RuntimeError(
+                "run.verify: report_path/claim_ledger_path must be a string or "
+                "path-like value"
+            ) from exc
         # F6 fix: the prerequisite check now runs HERE -- after
         # `base.run_pipeline` has already run `authorize_for_consumption` +
         # `consume_and_create_operation`, i.e. only for an ALREADY-

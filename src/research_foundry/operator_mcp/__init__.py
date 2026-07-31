@@ -17,7 +17,8 @@ Modules:
   14-tool inventory (`operator_mcp_policy.TOOL_NAMES`): the 13 operation
   kinds, each a thin dispatch to `operator_mcp_adapters.get_adapter(kind)`,
   plus the server-implemented `operation.preflight` meta tool (evaluate +
-  mint, never consume, zero effect -- see `server.py`'s own module
+  mint, never consume, zero effect beyond one durable `confirmations` row
+  -- M2 fix cycle 2, SEC-3 correction; see `server.py`'s own module
   docstring for the full contract).
 * :mod:`.process` -- the packaged `rf-operator-mcp` entry point.
 
