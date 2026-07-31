@@ -463,7 +463,7 @@ shell command, or mutate through remote transport.
 - propagation_contract: Trusted actor/workspace, effective sensitivity, operation kind, canonical input digest, idempotency key, policy snapshot, targets, and expiry are frozen before token minting and revalidated before effect planning.
 - resilience: Missing identity, denial, expiry, replay, changed payload, changed policy, changed sensitivity, or changed target produces zero operation manifest and zero canonical effect.
 - visual_evidence_required: false
-- verified_by: [OPM-6.2]
+- verified_by: [M3 — confirmation adversarial matrix]
 
 #### AC OPM-2: Workspace and sensitivity precede lookup and execution
 
@@ -474,7 +474,7 @@ shell command, or mutate through remote transport.
 - propagation_contract: Identity-derived workspace and strictest effective sensitivity enter operation lookup, job access, canonical service adapters, events, receipts, and errors.
 - resilience: Wrong-workspace or above-threshold references return one safe denial shape without object ids, counts, content, event timing, or filesystem detail.
 - visual_evidence_required: false
-- verified_by: [OPM-6.3]
+- verified_by: [M3 — workspace/sensitivity matrix]
 
 #### AC OPM-3: Jobs are idempotent, cancelable, and resumable
 
@@ -485,7 +485,7 @@ shell command, or mutate through remote transport.
 - propagation_contract: Stable operation manifests create bounded attempts, persist immutable action/effect receipts, honor cancellation at safe points, and resume from the first incomplete action.
 - resilience: Exact replay returns the prior operation; changed manifest conflicts; process loss or cancellation cannot replay a completed effect or fabricate a terminal success.
 - visual_evidence_required: false
-- verified_by: [OPM-6.4]
+- verified_by: [M3 — lifecycle recovery matrix]
 
 #### AC OPM-4: Closed tools delegate to canonical services
 
@@ -496,7 +496,7 @@ shell command, or mutate through remote transport.
 - propagation_contract: Each registered effect tool delegates through one named canonical service adapter and emits the common operation/receipt envelope.
 - resilience: Unknown tool, provider, adapter, path, URL-fetch mode, or arbitrary command is schema-invalid and never dispatched.
 - visual_evidence_required: false
-- verified_by: [OPM-6.5]
+- verified_by: [M3 — closed-adapter introspection + call-path scan]
 
 #### AC OPM-5: Import and research stages preserve prerequisites and receipts
 
@@ -508,7 +508,7 @@ shell command, or mutate through remote transport.
 - propagation_contract: ERI import, ingest, extract, claim-map, synthesize, verify, and bundle adapters retain canonical service receipts, stage prerequisites, and provenance references in operation effects.
 - resilience: Incomplete/quarantined import, missing stage input, or failed verification blocks dependent actions with a typed governed result and no false completion.
 - visual_evidence_required: false
-- verified_by: [OPM-6.6]
+- verified_by: [M3 — import/stage seam matrix]
 
 #### AC OPM-6: Writeback preview cannot execute or mirror
 
@@ -519,7 +519,7 @@ shell command, or mutate through remote transport.
 - propagation_contract: `writeback.preview` validates and renders a staged candidate under the operation staging root without invoking the live writeback function, integration clients, or downstream mirror paths.
 - resilience: Unavailable targets, review-required sensitivity, missing bundle, or degraded integrations produce preview reason codes and zero external/mirror effect.
 - visual_evidence_required: false
-- verified_by: [OPM-6.7]
+- verified_by: [M3 — preview-only static + runtime negative proof]
 
 #### AC OPM-7: Transport, errors, and receipts stay bounded
 
@@ -530,7 +530,7 @@ shell command, or mutate through remote transport.
 - propagation_contract: Local stdio tools return schema-valid bounded operation, status, event, receipt, and error envelopes with explicit retry and audit-delivery dispositions.
 - resilience: Missing MCP dependency gives one install hint; server startup performs no network call or mutation; internal exceptions are redacted and size-capped.
 - visual_evidence_required: false
-- verified_by: [OPM-6.8]
+- verified_by: [M3 — transport/error bounds matrix]
 
 ## 13. Open Questions
 

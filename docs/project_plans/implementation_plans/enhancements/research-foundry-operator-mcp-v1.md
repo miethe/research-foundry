@@ -4,7 +4,7 @@ schema_version: 2
 doc_type: implementation_plan
 status: in_progress
 created: 2026-07-18
-updated: 2026-07-29
+updated: 2026-07-30
 feature_slug: research-foundry-operator-mcp
 feature_version: v1
 tier: 3
@@ -15,6 +15,7 @@ scope: "Build a local-stdio-only governed operator MCP with identity-bound prefl
 effort_estimate: "29 pts bottom-up"
 architecture_summary: "FastMCP stdio adapter -> trusted local identity/workspace/sensitivity resolution -> governance preflight -> bound confirmation -> immutable operation manifest -> AgentJob-backed attempts -> closed canonical-service adapters -> effect/checkpoint/terminal receipts; Knowledge MCP stays read-only and separate."
 related_documents:
+  - docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1/phases-1-2-executed-record.md
   - docs/project_plans/human-briefs/operator-mcp-p1-execution-retro.md
   - docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
   - docs/project_plans/human-briefs/research-foundry-operator-mcp.md
@@ -22,33 +23,24 @@ related_documents:
   - docs/project_plans/PRDs/enhancements/research-interchange-provenance-access-epic-v1.md
   - .codex/plans/research-interchange-provenance-access-initiative-v1.md
   - docs/project_plans/PRDs/enhancements/research-provenance-continuity-v1.md
-  - docs/project_plans/implementation_plans/enhancements/research-provenance-continuity-v1.md
   - docs/project_plans/PRDs/enhancements/external-research-report-interchange-v1.md
-  - docs/project_plans/implementation_plans/enhancements/external-research-report-interchange-v1.md
   - docs/project_plans/PRDs/enhancements/catalog-assisted-research-planning-v1.md
-  - docs/project_plans/implementation_plans/enhancements/catalog-assisted-research-planning-v1.md
   - docs/project_plans/PRDs/enhancements/research-foundry-knowledge-mcp-v1.md
-  - docs/project_plans/implementation_plans/enhancements/research-foundry-knowledge-mcp-v1.md
   - docs/project_plans/design-specs/research_foundry_search_router_spec.md
-  - docs/project_plans/design-specs/research_foundry_search_router_implementation_plan.md
   - docs/project_plans/implementation_plans/features/public-multiuser-p4-agents-v1.md
 references:
   user_docs: []
   context: []
   specs:
-    - .agents/skills/planning/references/ac-schema.md
-    - .agents/skills/planning/references/deferred-items-and-findings.md
+    - .claude/skills/planning/references/plan-doctrine.md
+    - .claude/skills/planning/references/ac-schema.md
+    - .claude/skills/dev-execution/references/execution-doctrine.md
     - .claude/specs/changelog-spec.md
     - schemas/research_brief.schema.yaml
     - schemas/swarm_plan.schema.yaml
     - schemas/source_card.schema.yaml
     - schemas/claim_ledger.schema.yaml
     - schemas/evidence_bundle.schema.yaml
-  related_prds:
-    - docs/project_plans/PRDs/enhancements/research-provenance-continuity-v1.md
-    - docs/project_plans/PRDs/enhancements/external-research-report-interchange-v1.md
-    - docs/project_plans/PRDs/enhancements/catalog-assisted-research-planning-v1.md
-    - docs/project_plans/PRDs/enhancements/research-foundry-knowledge-mcp-v1.md
 spike_ref: null
 adr_refs: []
 deferred_items_spec_refs: []
@@ -64,8 +56,21 @@ contributors: []
 priority: high
 risk_level: high
 category: enhancements
-tags: [implementation, mcp, operator, governance, jobs, receipts, local-stdio, retro-remediated, gate-economics]
+tags: [implementation, mcp, operator, governance, jobs, receipts, local-stdio, retro-remediated, gate-economics, milestone-retrofit]
 milestone: null
+# Sizes AGENT CONTEXT, not behavior (plan-doctrine.md § Context class). Dominant class for the
+# remaining milestones: cross-module in one repo, adversarially gated, on declared serialization
+# barriers. M3 is the C4 outlier — see its per-milestone note.
+context_class: C3
+# CONSTRAINTS, never model ids — `delegation-router` resolves provider+model at dispatch time
+# against the live registry. Applies to M1-M3 only; P1/P2 finish under their authored pins.
+routing_constraints:
+  - "Confirmation/authorization semantics and the writeback-preview negative proof MUST stay claude-primary — never offload, at any milestone."
+  - "Every adversarial security lens (M2 preview proof, M3 AC OPM-1/2/3 matrices) MUST stay claude-primary and MUST run on fresh context, never the implementer's session."
+  - "Cross-model offload is unavailable for this workstream's security lenses: codex exec refused the adversarial-audit framing under its safety classifier. Do not re-attempt (see Field Notes)."
+  - "Mechanical work is offload-eligible: swarm-service extraction (M1), fixture assembly (M3), docs + CHANGELOG + deferred shaping specs (M3)."
+  - "Capability bar — M1: workhorse-class, parity-test-driven. M2: frontier-class for the preview negative proof; workhorse for scaffold/packaging. M3: frontier-class for the final exact-tree verdict; economy-class for docs."
+  - "Reviewers get findings-ledger write access ONLY (no source, no tests); the ledger must not round-trip through the orchestrator context."
 commit_refs: [41bcafb, f1bfa39, 725faba, 61c3691]
 pr_refs: ["https://github.com/miethe/research-foundry/pull/7"]
 files_affected:
@@ -86,19 +91,55 @@ files_affected:
   - src/research_foundry/operator_mcp/__init__.py
   - src/research_foundry/operator_mcp/server.py
   - pyproject.toml
+# Resolved against the SkillMeat enterprise catalog 2026-07-30. All entries are `available`
+# (in-catalog; the dev-execution provisioning gate deploys any that are absent on-disk), so no
+# batch_0 authoring task and no named blocker is required before M1.
+# NOTE: `skillmeat show <name> --type agent` reports not-found for these; `skillmeat search` finds
+# them. Use search to resolve, and be aware `skillmeat list` currently 401s against the node API.
+required_artifacts:
+  - {type: agent, name: python-backend-engineer, skillmeat_ref: python-backend-engineer, status: available, lifecycle: permanent, scope: null, note: "M1/M2 adapter + server implementation"}
+  - {type: agent, name: api-designer, skillmeat_ref: api-designer, status: available, lifecycle: permanent, scope: null, note: "M2 tool registry + error mapping. On-disk already. WARNING: /dev:execute-plan has been observed silently skipping non-roster agents such as api-designer as HITL — confirm it is dispatched, do not assume"}
+  - {type: agent, name: senior-code-reviewer, skillmeat_ref: senior-code-reviewer, status: available, lifecycle: permanent, scope: null, note: "M2 preview negative-proof call-path scan"}
+  - {type: agent, name: task-completion-validator, skillmeat_ref: task-completion-validator, status: available, lifecycle: permanent, scope: null, note: "milestone validator gate; on-disk at user scope"}
+  - {type: agent, name: karen, skillmeat_ref: karen, status: available, lifecycle: permanent, scope: null, note: "final exact-tree verdict only; on-disk at user scope"}
+  - {type: agent, name: documentation-writer, skillmeat_ref: documentation-writer, status: available, lifecycle: permanent, scope: null, note: "M3 docs. Ships with a haiku default that hard-errors in this environment — dispatch at workhorse class"}
+  - {type: agent, name: changelog-generator, skillmeat_ref: changelog-generator, status: available, lifecycle: permanent, scope: null, note: "M3 CHANGELOG [Unreleased]. Same haiku-default caveat as documentation-writer"}
+  - {type: skill, name: delegation-router, skillmeat_ref: delegation-router, status: available, lifecycle: permanent, scope: null, note: "resolves provider+model per leg at dispatch from routing_constraints; user-scope install"}
+  - {type: skill, name: dev-execution, skillmeat_ref: dev-execution, status: available, lifecycle: permanent, scope: null, note: "milestone execution engine; on-disk"}
+  - {type: skill, name: artifact-tracking, skillmeat_ref: artifact-tracking, status: available, lifecycle: permanent, scope: null, note: "progress tracking; on-disk"}
 open_questions:
   - id: OPM-OQ-1
-    status: open
+    status: resolved
     question: "Freeze the trusted local actor/workspace identity source."
+    resolved_by: "P1 (OPM-1.2) — trusted local AuthIdentity, workspace required, strictest-sensitivity computation, no-existence-leak before lookup"
   - id: OPM-OQ-2
-    status: open
+    status: resolved
     question: "Freeze confirmation TTL, consumption, and exact-replay semantics."
+    resolved_by: "P1 (OPM-1.3) froze the contract; P2 (OPM-2.1, DUR-1) made consumption a real CAS on status issued->consumed in the same durable transaction as the manifest write"
   - id: OPM-OQ-3
-    status: open
+    status: resolved
     question: "Decide whether v1 confirmations authorize one stage only or one fully previewed bounded manifest."
+    resolved_by: "P1 (OPM-1.3) — one fully previewed bounded manifest, bound by canonical digest + policy snapshot + targets + expiry"
   - id: OPM-OQ-4
-    status: open
+    status: resolved
     question: "Freeze operation cancellation safe points and atomic non-cancelable sections."
+    resolved_by: "P2 (OPM-2.4) — cancel/resume state machine; H3 ten-scenario matrix converges with uninterrupted effects"
+  - id: OPM-OQ-5
+    status: open
+    question: "Does M3's Karen final pass discharge OPM-DF-regate (the deferred P1 round-6 re-gate), or does the P1 surface need its own re-verdict first? Named, not guessed — see Deferred Items."
+decisions:
+  - decision: "Retrofit the remaining work (P3-P6) to the Claude-5 milestone doctrine as M1-M3; leave P1-P2 under their authored rules."
+    rationale: "Doctrine applies to new plans and lets in-flight work finish as authored. P1/P2 are complete/gated-pending, so converting them would rewrite an executed record for no gain. The remaining 20 pts had not started, so they take the cheaper structure. Scope, AC OPM-1..7, and every negative-proof obligation are unchanged."
+    status: accepted
+  - decision: "Collapse P3 and P4 into a single milestone (M1)."
+    rationale: "They were split to wait on two upstream external gates (CARP-4.G, ERI-5.G), both now satisfied on main (95e8419, e76784b). They already shared a review gate and wrote the same barrier files, so the split bought serialization, not review value."
+    status: accepted
+  - decision: "Remove per-task agent/model/effort pins from the remaining work; carry routing_constraints instead."
+    rationale: "plan-doctrine rule 3. The pins were authored 2026-07-18 against a model roster that has already moved; delegation-router resolves provider+model at dispatch against the live registry. P1/P2 pins are retained as the executed record (deprecated-not-deleted)."
+    status: accepted
+  - decision: "Adopt the 2-re-pass gate budget with auto-escalation to re-scope."
+    rationale: "The most load-bearing change for this plan specifically: P1 ran five gate rounds and closed by owner acceptance with CHANGES_REQUESTED standing; P2 ran four and closed with no verdict. Both are exactly the failure this rule stops."
+    status: accepted
 wave_plan:
   serialization_barriers:
     - src/research_foundry/services/agent_job_service.py
@@ -110,6 +151,9 @@ wave_plan:
     - src/research_foundry/services/operator_tool_adapters.py
     - src/research_foundry/operator_mcp/server.py
   phases:
+    # P1/P2 are the executed record; their model/effort pins are deprecated-not-deleted and must
+    # not be stripped or extended. Per-phase `files_affected` is omitted (both are complete; the
+    # union is in top-level `files_affected`, the detail in the phases-1-2 companion file).
     - id: P1
       depends_on: [RPC-1.G, KMCP-1.G]
       isolation: shared
@@ -118,13 +162,7 @@ wave_plan:
       model: sonnet
       effort: extended
       gate_lens: [security, validator, karen]
-      gate_shared_with: null
-      files_affected:
-        - schemas/operator_mcp_operation.schema.yaml
-        - schemas/operator_mcp_confirmation.schema.yaml
-        - schemas/operator_mcp_receipt.schema.yaml
-        - schemas/operator_mcp_error.schema.yaml
-        - src/research_foundry/services/operator_mcp_policy.py
+      status: closed_by_owner_acceptance
     - id: P2
       depends_on: [OPM-1.G]
       isolation: worktree
@@ -133,36 +171,26 @@ wave_plan:
       model: sonnet
       effort: extended
       gate_lens: [security, karen]
-      gate_shared_with: null
-      files_affected:
-        - src/research_foundry/services/operator_operation_service.py
-        - src/research_foundry/services/agent_job_service.py
-        - src/research_foundry/services/agent_job_schemas.py
-        - src/research_foundry/services/audit_service.py
-    - id: P3
-      depends_on: [P2, CARP-4.G]
+      status: implementation_complete_gate_pending
+    # Milestones (Claude-5 doctrine retrofit, 2026-07-30). P3-P6 collapsed to M1-M3.
+    # No model/provider/effort keys by design: routing resolves at dispatch from
+    # `routing_constraints` above. `gate_lens` is retained — it encodes WHICH lens must fire
+    # (a risk-class decision earned by the P1 retro), not which model runs it.
+    - id: M1
+      title: "Every mutation runs through a canonical service adapter"
+      depends_on: [P2, CARP-4.G, ERI-5.G]
       isolation: worktree
       parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
+      context_class: C3
       gate_lens: [validator]
-      gate_shared_with: null
+      exit_criteria:
+        - "No registered tool path reaches Typer, the CLI module, a shell, or a subprocess"
+        - "Direct-service and adapter invocations return equivalent canonical refs for plan, swarm, job lifecycle, import, and all six research stages"
+        - "Exact retry creates no duplicate source card, claim, or import receipt"
       files_affected:
         - src/research_foundry/services/swarm_service.py
         - src/research_foundry/services/operator_tool_adapters.py
         - src/research_foundry/cli_commands.py
-    - id: P4
-      depends_on: [P3, ERI-5.G]
-      isolation: worktree
-      parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: extended
-      gate_lens: [validator]
-      gate_shared_with: P3
-      files_affected:
-        - src/research_foundry/services/operator_tool_adapters.py
         - src/research_foundry/services/external_research_import.py
         - src/research_foundry/services/source_cards.py
         - src/research_foundry/services/extraction.py
@@ -170,30 +198,36 @@ wave_plan:
         - src/research_foundry/services/synthesis.py
         - src/research_foundry/services/verification.py
         - src/research_foundry/services/writeback.py
-    - id: P5
-      depends_on: [P4, KMCP-1.G]
+    - id: M2
+      title: "The stdio surface exists and provably cannot execute"
+      depends_on: [M1, KMCP-1.G]
       isolation: worktree
       parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: extended
+      context_class: C3
       gate_lens: [security, validator]
-      gate_shared_with: null
+      exit_criteria:
+        - "Tool introspection matches the closed inventory exactly, with no Knowledge MCP overlap"
+        - "Network, integration-client, and mirror spies stay at zero across every writeback-preview path"
+        - "Base package imports and the CLI work with the MCP SDK absent; missing SDK prints one install hint"
       files_affected:
         - src/research_foundry/operator_mcp/__init__.py
         - src/research_foundry/operator_mcp/server.py
         - src/research_foundry/services/writeback.py
         - src/research_foundry/services/operator_tool_adapters.py
         - pyproject.toml
-    - id: P6
-      depends_on: [P5]
+    - id: M3
+      title: "One exact tree satisfies AC OPM-1..7"
+      depends_on: [M2]
       isolation: shared
       parallelizable: false
-      owner_skills: []
-      model: sonnet
-      effort: adaptive
+      # C4: adversarial matrices over a novel authorization surface with fresh-context verifiers
+      # and an operator checkpoint at the boundary. Budget explicitly, per plan-doctrine.md.
+      context_class: C4
       gate_lens: [validator, karen-final-tree-only]
-      gate_shared_with: null
+      exit_criteria:
+        - "AC OPM-1..7 each evidenced by a named command with real, re-run output"
+        - "Docs, CHANGELOG [Unreleased], and both deferred shaping specs exist and claim no live/remote qualification"
+        - "Karen approves the final tree; deferred_items_spec_refs populated"
       files_affected:
         - tests/unit/test_operator_mcp_policy.py
         - tests/unit/test_operator_operation_service.py
@@ -207,10 +241,9 @@ wave_plan:
   waves:
     - [P1]
     - [P2]
-    - [P3]
-    - [P4]
-    - [P5]
-    - [P6]
+    - [M1]
+    - [M2]
+    - [M3]
 ---
 
 # Implementation Plan: Research Foundry Operator MCP
@@ -225,104 +258,137 @@ wave_plan:
 
 ## Executive Summary
 
-This plan creates a local stdio privileged-operation surface without combining it
-with the read-only Knowledge MCP. It freezes operation, identity, sensitivity,
-confirmation, receipt, and error contracts; builds a durable operation coordinator
-over existing AgentJob attempts; extracts swarm orchestration from the CLI; wraps
-canonical planning/import/research-stage services; and only then registers tools in
-a thin FastMCP server. Writeback exposure is a pure preview with negative evidence
-proving no live client or downstream mirror is reachable.
+A local stdio privileged-operation surface, kept separate from the read-only Knowledge MCP. It freezes
+operation/identity/sensitivity/confirmation/receipt/error contracts; builds a durable operation
+coordinator over existing AgentJob attempts; extracts swarm orchestration from the CLI; wraps canonical
+planning/import/research-stage services; and only then registers tools in a thin FastMCP server.
+Writeback is a pure preview with negative evidence that no live client or downstream mirror is reachable.
 
-The critical path is deliberately serial because each phase establishes the trust
-contract consumed by the next. No progress files are created with this draft.
-Execution begins only after parent/child dependency gates are approved and the
-artifact tracker initializes phase progress.
+The critical path is serial: each stage establishes the trust contract the next consumes. Progress
+artifacts for P1-P2 are under `.claude/progress/research-foundry-operator-mcp/`; M1-M3 progress is
+initialized by the artifact tracker at dispatch.
 
-## Execution Status (as of 2026-07-29)
+## Execution Status (as of 2026-07-30)
 
 - **Branch/worktree**: `worktree-operator-mcp-v1`, worktree `.claude/worktrees/operator-mcp-v1`, based on
   main `65d658d`, draft PR [#7](https://github.com/miethe/research-foundry/pull/7).
-- **P1**: complete-as-implemented (4 of 29 pts). **`OPM-1.G` is NOT APPROVED — 6 blocking findings are
-  open** in `FIND-P1-R3` of the findings ledger. Karen has not been run. This is deliberate: the gate
-  cannot pass with blocking findings open.
-- **Not merged to main.** Merging one of six phases would fragment the plan into six main commits and
-  put an uncalled authorization module on main whose own gate has not passed.
-- **P2–P6**: not started. P1's actual cost was ~2.4M tokens / ~3.5h wall; naive extrapolation to the
-  full 29 points is 10M+ tokens, which is why the gate structure below was revised.
+- **P1 (4 pts): CLOSED BY OWNER ACCEPTANCE** at `e5a2e6e`, round-6 re-gate deferred (`OPM-DF-regate`).
+  Owner acceptance is **not** a machine verdict: the last one on record was `CHANGES_REQUESTED`.
+  Treat `schemas/operator_mcp_receipt.schema.yaml` as **still under-reviewed** — it produced findings
+  in every round in which it was actually examined, and was not attacked at all until round 3.
+- **P2 (5 pts): implementation COMPLETE, formal gate NOT OBTAINED** (head `b98c0c4`, candidate tree
+  `be6ba96`). All findings from four review rounds are closed and independently re-verified;
+  regression is clean (4410 passing against a 4258 baseline, the same 16 failing nodes, none on the
+  operator surface). But there is **no APPROVED verdict**: Karen's blocking item was closed without a
+  re-verdict, and the security lens' final round died twice on 529 API-overload errors. The phase
+  artifact stays `in_progress` with `verified_by` empty on purpose. **Next action is a re-gate, not a
+  re-fix** — do not reopen the implementation.
+- **Not merged to main.** The plan document itself is maintained on main (this file); the *code* stays
+  on the branch until the feature completes, so main does not accumulate one commit per phase or carry
+  an uncalled authorization module whose gate has not passed.
+- **M1-M3 (20 pts): not started**, and blocked on the P2 re-gate above.
 - **Read before resuming**: `docs/project_plans/human-briefs/operator-mcp-p1-execution-retro.md` §4
-  (recommendations) and §5 (traps discovered).
+  (recommendations) and §5 (traps discovered), plus "Field Notes" in this document.
+
+> **Plan doctrine note (retrofit, 2026-07-30).** P1/P2 finish under the pre-Claude-5 rules they were
+> authored on (executed record: the phases-1-2 companion file). The remaining work is converted to
+> the Claude-5 milestone doctrine (`.claude/skills/planning/references/plan-doctrine.md`): P3-P6
+> collapsed into **M1-M3**, agent/model/effort pins replaced by `routing_constraints` resolved at
+> dispatch by `delegation-router`, `context_class` added to size agent context. This changes **how
+> the remaining work is dispatched and reviewed, not what it must deliver** — AC OPM-1..7, the closed
+> tool inventory, and every negative-proof obligation carry through unchanged.
 
 ## Implementation Strategy
 
 ### Architecture sequence
 
-1. Freeze closed operation/tool schemas, trusted identity/workspace/sensitivity, governance ordering, confirmation binding, receipts, and errors.
-2. Persist an immutable operation manifest and reuse AgentJob for attempts/events/artifacts/status/termination.
-3. Prove idempotency, cancel, resume, and effect reconciliation before exposing expensive tools.
-4. Register plan/swarm/job lifecycle adapters and move swarm business logic out of Typer.
-5. Consume ERI's import seam and register the canonical ingest/extract/claim-map/synthesize/verify/bundle services.
-6. Add the stdio server, optional dependency behavior, tool limits, namespace separation, and pure writeback preview.
-7. Run adversarial matrices, compatibility gates, docs, deferred specs, and exact-tree reviews.
+Contracts -> coordinator -> adapters -> transport -> proof. Each stage establishes the trust contract
+the next consumes, which is why nothing here parallelizes. Contracts and coordinator are **done**
+(P1: schemas/identity/confirmation/receipts/errors; P2: immutable manifest over AgentJob attempts with
+idempotency/cancel/resume). The rest is **M1-M3** — see [Milestones](#milestones-m1-m3).
 
 ### Non-duplication rules
 
-- Knowledge MCP owns read-only knowledge resources; Operator MCP does not register them.
-- Search Router remains the discovery/extraction authority; Operator MCP does not add providers or router policy.
-- RPC owns provenance context and receipt references.
-- ERI owns external packet parsing, staging, source/citation resolution, checkpoints, and import receipts.
-- CARP owns catalog-before-discovery planning behavior.
-- RAL/activation own assertion identity, reuse, lifecycle, population, and promotion semantics.
-- AgentJob owns attempts/events/artifacts/termination; operation manifests own confirmed effect semantics.
-- Audit events are supplemental. Immutable operator receipts are the effect authority.
+Operator MCP registers **none** of the following — it calls their owners:
+
+- **Knowledge MCP** — read-only knowledge resources. **Search Router** — discovery/extraction, providers, router policy.
+- **RPC** — provenance context and receipt references. **CARP** — catalog-before-discovery planning.
+- **ERI** — external packet parsing, staging, source/citation resolution, checkpoints, import receipts.
+- **RAL/activation** — assertion identity, reuse, lifecycle, population, promotion.
+- **AgentJob** — attempts/events/artifacts/termination; operation manifests own confirmed effect semantics.
+- Audit events are supplemental; immutable operator receipts are the effect authority.
 
 ### Critical path and external gates
 
-`RPC-1.G + KMCP-1.G -> P1 -> OPM-1.G -> P2 -> CARP-4.G-gated P3 -> ERI-5.G-gated P4 -> P5 -> P6`
+`RPC-1.G + KMCP-1.G -> P1 -> OPM-1.G -> P2 -> OPM-2.G -> M1 -> M2 -> M3`
 
-| Gate | Required evidence before phase starts |
-|---|---|
-| RPC-1.G | Canonical origin/run/activity/receipt/AOS/materialization schemas approved by validator and Karen on one exact tree |
-| KMCP-1.G | Read-only Knowledge MCP tool/resource names and non-overlap inventory approved on the exact P1 tree |
-| CARP-4.G | Settled run plan/swarm/routing behavior and provenance propagation approved on the exact P4 tree |
-| ERI-5.G | Resumable import service, immutable receipt/checkpoint contract, and Operator-MCP seam approved on the exact P5 tree |
+| Gate | Required evidence before the dependent work starts | Status (2026-07-30) |
+|---|---|---|
+| RPC-1.G | Canonical origin/run/activity/receipt/AOS/materialization schemas approved by validator and Karen on one exact tree | **Satisfied** — RPC C1 landed on main `65d658d` |
+| KMCP-1.G | Read-only Knowledge MCP tool/resource names and non-overlap inventory approved on the exact tree M2 registers against | **Satisfied upstream** — Knowledge MCP landed (`1376e85`, skill `e84c19c`); re-confirm the inventory diff at M2, not before |
+| CARP-4.G | Settled run plan/swarm/routing behavior and provenance propagation | **Satisfied** — CARP C3 landed on main `95e8419` |
+| ERI-5.G | Resumable import service, immutable receipt/checkpoint contract, and Operator-MCP seam | **Satisfied** — ERI C2 landed on main `e76784b` |
+| OPM-2.G | P2 lifecycle candidate approved (security-with-AC-mandate, then Karen) on tree `be6ba96` | **OPEN — the only live blocker.** Implementation is complete; this is a re-gate, not a re-fix |
 
-If an external gate is absent, the dependent phase stays pending; no temporary duplicate schema or service is introduced.
+Both gates that originally forced P3 and P4 apart (`CARP-4.G`, `ERI-5.G`) are now satisfied on main.
+That is what makes collapsing them into a single milestone (**M1**) safe: the split existed to wait on
+two upstream contracts, not because the adapter work divides at that seam. If a *new* external gate
+appears, the dependent milestone stays pending; no temporary duplicate schema or service is introduced.
 
-### Phase Summary
+### Milestone Summary (M1-M3 — remaining 20 pts)
 
-| Phase | Title | Estimate | Target subagent(s) | Model | Effort | Gate |
-|---|---|---:|---|---|---|---|
-| P1 | Contract, Identity, and Confirmation | 4 pts | backend-architect, api-designer | sonnet | extended | Security + validator + Karen exact-tree gate (OPM-1.G — OPEN) |
-| P2 | Durable Operation Coordinator | 5 pts | python-backend-engineer | sonnet | extended | Security (AC-mandated), then Karen |
-| P3 | Run Planning and Swarm Adapters | 5 pts | python-backend-engineer | sonnet | adaptive | Validator only |
-| P4 | Import and Research-Stage Adapters | 5 pts | python-backend-engineer, api-designer | sonnet | extended | Shared gate with P3 (validator) |
-| P5 | Stdio Server and Writeback Preview | 6 pts | python-backend-engineer, api-designer | sonnet | extended | Security + validator (unchanged — do not cut) |
-| P6 | Hardening, Docs, Exact-Tree Review | 4 pts | validation implementer, docs agents, reviewers | sonnet/haiku/opus | adaptive/extended | Validator; Karen on the final tree only |
-| **Total** | — | **29 pts** | — | — | — | — |
+| Milestone | Reviewable state | Estimate | Context class | Gate lens |
+|---|---|---:|---|---|
+| M1 | Every mutation runs through a canonical service adapter | 10 pts | C3 | validator |
+| M2 | The stdio surface exists and provably cannot execute | 6 pts | C3 | security + validator |
+| M3 | One exact tree satisfies AC OPM-1..7 | 4 pts | C4 | validator, then Karen on the final tree only |
+| **Total** | — | **20 pts** | — | — |
 
-> H1-H6 details live in the linked Human Brief. The estimate excludes remote transport, live writeback, arbitrary execution, approval UI, schedules, and hosted/public qualification.
+> H1-H7 detail is in the Human Brief. Excludes remote transport, live writeback, arbitrary execution,
+> approval UI, schedules, hosted/public qualification. **Points did not change**: 5+5+6+4 across
+> P3-P6 becomes 10+6+4 across M1-M3 — the unit of dispatch changed, not the size of the work.
 
 ### Revised gate structure (post-P1 retro)
 
-**This section SUPERSEDES the plan's original uniform per-phase gate assignments above and
-elsewhere in this document.** Where any other section of this plan still lists a phase's gate as
-the original assignment, the table below is authoritative.
+**Authoritative** wherever another section still lists an original gate assignment. Reviewer
+lenses are not fungible: across P1's review record (~2.4M tokens) the validator approved a critical
+authorization-bypass **twice** while the security lens found every real defect — so running both
+every round bought one lens's yield at two lenses' cost.
 
-The P1 review record (three rounds, ~2.4M tokens) showed reviewer lenses are not fungible: the
-validator approved a critical authorization-bypass bug **twice**, while the security lens found
-every actual defect. Running both lenses in parallel every round on every phase bought one lens's
-worth of defect-finding at two lenses' cost.
-
-| Phase | Original gates | Revised gate | Rationale |
+| Phase / milestone | Original gates | Revised gate | Rationale |
 |---|---|---|---|
 | P2 | validator + karen | **security-with-AC-mandate**, then karen | Durability/atomicity is a security property; a validator will approve a read-then-write CAS |
-| P3 | validator | validator only | Mechanical extraction; unchanged |
-| P4 | validator + karen | **shared gate with P3** | Both wrap the same files; serialized for file-ownership, not review, reasons |
-| P5 | security + validator | **unchanged — do not cut** | Writeback-preview negative proof is the second-highest-risk surface after P1 |
-| P6 | validator then karen | validator, then karen on the **final tree only** | Karen's per-phase passes duplicate the final one |
+| M1 (was P3+P4) | validator ×2 | validator ×1 | Mechanical extraction + thin adapters; the two phases shared a gate anyway, and the upstream gates that split them are now satisfied |
+| M2 (was P5) | security + validator | **unchanged — do not cut** | Writeback-preview negative proof is the second-highest-risk surface after P1 |
+| M3 (was P6) | validator then karen | validator, then karen on the **final tree only** | Karen's per-milestone passes duplicate the final one |
 
-Net effect: ~4 fewer Opus review passes across P2–P6. **Do not cut security on P1/P5 or Karen on
-the final tree — that is where the defects were. Cut duplicate lenses, not distinct ones.**
+Net effect: ~4 fewer frontier review passes across the remaining work. **Do not cut security on
+P1/M2 or Karen on the final tree — that is where the defects were. Cut duplicate lenses, not
+distinct ones.** Dropping a milestone's only security lens is a scope cut disguised as gate
+optimization and stays prohibited.
+
+### Gate budget: 2 re-passes, then re-scope (execution doctrine rule 1)
+
+Any adversarial or validator gate on the **same scope × lens** gets at most **two re-passes**. The
+third failure does **not** escalate to "a human looks at it" — it auto-escalates to
+**re-scope/redesign**. Three failures against the same lens is evidence the scope is wrong, not that
+the fix was sloppy.
+
+This is the single most load-bearing change for this plan specifically. P1 ran **five** gate rounds
+and closed by owner acceptance with `CHANGES_REQUESTED` still standing; P2 ran **four** and closed
+with no verdict at all. Both are the failure mode this rule exists to stop.
+
+- Count re-passes per **scope × lens**, not per dispatch. Re-spawning an implementer does not reset
+  the budget.
+- The manual orchestrated path has **no counter** — the orchestrator counts. Only the scripted
+  workflow path enforces the cap mechanically (`fixLoop` returns `needs_rescope`).
+- **Mutation-verify inside the FIX step, not the next review round.** A P1 fix shipped with four
+  tests that all passed on revert. A fix is not done until its test fails against the un-fixed tree.
+- Fix loops **continue the existing implementer session** (cache-warm, already holds the context).
+  Fresh context belongs on the **verifier** — inherited-context validators rubber-stamp. Today's
+  default is inverted; invert it back.
+- **Context tripwire at 150%** utilization in one session: split or summarize-forward *before*
+  continuing. Past the tripwire is how a fix loop becomes a retry storm.
 
 ## Deferred Items & In-Flight Findings Policy
 
@@ -334,22 +400,24 @@ the final tree — that is where the defects were. Cut duplicate lenses, not dis
 | OPM-DF-2 | external mutation | Preview safety does not authorize downstream effects or compensation | Target-specific approval/idempotency/rollback design and owner-held canary plan | docs/project_plans/design-specs/operator-mcp-live-writeback.md |
 | OPM-DF-3 | scope | Arbitrary shell/files/provider/adapter/plugin/schedules violate closed-tool design | Named measured use case with canonical governed service | N/A — explicit non-goal until a concrete capability is named |
 | OPM-DF-4 | operations | Public/hosted qualification requires owner identity, private data, deployment, monitoring, and incident response | Separate release plan and owner authorization | N/A — operational gate, not a code design spec |
-| OPM-DF-5 | scope | P6 docs + deferred shaping specs are the only gate-free descope | Owner elects to cut scope to fit budget | follow-up plan (docs + OPM-DF-1/OPM-DF-2 shaping specs) |
+| OPM-DF-5 | scope | M3 docs + deferred shaping specs are the only gate-free descope | Owner elects to cut scope to fit budget | follow-up plan (docs + OPM-DF-1/OPM-DF-2 shaping specs) |
+| OPM-DF-regate | gate debt | P1 closed by **owner acceptance** at `e5a2e6e` with the last machine verdict standing at `CHANGES_REQUESTED`; the round-6 re-gate was deferred rather than run | M3's final exact-tree review — Karen's final pass must cover the P1 surface, not assume it approved | N/A — discharged inside M3, not a design spec |
 
-P6 authors the two named design specs at `maturity: shaping` and appends their paths
-to `deferred_items_spec_refs`. No progress artifact is created by this plan draft.
+M3 authors both named design specs at `maturity: shaping` and appends their paths to
+`deferred_items_spec_refs`.
 
 ### In-flight findings
 
-Leave `findings_doc_ref: null`. If execution discovers a load-bearing mismatch—such
-as AgentJob records being unsuitable for deterministic operations—create
-`.claude/findings/research-foundry-operator-mcp-findings.md`, link it here, and stop the
-affected phase for targeted design/re-estimation rather than inventing a parallel
-job authority.
+The findings ledger is **live** at `.claude/findings/research-foundry-operator-mcp-findings.md`
+(`findings_doc_ref`), written directly by reviewers. Ordinary deviations are logged there or in the
+implementation notes and reviewed at the milestone boundary — they do not halt. A load-bearing
+**mismatch** (e.g. AgentJob records proving unsuitable for deterministic operations) is a blocker:
+stop the milestone for targeted design and re-estimation rather than inventing a parallel job
+authority. See [Execution ledger](#execution-ledger) for the deviation-vs-blocker line.
 
 ## Implementer Defect-Class Checklist (mandatory)
 
-Every implementer prompt dispatched for P2–P6 MUST carry this checklist verbatim. It costs nothing
+Every implementer prompt dispatched for M1-M3 MUST carry this checklist verbatim. It costs nothing
 and attacks the two-cycle fix problem at its source: P1's three review rounds found the same
 defect classes repeatedly, and the fix cycle itself introduced new instances of them while
 "closing" prior findings.
@@ -371,243 +439,254 @@ defect classes repeatedly, and the fix cycle itself introduced new instances of 
 
 ### Cheap pre-gate before the expensive lens
 
-A focused ~30k-token fail-open / layer-below sweep on Sonnet runs BEFORE any Opus reviewer is
-dispatched. It catches the obvious items in the checklist above at roughly 1/5 the cost of the full
-lens; only what survives the sweep escalates to the full reviewer. This is an addition to the
-reviewer gates below, not a replacement for them.
+A focused ~30k-token fail-open / layer-below sweep at workhorse class runs BEFORE any frontier
+reviewer — ~1/5 the cost; only what survives escalates. An addition to the gates, never a replacement.
 
-## Phase Breakdown
+## Phase Breakdown (P1-P2) — moved
 
-### Phase P1: Contract, Identity, and Confirmation
+Executed record with its legacy task tables and pins:
+[`phases-1-2-executed-record.md`](./research-foundry-operator-mcp-v1/phases-1-2-executed-record.md).
+Historical; M1-M3 below are the remaining work.
 
-**Dependencies**: Research Provenance Continuity `RPC-1.G` and Knowledge MCP `KMCP-1.G` approved exact-tree contracts.
-**Integration owner**: backend-architect.
-**Exit state**: effect writers have stable schemas, trusted identity inputs, policy order, confirmation semantics, limits, and safe errors.
+## Milestones (M1-M3)
 
-| Task ID | Task | Description | Acceptance criteria | Estimate | Subagent | Model | Effort | Dependencies |
-|---|---|---|---|---:|---|---|---|---|
-| OPM-1.1 | Operation and tool contract | Define closed operation kinds/tool names, input/result schemas, canonicalization, limits, target refs, stage prerequisites, and Knowledge MCP non-overlap inventory. | Positive/negative fixtures validate; unknown/wildcard operations reject | 1 pt | api-designer | sonnet | extended | RPC-1.G, KMCP-1.G |
-| OPM-1.2 | Identity and sensitivity contract | Resolve trusted local `AuthIdentity`, require workspace, compute strictest sensitivity, and freeze no-existence-leak behavior before lookup. | Missing/wrong identity and two-workspace fixtures return one safe denial | 1 pt | backend-architect | sonnet | extended | OPM-1.1 |
-| OPM-1.3 | Guard/preflight and confirmation | Order capability/RBAC/audit-health/guard/preflight checks; define opaque token binding, TTL, one-time atomic consumption, policy-drift and exact-replay rules. | Expired/replayed/mismatched token matrix produces zero manifest/effects | 1 pt | backend-architect, python-backend-engineer | sonnet | extended | OPM-1.2 |
-| OPM-1.4 | Receipt and bounded-error schemas | Freeze operation/action/effect/checkpoint/terminal receipt fields, audit disposition, reason codes, retryability, redaction, and size limits. | Golden/negative schemas reject unbounded/raw exception and unauthorized fields | 1 pt | api-designer | sonnet | extended | OPM-1.1 |
-| OPM-1.G | Tier-3 contract gate | Review identity source, authorization-before-lookup, confirmation binding, receipts, tool inventory, provenance reuse, task/AC traceability, and exact P1 tree. | task-completion-validator then Karen APPROVE the same exact tree; material changes invalidate both verdicts | gate | task-completion-validator, Karen | sonnet/opus | extended | OPM-1.2, OPM-1.3, OPM-1.4 |
+> A milestone is a **reviewable state of the system**, not a batch of tasks — hand the executor the
+> whole milestone. Tasks are enumerated **only** where sequencing is load-bearing, with the reason
+> named at that point; everything else is deliberately unordered.
+>
+> Superseded phase IDs: M1 = P3+P4, M2 = P5, M3 = P6. The old `OPM-3.x`/`4.x`/`5.x`/`6.x` task IDs
+> are retired; cite milestone IDs and AC IDs in commits and findings from here on.
 
-**Quality gate**:
+### Rubric — what "good" looks like
 
-- OPM-OQ-1..4 resolved or defaults explicitly approved.
-- Security reviewer verifies authorization-before-lookup and token binding.
-- `task-completion-validator` then Karen approve the same exact schemas/examples/threat-matrix tree.
-- No effect adapter or MCP server exists yet.
-- **Status (2026-07-29): `OPM-1.G` is NOT APPROVED — 6 blocking findings open in `FIND-P1-R3`.**
-  `schemas/operator_mcp_receipt.schema.yaml` was never adversarially attacked until round 3 (rounds
-  1 and 2 both targeted `operator_mcp_policy.py` and the error schema); two of the six blocking
-  findings came from its first real review. Treat it as still under-reviewed.
+Every AC is satisfiable in more than one way and the wrong ways are the cheap ones. An executor that
+reads only the AC and this rubric should make the same calls the plan author would.
 
-### Phase P2: Durable Operation Coordinator
+1. **Thin adapters, not a second implementation.** An adapter binds identity, workspace,
+   sensitivity, prerequisites, and budgets, then calls one named canonical service and maps its
+   result into the common envelope. Parsing a packet member, re-deriving a ref, or reimplementing
+   stage logic is wrong even when the tests pass. The tell: adapter and direct-service invocation
+   yield **equivalent canonical refs**, not merely both-succeed.
+2. **Negative proof is evidence, not assertion.** "The preview cannot execute" is proved by a
+   call-path scan plus runtime spies reading zero on the exact tree reviewed. A docstring, a
+   comment, or a passing happy-path test is not proof.
+3. **The scope shrinks before the gate loops a third time.** See the gate budget above.
+4. **The four defect classes in the [Implementer Defect-Class Checklist](#implementer-defect-class-checklist-mandatory)
+   are part of this bar** — fail-open defaults, fixing the symbol instead of the layer below, pinning
+   wrong behavior with a test, and fabricated transcripts. Not restated here; carried verbatim into
+   every implementer prompt.
 
-**Dependencies**: `OPM-1.G` approved on the exact current tree.
-**Integration owner**: python-backend-engineer.
-**Exit state**: stable operation manifests coordinate AgentJob attempts and converge through retry/cancel/resume.
+### Named risks
 
-**Inherited P1 obligations (frozen — DUR-1)**: consumption is a compare-and-swap on `status` from
-exactly `issued` to `consumed`, in the SAME durable transaction as the operation-manifest write,
-under an exclusive single-writer lock (SQLite `BEGIN IMMEDIATE`, or `O_EXCL` create-then-atomic-
-rename). A CAS observing any other status MUST route to exact-replay/idempotency-conflict and MUST
-NOT execute. P1's `consume_confirmation` is a pure function — real atomicity is P2's job, and **a
-read-then-write implementation passes every P1 test and is still wrong**. This requirement is
-folded into `OPM-2.1`'s acceptance criteria below.
+- **The validator lens approves authorization bugs.** Measured twice in P1 on a critical bypass.
+  Any AC touching authorization, confirmation, workspace scoping, or the preview boundary needs the
+  **security** lens — the validator is not a substitute, and running both every round buys one
+  lens's yield at two lenses' cost.
+- **Fixing the symbol, not the layer below it.** P1's most expensive defect: hardening
+  `authorize_operation` while its delegate `verify_confirmation` still reported the replay as an
+  accept, and the new docstring steered callers to the weaker door. When closing any
+  access-boundary finding, enumerate **every** public symbol in the module's `__all__`, plus the
+  fixed symbol's delegates and callers, and re-attack each.
+- **The receipt schema is still under-reviewed.** `operator_mcp_receipt.schema.yaml` yielded
+  findings in every round in which it was actually examined and was not attacked until P1 round 3.
+  M3 must run a **per-property** matrix against it, not a golden-instance pass.
+- **Serialization barriers are shared with live code.** `writeback.py`,
+  `operator_tool_adapters.py`, `agent_job_service.py`, `governance.py`, and `audit_service.py` are
+  declared barriers. M1 and M2 both write `writeback.py` and `operator_tool_adapters.py`; that is
+  why they are sequential waves, not parallel ones.
+- **Verification failure must be a governed result, not an exception.** A verify failure that
+  propagates as a raw error will be caught by a broad `except` somewhere upstream and read as
+  success. It must block the dependent bundle action with a typed, schema-valid denial.
+- **Mutation sweeps false-green in this repo** — the pytest `pythonpath` trap nearly published a
+  wrong conclusion in P1 round 3. Mechanics and the correct invocation are in Field Notes.
 
-| Task ID | Task | Description | Acceptance criteria | Estimate | Subagent | Model | Effort | Dependencies |
-|---|---|---|---|---:|---|---|---|---|---|
-| OPM-2.1 | Immutable operation store | Atomically persist canonical operation/action manifests, input/policy digests, token-consumption proof, workspace, sensitivity, and target refs under confined local state. | Exact manifest replay resolves same operation; changed manifest conflicts; **consumption CAS on `status` (`issued`→`consumed`) occurs in the same durable transaction as the manifest write, under an exclusive single-writer lock; any other observed status routes to exact-replay/idempotency-conflict and does not execute** | 1.5 pts | python-backend-engineer | sonnet | extended | OPM-1.G |
-| OPM-2.2 | AgentJob attempt adapter | Reuse create/load/events/artifacts/status/poll/terminate/cleanup with identity scoping; link attempts to operation id; do not expose `accept_job`. | Legacy AgentJob reads pass; wrong-workspace attempts are indistinguishable from missing | 1.5 pts | python-backend-engineer | sonnet | extended | OPM-2.1 |
-| OPM-2.3 | Effect/checkpoint/terminal receipts | Persist immutable action/effect receipts and separate atomic checkpoints; reconcile counts/digests into one terminal receipt; link supplemental audit event/disposition. | Truncated/extra/duplicate/reordered/mismatched receipt fixtures deny | 1 pt | python-backend-engineer, data-layer-expert | sonnet | extended | OPM-2.2 |
-| OPM-2.4 | Cancel and resume state machine | Persist cancellation request, honor safe points, mark non-cancelable atomic sections, resume first incomplete action under fresh policy/confirmation and new attempt. | H3 ten-scenario matrix converges with uninterrupted effects | 1 pt | python-backend-engineer | sonnet | extended | OPM-2.3 |
+### M1 — Every mutation runs through a canonical service adapter
 
-**Quality gate**:
+*(supersedes P3 + P4; 10 pts; context class C3; gate: validator)*
 
-- Process-loss, exact-retry, conflict, cancel, resume, policy-change, and reconciliation fixtures pass.
-- Operation receipt is primary; audit-service failure is explicit and cannot erase effect truth.
-- **Revised gate (post-P1 retro):** a security reviewer carrying an explicit AC-mapping mandate
-  reviews the exact lifecycle candidate, then Karen approves. Durability/atomicity is a security
-  property, and a validator alone will approve a read-then-write compare-and-swap.
+Swarm orchestration no longer lives in Typer. Run planning, swarm start, job lifecycle
+(status/cancel/resume), external import, and all six canonical research stages (ingest, extract,
+claim-map, synthesize, verify, bundle) are reachable **only** through closed adapters that bind
+identity, workspace, effective sensitivity, prerequisites, and budgets, and that return the common
+operation/receipt envelope. ERI's import seam and CARP's planning behavior are consumed, never
+reimplemented — both landed upstream on main, so there is no temporary duplicate to introduce.
 
-### Phase P3: Run Planning and Swarm Adapters
+**Load-bearing sequence (the only ordering M1 asserts):** the swarm-service extraction lands
+*before* any adapter that dispatches through it, because CLI and adapter must call the same closed
+service — building the adapter first creates two dispatch paths and a parity test that passes
+against the wrong one.
 
-**Dependencies**: P2 and `CARP-4.G`.
-**Integration owner**: python-backend-engineer.
-**Exit state**: plan/swarm operations and lifecycle tools execute through canonical services and common receipts.
+**AC:**
+- No registered tool path reaches Typer, `cli_commands.py`, a shell, a subprocess, or an arbitrary
+  dispatch; adapter IDs are policy-allowlisted and unknown/disallowed adapters deny.
+- CLI parity holds after extraction: existing CLI behavior is unchanged, and dry-run produces zero
+  effects.
+- Direct-service and adapter invocation return **equivalent canonical refs** for plan, swarm, job
+  lifecycle, import, and each of the six stages.
+- Exact retry of any operation creates no duplicate source card, claim, import receipt, or
+  source-candidate artifact; cancel/resume does not duplicate a candidate artifact.
+- Verify failure is a typed governed result that blocks the dependent bundle action; quarantine and
+  missing-input cases deny with reason codes rather than raising.
+- `job.status` / `job.cancel` / `job.resume` are bounded and identity-scoped — no raw event-file
+  reads, no unbounded pages, no wrong-workspace detail.
+- No hard-coded default workspace anywhere in the ingest path.
 
-| Task ID | Task | Description | Acceptance criteria | Estimate | Subagent | Model | Effort | Dependencies |
-|---|---|---|---|---:|---|---|---|---|---|
-| OPM-3.1 | Plan adapter | Wrap `planning.plan_run()` with explicit depth/audience/cost/freshness/profile/project fields, prerequisites, guard context, result/effect mapping, and RPC refs. | Direct-service/MCP-adapter fixture outputs equivalent canonical refs | 1 pt | python-backend-engineer | sonnet | adaptive | P2, CARP-4.G |
-| OPM-3.2 | Canonical swarm service | Move adapter dispatch/source-candidate persistence out of `cli_commands.py` into `swarm_service`; CLI and adapter call same closed service; adapter ids must be policy allowlisted. | CLI parity passes; unknown/disallowed adapters deny; dry-run has zero effects | 1.5 pts | python-backend-engineer | sonnet | adaptive | OPM-3.1 |
-| OPM-3.3 | Swarm start adapter | Register `swarm.start` action planning, budgets/timeouts, effective sensitivity/profile, checkpoint boundaries, source-candidate effect receipt, and cancellation. | Degraded adapters remain typed; cancel/resume does not duplicate candidate artifact | 1.5 pts | python-backend-engineer | sonnet | adaptive | OPM-3.2 |
-| OPM-3.4 | Job lifecycle adapters | Implement bounded identity-scoped `job.status`, `job.cancel`, and `job.resume` DTO adapters over operation service. | No raw event file reads, unbounded pages, or wrong-workspace detail | 1 pt | python-backend-engineer | sonnet | adaptive | OPM-2.4 |
+### M2 — The stdio surface exists and provably cannot execute
 
-**Quality gate**:
+*(supersedes P5; 6 pts; context class C3; gate: security + validator — do not cut)*
 
-- Tool adapters invoke no CLI/Typer/subprocess path.
-- Plan/swarm/cancel/resume parity and negative policy fixtures pass.
-- `task-completion-validator` approves exact service extraction and adapters.
+A thin FastMCP stdio server registers exactly the closed tool inventory over the M1 adapters, with
+bounded inputs, results, events, and errors. The MCP SDK is an optional dependency: the base package
+and CLI work without it. Writeback is exposed as a **pure preview** that validates bundle, targets,
+and policy and writes only a staged preview — with negative evidence that no live writeback path,
+integration client, or downstream mirror is reachable from any registered tool.
 
-### Phase P4: Import and Research-Stage Adapters
+**AC:**
+- Tool introspection matches the PRD's closed inventory **exactly**, with zero Knowledge MCP overlap
+  and no wildcard/arbitrary execution surface.
+- Static call-path scan **and** runtime spies both show zero network calls, zero integration-client
+  construction, zero mirror writes, and no `accept_job`, shell, subprocess, or arbitrary-path reach
+  from any registered handler.
+- Preview returns schema-valid reason codes for missing, degraded, and review-required targets, with
+  zero external effect in every case.
+- Base import and the CLI succeed with the MCP SDK absent; a missing SDK prints exactly one install
+  hint; startup performs no network call and no effect.
+- Oversize inputs, internal errors, and wrong-workspace refs all return bounded, redacted, safe
+  envelopes with retryability and audit-delivery disposition.
+- Wheel and editable installs expose the module entrypoint without auto-start, daemon, or listener.
 
-**Dependencies**: P3 and `ERI-5.G`.
-**Integration owner**: python-backend-engineer.
-**Exit state**: import and canonical research stages share the operation lifecycle, preserve prerequisites/receipts, and block unsafe chaining.
+**Mode-D note:** M2 touches no auth, payments, migration, deletion, secret-rotation, or infrastructure
+path. Turning the preview seam into a live writeback would be a Mode-D change and halts for explicit
+human approval regardless of anything this plan says.
 
-| Task ID | Task | Description | Acceptance criteria | Estimate | Subagent | Model | Effort | Dependencies |
-|---|---|---|---|---:|---|---|---|---|---|
-| OPM-4.1 | External import adapter | Consume ERI's service-level dry-run/import/resume request and immutable receipt/checkpoint result; bind packet/target/workspace/sensitivity/idempotency. | MCP adapter parses no packet member; direct ERI/MCP receipts match refs | 1 pt | python-backend-engineer | sonnet | extended | ERI-5.G, OPM-2.4 |
-| OPM-4.2 | Source ingest adapter | Wrap `ingest_source()` with identity-derived assertion workspace, sensitivity, fetch policy, source limits, and source/materialization receipt refs. | No hard-coded default workspace; denied/degraded ingest remains explicit | 1 pt | python-backend-engineer | sonnet | extended | OPM-4.1 |
-| OPM-4.3 | Extract and claim-map adapters | Wrap `extract_run()` and `build_claim_ledger()` with stage prerequisites, model-profile policy, budgets, action/effect receipts, cancel safe points, and bounded result summaries. | Missing/changed inputs deny; exact retry creates no duplicate cards/claims | 1.5 pts | python-backend-engineer | sonnet | extended | OPM-4.2 |
-| OPM-4.4 | Synthesize, verify, and bundle adapters | Wrap canonical services; bind model/final/LLM policy; make verify failure a governed result; allow bundle only under configured verification prerequisite. | Unsupported verification blocks dependent bundle action; no false success | 1 pt | python-backend-engineer | sonnet | extended | OPM-4.3 |
-| OPM-4.5 | Cross-stage seam gate | Prove each adapter uses RPC/ERI/canonical refs, one operation envelope, exact prerequisites, and no duplicate parsing/business logic. | Service parity, interrupted chain, and provenance-reference fixtures pass | 0.5 pt | api-designer, task-completion-validator | sonnet | adaptive | OPM-4.1..4.4 |
+### M3 — One exact tree satisfies AC OPM-1..7
 
-**Quality gate**:
+*(supersedes P6; 4 pts; context class **C4** — adversarial matrices over a novel authorization
+surface, fresh-context verifiers, operator checkpoint at the boundary; gate: validator, then Karen
+on the final tree only)*
 
-- External Interchange exact-tree dependency is recorded.
-- Verification-denial, stage-missing, wrong-workspace, sensitivity, timeout, cancel, and resume cases pass.
-- **Revised gate (post-P1 retro): SHARED with P3.** P3 and P4 both wrap the same adapter files
-  (`operator_tool_adapters.py`, `swarm_service.py`) and are serialized for file-ownership reasons,
-  not review reasons — one `task-completion-validator` review covers both integrated milestones.
-  The separate `karen` pass for P4 is removed.
+A single integrated candidate tree carries public-safe two-workspace fixtures and interrupted-
+operation fixtures, and evidences each of AC OPM-1 through OPM-7 with real command output. Docs,
+CHANGELOG, and the two deferred shaping specs land, stating truthful repository and live boundaries.
 
-### Phase P5: Stdio Server and Writeback Preview
+**AC:**
+- Each of AC OPM-1..7 is evidenced by its named command in the matrix below, with real re-run output
+  on one exact tree; a material change to any of them invalidates prior approval and re-runs it.
+- The confirmation adversarial matrix covers missing identity, denial, expiry, replay, wrong
+  actor/workspace, payload/target/policy/sensitivity drift, and atomic token consumption — each with
+  an **explicit zero-effect assertion**.
+- The receipt schema gets a **per-property** re-attack (not a golden-instance pass), per Named Risks.
+- Fixtures contain no owner or private corpus data.
+- Docs match the exact shipped tool inventory, link to Knowledge MCP / RPC / ERI / CARP / RAL /
+  RFUP / Search Router rather than restating their authority, and label remote transport and live
+  writeback `deferred` and owner qualification `not_executed_owner_data_absent`.
+- `deferred_items_spec_refs` is populated with both shaping-spec paths.
 
-**Dependencies**: P4 and approved Knowledge MCP inventory.
-**Integration owner**: python-backend-engineer.
-**Exit state**: optional local stdio server exposes only approved tools, bounded outputs, and non-executing writeback preview.
+## AC -> command -> evidence
 
-**Inherited P1 obligation**: `check_tool_name()` has zero callers by design. Calling it at the
-transport boundary is a frozen P5 obligation, folded into `OPM-5.4`'s acceptance criteria below
-(the transport boundary is where limits and error mapping are enforced).
+The single home for verification detail. The PRD owns narrative AC; this matrix owns proof. Run from
+the repo root with the project venv (`./.venv/bin/python` — the pyenv shim will fail to import
+`research_foundry`).
 
-| Task ID | Task | Description | Acceptance criteria | Estimate | Subagent | Model | Effort | Dependencies |
-|---|---|---|---|---:|---|---|---|---|---|
-| OPM-5.1 | FastMCP server scaffold | Add lazy optional MCP import, `build_server()`, stdio `main()`, explicit server identity/version, and no-effect startup. | Base import works without SDK; missing SDK prints one install hint | 1.5 pts | python-backend-engineer | sonnet | adaptive | P4 |
-| OPM-5.2 | Closed tool registry | Register §6.1 tools with versioned schemas, bounded inputs/results, operation adapter delegation, and tool-introspection fixture. | Exact inventory; no Knowledge MCP duplicates or wildcard execution | 1 pt | api-designer, python-backend-engineer | sonnet | extended | OPM-5.1, KMCP-1.G |
-| OPM-5.3 | Pure writeback preview | Add `preview_writeback()` that validates bundle/targets/policy and writes only a staged operation preview; never call live writeback, clients, or mirror paths. | Network/client/mirror spies remain zero; preview reason codes schema-valid | 1.5 pts | python-backend-engineer | sonnet | extended | OPM-5.2 |
-| OPM-5.4 | Limits and error mapping | Enforce input/action/event/result/error size caps, runtime/cost limits, redaction, retryable reason codes, no-existence-leak mapping, **and `check_tool_name()` invocation** at the transport boundary. | Oversize/internal-error/wrong-workspace fixtures return bounded safe envelopes; **`check_tool_name()` is exercised on every tool dispatch at the transport boundary** | 1 pt | api-designer | sonnet | extended | OPM-5.2 |
-| OPM-5.5 | Packaging and entrypoint | Reuse/add optional `mcp` extra and package entrypoint without auto-start, daemon, listener, or network probe. | Wheel/editable install and module entrypoint tests pass | 0.5 pt | python-backend-engineer | sonnet | adaptive | OPM-5.1 |
-| OPM-5.6 | P5 safety gate | Static source/call-path review plus runtime spies prove no HTTP route, live writeback, agent-job accept, shell, subprocess, arbitrary path, or integration client in registered tools. | Security reviewer and validator approve exact registry/call path | 0.5 pt | senior-code-reviewer, task-completion-validator | sonnet | extended | OPM-5.3..5.5 |
+| AC | Command | Evidence of pass |
+|---|---|---|
+| M1 — closed dispatch, no CLI reach | `rg -n "typer\|cli_commands\|subprocess\|os\.system\|shell=True" src/research_foundry/services/operator_tool_adapters.py src/research_foundry/operator_mcp/` | Zero matches in registered handler call paths |
+| M1 — adapter/service parity | `./.venv/bin/python -m pytest tests/unit/test_operator_tool_adapters.py -q` | Parity assertions compare canonical refs from direct-service vs adapter and match |
+| M1 — CLI unchanged after extraction | `./.venv/bin/python -m pytest tests/test_search_router_router.py tests/integration/test_run_launch_reuse.py -q` | Pre-existing CLI/run behavior green, no new failures vs the 4258-node baseline |
+| M1 — retry/cancel idempotency | `./.venv/bin/python -m pytest tests/unit/test_operator_operation_service.py -q -k "retry or cancel or resume or duplicate"` | Exact retry yields prior state; no duplicate card/claim/receipt/candidate |
+| M2 — exact tool inventory | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py -q -k "inventory or introspect"` | Introspected tool set diffs clean against the closed inventory; no Knowledge MCP overlap |
+| M2 — preview cannot execute | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_writeback_preview.py -q` | Network/client/mirror spies assert **zero** calls on every preview path |
+| M2 — optional-SDK behavior | `./.venv/bin/python -c "import sys; sys.modules['mcp']=None; import research_foundry; print('base ok')"` then `./.venv/bin/rf --help` | Base package and CLI both succeed with the SDK absent |
+| AC OPM-1 — confirmation binding | `./.venv/bin/python -m pytest tests/unit/test_operator_mcp_policy.py -q -k "confirm or replay or expiry or drift"` | Every adversarial case yields zero manifest **and** an explicit zero-effect assertion |
+| AC OPM-2 — workspace/sensitivity | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_workspace_isolation.py -q` | Two-identity matrix returns safe non-existence; no derived detail leaks |
+| AC OPM-3 — idempotent/cancel/resume | `./.venv/bin/python -m pytest tests/unit/test_operator_operation_service.py -q` | H3 ten-scenario matrix: interrupted and uninterrupted runs converge to identical canonical effects |
+| AC OPM-4 — closed adapters | `./.venv/bin/python -m pytest tests/unit/test_operator_tool_adapters.py -q` + handler call-path scan | Every tool resolves to one named canonical service; no arbitrary dispatch |
+| AC OPM-5 — import/stage seams | `./.venv/bin/python -m pytest tests/unit/test_operator_tool_adapters.py -q -k "import or stage or prerequisite"` | ERI receipts/prerequisites/provenance refs preserved; verify-failure blocks bundle |
+| AC OPM-6 — preview-only | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_writeback_preview.py -q` + call-path scan | Static and runtime evidence both show zero external/mirror effect |
+| AC OPM-7 — bounded transport | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py -q -k "limit or error or redact"` | Oversize/internal-error/wrong-workspace all return bounded redacted envelopes |
+| Whole-suite regression | `./.venv/bin/python -m pytest` | 4410+ passing; the same 16 known-failing nodes, none on the operator surface |
+| Lint gate | `flake8 src/research_foundry --select=E9,F63,F7,F82` | Exit 0 |
 
-**Quality gate**:
+Exact test filenames are reconciled against the current tree at execution; **a missing planned file
+is not evidence of a pass**. No owner/private corpus, remote transport, live writeback, deployment,
+or release test is implied by repository fixtures.
 
-- Tool inventory matches PRD exactly and remains separate from Knowledge MCP.
-- Preview-only negative proof includes static and runtime evidence.
-- `task-completion-validator` approves; any registry change requires rerun.
-- **Unchanged — do not cut.** Security + validator remain both required for this phase; the
-  writeback-preview negative proof is the second-highest-risk surface after P1.
+## Sequencing (load-bearing)
 
-### Phase P6: Hardening, Documentation, and Exact-Tree Review
+Order is asserted only where it is real:
 
-**Dependencies**: P5.
-**Integration owner**: validation implementer.
-**Exit state**: one exact integrated candidate satisfies AC OPM-1..7 with truthful repository/live boundaries.
+- **P2 re-gate -> M1.** M1's adapters call the operation coordinator; dispatching M1 against an
+  ungated lifecycle would build on an unverified trust contract.
+- **M1 -> M2.** M2 registers tools over M1's adapters; there is nothing to register before they
+  exist. Both also write `writeback.py` and `operator_tool_adapters.py` — declared serialization
+  barriers — so they cannot run concurrently regardless.
+- **M2 -> M3.** M3 evidences AC against the integrated surface; there is no exact tree to attack
+  until the server and preview exist.
+- **Inside M1**, the swarm-service extraction precedes adapters that dispatch through it (reason
+  given in M1 above). No other intra-milestone order is asserted.
 
-| Task ID | Task | Description | Acceptance criteria | Estimate | Subagent | Model | Effort | Dependencies |
-|---|---|---|---|---:|---|---|---|---|---|
-| OPM-6.1 | Integrated fixture matrix | Assemble public-safe two-workspace runs/import packets and interrupted operations for deterministic end-to-end validation. | Fixtures contain no owner/private data and enumerate expected receipts/effects | 0.5 pt | validation implementer | sonnet | adaptive | P5 |
-| OPM-6.2 | Confirmation adversarial gate | Test missing identity, denial, expiry, replay, wrong actor/workspace, payload/target/policy/sensitivity drift, and atomic token consumption. | AC OPM-1 evidenced; zero-effect assertions explicit | 0.5 pt | validation implementer | sonnet | extended | OPM-6.1 |
-| OPM-6.3 | Workspace/sensitivity gate | Test lookup, status/events/errors, ingest, import, stages, and receipts under two identities and threshold changes. | AC OPM-2 evidenced with no existence leak | 0.5 pt | validation implementer | sonnet | extended | OPM-6.1 |
-| OPM-6.4 | Lifecycle recovery gate | Run H3 exact replay/conflict/cancel/resume/process-loss/receipt-corruption matrix and compare canonical effects. | AC OPM-3 evidenced; interrupted/uninterrupted converge | 0.5 pt | validation implementer | sonnet | extended | OPM-6.1 |
-| OPM-6.5 | Closed-adapter gate | Introspect tools and scan handler call paths; compare direct service and adapter result refs; assert no arbitrary dispatch. | AC OPM-4 evidenced | 0.5 pt | validation implementer, senior-code-reviewer | sonnet | adaptive | OPM-6.1 |
-| OPM-6.6 | Import/stage seam gate | Run ERI import plus ingest/extract/claim-map/synthesize/verify/bundle prerequisite/receipt matrix. | AC OPM-5 evidenced | 0.25 pt | validation implementer | sonnet | adaptive | OPM-6.1 |
-| OPM-6.7 | Preview-only gate | Run target/sensitivity/degraded cases with network/client/mirror spies and call-path scan. | AC OPM-6 evidenced; zero external/mirror effects | 0.25 pt | validation implementer, senior-code-reviewer | sonnet | extended | OPM-6.1 |
-| OPM-6.8 | Transport/error gate | Test missing SDK, startup, bounded inputs/events/errors, redaction, and base-package/CLI compatibility. | AC OPM-7 evidenced | 0.25 pt | validation implementer | sonnet | adaptive | OPM-6.1 |
-| OPM-6.9 **(descope candidate)** | Docs, CHANGELOG, deferred specs | Write user setup/operation guide, architecture/governance doc, `[Unreleased]` entry, remote-transport and live-writeback shaping specs; populate refs. | Docs match exact tool inventory and do not claim live qualification | 0.5 pt | documentation-writer, changelog-generator | haiku | adaptive | OPM-6.2..6.8 |
-| OPM-6.10 | Final exact-tree review | Run focused/full gates, duplicate-authority scan, docs/link validation, task-completion validator, then karen. | Tier 3 approval recorded on exact current tree | 0.25 pt | task-completion-validator, karen | opus | extended | OPM-6.9 |
+## Execution ledger
 
-**Quality gate**:
+Deviations and conservative choices are logged with rationale to
+`.claude/worknotes/research-foundry-operator-mcp/implementation-notes.md` and reviewed at each
+milestone boundary rather than halting on them. **Blockers still stop**: a failing test on the
+current work, an unsatisfiable declared artifact, an exhausted recovery path. Beyond those,
+mid-milestone halts are reserved for a **destructive** action, a **real scope change**, or **input
+only the operator has**.
 
-- **Revised gate (post-P1 retro):** `task-completion-validator` reviews the exact final tree, then
-  Karen reviews the **final tree only** (`OPM-6.10`). Karen's per-phase passes (P2, P4) duplicated
-  this final one; no separate per-phase Karen pass is run for P6.
-- **Descope candidate (`OPM-6.9`):** docs plus the two deferred shaping specs (OPM-DF-1, OPM-DF-2)
-  can move to a follow-up without reducing security coverage. This is the only scope cut available
-  in this plan that does not touch a gate.
+**Mode-D boundaries are non-negotiable** — always halt for explicit human approval: **auth ·
+payments/billing · schema migrations · data deletion · secret rotation · infrastructure**. No
+milestone here is expected to touch one; if one starts to, that is a real scope change and stops.
 
+## Field Notes (carry into every M1-M3 dispatch)
+
+Hard-won during P1/P2. These cost nothing to carry and each one has already burned a round.
+
+- **pytest `pythonpath` trap.** `pyproject.toml` sets `[tool.pytest.ini_options] pythonpath =
+  ["src"]`, inserted *ahead* of the `PYTHONPATH` env var, so a scratch-tree mutation sweep silently
+  tests the real worktree source and reports false negatives. Correct form:
+  `--override-ini="pythonpath=<scratch>/src"`; mirror `config/`, `schemas/`, and `templates/` into
+  the scratch root (`distribution_root()` resolves via `parents[2]`); purge stale `__pycache__`
+  every iteration (`PYTHONDONTWRITEBYTECODE=1`); always take a baseline first.
+  `python -c "import x; print(x.__file__)"` is **not** a sufficient check, and a `PYTHONPATH=$PWD/src`
+  prefix is decorative — it provides no isolation and is not evidence of a scratch-tree run.
+- **`FAILED` lines carry ANSI codes.** `grep "^FAILED"` returns 0 on a red suite. Match without
+  anchoring, or strip ANSI first, before concluding a suite is green.
+- **Run the suite yourself after every agent** (~2k tokens). A self-reported test result is not
+  evidence — this is how a fabricated transcript was caught.
+- **Reviewers write findings to disk**, to the ledger `.claude/findings/research-foundry-operator-mcp-findings.md`
+  only (no source, no tests). The ledger must not round-trip through the orchestrator context.
+- **Do not use phase-owner agents.** They cannot reliably dispatch nested `Task()` in this
+  environment, which caused direct implementation and false passes. Dispatch implementers directly.
+- **`/dev:execute-plan` silently skips non-roster agents** (observed with `api-designer`), treating
+  them as HITL. Confirm each intended agent actually ran; do not infer it from the absence of an
+  error.
+- **Codex is unavailable for this workstream's security lens.** `codex exec` refused the adversarial
+  security-audit framing under its safety classifier after a long reasoning trace. Policy refusal,
+  not config — do not retry. (Unrelated: pipe prompts via stdin; the argument form hangs.)
+- **Doc agents ship a haiku default that hard-errors here.** Dispatch `documentation-writer` and
+  `changelog-generator` at workhorse class.
 ## Structured Acceptance-Criteria Verification
 
-#### AC OPM-1: Preflight and confirmation bind exact authority
+**The PRD owns the narrative AC** — `.../PRDs/enhancements/research-foundry-operator-mcp-v1.md` §12
+carries AC OPM-1..7 in full with `target_surfaces`, `propagation_contract`, and `resilience`. Per
+`plan-doctrine.md` rule 4 that prose appears once; this plan owns the **proof**. This section maps
+each AC to its evidencing milestone; commands are in the
+[AC -> command -> evidence](#ac---command---evidence) matrix above.
 
-- target_surfaces:
-    - schemas/operator_mcp_operation.schema.yaml
-    - schemas/operator_mcp_confirmation.schema.yaml
-    - src/research_foundry/services/operator_mcp_policy.py
-- propagation_contract: Trusted actor/workspace, effective sensitivity, operation, canonical digest, idempotency key, policy snapshot, targets, and expiry are frozen before token minting and revalidated before manifest creation.
-- resilience: Missing identity, denial, expiry, replay, or any bound-field mismatch produces zero manifest and zero effect.
-- visual_evidence_required: false
-- verified_by: [OPM-6.2]
+| AC | What it asserts (one line — PRD §12 is authoritative) | Evidenced by |
+|---|---|---|
+| OPM-1 | Preflight and confirmation bind exact authority | M3 — confirmation adversarial matrix |
+| OPM-2 | Workspace and sensitivity precede lookup and execution | M3 — two-identity workspace/sensitivity matrix |
+| OPM-3 | Jobs are idempotent, cancelable, and resumable | M3 — H3 lifecycle recovery matrix |
+| OPM-4 | Closed tools delegate to canonical services | M3 — adapter introspection + handler call-path scan |
+| OPM-5 | Import and research stages preserve prerequisites and receipts | M3 — import/stage seam matrix |
+| OPM-6 | Writeback preview cannot execute or mirror | M3 — static + runtime negative proof |
+| OPM-7 | Transport, errors, and receipts stay bounded | M3 — transport/error bounds matrix |
 
-#### AC OPM-2: Workspace and sensitivity precede lookup and execution
-
-- target_surfaces:
-    - src/research_foundry/services/operator_mcp_policy.py
-    - src/research_foundry/services/agent_job_service.py
-    - src/research_foundry/services/source_cards.py
-- propagation_contract: Identity-derived workspace and strictest sensitivity gate operation lookup, attempts, adapters, events, receipts, and errors.
-- resilience: Wrong-workspace or above-threshold refs return a safe non-existence shape without derived detail.
-- visual_evidence_required: false
-- verified_by: [OPM-6.3]
-
-#### AC OPM-3: Jobs are idempotent, cancelable, and resumable
-
-- target_surfaces:
-    - schemas/operator_mcp_receipt.schema.yaml
-    - src/research_foundry/services/operator_operation_service.py
-    - src/research_foundry/services/agent_job_service.py
-- propagation_contract: Stable manifests coordinate bounded attempts, immutable effects, safe cancellation, and resume from the first incomplete action.
-- resilience: Exact replay returns prior state; conflicts and receipt corruption deny; completed effects never replay.
-- visual_evidence_required: false
-- verified_by: [OPM-6.4]
-
-#### AC OPM-4: Closed tools delegate to canonical services
-
-- target_surfaces:
-    - src/research_foundry/services/operator_tool_adapters.py
-    - src/research_foundry/services/swarm_service.py
-    - src/research_foundry/operator_mcp/server.py
-- propagation_contract: Each registered tool delegates through one named canonical service adapter and returns the common operation/receipt envelope.
-- resilience: Unknown tool/provider/adapter/path/URL-fetch/command input is invalid and never dispatched.
-- visual_evidence_required: false
-- verified_by: [OPM-6.5]
-
-#### AC OPM-5: Import and research stages preserve prerequisites and receipts
-
-- target_surfaces:
-    - src/research_foundry/services/operator_tool_adapters.py
-    - src/research_foundry/services/external_research_import.py
-    - src/research_foundry/services/verification.py
-    - src/research_foundry/services/writeback.py
-- propagation_contract: ERI import and canonical stage adapters retain service receipts, prerequisites, and provenance refs in exact operation effects.
-- resilience: Quarantine, missing input, or verify failure blocks dependent actions with a typed governed result.
-- visual_evidence_required: false
-- verified_by: [OPM-6.6]
-
-#### AC OPM-6: Writeback preview cannot execute or mirror
-
-- target_surfaces:
-    - src/research_foundry/services/writeback.py
-    - src/research_foundry/services/operator_tool_adapters.py
-    - src/research_foundry/operator_mcp/server.py
-- propagation_contract: Preview validates and renders only under operation staging without invoking live writeback, integration clients, or downstream mirrors.
-- resilience: Missing/degraded/review-required targets return reason codes and zero external/mirror effect.
-- visual_evidence_required: false
-- verified_by: [OPM-6.7]
-
-#### AC OPM-7: Transport, errors, and receipts stay bounded
-
-- target_surfaces:
-    - schemas/operator_mcp_error.schema.yaml
-    - schemas/operator_mcp_receipt.schema.yaml
-    - src/research_foundry/operator_mcp/server.py
-- propagation_contract: Local stdio tools return versioned bounded operation, status, event, receipt, and error envelopes with retry and audit-delivery dispositions.
-- resilience: Missing SDK yields one install hint; startup has no network/effect; internal errors are redacted and capped.
-- visual_evidence_required: false
-- verified_by: [OPM-6.8]
+The PRD's `verified_by` fields now carry these milestone references (the retired `OPM-6.x` task IDs
+no longer resolve). Every AC is evidenced **on one exact tree**; a material change to any invalidates
+prior approval for all.
 
 ## Risk Controls and Rollback
 
@@ -622,23 +701,16 @@ transport boundary is a frozen P5 obligation, folded into `OPM-5.4`'s acceptance
 | Optional dependency breakage | Lazy MCP import | Base package and missing-SDK tests | Remove/disable optional entrypoint |
 | Green suite over a real defect | Adversarial pass mandatory on every security-relevant phase; defect-class checklist in implementer prompts | Re-attack the fix, not just the symbol; mutation matrix proves revert-detection | Reopen the phase gate; never treat a passing suite as gate evidence |
 
-Rollback never deletes run artifacts, source cards, extraction cards, claim ledgers,
-reports, bundles, import receipts, operation manifests, effect receipts, audit events,
-or staged previews. Disable the MCP entrypoint/tool registration and leave durable
-state for explicit review.
+Rollback **never deletes** run artifacts, source/extraction cards, claim ledgers, reports, bundles,
+import receipts, operation manifests, effect receipts, audit events, or staged previews. Disable the
+MCP entrypoint/tool registration and leave durable state for explicit review.
 
 ## Validation Strategy
 
-### Focused implementation gates
-
-```bash
-./.venv/bin/python -m pytest tests/unit/test_operator_mcp_policy.py
-./.venv/bin/python -m pytest tests/unit/test_operator_operation_service.py
-./.venv/bin/python -m pytest tests/unit/test_operator_tool_adapters.py
-./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py
-./.venv/bin/python -m pytest tests/integration/test_operator_mcp_workspace_isolation.py
-./.venv/bin/python -m pytest tests/integration/test_operator_mcp_writeback_preview.py
-```
+> **Per-AC commands live in the [AC -> command -> evidence](#ac---command---evidence) matrix above —
+> the single home for verification detail.** This section carries only what the matrix does not: the
+> regression baseline and the negative-proof techniques. The pytest `pythonpath` trap and the ANSI
+> `FAILED` trap moved to **Field Notes**.
 
 ### Existing-regression gates
 
@@ -651,27 +723,14 @@ state for explicit review.
 flake8 src/research_foundry --select=E9,F63,F7,F82
 ```
 
-Exact test filenames must be reconciled against the current tree at execution; a
-missing planned file is not evidence of a pass. No owner/private corpus, remote
-transport, live writeback, deployment, or release test is implied by repository
-fixtures. Pre-existing and not to be chased: `tests/test_verification_pediatric_cds.py` and
+**Baseline**: 4258 passing on base `65d658d`; P2's candidate reached 4410 with the same 16 failing
+nodes, none on the operator surface. A milestone is green when the whole-suite delta is *only*
+additions — not when its own tests pass. Exact test filenames are reconciled against the current tree
+at execution; a missing planned file is not evidence of a pass. No owner/private corpus, remote
+transport, live writeback, deployment, or release test is implied by repository fixtures.
+Pre-existing and not to be chased: `tests/test_verification_pediatric_cds.py` and
 `tests/test_verification_seam001_gate_composition.py` fail to COLLECT under `-k` filtering
 (sibling `import test_claim_verifier`); present on base `65d658d`.
-
-### Scratch-tree and mutation-testing isolation (pythonpath trap)
-
-`pyproject.toml` sets `[tool.pytest.ini_options] pythonpath = ["src"]`, which pytest inserts AHEAD
-of the `PYTHONPATH` env var. A mutation sweep run against a scratch copy therefore silently tests
-the REAL worktree source and reports false negatives ("no test detects this defect"). The round-3
-reviewer hit this and nearly published a wrong conclusion.
-
-- Correct form: `--override-ini="pythonpath=<scratch>/src"`; mirror `config/`, `schemas/`, and
-  `templates/` into the scratch root (`distribution_root()` resolves via `parents[2]`); purge stale
-  `__pycache__`; always take a baseline first.
-- `python -c "import x; print(x.__file__)"` is NOT a sufficient check — it exercises the env var
-  that pytest then overrides.
-- Any `PYTHONPATH=$PWD/src` prefix is decorative and provides no isolation; do not treat it as
-  evidence of a scratch-tree run.
 
 ### Contract and negative-proof gates
 
@@ -684,7 +743,8 @@ reviewer hit this and nearly published a wrong conclusion.
 
 ## Documentation Finalization
 
-P6 updates:
+M3 updates (docs work is offload-eligible per `routing_constraints`; dispatch the doc agents at
+workhorse class — their haiku default hard-errors in this environment):
 
 - `docs/user/research-foundry-operator-mcp.md`: install optional dependency, start local stdio, tool inventory, preflight/confirmation, status/cancel/resume, receipt/error interpretation, preview-only writeback, troubleshooting.
 - `docs/dev/architecture/operator-mcp-governance.md`: identity/workspace/sensitivity, token binding, operation/effect receipts, AgentJob reuse, audit distinction, limits, threat boundary.
@@ -692,40 +752,47 @@ P6 updates:
 - `CHANGELOG.md` `[Unreleased]`: local Operator MCP and its preview-only limitation.
 - Deferred shaping specs for remote transport and live writeback.
 
-Documentation must link to Knowledge MCP, RPC, ERI, CARP, RAL/activation, RFUP, and
-Search Router instead of copying their authority contracts. It must label remote
-transport and live writeback `deferred`, and owner/private qualification
-`not_executed_owner_data_absent` unless real authorized evidence exists.
+Docs link to Knowledge MCP, RPC, ERI, CARP, RAL/activation, RFUP, and Search Router rather than
+copying their authority contracts, and must label remote transport and live writeback `deferred` and
+owner qualification `not_executed_owner_data_absent` absent real authorized evidence.
 
 ## Reviewer Gates and Execution Handoff
 
-- `task-completion-validator` reviews each phase against the exact current tree.
-- `karen` reviews P1 (exact-tree), P2 lifecycle (post-security), and the final feature candidate
-  (`OPM-6.10`, final tree only) — see "Revised gate structure (post-P1 retro)" above; the P4 pass is
-  removed (shared gate with P3).
+Per-milestone lens assignment is in "Revised gate structure"; the re-pass cap is in "Gate budget";
+dispatch mechanics are in "Field Notes". Not repeated here.
+
+- `task-completion-validator` reviews each milestone against the exact current tree.
+- `karen` reviews P1 (done, by owner acceptance), P2 lifecycle (post-security, **pending**), and the
+  final feature candidate at **M3, final tree only**. There is no per-milestone Karen pass on M1/M2.
 - Security review is mandatory for P1 identity/confirmation, P2 durability/atomicity (AC-mandated),
-  and P5 preview-negative proof. **Do not cut security on P1/P5 or Karen on the final tree.**
+  and **M2 preview-negative proof**. **Do not cut security on P1/M2 or Karen on the final tree.**
+- **Fresh-context verifiers, continued implementer sessions.** Reviewers must not inherit the
+  implementer's session — inherited-context validators rubber-stamp. Fix loops continue the
+  implementer's existing session rather than re-dispatching.
 - A material fix, schema change, tool-registry change, generated artifact, receipt change, or docs/evidence update invalidates prior exact-tree approval.
 - The integration owner serializes writes to `agent_job_service.py`, `agent_job_schemas.py`, `governance.py`, `audit_service.py`, `writeback.py`, operation registry, and server registry.
-- Phase progress is initialized only after this plan and its external entry gates are approved; this package creates no progress files now.
 - Implementation approval, metadata closeout, repository readiness, owner-held canary, deployment, release, remote authorization, and live writeback authorization are separate truths.
-- **Reviewers write findings to disk.** Mode-E reviewers are granted write access to the findings
-  ledger `.claude/findings/research-foundry-operator-mcp-findings.md` ONLY (no source, no tests).
-  The ledger must not round-trip through the orchestrator's context — this saves ~8k output per
-  round and removes a transcription-fidelity risk.
-- **Codex is unavailable for this workstream.** `codex exec` refused the adversarial
-  security-audit framing under its safety classifier after burning a long reasoning trace. This is
-  a policy refusal on their side, not a config problem — do not retry the cross-model security lens
-  here. (Separately: pipe prompts via stdin, not as an argument; the arg form hangs waiting on
-  stdin.)
-- **Do not use phase-owner agents.** They cannot reliably dispatch nested `Task()` in this
-  environment, which historically caused them to implement directly or emit false passes. Dispatch
-  implementers directly — this worked cleanly for P1.
-- **Independently re-run the suite after every agent.** It costs ~2k tokens and is how a
-  fabricated validation transcript was contradicted with real evidence. A reviewer's or
-  implementer's self-reported test output is not evidence.
 - **Open scope deviation queued for Karen:** `src/research_foundry/services/governance.py` was
   modified in round 2 (config `secret_patterns` now UNIONs with built-ins rather than replacing
   them). It is a declared serialization-barrier file outside P1's phase ownership. The change is
   strictly strengthening — config can only add detection surface. Reviewer recommends
   accept-with-conditions; adjudication is queued for Karen.
+
+### Execution handoff
+
+Provider and model are **dispatch-time** decisions resolved by `delegation-router` from
+`routing_constraints` in frontmatter — this handoff deliberately names no orchestrator model.
+
+> Execute: `/dev:execute-plan docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md`
+
+Before dispatch, the operator should know:
+
+1. **Blocker: the P2 re-gate (`OPM-2.G`) is open.** M1 waits on it. This is a **re-gate, not a
+   re-fix** — the implementation is complete and independently re-verified.
+2. **This plan lives on `main`; the code lives on `worktree-operator-mcp-v1`.** Rebase that branch
+   onto main before resuming so the executor reads these milestones and not the superseded P3-P6
+   phase sections.
+3. **MUST-stay-claude-primary**: confirmation/authorization semantics, the M2 preview negative
+   proof, and every adversarial security lens (Codex offload unavailable — see Field Notes).
+4. `required_artifacts` resolved clean on 2026-07-30 — all `available` in the SkillMeat catalog, so
+   no `batch_0` provisioning task is needed. Re-resolve if the catalog has moved.

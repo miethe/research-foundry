@@ -101,6 +101,24 @@ This is distinct from the whole-file-refactor Tier-2 override in `planning/SKILL
 
 **Application**: `wc -l` every file in scope at planning time. List files >2K lines in a plan-level **"High-Friction Surfaces"** note. Apply a ≥2× multiplier to each task touching one, and mandate the anti-blow guardrail prompt block (do-not-read-whole, grep -n + sed only, budget ≤40 tool uses, STOP-and-report-partial — see `.claude/specs/workflows/large-file-refactor-decomposition-spec.md`) for those tasks. Evidence: a ~5,100-line router drove 2–4× per task across an entire Tier-3 plan.
 
+### Context Class (C1-C4)
+
+H7 above is the specific case: a task touching a >2K-line file costs ≥2× its point estimate
+because of *context*, not behavior. **Context class is the generalization of H7** — points size
+*behavior*, context class sizes *agent context*, and it is the thing that actually predicts burn.
+Every milestone declares one.
+
+> **The C1-C4 table, the six drivers that pick a class, and the recalibration rule live in
+> exactly one place: [`plan-doctrine.md`](plan-doctrine.md) § Context class.** Read it there.
+> It is deliberately not copied here — a table maintained in two files drifts, and this skill's
+> own doctrine says doctrine lives in one place and everything else points at it.
+
+What this file owns is the *link* between the two sizing systems: run H1-H7 to size behavior,
+then declare a context class to size agent context. When they disagree — a low-point milestone
+that is cross-repo, or a high-point one confined to a single module — the context class is the
+better burn predictor. Evidence from the retro that produced the doctrine: an 18M-138M tokens-in
+spread **per point** across six plans whose per-task estimates were near-equal.
+
 ## Anti-Patterns
 
 | Anti-Pattern | Symptom | Fix |
@@ -113,6 +131,7 @@ This is distinct from the whole-file-refactor Tier-2 override in `planning/SKILL
 | No anchor | "Feels like a Medium" | Apply H5; cite a comparable completed feature |
 | Plumbing omission | DTOs, DI, OpenAPI, RLS implicit in "etc." | Apply H6; explicit 15–20% line item |
 | Huge-file glossing | Task touching a 5k-line file estimated at face points | Apply H7; 2× multiplier + High-Friction Surfaces note |
+| Context-class omission | Cross-repo/migration milestone estimated at face points, no context class declared | Declare a context class (C1-C4) per milestone; see `plan-doctrine.md` § Context class |
 
 ## Estimation Sanity Check Template
 
@@ -132,6 +151,7 @@ Insert this section into every implementation plan immediately after the Phase S
 **Anchor (H5)**: <feature-slug> cost <X pts>; this plan delta <±Y%>; justification: <...>
 **Plumbing budget (H6)**: <X pts> (~<Y%> of subtotal)
 **Huge-file touch (H7)**: <files >2K lines in scope + 2× applied? Y/N>
+**Context class (C1-C4)**: <declared per milestone? Y/N>
 
 **Bottom-up total**: <X pts>
 **Top-down intuition**: <Y pts>
@@ -146,6 +166,7 @@ Insert this section into every implementation plan immediately after the Phase S
 
 ## Related References
 
+- `.claude/skills/planning/references/plan-doctrine.md` — Claude-5-generation authoring doctrine; canonical source for the Context Class (C1-C4) table and the four authoring rules.
 - `.claude/skills/planning/references/subagent-assignments.md` — Agent assignments per task type.
 - `.claude/skills/planning/references/multi-model-guidance.md` — Model routing.
 - `.claude/skills/plan-review/SKILL.md` — Post-implementation retrospective workflow that feeds heuristic tuning.

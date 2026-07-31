@@ -20,9 +20,15 @@ to their route.
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from starlette.requests import Request
+if TYPE_CHECKING:
+    # Deferred: ``starlette`` (a ``serve``-extra dependency) must not be
+    # required to import this module at runtime — ``AuthIdentity`` is used
+    # by CLI-reachable services without the extra installed. Safe because
+    # ``from __future__ import annotations`` (above) makes all annotations
+    # lazy strings; this import only ever runs for static type checkers.
+    from starlette.requests import Request
 
 from research_foundry.auth_identity import AuthIdentity
 

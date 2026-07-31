@@ -89,9 +89,11 @@ for (const wave of waves) {
 
   report.push({ wave: wave.id, phases: waveResults.filter(Boolean) })
 
-  // Escalate if any phase's fix-loop exhausted without approval.
+  // Escalate if any phase's fix-loop exhausted its 2-cycle gate budget without approval. Per
+  // execution-doctrine.md rule 1, that 3rd failure against the same scope x lens does not mean
+  // "a human/Opus looks at it" — it auto-escalates to re-scope/redesign.
   if (waveResults.some(r => r?.escalate)) {
-    return { status: 'needs_opus', reason: 'reviewer_unresolved', report }
+    return { status: 'needs_rescope', reason: 'gate_budget_exhausted', report }
   }
 
   // NB: cross-wave worktree merge is Opus post-wave (no git in script — constraint 1).
@@ -107,6 +109,12 @@ return { status: 'complete', report }
   `files_affected` end up in the same batch.
 - Cross-wave git merges stay with Opus post-wave (constraint 1 — no git in script).
 - `waveFanout` returns an `ExecutionReport` conforming to `workflow-authoring-spec.md` §6.
+- **Escalation status changed under the Claude-5 doctrine.** A phase whose `fixLoop` exhausts its
+  2-cycle budget now returns `{ status: 'needs_rescope', reason: 'gate_budget_exhausted' }` — a
+  distinct status from `needs_opus`, not a rename of it. `needs_opus` still applies to its other
+  early-exit case (`modeBoundary`'s implicit Mode D hit, `reason: 'mode_d'`). Consumers of
+  `ExecutionReport.status` must branch on `needs_rescope` separately: it routes to re-scope/redesign
+  (execution-doctrine.md rule 1), not to an Opus look-and-continue.
 
 ---
 
@@ -146,8 +154,15 @@ async function reviewerGate(p, taskOut, tier) {
 - `reviewerType` is always an edit-less `agentType` (constraint 3). Never pass an inline prompt to a
   write-capable agent as a reviewer.
 - `VERDICT_SCHEMA` forces structured output — the agent retries on mismatch at the tool layer.
-- `reviewPrompt` and `fixPrompt` are author-supplied helpers that build the agent prompt string from
-  the phase and task results. They are not primitives.
+- `fixPrompt` is an author-supplied helper (not a primitive) that builds the fix agent's prompt from
+  `p` and `verdict.required_fixes`.
+- **`reviewPrompt(p, taskOut)` is now a defined contract, not an open-ended author-supplied helper**
+  (execution-doctrine.md rule 2, "Delta context, not the full stack"). It MUST assemble exactly: the
+  failure summary (present only on a re-pass — omit it on the first pass), the touched files (from
+  `taskOut[].files_affected`, never a full diff), and the AC actually in question for this phase. It
+  MUST NOT include the full plan, the cumulative diff, or the progress file. If a reviewer needs more
+  than that to judge one AC, the fix is to sharpen the AC (or the phase's `files_affected` scoping),
+  not to widen what `reviewPrompt` assembles.
 
 ---
 
@@ -163,12 +178,19 @@ async function fixLoop(p, taskOut, verdict, reviewerType) {
   let cycles = 0
 
   while (!verdict?.approved && cycles < 2 && budget.remaining() > 60_000) {
+    // Doctrine intent (execution-doctrine.md rule 3, "Continue; don't re-dispatch"): the fix agent
+    // should resume the SAME session that implemented this phase — cache-warm, context-live —
+    // instead of a fresh dispatch that re-ingests everything to relearn what that session already
+    // knew. See the GAP note below: written as a fresh `agent()` call because no session-resume
+    // primitive is confirmed to exist in this DSL today.
     await agent(fixPrompt(p, verdict.required_fixes), {
       phase: `Fix cycle ${cycles + 1}`,
       agentType: p.fix_agent || taskOut[0]?.assigned_to,
       model: p.model,
     })
 
+    // Fresh context for the verifier is correct as-is (rule 3) — always a new `agent()` call, never
+    // continued. See `adversarialVerify` below when a gate needs more than one fresh-context opinion.
     verdict = await agent(reviewPrompt(p, taskOut), {
       phase: 'Review',
       agentType: reviewerType,
@@ -189,8 +211,33 @@ async function fixLoop(p, taskOut, verdict, reviewerType) {
 ```
 
 **Notes**:
-- Hard cap: 2 cycles. After 2 failed cycles, `escalate: true` propagates to `waveFanout`, which
-  returns `{ status: 'needs_opus', reason: 'reviewer_unresolved' }`.
+- Hard cap: 2 cycles — this now **agrees** with execution-doctrine.md rule 1's gate budget ("2
+  re-passes, then re-scope"); the prose cap and the runtime cap were already the same number, so the
+  loop bound itself is unchanged. What changes is what happens once the cap is hit (see the
+  escalation note below) and how each cycle is dispatched (see the next note).
+- **Continue, don't re-dispatch — known gap, stated honestly.** The doctrine wants the fix agent to
+  resume the session that implemented the phase, not be re-spawned. This file's real primitive set
+  (`agent`, `parallel`, `pipeline`, `phase`, `log`, `args`, `budget`, `workflow` — the
+  anti-hallucination baseline at the top of this file) has **no confirmed session-resume/continuation
+  call**. The `agent()` invocation in the loop above is therefore written as a fresh dispatch per
+  cycle — that is the **honest fallback**, not the doctrine-preferred default, and this pattern
+  should not be read as already implementing continuation. Where the surrounding harness *does*
+  support it — e.g. a Tier 1 sprint's single `feature-sprint-executor` session under
+  `dev-execution/SKILL.md`'s Mode C flow ("fixes in the SAME session (continue, don't re-dispatch) —
+  cache-warm, context-live") — prefer that path over re-dispatching through this workflow-script
+  pattern. Flag this as an open item for whoever owns the workflow DSL: a real continuation primitive
+  would let this loop honor rule 3 as written.
+- **Reserve fresh context for the verifier (rule 3).** The reviewer re-run is correctly always a new
+  `agent()` call — that half of the pattern already matches doctrine. `adversarialVerify` (below) is
+  the same fresh-context-skeptic shape generalized to N reviewers; reach for it when a gate needs more
+  than one independent fresh-context opinion (e.g. a `security`-lens gate or an end-of-feature `karen`
+  pass) instead of composing an ad hoc multi-reviewer loop here.
+- **Escalation target changed.** After 2 failed cycles, `escalate: true` propagates to `waveFanout`,
+  which now returns `{ status: 'needs_rescope', reason: 'gate_budget_exhausted' }` — **not**
+  `needs_opus` / `reviewer_unresolved`. Per execution-doctrine.md rule 1, three failures against the
+  same scope × lens is evidence the *scope* is wrong, not that the fix was sloppy; the escalation
+  target is re-scope/redesign, not "a human/Opus looks at it." See the `waveFanout` notes above for
+  the updated consumer.
 - `budget.remaining() > 60_000` guard is mandatory (authoring-spec §10). Do not lower this threshold
   to shorten loops — it is a runaway guard, not a quality dial.
 - `p.fix_agent` overrides which specialist runs the fix; falls back to the first task's `assigned_to`.
@@ -208,6 +255,14 @@ full Agent Review Council run.
 // p: Phase.  tier: 1|2|3.
 // Returns the agentType string to pass to agent().
 function councilEscalation(p, tier) {
+  // gate_lens wins when the plan-optimizer assigned one. Without this branch the optimizer's
+  // "security is non-removable" invariant was advisory-only: it wrote gate_lens into the plan
+  // and nothing ever read it, so a Tier 2 phase over an R1–R7 surface silently got just
+  // task-completion-validator. See modes/plan-optimization.md + references/gate-risk-classes.md.
+  const lenses = p.gate_lens ?? []
+  if (lenses.includes('security')) return 'council-review'
+  if (lenses.includes('karen') || lenses.includes('karen-final-tree-only')) return 'karen'
+
   if (p.review_intensity === 'council') return 'council-review'
   if (tier === 3)                        return 'karen'
   return 'task-completion-validator'
@@ -224,6 +279,11 @@ function councilEscalation(p, tier) {
   `files_affected` includes API contracts.
 - `karen` is the adversarial reviewer for Tier 3 and core-path phases; `task-completion-validator`
   is the default for Tier 2 standard phases.
+- **Selection order is `gate_lens` first, then intensity/tier.** A phase carrying
+  `gate_lens: [security, …]` gets the security-capable reviewer regardless of tier — that is what
+  makes the plan-optimizer's non-removable-lens invariant real rather than advisory. Gate *budgets*
+  cap how many times a lens re-runs; they never remove a lens
+  (`references/execution-doctrine.md` § Frequency, not existence).
 
 ---
 
@@ -284,7 +344,11 @@ return { status: 'complete', findings: verified, synthesis }
 
 **When to use**: After a set of findings has been produced (by explore legs, a code review sweep, or
 a council run), spawn N independent skeptic agents to challenge each finding. A finding majority-refuted
-by skeptics is dropped. Increases confidence in survivors.
+by skeptics is dropped. Increases confidence in survivors. **Also the right shape for gate
+verification** (execution-doctrine.md rule 3 — fresh context belongs on the verifier, cross-linked
+from the `fixLoop` notes above): when a gate needs more than one independent fresh-context opinion —
+a `security`-lens gate, an end-of-feature `karen` pass — compose `reviewerGate`/`fixLoop` with this
+pattern instead of writing an ad hoc multi-reviewer loop.
 
 ```js
 // adversarialVerify — N skeptics per finding; majority-refute kills it.
@@ -509,9 +573,16 @@ function modeBoundary(wave, report) {
   }
 
   // Implicit Mode D: files_affected heuristic for high-risk paths.
+  // Must cover the FULL canonical Mode-D list (auth · payments/billing · schema migrations ·
+  // data deletion · secret rotation · infrastructure) — see
+  // `references/execution-doctrine.md`. The infra patterns were missing until 2026-07-30,
+  // so an infrastructure-only phase could proceed without an explicit `mode: D`.
   const HIGH_RISK_PATTERNS = [
     /auth/i, /payment/i, /billing/i, /migration/i, /alembic/i,
     /delete/i, /drop_table/i, /secret/i, /token/i,
+    /dockerfile/i, /docker-compose/i, /\.github\/workflows\//i, /terraform/i,
+    /\.tf$/i, /ansible/i, /helm/i, /k8s|kubernetes/i, /systemd|\.service$/i,
+    /bootstrap.*\.sh$/i, /deploy/i, /infra/i,
   ]
   const riskyPhase = wave.phases.find(p =>
     (p.files_affected ?? []).some(f =>
@@ -606,7 +677,7 @@ waveFanout
        └─ per phase (parallel):
             [serial batches]     (file-ownership via for loop + parallel within batch)
             reviewerGate         (selects reviewer via councilEscalation)
-              └─ fixLoop         (on rejection; escalates after 2 cycles)
+              └─ fixLoop         (on rejection; needs_rescope after 2 cycles, not needs_opus)
             trackerStep          (post-phase progress YAML update)
 ```
 
@@ -635,7 +706,7 @@ judgePanel                      (N attempts + M judges)
 |---|---|---|
 | `waveFanout` | `for`, `parallel` | `modeBoundary` before every wave |
 | `reviewerGate` | `agent` | Always edit-less `agentType` |
-| `fixLoop` | `while` | Cap 2 cycles; `budget.remaining() > 60_000` |
+| `fixLoop` | `while` | Cap 2 cycles → `needs_rescope`; `budget.remaining() > 60_000`; fresh `agent()` per cycle is a known continuation gap |
 | `councilEscalation` | — (pure routing) | `council` → ARC artifacts in verdict |
 | `exploreLegs` | `parallel`, `pipeline` | Verdict boundary stays with Opus |
 | `adversarialVerify` | `parallel` | Majority-refute drops finding |

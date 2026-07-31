@@ -3,7 +3,7 @@ schema_version: 1
 doc_type: decisions_block
 it_schema: 1 # Plan-frontmatter schema version (.claude/skills/planning/references/plan-frontmatter-schema.md).
 title: "Decisions Block: [Feature Name]"
-description: "High-level planning scaffold for feature estimation, phase boundaries, risk mapping, and model routing. Expand this via implementation-planner (sonnet) into a full PRD+Plan pair."
+description: "High-level planning scaffold for feature estimation, phase boundaries, risk mapping, and routing constraints. Expand this via implementation-planner (sonnet) into a full PRD+Plan pair."
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
 feature_slug: "[kebab-case-slug]"
@@ -160,27 +160,29 @@ graph LR
 
 ---
 
-## 6. Model Routing
+## 6. Routing Constraints
 
-<!-- OPUS FILLS: Model + effort (thinking budget) decisions per phase per agent role.
-     Reference .claude/config/multi-model.toml and model-selection-guide.
-     Format: phase + agent role → model / effort.
-     Examples:
-       - "P1 backend-architect: opus / low (no thinking needed; scope is clear)"
-       - "P2 python-backend-engineer: sonnet / medium (moderate reasoning for edge cases)"
-       - "P3 ui-engineer-enhanced: sonnet / low (straightforward component wiring)"
+<!-- OPUS FILLS: Constraints, never model ids (plan-doctrine.md rule 3 — no plan-time model or
+     agent pins). This section records WHICH CLASSES of work must stay claude-primary, WHAT is
+     offload-eligible, and the CAPABILITY BAR per phase. The orchestrator resolves the actual
+     provider/model at dispatch time via `delegation-router` against the live registry — a plan
+     that names a model id here is obsolete within days of authoring.
+     Format: phase → constraint. Examples:
+       - "P1 (schema/migrations): MUST stay claude-primary — merge-path correctness"
+       - "P2 (mechanical CRUD scaffolding): offload-eligible"
+       - "P3 (UI wireframing): capability bar = design/multimodal; no MUST-stay constraint"
 -->
 
-| Phase | Agent | Model | Effort | Rationale |
-|-------|-------|-------|--------|-----------|
-| P1 | [agent] | [opus\|sonnet\|haiku] | [none/low/medium/high] | [Why this model + effort] |
-| P2 | [agent] | [opus\|sonnet\|haiku] | [none/low/medium/high] | [Why this model + effort] |
-| P3 | [agent] | [opus\|sonnet\|haiku] | [none/low/medium/high] | [Why this model + effort] |
-| ... | ... | ... | ... | ... |
+| Phase | Routing Constraint | Rationale |
+|-------|--------------------|-----------|
+| P1 | [MUST-stay-claude-primary \| offload-eligible \| capability bar: <bar>] | [Why this constraint applies] |
+| P2 | [MUST-stay-claude-primary \| offload-eligible \| capability bar: <bar>] | [Why this constraint applies] |
+| P3 | [MUST-stay-claude-primary \| offload-eligible \| capability bar: <bar>] | [Why this constraint applies] |
+| ... | ... | ... |
 
-**Model Routing Notes**:
-- [Any cross-phase model fallbacks (if primary unavailable)]
-- [Any external model callouts (GPT, Gemini, etc.) and why]
+**Routing Constraint Notes**:
+- [Any phase whose constraint is contractual — "never offload merge-path correctness" — phrased as a constraint, never as a model id]
+- [Any cross-phase capability-bar escalation (e.g., a phase needs frontier-only reasoning) and why]
 
 ---
 
@@ -221,5 +223,5 @@ This decisions block expands into a full **Implementation Plan** using the templ
 - **Section 3 (Risks)**: Expand into monitoring/validation strategies per risk (tests, code review, staging validation, etc.).
 - **Section 4 (Estimation)**: Expand into detailed task list with points, dependencies, and critical-path analysis.
 - **Section 5 (Dependency Map)**: Expand into batch definitions and parallelization strategy per file-ownership rules.
-- **Section 6 (Model Routing)**: Propagate into task-level model/effort decisions in the plan's task table.
+- **Section 6 (Routing Constraints)**: Propagate into the plan's `routing_constraints` frontmatter list (constraints only — never model ids). Provider/model per leg is resolved at dispatch time by `delegation-router`, not authored here.
 - **Section 7 (OQs)**: Incorporate resolutions into architecture or design decisions sections of the plan.

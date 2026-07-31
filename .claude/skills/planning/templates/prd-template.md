@@ -40,6 +40,7 @@ decisions: [] # SHOULD. List of {decision, rationale, status}.
 success_metrics: [] # SHOULD. Measurable outcomes (mirror the §Success Metrics body section).
 agent_title: null # SHOULD. Short delegation title if the PRD maps directly to a delegatable node.
 agent_summary: null # SHOULD. One-line summary for an agent picking up this work.
+required_artifacts: [] # SHOULD. List of {type, name, skillmeat_ref, status, lifecycle, scope, note}. See plan-frontmatter-schema.md §5.7 + references/required-artifacts-guidance.md.
 ---
 
 # Feature Brief & Metadata

@@ -1,18 +1,20 @@
 # Agent Assignments
 
+> **Model policy:** [`docs/agentic-operator/MODEL-ROUTING.md`](../../../../docs/agentic-operator/MODEL-ROUTING.md) (§1.5 scorecard) is canonical. Model/effort tables in this file are derived convenience copies — when they disagree, MODEL-ROUTING wins; update it first, then re-derive here. Resolve provider/model per leg via the `delegation-router` skill; the platform skills (`ica-delegate`, `codex`, `gemini-cli`) only execute the decision.
+
 Complete guide for selecting the right agent for each task type.
 
 ## Quick Reference
 
 | Task Type | Agent | Model |
 |-----------|-------|-------|
-| Find files/patterns | codebase-explorer | Haiku |
-| Deep analysis | explore | Haiku |
+| Find files/patterns | codebase-explorer | Haiku 4.5 |
+| Deep analysis | explore | Haiku 4.5 |
 | Debug investigation | ultrathink-debugger | Sonnet |
 | React/UI components | ui-engineer-enhanced | Sonnet |
 | TypeScript backend | backend-typescript-architect | Sonnet |
 | Validation/review | task-completion-validator | Sonnet |
-| Most docs (90%) | documentation-writer | Haiku |
+| Most docs (90%) | documentation-writer | Haiku 4.5 |
 | Complex docs | documentation-complex | Sonnet |
 | AI artifacts | ai-artifacts-engineer | Sonnet |
 
@@ -22,7 +24,7 @@ Complete guide for selecting the right agent for each task type.
 
 #### codebase-explorer
 **Use for**: Finding files, patterns, similar implementations
-**Model**: Haiku (fast, cheap)
+**Model**: Haiku 4.5 (fast, cheap)
 **Examples**:
 - Find existing auth patterns
 - Locate component conventions
@@ -30,7 +32,7 @@ Complete guide for selecting the right agent for each task type.
 
 #### explore
 **Use for**: Deep analysis, understanding complex code
-**Model**: Haiku
+**Model**: Haiku 4.5
 **Examples**:
 - Understand data flow
 - Analyze architecture decisions
@@ -78,7 +80,7 @@ Complete guide for selecting the right agent for each task type.
 
 #### documentation-writer
 **Use for**: 90% of docs (READMEs, API docs, guides)
-**Model**: Haiku (fast, efficient)
+**Model**: Haiku 4.5 (fast, efficient)
 **Examples**:
 - Write README
 - Document API endpoints
@@ -152,8 +154,8 @@ Complete guide for selecting the right agent for each task type.
 
 ### Rule 2: Use Cheapest Sufficient Model
 
-- Pattern discovery: Haiku (codebase-explorer)
-- Documentation: Haiku (documentation-writer)
+- Pattern discovery: Haiku 4.5 (codebase-explorer)
+- Documentation: Haiku 4.5 (documentation-writer)
 - Implementation: Sonnet (ui-engineer-enhanced, backend-typescript-architect)
 
 ### Rule 3: Escalate When Needed
