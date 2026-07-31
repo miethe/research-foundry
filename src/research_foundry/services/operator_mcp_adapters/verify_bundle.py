@@ -17,18 +17,21 @@ result for this run" -- the two operation kinds are conceptually paired.
 verification (see module-level `_verify_prerequisites_met`'s own docstring
 for the traced evidence) -- it always returns a `VerificationResult` with
 `.passed`/`.exit_code` describing the verdict. `_run()` below therefore
-ALWAYS returns normally, regardless of `.passed` -- the adapter's bounded
-result carries `passed: False` plus the unsupported-claim summary when
-verification did not pass; the `OperatorAdapterResult` itself is `ok=True`.
-The one exception (`_verify_prerequisites_met` failing) is a genuinely
-*different* condition -- no report or no claim ledger exists at all, so
-there is nothing for `verify_report` to verify -- and is denied at the
-PREREQUISITE stage, before `ctx` is even constructed, with zero effects
-(see that function's own docstring for why this matters: `verify_report`'s
-bare-invocation path never raises for a missing report/ledger, but it DOES
-unconditionally call `rp.ensure_scaffold()` and write `reviews/
-verification.yaml`, neither of which should happen for a run with nothing
-meaningful to verify).
+ALWAYS returns normally when `verify_report` itself runs, regardless of
+`.passed` -- the adapter's bounded result carries `passed: False` plus the
+unsupported-claim summary when verification did not pass; the
+`OperatorAdapterResult` itself is `ok=True`. The one exception
+(`_verify_prerequisites_met` failing) is a genuinely *different*
+condition -- no report or no claim ledger exists at all, so there is
+nothing for `verify_report` to verify -- and RAISES inside `_run()` (see
+"Fix cycle 1" below for why this check moved from a pre-`ctx` denial into
+the action closure), which `run_or_replay`'s own exception-based failure
+channel (U1) turns into a governed `ok=False`/`reason_code="internal_error"`
+outcome -- `verify_report` itself is still never called for this case (see
+that function's own docstring for why that matters: its bare-invocation
+path never raises for a missing report/ledger, but it DOES unconditionally
+call `rp.ensure_scaffold()` and write `reviews/verification.yaml`, neither
+of which should happen for a run with nothing meaningful to verify).
 
 Note on the implementer contract's phrasing: D4 also names "quarantine" as
 a prerequisite-denial condition alongside missing report/claim ledger. A
@@ -54,11 +57,11 @@ swallows even a verification *crash* into the same "not verified" state
 (traced in `m1-remainder-unknowns.md` U2). This adapter therefore enforces
 the block itself, in two places:
 
-1. **Prerequisite stage** (`_bundle_prerequisites_met`, before `ctx` is
-   constructed): requires an existing, on-disk `reviews/verification.yaml`
-   whose `passed` field is `True` for this run. Absent, unparsable, or
-   non-passing -> deny `preflight_failed`, `build_bundle` is NEVER called,
-   zero effects.
+1. **Prerequisite check** (`_bundle_prerequisites_met`, INSIDE `_run()`,
+   after authorization -- see "Fix cycle 1" below): requires an existing,
+   on-disk `reviews/verification.yaml` whose `passed` field is `True` for
+   this run. Absent, unparsable, or non-passing -> the closure RAISES,
+   `writeback.build_bundle` is NEVER called for that request.
 2. **Live-path re-check** (`_run()`'s own body): after calling
    `writeback.build_bundle(run_id, verify=True, paths=...)`, this module
    inspects the returned `BundleResult.verified`. If it is `False` --
@@ -97,21 +100,55 @@ adapter).** Neither `invoke_verify` nor `invoke_bundle` accepts a
 `operator_mcp_adapters.resolve_local_sensitivity_ceiling`, exactly like
 every other adapter in this family.
 
-**H7 negative-fixture adaptation.** `run_plan.py`'s own H7 test compares an
-above-ceiling denial to a genuinely-*missing*-intent denial (both reach the
-guard stage). That comparison does not apply cleanly here: BOTH adapters'
-own prerequisite checks (missing report/ledger for `run.verify`; missing
-passing verification for `run.bundle`) intercept a target that does not
-exist yet, denying with `preflight_failed` BEFORE `ctx` -- and therefore
-the sensitivity ceiling -- is ever constructed (the exact same situation
-`swarm_start.py`'s own H7 test documents and adapts to, for the same
-reason: its own budget/timeout/profile preflight intercepts a missing run
-first). This module's test suite therefore follows `swarm_start.py`'s own
-precedent: compares an above-ceiling denial for a REAL, fully-prerequisite-
-satisfied target against a WRONG-WORKSPACE denial for the SAME real
-target -- both reach `ctx` and deny with the same byte-identical
-`not_found` shape (guard stage vs. rbac stage), proving the one-denial-
-shape guarantee without a target-existence confound.
+**H7 negative fixture.** Both adapters' H7 tests compare an above-ceiling
+denial for a REAL, prerequisite-satisfied target against a genuinely
+*missing* `run_id` -- the literal `run_plan.py` exemplar shape (see "Fix
+cycle 1" below for why an earlier revision of this module used a different,
+wrong-workspace comparison here instead, and why that substitution is no
+longer needed once F6 was fixed).
+
+**Fix cycle 1 (post-pregate review, F5 + F6).** Two HIGH findings from an
+independent adversarial re-read of this module:
+
+- **F5 -- explicit inputs escaped authorization.** `report_path`/
+  `claim_ledger_path` were forwarded to `verify_report` unchecked.
+  `verify_report`'s own explicit-path resolution accepts an absolute path
+  as-is if it exists, with no ownership/workspace check -- an authorized
+  caller for run A could supply an absolute path under run B (a DIFFERENT
+  run, possibly a different workspace) and `verify_report` would read B's
+  report, verify it, and write `verification_status` back into B's
+  `claim_ledger.yaml`. Fixed by `_explicit_path_within_run`: a PURELY
+  STRUCTURAL containment check (never queries whether the resolved foreign
+  path exists -- an existence oracle over data the caller may not be
+  entitled to see would itself be an F6-shaped leak) requiring both
+  explicit paths to resolve within the authorized run's own directory tree,
+  enforced inside `_run()` before `verify_report` is ever called.
+- **F6 -- prerequisite checks leaked target existence before
+  authorization.** Both `_verify_prerequisites_met`/
+  `_bundle_prerequisites_met` used to run BEFORE `ctx` was even constructed
+  (mirroring `swarm_start.py`'s own budget/timeout preflight shape) --
+  meaning an UNAUTHORIZED caller could distinguish a foreign run that HAS
+  the required artifacts (denies later, at the RBAC/guard stage, once `ctx`
+  is built) from one that does NOT (denied immediately, `preflight_failed`,
+  before authorization even ran) purely from the reason code, without ever
+  being authorized to observe that run's state at all. Fixed by moving BOTH
+  prerequisite checks INTO `_run()` -- they now execute only after
+  `base.run_pipeline`'s own fixed authorize -> consume -> execute order has
+  already authorized and durably consumed the operation; an unauthorized
+  caller is denied at the RBAC/guard stage exactly like any other
+  unauthorized target reference, before either prerequisite check ever
+  runs. Fixing F6 is what made the H7 comparison above possible again: a
+  genuinely missing `run_id` now denies through the SAME normal
+  authorization path (RBAC `not_found`, since its unresolvable
+  `resolved_target_workspaces` entry never matches the caller's identity)
+  that a real-but-too-sensitive run denies through (guard `not_found`) --
+  both reachable under `dry_run=True`, both reaching `ctx` before either
+  prerequisite check would ever run.
+
+Note: `_verify_prerequisites_met`/`_bundle_prerequisites_met` still return
+a `bool` (never raise themselves) -- only their CALL SITE changed, from a
+pre-`ctx` early return to a raise inside the action closure. Their own
+docstrings below are otherwise unchanged from Fix cycle 0.
 
 **Replay result-recovery gap (documented limitation, NOT fixed here, same
 shape as `run_plan.py`'s own).** On a genuine exact-replay of an ALREADY-
@@ -221,16 +258,42 @@ def _resolve_run_context(run_id: str, paths: FoundryPaths) -> _RunContext:
     return _RunContext(sensitivity, workspace_id)
 
 
-def _preflight_denial(reason_code: str) -> policy.PolicyDecision:
-    """Adapter-owned preflight denial -- an independent, narrow duplicate of
-    `operator_mcp_policy._check_preflight`'s own one-line construction, fed
-    to the SAME public `policy.build_error` every other denial in this
-    family goes through. Mirrors `swarm_start._preflight_denial` exactly
-    (not imported from there: that name is module-private to
-    `swarm_start.py`, and this module does not touch `operator_mcp_policy.py`
-    per the implementer contract's file-ownership boundary)."""
+def _explicit_path_within_run(run_root: Path, candidate: Path) -> bool:
+    """F5 fix: a PURELY STRUCTURAL containment check for a caller-supplied
+    explicit `report_path`/`claim_ledger_path` -- required to resolve inside
+    `run_root` (the authorized run's own directory tree) before it is ever
+    forwarded to `verify_report`.
 
-    return policy.PolicyDecision(False, "preflight", reason_code, retryable=True)
+    Mirrors `verify_report`'s own `_resolve_explicit_path` resolution ORDER
+    (absolute-as-is vs. run-relative) but is intentionally STRICTER: it
+    requires containment in BOTH cases, and does not honor `verify_report`'s
+    own cwd-relative fallback for a non-existent run-relative candidate at
+    all -- the process CWD is not workspace-scoped, so a caller has no
+    legitimate reason to reach it through this adapter.
+
+    Deliberately never queries whether the resolved path EXISTS -- only
+    `Path.resolve()`'s purely lexical/symlink normalization (which does not
+    require the target to exist). An existence check on a path outside the
+    authorized run would itself be an F6-shaped oracle: the caller would
+    learn something about a location they may not be entitled to observe
+    (whether it exists) merely by submitting it and reading the reason
+    code -- exactly the class of leak F6 fixed for the run's own
+    artifacts. Containment is checked on the fully-resolved path (`..`
+    traversal collapses before comparison), so a relative candidate like
+    `../other_run/reviews/verification.yaml` is denied the same as an
+    absolute foreign path."""
+
+    try:
+        run_root_resolved = run_root.resolve()
+        effective = candidate.resolve() if candidate.is_absolute() else (run_root / candidate).resolve()
+    except OSError as exc:
+        _logger.warning(
+            "operator_mcp_adapters.verify_bundle: explicit path resolution failed (%s) -- "
+            "denying (never a permissive default)",
+            type(exc).__name__,
+        )
+        return False
+    return effective == run_root_resolved or run_root_resolved in effective.parents
 
 
 def _verify_prerequisites_met(
@@ -366,9 +429,17 @@ def invoke_verify(
     A non-passing verification is a governed RESULT, not a denial: this
     function returns `ok=True` with `result["passed"] is False` when
     `verify_report` ran and produced a failing verdict (implementer
-    contract D4) -- it denies (`ok=False`) ONLY for a prerequisite failure
-    (no report/no claim ledger at all -- see `_verify_prerequisites_met`)
-    or the standard H7 above-ceiling guard.
+    contract D4) -- it denies (`ok=False`, always `reason_code=
+    "internal_error"`, via the exception channel inside `_run()`) for a
+    prerequisite failure (no report/no claim ledger at all -- see
+    `_verify_prerequisites_met`), an explicit `report_path`/
+    `claim_ledger_path` that escapes the authorized run's own directory
+    tree (F5 fix, see `_explicit_path_within_run`), or the standard H7
+    above-ceiling guard (that one denies earlier, at the guard stage, with
+    `reason_code="not_found"`, before `_run()` is ever invoked). See module
+    docstring's "Fix cycle 1" section: BOTH prerequisite checks now run
+    INSIDE `_run()`, after `base.run_pipeline` has already authorized and
+    durably consumed the operation -- never before `ctx` (F6 fix).
     """
 
     from research_foundry.services import verification
@@ -378,18 +449,6 @@ def invoke_verify(
     resolved_paths = paths or FoundryPaths.discover()
     sensitivity_ceiling = resolve_local_sensitivity_ceiling(resolved_paths)
     run_ctx = _resolve_run_context(run_id, resolved_paths)
-
-    # Prerequisite stage (implementer contract D4): missing report/claim
-    # ledger denies BEFORE `ctx` is even constructed, with zero effects --
-    # see `_verify_prerequisites_met`'s own docstring for why this cannot
-    # simply be "let verify_report run and report a failing check" (it would
-    # still write `reviews/verification.yaml` and create scaffold
-    # directories for a run with nothing to verify).
-    if not _verify_prerequisites_met(
-        run_id, resolved_paths, report_path=report_path, claim_ledger_path=claim_ledger_path
-    ):
-        decision = _preflight_denial("preflight_failed")
-        return base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now))
 
     effective_sensitivity = policy.resolve_effective_sensitivity(run_ctx.sensitivity)
 
@@ -429,8 +488,39 @@ def invoke_verify(
     captured: list["verification.VerificationResult"] = []
 
     def _run() -> ActionEffect:
-        # D4: ALWAYS returns normally, regardless of `.passed` -- a
-        # non-passing verdict is a governed RESULT, not raised as a failure.
+        # F6 fix: the prerequisite check now runs HERE -- after
+        # `base.run_pipeline` has already run `authorize_for_consumption` +
+        # `consume_and_create_operation`, i.e. only for an ALREADY-
+        # authorized caller -- never before `ctx` is constructed. An
+        # unauthorized caller for a foreign run is denied earlier, at the
+        # RBAC/guard stage, and never reaches this check at all.
+        if not _verify_prerequisites_met(
+            run_id, resolved_paths, report_path=report_path, claim_ledger_path=claim_ledger_path
+        ):
+            raise RuntimeError(
+                f"run.verify: prerequisites not met for run_id={run_id!r} -- no report "
+                "and/or no claim ledger; verify_report was never called"
+            )
+        # F5 fix: an explicit report_path/claim_ledger_path must resolve
+        # inside THIS run's own directory tree -- verify_report's own
+        # explicit-path resolution accepts an absolute path as-is with no
+        # ownership check, which let an authorized caller for this run
+        # reference a DIFFERENT run's (possibly different-workspace) report/
+        # ledger and have verify_report write verification_status back into
+        # that foreign ledger. See `_explicit_path_within_run`'s own
+        # docstring for why this is a purely structural check.
+        run_root = resolved_paths.run_paths(run_id).run
+        if report_path is not None and not _explicit_path_within_run(run_root, report_path):
+            raise RuntimeError(
+                "run.verify: report_path escapes the authorized run's own directory tree"
+            )
+        if claim_ledger_path is not None and not _explicit_path_within_run(run_root, claim_ledger_path):
+            raise RuntimeError(
+                "run.verify: claim_ledger_path escapes the authorized run's own directory tree"
+            )
+        # D4: ALWAYS returns normally past this point, regardless of
+        # `.passed` -- a non-passing verdict is a governed RESULT, not
+        # raised as a failure.
         result = verification.verify_report(
             run_id,
             report_path=report_path,
@@ -529,13 +619,15 @@ def invoke_bundle(
     structurally, exactly like every other adapter in this family.
 
     Requires an existing, on-disk PASSING `run.verify` result for `run_id`
-    (`_bundle_prerequisites_met`) -- absent or non-passing denies
-    `preflight_failed` BEFORE `ctx` is constructed, `writeback.build_bundle`
-    is NEVER called, zero effects. See module docstring's D5 section for the
-    live-path re-check this function also performs, and the one known
-    limitation (a losing race can still leave a draft `evidence_bundle.yaml`
-    on disk) that this task does NOT close (out of file-ownership:
-    `writeback.py`).
+    (`_bundle_prerequisites_met`) -- absent or non-passing denies (`ok=False`,
+    `reason_code="internal_error"`, via the exception channel inside
+    `_run()`) and `writeback.build_bundle` is NEVER called for that request.
+    See module docstring's "Fix cycle 1" section for why this check runs
+    INSIDE `_run()` (after authorization) rather than before `ctx` is
+    constructed, D5 for the live-path re-check this function also performs,
+    and the one known limitation (a losing race can still leave a draft
+    `evidence_bundle.yaml` on disk) that this task does NOT close (out of
+    file-ownership: `writeback.py`).
     """
 
     from research_foundry.services import writeback
@@ -545,13 +637,6 @@ def invoke_bundle(
     resolved_paths = paths or FoundryPaths.discover()
     sensitivity_ceiling = resolve_local_sensitivity_ceiling(resolved_paths)
     run_ctx = _resolve_run_context(run_id, resolved_paths)
-
-    # Prerequisite stage (implementer contract D5, point 1): no passing
-    # verification for this run denies BEFORE `ctx` is even constructed,
-    # `build_bundle` is NEVER invoked, zero effects.
-    if not _bundle_prerequisites_met(run_id, resolved_paths):
-        decision = _preflight_denial("preflight_failed")
-        return base.OperatorAdapterResult(ok=False, error=policy.build_error(decision, now=now))
 
     effective_sensitivity = policy.resolve_effective_sensitivity(run_ctx.sensitivity)
 
@@ -591,6 +676,16 @@ def invoke_bundle(
     captured: list["writeback.BundleResult"] = []
 
     def _run() -> ActionEffect:
+        # F6 fix: the prerequisite check now runs HERE -- after
+        # `base.run_pipeline` has already authorized and durably consumed
+        # the operation -- never before `ctx` is constructed. An
+        # unauthorized caller for a foreign run is denied earlier, at the
+        # RBAC/guard stage, and never reaches this check at all.
+        if not _bundle_prerequisites_met(run_id, resolved_paths):
+            raise RuntimeError(
+                f"run.bundle: no passing verification on record for run_id={run_id!r} -- "
+                "build_bundle was never called"
+            )
         result = writeback.build_bundle(run_id, verify=True, paths=resolved_paths)
         captured.append(result)
         if not result.verified:

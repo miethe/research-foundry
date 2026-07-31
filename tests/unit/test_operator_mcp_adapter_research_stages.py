@@ -293,6 +293,60 @@ def test_invoke_extract_denies_above_ceiling_h7_guard_stage_indistinguishable_fr
     assert ceiling_calls == [tmp_foundry, tmp_foundry]
 
 
+def test_invoke_extract_denies_preflight_failed_when_no_source_cards(
+    tmp_foundry: FoundryPaths, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F1 (checklist item 2, applied to run.extract): a run with ZERO
+    `sources/*.md` cards must DENY `preflight_failed`, never silently
+    succeed with `ExtractResult(cards=[], count=0)`. Proven with a spy: the
+    real `extraction.extract_run` must never be invoked at all -- a
+    zero-effect denial, not a governed-but-executed no-op.
+
+    Mints a REAL, valid confirmation (mirrors the `_result_matches_direct_`
+    tests' own pattern) so this reaches the same execution path a
+    successful call would -- without it, a pre-fix run would deny
+    `confirmation_missing` for an unrelated reason and never actually prove
+    F1 (the pre-fix bug only manifests once execution is reached)."""
+
+    run_id = _planned_run(tmp_foundry, sample_idea_text)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+
+    def _must_not_run(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("extract_run must never be called when sources are missing")
+
+    monkeypatch.setattr(extraction, "extract_run", _must_not_run)
+
+    run_ctx = research_stages._resolve_run_context(run_id, tmp_foundry)
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=research_stages.EXTRACT_OPERATION_KIND,
+        idempotency_key="idem-no-sources",
+        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("run", run_id),),
+        resolved_target_workspaces=(run_ctx.workspace_id,),
+        input_payload={"run_id": run_id, "model_profile": "rf_extract_cheap"},
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    result = research_stages.invoke_extract(
+        run_id=run_id,
+        idempotency_key="idem-no-sources",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "preflight_failed"
+    assert result.operation_id is None
+
+
 # ---------------------------------------------------------------------------
 # run.claim_map
 # ---------------------------------------------------------------------------
@@ -502,6 +556,98 @@ def test_invoke_claim_map_denies_above_ceiling_h7_guard_stage_indistinguishable_
     assert ceiling_calls == [tmp_foundry, tmp_foundry]
 
 
+def test_invoke_claim_map_denies_preflight_failed_when_no_extraction_cards(
+    tmp_foundry: FoundryPaths, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F1 -- reproduces the exact scenario both lenses found empirically: a
+    valid, owned run with ZERO extraction cards must DENY `preflight_failed`,
+    never return `ok=True, claims_total=0`. Proven with a spy: the real
+    `claim_mapping.build_claim_ledger` must never be invoked.
+
+    Mints a REAL, valid confirmation (see `test_invoke_extract_denies_
+    preflight_failed_when_no_source_cards`'s own docstring for why -- a
+    pre-fix run without one denies `confirmation_missing` and never
+    actually reaches, let alone proves, the F1 bug)."""
+
+    run_id = _planned_run(tmp_foundry, sample_idea_text)
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+
+    def _must_not_run(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("build_claim_ledger must never be called when extraction cards are missing")
+
+    monkeypatch.setattr(claim_mapping, "build_claim_ledger", _must_not_run)
+
+    run_ctx = research_stages._resolve_run_context(run_id, tmp_foundry)
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=research_stages.CLAIM_MAP_OPERATION_KIND,
+        idempotency_key="idem-no-cards",
+        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
+        sensitivity_ceiling="client_sensitive",
+        targets=(
+            policy.TargetRef("run", run_id),
+            policy.TargetRef("extraction_card", run_id),
+        ),
+        resolved_target_workspaces=(run_ctx.workspace_id, run_ctx.workspace_id),
+        input_payload={"run_id": run_id},
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    result = research_stages.invoke_claim_map(
+        run_id=run_id,
+        idempotency_key="idem-no-cards",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "preflight_failed"
+    assert result.operation_id is None
+
+
+def test_invoke_claim_map_denies_preflight_failed_for_unauthorized_caller_without_leaking_prerequisite_state(
+    tmp_foundry: FoundryPaths, tmp_path: Path, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F6 lesson applied here (not fixed in this file's `verify_bundle.py`
+    sibling, but the SAME leak this adapter must not reproduce): an
+    UNAUTHORIZED caller (wrong-workspace identity) must deny at RBAC
+    (`not_found`), never at `preflight_failed` -- even when the run in
+    question genuinely has zero extraction cards. If the new prerequisite
+    check ran BEFORE authorization, a caller could distinguish "no
+    extraction cards yet" (`preflight_failed`) from "not yours"
+    (`not_found`) by reason code alone; this proves that distinction is
+    unreachable for an unauthorized caller."""
+
+    run_id = _planned_run(tmp_foundry, sample_idea_text)
+    # Deliberately never extract -- this run genuinely has zero cards, so a
+    # pre-authorization prerequisite check WOULD deny preflight_failed here.
+    foreign_identity = AuthIdentity("mallory", "ws-other", ("owner",))
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: foreign_identity)
+
+    def _must_not_run(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("build_claim_ledger must never be called for an unauthorized caller")
+
+    monkeypatch.setattr(claim_mapping, "build_claim_ledger", _must_not_run)
+
+    result = research_stages.invoke_claim_map(
+        run_id=run_id,
+        idempotency_key="idem-foreign",
+        confirmation_record=None,
+        presented_token=None,
+        paths=tmp_foundry,
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "not_found"
+
+
 # ---------------------------------------------------------------------------
 # run.synthesize
 # ---------------------------------------------------------------------------
@@ -708,3 +854,64 @@ def test_invoke_synthesize_denies_above_ceiling_h7_guard_stage_indistinguishable
     assert above_ceiling_result.error == missing_run_result.error
 
     assert ceiling_calls == [tmp_foundry, tmp_foundry]
+
+
+def test_invoke_synthesize_denies_preflight_failed_when_no_claim_ledger(
+    tmp_foundry: FoundryPaths, tmp_path: Path, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F1 -- reproduces the exact scenario both lenses found empirically: a
+    valid, owned run with NO claim ledger must DENY `preflight_failed`,
+    never return `ok=True` with a fully "completed" placeholder report
+    (`synthesis._load_ledger` silently substitutes an empty ledger).
+    Proven with a spy: the real `synthesis.synthesize_report` must never be
+    invoked -- no placeholder report is ever written to disk.
+
+    Mints a REAL, valid confirmation (see `test_invoke_extract_denies_
+    preflight_failed_when_no_source_cards`'s own docstring for why -- a
+    pre-fix run without one denies `confirmation_missing` and never
+    actually reaches, let alone proves, the F1 bug)."""
+
+    run_id = _planned_run(tmp_foundry, sample_idea_text)
+    _extracted_run(tmp_foundry, run_id, tmp_path, _SAMPLE_FACT_TEXT)
+    # Deliberately never claim_map -- no claims/claim_ledger.yaml exists.
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+
+    def _must_not_run(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("synthesize_report must never be called when the claim ledger is missing")
+
+    monkeypatch.setattr(synthesis, "synthesize_report", _must_not_run)
+
+    run_ctx = research_stages._resolve_run_context(run_id, tmp_foundry)
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=research_stages.SYNTHESIZE_OPERATION_KIND,
+        idempotency_key="idem-no-ledger",
+        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
+        sensitivity_ceiling="client_sensitive",
+        targets=(
+            policy.TargetRef("run", run_id),
+            policy.TargetRef("claim_ledger", run_id),
+        ),
+        resolved_target_workspaces=(run_ctx.workspace_id, run_ctx.workspace_id),
+        input_payload={"run_id": run_id, "model_profile": "rf_synthesize_deep", "final": False, "llm": False},
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    result = research_stages.invoke_synthesize(
+        run_id=run_id,
+        idempotency_key="idem-no-ledger",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "preflight_failed"
+    assert result.operation_id is None
+    assert not tmp_foundry.run_paths(run_id).report_draft.exists()
+    assert not tmp_foundry.run_paths(run_id).report_final.exists()

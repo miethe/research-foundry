@@ -142,3 +142,131 @@ class every sibling adapter module (`run_plan.py:313`, `swarm_start.py:482`,
 - Did not fix `writeback.build_bundle`'s own non-blocking verify behavior (U2) or its bare
   `except Exception` swallowing a verify crash — out of file ownership, documented as a
   follow-up in the module docstring per §D5.
+
+---
+
+## Fix cycle 1 (post-pregate review, F5 + F6)
+
+Two independent adversarial lenses (gpt-5.6-terra + ICA claude-sonnet-5) re-read the tree and
+found two real HIGH defects in this leg's own files (`.claude/findings/
+m1-remainder-pregate-consolidated.md`). H6 ("`run.bundle` can report false success") was
+explicitly **refuted** by both lenses, and the §D5 prerequisite design was confirmed correct —
+only the pre-authorization *timing* of the prerequisite checks, and the unvalidated explicit-path
+sibling parameters, were the actual holes.
+
+### F5 — explicit inputs escaped authorization (fixed)
+
+`verify_report`'s own explicit-path resolution (`_resolve_explicit_path`) accepts an absolute
+path as-is if it exists, with **no ownership/workspace check at all**. An authorized caller for
+run A could pass an absolute `report_path`/`claim_ledger_path` under run B (a different run,
+possibly a different workspace); `verify_report` would read B's report, verify it under A's
+authorization, and write `verification_status` back into **B's** `claim_ledger.yaml` — with no
+policy target ever representing or authorizing those two parameters.
+
+**Fix**: `_explicit_path_within_run(run_root, candidate)` — a **purely structural** containment
+check (never queries whether the resolved foreign path *exists*, since that would itself be an
+F6-shaped existence oracle over data the caller isn't authorized to see). It resolves `candidate`
+exactly the way `verify_report` would (absolute-as-is, relative-against-run-dir) but requires the
+result to be contained within the authorized run's own directory tree in *both* cases, and does
+**not** honor `verify_report`'s own cwd-relative fallback at all (the process CWD isn't
+workspace-scoped either — no legitimate reason for a caller to reach it through this adapter).
+Applied inside `_run()`, before `verify_report` is ever called, for both `report_path` and
+`claim_ledger_path`.
+
+**Defect-class-checklist item 2 applied**: enumerated every other caller-supplied parameter
+`invoke_verify`/`invoke_bundle` forward into their canonical services for the same bypass shape.
+`invoke_verify` forwards `fail_on_unsupported` (bool, no reference semantics),
+`exact_passage_override` (str, validated against a closed 2-value vocabulary by
+`resolve_exact_passage_mode` itself — not a path/reference), and `evidence_judgment_bases` (list
+of str tags, not a path/reference) — none of these name another resource, so none admit the F5
+bypass shape. `invoke_bundle` forwards only `run_id`, which is already the sole authorized target.
+No sibling parameter beyond `report_path`/`claim_ledger_path` needed the same fix.
+
+### F6 — prerequisite checks leaked target existence before authorization (fixed)
+
+`_verify_prerequisites_met`/`_bundle_prerequisites_met` used to run **before** `ctx` was even
+constructed (mirroring `swarm_start.py`'s own budget/timeout preflight shape verbatim). This let
+an **unauthorized** caller distinguish a foreign run that HAS the required artifacts (fell through
+the pre-ctx check, denied later at the rbac/guard stage with `reason_code="not_found"`) from one
+that does NOT (denied immediately by the pre-ctx check, `reason_code="preflight_failed"`, before
+authorization ever ran) — an existence/state oracle over a run the caller has no claim to.
+
+**Fix**: moved BOTH prerequisite checks **inside `_run()`** — they now execute only after
+`base.run_pipeline`'s fixed authorize → consume → execute order has already authorized and
+durably consumed the operation. An unauthorized caller is denied at the RBAC/guard stage exactly
+like any other unauthorized target reference, before either prerequisite check ever runs; the
+prerequisite check still guarantees the canonical service (`verify_report`/`build_bundle`) is
+never invoked when unmet — only the *denial reason* changed, from a bespoke `preflight_failed`
+pre-`ctx` denial to the normal `run_or_replay` exception-based failure channel (U1), which yields
+`ok=False`/`reason_code="internal_error"` (matching `run_plan.py`'s own missing-intent
+precedent — an authorized-but-failing operation legitimately creates a real operation manifest,
+which is not itself a leak since it happens uniformly for every operation regardless of outcome).
+
+Fixing F6 is what let the **H7 tests revert to the literal exemplar comparison** (above-ceiling
+denial vs. a genuinely *missing* `run_id`, both `not_found`, both reachable under `dry_run=True`
+now that neither adapter's prerequisite check runs pre-authorization) instead of the earlier
+wrong-workspace substitute — exactly as flagged. Both H7 tests were rewritten accordingly
+(`test_invoke_verify_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing_run`,
+`test_invoke_bundle_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing_run`).
+
+### Regression tests added (5 new, all confirmed to fail pre-fix)
+
+- `test_invoke_verify_foreign_report_path_denies_and_does_not_touch_foreign_run` (F5)
+- `test_invoke_verify_foreign_claim_ledger_path_denies_and_does_not_touch_foreign_run` (F5)
+- `test_explicit_path_within_run_rejects_traversal_and_absolute_foreign_paths` (F5, direct unit
+  test of the guard itself — relative `../` traversal and an absolute foreign path)
+- `test_invoke_verify_foreign_run_state_does_not_leak_before_authorization_f6` (F6)
+- `test_invoke_bundle_foreign_run_state_does_not_leak_before_authorization_f6` (F6)
+
+Three pre-existing tests also had to change shape (not new regressions — the F6 fix moved their
+own denial off the `dry_run=True` path entirely, since `dry_run` never reaches `_run()`):
+`test_invoke_verify_missing_report_denies_after_authorization_zero_effects`,
+`test_invoke_bundle_denies_when_no_passing_verification_zero_effects`,
+`test_invoke_bundle_denies_when_prior_verification_failed_zero_effects` — all three now drive a
+real (non-dry-run) confirmation cycle and assert `reason_code="internal_error"` instead of a
+`dry_run=True` call asserting `reason_code="preflight_failed"`.
+
+**Pre-fix verification (as required)**: `git stash push -- src/.../verify_bundle.py` to restore
+the pre-fix module on disk (tests unchanged), ran `pytest -k "f6 or foreign_report_path or
+foreign_claim_ledger_path or explicit_path_within_run"` — all 5 new regression tests failed
+(`AssertionError: assert True is False` for the F5 tests and the two shape-mismatch prerequisite
+tests, `AttributeError: ... has no attribute '_explicit_path_within_run'` for the direct guard
+unit test, `AssertionError` on differing `reason_code`/`message` for the two F6 leak tests), then
+`git stash pop` to restore the fix. Real transcript excerpt:
+
+```
+FAILED tests/unit/test_operator_mcp_adapter_verify_bundle.py::test_invoke_verify_foreign_report_path_denies_and_does_not_touch_foreign_run - AssertionError: assert True is False
+FAILED tests/unit/test_operator_mcp_adapter_verify_bundle.py::test_invoke_verify_foreign_claim_ledger_path_denies_and_does_not_touch_foreign_run - AssertionError: assert True is False
+FAILED tests/unit/test_operator_mcp_adapter_verify_bundle.py::test_explicit_path_within_run_rejects_traversal_and_absolute_foreign_paths - AttributeError: module 'research_foundry.services.operator_mcp_adapters.ver...
+FAILED tests/unit/test_operator_mcp_adapter_verify_bundle.py::test_invoke_verify_foreign_run_state_does_not_leak_before_authorization_f6 - AssertionError: assert {'message': '...t_found', ...} == {'message': '..._f...
+FAILED tests/unit/test_operator_mcp_adapter_verify_bundle.py::test_invoke_bundle_foreign_run_state_does_not_leak_before_authorization_f6 - AssertionError: assert {'message': '...t_found', ...} == {'message': '..._f...
+```
+
+### Validation (real output, post-fix)
+
+```
+$ ./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_verify_bundle.py -q
+..................                                                      [100%]
+```
+(18 passed — 13 original + 5 new; visually confirmed no `FAILED`/red output, including with
+`| cat -v` to rule out ANSI-hidden failures per the "don't trust `grep ^FAILED`" instruction.)
+
+```
+$ ./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_verify_bundle.py tests/unit/test_operator_mcp_adapter_run_plan.py tests/unit/test_operator_mcp_adapter_swarm_start.py tests/unit/test_operator_mcp_adapter_base.py -q
+..............................................................................
+                                                                          [100%]
+```
+(47 passed, no failures.)
+
+`flake8 --select=E9,F63,F7,F82` on both files: clean (exit 0).
+
+### Module docstring updated
+
+`verify_bundle.py`'s module docstring now has a dedicated "Fix cycle 1 (post-pregate review, F5 +
+F6)" section spelling out both defects and fixes, plus a rewritten "H7 negative fixture" section
+pointing at the restored exemplar comparison. D4/D5 prose and both `invoke_*` docstrings were
+updated to describe the new post-authorization checkpoint ordering.
+
+No hard boundary was touched — `operator_mcp_policy.py`, `operator_operation_service.py`,
+`operator_cancel_resume_service.py`, `base.py`, `__init__.py`, and every canonical service
+(including `verification.py`) remain untouched by this fix cycle.

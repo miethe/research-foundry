@@ -35,6 +35,7 @@ from research_foundry.services import operator_mcp_policy as policy
 from research_foundry.services.operator_mcp_adapters import external_import
 from research_foundry.services.operator_operation_service import OperatorOperationService
 
+from tests.test_planning import _make_intent
 from tests.unit.test_external_research_interchange import build_packet
 from tests.unit.test_operator_mcp_adapter_run_plan import (  # noqa: F401
     _default_sensitivity_ceiling,
@@ -280,6 +281,64 @@ def test_invoke_denies_above_ceiling_for_cross_workspace_target(
         packet_dir=packet_dir,
         workspace_id="ws-not-mine",
         idempotency_key="idem-cross-workspace",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "not_found"
+
+
+# ---------------------------------------------------------------------------
+# F2 regression: `target_run_id` is a sibling parameter to `workspace_id`
+# that was never independently authorized. Before the fix, a caller could
+# supply their OWN correctly-matching `workspace_id` (passing H3) together
+# with a `target_run_id` belonging to a DIFFERENT workspace, and
+# `import_external_report` would still record import activity against that
+# foreign run (`external_research_import.py:611`) -- the guard that existed
+# (workspace_id re-derivation) simply did not cover this sibling input.
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_denies_foreign_target_run_id_despite_matching_workspace_id(
+    tmp_foundry: FoundryPaths, tmp_path: Path, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`workspace_id="ws-mine"` matches the configured identity and would
+    pass H3 on its own (see `test_invoke_denies_above_ceiling_for_cross_
+    workspace_target`, the mirror-image case). `target_run_id`, however,
+    points at a REAL run owned by a different workspace ("ws-other") --
+    this must now ALSO be denied, proving `target_run_id` is independently
+    authorized rather than riding through on `workspace_id`'s own check."""
+
+    identity = _IDENTITY  # workspace_id == "ws-mine"
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+    packet_dir = _blocked_packet(tmp_path)
+
+    from research_foundry.auth_identity import AuthIdentity
+    from research_foundry.services import planning
+
+    foreign_identity = AuthIdentity("carol", "ws-other", ("owner",))
+    intent_id, _ = _make_intent(sample_idea_text, sensitivity="personal", tmp_foundry=tmp_foundry)
+    foreign_run = planning.plan_run(
+        intent_id, profile="personal", identity=foreign_identity, paths=tmp_foundry
+    )
+
+    def _must_not_run(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError(
+            "import_external_report must never be called against a target_run_id "
+            "this identity does not own"
+        )
+
+    monkeypatch.setattr(eri_module, "import_external_report", _must_not_run)
+
+    result = external_import.invoke(
+        packet_dir=packet_dir,
+        workspace_id="ws-mine",
+        target_run_id=foreign_run.run_id,
+        idempotency_key="idem-foreign-target-run",
         confirmation_record=None,
         presented_token=None,
         dry_run=True,

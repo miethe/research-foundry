@@ -18,6 +18,7 @@ helper shape (capture -> triage -> plan -> ingest -> extract -> claim_map
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -106,6 +107,29 @@ def _mint_and_record(
     issued = policy.mint_confirmation(ctx, now=ids.now())
     op_service.record_confirmation(issued.record)
     return issued.record, issued.token
+
+
+def _bundle_ctx(run_id: str, idempotency_key: str, tmp_foundry: FoundryPaths) -> policy.PolicyContext:
+    """Builds the exact `ctx` `invoke_bundle` would construct internally for
+    `run_id` -- reused by every test that needs a REAL (non-dry-run)
+    confirmation cycle for `run.bundle` (Fix cycle 1 / F6: the prerequisite
+    check now runs post-authorization, so most `run.bundle` denial tests
+    need a full confirm cycle rather than `dry_run=True`)."""
+
+    run_ctx = verify_bundle._resolve_run_context(run_id, tmp_foundry)
+    return policy.PolicyContext.for_configured_operator(
+        operation_kind=verify_bundle.BUNDLE_OPERATION_KIND,
+        idempotency_key=idempotency_key,
+        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
+        sensitivity_ceiling="client_sensitive",
+        targets=(
+            policy.TargetRef("run", run_id),
+            policy.TargetRef("verification", run_id),
+        ),
+        resolved_target_workspaces=(run_ctx.workspace_id, run_ctx.workspace_id),
+        input_payload={"run_id": run_id},
+        paths=tmp_foundry,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -242,12 +266,16 @@ def test_invoke_verify_non_passing_is_ok_true_with_passed_false(
 # ---------------------------------------------------------------------------
 
 
-def test_invoke_verify_missing_report_denies_preflight_zero_effects(
+def test_invoke_verify_missing_report_denies_after_authorization_zero_effects(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A run that has been planned but never reached `run.synthesize` (no
-    report at all) denies at the PREREQUISITE stage -- `verify_report` is
-    NEVER called (no `reviews/verification.yaml` is written), per D4."""
+    report at all) denies -- `verify_report` is NEVER called (no `reviews/
+    verification.yaml` is written), per D4. Uses a REAL (non-dry-run)
+    confirmation cycle: since the F6 fix, this prerequisite check runs
+    INSIDE `_run()`, which `dry_run=True` never reaches at all -- only a
+    genuinely authorized, consumed operation exercises it (see module
+    docstring's "Fix cycle 1" section)."""
 
     monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
     cap = capture_idea(_IDEA, sensitivity="personal", paths=tmp_foundry)
@@ -260,21 +288,193 @@ def test_invoke_verify_missing_report_denies_preflight_zero_effects(
 
     monkeypatch.setattr(verification_module, "verify_report", _must_not_run)
 
+    run_ctx = verify_bundle._resolve_run_context(run_id, tmp_foundry)
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=verify_bundle.VERIFY_OPERATION_KIND,
+        idempotency_key="idem-verify-missing-report",
+        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("run", run_id),),
+        resolved_target_workspaces=(run_ctx.workspace_id,),
+        input_payload={"run_id": run_id, "fail_on_unsupported": True, "disposition": "internal_capture"},
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    record, token = _mint_and_record(ctx, op_service)
+
     result = verify_bundle.invoke_verify(
         run_id=run_id,
         idempotency_key="idem-verify-missing-report",
-        confirmation_record=None,
-        presented_token=None,
-        dry_run=True,
+        confirmation_record=record,
+        presented_token=token,
         paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
     )
 
     assert result.ok is False
     assert result.result is None
     assert result.error is not None
-    assert result.error["reason_code"] == "preflight_failed"
-    assert result.operation_id is None
+    assert result.error["reason_code"] == "internal_error"
+    # Unlike a pre-authorization denial, a real operation manifest IS
+    # created here (authorization already succeeded before the prerequisite
+    # check ran) -- this is expected and matches `run_plan.py`'s own
+    # missing-intent precedent, not a regression.
+    assert result.operation_id is not None
     assert not tmp_foundry.run_paths(run_id).verification.exists()
+
+
+# ---------------------------------------------------------------------------
+# run.verify -- F5 regression: explicit report_path/claim_ledger_path must
+# not escape the authorized run's own directory tree
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_verify_foreign_report_path_denies_and_does_not_touch_foreign_run(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F5 regression. Before the fix: an authorized caller for run A could
+    supply an ABSOLUTE `report_path` pointing at run B's own report -- a
+    DIFFERENT run, owned by a DIFFERENT workspace -- and `verify_report`
+    would happily read it (its own explicit-path resolution accepts an
+    absolute path as-is with no ownership check), verify it under A's
+    identity, and write `verification_status` back into B's
+    `claim_ledger.yaml`. This test FAILS pre-fix (foreign write succeeds,
+    `ok=True`) and PASSES post-fix (`ok=False`, B's ledger untouched) --
+    confirmed by running it against the pre-fix code cited in the pregate
+    finding (see this task's completion note for the verified pre-fix
+    failure transcript)."""
+
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+    run_a = _build_verified_run(tmp_foundry, identity=_IDENTITY, sensitivity="personal")
+
+    # Run B: a DIFFERENT run, owned by a DIFFERENT workspace/identity, with
+    # its own real report + ledger.
+    run_b = _build_verified_run(
+        tmp_foundry, identity=_IDENTITY_OTHER_WORKSPACE, sensitivity="personal"
+    )
+    rp_b = tmp_foundry.run_paths(run_b)
+    ledger_b_before = load_yaml(rp_b.claim_ledger)
+    assert ledger_b_before.get("verification_status") != "failed"
+    assert ledger_b_before.get("verification_status") != "passed"
+    assert not rp_b.verification.exists()
+
+    foreign_report_path = rp_b.report_draft if rp_b.report_draft.exists() else rp_b.report_final
+    assert foreign_report_path.exists()
+
+    run_ctx = verify_bundle._resolve_run_context(run_a, tmp_foundry)
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=verify_bundle.VERIFY_OPERATION_KIND,
+        idempotency_key="idem-verify-foreign-report-path",
+        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("run", run_a),),
+        resolved_target_workspaces=(run_ctx.workspace_id,),
+        input_payload={
+            "run_id": run_a,
+            "fail_on_unsupported": True,
+            "disposition": "internal_capture",
+            "report_path": str(foreign_report_path),
+        },
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    record, token = _mint_and_record(ctx, op_service)
+
+    result = verify_bundle.invoke_verify(
+        run_id=run_a,
+        idempotency_key="idem-verify-foreign-report-path",
+        confirmation_record=record,
+        presented_token=token,
+        report_path=foreign_report_path,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "internal_error"
+    # The hard assertion: B's own ledger/verification state must be
+    # UNTOUCHED -- no cross-run/cross-workspace write occurred.
+    assert not rp_b.verification.exists()
+    ledger_b_after = load_yaml(rp_b.claim_ledger)
+    assert ledger_b_after == ledger_b_before
+    # A's own verification record was never written either -- verify_report
+    # was never reached at all.
+    assert not tmp_foundry.run_paths(run_a).verification.exists()
+
+
+def test_invoke_verify_foreign_claim_ledger_path_denies_and_does_not_touch_foreign_run(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F5 regression, `claim_ledger_path` variant -- same vulnerability
+    shape, the OTHER explicit-path sibling parameter the finding named."""
+
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+    run_a = _build_verified_run(tmp_foundry, identity=_IDENTITY, sensitivity="personal")
+    run_b = _build_verified_run(
+        tmp_foundry, identity=_IDENTITY_OTHER_WORKSPACE, sensitivity="personal"
+    )
+    rp_b = tmp_foundry.run_paths(run_b)
+    ledger_b_before = load_yaml(rp_b.claim_ledger)
+    assert not rp_b.verification.exists()
+
+    run_ctx = verify_bundle._resolve_run_context(run_a, tmp_foundry)
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=verify_bundle.VERIFY_OPERATION_KIND,
+        idempotency_key="idem-verify-foreign-ledger-path",
+        effective_sensitivity=policy.resolve_effective_sensitivity(run_ctx.sensitivity),
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("run", run_a),),
+        resolved_target_workspaces=(run_ctx.workspace_id,),
+        input_payload={
+            "run_id": run_a,
+            "fail_on_unsupported": True,
+            "disposition": "internal_capture",
+            "claim_ledger_path": str(rp_b.claim_ledger),
+        },
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    record, token = _mint_and_record(ctx, op_service)
+
+    result = verify_bundle.invoke_verify(
+        run_id=run_a,
+        idempotency_key="idem-verify-foreign-ledger-path",
+        confirmation_record=record,
+        presented_token=token,
+        claim_ledger_path=rp_b.claim_ledger,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "internal_error"
+    assert not rp_b.verification.exists()
+    assert load_yaml(rp_b.claim_ledger) == ledger_b_before
+    assert not tmp_foundry.run_paths(run_a).verification.exists()
+
+
+def test_explicit_path_within_run_rejects_traversal_and_absolute_foreign_paths(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """Direct unit test of the F5 guard itself: relative traversal
+    (`../other/...`) and an absolute foreign path are both rejected; a path
+    genuinely inside the run's own tree is accepted."""
+
+    run_root = tmp_foundry.run_paths("rf_run_probe").run
+    run_root.mkdir(parents=True, exist_ok=True)
+
+    assert verify_bundle._explicit_path_within_run(run_root, run_root / "reviews" / "verification.yaml")
+    assert not verify_bundle._explicit_path_within_run(
+        run_root, Path("../other_run/reviews/verification.yaml")
+    )
+    assert not verify_bundle._explicit_path_within_run(
+        run_root, tmp_foundry.run_paths("rf_run_other").run / "reports" / "report_draft.md"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -314,9 +514,20 @@ def test_invoke_verify_dry_run_never_calls_verify_report(
 # ---------------------------------------------------------------------------
 
 
-def test_invoke_verify_denies_above_ceiling_h7_guard_stage_indistinguishable_from_wrong_workspace(
+def test_invoke_verify_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing_run(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Fix cycle 1 (F6): now that the prerequisite check no longer runs
+    before `ctx`, a genuinely missing `run_id` denies through the SAME
+    normal path (RBAC `not_found`, since its `resolved_target_workspaces`
+    entry is `None` and never matches the caller's identity) that a real,
+    too-sensitive run denies through (guard `not_found`) -- both reachable
+    under `dry_run=True`, both reaching `ctx` before either prerequisite
+    check would ever run. This is the literal `run_plan.py`/`swarm_start.py`
+    H7 exemplar comparison, restored now that F6 no longer forces a
+    wrong-workspace substitute (see module docstring's "Fix cycle 1" and
+    "H7 negative fixture" sections)."""
+
     monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
     run_id = _build_verified_run(tmp_foundry, sensitivity="personal")
 
@@ -356,29 +567,85 @@ def test_invoke_verify_denies_above_ceiling_h7_guard_stage_indistinguishable_fro
     assert above_ceiling_result.error["retryable"] is False
     assert "detail" not in above_ceiling_result.error
 
-    # Same real, prerequisite-satisfied run, wrong-workspace caller: denies
-    # at the EARLIER rbac stage, never reaching the guard/ceiling check --
-    # yet produces the byte-identical envelope (H6/H7 one-denial-shape
-    # guarantee, adapted per this module's own docstring: a genuinely-
-    # missing run is NOT a valid comparison here, since it would instead
-    # deny via this adapter's OWN prerequisite check with a DIFFERENT,
-    # deliberately distinct reason -- `preflight_failed` -- before the
-    # ceiling is ever reached).
-    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY_OTHER_WORKSPACE)
-    wrong_workspace_result = verify_bundle.invoke_verify(
-        run_id=run_id,
-        idempotency_key="idem-verify-above-ceiling-wrong-ws",
+    # A genuinely missing run_id -- F6 fix: the prerequisite check (which
+    # would previously deny this with a DIFFERENT, DISTINGUISHABLE reason,
+    # `preflight_failed`, before `ctx` even existed) no longer runs at all
+    # under dry_run -- this now denies at the EARLIER rbac stage (`ctx.
+    # resolved_target_workspaces` is `(None,)`, which never matches any
+    # caller identity), yet produces the byte-identical envelope.
+    missing_run_result = verify_bundle.invoke_verify(
+        run_id="does-not-exist-at-all-either",
+        idempotency_key="idem-verify-above-ceiling-missing",
         confirmation_record=None,
         presented_token=None,
         dry_run=True,
         paths=tmp_foundry,
     )
-    assert wrong_workspace_result.ok is False
-    assert wrong_workspace_result.error is not None
-    assert wrong_workspace_result.error["reason_code"] == "not_found"
-    assert above_ceiling_result.error == wrong_workspace_result.error
+    assert missing_run_result.ok is False
+    assert missing_run_result.error is not None
+    assert missing_run_result.error["reason_code"] == "not_found"
+    assert above_ceiling_result.error == missing_run_result.error
 
     assert ceiling_calls == [tmp_foundry, tmp_foundry]
+
+
+# ---------------------------------------------------------------------------
+# run.verify -- F6 regression: prerequisite state must not leak before
+# authorization
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_verify_foreign_run_state_does_not_leak_before_authorization_f6(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F6 regression. Before the fix, `_verify_prerequisites_met` ran BEFORE
+    `ctx`/authorization: an unauthorized caller (`_IDENTITY`, workspace
+    `ws-mine`) probing a FOREIGN run (owned by `ws-other`) that HAS the
+    required report+ledger would fall through the pre-ctx check and deny
+    later, at the rbac stage (`not_found`) -- while the SAME caller probing
+    a nonexistent/incomplete run would be denied IMMEDIATELY by the pre-ctx
+    check itself, with a DIFFERENT reason code (`preflight_failed`),
+    *before* authorization ever ran. The two reason codes let an
+    unauthorized caller learn whether a run they do not own has reached the
+    report+ledger stage. This test FAILS pre-fix (the two results differ)
+    and PASSES post-fix (both deny identically, at the rbac stage, since
+    the prerequisite check no longer runs for an unauthorized caller at
+    all -- see module docstring's "Fix cycle 1" section)."""
+
+    # A run owned by a DIFFERENT workspace, with a REAL report + ledger on
+    # disk -- exactly the state an unauthorized caller should not be able
+    # to distinguish from "does not exist".
+    run_foreign_with_artifacts = _build_verified_run(
+        tmp_foundry, identity=_IDENTITY_OTHER_WORKSPACE, sensitivity="personal"
+    )
+
+    # Caller authorized ONLY for `ws-mine` -- has no claim on either target
+    # below.
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+
+    result_foreign_with_artifacts = verify_bundle.invoke_verify(
+        run_id=run_foreign_with_artifacts,
+        idempotency_key="idem-f6-verify-foreign-with-artifacts",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+    result_nonexistent = verify_bundle.invoke_verify(
+        run_id="does-not-exist-f6-verify-probe",
+        idempotency_key="idem-f6-verify-nonexistent",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+
+    assert result_foreign_with_artifacts.ok is False
+    assert result_nonexistent.ok is False
+    assert result_foreign_with_artifacts.error is not None
+    assert result_nonexistent.error is not None
+    assert result_foreign_with_artifacts.error["reason_code"] == "not_found"
+    assert result_foreign_with_artifacts.error == result_nonexistent.error
 
 
 # ---------------------------------------------------------------------------
@@ -454,10 +721,13 @@ def test_invoke_verify_exact_retry_does_not_recall_verify_report(
 def test_invoke_bundle_denies_when_no_passing_verification_zero_effects(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A run with a report+ledger but NO prior `run.verify` at all denies
-    at the PREREQUISITE stage -- `writeback.build_bundle` is NEVER called,
-    so `evidence_bundle.yaml` is never written (the hard D5 AC: "unsupported
-    verification blocks dependent bundle action")."""
+    """A run with a report+ledger but NO prior `run.verify` at all denies --
+    `writeback.build_bundle` is NEVER called, so `evidence_bundle.yaml` is
+    never written (the hard D5 AC: "unsupported verification blocks
+    dependent bundle action"). Uses a REAL (non-dry-run) confirmation
+    cycle: since the F6 fix, this prerequisite check runs INSIDE `_run()`,
+    which `dry_run=True` never reaches at all (see module docstring's "Fix
+    cycle 1" section)."""
 
     monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
     run_id = _build_verified_run(tmp_foundry)
@@ -468,19 +738,24 @@ def test_invoke_bundle_denies_when_no_passing_verification_zero_effects(
 
     monkeypatch.setattr(writeback_module, "build_bundle", _must_not_run)
 
+    ctx = _bundle_ctx(run_id, "idem-bundle-no-verify", tmp_foundry)
+    op_service = OperatorOperationService(tmp_foundry)
+    record, token = _mint_and_record(ctx, op_service)
+
     result = verify_bundle.invoke_bundle(
         run_id=run_id,
         idempotency_key="idem-bundle-no-verify",
-        confirmation_record=None,
-        presented_token=None,
-        dry_run=True,
+        confirmation_record=record,
+        presented_token=token,
         paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
     )
 
     assert result.ok is False
     assert result.result is None
     assert result.error is not None
-    assert result.error["reason_code"] == "preflight_failed"
+    assert result.error["reason_code"] == "internal_error"
     assert not tmp_foundry.run_paths(run_id).evidence_bundle.exists()
 
 
@@ -488,8 +763,9 @@ def test_invoke_bundle_denies_when_prior_verification_failed_zero_effects(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A run WITH a `reviews/verification.yaml` on disk, but whose `passed`
-    field is `False`, also denies at the prerequisite stage -- non-passing
-    is treated the same as absent, never a permissive default."""
+    field is `False`, also denies -- non-passing is treated the same as
+    absent, never a permissive default. Uses a REAL (non-dry-run)
+    confirmation cycle for the same reason as the sibling test above."""
 
     monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
     run_id = _build_verified_run(tmp_foundry)
@@ -498,27 +774,32 @@ def test_invoke_bundle_denies_when_prior_verification_failed_zero_effects(
     # directly asserts the D5 "non-passing (not merely absent) also denies"
     # branch of `_bundle_prerequisites_met`.
     rp = tmp_foundry.run_paths(run_id)
-    record = load_yaml(rp.verification)
-    record["passed"] = False
-    dump_yaml(record, rp.verification)
+    record_yaml = load_yaml(rp.verification)
+    record_yaml["passed"] = False
+    dump_yaml(record_yaml, rp.verification)
 
     def _must_not_run(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("build_bundle must never be called for a non-passing prerequisite")
 
     monkeypatch.setattr(writeback_module, "build_bundle", _must_not_run)
 
+    ctx = _bundle_ctx(run_id, "idem-bundle-failed-verify", tmp_foundry)
+    op_service = OperatorOperationService(tmp_foundry)
+    record, token = _mint_and_record(ctx, op_service)
+
     result = verify_bundle.invoke_bundle(
         run_id=run_id,
         idempotency_key="idem-bundle-failed-verify",
-        confirmation_record=None,
-        presented_token=None,
-        dry_run=True,
+        confirmation_record=record,
+        presented_token=token,
         paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
     )
 
     assert result.ok is False
     assert result.error is not None
-    assert result.error["reason_code"] == "preflight_failed"
+    assert result.error["reason_code"] == "internal_error"
     assert not rp.evidence_bundle.exists()
 
 
@@ -623,9 +904,12 @@ def test_invoke_bundle_dry_run_never_calls_build_bundle(
 # ---------------------------------------------------------------------------
 
 
-def test_invoke_bundle_denies_above_ceiling_h7_guard_stage_indistinguishable_from_wrong_workspace(
+def test_invoke_bundle_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing_run(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Fix cycle 1 (F6): restored to the literal exemplar comparison, same
+    rationale as `run.verify`'s own sibling test above."""
+
     monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
     run_id = _build_verified_run(tmp_foundry, sensitivity="personal")
     verification_module.verify_report(run_id, fail_on_unsupported=False, paths=tmp_foundry)
@@ -668,21 +952,71 @@ def test_invoke_bundle_denies_above_ceiling_h7_guard_stage_indistinguishable_fro
     assert above_ceiling_result.error["reason_code"] == "not_found"
     assert "detail" not in above_ceiling_result.error
 
-    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY_OTHER_WORKSPACE)
-    wrong_workspace_result = verify_bundle.invoke_bundle(
-        run_id=run_id,
-        idempotency_key="idem-bundle-above-ceiling-wrong-ws",
+    missing_run_result = verify_bundle.invoke_bundle(
+        run_id="does-not-exist-at-all-either",
+        idempotency_key="idem-bundle-above-ceiling-missing",
         confirmation_record=None,
         presented_token=None,
         dry_run=True,
         paths=tmp_foundry,
     )
-    assert wrong_workspace_result.ok is False
-    assert wrong_workspace_result.error is not None
-    assert wrong_workspace_result.error["reason_code"] == "not_found"
-    assert above_ceiling_result.error == wrong_workspace_result.error
+    assert missing_run_result.ok is False
+    assert missing_run_result.error is not None
+    assert missing_run_result.error["reason_code"] == "not_found"
+    assert above_ceiling_result.error == missing_run_result.error
 
     assert ceiling_calls == [tmp_foundry, tmp_foundry]
+
+
+# ---------------------------------------------------------------------------
+# run.bundle -- F6 regression: prerequisite state must not leak before
+# authorization
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_bundle_foreign_run_state_does_not_leak_before_authorization_f6(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F6 regression, `run.bundle` variant. Before the fix, an unauthorized
+    caller could distinguish a foreign run WITH a passing verification
+    (falls through the pre-ctx check, denies later at rbac `not_found`)
+    from one WITHOUT (denied immediately, `preflight_failed`, before
+    authorization). Same fail-pre-fix/pass-post-fix shape as the `run.
+    verify` sibling test above."""
+
+    run_foreign_verified = _build_verified_run(
+        tmp_foundry, identity=_IDENTITY_OTHER_WORKSPACE, sensitivity="personal"
+    )
+    verification_module.verify_report(
+        run_foreign_verified, fail_on_unsupported=False, paths=tmp_foundry
+    )
+    assert load_yaml(tmp_foundry.run_paths(run_foreign_verified).verification)["passed"] is True
+
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY)
+
+    result_foreign_verified = verify_bundle.invoke_bundle(
+        run_id=run_foreign_verified,
+        idempotency_key="idem-f6-bundle-foreign-verified",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+    result_nonexistent = verify_bundle.invoke_bundle(
+        run_id="does-not-exist-f6-bundle-probe",
+        idempotency_key="idem-f6-bundle-nonexistent",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+
+    assert result_foreign_verified.ok is False
+    assert result_nonexistent.ok is False
+    assert result_foreign_verified.error is not None
+    assert result_nonexistent.error is not None
+    assert result_foreign_verified.error["reason_code"] == "not_found"
+    assert result_foreign_verified.error == result_nonexistent.error
 
 
 # ---------------------------------------------------------------------------

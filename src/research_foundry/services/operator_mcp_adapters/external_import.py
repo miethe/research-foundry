@@ -49,6 +49,30 @@ arguments -- that function's own documented "no signal supplied" fail-closed
 default (the STRICTEST label) -- rather than trusting any caller-supplied
 guess about content it has not yet examined.
 
+**`target_run_id` is a sibling-parameter authorization gap (F2 fix).** A
+caller-declared `workspace_id` is re-derived and independently checked by
+H3's RBAC gate (see above), but `target_run_id` -- a DISTINCT, optional
+reference to a pre-existing run that `import_external_report` records
+import activity against (`external_research_import.py:611`) -- was
+previously never authorized at all: only `workspace_id` (the packet's OWN
+declared workspace) was threaded into `resolved_target_workspaces`. A caller
+could therefore supply their own `workspace_id` (which passes H3) together
+with a `target_run_id` belonging to an entirely different workspace, and the
+canonical service would still record import activity against that foreign
+run. When `target_run_id` is supplied, this adapter now ALSO resolves ITS
+OWN owning workspace from its already-governed `run.yaml` -- the SAME
+read-only, fail-closed-to-`None` pattern `source_ingest._resolve_run_
+context`/`swarm_start._resolve_run_context` use for the identical field --
+and declares it as a second `TargetRef("run", target_run_id)`, whose
+resolved owning workspace is threaded into `resolved_target_workspaces`
+alongside the packet's. H3's existing per-entry RBAC loop
+(`_check_identity_and_rbac`, unmodified) then denies unless BOTH the
+packet's declared workspace AND the target run's real owning workspace
+match the one configured operator identity -- a missing/foreign/malformed
+target run resolves to `None` and denies with the SAME `not_found` shape
+every other target-authorization denial in this family gets (no
+distinguishing leak).
+
 **Known limitation, not fixed here (out of this task's file ownership).**
 Both `import_external_report` and `operator_mcp_adapters/base.py` are
 outside this leg's file-ownership boundary. On a genuine exact-replay of an
@@ -61,6 +85,7 @@ gap" `run_plan.py`/`swarm_start.py` already report for their own targets.
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Mapping
@@ -75,12 +100,40 @@ from research_foundry.services.operator_cancel_resume_service import (
     OperatorCancelResumeService,
 )
 from research_foundry.services.operator_operation_service import OperatorOperationService
+from research_foundry.yamlio import load_yaml
 
 from . import base
+
+_logger = logging.getLogger(__name__)
 
 __all__ = ["OPERATION_KIND", "ExternalReportImportAdapter", "ADAPTER", "invoke"]
 
 OPERATION_KIND = "external_report.import"
+
+
+def _resolve_run_workspace_id(run_id: str, paths: FoundryPaths) -> str | None:
+    """Read-only, best-effort lookup of `run_id`'s own declared
+    `workspace_id` field (from `run.yaml`) -- swallows EVERY exception
+    (missing run, malformed YAML, filesystem error) and resolves to `None`
+    on ANY failure, including a non-dict document or a non-string/blank
+    field -- never a permissive fallback. Mirrors
+    `source_ingest._resolve_run_context`/`swarm_start._resolve_run_context`'s
+    identical field resolution (F2 fix, module docstring)."""
+
+    try:
+        run_doc = load_yaml(paths.run_paths(run_id).run_yaml)
+    except Exception as exc:
+        _logger.warning(
+            "operator_mcp_adapters.external_import: run.yaml lookup failed (%s) for "
+            "target_run_id=%s -- resolving owning workspace to None (deny, never a fallback)",
+            type(exc).__name__,
+            run_id,
+        )
+        return None
+    if not isinstance(run_doc, dict):
+        return None
+    workspace_id = run_doc.get("workspace_id")
+    return workspace_id if isinstance(workspace_id, str) and workspace_id else None
 
 
 def _target_ref_for(packet_dir: str, workspace_id: str) -> str:
@@ -167,18 +220,28 @@ def invoke(
     # produce the SAME canonical digest (mirrors run_plan.py's own rationale).
     input_payload = {k: v for k, v in input_payload.items() if v is not None}
 
+    targets: list[policy.TargetRef] = [policy.TargetRef("import_packet", target_ref)]
+    # H3: the caller's OWN declared workspace_id, exactly as supplied --
+    # never trusted outright (see module docstring). The independent RBAC
+    # re-derivation inside `_check_identity_and_rbac` is what actually
+    # enforces this can only ever be the one configured operator's own
+    # workspace.
+    resolved_target_workspaces: list[str | None] = [workspace_id]
+    if target_run_id is not None:
+        # F2 fix (module docstring): target_run_id is a DISTINCT target the
+        # canonical service records import activity against -- it must be
+        # independently authorized, never merely echoed through because
+        # workspace_id (a sibling, unrelated parameter) already checked out.
+        targets.append(policy.TargetRef("run", target_run_id))
+        resolved_target_workspaces.append(_resolve_run_workspace_id(target_run_id, resolved_paths))
+
     ctx = policy.PolicyContext.for_configured_operator(
         operation_kind=OPERATION_KIND,
         idempotency_key=idempotency_key,
         effective_sensitivity=effective_sensitivity,
         sensitivity_ceiling=sensitivity_ceiling,
-        targets=(policy.TargetRef("import_packet", target_ref),),
-        # H3: the caller's OWN declared workspace_id, exactly as supplied --
-        # never trusted outright (see module docstring). The independent
-        # RBAC re-derivation inside `_check_identity_and_rbac` is what
-        # actually enforces this can only ever be the one configured
-        # operator's own workspace.
-        resolved_target_workspaces=(workspace_id,),
+        targets=tuple(targets),
+        resolved_target_workspaces=tuple(resolved_target_workspaces),
         input_payload=input_payload,
         paths=resolved_paths,
     )

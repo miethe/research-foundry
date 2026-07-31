@@ -33,14 +33,38 @@ to `None` and denies at the RBAC stage (H3) with the SAME `not_found` shape
 an above-ceiling-sensitivity denial gets (H6/H7) -- never a distinguishing
 leak.
 
+**Confirmation binds `content` via digest, not raw text (F4 fix).** Raw
 `content` is deliberately excluded from the canonical `input_payload` this
-module builds (it is still forwarded to `ingest_source` on the live path,
-unchanged): `PolicyContext.canonical_digest()` hashes `input_payload`
+module builds -- `PolicyContext.canonical_digest()` hashes `input_payload`
 verbatim, and embedding caller-supplied free text there would both risk the
 capability stage's 64KiB payload-size gate for a large extraction and
 reintroduce packet/content-derived text into a hashed, potentially-logged
 structure -- the same convention `ImportOutcome.safe_dict()` already follows
-for the sibling `external_report.import` adapter.
+for the sibling `external_report.import` adapter. Instead, a `sha256`
+`content_digest` of `content` (plus `extra_limitations` and
+`created_by_agent`, both short/bounded so included verbatim) IS bound into
+`input_payload`, and therefore into `canonical_digest()`. A confirmation
+minted for one `content` value cannot be replayed against a different one:
+`invoke()` recomputes `content_digest` from whatever `content` the live call
+actually supplies, so a mismatched `content` yields a mismatched canonical
+digest, and the confirmation stage denies with `confirmation_mismatch`
+before `_run()` -- and therefore before `ingest_source` -- is ever reached.
+
+**`effective_sensitivity` is resolved structurally from the target run, not
+from the caller (F3 fix).** The caller-supplied `sensitivity` parameter is
+still forwarded to `ingest_source` unchanged -- it is the CONTENT
+classification the new source card itself is filed under, exactly as before
+-- but it is never what the ceiling guard (`_check_guard`, comparing
+`ctx.effective_sensitivity` against `ctx.sensitivity_ceiling`) evaluates. A
+caller cannot self-attest their way past the local sensitivity ceiling by
+mislabeling `sensitivity="public"` on genuinely sensitive content: the
+operation's `effective_sensitivity` is instead read from the TARGET run's
+own already-governed `run.yaml` `sensitivity` field, the same read-only,
+fail-closed-to-`None` pattern `swarm_start._resolve_run_context` uses for
+the identical field (module docstring's "run target / cross-workspace gate"
+section, above) -- a missing/foreign/malformed run resolves to `None`,
+which `policy.resolve_effective_sensitivity` fails closed to the STRICTEST
+label, never a permissive fallback value.
 """
 
 from __future__ import annotations
@@ -72,12 +96,23 @@ __all__ = ["OPERATION_KIND", "SourceIngestAdapter", "ADAPTER", "invoke"]
 OPERATION_KIND = "source.ingest"
 
 
-def _resolve_run_workspace_id(run_id: str, paths: FoundryPaths) -> str | None:
-    """Read-only, best-effort lookup of `run_id`'s own declared
-    `workspace_id` field (from `run.yaml`) -- swallows EVERY exception
-    (missing run, malformed YAML, filesystem error) and resolves to `None`
-    on ANY failure, including a non-dict document or a non-string/blank
-    field -- never a permissive fallback. Mirrors
+@dataclass(frozen=True)
+class _RunContext:
+    """Read-only, best-effort resolution of everything `source.ingest` needs
+    from the target run's OWN already-governed state -- both fields are
+    `None` on ANY resolution failure (missing run, malformed `run.yaml`,
+    non-dict document, non-string/blank field), never a permissive
+    fallback. Mirrors `swarm_start._resolve_run_context`'s identical
+    `workspace_id`/`sensitivity` field resolution."""
+
+    workspace_id: str | None
+    sensitivity: str | None
+
+
+def _resolve_run_context(run_id: str, paths: FoundryPaths) -> _RunContext:
+    """See `_RunContext`'s own docstring. Swallows EVERY exception (missing
+    run, malformed YAML, filesystem error) and resolves BOTH fields to
+    `None` on ANY failure -- never a permissive fallback. Mirrors
     `swarm_start._resolve_run_context`'s identical field resolution."""
 
     try:
@@ -85,15 +120,19 @@ def _resolve_run_workspace_id(run_id: str, paths: FoundryPaths) -> str | None:
     except Exception as exc:
         _logger.warning(
             "operator_mcp_adapters.source_ingest: run.yaml lookup failed (%s) for "
-            "run_id=%s -- resolving owning workspace to None (deny, never a fallback)",
+            "run_id=%s -- resolving owning workspace and sensitivity to None "
+            "(deny, never a fallback)",
             type(exc).__name__,
             run_id,
         )
-        return None
+        return _RunContext(None, None)
     if not isinstance(run_doc, dict):
-        return None
+        return _RunContext(None, None)
     workspace_id = run_doc.get("workspace_id")
-    return workspace_id if isinstance(workspace_id, str) and workspace_id else None
+    workspace_id = workspace_id if isinstance(workspace_id, str) and workspace_id else None
+    sensitivity = run_doc.get("sensitivity")
+    sensitivity = sensitivity if isinstance(sensitivity, str) else None
+    return _RunContext(workspace_id, sensitivity)
 
 
 def _result_to_dict(result: "source_cards.IngestResult") -> dict[str, Any]:
@@ -149,14 +188,25 @@ def invoke(
     resolved_paths = paths or FoundryPaths.discover()
     sensitivity_ceiling = resolve_local_sensitivity_ceiling(resolved_paths)
 
-    run_workspace_id = _resolve_run_workspace_id(run_id, resolved_paths)
-    # The caller-declared sensitivity of the ARTIFACT this operation is
-    # about to create is the only sensitivity signal available here (there
-    # is no pre-existing source card to read a real one from, unlike
-    # run_plan.py's target-intent lookup) -- an unrecognized label already
-    # fails closed to the strictest via resolve_effective_sensitivity's own
-    # contract, so no separate validation is needed here.
-    effective_sensitivity = policy.resolve_effective_sensitivity(sensitivity)
+    run_ctx = _resolve_run_context(run_id, resolved_paths)
+    run_workspace_id = run_ctx.workspace_id
+    # F3 fix: effective_sensitivity (what the ceiling guard evaluates) is
+    # resolved STRUCTURALLY from the target run's own already-governed
+    # `run.yaml` -- never from the caller-supplied `sensitivity` parameter
+    # (that value is still forwarded to `ingest_source` below as the new
+    # source card's own content classification, unchanged; see module
+    # docstring's "effective_sensitivity is resolved structurally" section).
+    # A missing/foreign/malformed run resolves to None here, which
+    # resolve_effective_sensitivity fails closed to the STRICTEST label.
+    effective_sensitivity = policy.resolve_effective_sensitivity(run_ctx.sensitivity)
+
+    # F4 fix: bind content (via digest, never raw text -- see module
+    # docstring), extra_limitations, and created_by_agent into the canonical
+    # payload the confirmation digest covers. Every input that reaches
+    # `ingest_source` below must be bound here; a confirmation minted
+    # without content (or for different content) must not authorize
+    # executing WITH content.
+    content_digest = hashlib.sha256(content.encode("utf-8")).hexdigest() if content else None
 
     input_payload: dict[str, Any] = {
         "locator": locator,
@@ -166,6 +216,9 @@ def invoke(
         "title": title,
         "fetch": fetch,
         "extraction_status": extraction_status,
+        "content_digest": content_digest,
+        "extra_limitations": extra_limitations,
+        "created_by_agent": created_by_agent,
     }
     # PolicyContext.canonical_digest() hashes input_payload verbatim -- drop
     # None-valued optionals so two callers who both omit the same optional

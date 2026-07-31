@@ -16,6 +16,7 @@ policy`'s identity fixtures.
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 from pathlib import Path
 from typing import Any
@@ -54,11 +55,35 @@ def _planned_run(tmp_foundry: FoundryPaths, text: str) -> str:
     return result.run_id
 
 
-def _basic_ctx(tmp_foundry: FoundryPaths, *, run_id: str, idempotency_key: str) -> policy.PolicyContext:
+def _basic_ctx(
+    tmp_foundry: FoundryPaths, *, run_id: str, idempotency_key: str, content: str | None = None
+) -> policy.PolicyContext:
     """Builds the EXACT SAME canonical `PolicyContext` `source_ingest.
-    invoke()` constructs internally for a call with every optional omitted,
-    so a confirmation minted against it binds to the SAME canonical digest
-    `invoke()` recomputes internally."""
+    invoke()` constructs internally for a call with every optional omitted
+    apart from `content`, so a confirmation minted against it binds to the
+    SAME canonical digest `invoke()` recomputes internally.
+
+    `content` is bound in via its `sha256` digest (F4 fix, never the raw
+    text -- see `source_ingest`'s own module docstring), and
+    `effective_sensitivity` is `"personal"` because `_planned_run` always
+    plans against a `sensitivity="personal"` intent, which
+    `source_ingest.invoke()` now reads STRUCTURALLY from the target run's
+    own `run.yaml` (F3 fix), not from any caller-supplied `sensitivity`
+    parameter -- callers here still pass no explicit `sensitivity`, so the
+    value happens to be the same string, but for a different reason than
+    before this fix."""
+
+    content_digest = hashlib.sha256(content.encode("utf-8")).hexdigest() if content else None
+    payload: dict[str, Any] = {
+        "locator": "https://example.com/test-source",
+        "run_id": run_id,
+        "source_type": "other",
+        "sensitivity": "personal",
+        "fetch": False,
+        "created_by_agent": "rf_source_carder",
+    }
+    if content_digest is not None:
+        payload["content_digest"] = content_digest
 
     return policy.PolicyContext.for_configured_operator(
         operation_kind=source_ingest.OPERATION_KIND,
@@ -67,13 +92,7 @@ def _basic_ctx(tmp_foundry: FoundryPaths, *, run_id: str, idempotency_key: str) 
         sensitivity_ceiling="client_sensitive",
         targets=(policy.TargetRef("run", run_id),),
         resolved_target_workspaces=("ws-mine",),
-        input_payload={
-            "locator": "https://example.com/test-source",
-            "run_id": run_id,
-            "source_type": "other",
-            "sensitivity": "personal",
-            "fetch": False,
-        },
+        input_payload=payload,
         paths=tmp_foundry,
     )
 
@@ -101,7 +120,7 @@ def test_invoke_result_matches_direct_ingest_call(
 
     monkeypatch.setattr(source_cards_module, "ingest_source", _spy_ingest_source)
 
-    ctx = _basic_ctx(tmp_foundry, run_id=run_id, idempotency_key="idem-equivalence")
+    ctx = _basic_ctx(tmp_foundry, run_id=run_id, idempotency_key="idem-equivalence", content=_SAMPLE_CONTENT)
     op_service = OperatorOperationService(tmp_foundry)
     issued = policy.mint_confirmation(ctx, now=ids.now())
     op_service.record_confirmation(issued.record)
@@ -130,6 +149,87 @@ def test_invoke_result_matches_direct_ingest_call(
     assert result.result["extraction_status"] == direct.extraction_status
     assert result.result["degraded"] is False
     assert result.result["canonical_refs_available"] is True
+
+
+# ---------------------------------------------------------------------------
+# F4 regression: confirmation-binding bypass via omitted `content`.
+#
+# Before the fix, `content` (plus `extra_limitations`/`created_by_agent`) was
+# omitted from the canonical `input_payload` the confirmation digest covers,
+# so a confirmation minted for NO content (or benign content) would still
+# authorize executing WITH arbitrary replacement content -- `ingest_source`
+# forwarded `content` unchanged regardless of what the confirmation actually
+# committed to. This is the inversion of what
+# `test_invoke_result_matches_direct_ingest_call` used to assert inline (it
+# minted a confirmation without `content` at all, then invoked WITH content
+# and asserted SUCCESS -- pinning the bypass rather than testing the parity
+# contract). That test above now mints its confirmation WITH matching
+# `content` (a real parity case); THIS test isolates the mismatch case and
+# asserts it now DENIES.
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_denies_when_confirmed_content_differs_from_supplied_content(
+    tmp_foundry: FoundryPaths, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identity = _IDENTITY
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+    run_id = _planned_run(tmp_foundry, sample_idea_text)
+
+    captured_content: list[Any] = []
+    real_ingest_source = source_cards_module.ingest_source
+
+    def _spy_ingest_source(*args: Any, **kwargs: Any) -> Any:
+        captured_content.append(kwargs.get("content"))
+        return real_ingest_source(*args, **kwargs)
+
+    monkeypatch.setattr(source_cards_module, "ingest_source", _spy_ingest_source)
+
+    # Mint a confirmation against the EXACT payload shape the pre-fix
+    # adapter built for a call with `content=None` -- deliberately NOT
+    # `_basic_ctx` (which now builds the POST-fix shape, including
+    # `created_by_agent`/`content_digest`, and would mismatch on its own
+    # regardless of `content`, masking the specific defect this test proves
+    # was fixed). This is the exact scenario the previously-pinned assertion
+    # in `test_invoke_result_matches_direct_ingest_call` exercised inline:
+    # mint without `content`, then invoke WITH content.
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=source_ingest.OPERATION_KIND,
+        idempotency_key="idem-content-mismatch",
+        effective_sensitivity=policy.resolve_effective_sensitivity("personal"),
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("run", run_id),),
+        resolved_target_workspaces=("ws-mine",),
+        input_payload={
+            "locator": "https://example.com/test-source",
+            "run_id": run_id,
+            "source_type": "other",
+            "sensitivity": "personal",
+            "fetch": False,
+        },
+        paths=tmp_foundry,
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    issued = policy.mint_confirmation(ctx, now=ids.now())
+    op_service.record_confirmation(issued.record)
+
+    # Present that confirmation, but supply real content on the live call.
+    result = source_ingest.invoke(
+        locator="https://example.com/test-source",
+        run_id=run_id,
+        idempotency_key="idem-content-mismatch",
+        confirmation_record=issued.record,
+        presented_token=issued.token,
+        content=_SAMPLE_CONTENT,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "confirmation_mismatch"
+    assert captured_content == [], "ingest_source must never be reached with mismatched content"
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +287,7 @@ def test_exact_retry_does_not_duplicate_source_card(
 
     monkeypatch.setattr(source_cards_module, "ingest_source", _counting_ingest_source)
 
-    ctx = _basic_ctx(tmp_foundry, run_id=run_id, idempotency_key="idem-retry")
+    ctx = _basic_ctx(tmp_foundry, run_id=run_id, idempotency_key="idem-retry", content=_SAMPLE_CONTENT)
     op_service = OperatorOperationService(tmp_foundry)
     issued = policy.mint_confirmation(ctx, now=ids.now())
     op_service.record_confirmation(issued.record)
@@ -218,6 +318,59 @@ def test_exact_retry_does_not_duplicate_source_card(
 
 
 # ---------------------------------------------------------------------------
+# F3 regression: `effective_sensitivity` must be resolved from the target
+# run's OWN `run.yaml`, never from the caller-supplied `sensitivity`
+# parameter. Before the fix, a caller under a below-"personal" ceiling could
+# mislabel `sensitivity="public"` on a source destined for a genuinely
+# "personal"-sensitivity run and the guard stage would compare the caller's
+# own permissive claim against the ceiling -- always passing. This run is
+# real and owned by this identity, so the ONLY thing that can now cause a
+# denial is the run's OWN structurally-resolved sensitivity ("personal",
+# from `_planned_run`'s `sensitivity="personal"` intent) exceeding the
+# forced "public" ceiling -- the caller's `sensitivity="public"` claim must
+# have no bearing on this outcome.
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_denies_caller_mislabeled_public_sensitivity_on_sensitive_run(
+    tmp_foundry: FoundryPaths, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identity = _IDENTITY
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    ceiling_double, ceiling_calls = _recording_ceiling("public")
+    from research_foundry.services import operator_mcp_adapters as adapters_pkg
+
+    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", ceiling_double)
+
+    run_id = _planned_run(tmp_foundry, sample_idea_text)  # real run, sensitivity="personal"
+
+    def _must_not_run(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("ingest_source must never be called past a fail-open sensitivity guard")
+
+    monkeypatch.setattr(source_cards_module, "ingest_source", _must_not_run)
+
+    result = source_ingest.invoke(
+        locator="https://example.com/test-source",
+        run_id=run_id,
+        idempotency_key="idem-mislabeled-sensitivity",
+        confirmation_record=None,
+        presented_token=None,
+        # The caller's own self-attested claim -- BELOW the run's real
+        # "personal" sensitivity. Before the fix, this caller-supplied value
+        # was what the guard stage evaluated, so this would have PASSED.
+        sensitivity="public",
+        dry_run=True,
+        paths=tmp_foundry,
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "not_found"
+    assert ceiling_calls == [tmp_foundry]
+
+
+# ---------------------------------------------------------------------------
 # H7 defect fix: an above-ceiling target denies at the guard stage, with the
 # SAME `not_found` shape a genuinely-missing run gets (H3) (D1)
 # ---------------------------------------------------------------------------
@@ -226,9 +379,11 @@ def test_exact_retry_does_not_duplicate_source_card(
 def test_invoke_denies_above_ceiling_h7_guard_stage_indistinguishable_from_missing_run(
     tmp_foundry: FoundryPaths, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """With the locally configured ceiling resolved to `"public"` and a
-    caller-declared `sensitivity="client_sensitive"` (one rank above), a
-    REAL run this identity owns is denied at the guard stage (H7). A
+    """With the locally configured ceiling resolved to `"public"`, a REAL
+    run this identity owns (structurally-resolved sensitivity "personal",
+    per `_planned_run`) is denied at the guard stage (H7) regardless of the
+    caller-declared `sensitivity="client_sensitive"` parameter (F3 fix: that
+    parameter no longer feeds the guard comparison at all). A
     genuinely-missing run denies at the rbac stage instead (H3: its owning
     workspace cannot be resolved) -- `build_error`'s own documented
     one-denial-shape guarantee (H6) means both envelopes are byte-identical
@@ -325,6 +480,9 @@ def test_non_default_identity_workspace_threads_through_to_ingest_source(
             "source_type": "other",
             "sensitivity": "personal",
             "fetch": False,
+            "created_by_agent": "rf_source_carder",
+            # F4 fix: content is bound in via digest, never raw text.
+            "content_digest": hashlib.sha256(_SAMPLE_CONTENT.encode("utf-8")).hexdigest(),
         },
         paths=tmp_foundry,
     )

@@ -5,7 +5,7 @@ doc_type: progress
 prd: research-foundry-operator-mcp
 feature_slug: research-foundry-operator-mcp
 phase: 4
-status: in_progress
+status: pending
 created: '2026-07-28'
 updated: '2026-07-31'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
@@ -19,34 +19,54 @@ contributors:
 - task-completion-validator
 tasks:
 - id: OPM-4.1
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - ERI-5.G
   - OPM-2.4
   estimate: 1 pt
+  started: 2026-07-31T00:30Z
+  completed: 2026-07-31T01:20Z
+  evidence:
+  - commit: fcfcd89
+  - test: tests/unit/test_operator_mcp_adapter_external_import.py
 - id: OPM-4.2
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-4.1
   estimate: 1 pt
+  started: 2026-07-31T00:30Z
+  completed: 2026-07-31T01:20Z
+  evidence:
+  - commit: fcfcd89
+  - test: tests/unit/test_operator_mcp_adapter_source_ingest.py
 - id: OPM-4.3
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-4.2
   estimate: 1.5 pts
+  started: 2026-07-31T00:30Z
+  completed: 2026-07-31T01:20Z
+  evidence:
+  - commit: fcfcd89
+  - test: tests/unit/test_operator_mcp_adapter_research_stages.py
 - id: OPM-4.4
-  status: pending
+  status: completed
   assigned_to:
   - python-backend-engineer
   dependencies:
   - OPM-4.3
   estimate: 1 pt
+  started: 2026-07-31T00:30Z
+  completed: 2026-07-31T01:20Z
+  evidence:
+  - commit: fcfcd89
+  - test: tests/unit/test_operator_mcp_adapter_verify_bundle.py
 - id: OPM-4.5
   status: pending
   assigned_to:
@@ -70,10 +90,10 @@ parallelization:
   batch_5:
   - OPM-4.5
 total_tasks: 5
-completed_tasks: 0
+completed_tasks: 4
 in_progress_tasks: 0
 blocked_tasks: 0
-progress: 0
+progress: 80
 ---
 
 # Phase 4 Progress — Import and Research-Stage Adapters
