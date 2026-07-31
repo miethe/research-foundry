@@ -1,3 +1,15 @@
+---
+title: "M2 security gate — findings"
+schema_version: 2
+doc_type: report
+report_category: findings
+status: complete
+created: 2026-07-31
+updated: 2026-07-31
+feature_slug: research-foundry-operator-mcp
+plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
+---
+
 # M2 formal security gate — Operator MCP (fix cycle 1 tree, `b4c335c`)
 
 Reviewer: senior-code-reviewer (Mode E). Tree: `worktree-operator-mcp-v1` @ `b4c335c`.

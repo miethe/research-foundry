@@ -1,3 +1,15 @@
+---
+title: "M1 remainder pre-gate review — ICA lens"
+schema_version: 2
+doc_type: report
+report_category: findings
+status: complete
+created: 2026-07-31
+updated: 2026-07-31
+feature_slug: research-foundry-operator-mcp
+plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
+---
+
 # M1-remainder pre-gate review — `fcfcd89` (import + six research-stage adapters)
 
 Reviewer: independent code-review pass (no fixes applied). Scope: the four new adapter

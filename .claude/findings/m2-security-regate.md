@@ -1,3 +1,15 @@
+---
+title: "M2 security re-gate — findings"
+schema_version: 2
+doc_type: report
+report_category: findings
+status: complete
+created: 2026-07-31
+updated: 2026-07-31
+feature_slug: research-foundry-operator-mcp
+plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
+---
+
 # M2 security RE-GATE (re-pass 1 of 2) — Operator MCP, fix cycle 2 tree `5025e97`
 
 Reviewer: senior-code-reviewer (Mode E). Predecessor ledger: `.claude/findings/m2-security-gate.md`

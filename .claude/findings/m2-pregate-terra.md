@@ -1,3 +1,15 @@
+---
+title: "M2 pre-gate review — Terra lens"
+schema_version: 2
+doc_type: report
+report_category: findings
+status: complete
+created: 2026-07-31
+updated: 2026-07-31
+feature_slug: research-foundry-operator-mcp
+plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
+---
+
 # M2 pre-gate review — Terra
 
 Scope reviewed: M2 `a759aa6` ("feat(operator-mcp): M2 wave 1"). Focused M2 suite passed: `47 passed` via
