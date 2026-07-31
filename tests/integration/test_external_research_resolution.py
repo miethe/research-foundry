@@ -569,6 +569,83 @@ class TestPromotion:
         assert outcome["completeness_tier"] == "passage_resolved"
         assert result.receipt["target_run_id"] is None
 
+    def test_reused_edition_with_no_content_quarantines_instead_of_crashing(
+        self, tmp_path: Path, workspace: FoundryPaths
+    ) -> None:
+        """Regression: a `passage_resolved` candidate bound to an
+        EXISTING-EDITION-REUSE `_SourceOutcome` (content=None,
+        extraction_status=None -- `_existing_edition_reuse` never
+        re-extracts source text) must fail closed into quarantine when
+        promotion is attempted (target_run_id set, non-dry-run, promote
+        wired), not crash the whole import with an AssertionError. A second,
+        freshly-acquired candidate in the same import must still promote
+        normally, proving the guard is scoped to the None-content case.
+        """
+
+        run_id = "rf_run_reuse_promote"
+        (workspace.runs / run_id).mkdir(parents=True)
+
+        # Seed import: fresh acquisition binds the edition/passage that the
+        # second import below will reuse read-only.
+        reused_sources, reused_candidates = _one_source_one_candidate()
+        seed_root = build_packet(tmp_path / "packet_seed", sources=reused_sources, candidates=reused_candidates)
+        seed_resolver = _resolver(workspace, reused_candidates, content_by_locator={_SOURCE_URL: _SOURCE_TEXT.encode()})
+        _stage(workspace, seed_root, seed_resolver)
+
+        fresh_url = "https://example.test/articles/fresh"
+        fresh_text = "A freshly acquired second source with its own distinct sentence."
+        fresh_quote = "its own distinct sentence"
+        second_sources = [
+            *reused_sources,
+            {
+                "source_id": "src_fresh",
+                "title": "Fresh source",
+                "locator": {"doi": None, "url": fresh_url},
+                "publication_year": 2024,
+                "access_status": "open-access",
+            },
+        ]
+        second_candidates = [
+            *reused_candidates,
+            {
+                "candidate_id": "cand_fresh",
+                "statement": "A freshly acquired candidate.",
+                "classification": "assertion",
+                "source_refs": ["src_fresh"],
+                "relation": "supports",
+                "quote": fresh_quote,
+                "selector": None,
+            },
+        ]
+        second_root = build_packet(tmp_path / "packet_reuse", sources=second_sources, candidates=second_candidates)
+        # No acquire content for the reused source's URL -- forces cand_001
+        # through `_existing_edition_reuse` (content=None) rather than fresh
+        # acquisition. `src_fresh`/`cand_fresh` DOES have acquire content, to
+        # prove the guard below is scoped to the None-content case, not a
+        # blanket block on all promotion in this import.
+        second_resolver = _resolver(workspace, second_candidates, content_by_locator={fresh_url: fresh_text.encode()})
+
+        # Must not raise AssertionError -- the whole point of the fix.
+        result = _stage(workspace, second_root, second_resolver, target_run_id=run_id)
+
+        reused_outcome = _outcome_for(result.receipt, second_root, "candidate", "candidate_id", "cand_001")
+        assert reused_outcome["outcome"] == "quarantined"  # fails closed, never a fabricated promotion
+        assert reused_outcome["completeness_tier"] is None
+        assert reused_outcome["audit_ref"] is not None
+
+        fresh_outcome = _outcome_for(result.receipt, second_root, "candidate", "candidate_id", "cand_fresh")
+        assert fresh_outcome["outcome"] == "completed"
+        assert fresh_outcome["completeness_tier"] == "passage_resolved"  # unaffected by the guard above
+
+        # Exact reason code, via a direct (idempotent, read-only-at-this-point)
+        # call into the same resolver -- the receipt itself never surfaces
+        # `reason_code` (only an opaque `audit_ref`, contract §4.6).
+        context = ResolutionContext(workspace_id="ws_demo", target_run_id=run_id, policy=VALID_POLICY)
+        sources_by_id = {s["source_id"]: s for s in second_sources}
+        direct_resolution = second_resolver.resolve_candidate(second_candidates[0], sources_by_id, context)
+        assert direct_resolution.outcome == "quarantined"
+        assert direct_resolution.reason_code == "verification_failed"
+
 
 # ---------------------------------------------------------------------------
 # Dry-run safety

@@ -696,6 +696,13 @@ class ExternalResearchResolver:
             matches = self._registry.find_exact_passages(source_key, quote)
             if matches:
                 edition = matches[0][0]
+                # `content=None, extraction_status=None`: `AssertionRegistry`
+                # persists the immutable rendition bytes (`_load_edition_content`
+                # / `_content_path`) but exposes no PUBLIC getter for them --
+                # and never persists extraction_status at all -- so a reused
+                # edition's content is genuinely unrecoverable here without a
+                # forbidden re-fetch/re-extract; promotion of this outcome
+                # fails closed via quarantine in `_finish_passage_resolved`.
                 outcome = _SourceOutcome(source_key, "source_resolved", edition, None, None, normalized.title, normalized.locator)
                 for q in quotes:
                     same_edition = [
@@ -938,7 +945,19 @@ class ExternalResearchResolver:
         if context.target_run_id is None or self._dry_run or self._promote is None:
             return ResolvedActionResolution("completed", "passage_resolved", None, canonical_refs=refs)
 
-        assert bound.content is not None and bound.extraction_status is not None
+        if bound.content is None or bound.extraction_status is None:
+            # `bound` came from `_existing_edition_reuse` (either the in-call
+            # reuse path or `_ensure_source_outcome`'s cross-batch resume
+            # reconstruction) -- that path is read-only and never
+            # re-extracts source text, and `AssertionRegistry` exposes no
+            # public getter for the immutable rendition bytes it stores (see
+            # the comment at its call site above). A legitimately-resolvable
+            # candidate whose bound edition was reused rather than freshly
+            # acquired therefore has no content to stage into a source card;
+            # fail closed into quarantine instead of crashing the import or
+            # fabricating evidence.
+            return _candidate_quarantine("verification_failed")
+
         request = PromotionRequest(
             workspace_id=self._workspace_id,
             target_run_id=context.target_run_id,
