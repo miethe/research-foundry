@@ -5,12 +5,16 @@ doc_type: progress
 prd: research-foundry-operator-mcp
 feature_slug: research-foundry-operator-mcp
 phase: 4
-status: pending
+status: completed
 created: '2026-07-28'
 updated: '2026-07-31'
 prd_ref: docs/project_plans/PRDs/enhancements/research-foundry-operator-mcp-v1.md
 plan_ref: docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md
-commit_refs: []
+commit_refs:
+- 311e4f3
+- fcfcd89
+- 76f5a29
+- 837b856
 pr_refs: []
 owners:
 - python-backend-engineer
@@ -31,6 +35,11 @@ tasks:
   evidence:
   - commit: fcfcd89
   - test: tests/unit/test_operator_mcp_adapter_external_import.py
+  - gate: APPROVED
+  verified_by:
+  - validator-gate
+  - pregate-codex
+  - pregate-ica
 - id: OPM-4.2
   status: completed
   assigned_to:
@@ -43,6 +52,11 @@ tasks:
   evidence:
   - commit: fcfcd89
   - test: tests/unit/test_operator_mcp_adapter_source_ingest.py
+  - gate: APPROVED
+  verified_by:
+  - validator-gate
+  - pregate-codex
+  - pregate-ica
 - id: OPM-4.3
   status: completed
   assigned_to:
@@ -55,6 +69,11 @@ tasks:
   evidence:
   - commit: fcfcd89
   - test: tests/unit/test_operator_mcp_adapter_research_stages.py
+  - gate: APPROVED
+  verified_by:
+  - validator-gate
+  - pregate-codex
+  - pregate-ica
 - id: OPM-4.4
   status: completed
   assigned_to:
@@ -67,8 +86,13 @@ tasks:
   evidence:
   - commit: fcfcd89
   - test: tests/unit/test_operator_mcp_adapter_verify_bundle.py
+  - gate: APPROVED
+  verified_by:
+  - validator-gate
+  - pregate-codex
+  - pregate-ica
 - id: OPM-4.5
-  status: pending
+  status: completed
   assigned_to:
   - api-designer
   - task-completion-validator
@@ -78,6 +102,14 @@ tasks:
   - OPM-4.3
   - OPM-4.4
   estimate: 0.5 pt
+  started: 2026-07-31T01:35Z
+  completed: 2026-07-31T02:00Z
+  evidence:
+  - commit: 76f5a29
+  - gate: APPROVED
+  - test: tests/unit/test_operator_mcp_adapter_*.py (109 passed)
+  verified_by:
+  - validator-gate
 parallelization:
   batch_1:
   - OPM-4.1
@@ -90,10 +122,10 @@ parallelization:
   batch_5:
   - OPM-4.5
 total_tasks: 5
-completed_tasks: 4
+completed_tasks: 5
 in_progress_tasks: 0
 blocked_tasks: 0
-progress: 80
+progress: 100
 ---
 
 # Phase 4 Progress — Import and Research-Stage Adapters

@@ -112,3 +112,65 @@ applied there too — it is currently only on `worktree-operator-mcp-v1`.
 **Generalizable lesson**: an `rg`-based negative-proof AC is only evidence if the paths are asserted
 to exist. Any "zero matches = pass" check needs a companion existence assertion, or it degrades into
 a guaranteed pass the moment a file is renamed. Worth a standing rule in the plan-authoring guidance.
+
+### 2026-07-31 — implementation, pre-gate, fix cycle 1
+
+**Implementation** (`fcfcd89`). Seven adapters across three parallel legs with disjoint file
+ownership; `__init__.py` registration held by the integration owner. Routing per
+`delegation-router`: legs A (`run.extract`/`claim_map`/`synthesize`) and B
+(`external_report.import`/`source.ingest`) to the ICA free lane; leg C (`run.verify`/`run.bundle`,
+carrying the governed-result design) claude-primary. 12 adapters register (5 from P3 + 7).
+97 adapter tests; full suite 3 failed / 2359 passed, the 3 being the documented baseline.
+
+**Pre-gate** — two cheap diverse lenses in parallel (gpt-5.6-terra at high effort; ICA
+sonnet-5[1m]), per observation O-3. **Six defects, three BLOCKING**, on a tree where every test
+passed and regression was clean. Consolidated at `.claude/findings/m1-remainder-pregate-consolidated.md`.
+
+**Fix cycle 1** (`76f5a29`). All six closed; 109 adapter tests; full suite 3 failed / 2371 passed.
+Every regression test confirmed to fail against pre-fix source before passing.
+
+## Observations for the AAR (continued)
+
+- **O-4 — Lens diversity confirmed a third time, and this run quantifies it.** Both lenses found
+  F1 and F6. **codex alone** found F2, F3, F4, F5. **ICA alone** established that F1 *silently
+  succeeds* rather than raising (materially worse than the hypothesis) and reproduced F6
+  empirically across a real workspace boundary. ICA **refuted** H3 while codex found a *different*
+  defect in the same file. Neither lens was a superset of the other; a single deeper pass would
+  have missed four of six. Cost was a fraction of the implementation legs.
+- **O-5 — The orchestrator's own contract caused a BLOCKING defect.** §D1 correctly removed the
+  `sensitivity_ceiling` *parameter* — and left its **sibling**, the caller-supplied `sensitivity`
+  input, feeding the very guard the ceiling protects (F3). This is defect class 1's own warning
+  ("check the producer, not the field") applied one level too shallowly, committed by the party
+  writing the checklist into everyone else's prompt. **Lesson: when a contract hardens a field,
+  it must enumerate every sibling input that reaches the same guard** — the same "layer below"
+  discipline the plan demands of implementers applies to the contract that directs them.
+- **O-6 — Three of six defects were sibling-parameter bypasses of a correct guard** (F2
+  `target_run_id` beside a properly re-derived `workspace_id`; F3 `sensitivity` beside the removed
+  ceiling; F5 explicit paths beside an authorized run target). The guards were right; the
+  parameter *inventory* was incomplete. A per-adapter "enumerate every caller-supplied input that
+  reaches the canonical service, and state what authorizes each" table would likely have caught all
+  three before review. Cheaper than a review round.
+- **O-7 — A test pinned the unsafe behavior again** (F4: the parity test minted a confirmation
+  without `content`, then invoked *with* content and asserted success). Third occurrence of defect
+  class 3 on this workstream. The fix inverted it rather than adding a sibling test — worth
+  keeping as the standing remedy, since an added test leaves the wrong assertion in place.
+- **O-8 — Fix legs correctly avoided reproducing each other's defects.** The `research_stages`
+  fixer was told about F6 (the pre-authorization existence leak being fixed concurrently in
+  another file) and deliberately ordered its new prerequisite gate *after* authorization rather
+  than copying `verify_bundle`'s then-current shape. Cross-pollinating findings between concurrent
+  fix legs is cheap and prevented a fresh instance of a known defect.
+- **O-9 — Checklist item 2 paid out inside the fix cycle.** Applying "fix the layer below" to its
+  own fix, the `research_stages` leg found the same silent-success class one hop upstream in
+  `run.extract` (zero source cards) — a defect neither review lens had reported.
+- **O-10 — Offload boundary held, and the re-route was the right call.** ICA authored five of
+  seven adapters cleanly against a decided contract, and both ICA legs reported their judgment
+  calls honestly rather than silently guessing (leg A surfaced the `_REQUIRED_TARGET_KINDS` gap
+  the contract missed; leg B flagged its own workspace-declaration choice for review). But when
+  the pre-gate returned authorization and confirmation-binding defects, **all fixes were routed
+  claude-primary** — F4 sits on the P1 confirmation surface, which is MUST-stay. Thin-wrapper
+  authoring is offload-eligible; closing an authorization finding in the same file is not.
+- **O-11 — Two fix legs used `git stash` in a worktree.** The shared stash stack is visible to
+  every worktree and to other concurrent sessions; a `stash`/`pop` pair races anyone else's entry.
+  Both legs restored correctly and the stack was verified clean after each, but "stash the source,
+  keep the new test, confirm it fails" is a pattern worth replacing with a scratch copy or
+  `git worktree add` in implementer prompts before it bites.
