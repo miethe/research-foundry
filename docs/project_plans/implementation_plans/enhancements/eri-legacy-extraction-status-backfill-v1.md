@@ -12,6 +12,8 @@ context_class: C3
 created: 2026-07-31
 updated: 2026-07-31
 prd_ref: null
+intenttree_node: node_01KYWX69SRH981ZGE419GM31EE
+intenttree_tree: tree_01KVTH95G09FX26HCRPBV77DAE
 related_documents:
   - docs/project_plans/implementation_plans/enhancements/eri-reused-edition-promotion-v1.md
   - .claude/worknotes/eri-reused-edition-promotion/implementation-notes.md
