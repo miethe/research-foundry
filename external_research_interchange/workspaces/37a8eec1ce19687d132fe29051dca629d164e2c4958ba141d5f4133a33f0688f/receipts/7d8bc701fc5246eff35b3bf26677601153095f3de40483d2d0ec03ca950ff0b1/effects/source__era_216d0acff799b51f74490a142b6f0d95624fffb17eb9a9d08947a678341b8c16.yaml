@@ -1,0 +1,12 @@
+schema_version: '1.0'
+type: external_research_import_effect
+receipt_digest: 7d8bc701fc5246eff35b3bf26677601153095f3de40483d2d0ec03ca950ff0b1
+action_id: era_216d0acff799b51f74490a142b6f0d95624fffb17eb9a9d08947a678341b8c16
+kind: source
+outcome: completed
+completeness_tier: source_resolved
+reason_code: null
+canonical_refs:
+  source_edition_id: sed_dd06927fa099037dfa9f52c849abd838f29beb534d63f3caaf0269062ae80d4f
+effect_digest: 8773b56bb5868fca2633020c3bd08f44e4ec40a3a0c7497ba5f3bc92196da8f0
+created_at: '2026-07-29T23:39:59-04:00'

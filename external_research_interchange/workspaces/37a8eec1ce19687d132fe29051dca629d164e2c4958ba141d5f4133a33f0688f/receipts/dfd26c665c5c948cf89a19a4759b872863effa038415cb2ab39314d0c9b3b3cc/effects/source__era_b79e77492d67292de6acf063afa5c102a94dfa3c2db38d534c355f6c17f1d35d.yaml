@@ -1,0 +1,11 @@
+schema_version: '1.0'
+type: external_research_import_effect
+receipt_digest: dfd26c665c5c948cf89a19a4759b872863effa038415cb2ab39314d0c9b3b3cc
+action_id: era_b79e77492d67292de6acf063afa5c102a94dfa3c2db38d534c355f6c17f1d35d
+kind: source
+outcome: quarantined
+completeness_tier: null
+reason_code: invalid_locator
+canonical_refs: {}
+effect_digest: 3a0f1a2977dbf73a5058de00bbcf2ba756009e45f76657c461a3ef4b8d2016d1
+created_at: '2026-07-29T23:40:02-04:00'

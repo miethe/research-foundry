@@ -9,27 +9,27 @@ and the P2 outputs P3 builds on.
 
 ## PROMPT TO PASTE
 
-> Resume executing the Tier-3 implementation plan
-> `docs/project_plans/implementation_plans/enhancements/catalog-assisted-research-planning-v1.md`
-> (C3 Catalog-Assisted Research Planning, ITT node `node_01KY5SHD2K1G9KT40E26XMVR43`) at **Phase P3**.
-> P1 and P2 are complete and gated; their work is squash-merged to `main`. Squash to main when P3–P6
-> are done and gated. Use `/delegation-router` and route all leaf implementation/docs work to **ICA**
-> (`ICA_KEY=CC1 ~/ica-claude.sh ... --model 'claude-sonnet-5[1m]'`), not subscription agents; keep
-> reviewer gates (task-completion-validator, karen) on claude.
->
-> First read, in order:
-> 1. `.claude/worknotes/catalog-assisted-research-planning/context.md` — full handoff state.
-> 2. `docs/dev/architecture/carp-contract-freeze.md` — the frozen, gated contract. Do NOT re-litigate it.
-> 3. The plan's Phase P3/P4/P5/P6 sections + Structured Acceptance Criteria.
->
-> Then create/enter a worktree (or reuse `worktree-carp-c3-catalog-planning` if present), re-establish
-> the 16-failure test baseline, and run the phases **serially with their gates**:
-> P3 (validator + karen) → P4 (validator + karen) → P5 (validator only) → P6 (validator + karen final).
-> Each phase = one ICA leaf executing the corresponding brief below, then the gate(s), then a
-> fix-cycle if rejected. Re-run authoritative pytest/schema-validation yourself after every leaf —
-> never trust the leaf's self-report — and diff the full-suite failures against the 16-failure baseline.
->
-> The four phase briefs are embedded verbatim below. Hand each to the ICA leaf as its task file.
+Resume executing the Tier-3 implementation plan
+`docs/project_plans/implementation_plans/enhancements/catalog-assisted-research-planning-v1.md`
+(C3 Catalog-Assisted Research Planning, ITT node `node_01KY5SHD2K1G9KT40E26XMVR43`) at **Phase P3**.
+P1 and P2 are complete and gated; their work is squash-merged to `main`. Squash to main when P3–P6
+are done and gated. Use `/delegation-router` and route all leaf implementation/docs work to **ICA**
+(`ICA_KEY=CC1 ~/ica-claude.sh ... --model 'claude-sonnet-5[1m]'`), not subscription agents; keep
+reviewer gates (task-completion-validator, karen) on claude.
+
+First read, in order:
+1. `.claude/worknotes/catalog-assisted-research-planning/context.md` — full handoff state.
+2. `docs/dev/architecture/carp-contract-freeze.md` — the frozen, gated contract. Do NOT re-litigate it.
+3. The plan's Phase P3/P4/P5/P6 sections + Structured Acceptance Criteria.
+
+Then create/enter a worktree (or reuse `worktree-carp-c3-catalog-planning` if present), re-establish
+the 16-failure test baseline, and run the phases **serially with their gates**:
+P3 (validator + karen) → P4 (validator + karen) → P5 (validator only) → P6 (validator + karen final).
+Each phase = one ICA leaf executing the corresponding brief below, then the gate(s), then a
+fix-cycle if rejected. Re-run authoritative pytest/schema-validation yourself after every leaf —
+never trust the leaf's self-report — and diff the full-suite failures against the 16-failure baseline.
+
+The four phase briefs are embedded verbatim below. Hand each to the ICA leaf as its task file.
 
 ---
 

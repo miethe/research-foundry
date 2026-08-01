@@ -1,0 +1,289 @@
+---
+schema_version: 1
+doc_type: research_report
+title: "S1 Rights Evidence — KnitWit Pre-Populated Yarn Catalog"
+status: complete
+generated_at_utc: "2026-07-31T15:21:45Z"
+include_imagery: false
+verdict_vocabulary:
+  - redistributable
+  - attribution-only
+  - api-proxy-only
+  - prohibited
+  - unknown
+---
+
+# S1 Rights Evidence — KnitWit Pre-Populated Yarn Catalog
+
+> **Research, not legal advice.** This report records current primary-source evidence and applies the
+> project's source-gating vocabulary. It does not make a binding legal determination.
+
+## Executive verdict
+
+This remediation replaces every opaque chat citation with a directly resolvable URL. It also corrects
+one material omission in the earlier wrapper: **Temperature Blanket's current Yarn Colorways API page
+expressly licenses its API data under CC BY 4.0 for copying, redistribution, adaptation, and commercial
+use, subject to attribution.** That makes it an `attribution-only` source for a **narrow field set**:
+plain-text brand, yarn-line, and colorway names; IDs; yarn-weight identifiers; source URL/provenance;
+and availability dates/status. The API's hex values are deliberately excluded because the source says
+they are approximations of fiber colors, and this project has an imagery-exclusion boundary.
+
+**Wikidata structured data** remains `redistributable` under CC0. Its rights are clear, but current yarn
+coverage appears primarily taxonomic/conceptual rather than a useful per-SKU yarn catalog.
+
+No current primary page was found that authorizes a broad, spec-complete offline bundle from Ravelry,
+manufacturer/retailer product pages, GS1, Amazon, or affiliate feeds. Those paths remain blocked,
+live-query-only, prohibited, or unknown under the acquisition preflight rule.
+
+### S1 decision
+
+| Decision | Source | Verdict | What S2 may do |
+|---|---|---:|---|
+| **GO — narrow** | Temperature Blanket Yarn Colorways API v3 | `attribution-only` | Acquire only the field allowlist below after an approved credential decision; preserve CC BY 4.0 attribution. |
+| **GO — exploratory** | Wikidata structured data | `redistributable` | Query/download structured CC0 data and measure SKU-level coverage; do not assume catalog completeness. |
+| **STOP** | Ravelry, manufacturer/retailer sites, affiliate feeds, GS1, Amazon Creators API | mixed | Do not run bundled-catalog acquisition from these source IDs. |
+| **HUMAN REVIEW** | Manual ball-band transcription | `unknown` | Keep outside S2 until counsel/risk approves the doctrine and trademark posture. |
+
+## Scope and decision rule
+
+The intended distribution is a commercial iOS app bundle containing only factual yarn specifications
+and plain-text brand/yarn/colorway names. Imagery, logos, marketing copy, reviews, rankings, and prices
+are excluded. A source clears S2 only when a current primary page explicitly supports this distribution
+and maps to `redistributable` or `attribution-only`. Silence, crawlability, fair-use reasoning, another
+app's behavior, or a technical feed endpoint is not sufficient.
+
+The governing project inputs were:
+
+- `prepopulated-yarn-catalog-charter.md`
+- `yarn-catalog-acquisition-spec.md`
+- `findings.md` (prior-art leg)
+- `findings(1).md` (risk leg)
+
+## Authorized source table
+
+| Source ID | Rights evidence | License verdict | Field availability | S2 limits | Review due |
+|---|---|---|---|---|---|
+| `temperature-blanket-colorways-api` | [Official API terms and license](https://temperature-blanket.com/api/yarn-colorways#terms--license) | `attribution-only` | Brand/yarn/colorway names and IDs, weight ID, provenance URL/date, unavailable status/date; hex also exists | Exclude hex, imagery, marketing, review, ranking, price, affiliate metadata. API calls require an approved RapidAPI credential. | 2026-10-31 |
+| `wikidata-structured-data` | [Wikidata licensing policy](https://www.wikidata.org/wiki/Wikidata:Licensing) | `redistributable` | Structured labels, descriptions, relationships, concepts, identifiers | Structured namespaces only; coverage must be measured before use as a catalog source. | 2027-01-31 |
+
+### Temperature Blanket S2 field allowlist
+
+Allowed:
+
+- `brandId`, `brandName`
+- `yarnId`, `yarnName`
+- `yarnWeightId` and weight name from `/weights`
+- colorway `name`
+- `dateAccessed`
+- source `href`
+- `unavailable`, `unavailableDate`
+
+Excluded:
+
+- `hex`, `delta`, `percentMatch`, and other color-derived fields
+- all images, logos, marketing copy, reviews, rankings, prices, offer information, and affiliate-link metadata
+
+Required attribution should be materially equivalent to:
+
+> Yarn colorways from temperature-blanket.com, licensed under CC BY 4.0.
+
+Include a link to the license and indicate transformations. Do not imply endorsement.
+
+## Disqualified, blocked, or unresolved table
+
+| Source ID | Source/path | Verdict | Field availability vs. rights | Why S2 is blocked | Review due |
+|---|---|---:|---|---|---|
+| `ravelry-yarn-api` | Ravelry yarn database/API | `unknown` | Excellent field coverage; general Terms restrict redistribution | No current public API-specific grant for an offline bundle was located. | 2026-08-31 |
+| `yarnsub-site` | YarnSub | `unknown` | Not freshly re-observed | Current primary terms could not be retrieved because the legal path was robots-blocked; no bypass attempted. | 2026-08-31 |
+| `yarnspirations-product-pages` | Yarnspirations product pages | `prohibited` | Rich official specs | Current Terms limit copies to private non-commercial use and prohibit scraping, merging, and distribution. | 2026-10-31 |
+| `yarnspirations-affiliate-feed` | Yarnspirations affiliate feed | `unknown` | Public page confirms a feed exists | Public page does not authorize offline app bundling; merchant/network terms require enrollment. | 2026-08-31 |
+| `lion-brand-product-pages` | Lion Brand product pages | `prohibited` | Rich official specs | Current Terms restrict use to personal non-commercial purposes and prohibit reproduction/distribution. | 2026-10-31 |
+| `lion-brand-impact-affiliate` | Lion Brand Impact program | `unknown` | Affiliate links/assets described | No public database-redistribution clause; program-specific terms require enrollment. | 2026-08-31 |
+| `hobbii-product-pages` | Hobbii product pages | `prohibited` | Useful specs and colorway names | Current Terms reserve rights and prohibit reuse/merging/distribution without written permission. | 2026-10-31 |
+| `lovecrafts-product-pages` | LoveCrafts product pages | `prohibited` | Rich multi-brand specs | Current Terms permit only personal non-commercial use of site content. | 2026-10-31 |
+| `knitpicks-wecrochet-product-pages` | KnitPicks / WeCrochet / Crochet.com | `prohibited` | Rich house-brand specs | Current Terms expressly prohibit commercial reproduction/distribution without permission. | 2026-10-31 |
+| `gs1-verified-by-gs1` | Verified by GS1 | `api-proxy-only` | Identity/basic attributes, not a yarn-spec corpus | Public service is single-query, rate-limited, and does not grant bulk bundle redistribution. | 2026-10-31 |
+| `awin-product-feeds` | Awin product feeds | `unknown` | Product links, color, stock, specifications | Technical feed docs are not a license; rights depend on network and advertiser terms. | 2026-08-31 |
+| `shareasale-legacy-feeds` | ShareASale | `unknown` | Retired path | Platform closed 2025-10-06; evaluate Awin instead. | 2027-01-31 |
+| `amazon-creators-api` | Amazon Creators API | `api-proxy-only` | General catalog attributes, not curated yarn specs | Affiliate sales purpose and short TTLs are incompatible with a durable offline catalog bundle. | 2026-10-31 |
+| `drops-garnstudio-yarn-pages` | DROPS/Garnstudio | `unknown` | Rich official specs | Pattern-sharing permissions do not establish a yarn-data license; no current yarn-data grant found. | 2026-08-31 |
+| `cascade-yarns-product-pages` | Cascade Yarns | `unknown` | Rich official specs | No current primary page expressly authorizes redistribution into an app bundle. | 2026-08-31 |
+| `scheepjes-yarn-pages` | Scheepjes | `unknown` | Yarn lines/spec summaries/colorways | No current primary page expressly authorizes redistribution into an app bundle. | 2026-08-31 |
+| `primary-ball-band-collection` | Manual transcription from physical labels | `unknown` | Potentially spec-complete | Copyright doctrine is not a source-issued license; counsel/risk must approve facts, trademark, and scale posture. | 2027-01-31 |
+
+## Prior-art candidates not instantiated as YAML sources
+
+These names remain in the prior-art history but were **not manufactured into source records**, because
+S1 found no current primary rights page or current authoritative dataset endpoint to bind:
+
+| Candidate | Reason not instantiated |
+|---|---|
+| Yarndex | Historical/archival references only; no current primary owner/license page. |
+| k2g2 Open Yarn Database | Dormant/unreachable project path; no current license evidence. |
+| yarndatabase.com | No current authoritative dataset/license evidence verified. |
+
+They may be reconsidered only when a current primary source, current license, and real data locator are
+available.
+
+## Exact primary citation register
+
+All locators below are normal URLs suitable for ERI reacquisition. Access timestamps are UTC.
+Quoted fragments are intentionally short; the report's conclusions rely on the linked full pages.
+
+### 1. Temperature Blanket Yarn Colorways API
+
+- **Rights page:** <https://temperature-blanket.com/api/yarn-colorways#terms--license>
+- **Data endpoints:**
+  - <https://yarn-colorways.p.rapidapi.com/v3/colorways>
+  - <https://yarn-colorways.p.rapidapi.com/v3/brands>
+  - <https://yarn-colorways.p.rapidapi.com/v3/yarns>
+  - <https://yarn-colorways.p.rapidapi.com/v3/weights>
+- **Coverage UI:** <https://temperature-blanket.com/yarn-colorway-finder>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Exact evidence:** “Data is provided under … CC BY 4.0”; commercial sharing and adaptation are expressly allowed with attribution.
+- **Freshness evidence:** API v3 was introduced 2026-04-09; the current finder displayed 261 yarns and 14,087 colorways at access time.
+- **Rights/field separation:** The license clears the API data. The field allowlist still excludes hex values because the source describes them as approximations.
+
+### 2. Wikidata
+
+- **Rights page:** <https://www.wikidata.org/wiki/Wikidata:Licensing>
+- **Access guidance:** <https://www.wikidata.org/wiki/Wikidata:Data_access>
+- **Query service:** <https://query.wikidata.org/>
+- **Dumps:** <https://dumps.wikimedia.org/wikidatawiki/entities/>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Exact evidence:** “All structured data … is made available under the Creative Commons CC0 License.”
+- **Rights/field separation:** Rights are broad; useful yarn-SKU coverage has not been demonstrated.
+
+### 3. Ravelry
+
+- **Terms:** <https://www.ravelry.com/about/terms>
+- **API locator:** <https://www.ravelry.com/api>
+- **Apps directory:** <https://api.ravelry.com/about/apps>
+- **Field example:** <https://api.ravelry.com/yarns/library/schoppel-wolle-zauberball-100-pro>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Exact evidence:** Users may not “sell, distribute or create derivative works” from content without a separate license.
+- **Rights/field separation:** The yarn page has excellent specs; the accessible terms do not authorize bundling them.
+
+### 4. YarnSub
+
+- **Terms locator:** <https://yarnsub.com/legal/terms>
+- **Site:** <https://yarnsub.com/>
+- **Access attempt:** `2026-07-31T15:21:45Z`
+- **Evidence result:** The terms page was blocked by robots in the research environment. No login, bypass, snippet substitution, or inference was used.
+
+### 5. Yarnspirations
+
+- **Terms:** <https://www.yarnspirations.com/en-row/pages/terms>
+- **Product example:** <https://www.yarnspirations.com/en-row/products/red-heart-super-saver-yarn>
+- **Affiliate path:** <https://www.yarnspirations.com/en-ca/pages/affiliate-program>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Exact evidence:** Copies are limited to “private, non-commercial use”; the terms also prohibit scraping, merging with other data, and distribution.
+- **Rights/field separation:** Official pages expose the target specs, but the terms prohibit this bundled acquisition path.
+
+### 6. Lion Brand
+
+- **Terms:** <https://www.lionbrand.com/policies/terms-of-service>
+- **Product example:** <https://www.lionbrand.com/products/feels-like-bliss-yarn>
+- **Affiliate path:** <https://www.lionbrand.com/pages/affiliate-info>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Exact evidence:** The site and services are for “personal, non-commercial purposes.”
+- **Rights/field separation:** Rich specs are available; redistribution is not authorized by the current public terms.
+
+### 7. Hobbii
+
+- **Terms:** <https://hobbii.com/policies/terms-of-service>
+- **Product example:** <https://hobbii.com/products/hp-1004434-colorina>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Exact evidence:** Copies are limited to “private, non-commercial use”; merging and distribution require prior written permission.
+
+### 8. LoveCrafts
+
+- **Terms:** <https://www.lovecrafts.com/en-au/c/legal/terms-of-use>
+- **Product example:** <https://www.lovecrafts.com/en-us/p/yarn-and-colors-zen>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Exact evidence:** Site content may be used only for “personal, non-commercial use.”
+
+### 9. KnitPicks / WeCrochet / Crochet.com
+
+- **Terms:** <https://www.crochet.com/support/resources/terms-and-conditions>
+- **Product locators:**
+  - <https://www.crochet.com/brindle/p/28368>
+  - <https://www.knitpicks.com/thicket/p/25085>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Exact evidence:** Commercial use, modification, distribution, republication, display, or performance without written permission is prohibited.
+
+### 10. Verified by GS1
+
+- **Usage mode:** <https://support.gs1.org/support/solutions/articles/43000734111-how-can-i-use-the-verified-by-gs1-service-on-gs1-org->
+- **Rate limit:** <https://support.gs1.org/support/solutions/articles/43000734075/>
+- **Service:** <https://www.gs1.org/services/verified-by-gs1>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Exact evidence:** The public service permits “up to 30 single GTIN queries” per 24 hours; batch querying is not supported.
+
+### 11. Awin and ShareASale
+
+- **Feed documentation:** <https://help.awin.com/developers/docs/product-feed-intro>
+- **Publisher terms:** <https://www.awin.com/us/publisher-terms>
+- **ShareASale closure evidence:** <https://help.awin.com/advertisers/docs/en/post-upgrade-checklist-sas>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Evidence:** Awin explains feed functionality, not standalone bundle rights. ShareASale officially closed 2025-10-06.
+
+### 12. Amazon Creators API
+
+- **Introduction:** <https://affiliate-program.amazon.com/creatorsapi/docs/en-us/introduction>
+- **License locator:** <https://affiliate-program.amazon.com/creatorsapi/docs/en-us/license-agreement>
+- **Caching/use guidance:** <https://affiliate-program.amazon.com/creatorsapi/docs/en-us/concepts/best-programming-practices>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Exact evidence:** Most catalog resources have a one-day cache TTL, and applications must direct sales to Amazon.
+- **Rights/field separation:** This supports live affiliate use, not a durable offline yarn catalog.
+
+### 13. DROPS / Garnstudio
+
+- **Yarn catalog:** <https://www.garnstudio.com/yarns.php?cid=19>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Evidence result:** Rich yarn specs were observed, but no current yarn-data redistribution license was found.
+
+### 14. Cascade Yarns
+
+- **Product index:** <https://www.cascadeyarns.com/our-products>
+- **Product example:** <https://www.cascadeyarns.com/product/heritage>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Evidence result:** Rich yarn specs were observed; no explicit app-bundle redistribution grant was located.
+
+### 15. Scheepjes
+
+- **Yarn index:** <https://www.scheepjes.com/en/yarn/>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Evidence result:** Yarn lines and colorway/spec information were observed; no explicit app-bundle redistribution grant was located.
+
+### 16. Primary ball-band collection — legal-background locators only
+
+- **U.S. Copyright Office, material not subject to copyright:** <https://www.copyright.gov/title37/202/37cfr202-1.html>
+- **U.S. Copyright Office, automated databases:** <https://www.copyright.gov/register/tx-databases.html>
+- **Accessed:** `2026-07-31T15:21:45Z`
+- **Evidence result:** These are legal/doctrinal sources, not a source-owner license. S1 therefore leaves this path `unknown` pending human review.
+
+## Freshness and re-review policy
+
+- **2026-08-31:** Recheck all `unknown` sources whose public legal/API terms might become available or change quickly: Ravelry API, YarnSub, affiliate programs/feeds, DROPS, Cascade, Scheepjes.
+- **2026-10-31:** Recheck active commercial APIs and restrictive retailer/manufacturer terms: Temperature Blanket, Yarnspirations, Lion Brand, Hobbii, LoveCrafts, Crochet.com, GS1, Amazon.
+- **2027-01-31:** Recheck stable open-data/doctrinal paths: Wikidata and primary-collection legal background.
+- Any material terms change immediately invalidates the cached verdict and must fail the acquisition preflight until re-reviewed.
+
+## S2 stop/go recommendation
+
+### Go
+
+1. **`temperature-blanket-colorways-api`** — rights-authorized only for the explicit field allowlist,
+   with CC BY 4.0 attribution and an approved API-credential decision. This source is useful for
+   names, weights, and colorway coverage, not spec completeness.
+2. **`wikidata-structured-data`** — rights-authorized for structured CC0 data, but run only a coverage
+   assessment before committing it to the catalog pipeline.
+
+### Stop
+
+Do not enable Ravelry, YarnSub, manufacturer/retailer HTML pages, affiliate feeds, GS1, Amazon, DROPS,
+Cascade, Scheepjes, or primary ball-band collection in S2. Their current verdicts do not satisfy the
+acquisition spec's `redistributable | attribution-only` preflight gate.
+
+S2_AUTHORIZED_FOR_THESE_SOURCE_IDS: ["temperature-blanket-colorways-api", "wikidata-structured-data"]

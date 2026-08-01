@@ -3,7 +3,8 @@ it_schema: 1
 feature_slug: eri-legacy-extraction-status-backfill
 title: "ERI legacy extraction_status backfill — implementation plan"
 doc_type: implementation_plan
-status: draft
+status: not_started
+planning_maturity: draft
 tier: 2
 priority: P2
 points: 13

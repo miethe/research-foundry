@@ -1,0 +1,294 @@
+{
+  "schema_version": "1.0",
+  "report": {
+    "route": "program",
+    "title": "Interchange epic 4/5 shipped; Operator MCP and the deploy gate are what stand between here and public multi-tenant.",
+    "subject": "Research Foundry",
+    "revision": 1,
+    "generated_from": {
+      "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+      "ref": "origin/main",
+      "commit": "3368084"
+    },
+    "truth_status": "verified",
+    "generated_by": "delivery-report 0.1.0",
+    "generated_at": "2026-07-30",
+    "scope_note": "Since 2026-07-23 the platform moved fast: four of the five Interchange/Provenance/Access epic children landed on main (C1 Provenance Continuity, C2 External Interchange, C3 Catalog-Assisted Planning, C4 Knowledge MCP), Search Router P2+P3 and the Rights/Evidence entity model and Claim Term Indexing all shipped, and the rf CLI was decoupled from the serve extra. What remains: Operator MCP (C5, P1 owner-accepted, P2-P6 open), the DI-1 deploy gate (delta re-audit remediated but still BLOCKED), a large idea/shaping design-spec backlog spun off as epic deferrals, and offline-built integrations awaiting first live validation. Trackers and design-spec frontmatter lag git — this report reconciles against commits, not the ITT node states.",
+    "constraints": "Files are canonical; DBs are derived. Loopback-only; never exfiltrate. No model call on the read/render path. agent-writable paths can never mint CLEARED_*/counsel_approved/attested rights values (no_agent_cleared_rights_value). Always re-run authoritative `rf verify` — never trust a workflow's bundle_ok. Commit + squash-merge on completion; push before deploy. Mode-D diffs (auth/secrets/deletion/migrations) must be cross-model adversarially verified before merge."
+  },
+  "vitals": [
+    { "key": "Interchange epic", "value": "4/5", "sub": "children shipped · C5 Operator MCP remains", "severity": "warn", "measured_by": "git log for 65d658d C1 / e76784b C2 / 95e8419 C3 / 1376e85+e84c19c C4; ITT epic node 01KY5SGQ" },
+    { "key": "Open ITT nodes", "value": "53", "sub": "of 61 on aos-research-foundry", "severity": "neutral", "measured_by": "itt list_tree_nodes tree_01KVTH95G09FX26HCRPBV77DAE" },
+    { "key": "PRDs delivered", "value": "18/24", "sub": "6 remain in draft", "severity": "neutral", "measured_by": "plan-status-report.py --all effective_status over docs/project_plans/PRDs" },
+    { "key": "Design specs to plan", "value": "43", "sub": "23 idea + 20 shaping · 0 ready to promote", "severity": "warn", "measured_by": "plan-status-report.py --route6/--route8 maturity over docs/project_plans/design-specs (56 total)" },
+    { "key": "Deploy gate", "value": "BLOCKED", "sub": "DI-1 remediated (2bf6895) · re-audit pending", "severity": "critical", "measured_by": "docs/project_plans/reports/audits/di-1-delta-reaudit-remediation-2026-07-27.md" },
+    { "key": "main vs origin", "value": "synced", "sub": "tip 3368084 · pushed", "severity": "neutral", "measured_by": "git status -sb (main...origin/main, 0 ahead)" }
+  ],
+  "domains": {
+    "CLI": "build", "MCP": "build", "UI": "build", "Interop": "build", "Infra": "build",
+    "Evidence": "knowledge", "Verifier": "knowledge", "Research": "knowledge",
+    "Governance": "governance", "Auth": "governance", "Deploy": "governance", "Release": "governance"
+  },
+  "visuals": {
+    "ladder": {
+      "title": "The two tracks, and where you are on them",
+      "caption": "every open step carries a copyable handoff; states reconciled against git, not tracker frontmatter",
+      "tracks": [
+        {
+          "title": "Interchange · Provenance · Access epic (169 pts, 5 children)",
+          "note": "critical path C1 → (C2 ∥ C3) → C4 → C5",
+          "steps": [
+            { "code": "C1", "state": "done", "label": "Research Provenance Continuity.", "body": "Contract freeze + provenance / report-use / materialization / lifecycle (RPC P1-P7).", "domains": ["Interop", "Evidence"], "ev": "main 65d658d · all gates APPROVED" },
+            { "code": "C2", "state": "done", "label": "External Research Report Interchange.", "body": "rf intake external-report (ERI P1-P6).", "domains": ["Interop", "Evidence"], "ev": "main e76784b · validator PASS + Karen gate" },
+            { "code": "C3", "state": "done", "label": "Catalog-Assisted Research Planning.", "body": "Evidence planner, integration, transport, hardening (P1-P6).", "domains": ["Research", "Evidence"], "ev": "main 95e8419" },
+            { "code": "C4", "state": "done", "label": "Knowledge MCP (read-only).", "body": "Schema-aligned stdio + CLI/API parity; rf-knowledge skill + agent; CLI decoupled from serve extra.", "domains": ["MCP", "CLI"], "ev": "main 1376e85 + e84c19c + deff14f (closes KMCP-F1)" },
+            { "code": "C5", "state": "part", "label": "Operator MCP (governed).", "body": "P1 owner-accepted despite machine CHANGES_REQUESTED; P2 Durable Operation Coordinator + P3-P6 (~25 pts) remain.", "domains": ["MCP", "Governance"], "ev": "P1 e5a2e6e · receipt schema still under review · OPM-DF-regate deferred" },
+            { "code": "W5", "state": "none", "label": "Wave-5 cross-child integration.", "body": "End-to-end wiring once C5 lands.", "domains": ["Interop"], "ev": "not started" }
+          ]
+        },
+        {
+          "title": "Public release · governance",
+          "note": "multi-user substrate done; deploy still gated",
+          "steps": [
+            { "code": "P0-P5", "state": "done", "label": "Multi-user substrate.", "body": "WKSP-304 row-level isolation, auth/RBAC, agent-research phase, activation modes.", "domains": ["Auth", "Governance"], "ev": "inferred complete across P4/P5/activation plans" },
+            { "code": "ACT", "state": "part", "label": "Release activation.", "body": "Evidence catalog + report builder + embedded agent research; Screens 7-10 UI landed.", "domains": ["UI", "Release"], "ev": "ITT 01KXRSGN in_progress" },
+            { "code": "DI-1", "state": "blocked", "label": "Full-project scoping audit.", "body": "Delta re-audit remediated (F1-F7 + G1/G2); still BLOCKED pending fresh re-audit + live 2-workspace runtime test.", "domains": ["Governance", "Auth"], "ev": "2bf6895 · NUC needs trusted_single_operator_posture before redeploy" },
+            { "code": "OIDC", "state": "none", "label": "OIDC / BYO auth adapter.", "body": "Deferred until a real on-prem/BYO-IdP consumer exists.", "domains": ["Auth"], "ev": "design-spec at idea" }
+          ]
+        }
+      ],
+      "here": { "label": "You are here", "detail": "safety substrate + 4/5 epic children shipped · Operator MCP + deploy gate remain" }
+    }
+  },
+  "items": [
+    {
+      "id": "di-1-gate", "title": "DI-1 full-project scoping audit — fresh re-audit + live 2-workspace test", "kind": "not_started",
+      "domains": ["Governance", "Auth"], "status_label": "hard deploy gate · blocking", "verified_by": "self",
+      "note": "Delta re-audit F1-F7 + G1/G2 remediated and squash-merged (2bf6895), but the gate is still BLOCKED: HEAD is not certified adversarial-multi-tenant safe (DF-004 / ACT-406). Needs a fresh full-surface re-audit and a live two-workspace runtime isolation test. Codex cross-model gate previously caught 5 defects Claude mis-cleared — cross-verify.",
+      "handoff": {
+        "command": "/plan:plan-feature",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": ["docs/project_plans/reports/audits/di-1-delta-reaudit-remediation-2026-07-27.md", "docs/project_plans/reports/audits/di-1-full-surface-scoping-audit.md"],
+        "requirement_ids": [],
+        "gates": ["DI-1"],
+        "tracker": "node_01KXRSJ5F7GABVS0NA6RS1FXW1 — DI-1 full-project scoping audit",
+        "prompt": "Scope and run a fresh DI-1 full-surface scoping audit over runs/evidence workspace_id enforcement, then a live two-workspace runtime isolation test. Adversarially cross-verify with Codex/gpt-5.6 before clearing. Do not sign off on owner acceptance alone; DF-004 must be empirically demonstrated. This gate blocks public multi-tenant deploy."
+      }
+    },
+    {
+      "id": "operator-mcp-c5", "title": "Operator MCP (C5) — P2 Durable Operation Coordinator + P3-P6", "kind": "partial",
+      "domains": ["MCP", "Governance"], "status_label": "P1 accepted · ~25 pts open",
+      "note": "P1 CLOSED by owner acceptance (e5a2e6e, PR #7) after five gate rounds, but the last machine verdict was CHANGES_REQUESTED and the round-6 re-gate is deferred (OPM-DF-regate). Treat operator_mcp_receipt.schema.yaml as still under review — it yielded a finding every round. Mutation-verify inside the FIX step, not the next REVIEW round.",
+      "handoff": {
+        "command": "/dev:execute-plan",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": ["docs/project_plans/implementation_plans/enhancements/research-foundry-operator-mcp-v1.md"],
+        "requirement_ids": [],
+        "gates": ["OPM-DF-regate"],
+        "tracker": "node_01KYNZ1TCEVN3E2NWSRE4MJNK7 — Operator MCP v1 (Tier 3, 29 pts) epic child 5/5",
+        "prompt": "Execute Operator MCP P2 (Durable Operation Coordinator, 5 pts) then P3-P6 from the impl plan. Carry OPM-DF-regate: re-gate the receipt schema per-property once a file yields findings in 2+ rounds. Clear __pycache__ + set PYTHONDONTWRITEBYTECODE=1 on every mutation-verify iteration or greens are false in both directions."
+      }
+    },
+    {
+      "id": "release-activation", "title": "Public Multi-User Release activation — catalog + report builder + agent research", "kind": "partial",
+      "domains": ["UI", "Release"], "status_label": "in progress",
+      "note": "Frontend/Public-Release Activation work package is in flight; Screens 7-10 (catalog / portfolio / report-builder / run-audit / lineage-graph) already landed. This is the visible product surface over the shipped substrate.",
+      "handoff": {
+        "command": "/dev:execute-plan",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": ["docs/project_plans/PRDs/features/public-multiuser-release-activation-v1.md"],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": "node_01KXRSGNM4E5YYTP13TY7E4KEA — Public Multi-User Release activation",
+        "prompt": "Continue the release-activation execution: finish the evidence catalog, report builder, and embedded agent-research surfaces. Build the runs-viewer in loopback read/write mode (RF_UI_LOOPBACK). Do not couple the LAN :3030 bundle to a token that isn't in serve.env."
+      }
+    },
+    {
+      "id": "assertion-ledger-v1", "title": "Reusable Assertion Ledger v1 — land the review-gated plan", "kind": "partial",
+      "domains": ["Evidence", "Governance"], "status_label": "impl plan in review",
+      "note": "Population/activation shipped; the reusable-ledger v1 impl plan sits at status review with reviewer-experience, public-rights/promotion, and shared-index-isolation specs deferred beneath it. Furthest-along ready-to-execute plan.",
+      "handoff": {
+        "command": "/dev:execute-plan",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": ["docs/project_plans/implementation_plans/features/reusable-assertion-ledger-v1.md"],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": "node_01KXRSF4PKH089M62F10MCZ43C — Assertion-Ledger followups & deferrals",
+        "prompt": "Resolve the plan's open questions (OQ-1..4: claim-ledger->assertion mapping, forward-write entry point, assertion_registry_workspace_id for single-operator, C3 merge-UI dependency), take the review-status impl plan through /dev:execute-plan, and keep the three deferred specs deferred unless promoted."
+      }
+    },
+    {
+      "id": "search-router-p4", "title": "Search Router Phase 4 — monitoring + skill/repo scout", "kind": "not_started",
+      "domains": ["Research", "Infra"], "status_label": "P2+P3 done",
+      "note": "P2 (MCP/harness), P3 (CCDash+SkillMeat), and the aos-web/SearXNG free discovery lane all completed. Only P4 monitoring + the skill/repo scout remain. Still offline-validated only — a live-provider run is a separate item.",
+      "handoff": {
+        "command": "/autopilot",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": ["docs/project_plans/design-specs/research_foundry_search_router_gaps_aos_web_aar.md"],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": "node_01KXRSH84Z1C0P6HMTFZYD96XV — Search Router Phase 4",
+        "prompt": "Implement Search Router P4: provider/lane monitoring metrics plus a skill/repo scout discovery lane. Follow the AAR's gap list. Keep the offline-first posture; do not wire paid providers without an explicit live-key run."
+      }
+    },
+    {
+      "id": "verifier-eval-intake", "title": "Verifier / Eval / Intake enhancements (3 feature-contracts)", "kind": "not_started",
+      "domains": ["Verifier", "Evidence"], "status_label": "planned · needs contracts",
+      "note": "Three feature-contract candidates: verifier-gate hardening (URL-existence + abstain band + residual-unsupported-rate), Two-Leg Eval Harness (RIB-041), and Intake Adapters -> Normalized Citation Tuple. rf verify is known to miss quote-content fidelity, so this cluster raises real evidence quality.",
+      "handoff": {
+        "command": "/plan:plan-feature",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": ["docs/project_plans/design-specs/reusable-assertion-ledger-reviewer-experience-v1.md"],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": "node_01KXRSF8JGCP03PZW70JGJJNG1 — Verifier / Eval / Intake enhancements",
+        "prompt": "Plan the three verifier/eval/intake feature-contracts (verifier-gate hardening, two-leg eval harness RIB-041, intake citation-tuple adapters). Route Tier-1 items to /dev:execute-contract. Preserve strict exact-passage mode for threshold/clinical claims; do not weaken the pediatric_cds hard gate."
+      }
+    },
+    {
+      "id": "quality-score", "title": "Deterministic quality_score for CCDash telemetry", "kind": "not_started",
+      "domains": ["Interop", "Verifier"], "status_label": "orphaned spec",
+      "note": "Design-spec exists but is orphaned (missing frontmatter). Emits a deterministic quality_score over the emit_ccdash_event -> CCDash POST transport handoff. Needs frontmatter backfill then PRD promotion.",
+      "handoff": {
+        "command": "/plan:plan-feature",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": ["docs/project_plans/design-specs/ccdash-run-telemetry-transport-handoff.md"],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": "node_01KXRSHQT1E3TCMZX3JWN3TMEN — Deterministic quality_score for CCDash telemetry",
+        "prompt": "Backfill the design-spec frontmatter, then plan a deterministic (no-model) quality_score computed on the RF side and carried through emit_ccdash_event to the CCDash POST. No model call on the emit path."
+      }
+    },
+    {
+      "id": "kmcp-regression-test", "title": "serve-extra-absent CLI import smoke test (KMCP-F1 regression gate)", "kind": "finding",
+      "domains": ["CLI", "Infra"], "status_label": "actionable · guards a fixed bug",
+      "note": "deff14f decoupled the rf CLI from fastapi (KMCP-F1) but there is no regression test. Add a sys.meta_path serve-extra-blocked import smoke that asserts rf CLI imports clean while api.app still fails without the extra.",
+      "handoff": {
+        "command": "/dev:quick-feature",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": ["tests/", "src/research_foundry/api/__init__.py"],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": "node_01KYSMSX7Q2M6JSPXWJ4HR96NJ — serve-extra-absent CLI import smoke test",
+        "prompt": "Add a pytest that blocks the serve extra via sys.meta_path and asserts every rf CLI subcommand imports without fastapi, while asserting api.app import still fails. Run with .venv/bin/python -m pytest (not the pyenv shim)."
+      }
+    },
+    {
+      "id": "rf-tech-debt", "title": "RF correctness follow-ups — inert format-checker + dead index stub", "kind": "finding",
+      "domains": ["CLI", "Infra"], "status_label": "actionable",
+      "note": "Two independent findings from the Operator MCP saga: jsonschema format:date-time is enforced nowhere (no format_checker attached repo-wide), and `rf index rebuild` is a dead stub with stale absolute paths in run_index.yaml.",
+      "handoff": {
+        "command": "/fix:debug",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": ["src/research_foundry"],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": "node_01KYRHHCCMXQ3AZKM822CAAV63 — jsonschema format-checker inert",
+        "prompt": "Attach a jsonschema format_checker where date-time validation is claimed (find call sites first), and either repair or remove the `rf index rebuild` stub plus the stale absolute paths in run_index.yaml. Add a test for the format-checker path."
+      }
+    },
+    {
+      "id": "live-validation", "title": "First live validation — NotebookLM, ARC+IntentTree, live-key E2E", "kind": "not_started",
+      "domains": ["Interop", "Research"], "status_label": "built offline · unrun live",
+      "note": "Three integrations were implemented entirely offline against inferred API shapes and have never run against live endpoints: full NotebookLM<->RF, bidirectional ARC + IntentTree, and live-mode search E2E + live-key redaction. Each needs real credentials/accounts before its first run.",
+      "handoff": {
+        "command": "/plan:plan-feature",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": ["docs/project_plans/design-specs/notebooklm-research-foundry-refresh.md"],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": "node_01KXRSFFDYJQZZ1SEY0N5M0C0K — Integrations — live validation",
+        "prompt": "Plan first-live-run validation for NotebookLM<->RF, ARC+IntentTree bidirectional, and live-key search E2E with redaction. Each depends on operator-provisioned credentials (human-gated). Validate against live servers on first connection; do not trust the inferred API shapes. Cross-model audit any clinical/regulatory bundle."
+      }
+    },
+    {
+      "id": "governance-deploy-ops", "title": "Governance / Auth / Deploy-Ops follow-ups", "kind": "deferred",
+      "domains": ["Auth", "Deploy"], "status_label": "deferred",
+      "note": "OIDC / BYO auth adapter (FU-2), Agent Job Server pepper storage (Mode-D Gate #4), and agent-job spawn latency (FU-1). All design-specs at idea/shaping; pepper storage is Mode-D (stop before edits).",
+      "handoff": {
+        "command": "/plan:explore",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": ["docs/project_plans/design-specs/oidc-byo-adapter-implementation.md", "docs/project_plans/design-specs/agent-job-pepper-storage-decision.md"],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": "node_01KXRSFCFH3KGS36BM2Y7GTTDB — Governance / Auth / Deploy-Ops",
+        "trigger": "Re-enter when a real on-prem / BYO-IdP consumer exists, or when a public multi-tenant deploy is scheduled (which also lifts DI-1).",
+        "prompt": "Explore the OIDC/BYO adapter feasibility (does an on-prem-IdP consumer exist yet?) and the agent-job pepper-storage decision. Pepper storage is Mode-D — propose in a completion report and stop before edits pending approval."
+      }
+    },
+    {
+      "id": "deferral-spec-backlog", "title": "Epic deferral design-spec backlog (43 idea/shaping specs)", "kind": "deferred",
+      "domains": ["Evidence", "Interop"], "status_label": "needs planning per cluster",
+      "note": "The interchange epic and its siblings spun off ~43 design-specs still at idea/shaping with zero ready to promote: External Research (ERI-DF-1..5), Research Provenance (RPC-DF-1..4), Catalog-Planning (4), Claim-Term-Indexing (4), Rights (3), plus public-knowledge-platform and RFUP-6 native adapters. These are the second-wave capability backlog, not active work.",
+      "handoff": {
+        "command": "/plan:plan-feature",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": ["docs/project_plans/design-specs/external-research-provider-automation.md", "docs/project_plans/design-specs/research-provenance-report-transclusion.md"],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": null,
+        "trigger": "Promote a cluster to PRD when its parent feature needs the deferred capability in production (e.g. ERI transport containers when a non-directory packet handoff is required).",
+        "prompt": "Pick one deferral cluster (ERI / RPC / catalog-planning / term-index / rights), shape its specs to ready maturity, and promote to a PRD. Do not batch-promote — each cluster gates on real downstream demand. Run plan-status --route6 first to confirm current maturity."
+      }
+    },
+    {
+      "id": "exploration-charters", "title": "Exploration charters (5 pre-build SPIKEs)", "kind": "deferred",
+      "domains": ["Research", "Verifier"], "status_label": "deferred",
+      "note": "Five low-priority investigation charters: citation precision/recall metrics, claim segmentation & source alignment, contradiction log v1, credential process isolation, writeback default-deny gate. Pre-build research, not implementation.",
+      "handoff": {
+        "command": "/plan:spike",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": ["intents/intent.md"],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": "node_01KXRSFHZ24BR91ZC36VEYTB84 — Exploration charters",
+        "trigger": "Re-enter a charter when its downstream feature is scheduled and the open question blocks planning (e.g. citation P/R metrics before the verifier-hardening contract).",
+        "prompt": "Run one exploration charter as a SPIKE (start with citation precision/recall metrics, which feeds verifier hardening). Produce a charter doc + go/no-go verdict; do not implement from the SPIKE."
+      }
+    },
+    {
+      "id": "plan-optimizer", "title": "plan-optimizer agent/skill (agentic_meta_dev)", "kind": "not_started",
+      "domains": ["Governance", "Infra"], "status_label": "cross-project · spec drafted uncommitted",
+      "note": "Cross-project item: a plan-optimizer agent/skill for risk-classed gate selection at the plan/execute boundary. Spec + ITT node drafted in agentic_meta_dev but the files are uncommitted on that repo's main. Directly informs how RF's Tier-2/3 plans pick gates.",
+      "handoff": {
+        "command": "/plan:plan-feature",
+        "repo": "/Users/miethe/dev/homelab/development/agentic_meta_dev",
+        "paths": ["CLAUDE.md"],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": "node_01KYNZ3PRYGN4V7METP54EVMBM — AOS: build a plan-optimizer agent/skill",
+        "prompt": "In agentic_meta_dev, first commit the drafted plan-optimizer spec + ITT node that sit uncommitted on main, then plan the agent/skill for risk-classed gate selection at the plan/execute boundary. This is an AOS-wide artifact; edit the upstream per ARTIFACT-UPSTREAM-REGISTRY.md."
+      }
+    },
+    {
+      "id": "tiered-workflow-overhaul", "title": "Tiered Workflow Overhaul — right-size planning/execution/autopilot", "kind": "partial",
+      "domains": ["Infra", "Governance"], "status_label": "active meta-plan",
+      "note": "Active meta-plan reshaping the tier system, delegation modes, and the autopilot lane. Holds OQ-2 (split delegation modes into per-mode agent profiles with aligned permissionMode).",
+      "handoff": {
+        "command": "/dev:execute-plan",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [".claude/plans/tiered-workflow-overhaul.md"],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": null,
+        "prompt": "Advance the tiered-workflow-overhaul meta-plan's next wave. Resolve OQ-2 (per-mode agent profiles). Keep the four workflow constraints intact: no FS/shell in scripts, Mode D as boundary, edit-less reviewers, no Date.now/Math.random."
+      }
+    },
+    {
+      "id": "interchange-epic-shipped", "title": "Interchange epic C1-C4 + Search Router P2/P3 + Rights model + Term Indexing", "kind": "shipped",
+      "domains": ["Interop", "Evidence"], "status_label": "shipped", "verified_by": "self",
+      "note": "Landed on main since 2026-07-21: C1 Provenance Continuity (65d658d), C2 External Interchange (e76784b), C3 Catalog Planning (95e8419), C4 Knowledge MCP (1376e85/e84c19c/deff14f), Search Router P2+P3+SearXNG lane, Rights & Evidence entity model (17a2cb0), Claim Term Indexing v1 (d71a261), Runs Context Panels + Screens 7-10."
+    }
+  ],
+  "media": [],
+  "no_visual_reason": "No product screenshots embedded in this committed status snapshot; the two-track ladder and the vitals row carry the visual story. A live render can embed downscaled, redacted runs-viewer (:3030) screenshots of the shipped catalog / Screens 7-10.",
+  "evidence": [
+    { "id": "epic-c1", "label": "git show 65d658d — C1 Research Provenance Continuity (RPC P1-P7)", "kind": "commit", "note": "all gates APPROVED" },
+    { "id": "epic-c2", "label": "git show e76784b — C2 External Research Report Interchange (ERI P1-P6)", "kind": "commit", "note": "validator PASS + Karen gate" },
+    { "id": "epic-c3", "label": "git show 95e8419 — C3 Catalog-Assisted Research Planning (P3-P6)", "kind": "commit" },
+    { "id": "epic-c4", "label": "git show 1376e85 + e84c19c + deff14f — C4 Knowledge MCP + skill/agent + CLI decouple", "kind": "commit", "note": "closes KMCP-F1" },
+    { "id": "di-1-remediation", "label": "docs/project_plans/reports/audits/di-1-delta-reaudit-remediation-2026-07-27.md", "kind": "report", "note": "F1-F7 + G1/G2 remediated; gate still BLOCKED" },
+    { "id": "itt-tree", "label": "itt list_tree_nodes tree_01KVTH95G09FX26HCRPBV77DAE", "kind": "tracker", "note": "61 nodes, 53 open; several stale vs git" },
+    { "id": "plan-status", "label": "plan-status-report.py --all --all-types over docs/project_plans", "kind": "tracker", "note": "18/24 PRDs delivered; 43 design-specs at idea/shaping" }
+  ]
+}

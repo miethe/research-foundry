@@ -1,0 +1,27 @@
+schema_version: '1.0'
+type: external_research_interchange_manifest
+packet_digest: 5652abd07ac9f9fea4a6851d03656169ac843e34a0e95a9083d9158157446946
+members:
+- path: handoff.yaml
+  role: handoff_manifest
+  byte_length: 944
+  sha256: 24a11ead6a36491432d0361a2278445ad321febc58c757d2861fc1381d5e60e2
+- path: report.md
+  role: report
+  byte_length: 26142
+  sha256: 5b3c7b3147cfc73810eafdd35d40b15ffc01665999fb0068c7b654c2dcff2166
+- path: sources.yaml
+  role: sources
+  byte_length: 5278
+  sha256: 040071434e271060b01e5da3702fd37cb24e29e10627e41f6eee2445363f0210
+- path: assertion_candidates.yaml
+  role: assertion_candidates
+  byte_length: 92362
+  sha256: 83ecd115599ad14ac925266338a1777bec5228ee6858fe7f74516add8a7973b5
+schema_major_versions:
+  external_research_handoff: 1
+  external_research_sources: 1
+  external_assertion_candidates: 1
+  external_research_import_receipt: 1
+  external_research_import_checkpoint: 1
+  external_research_acquisition_policy: 1

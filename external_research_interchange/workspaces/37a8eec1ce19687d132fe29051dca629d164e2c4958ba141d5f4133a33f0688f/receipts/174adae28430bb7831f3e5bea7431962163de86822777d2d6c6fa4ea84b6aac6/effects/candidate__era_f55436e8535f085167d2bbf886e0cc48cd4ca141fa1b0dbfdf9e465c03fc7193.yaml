@@ -1,0 +1,13 @@
+schema_version: '1.0'
+type: external_research_import_effect
+receipt_digest: 174adae28430bb7831f3e5bea7431962163de86822777d2d6c6fa4ea84b6aac6
+action_id: era_f55436e8535f085167d2bbf886e0cc48cd4ca141fa1b0dbfdf9e465c03fc7193
+kind: candidate
+outcome: completed
+completeness_tier: passage_resolved
+reason_code: null
+canonical_refs:
+  source_edition_id: sed_3856fb56c66d71d11f66caa7e785fca28f415e9803c8a365152bfdeff922de34
+  passage_id: psg_b93498a7a6bb4524f9698844ac308be469f5bdd6def76ecb8d19a2dd78dbad7e
+effect_digest: b0fec31d8311fd5776fec6c0169085ebd78e2943f30d7101c7906760547015cd
+created_at: '2026-07-29T23:39:35-04:00'

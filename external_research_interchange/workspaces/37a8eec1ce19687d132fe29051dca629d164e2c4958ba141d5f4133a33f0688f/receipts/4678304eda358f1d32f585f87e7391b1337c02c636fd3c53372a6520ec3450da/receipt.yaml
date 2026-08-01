@@ -1,0 +1,192 @@
+schema_version: '1.0'
+type: external_research_import_receipt
+receipt_id: erh_4678304eda358f1d32f585f87e7391b1337c02c636fd3c53372a6520ec3450da
+receipt_digest: 4678304eda358f1d32f585f87e7391b1337c02c636fd3c53372a6520ec3450da
+packet_digest: a827b98308abc0bbc2c71585501b7a9df22cf16ac161f9c909b5d3f8352044e3
+workspace_id: default
+target_run_id: rf_run_20260717_rf_cbc_002_pediatric_cds_establish
+policy_digest: e6bbb15f5436e4c1ab103f2e7279305c886ef109ea31ebebfa08e458094de72f
+governance_policy_digest: 179d67169e7f03a652879944ecdc800551539084efccf4144f591739327caf8a
+schema_major_versions:
+  external_research_handoff: 1
+  external_research_sources: 1
+  external_assertion_candidates: 1
+  external_research_import_receipt: 1
+  external_research_import_checkpoint: 1
+  external_research_acquisition_policy: 1
+action_manifest_digest: a3d6b3a487b00bb4609e0163da5094a4d071682ac2abb699974f6b542b17af35
+action_manifest_algorithm_version: '1'
+attempt_structural_summary: null
+importer_contract_version: external_research_handoff/v1
+status: completed_with_quarantine
+block_reason: null
+actions:
+- action_id: era_4ddcfba04f67aab3c1b2cf893f1a16cf65c2a2adffa4e740b8f0edfa48d905c6
+  kind: source
+  outcome: completed
+  completeness_tier: source_resolved
+  audit_ref: null
+  effect_digest: f92c631f326074bf1e81f16430a4e4b35afbacd1e8f4d45d4ccaedd5f5cb0bf0
+- action_id: era_64b52b44d28da10d59e46f6735d14947636307da51c58334e1528531737f628c
+  kind: source
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 63410b9a9b75b170e4b96a4c0548fc2260c98ec255248ae13a92c835c902b868
+  effect_digest: ba455e8d0c5767c0b07d4b6824a264f6c259c9f8fb5ab16872397c47086e4ecc
+- action_id: era_f452968a7b36eafff7c1af1883d8e2b6ff05c8e7467059053718d8774035a883
+  kind: source
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 9f28ed64f5b199326f924fc3bdd09d7d097d8a2c63a1297b7426fc8e19b4035f
+  effect_digest: 54d4645debac22f449fe2cc0fe56f0c88da5b2447e956e976c9a511bc5100704
+- action_id: era_b721dd41bdfda2c388829ab72fd8d172667b60c4569fa002b9574d2dc9c1c5e9
+  kind: source
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 752a137ad2f87a211ed5ed63f06247ca995d48470a92aafcd7872a1e46642763
+  effect_digest: b401706eb59d10f52e312f0116e31220297939785a9031b6ee867f7dae715ae7
+- action_id: era_a0570fb1de0f742c031e610e2d683f1accf7e693731081bda39038ae23812d82
+  kind: source
+  outcome: completed
+  completeness_tier: source_resolved
+  audit_ref: null
+  effect_digest: 9fa4493902476b793443b0e193f0e722eb01ff7e202580cd5f0e95619cac88ac
+- action_id: era_ccd6462cc688c24214bcd4b629912cb4cea37e035980b573b43409624bba1d51
+  kind: source
+  outcome: completed
+  completeness_tier: source_resolved
+  audit_ref: null
+  effect_digest: b5574ac2e4d4bd86ebe4ebd906fd45e657a845a3f6df4ed4c20da58ba82369f5
+- action_id: era_142c875e058883eb8f838729132fd8a37a663fe090c8eb404689a4efc0a48cba
+  kind: source
+  outcome: completed
+  completeness_tier: source_resolved
+  audit_ref: null
+  effect_digest: e0b50ae859ef0d0e2ca29935c2afc6b2498f112d48def335322dccfb19b07efb
+- action_id: era_ce1078aaaca818ab6706ba105dc715adc04b6be0984f79d760c2939e969d521d
+  kind: source
+  outcome: completed
+  completeness_tier: source_resolved
+  audit_ref: null
+  effect_digest: 4f6b77c4fb66d7e561df39743072163e1b592dd544fdaca15750358bbba8f329
+- action_id: era_539097348583f880e57c21a61f0e772d4bf134ca419c32ffaf49b992c840a7de
+  kind: source
+  outcome: completed
+  completeness_tier: source_resolved
+  audit_ref: null
+  effect_digest: a0861d429c91a15acca79f79a82a54391715f4bef8f307c26eca39e6bf152452
+- action_id: era_c96de3e23d32222d23e41267a57e28b577502406b643216b41623de3d5274c28
+  kind: source
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 42531a439b34c285fdcd13ae53ef004c8f905e8960a29cb9e67c87202b1eb8f2
+  effect_digest: 8f050c748967d8eabe88cd58cc630d7ed7fbb3985f645542e6f25bd46908ff01
+- action_id: era_abbe2cf64974640dd7ff9cb57e6dd1c465feb5945401e19d21263049902c1ce0
+  kind: source
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 307172ac0a69fddf32acbac87a8d4f70edc8cf126aabc2b2cd51efb87865f415
+  effect_digest: 421a78a7d669765e41d1315d737f795d6b95e7a4d8a199ef9fce6de68ae915ba
+- action_id: era_34daa22751a7bd40a42b204cbbe2a9d1a215875ce703665800594c5538c38452
+  kind: source
+  outcome: completed
+  completeness_tier: source_resolved
+  audit_ref: null
+  effect_digest: 1b8027681671341910ae851c5ae7e6ba051287f036421aaa247453ba18ee1d4f
+- action_id: era_924e25d75e21de90c15dd4c0d25be97b15b838ececd4e93230aa267dbf4fdea1
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 2d2ddde70eb30dbc024fa05a666e46253fa397c0790e1c3b0f8fe85fc383da22
+  effect_digest: 32127c40b190281c40551d07768e22af47065314eaf7d1cb55868bf19e33bff4
+- action_id: era_9a3ec5c24baaf08a52c4123b6d43ba11a20d88507a1dcafdb2d948ce40aed8ff
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: dde2be7652c91ffadf46f7a60edf77fa9da442bdf2d74f6d14dddeb11d458b65
+  effect_digest: 31ca9846e66dafe605e6723e8d0287b047e8a969d539362ff9af3f1ae104cd71
+- action_id: era_a5b3beec33163e2e179e007c3eaf412d5da5da28ee0a01e3830ce0d2805d9dcc
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 4967c222bbf1b965cb2f870f336a60c1652cbba6c726fbee44c4c0465d4f8202
+  effect_digest: 9ff6154d6804c52962d06734796277ce2b581b8d3aafeaf40523d5327eea637d
+- action_id: era_f13a7aec43a66c69bd3367e6e396b47cdee39a77101b9b4291836e323e15463a
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: a9915f74500b30bb342520f791289bc4e275f9f226d9f695cbb0ac4ef24598d0
+  effect_digest: db81d5b016ba36ef96b8a718af6881bad2bde5e8c44710000b70b33b922ef31c
+- action_id: era_49145f75fe5f5cc5147dca643aa54b50e351b579b7f3ca651d507ab2aca96115
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 23608e5942b3cc37967705dc69ce43bd4c6e03e42dd4874a16eff12f657a8b12
+  effect_digest: e4a88dec98e203697ec63239f144184590564eccab678675ff6434ea20e69c74
+- action_id: era_ff8af05a90ccde45e4070588b95ff839c0372773bc189926ef74c1de9a9218b7
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 784a35a6014689756ee060af10dcab7e3b6bb31cc97337a7ed3968c3d16094a7
+  effect_digest: 7340a49887be652906cd019a05194c46f52b829bc26057e7386c126050da0a51
+- action_id: era_d5b7c87d646e99b8c01928112843fce52586fbc1f5009f7a8065e4ce8bf2bd0f
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: f78105e515a4de5963427c86257a2d2b981b04c43b624640afc91d27d659b9e7
+  effect_digest: bedd5b80899dc812e54fcd58ff879b6ad9000ddeea5e37b954ada985e4f116c1
+- action_id: era_f50a42b8c1711e9d3558aea4ed2463a1222d32a08d7e3623a646a56f65478319
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: c7b5afaffc331196e02b2618f2eeac751c1f1176cc5c74a4219c023ccc0eb002
+  effect_digest: 359b179a4e23eb2356421ed0e697b4d2359a3c13cee3b884d81b92dd6059d74e
+- action_id: era_fa7833dbbace3af98a124cd6d4c1ab0ede810858b3bf659fee73bf7380a4c344
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 99a9ae6dc7ff1e69c9f2373491c9c8f4d1780a50465c57d36b6e0c0963a873b8
+  effect_digest: e1d6e5b04eb462783b1c0dd0014a82beee6d352a6a69c603e496e618e45cb62f
+- action_id: era_95d2dcf5130c88fa8026d567297b3b6d7d40edd4f7564d0c2339f49bb802e248
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: af8045efa7f433e8979ce553976e3209493d34edbe1edf843cb72b18221b1548
+  effect_digest: 3eb9b2ac268222f624b419b896fca4b0c4c36f9fa13863b8a744b34666497ea7
+- action_id: era_48f25d5eae16cbb890266768089f7f3c0774fc9826efe977bbdd4dc7becde0cc
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 8932f464aec2599207f4a2e5b0a2898d1988837eaafb314f96795fc8e212c139
+  effect_digest: 48205fb82cf820e8fbd5308973ffdf180fa2478a7636bbe1833f75f0be4bdd2c
+- action_id: era_949cfd8e1391557612e72c56bd028e27707052f1901bee7749421ef6ba5fa879
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 5a58b53fc9b3704cd47f9f3c4d91ae989c2dc536a2d09c4d746d97839f7dc017
+  effect_digest: d584b2cd661acaa8b5f74c8186bfa8d5e46b8612cc7d518c35f27ac16536c046
+- action_id: era_c41182721a43dc202bc035f462fbf995c4602368b625c04a441d6d74a7deb770
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 55f173451dc2f77608abdd2d885db28c0c71a72c50b9fc56de390a7b226ae536
+  effect_digest: f6bc7904936a506fdd6c2e07b794717a50f1203a2304a31b916b37f5590c7dc3
+- action_id: era_3698d304aa3582616aa58a0df33243aa21f0d01fd4ea7ca6cc8278e45e266c8f
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: adbcabc5c43c71318748e2f699ccb61442999658258f0c600a716d62d0db501a
+  effect_digest: cc2ab6569d610f8c50a6613d88b285612f27c4ca14f0b8789a3b5b2f1a086518
+- action_id: era_a1ca7ce68546352a732764e82ddb82b1f4605a551ffafcd9b697c392538fe15c
+  kind: candidate
+  outcome: quarantined
+  completeness_tier: null
+  audit_ref: 1f953404fe3d08dc89e6bcf230e8f657aae45a7e9a086e755078ce4c9c585cdd
+  effect_digest: 0c8a21abbc68281afcb62905873f1b6c2d4f001ca00ee53434ce4ee0f0d072f5
+counts:
+  actions_total: 27
+  completed: 7
+  quarantined: 20
+  by_completeness_tier:
+    source_resolved: 7
+created_at: '2026-07-29T23:39:55-04:00'
