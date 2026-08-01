@@ -36,8 +36,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from research_foundry.api.auth.provider import AuthIdentity
-from research_foundry.api.auth.scope import resolve_workspace_isolation_active
+from research_foundry.auth_identity import AuthIdentity
+from research_foundry.config import resolve_workspace_isolation_active
 from research_foundry.paths import FoundryPaths
 from research_foundry.services.rbac_store import _connect, _ensure_schema
 
@@ -48,11 +48,14 @@ def _isolation_active(paths: FoundryPaths) -> bool:
     """Resolve whether WKSP-304 workspace isolation is actively enforced.
 
     Thin delegate to the single shared implementation
-    (:func:`research_foundry.api.auth.scope.resolve_workspace_isolation_active`)
+    (:func:`research_foundry.config.resolve_workspace_isolation_active`,
+    re-exported at ``research_foundry.api.auth.scope.resolve_workspace_isolation_active``)
     that ``catalog_service.py``/``builder_service.py``/``AgentJobService``
-    already use — see that module's docstring. Kept as a module-local
-    wrapper only for call-site symmetry with those modules (DI-1 full-surface
-    audit, Phase 4 ACT-401).
+    already use — see that module's docstring. Imported from ``config``
+    directly (NEW-23) rather than via ``api.auth.scope`` so this module stays
+    importable in a BASE install (no ``[serve]`` extra) as part of the
+    Operator MCP chain. Kept as a module-local wrapper only for call-site
+    symmetry with those modules (DI-1 full-surface audit, Phase 4 ACT-401).
     """
 
     return resolve_workspace_isolation_active(paths)
@@ -75,6 +78,7 @@ class AuditHealth:
     last_probe_at: Optional[str]    # ISO-8601 UTC; None = never probed
     last_success_at: Optional[str]  # None if never succeeded
     error_detail: Optional[str]     # populated when healthy=False
+
 
 # ---------------------------------------------------------------------------
 # Mutation-type taxonomy (all 6 reserved; 5 wired in P5.5)

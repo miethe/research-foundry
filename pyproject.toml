@@ -30,7 +30,12 @@ llm = [
     "litellm>=1.40",
 ]
 search = ["httpx>=0.27"]
-mcp = ["mcp>=1.0"]
+# Both `rf-mcp`/`rf-knowledge-mcp`/`rf-operator-mcp` target the 1.x
+# `mcp.server.fastmcp.FastMCP` API. SDK 2.0 renamed the high-level server
+# class to `mcp.server.mcpserver.MCPServer` (a breaking change, not merely
+# an addition) -- pinned below `2` until a dedicated migration lands
+# (filed follow-up: research-foundry-operator-mcp-v1 M2 Leg B AAR).
+mcp = ["mcp>=1.0,<2"]
 # PDF text extraction is OPTIONAL. The extractor imports pypdf lazily and
 # degrades to locator-only behavior when it is not installed.
 pdf = ["pypdf>=3.0.0"]
@@ -72,6 +77,16 @@ rf-mcp = "research_foundry.services.search_router.mcp_launcher:main"
 # knowledge_access service over the frozen core `search(query)`/`fetch(id)`
 # contract (KMCP-1.2); registers no acquisition/writeback/provider tool.
 rf-knowledge-mcp = "research_foundry.knowledge_mcp.process:main"
+# Operator MCP server (stdio). Optional: requires the same `mcp` extra as
+# `rf-mcp`/`rf-knowledge-mcp` above. Without it the entrypoint raises a clear
+# RuntimeError pointing to the extra. An INDEPENDENT process/registry
+# boundary from both `rf-mcp` and `rf-knowledge-mcp` -- never imports from
+# research_foundry.knowledge_mcp.* or research_foundry.services.search_router.*
+# (research-foundry-operator-mcp-v1 M2, OPM-5.1/5.2/5.4). Exposes the exact,
+# closed 14-tool inventory (13 operation kinds + `operation.preflight`) over
+# the P1-P3 authorize -> consume -> execute pipeline; registers no live
+# writeback path.
+rf-operator-mcp = "research_foundry.operator_mcp.process:main"
 
 [build-system]
 requires = ["hatchling"]

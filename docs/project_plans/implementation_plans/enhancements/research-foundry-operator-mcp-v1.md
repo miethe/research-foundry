@@ -2,9 +2,9 @@
 title: "Implementation Plan: Research Foundry Operator MCP"
 schema_version: 2
 doc_type: implementation_plan
-status: in_progress
+status: completed
 created: 2026-07-18
-updated: 2026-07-30
+updated: 2026-07-31
 feature_slug: research-foundry-operator-mcp
 feature_version: v1
 tier: 3
@@ -43,7 +43,9 @@ references:
     - schemas/evidence_bundle.schema.yaml
 spike_ref: null
 adr_refs: []
-deferred_items_spec_refs: []
+deferred_items_spec_refs:
+  - docs/project_plans/design-specs/operator-mcp-remote-transport-shaping.md
+  - docs/project_plans/design-specs/operator-mcp-live-writeback-shaping.md
 findings_doc_ref: .claude/findings/research-foundry-operator-mcp-findings.md
 charter_ref: null
 changelog_ref: null
@@ -71,7 +73,8 @@ routing_constraints:
   - "Mechanical work is offload-eligible: swarm-service extraction (M1), fixture assembly (M3), docs + CHANGELOG + deferred shaping specs (M3)."
   - "Capability bar — M1: workhorse-class, parity-test-driven. M2: frontier-class for the preview negative proof; workhorse for scaffold/packaging. M3: frontier-class for the final exact-tree verdict; economy-class for docs."
   - "Reviewers get findings-ledger write access ONLY (no source, no tests); the ledger must not round-trip through the orchestrator context."
-commit_refs: [41bcafb, f1bfa39, 725faba, 61c3691]
+# P1-era work-history SHAs, then per-milestone heads: M1 053a2c8 · M2 a4e320e · M3 a107d84/c6df04d/569879c/7c615a8/fed265a (K-M3-2: set merge_commit/merge_branch at PR #7 landing so branch SHAs stay resolvable post-squash)
+commit_refs: [41bcafb, f1bfa39, 725faba, 61c3691, 053a2c8, a4e320e, a107d84, c6df04d, 569879c, 7c615a8, fed265a]
 pr_refs: ["https://github.com/miethe/research-foundry/pull/7"]
 files_affected:
   - schemas/operator_mcp_operation.schema.yaml
@@ -80,7 +83,7 @@ files_affected:
   - schemas/operator_mcp_error.schema.yaml
   - src/research_foundry/services/operator_mcp_policy.py
   - src/research_foundry/services/operator_operation_service.py
-  - src/research_foundry/services/operator_tool_adapters.py
+  - src/research_foundry/services/operator_mcp_adapters/
   - src/research_foundry/services/agent_job_service.py
   - src/research_foundry/services/agent_job_schemas.py
   - src/research_foundry/services/swarm_service.py
@@ -148,7 +151,7 @@ wave_plan:
     - src/research_foundry/services/audit_service.py
     - src/research_foundry/services/writeback.py
     - src/research_foundry/services/operator_operation_service.py
-    - src/research_foundry/services/operator_tool_adapters.py
+    - src/research_foundry/services/operator_mcp_adapters/
     - src/research_foundry/operator_mcp/server.py
   phases:
     # P1/P2 are the executed record; their model/effort pins are deprecated-not-deleted and must
@@ -189,7 +192,7 @@ wave_plan:
         - "Exact retry creates no duplicate source card, claim, or import receipt"
       files_affected:
         - src/research_foundry/services/swarm_service.py
-        - src/research_foundry/services/operator_tool_adapters.py
+        - src/research_foundry/services/operator_mcp_adapters/
         - src/research_foundry/cli_commands.py
         - src/research_foundry/services/external_research_import.py
         - src/research_foundry/services/source_cards.py
@@ -199,6 +202,9 @@ wave_plan:
         - src/research_foundry/services/verification.py
         - src/research_foundry/services/writeback.py
     - id: M2
+      # Scoping note (M2 fix cycle 1/2, TERRA-5/SEC-8): "provably cannot execute" is scoped to
+      # every path a real caller can drive, not to arbitrary in-process code execution -- see the
+      # "### M2" section body below (its own scoping note) and server.py's module docstring.
       title: "The stdio surface exists and provably cannot execute"
       depends_on: [M1, KMCP-1.G]
       isolation: worktree
@@ -213,7 +219,7 @@ wave_plan:
         - src/research_foundry/operator_mcp/__init__.py
         - src/research_foundry/operator_mcp/server.py
         - src/research_foundry/services/writeback.py
-        - src/research_foundry/services/operator_tool_adapters.py
+        - src/research_foundry/services/operator_mcp_adapters/
         - pyproject.toml
     - id: M3
       title: "One exact tree satisfies AC OPM-1..7"
@@ -231,7 +237,7 @@ wave_plan:
       files_affected:
         - tests/unit/test_operator_mcp_policy.py
         - tests/unit/test_operator_operation_service.py
-        - tests/unit/test_operator_tool_adapters.py
+        - tests/unit/test_operator_mcp_adapter_*.py
         - tests/integration/test_operator_mcp_server.py
         - tests/integration/test_operator_mcp_workspace_isolation.py
         - tests/integration/test_operator_mcp_writeback_preview.py
@@ -268,7 +274,23 @@ The critical path is serial: each stage establishes the trust contract the next 
 artifacts for P1-P2 are under `.claude/progress/research-foundry-operator-mcp/`; M1-M3 progress is
 initialized by the artifact tracker at dispatch.
 
-## Execution Status (as of 2026-07-30)
+## Execution Status (as of 2026-07-31, M3 close)
+
+- **P2 re-gate: CLOSED 2026-07-30** — both gates genuinely APPROVED (security on `be6ba96`, Karen
+  on `ad7d461`). **M1: CLOSED 2026-07-31**, validator APPROVED first round (`d447af9`/`053a2c8`,
+  12 adapters, 109 tests). **M2: CLOSED 2026-07-31** (`a4e320e`, pushed, PR #7; whole-tree
+  failure set byte-identical to baseline; stdio server, closed 14-tool registry, preview seam).
+- **M3: executed 2026-07-31** on this branch (commits `a107d84` wave 1 + fix, `c6df04d` pre-gate
+  fixes, `569879c` validator fixes). Pre-gate 0 BLOCKING/0 HIGH; validator APPROVED on `569879c`
+  (FIND-M3-V1 all resolved, FIND-M3-V2). Four real product defects found and mutation-verified
+  fixed during M3: `job.status` route TypeError-masking, `swarm_start` existence oracle (F6
+  class), required-key TypeError→internal_error masking (13-kind class fix), and `swarm.start`'s
+  preflight→execute route wholly broken (server-resolved governance fields unreachable). Karen
+  final-exact-tree verdict is the remaining gate; evidence artifact:
+  `.claude/worknotes/research-foundry-operator-mcp/m3-exact-tree-evidence.md`.
+- **Still not merged to main** — merge is a human decision on PR #7 after Karen's verdict.
+
+### Superseded status (as of 2026-07-30, retained for context)
 
 - **Branch/worktree**: `worktree-operator-mcp-v1`, worktree `.claude/worktrees/operator-mcp-v1`, based on
   main `65d658d`, draft PR [#7](https://github.com/miethe/research-foundry/pull/7).
@@ -340,9 +362,12 @@ appears, the dependent milestone stays pending; no temporary duplicate schema or
 | Milestone | Reviewable state | Estimate | Context class | Gate lens |
 |---|---|---:|---|---|
 | M1 | Every mutation runs through a canonical service adapter | 10 pts | C3 | validator |
-| M2 | The stdio surface exists and provably cannot execute | 6 pts | C3 | security + validator |
+| M2 | The stdio surface exists and provably cannot execute\* | 6 pts | C3 | security + validator |
 | M3 | One exact tree satisfies AC OPM-1..7 | 4 pts | C4 | validator, then Karen on the final tree only |
 | **Total** | — | **20 pts** | — | — |
+
+\* Scoped to every path a real caller can drive (M2 fix cycle 1/2, TERRA-5/SEC-8) — see the "### M2"
+section body's own scoping note, and `server.py`'s module docstring, "Scope of the stdio-only guard".
 
 > H1-H7 detail is in the Human Brief. Excludes remote transport, live writeback, arbitrary execution,
 > approval UI, schedules, hosted/public qualification. **Points did not change**: 5+5+6+4 across
@@ -491,8 +516,8 @@ reads only the AC and this rubric should make the same calls the plan author wou
   findings in every round in which it was actually examined and was not attacked until P1 round 3.
   M3 must run a **per-property** matrix against it, not a golden-instance pass.
 - **Serialization barriers are shared with live code.** `writeback.py`,
-  `operator_tool_adapters.py`, `agent_job_service.py`, `governance.py`, and `audit_service.py` are
-  declared barriers. M1 and M2 both write `writeback.py` and `operator_tool_adapters.py`; that is
+  `operator_mcp_adapters/`, `agent_job_service.py`, `governance.py`, and `audit_service.py` are
+  declared barriers. M1 and M2 both write `writeback.py` and `operator_mcp_adapters/`; that is
   why they are sequential waves, not parallel ones.
 - **Verification failure must be a governed result, not an exception.** A verify failure that
   propagates as a raw error will be caught by a broad `except` somewhere upstream and read as
@@ -534,6 +559,16 @@ against the wrong one.
 ### M2 — The stdio surface exists and provably cannot execute
 
 *(supersedes P5; 6 pts; context class C3; gate: security + validator — do not cut)*
+
+> **Scoping note (M2 fix cycle 1/2, TERRA-5/SEC-8):** "provably cannot execute" means no registered
+> tool, and no code path reachable from a real stdio request, can mount a network transport or
+> execute an effect without a bound confirmation — it is provable and holds against every path a
+> real caller can drive. It does **not** mean the stdio-only transport guard survives arbitrary
+> in-process code execution (an unbound `FastMCP.sse_app(instance)`-style base-class call is a known,
+> accepted, documented limitation — see `src/research_foundry/operator_mcp/server.py`'s own
+> module docstring, "Scope of the stdio-only guard" section, for the precise boundary). Reaching that
+> call already requires arbitrary code execution in-process, at which point the guard is moot either
+> way.
 
 A thin FastMCP stdio server registers exactly the closed tool inventory over the M1 adapters, with
 bounded inputs, results, events, and errors. The MCP SDK is an optional dependency: the base package
@@ -590,22 +625,22 @@ the repo root with the project venv (`./.venv/bin/python` — the pyenv shim wil
 
 | AC | Command | Evidence of pass |
 |---|---|---|
-| M1 — closed dispatch, no CLI reach | `rg -n "typer\|cli_commands\|subprocess\|os\.system\|shell=True" src/research_foundry/services/operator_tool_adapters.py src/research_foundry/operator_mcp/` | Zero matches in registered handler call paths |
-| M1 — adapter/service parity | `./.venv/bin/python -m pytest tests/unit/test_operator_tool_adapters.py -q` | Parity assertions compare canonical refs from direct-service vs adapter and match |
+| M1 — closed dispatch, no CLI reach | `rg -n "typer\|cli_commands\|subprocess\|os\.system\|shell=True" src/research_foundry/services/operator_mcp_adapters/` — extend with `src/research_foundry/operator_mcp/` once M2 creates it. Verify the paths exist first: `rg` on a missing path exits 0 with zero matches, which reads as a pass. | Zero matches in **live code** on paths confirmed to exist — comment/docstring hits are expected (11 as of M3) and must each be classified as non-code (see `m3-evidence-reconciliation.md`); an anchored real-import search returns 0 |
+| M1 — adapter/service parity | `./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_*.py -q` | Parity assertions compare canonical refs from direct-service vs adapter and match |
 | M1 — CLI unchanged after extraction | `./.venv/bin/python -m pytest tests/test_search_router_router.py tests/integration/test_run_launch_reuse.py -q` | Pre-existing CLI/run behavior green, no new failures vs the 4258-node baseline |
-| M1 — retry/cancel idempotency | `./.venv/bin/python -m pytest tests/unit/test_operator_operation_service.py -q -k "retry or cancel or resume or duplicate"` | Exact retry yields prior state; no duplicate card/claim/receipt/candidate |
-| M2 — exact tool inventory | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py -q -k "inventory or introspect"` | Introspected tool set diffs clean against the closed inventory; no Knowledge MCP overlap |
+| M1 — retry/cancel idempotency | `./.venv/bin/python -m pytest tests/unit/test_operator_operation_service.py -q -k "retry or cancel or resume or duplicate"` | Exact retry yields prior state; no duplicate card/claim/receipt/candidate. **This row was VACUOUS (0/33 selected) until M3**: the file had no test containing any filter term through two closed milestones (M3 Leg C reconciliation; the VAL-1 class hitting the plan itself). M3's H3 matrix (`test_h3_*` retry/cancel/resume/duplicate names) makes it select a real set — verify ≥8 selected via `--collect-only -q` before trusting a green run. |
+| M2 — exact tool inventory | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py -q -k "inventory or introspect or overlap"` | Introspected tool set diffs clean against the closed inventory; no Knowledge MCP overlap. **2 passed** — the `overlap` term is load-bearing: without it the filter selects only `test_exact_14_tool_inventory` and silently drops `test_zero_overlap_with_knowledge_mcp_tool_names`, so the command reports `1 passed` while proving only half the row's claim (VAL-1, M2 validator gate). |
 | M2 — preview cannot execute | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_writeback_preview.py -q` | Network/client/mirror spies assert **zero** calls on every preview path |
 | M2 — optional-SDK behavior | `./.venv/bin/python -c "import sys; sys.modules['mcp']=None; import research_foundry; print('base ok')"` then `./.venv/bin/rf --help` | Base package and CLI both succeed with the SDK absent |
 | AC OPM-1 — confirmation binding | `./.venv/bin/python -m pytest tests/unit/test_operator_mcp_policy.py -q -k "confirm or replay or expiry or drift"` | Every adversarial case yields zero manifest **and** an explicit zero-effect assertion |
 | AC OPM-2 — workspace/sensitivity | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_workspace_isolation.py -q` | Two-identity matrix returns safe non-existence; no derived detail leaks |
 | AC OPM-3 — idempotent/cancel/resume | `./.venv/bin/python -m pytest tests/unit/test_operator_operation_service.py -q` | H3 ten-scenario matrix: interrupted and uninterrupted runs converge to identical canonical effects |
-| AC OPM-4 — closed adapters | `./.venv/bin/python -m pytest tests/unit/test_operator_tool_adapters.py -q` + handler call-path scan | Every tool resolves to one named canonical service; no arbitrary dispatch |
-| AC OPM-5 — import/stage seams | `./.venv/bin/python -m pytest tests/unit/test_operator_tool_adapters.py -q -k "import or stage or prerequisite"` | ERI receipts/prerequisites/provenance refs preserved; verify-failure blocks bundle |
+| AC OPM-4 — closed adapters | `./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_*.py -q` + handler call-path scan | Every tool resolves to one named canonical service; no arbitrary dispatch |
+| AC OPM-5 — import/stage seams | `./.venv/bin/python -m pytest tests/unit/test_operator_mcp_adapter_*.py -q -k "import or stage or prerequisite"` | ERI receipts/prerequisites/provenance refs preserved; verify-failure blocks bundle |
 | AC OPM-6 — preview-only | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_writeback_preview.py -q` + call-path scan | Static and runtime evidence both show zero external/mirror effect |
-| AC OPM-7 — bounded transport | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py -q -k "limit or error or redact"` | Oversize/internal-error/wrong-workspace all return bounded redacted envelopes |
+| AC OPM-7 — bounded transport | `./.venv/bin/python -m pytest tests/integration/test_operator_mcp_server.py tests/integration/test_operator_mcp_workspace_isolation.py -q -k "limit or error or redact or oversize or payload or workspace"` | Oversize/internal-error/wrong-workspace all return bounded redacted envelopes. **Command widened at M3**: the original `-k "limit or error or redact"` silently dropped the file's own oversize-payload tests (`redact` matched 0 names) and had zero wrong-workspace coverage in the named file — the same silent-subset class as the M2 VAL-1 inventory row. |
 | Whole-suite regression | `./.venv/bin/python -m pytest` | 4410+ passing; the same 16 known-failing nodes, none on the operator surface |
-| Lint gate | `flake8 src/research_foundry --select=E9,F63,F7,F82` | Exit 0 |
+| Lint gate | `./.venv/bin/ruff check src/research_foundry --select E9,F63,F7,F82` | Exit 0. **Command corrected at M3**: `flake8` is not installed in the project venv (pyproject lists only `ruff`); the original command silently ran via the global pyenv shim or not at all. |
 
 Exact test filenames are reconciled against the current tree at execution; **a missing planned file
 is not evidence of a pass**. No owner/private corpus, remote transport, live writeback, deployment,
@@ -618,7 +653,7 @@ Order is asserted only where it is real:
 - **P2 re-gate -> M1.** M1's adapters call the operation coordinator; dispatching M1 against an
   ungated lifecycle would build on an unverified trust contract.
 - **M1 -> M2.** M2 registers tools over M1's adapters; there is nothing to register before they
-  exist. Both also write `writeback.py` and `operator_tool_adapters.py` — declared serialization
+  exist. Both also write `writeback.py` and `operator_mcp_adapters/` — declared serialization
   barriers — so they cannot run concurrently regardless.
 - **M2 -> M3.** M3 evidences AC against the integrated surface; there is no exact tree to attack
   until the server and preview exist.

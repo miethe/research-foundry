@@ -1,0 +1,737 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/operator_mcp_receipt.schema.yaml/v1"
+title: Operator MCP Receipt
+description: >-
+  Discriminated-union receipt envelope for the local-stdio Operator MCP
+  (research-foundry-operator-mcp-v1 P1, OPM-1.4); see decisions-block
+  sections 0/1/7 (OPM-OQ-5/6) and PRD sections 6.2/6.3/7.1 (OPM-FR-5/6/7).
+
+  FIVE RECEIPT KINDS, ONE FILE (OPM-1.4: "Freeze operation/action/effect/
+  checkpoint/terminal receipt fields"): every instance of this schema is
+  exactly one of the five `$defs` branches below, selected by the required
+  `kind` discriminator and enforced via a closed `oneOf`. P2
+  (`operator_operation_service.py`, OPM-2.1/2.3) is the durable-persistence
+  OWNER of these shapes; this schema freezes the CONTRACT both this phase's
+  fixtures and P2's store must agree on.
+
+  IMMUTABLE VS MUTABLE (mirrors external_research_import_receipt.schema.yaml
+  / external_research_import_checkpoint.schema.yaml's split, generalized
+  into one file with a discriminator instead of two files, since P1 owns
+  exactly four schema files per the implementation plan's `files_affected`
+  list): `operation_receipt`, `action_receipt`, `effect_receipt`, and
+  `terminal_receipt` are immutable once written -- never updated in place,
+  never re-emitted for the same identity. `checkpoint` is the ONE mutable,
+  atomically-replaceable kind (decisions-block section 0 / OPM-OQ-4:
+  "cancellation safe points are between manifest actions"); it never
+  substitutes for a terminal receipt and is superseded, not amended.
+
+  AUDIT IS SUPPLEMENTAL, RECEIPT IS PRIMARY (OPM-OQ-6): `terminal_receipt`
+  carries a mandatory `audit_delivery` disposition
+  (`delivered`/`degraded`/`unavailable`) that is recorded ALONGSIDE the
+  effect truth and NEVER erases or blocks it -- a degraded/unavailable
+  audit delivery is itself durable receipt content, not a reason to omit
+  the terminal receipt (mirrors `audit_service.py`'s documented fail-open
+  contract: "a lost audit row is loud but non-blocking").
+
+  EFFECT KINDS STAY OPEN-BUT-BOUNDED (deliberate, not an oversight): unlike
+  `operation_kind`/`target_kind` (closed enums, frozen in
+  `operator_mcp_operation.schema.yaml`), `effect_receipt.effect_kind` is a
+  bounded PATTERN (snake_case identifier, not a fixed enum) because P1 does
+  not yet know every concrete effect P3-P5's adapters will name (e.g.
+  `source_card_created`, `claim_ledger_updated`) -- freezing that
+  enumeration now would either be incomplete or would have to be revised by
+  every later phase, contradicting "closed operation kinds" which applies
+  to the DISPATCH surface (operation/tool names), not to the descriptive
+  effect_kind label recorded after the fact.
+
+  NO RAW EXCEPTION, NO UNBOUNDED FIELD (AC OPM-7): every string field below
+  is length-capped; `terminal_receipt.denial_reason_code`, when present, is
+  drawn from the SAME closed enum as `operator_mcp_error.schema.yaml`'s
+  `reason_code` (duplicated by value, not `$ref`, per this repo's
+  no-cross-file-`$ref`-resolver limitation -- see
+  `knowledge_activity_receipt.schema.yaml`'s docstring for the identical
+  convention).
+
+  R5-BLOCK-1 (round 5 gate) NARROWS a prior over-claim here: this
+  description previously stated, unconditionally, "No field here ever
+  carries a stack trace, environment variable, secret, or unrestricted
+  filesystem path" -- true of `audit_delivery.detail` (closed-vocabulary,
+  BLOCK-1 round 4) but empirically FALSE of its sibling
+  `audit_delivery.audit_event_id`, which validated a bare absolute
+  filesystem path or a raw traceback VERBATIM. Every open (non-enum,
+  non-pattern-closed) string field below now carries the SAME
+  `not: pattern` traceback-/absolute-path-shaped guard `detail` uses
+  (`audit_event_id`, `action_receipt.action_id`, `action_receipt.attempt_ref`,
+  `effect_receipt.action_id`, `operation_receipt.workspace_id`,
+  `terminal_receipt.workspace_id`, `checkpoint.workspace_id`) -- see the
+  per-`$def`/per-property matrix in
+  `.claude/findings/research-foundry-operator-mcp-findings.md`, section
+  FIND-P1-R5 (and FIND-P2-RECEIPT-REATTACK for the P2 pass that added
+  `checkpoint.workspace_id`), for which fields were reviewed and why each
+  was (or was not) changed. This is a defense-in-depth SCHEMA-level guard
+  against a producer bug; P1 has no code-level producer for most of these
+  fields at all yet (P2's `operator_operation_service.py` is the
+  durable-persistence owner -- see above), so it does not by itself prove
+  no caller-influenced content can ever reach them, only that a
+  well-formed producer's output which DOES leak one is now rejected at the
+  schema boundary rather than silently accepted.
+
+  P2R-BLOCK-1 (P2 pre-persistence re-attack gate) CLOSES the one gap the
+  paragraph above's enumeration left open while implicitly claiming
+  completeness: `operation_receipt.idempotency_key` sat one property below
+  the newly-guarded `workspace_id` in the SAME `$def`, completely
+  unguarded -- the fourth instance of the exact "fix-the-layer-below"
+  sibling class that produced R5-BLOCK-1/BLOCK-2/BLOCK-3 before it.
+  `idempotency_key` is now CLOSED to the identical pattern
+  `operator_mcp_operation.schema.yaml`'s own `idempotency_key` already
+  uses (`^[A-Za-z0-9_\-]+$` -- single source of truth for this value's
+  shape, since this field echoes that exact source field, duplicated by
+  value not `$ref` per this repo's convention). A pattern whitelist is
+  STRICTER than the `not: pattern` blacklist the paragraph above
+  describes, so `idempotency_key` is deliberately NOT re-added to that
+  list -- it is closed by pattern, not by negation, and is therefore no
+  longer "open" in that paragraph's sense.
+
+  NB-11 (P1 closeout residual risk, both items resolved by the same P2
+  pre-persistence re-attack gate): (1) `checkpoint` now carries a required
+  `workspace_id`, guarded identically to its `operation_receipt`/
+  `terminal_receipt` siblings -- added pre-persistence (ahead of P2
+  OPM-2.3) because WKSP-304 row-level workspace isolation needs this
+  column on every workspace-scoped durable row, and `checkpoint` is the
+  ONE mutable kind P2's resume/cancel path will query most by workspace;
+  retrofitting a `NOT NULL` column onto a live checkpoint table after ship
+  is materially costlier than freezing it now. (2) `operation_receipt`
+  now carries a nullable `denial_reason_code`, required-and-non-null
+  exactly when `status: denied` and forced null otherwise -- mirroring
+  (duplicating BY VALUE, not by `$ref`) `terminal_receipt.
+  denial_reason_code`'s `allOf` presence-coupling and the SAME closed
+  enum. DECISION: `operation_receipt` is minted at accept/deny time,
+  before any action runs and before a `terminal_receipt` is guaranteed to
+  exist for the same operation (P1 has no code path yet that proves one
+  always follows) -- the denial cause must therefore be recoverable from
+  `operation_receipt` alone rather than deferred to a receipt kind that
+  may not (yet) exist for a given denied operation.
+type: object
+oneOf:
+  - $ref: "#/$defs/operation_receipt"
+  - $ref: "#/$defs/action_receipt"
+  - $ref: "#/$defs/effect_receipt"
+  - $ref: "#/$defs/checkpoint"
+  - $ref: "#/$defs/terminal_receipt"
+$defs:
+  audit_delivery:
+    type: object
+    additionalProperties: false
+    required:
+      - status
+      - audit_event_id
+    properties:
+      status:
+        enum:
+          - delivered
+          - degraded
+          - unavailable
+      audit_event_id:
+        description: >-
+          Opaque audit-event identifier -- `audit_service.health_check`'s
+          real producer always supplies a UUID4, never caller-influenced
+          text. R5-BLOCK-1 (round 5 gate): this field is `detail`'s SIBLING
+          property on this SAME `$def`, one property over, and previously
+          carried NO pattern guard at all -- a path- or traceback-shaped
+          value validated verbatim (the exact BLOCK-1 shape, one field
+          later). Guarded the same way `detail` is below, and
+          `operator_mcp_policy.build_audit_delivery` now routes it through
+          the same `_redact_and_bound` pass as `detail` (defense in depth --
+          a no-op for the genuine UUID producer).
+        type: [string, "null"]
+        maxLength: 128
+        not:
+          # NOTE: `type: string` is REQUIRED inside this `not` sub-schema --
+          # `pattern` alone does not constrain a non-string instance (it is
+          # vacuously satisfied), so a bare `not: {pattern: ...}` on a
+          # NULLABLE field would incorrectly REJECT `null` itself (`{pattern:
+          # ...}` "passes" on `null` since the keyword does not apply, so
+          # `not` of that pass is a fail). Caught empirically: the existing
+          # `audit_delivery` golden/negative fixtures in
+          # `tests/unit/test_operator_mcp_schemas.py` use `audit_event_id:
+          # None`, which failed validation until this `type: string` was
+          # added. `detail`/every other `not: pattern` field in this file is
+          # `type: string` only (never nullable), so this is the only site
+          # that needs it.
+          type: string
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
+      detail:
+        description: >-
+          Optional bounded, CLOSED-VOCABULARY supplementary detail about the
+          audit delivery attempt -- never a stack trace, secret, or
+          filesystem path. NEW-21 (security review round 3) first guarded
+          this as free text through a traceback-only pattern; BLOCK-1
+          (round 4 gate) found that guard incomplete -- this field's own
+          natural producer, `str(exc)` from a failed audit write, routinely
+          embeds an absolute filesystem path with NO traceback framing at
+          all (e.g. `OSError`/`PermissionError` messages), which the
+          traceback-only pattern never matched. Producers now MUST route
+          through `operator_mcp_policy.build_audit_delivery(detail_code=...)`,
+          which selects `detail` from a FIXED table of safe strings
+          (`operator_mcp_policy._AUDIT_DELIVERY_SAFE_DETAILS`) describing WHY
+          delivery degraded/failed, never HOW -- nothing exception-derived
+          can reach this field at all, not merely "nothing pattern-matched".
+          The `not.pattern` below is retained as defense-in-depth against a
+          producer that bypasses the helper entirely; it now also flags
+          absolute-path-shaped text, mirroring `operator_mcp_error.schema.yaml`.
+          NB-3 (round 5, fixed): the pattern below previously opened with a
+          Python-only `(?i)` inline case-insensitivity flag -- not valid
+          ECMA-262 (the syntax JSON Schema 2020-12 specifies for `pattern`),
+          and a validator that cannot compile an ECMA-262 `pattern` commonly
+          SKIPS the keyword rather than erroring, silently disabling this
+          guard. Rewritten below with explicit character classes
+          (`[Tt]raceback`, `[Ss]ite-[Pp]ackages`, `[Ff]ile`) instead, with
+          IDENTICAL matching behavior. R5-NB-2 (round 5, deferred, fixed
+          opportunistically while rewriting this exact string): the code
+          side's `_PATH_LIKE` also matches a Windows drive-letter path
+          (`[A-Za-z]:\\`); this schema-level guard did not, until now --
+          added below for parity.
+        type: string
+        maxLength: 500
+        not:
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
+  operation_receipt:
+    type: object
+    additionalProperties: false
+    required:
+      - schema_version
+      - kind
+      - operation_id
+      - workspace_id
+      - operation_kind
+      - status
+      - idempotency_key
+      - canonical_input_digest
+      - generated_at
+    properties:
+      schema_version:
+        const: "1.0"
+      kind:
+        const: operation_receipt
+      operation_id:
+        type: string
+        pattern: "^opm_[a-f0-9]{64}$"
+      workspace_id:
+        description: >-
+          R5-BLOCK-1 (round 5 gate): open string, no pattern, until now --
+          the same shape `audit_delivery.audit_event_id` and
+          `action_receipt.attempt_ref` were flagged for. No P1 code
+          constructs this receipt kind yet (P2's
+          `operator_operation_service.py` is the owner); guarded here as
+          the same schema-level defense in depth against a future producer
+          bug, mirroring `terminal_receipt.workspace_id` (identical field,
+          same fix, same reasoning).
+        type: string
+        minLength: 1
+        maxLength: 128
+        not:
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
+      operation_kind:
+        enum:
+          - run.plan
+          - swarm.start
+          - job.status
+          - job.cancel
+          - job.resume
+          - external_report.import
+          - source.ingest
+          - run.extract
+          - run.claim_map
+          - run.synthesize
+          - run.verify
+          - run.bundle
+          - writeback.preview
+      status:
+        enum:
+          - accepted
+          - in_progress
+          - completed
+          - failed
+          - denied
+          - canceled
+      idempotency_key:
+        description: >-
+          Echoes the idempotency_key the originating
+          operator_mcp_operation.schema.yaml request carried. P2R-BLOCK-1
+          (P2 pre-persistence re-attack gate): this field was a completely
+          unguarded open string -- one property below the newly-guarded
+          `workspace_id` in this SAME `$def` -- and was also strictly
+          WEAKER than `operator_mcp_operation.schema.yaml`'s own
+          `idempotency_key` pattern for the identical logical field.
+          Closed to that EXACT pattern (single source of truth; duplicated
+          by value, not `$ref`, per this repo's no-cross-file-`$ref`-
+          resolver convention -- see module description).
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: "^[A-Za-z0-9_\\-]+$"
+      canonical_input_digest:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      generated_at:
+        type: string
+        format: date-time
+      denial_reason_code:
+        description: >-
+          NB-11 item 2 (P1 closeout residual risk, resolved by the P2
+          pre-persistence re-attack gate): `operation_receipt.status:
+          denied` previously carried no reason field anywhere in this
+          `$def`, unlike its sibling `terminal_receipt.denial_reason_code`.
+          Mirrors (duplicates BY VALUE, not by `$ref`) that field's `allOf`
+          presence-coupling and the SAME closed enum as
+          `operator_mcp_error.schema.yaml`'s `reason_code` (see module
+          description). Required and non-null exactly when `status:
+          denied`; forced null for every other status (see this `$def`'s
+          `allOf` below).
+        enum:
+          - identity_denied
+          - rbac_denied
+          - audit_unhealthy
+          - guard_blocked
+          - guard_review_required
+          - preflight_failed
+          - operation_unknown
+          - tool_unknown
+          - target_invalid
+          - confirmation_missing
+          - confirmation_expired
+          - confirmation_replayed
+          - confirmation_mismatch
+          - idempotency_conflict
+          - not_found
+          - payload_too_large
+          - internal_error
+          - null
+    allOf:
+      - if:
+          properties:
+            status:
+              const: denied
+          required:
+            - status
+        then:
+          required:
+            - denial_reason_code
+          properties:
+            denial_reason_code:
+              not:
+                const: null
+      - if:
+          properties:
+            status:
+              enum: [accepted, in_progress, completed, failed, canceled]
+          required:
+            - status
+        then:
+          properties:
+            denial_reason_code:
+              const: null
+  action_receipt:
+    type: object
+    additionalProperties: false
+    required:
+      - schema_version
+      - kind
+      - operation_id
+      - action_id
+      - action_index
+      - status
+      - attempt_ref
+      - started_at
+      - completed_at
+    properties:
+      schema_version:
+        const: "1.0"
+      kind:
+        const: action_receipt
+      operation_id:
+        type: string
+        pattern: "^opm_[a-f0-9]{64}$"
+      action_id:
+        description: >-
+          R5-BLOCK-1 (round 5 gate): open string, no pattern, until now --
+          guarded the same way `attempt_ref` immediately below is (and the
+          identically-named `effect_receipt.action_id`).
+        type: string
+        minLength: 1
+        maxLength: 128
+        not:
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
+      action_index:
+        type: integer
+        minimum: 0
+      status:
+        enum:
+          - completed
+          - failed
+          - skipped
+      attempt_ref:
+        description: >-
+          Opaque AgentJob attempt identifier (OPM-2.2 reuse) -- never a
+          filesystem path. R5-BLOCK-1 (round 5 gate): that "never" was
+          previously prose only, with zero schema enforcement -- guarded
+          below the same way `audit_delivery.audit_event_id`/`detail` are.
+        type: string
+        minLength: 1
+        maxLength: 128
+        not:
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
+      started_at:
+        type: string
+        format: date-time
+      completed_at:
+        type: [string, "null"]
+        format: date-time
+      reason_code:
+        description: >-
+          Populated when `status` is `failed`/`skipped`; drawn from the SAME
+          closed enum as `terminal_receipt.denial_reason_code`/
+          `operator_mcp_error.schema.yaml`'s `reason_code` (duplicated by
+          value; see module description). BLOCK-2 (round 4 gate): NEW-20
+          (round 3) closed `terminal_receipt.denial_reason_code` to this
+          enum but left THIS sibling field -- one `$def` above, in the same
+          file -- as the exact open `type: [string, "null"], maxLength: 64`
+          shape NEW-20 was raised on. `tests/unit/test_operator_mcp_schemas.py`
+          pins this enum against `operator_mcp_policy.CLOSED_REASON_CODES`
+          too, alongside `terminal_receipt`'s.
+        enum:
+          - identity_denied
+          - rbac_denied
+          - audit_unhealthy
+          - guard_blocked
+          - guard_review_required
+          - preflight_failed
+          - operation_unknown
+          - tool_unknown
+          - target_invalid
+          - confirmation_missing
+          - confirmation_expired
+          - confirmation_replayed
+          - confirmation_mismatch
+          - idempotency_conflict
+          - not_found
+          - payload_too_large
+          - internal_error
+          - null
+      retryable:
+        type: boolean
+    allOf:
+      - if:
+          properties:
+            status:
+              enum: [failed, skipped]
+          required:
+            - status
+        then:
+          # R5-BLOCK-3 (round 5 gate): BLOCK-3 (round 4 gate) added this
+          # exact `if`/`then` pattern to `terminal_receipt` only --
+          # `action_receipt` (edited in the SAME round-4 commit, for
+          # BLOCK-2's enum fix) was left with NO presence coupling at all:
+          # `status: failed` with `reason_code` entirely ABSENT validated,
+          # sidestepping BLOCK-2's closed enum exactly the way BLOCK-3
+          # closed for `terminal_receipt` one `$def` below.
+          required:
+            - reason_code
+          properties:
+            reason_code:
+              not:
+                const: null
+      - if:
+          properties:
+            status:
+              const: completed
+          required:
+            - status
+        then:
+          # R5-BLOCK-3: the other direction -- `status: completed` with a
+          # NON-NULL `reason_code` (a "completed" action carrying a denial
+          # cause) previously validated too. `reason_code` is not in this
+          # `$def`'s top-level `required` list (unlike
+          # `terminal_receipt.denial_reason_code`), so this only constrains
+          # the value WHEN PRESENT -- an absent `reason_code` for a
+          # completed action (the common case) still validates.
+          properties:
+            reason_code:
+              const: null
+  effect_receipt:
+    type: object
+    additionalProperties: false
+    required:
+      - schema_version
+      - kind
+      - operation_id
+      - action_id
+      - effect_kind
+      - effect_digest
+      - effect_ref
+      - generated_at
+    properties:
+      schema_version:
+        const: "1.0"
+      kind:
+        const: effect_receipt
+      operation_id:
+        type: string
+        pattern: "^opm_[a-f0-9]{64}$"
+      action_id:
+        description: >-
+          R5-BLOCK-1 (round 5 gate): identically-named sibling of
+          `action_receipt.action_id` -- same open-string shape, same fix.
+        type: string
+        minLength: 1
+        maxLength: 128
+        not:
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
+      effect_kind:
+        description: Bounded, open descriptive label -- see module description.
+        type: string
+        pattern: "^[a-z][a-z0-9_]{0,62}$"
+      effect_digest:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      effect_ref:
+        description: Opaque canonical target reference the effect produced/mutated.
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[A-Za-z0-9_\\-:.]+$"
+      generated_at:
+        type: string
+        format: date-time
+  checkpoint:
+    description: >-
+      The ONE mutable kind (see module description). `next_action_index`
+      is null IFF `status` is `converged` -- enforced bidirectionally
+      (P2R-NB-1, P2 pre-persistence re-attack gate: the `pending` ->
+      non-null direction was previously unenforced, contradicting this
+      same docstring; `{status: "pending", next_action_index: null}`
+      validated cleanly before this fix).
+    type: object
+    additionalProperties: false
+    required:
+      - schema_version
+      - kind
+      - operation_id
+      - workspace_id
+      - status
+      - next_action_index
+      - completed_action_count
+      - total_action_count
+      - non_cancelable
+      - updated_at
+    properties:
+      schema_version:
+        const: "1.0"
+      kind:
+        const: checkpoint
+      operation_id:
+        type: string
+        pattern: "^opm_[a-f0-9]{64}$"
+      workspace_id:
+        description: >-
+          NB-11 item 1 (P1 closeout residual risk, resolved by the P2
+          pre-persistence re-attack gate): `checkpoint` -- the one MUTABLE
+          receipt kind -- previously carried no `workspace_id` at all,
+          unlike its `operation_receipt`/`terminal_receipt` siblings.
+          Added now, ahead of P2 (OPM-2.3) building durable checkpoint
+          persistence, so WKSP-304 row-level workspace isolation has a
+          column to filter on from day one. Guarded identically to
+          `operation_receipt.workspace_id`/`terminal_receipt.workspace_id`.
+        type: string
+        minLength: 1
+        maxLength: 128
+        not:
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
+      status:
+        enum:
+          - pending
+          - converged
+      next_action_index:
+        type: [integer, "null"]
+        minimum: 0
+      completed_action_count:
+        type: integer
+        minimum: 0
+      total_action_count:
+        type: integer
+        minimum: 0
+      non_cancelable:
+        description: >-
+          True while an atomic, indivisible action (e.g. atomic file
+          publication) is in flight -- OPM-OQ-4: cancellation is observed
+          only at the NEXT manifest action boundary while this is true.
+        type: boolean
+      updated_at:
+        type: string
+        format: date-time
+    allOf:
+      - if:
+          properties:
+            status:
+              const: converged
+          required:
+            - status
+        then:
+          properties:
+            next_action_index:
+              const: null
+            non_cancelable:
+              const: false
+      - if:
+          properties:
+            status:
+              const: pending
+          required:
+            - status
+        then:
+          # P2R-NB-1 (P2 pre-persistence re-attack gate): the converse of
+          # the branch above -- closes the direction that previously let a
+          # `pending` checkpoint carry `next_action_index: null`.
+          properties:
+            next_action_index:
+              not:
+                const: null
+  terminal_receipt:
+    type: object
+    additionalProperties: false
+    required:
+      - schema_version
+      - kind
+      - operation_id
+      - workspace_id
+      - operation_kind
+      - status
+      - effect_receipt_refs
+      - action_count_total
+      - action_count_completed
+      - audit_delivery
+      - completed_at
+    properties:
+      schema_version:
+        const: "1.0"
+      kind:
+        const: terminal_receipt
+      operation_id:
+        type: string
+        pattern: "^opm_[a-f0-9]{64}$"
+      workspace_id:
+        description: >-
+          R5-BLOCK-1 (round 5 gate): identically-named sibling of
+          `operation_receipt.workspace_id` -- same open-string shape, same
+          fix, same reasoning.
+        type: string
+        minLength: 1
+        maxLength: 128
+        not:
+          pattern: "[Tt]raceback|[Ss]ite-[Pp]ackages|[Ff]ile \"[^\"]*\", line \\d+|/Users/|/home/|/var/|/etc/|/opt/|/tmp/|/root/|[A-Za-z]:\\\\"
+      operation_kind:
+        enum:
+          - run.plan
+          - swarm.start
+          - job.status
+          - job.cancel
+          - job.resume
+          - external_report.import
+          - source.ingest
+          - run.extract
+          - run.claim_map
+          - run.synthesize
+          - run.verify
+          - run.bundle
+          - writeback.preview
+      status:
+        enum:
+          - completed
+          - failed
+          - denied
+          - canceled
+      effect_receipt_refs:
+        description: >-
+          Echo of every effect_receipt.effect_digest this operation
+          produced -- bounded, never a superset, never a hidden/denied
+          count.
+        type: array
+        maxItems: 200
+        items:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+      action_count_total:
+        type: integer
+        minimum: 0
+      action_count_completed:
+        type: integer
+        minimum: 0
+      denial_reason_code:
+        description: >-
+          Populated only when status is `denied`/`failed`; drawn from the
+          SAME closed enum as operator_mcp_error.schema.yaml's reason_code
+          (duplicated by value; see module description).
+          NEW-20 (security review round 3): this was previously declared
+          `type: [string, "null"]` with `maxLength: 64` -- an OPEN string --
+          while both this description and the phase completion note asserted
+          it was a closed enum. The declaration now matches the claim. `null`
+          is a member because the `allOf` below requires exactly that for
+          `completed`/`canceled` and forbids it for `denied`/`failed`.
+          `tests/unit/test_operator_mcp_schemas.py` pins this enum against
+          `operator_mcp_policy.CLOSED_REASON_CODES` so the two cannot drift.
+        enum:
+          - identity_denied
+          - rbac_denied
+          - audit_unhealthy
+          - guard_blocked
+          - guard_review_required
+          - preflight_failed
+          - operation_unknown
+          - tool_unknown
+          - target_invalid
+          - confirmation_missing
+          - confirmation_expired
+          - confirmation_replayed
+          - confirmation_mismatch
+          - idempotency_conflict
+          - not_found
+          - payload_too_large
+          - internal_error
+          - null
+      audit_delivery:
+        $ref: "#/$defs/audit_delivery"
+      completed_at:
+        type: string
+        format: date-time
+    allOf:
+      - if:
+          properties:
+            status:
+              enum: [denied, failed]
+          required:
+            - status
+        then:
+          # BLOCK-3 (round 4 gate): `required` was missing here -- a
+          # `terminal_receipt` with `status: denied` and `denial_reason_code`
+          # entirely ABSENT (not merely null) validated, sidestepping the
+          # whole NEW-20 enum. The correct pattern already exists one file
+          # over, in `operator_mcp_confirmation.schema.yaml`'s
+          # `consumed`-status `then` branch (`required: [consumed_at,
+          # consumed_by_operation_id]` paired with `not: {const: null}`) --
+          # copied here.
+          required:
+            - denial_reason_code
+          properties:
+            denial_reason_code:
+              not:
+                const: null
+      - if:
+          properties:
+            status:
+              enum: [completed, canceled]
+          required:
+            - status
+        then:
+          properties:
+            denial_reason_code:
+              const: null

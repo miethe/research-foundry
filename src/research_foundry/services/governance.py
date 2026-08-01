@@ -195,11 +195,28 @@ def _config_for(config: FoundryConfig | None, paths: FoundryPaths | None) -> Fou
 
 
 def _secret_patterns(config: FoundryConfig) -> list[str]:
+    """Return the effective secret-pattern list for `config`'s workspace.
+
+    NEW-5 fix (research-foundry-operator-mcp-v1 security round 2): config-
+    declared `governance.secret_patterns` are UNIONED WITH -- never
+    REPLACE -- the built-in list. The prior behavior (config patterns
+    entirely replacing `_BUILTIN_SECRET_PATTERNS` whenever a workspace
+    declared its own list) meant a workspace with a narrow custom pattern
+    list became LESS strict than the no-config default -- e.g. a
+    governance.yaml declaring only one internal token format would silently
+    stop detecting `sk-ant-...`/AWS/GitHub-shaped secrets that the built-in
+    list would otherwise catch. Config-declared patterns can only ADD
+    detection surface, never remove or replace a built-in.
+    """
+
     gov = config.governance or {}
     pats = gov.get("secret_patterns") if isinstance(gov, dict) else None
-    if isinstance(pats, list) and pats:
-        return [p for p in pats if isinstance(p, str)]
-    return list(_BUILTIN_SECRET_PATTERNS)
+    extra = [p for p in pats if isinstance(p, str)] if isinstance(pats, list) else []
+    merged = list(_BUILTIN_SECRET_PATTERNS)
+    for pattern in extra:
+        if pattern not in merged:
+            merged.append(pattern)
+    return merged
 
 
 def _approved_providers(config: FoundryConfig) -> set[str]:

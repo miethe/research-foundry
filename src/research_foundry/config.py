@@ -1537,6 +1537,49 @@ class FoundryConfig:
             )
 
 
+# ---------------------------------------------------------------------------
+# Shared enforcement-flag resolver (NEW-23: serve-free home)
+# ---------------------------------------------------------------------------
+#
+# This was originally defined in ``api/auth/scope.py``, which is fine for
+# HTTP-layer callers but wrong for services that must import cleanly in a
+# BASE install (no ``[serve]`` extra) -- importing *any* submodule of
+# ``research_foundry.api`` triggers that package's ``__init__.py``, which
+# unconditionally requires fastapi/uvicorn. Living here (``config.py``,
+# already dependency-free of the ``api`` package) lets serve-free callers
+# such as ``services/audit_service.py`` (part of the Operator MCP
+# import chain, see ``services/operator_mcp_policy.py``) import this
+# resolver directly. ``api/auth/scope.py`` re-exports this exact function
+# (never redefines it) so every existing
+# ``research_foundry.api.auth.scope.resolve_workspace_isolation_active``
+# reference keeps working unchanged.
+
+
+def resolve_workspace_isolation_active(paths: FoundryPaths) -> bool:
+    """Resolve whether WKSP-304 workspace isolation is actively enforced.
+
+    Single shared implementation of the ``_isolation_active`` idiom that
+    Phase 3 (deliberately, per-service, single-owner-phase) duplicated
+    identically into ``catalog_service.py``, ``builder_service.py``, and
+    ``AgentJobService`` (as a bound method). Those call sites now delegate
+    here — this is a pure refactor with no behaviour change: same
+    ``config.auth_provider()`` lookup (degrading to ``"none"`` on a
+    ``ValueError``, since a misconfigured/incomplete provider block is not
+    this function's concern — the app itself refuses to start in that case),
+    then the same
+    :meth:`~research_foundry.config.FoundryConfig.resolve_workspace_isolation_enforced`
+    truth-table lookup (Phase 1, TASK-1.2) that this function never
+    reimplements.
+    """
+
+    config = FoundryConfig(paths=paths)
+    try:
+        provider = config.auth_provider()
+    except ValueError:
+        provider = "none"
+    return config.resolve_workspace_isolation_enforced(provider, config.viewer_bind_host())
+
+
 __all__ = [
     "AssertionLedgerCapabilities",
     "AssertionLedgerControls",
@@ -1549,4 +1592,5 @@ __all__ = [
     "CLAIM_POLICY",
     "_validate_auth_mode",
     "_is_loopback",
+    "resolve_workspace_isolation_active",
 ]

@@ -4501,7 +4501,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.20" },
     { name = "litellm", marker = "extra == 'llm'", specifier = ">=1.40" },
     { name = "markdown-it-py", specifier = ">=3.0" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0,<2" },
     { name = "mkdocs-material", marker = "extra == 'docs'" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
     { name = "paper-qa", marker = "extra == 'research'", specifier = ">=5.0" },

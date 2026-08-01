@@ -41,8 +41,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from ...config import FoundryConfig
-from ...paths import FoundryPaths
+from ...config import resolve_workspace_isolation_active
 from .provider import AuthIdentity
 
 _logger = logging.getLogger(__name__)
@@ -51,31 +50,15 @@ _logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Shared enforcement-flag resolver (WKSP-304 Phase 4, TASK-4.2 consolidation)
 # ---------------------------------------------------------------------------
-
-
-def resolve_workspace_isolation_active(paths: FoundryPaths) -> bool:
-    """Resolve whether WKSP-304 workspace isolation is actively enforced.
-
-    Single shared implementation of the ``_isolation_active`` idiom that
-    Phase 3 (deliberately, per-service, single-owner-phase) duplicated
-    identically into ``catalog_service.py``, ``builder_service.py``, and
-    ``AgentJobService`` (as a bound method). Those call sites now delegate
-    here — this is a pure refactor with no behaviour change: same
-    ``config.auth_provider()`` lookup (degrading to ``"none"`` on a
-    ``ValueError``, since a misconfigured/incomplete provider block is not
-    this function's concern — the app itself refuses to start in that case),
-    then the same
-    :meth:`~research_foundry.config.FoundryConfig.resolve_workspace_isolation_enforced`
-    truth-table lookup (Phase 1, TASK-1.2) that this function never
-    reimplements.
-    """
-
-    config = FoundryConfig(paths=paths)
-    try:
-        provider = config.auth_provider()
-    except ValueError:
-        provider = "none"
-    return config.resolve_workspace_isolation_enforced(provider, config.viewer_bind_host())
+#
+# NEW-23: this now lives in ``research_foundry.config`` (serve-free) because
+# ``services/audit_service.py`` -- part of the Operator MCP import chain --
+# must import it without pulling in the ``api`` package (and therefore the
+# ``[serve]`` extra). This is a re-export of that exact function, NOT a
+# redefinition: every existing
+# ``research_foundry.api.auth.scope.resolve_workspace_isolation_active``
+# reference keeps working unchanged. See ``config.py`` for the full
+# docstring/contract.
 
 
 # ---------------------------------------------------------------------------

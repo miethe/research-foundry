@@ -20,7 +20,6 @@ to their route.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -31,41 +30,21 @@ if TYPE_CHECKING:
     # lazy strings; this import only ever runs for static type checkers.
     from starlette.requests import Request
 
+from research_foundry.auth_identity import AuthIdentity
 
 # ---------------------------------------------------------------------------
 # Identity value-object
 # ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class AuthIdentity:
-    """Immutable identity resolved from an inbound request.
-
-    Attributes
-    ----------
-    user_id:
-        Provider-scoped user identifier (e.g. ``"alice"``, an OIDC ``sub`` value).
-        Always non-empty when an identity exists.
-    workspace_id:
-        Workspace the request is acting within.  Single-tenant deployments
-        may use a fixed sentinel (e.g. ``"default"``).
-    roles:
-        Immutable tuple of role strings granted to this identity within the
-        workspace.  Never a mutable list — callers that need set semantics
-        should do ``set(identity.roles)``.
-
-        **JSON serialization note** (RBAC-900): when this dataclass is
-        serialized via :func:`dataclasses.asdict` or a Pydantic model,
-        ``roles`` is emitted as a JSON array ``[]``.  Deserializers MUST
-        convert that array back to a ``tuple[str, ...]`` before constructing
-        an :class:`AuthIdentity`; the in-memory contract is always a tuple,
-        never a list.  An identity with no roles assigned should use
-        ``roles=()`` (the default empty tuple), not ``None``.
-    """
-
-    user_id: str
-    workspace_id: str
-    roles: tuple[str, ...]
+#
+# NEW-23: ``AuthIdentity`` now lives in ``research_foundry.auth_identity`` (a
+# serve-extra-free module) because it is consumed well outside the HTTP API
+# surface -- e.g. the Operator MCP policy/audit chain, which must import
+# cleanly in a BASE install without fastapi/uvicorn/starlette. This is a
+# re-export of that exact class object, NOT a redefinition: every existing
+# ``isinstance(x, AuthIdentity)`` check and every existing
+# ``from research_foundry.api.auth.provider import AuthIdentity`` import
+# across the repo keeps working unchanged. See ``auth_identity.py`` for the
+# full docstring/contract.
 
 
 # ---------------------------------------------------------------------------

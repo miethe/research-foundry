@@ -28,6 +28,7 @@ Coverage maps to the SD-001..SD-007 task table:
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -53,6 +54,17 @@ from research_foundry.yamlio import dump_yaml, load_yaml
 runner = CliRunner()
 
 _INTENT_ID = "intent_research_20260613_swarm_drive"
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI/Rich styling so substring checks don't split on
+    per-span color codes (Rich highlights punctuation like parentheses
+    even inside plain strings) -- same idiom as
+    ``tests/unit/test_external_research_cli.py``'s own ``_plain`` helper."""
+
+    return _ANSI_RE.sub("", text)
 
 
 # ---------------------------------------------------------------------------
@@ -419,6 +431,100 @@ def test_cli_drive_ica_json(tmp_foundry):
     assert out.exit_code == 0, out.output
     assert '"status_derived": "awaiting_legs"' in out.output
     assert '"leg_bundle"' in out.output
+
+
+# ---------------------------------------------------------------------------
+# D1 (P3 cross-model audit finding): CLI-level `swarm run --dry-run` must
+# surface swarm_service's own P3-F1 denials, and must never claim a denied
+# adapter "would run". This is the SAME class of defect P3-F1 fixed one
+# layer down (swarm_service.py itself): the service was hardened to always
+# validate on a dry run, but the CLI still returned before ever reading
+# `result.outcomes`, so it kept showing the pre-P3-F1, unsafe answer. No
+# other file in this repo exercises `rf swarm run` through the CLI at all
+# (only `swarm drive` had CLI-level coverage before this fix), so this is
+# new coverage, not a modification of an existing case.
+# ---------------------------------------------------------------------------
+
+
+def test_cli_swarm_run_dry_run_prints_denials_for_unknown_and_disallowed_adapters(
+    tmp_foundry,
+):
+    run_id = _planned_run(tmp_foundry)
+
+    out = _invoke(
+        [
+            "swarm",
+            "run",
+            run_id,
+            "--adapters",
+            "gpt_researcher,definitely_unknown_adapter_id",
+            "--dry-run",
+        ],
+        tmp_foundry.root,
+    )
+
+    assert out.exit_code == 0, out.output
+    assert "unknown_adapter: definitely_unknown_adapter_id" in _plain(out.output)
+
+
+def test_cli_swarm_run_dry_run_would_run_excludes_denied_adapters(tmp_foundry):
+    """The "would run" line is computed from the request MINUS whatever was
+    denied -- never the raw, unfiltered `--adapters` list D1 originally
+    printed verbatim regardless of validity."""
+
+    run_id = _planned_run(tmp_foundry)
+
+    out = _invoke(
+        [
+            "swarm",
+            "run",
+            run_id,
+            "--adapters",
+            "gpt_researcher,definitely_unknown_adapter_id",
+            "--dry-run",
+        ],
+        tmp_foundry.root,
+    )
+
+    assert out.exit_code == 0, out.output
+    would_run_line = _plain(out.output).split("would run:", 1)[1]
+    assert "gpt_researcher" in would_run_line
+    assert "definitely_unknown_adapter_id" not in would_run_line
+
+
+def test_cli_swarm_run_dry_run_all_denied_shows_would_run_none(tmp_foundry):
+    """Every requested id denied -- "would run" must say so explicitly
+    (`(none)`), never an empty/misleading trailing colon."""
+
+    run_id = _planned_run(tmp_foundry)
+
+    out = _invoke(
+        ["swarm", "run", run_id, "--adapters", "definitely_unknown_adapter_id", "--dry-run"],
+        tmp_foundry.root,
+    )
+
+    assert out.exit_code == 0, out.output
+    plain = _plain(out.output)
+    assert "would run: (none)" in plain
+    assert "unknown_adapter: definitely_unknown_adapter_id" in plain
+
+
+def test_cli_swarm_run_dry_run_valid_adapters_still_all_shown_as_would_run(tmp_foundry):
+    """Non-regression companion: two VALID, allowlisted ids with nothing
+    denied still both appear in "would run" -- D1's fix must not narrow the
+    happy path."""
+
+    run_id = _planned_run(tmp_foundry)
+
+    out = _invoke(
+        ["swarm", "run", run_id, "--adapters", "gpt_researcher,paperqa2", "--dry-run"],
+        tmp_foundry.root,
+    )
+
+    assert out.exit_code == 0, out.output
+    would_run_line = _plain(out.output).split("would run:", 1)[1]
+    assert "gpt_researcher" in would_run_line
+    assert "paperqa2" in would_run_line
 
 
 # ---------------------------------------------------------------------------

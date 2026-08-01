@@ -67,8 +67,8 @@ from typing import Any
 
 import pytest
 
-import test_pediatric_cds_redteam_fixtures as _p2_redteam
-import test_verification_clinical_eligibility_regression as _p3_regression
+from tests import test_pediatric_cds_redteam_fixtures as _p2_redteam
+from tests import test_verification_clinical_eligibility_regression as _p3_regression
 from research_foundry.errors import ExitCode
 from research_foundry.frontmatter import dump_md
 from research_foundry.paths import FoundryPaths

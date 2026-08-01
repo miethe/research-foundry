@@ -54,6 +54,11 @@ EXPECTED_SCHEMA_NAMES: list[str] = [
     "intenttree_node", "intenttree_update", "knowledge_activity_receipt",
     "knowledge_document", "knowledge_search_request", "knowledge_search_response",
     "meatywiki_writeback", "notebooklm_update",
+    # research-foundry-operator-mcp-v1 P1 contract freeze (OPM-1.1/1.3/1.4):
+    # 4 net-new schemas for the closed operation/confirmation/receipt/error
+    # contract.
+    "operator_mcp_confirmation", "operator_mcp_error", "operator_mcp_operation",
+    "operator_mcp_receipt",
     "passage", "permission_record",
     # research-provenance-continuity-v1 P1 contract freeze (RPC-1.G):
     # 4 net-new schemas for the canonical provenance layer.
@@ -473,6 +478,72 @@ def _valid(name: str) -> dict:
             "status": "proposed",
             "push_status": "proposed",
         },
+        # required: schema_version, type, operation_kind, actor, idempotency_key,
+        # targets, input_payload, policy_snapshot_version, effective_sensitivity,
+        # requested_at (research-foundry-operator-mcp-v1 P1 / OPM-1.1). Closed
+        # operation_kind enum -- see schemas/operator_mcp_operation.schema.yaml.
+        "operator_mcp_operation": {
+            "schema_version": "1.0",
+            "type": "operator_mcp_operation",
+            "operation_kind": "run.plan",
+            "actor": {"user_id": "alice", "workspace_id": "default", "roles": ["owner"]},
+            "idempotency_key": "idem-demo-1",
+            "targets": [],
+            "input_payload": {},
+            "policy_snapshot_version": "policy-order-v1",
+            "effective_sensitivity": "public",
+            "requested_at": "2026-07-28T00:00:00Z",
+        },
+        # required: schema_version, type, confirmation_id, token_digest, actor,
+        # effective_sensitivity, operation_kind, canonical_input_digest,
+        # idempotency_key, policy_snapshot_version, targets, status, issued_at,
+        # expires_at, consumed_at, consumed_by_operation_id (OPM-1.3). `status:
+        # issued` requires consumed_at/consumed_by_operation_id both null.
+        "operator_mcp_confirmation": {
+            "schema_version": "1.0",
+            "type": "operator_mcp_confirmation",
+            "confirmation_id": "opc_" + "a" * 64,
+            "token_digest": "b" * 64,
+            "actor": {"user_id": "alice", "workspace_id": "default", "roles": ["owner"]},
+            "effective_sensitivity": "public",
+            "operation_kind": "run.plan",
+            "canonical_input_digest": "c" * 64,
+            "idempotency_key": "idem-demo-1",
+            "policy_snapshot_version": "policy-order-v1",
+            "targets": [],
+            "status": "issued",
+            "issued_at": "2026-07-28T00:00:00Z",
+            "expires_at": "2026-07-28T00:05:00Z",
+            "consumed_at": None,
+            "consumed_by_operation_id": None,
+        },
+        # Discriminated union (kind: operation_receipt|action_receipt|
+        # effect_receipt|checkpoint|terminal_receipt) -- OPM-1.4. Minimal
+        # instance uses the `operation_receipt` branch.
+        "operator_mcp_receipt": {
+            "schema_version": "1.0",
+            "kind": "operation_receipt",
+            "operation_id": "opm_" + "a" * 64,
+            "workspace_id": "default",
+            "operation_kind": "run.plan",
+            "status": "accepted",
+            "idempotency_key": "idem-demo-1",
+            "canonical_input_digest": "c" * 64,
+            "generated_at": "2026-07-28T00:00:00Z",
+        },
+        # required: schema_version, type, reason_code, message, retryable,
+        # operation_id, receipt_ref, occurred_at (OPM-1.4). Closed reason_code
+        # enum -- see schemas/operator_mcp_error.schema.yaml.
+        "operator_mcp_error": {
+            "schema_version": "1.0",
+            "type": "operator_mcp_error",
+            "reason_code": "identity_denied",
+            "message": "The requested operation could not be authorized for this actor/workspace.",
+            "retryable": False,
+            "operation_id": None,
+            "receipt_ref": None,
+            "occurred_at": "2026-07-28T00:00:00Z",
+        },
         # required: type (const research_idea_backlog), pillars, ideas
         "research_idea_backlog": {
             "type": "research_idea_backlog",
@@ -777,6 +848,11 @@ def _invalid(name: str) -> dict:
         "knowledge_document": "text",
         "meatywiki_writeback": "id",
         "notebooklm_update": "run_id",
+        # research-foundry-operator-mcp-v1 P1 contract freeze (OPM-1.1/1.3/1.4)
+        "operator_mcp_operation": "operation_kind",
+        "operator_mcp_confirmation": "confirmation_id",
+        "operator_mcp_receipt": "operation_id",
+        "operator_mcp_error": "reason_code",
         "raw_idea": "id",
         "report_draft": "report_draft_id",
         "research_brief": "id",

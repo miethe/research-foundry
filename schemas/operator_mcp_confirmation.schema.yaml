@@ -1,0 +1,277 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/operator_mcp_confirmation.schema.yaml/v1"
+title: Operator MCP Confirmation Record
+description: >-
+  Server-side confirmation-binding record for the local-stdio Operator MCP
+  (research-foundry-operator-mcp-v1 P1, OPM-1.3); see decisions-block
+  sections 0/7 (OPM-OQ-2/3) and PRD section 6.2 ("Operation lifecycle").
+
+  OPAQUE TOKEN, NEVER PERSISTED AS PLAINTEXT (invariant): the caller-facing
+  confirmation token itself (minted by
+  `operator_mcp_policy.mint_confirmation`, e.g. via `secrets.token_urlsafe`)
+  is returned to the caller exactly once and is NEVER written to disk, a
+  log, or this record. `token_digest` below is the SHA-256 hex digest of
+  that token -- verification (`operator_mcp_policy.verify_confirmation`)
+  recomputes the digest of a presented token and compares via
+  `hmac.compare_digest`, mirroring `local_static.py`'s constant-time Bearer
+  comparison pattern.
+
+  FULL BINDING (OPM-OQ-2, AC OPM-1): a confirmation binds actor, workspace
+  (via `actor.workspace_id`), `effective_sensitivity`, `operation_kind`,
+  `canonical_input_digest`, `idempotency_key`, `policy_snapshot_version`,
+  and `targets` -- every field this record freezes at mint time. Execution
+  MUST revalidate every one of these fields against the freshly
+  canonicalized current request (see
+  `schemas/operator_mcp_operation.schema.yaml`'s canonicalization section);
+  ANY mismatch denies with zero manifest and zero effect (AC OPM-1
+  resilience clause) -- see `operator_mcp_error.schema.yaml`'s
+  `confirmation_mismatch`/`idempotency_conflict` reason codes.
+
+  FIVE-MINUTE TTL, ONE-TIME ATOMIC CONSUMPTION (OPM-OQ-2 default): `status`
+  starts `issued` and transitions to exactly one of `consumed`, `expired`,
+  or `revoked` -- never back to `issued`. `expires_at` is always
+  `issued_at` + 300 seconds. Atomic consumption (writing the operation
+  manifest AND flipping this record to `consumed` in one atomic step) is
+  P2's job (`operator_operation_service.py`, OPM-2.1); this schema freezes
+  only the record SHAPE both this phase's policy checks and P2's durable
+  store must agree on.
+
+  ONE CONFIRMATION -> ONE OPERATION (OPM-OQ-3): `consumed_by_operation_id`
+  is populated only once, at consumption, and never reused -- chaining a
+  second operation off the same confirmation requires a SEPARATE,
+  separately-previewed manifest with its own confirmation record.
+
+  EXACT REPLAY IS NOT AN ERROR, BUT IS STRUCTURALLY NON-ACCEPTING
+  (decisions-block section 0; security-review round 2 finding NEW-1,
+  superseding round 1's C1 fix): presenting an ALREADY-`consumed` token
+  whose freshly recomputed canonical fields are byte-identical to this
+  record's own bound fields, AND still within its clamped expiry, is the
+  "exact replay" case -- `operator_mcp_policy.verify_confirmation` signals
+  this as a distinct OUTCOME (`exact_replay`) so a caller can return the
+  PRIOR receipt rather than fabricate a new effect, but the underlying
+  `PolicyDecision` for that outcome is `PolicyDecision(False, "confirmation",
+  "confirmation_replayed", retryable=False)` -- IDENTICAL to what
+  `operator_mcp_policy.authorize_operation` (the execute-time,
+  boolean-shaped entry point) returns for the same case. Neither function
+  EVER returns `allowed=True` for a replay, regardless of which one a
+  caller invokes -- the safety property holds by SHAPE. A `consumed` token
+  whose recomputed fields differ from this record is `idempotency_conflict`
+  (see operator_mcp_error.schema.yaml). `authorize_operation` is the ONLY
+  sanctioned execute-time entry point; `verify_confirmation` MUST NOT be
+  called directly by an execute-time caller to make an authorization
+  decision (round 1's opposite instruction is retracted).
+
+  DURABLE CONSUMPTION IS A COMPARE-AND-SWAP (DUR-1, binding on P2; expiry
+  predicate folded in at round 2, finding NEW-10; binding predicate folded
+  in at round 4, finding BLOCK-9): the transition this record makes from
+  `status: issued` to `status: consumed` MUST be implemented as:
+
+  > Consumption is a compare-and-swap on `status` from exactly `issued` to
+  > `consumed`, GUARDED BY:
+  >   (a) THE SAME CLAMPED-EXPIRY CHECK `operator_mcp_policy.consume_confirmation`
+  >       applies (`min(expires_at, issued_at + CONFIRMATION_TTL)`, itself
+  >       never later than the commit-time `now`); AND
+  >   (b) THE SAME BINDING CHECK `operator_mcp_policy.consume_confirmation`
+  >       applies (the record's bound actor/workspace/effective_sensitivity/
+  >       operation_kind/canonical_input_digest/idempotency_key/
+  >       policy_snapshot_version/targets fields, recomputed fresh against
+  >       the request being committed, byte-identical to the record's own),
+  > performed in the same durable transaction as the operation-manifest
+  > write, under an exclusive single-writer lock (SQLite `BEGIN IMMEDIATE`,
+  > or `O_EXCL` create-then-atomic-rename). A CAS that observes any status
+  > other than `issued`, whose clamped expiry has already passed at commit
+  > time, OR whose binding check fails, MUST route to the exact-replay /
+  > idempotency-conflict / expired / mismatch path and MUST NOT execute.
+
+  NOTE (NEW-10): `WHERE status = 'issued'` alone is NOT this predicate --
+  it is only the status half. A P2 implementation checking status without
+  ALSO folding in the expiry check (in the SAME compare-and-swap, not a
+  separate read) can consume an EXPIRED-but-still-`issued` token.
+
+  NOTE (BLOCK-9, round 4 gate): the binding half (b) was, until this fix,
+  the same defect one predicate over -- `operator_mcp_policy.consume_confirmation`'s
+  `ctx` parameter (the binding-check input) was OPTIONAL, defaulting to
+  `None`, which skipped the binding check entirely. "P2 SHOULD always pass
+  `ctx`" was prose, not shape; a P2 implementation following only the
+  status+expiry predicate above (pre-BLOCK-9 text) could consume a record
+  that never bound to the request it is committing. `ctx` is now a
+  REQUIRED keyword argument on `consume_confirmation`, and this predicate
+  states the binding requirement explicitly.
+
+  `operator_mcp_policy.consume_confirmation` is a PURE function (P1) that
+  models only the guarded `issued -> consumed` field transition and its
+  precondition (status must be `issued`, unexpired, AND bound-matching); it
+  touches no disk. P2's real persistence layer is the one that must satisfy
+  the CAS/single-writer-lock property above -- a read-then-write
+  implementation that merely calls this pure function and writes the
+  result can pass every P1 test while still permitting two concurrent
+  callers to both observe `status == "issued"` and both win.
+type: object
+additionalProperties: false
+$defs:
+  actor:
+    type: object
+    additionalProperties: false
+    required:
+      - user_id
+      - workspace_id
+      - roles
+    properties:
+      user_id:
+        type: string
+        minLength: 1
+        maxLength: 128
+      workspace_id:
+        type: string
+        minLength: 1
+        maxLength: 128
+      roles:
+        type: array
+        maxItems: 8
+        items:
+          type: string
+          minLength: 1
+          maxLength: 32
+  target_ref:
+    type: object
+    additionalProperties: false
+    required:
+      - target_kind
+      - target_ref
+    properties:
+      target_kind:
+        enum:
+          - run
+          - source
+          - extraction_card
+          - claim_ledger
+          - report_draft
+          - report_final
+          - evidence_bundle
+          - import_packet
+          - agent_job
+          - writeback_preview
+          - verification
+      target_ref:
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[A-Za-z0-9_\\-:.]+$"
+properties:
+  schema_version:
+    const: "1.0"
+  type:
+    const: operator_mcp_confirmation
+  confirmation_id:
+    type: string
+    pattern: "^opc_[a-f0-9]{64}$"
+  token_digest:
+    description: SHA-256 hex digest of the opaque token; never the raw token.
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  actor:
+    $ref: "#/$defs/actor"
+  effective_sensitivity:
+    enum:
+      - public
+      - personal
+      - work_sensitive
+      - client_sensitive
+  operation_kind:
+    enum:
+      - run.plan
+      - swarm.start
+      - job.status
+      - job.cancel
+      - job.resume
+      - external_report.import
+      - source.ingest
+      - run.extract
+      - run.claim_map
+      - run.synthesize
+      - run.verify
+      - run.bundle
+      - writeback.preview
+  canonical_input_digest:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  idempotency_key:
+    type: string
+    minLength: 1
+    maxLength: 128
+    pattern: "^[A-Za-z0-9_\\-]+$"
+  policy_snapshot_version:
+    type: string
+    minLength: 1
+    maxLength: 64
+  targets:
+    type: array
+    maxItems: 20
+    items:
+      $ref: "#/$defs/target_ref"
+  status:
+    enum:
+      - issued
+      - consumed
+      - expired
+      - revoked
+  issued_at:
+    type: string
+    format: date-time
+  expires_at:
+    type: string
+    format: date-time
+  consumed_at:
+    type: [string, "null"]
+    format: date-time
+  consumed_by_operation_id:
+    type: [string, "null"]
+    minLength: 1
+    maxLength: 128
+required:
+  - schema_version
+  - type
+  - confirmation_id
+  - token_digest
+  - actor
+  - effective_sensitivity
+  - operation_kind
+  - canonical_input_digest
+  - idempotency_key
+  - policy_snapshot_version
+  - targets
+  - status
+  - issued_at
+  - expires_at
+  - consumed_at
+  - consumed_by_operation_id
+allOf:
+  - if:
+      properties:
+        status:
+          const: issued
+      required:
+        - status
+    then:
+      properties:
+        consumed_at:
+          const: null
+        consumed_by_operation_id:
+          const: null
+  - if:
+      properties:
+        status:
+          const: consumed
+      required:
+        - status
+    then:
+      required:
+        - consumed_at
+        - consumed_by_operation_id
+      properties:
+        consumed_at:
+          not:
+            const: null
+        consumed_by_operation_id:
+          not:
+            const: null

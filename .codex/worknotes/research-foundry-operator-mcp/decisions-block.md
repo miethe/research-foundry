@@ -27,7 +27,20 @@ related_implementation_plan: docs/project_plans/implementation_plans/enhancement
 - Existing `AgentJobService` is reused for durable attempts, events, staged artifacts, polling, termination, and cleanup. Operator operations add a stable operation manifest/receipt around attempts rather than creating a parallel job store.
 - The existing agent-job `accept` route/tool is not exposed. Operator effects flow only through the closed operation adapters in this plan.
 - A stable `operation_id` spans retries; each resume creates or records a new attempt while reusing completed effect receipts.
-- `governance.preflight()`/`guard_check()` and workspace/sensitivity resolution precede confirmation minting and effect planning.
+- `governance.guard_check()` and workspace/sensitivity resolution precede confirmation minting and
+  effect planning. **`governance.preflight()` is deliberately NOT invoked at the operation-authorization
+  layer** (amended after the OPM-1.G round-5 Karen adjudication; the original wording named it and was
+  never implemented). It consumes run-scoped `intent`/`ibom`/`routing` artifacts that do not exist at
+  authorization time — for `run.plan` the run has not been created yet, and `PolicyContext` carries none
+  of them — so calling it would mean passing empty dicts and receiving a vacuous pass, i.e. exactly the
+  fail-open-by-omission class that finding BLOCK-7 was raised on. The `preflight` STAGE NAME in
+  `operator_mcp_policy` (and its `preflight_failed` reason code) refers to a local operation-SHAPE check
+  (required target kinds present; `writeback.preview` has non-empty `writeback_targets`), not to
+  `governance.preflight()`.
+  **Carried forward as an explicit P2 obligation (OPM-DF-preflight):** once a run genuinely exists, P2
+  MUST wire `governance.preflight()` at the run layer and ship an artifact that FAILS if it is unwired.
+  A promised gate that never runs is the same defect shape as NB-2 (`check_tool_name` with zero
+  callers) — prose is not a gate.
 - A confirmation token is opaque, short-lived, one-time, and bound to actor, workspace, sensitivity, operation kind, canonical input digest, idempotency key, policy snapshot, target refs, and expiry.
 - Exact replay returns the existing operation/receipt. Same idempotency key with changed bound inputs fails closed.
 - The immutable operator receipt is mandatory and effect-coupled. The existing append-only audit service remains supplemental because its documented write contract is fail-open.

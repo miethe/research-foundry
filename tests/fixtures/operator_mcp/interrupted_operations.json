@@ -1,0 +1,208 @@
+{
+  "schema_version": "1.0",
+  "description": "Public-safe synthetic interrupted-operation fixtures for the operator-mcp M3 H3 ten-scenario lifecycle recovery matrix (OPM-6.1 / OPM-6.4, AC OPM-3). Every scenario references a workspace_id from workspaces.json (fixture-only, synthetic). Each scenario's `expected` block is the acceptance oracle tests/unit/test_operator_operation_service.py's H3-01..H3-10 tests assert against -- action_id/effect_kind/effect_ref values here are load-bearing, not decorative: tests build their ActionSpec sequence FROM `actions` and compare real persisted receipts against `expected`.",
+  "scenarios": [
+    {
+      "scenario_id": "H3-01",
+      "name": "interrupted_after_manifest_write",
+      "interruption_point": "after_manifest_write",
+      "description": "Process loss immediately after the operation manifest is durably committed, before run_actions is ever invoked. Resume must start at index 0 -- identical to a fresh first execution.",
+      "workspace_id": "ws-fixture-primary",
+      "actions": [
+        {"action_id": "act-0", "effect_kind": "source_card_created", "effect_ref": "source_card:act-0"},
+        {"action_id": "act-1", "effect_kind": "source_card_created", "effect_ref": "source_card:act-1"}
+      ],
+      "expected": {
+        "effect_pairs": [
+          ["source_card_created", "source_card:act-0"],
+          ["source_card_created", "source_card:act-1"]
+        ],
+        "action_receipt_count": 2,
+        "effect_receipt_count": 2,
+        "terminal_status": "completed"
+      }
+    },
+    {
+      "scenario_id": "H3-02",
+      "name": "interrupted_mid_attempt",
+      "interruption_point": "mid_attempt",
+      "description": "An attempt is created (attempt_adapter.create_attempt) but the process is lost before that attempt's action produces any action_receipt. Resume must mint a NEW attempt (never resurrect or reuse the stale one) and execute every action from index 0.",
+      "workspace_id": "ws-fixture-primary",
+      "actions": [
+        {"action_id": "act-0", "effect_kind": "source_card_created", "effect_ref": "source_card:act-0"},
+        {"action_id": "act-1", "effect_kind": "source_card_created", "effect_ref": "source_card:act-1"}
+      ],
+      "expected": {
+        "effect_pairs": [
+          ["source_card_created", "source_card:act-0"],
+          ["source_card_created", "source_card:act-1"]
+        ],
+        "action_receipt_count": 2,
+        "effect_receipt_count": 2,
+        "terminal_status": "completed"
+      }
+    },
+    {
+      "scenario_id": "H3-03",
+      "name": "interrupted_after_effect_receipt",
+      "interruption_point": "after_effect_receipt",
+      "description": "Action 0's action_receipt AND effect_receipt are durably committed, but the checkpoint that would normally follow never happens. resolve_resume_point (from real persisted rows, not checkpoint) must resume at index 1 without replaying action 0.",
+      "workspace_id": "ws-fixture-primary",
+      "actions": [
+        {"action_id": "act-0", "effect_kind": "source_card_created", "effect_ref": "source_card:act-0"},
+        {"action_id": "act-1", "effect_kind": "source_card_created", "effect_ref": "source_card:act-1"},
+        {"action_id": "act-2", "effect_kind": "source_card_created", "effect_ref": "source_card:act-2"}
+      ],
+      "expected": {
+        "effect_pairs": [
+          ["source_card_created", "source_card:act-0"],
+          ["source_card_created", "source_card:act-1"],
+          ["source_card_created", "source_card:act-2"]
+        ],
+        "action_receipt_count": 3,
+        "effect_receipt_count": 3,
+        "terminal_status": "completed"
+      }
+    },
+    {
+      "scenario_id": "H3-04",
+      "name": "interrupted_before_terminal_receipt",
+      "interruption_point": "before_terminal_receipt",
+      "description": "Every action's action_receipt, effect_receipt, and post-action checkpoint are durably committed, but finalize_terminal_receipt is never reached. A fresh run_or_replay call must reconcile and finalize the SAME terminal receipt an uninterrupted run would have produced, with zero re-execution.",
+      "workspace_id": "ws-fixture-primary",
+      "actions": [
+        {"action_id": "act-0", "effect_kind": "source_card_created", "effect_ref": "source_card:act-0"},
+        {"action_id": "act-1", "effect_kind": "source_card_created", "effect_ref": "source_card:act-1"}
+      ],
+      "expected": {
+        "effect_pairs": [
+          ["source_card_created", "source_card:act-0"],
+          ["source_card_created", "source_card:act-1"]
+        ],
+        "action_receipt_count": 2,
+        "effect_receipt_count": 2,
+        "terminal_status": "completed"
+      }
+    },
+    {
+      "scenario_id": "H3-05",
+      "name": "interrupted_during_cancel",
+      "interruption_point": "during_cancel",
+      "description": "A cancellation request is durably persisted and action 0 completes (action_receipt + effect_receipt committed), but the process is lost before the CANCELED checkpoint/terminal receipt is written. Resume on a fresh instance must observe the durable cancellation at the next safe point and finalize status=canceled with exactly one completed action -- action 1 and action 2 must never run.",
+      "workspace_id": "ws-fixture-primary",
+      "actions": [
+        {"action_id": "act-0", "effect_kind": "source_card_created", "effect_ref": "source_card:act-0"},
+        {"action_id": "act-1", "effect_kind": "source_card_created", "effect_ref": "source_card:act-1"},
+        {"action_id": "act-2", "effect_kind": "source_card_created", "effect_ref": "source_card:act-2"}
+      ],
+      "expected": {
+        "effect_pairs": [
+          ["source_card_created", "source_card:act-0"]
+        ],
+        "action_receipt_count": 1,
+        "effect_receipt_count": 1,
+        "terminal_status": "canceled"
+      }
+    },
+    {
+      "scenario_id": "H3-06",
+      "name": "exact_retry_idempotency_after_completion",
+      "interruption_point": "none",
+      "description": "An operation runs to completion, then run_or_replay is called again with is_replay=True. The retry must return the IDENTICAL terminal receipt with zero new action/effect receipts and zero re-execution of any action.",
+      "workspace_id": "ws-fixture-primary",
+      "actions": [
+        {"action_id": "act-0", "effect_kind": "source_card_created", "effect_ref": "source_card:act-0"},
+        {"action_id": "act-1", "effect_kind": "source_card_created", "effect_ref": "source_card:act-1"}
+      ],
+      "expected": {
+        "effect_pairs": [
+          ["source_card_created", "source_card:act-0"],
+          ["source_card_created", "source_card:act-1"]
+        ],
+        "action_receipt_count": 2,
+        "effect_receipt_count": 2,
+        "terminal_status": "completed"
+      }
+    },
+    {
+      "scenario_id": "H3-07",
+      "name": "cancel_before_first_action",
+      "interruption_point": "none",
+      "description": "Cancellation is durably requested before any action runs. run_actions observes it at the very first safe point: zero actions execute, zero effects are produced, and the terminal receipt is status=canceled with action_count_completed=0.",
+      "workspace_id": "ws-fixture-primary",
+      "actions": [
+        {"action_id": "act-0", "effect_kind": "source_card_created", "effect_ref": "source_card:act-0"},
+        {"action_id": "act-1", "effect_kind": "source_card_created", "effect_ref": "source_card:act-1"},
+        {"action_id": "act-2", "effect_kind": "source_card_created", "effect_ref": "source_card:act-2"}
+      ],
+      "expected": {
+        "effect_pairs": [],
+        "action_receipt_count": 0,
+        "effect_receipt_count": 0,
+        "terminal_status": "canceled"
+      }
+    },
+    {
+      "scenario_id": "H3-08",
+      "name": "resume_after_cancel_is_refused",
+      "interruption_point": "none",
+      "description": "An operation reaches a terminal status=canceled receipt (via the same shape as H3-07). A subsequent resume_operation call, presented with a FRESH confirmation, must resolve to outcome=already_terminal (never re-executing, never minting a new attempt) and return the EXACT canceled terminal receipt.",
+      "workspace_id": "ws-fixture-primary",
+      "actions": [
+        {"action_id": "act-0", "effect_kind": "source_card_created", "effect_ref": "source_card:act-0"}
+      ],
+      "expected": {
+        "effect_pairs": [],
+        "action_receipt_count": 0,
+        "effect_receipt_count": 0,
+        "terminal_status": "canceled"
+      }
+    },
+    {
+      "scenario_id": "H3-09",
+      "name": "duplicate_suppression_on_idempotency_key_retry",
+      "interruption_point": "none",
+      "description": "An operation completes. A SECOND, freshly-minted confirmation is then presented under the SAME (workspace_id, idempotency_key, canonical_input_digest) -- consume_and_create_operation must resolve this to exact_replay against the SAME operation_id, and run_or_replay(is_replay=True) must add zero new action_receipt/effect_receipt rows (no duplicate source card, claim, or candidate).",
+      "workspace_id": "ws-fixture-primary",
+      "actions": [
+        {"action_id": "act-0", "effect_kind": "source_card_created", "effect_ref": "source_card:act-0"},
+        {"action_id": "act-1", "effect_kind": "source_card_created", "effect_ref": "source_card:act-1"}
+      ],
+      "expected": {
+        "effect_pairs": [
+          ["source_card_created", "source_card:act-0"],
+          ["source_card_created", "source_card:act-1"]
+        ],
+        "action_receipt_count": 2,
+        "effect_receipt_count": 2,
+        "terminal_status": "completed"
+      }
+    },
+    {
+      "scenario_id": "H3-10",
+      "name": "full_convergence_uninterrupted_vs_interrupted_after_effect_receipt",
+      "interruption_point": "after_effect_receipt",
+      "description": "The comprehensive D6 convergence check: a control operation runs five actions straight through; a twin operation is interrupted after action 2's effect_receipt (no checkpoint) and resumed on a fresh service instance. The two operations' canonical (effect_kind, effect_ref) sets, action_receipt/effect_receipt counts, and normalized terminal receipts must be set-equal / identical.",
+      "workspace_id": "ws-fixture-primary",
+      "actions": [
+        {"action_id": "act-0", "effect_kind": "source_card_created", "effect_ref": "source_card:act-0"},
+        {"action_id": "act-1", "effect_kind": "source_card_created", "effect_ref": "source_card:act-1"},
+        {"action_id": "act-2", "effect_kind": "source_card_created", "effect_ref": "source_card:act-2"},
+        {"action_id": "act-3", "effect_kind": "source_card_created", "effect_ref": "source_card:act-3"},
+        {"action_id": "act-4", "effect_kind": "source_card_created", "effect_ref": "source_card:act-4"}
+      ],
+      "expected": {
+        "effect_pairs": [
+          ["source_card_created", "source_card:act-0"],
+          ["source_card_created", "source_card:act-1"],
+          ["source_card_created", "source_card:act-2"],
+          ["source_card_created", "source_card:act-3"],
+          ["source_card_created", "source_card:act-4"]
+        ],
+        "action_receipt_count": 5,
+        "effect_receipt_count": 5,
+        "terminal_status": "completed"
+      }
+    }
+  ]
+}

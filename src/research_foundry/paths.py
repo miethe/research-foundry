@@ -209,6 +209,20 @@ class FoundryPaths:
         """
         return self.rf_state / "rbac.db"
 
+    # --- operator MCP durable operation/confirmation store (P2, OPM-2.1) ---
+    @property
+    def operator_operations_db(self) -> Path:
+        """Path to the durable Operator MCP operation/confirmation sqlite3 database.
+
+        research-foundry-operator-mcp-v1 Phase P2 (``operator_operation_service``,
+        OPM-2.1). Lives under ``.rf_state/`` — sibling to ``rbac_db``, NOT under
+        ``.rf_cache/`` — because immutable operation manifests and confirmation
+        consumption records (DUR-1: the compare-and-swap proof that a
+        confirmation token was consumed exactly once) are durable, never
+        rebuildable, state that must survive ``catalog.db`` rebuilds.
+        """
+        return self.rf_state / "operator_operations.db"
+
     # --- run sub-tree (spec §5 runs/rf_run_*/...) ---
     def run_dir(self, run_id: str) -> Path:
         return self.runs / run_id

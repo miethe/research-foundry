@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "description": "Public-safe synthetic two-workspace fixtures for the operator-mcp M3 lifecycle-recovery matrix (OPM-6.1). Every id, name, url, and ref below is fixture-only synthetic data minted for this test suite -- never real owner, tenant, or private-corpus data. Consumed by tests/unit/test_operator_operation_service.py's H3-01..H3-10 matrix and available for reuse by other operator-mcp M3 test files.",
+  "workspaces": [
+    {
+      "workspace_id": "ws-fixture-primary",
+      "user_id": "user-fixture-primary",
+      "roles": ["owner"],
+      "display_name": "Fixture Primary Workspace"
+    },
+    {
+      "workspace_id": "ws-fixture-secondary",
+      "user_id": "user-fixture-secondary",
+      "roles": ["owner"],
+      "display_name": "Fixture Secondary Workspace"
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "run-fixture-0001",
+      "workspace_id": "ws-fixture-primary",
+      "title": "Fixture research run one"
+    },
+    {
+      "run_id": "run-fixture-0002",
+      "workspace_id": "ws-fixture-secondary",
+      "title": "Fixture research run two"
+    }
+  ],
+  "sources": [
+    {
+      "source_id": "source-fixture-0001",
+      "workspace_id": "ws-fixture-primary",
+      "url": "https://example.test/fixture-source-a"
+    },
+    {
+      "source_id": "source-fixture-0002",
+      "workspace_id": "ws-fixture-secondary",
+      "url": "https://example.test/fixture-source-b"
+    }
+  ]
+}

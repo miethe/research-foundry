@@ -11,6 +11,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **Research Foundry Operator MCP — governed local operation surface**
+
+- **Local `rf-operator-mcp` documentation and governance contract.** Documents the exact closed
+  14-tool registry, local stdio-only transport, identity/workspace/sensitivity resolution, bound
+  confirmation flow, durable receipts, and bounded errors. `writeback.preview` remains preview-only;
+  remote transport and live writeback are **deferred**, and owner qualification is
+  `not_executed_owner_data_absent`. Deferred shaping notes preserve the required future gates rather
+  than implying a remote or live-writeback release.
+
 #### **Research Provenance Continuity (RPC) — canonical origin/run/activity, report-use, inference, and canonical-claim provenance layer**
 
 - **New canonical origin, run/activity envelope, and durable activity receipt records**
