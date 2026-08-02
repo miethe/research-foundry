@@ -28,10 +28,24 @@ from . import audit_service
 from .assertion_workspace import resolve_or_deny
 from .audit_service import AuditEvent
 from .rights_triage import compute_capture_rights_summary, maybe_assess_substitutability
+from .source_rank import derive_source_rank
 
 _MAX_POINTS = 8
 _SHORT_QUOTE = 280
 _FETCH_TIMEOUT = 8
+
+# --- Provider-metadata ingest-boundary bounds (SMP-1.6, untrusted-input) ---
+#
+# `authors`/`doi`/`publisher`/`version` are externally controlled: they
+# originate from search-router provider responses (or any other caller),
+# never from RF itself. Bound and type-check them here, before they reach a
+# card, rather than trusting shape/size implicitly -- this is the control
+# that motivated escalating this milestone's gate to [security, validator].
+_MAX_AUTHORS = 64
+_MAX_AUTHOR_LEN = 300
+_MAX_DOI_LEN = 128
+_MAX_PUBLISHER_LEN = 300
+_MAX_VERSION_LEN = 64
 
 
 class ExtractionStatus(str, Enum):
@@ -143,6 +157,59 @@ def _read_local(path: Path) -> tuple[str | None, bool]:
             return None, True
 
 
+def _bounded_provider_str(value: Any, *, field: str, max_len: int) -> str | None:
+    """Type-check + length-bound one externally-controlled provider string.
+
+    ``None`` is a legitimate "not supplied" value and passes through
+    unchanged. Any non-``None`` value that is not a ``str``, or a ``str``
+    longer than *max_len*, is REJECTED -- raises :class:`SchemaError`
+    (``ExitCode.SCHEMA``) rather than truncating or coercing, so a malformed
+    or oversized provider string never silently reaches a card (SMP-1.6).
+    """
+
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise SchemaError(
+            f"source.{field}: expected str or None, got {type(value).__name__}"
+        )
+    if len(value) > max_len:
+        raise SchemaError(
+            f"source.{field}: exceeds max length {max_len} (got {len(value)})"
+        )
+    return value
+
+
+def _bounded_provider_authors(authors: Any) -> list[str]:
+    """Type-check + bound an externally-controlled ``authors`` list.
+
+    ``None`` degrades to ``[]`` (the pre-existing default shape). Anything
+    else that is not a ``list`` of ``str`` within the count/length bounds is
+    REJECTED (raises :class:`SchemaError`) -- see :func:`_bounded_provider_str`.
+    """
+
+    if authors is None:
+        return []
+    if not isinstance(authors, list):
+        raise SchemaError(
+            f"source.authors: expected list[str] or None, got {type(authors).__name__}"
+        )
+    if len(authors) > _MAX_AUTHORS:
+        raise SchemaError(
+            f"source.authors: exceeds max count {_MAX_AUTHORS} (got {len(authors)})"
+        )
+    validated: list[str] = []
+    for i, name in enumerate(authors):
+        if not isinstance(name, str):
+            raise SchemaError(f"source.authors[{i}]: expected str, got {type(name).__name__}")
+        if len(name) > _MAX_AUTHOR_LEN:
+            raise SchemaError(
+                f"source.authors[{i}]: exceeds max length {_MAX_AUTHOR_LEN} (got {len(name)})"
+            )
+        validated.append(name)
+    return validated
+
+
 def _build_points(content: str | None, *, degraded: bool) -> list[dict]:
     """Deterministically split content into up to 8 evidence points."""
 
@@ -189,6 +256,10 @@ def ingest_source(
     assertion_registry_workspace_id: str | None = None,
     paths: FoundryPaths | None = None,
     extraction_status: str | None = None,
+    authors: list[str] | None = None,
+    doi: str | None = None,
+    publisher: str | None = None,
+    version: str | None = None,
 ) -> IngestResult:
     """Ingest one source into ``runs/<run>/sources/`` as a source_card.
 
@@ -210,7 +281,30 @@ def ingest_source(
     ``"full_text"`` otherwise). An unrecognized override value is logged to the
     run trace and ignored (falls back to the derived value) rather than raising
     — this stays fail-open like the rest of the module.
+
+    ``authors``/``doi``/``publisher``/``version`` are optional structured
+    provider metadata (e.g. from a bibliographic-capable search-router
+    provider, or any other caller) that lands on ``source.authors``/
+    ``source.locator.doi``/``source.publisher``/``source.version``
+    respectively, replacing the previous hardcoded-empty shape. Because these
+    strings are externally controlled, they are bounded (count/length) and
+    type-checked BEFORE any file is written — an oversized or malformed value
+    raises :class:`~research_foundry.errors.SchemaError` rather than reaching
+    the card unchecked (SMP-1.6, untrusted-input control). ``trust.source_rank``
+    is derived deterministically from ``source_type`` (see
+    :func:`research_foundry.services.source_rank.derive_source_rank`); a
+    ``source_type`` the derivation cannot classify stays ``"unknown"`` rather
+    than being guessed.
     """
+
+    # SMP-1.6: bound + type-check externally-controlled provider strings at
+    # the ingest boundary, before ANY side effect (directory creation, file
+    # write, registry upsert) below. A rejection here means nothing about
+    # this call is ever persisted.
+    validated_authors = _bounded_provider_authors(authors)
+    validated_doi = _bounded_provider_str(doi, field="locator.doi", max_len=_MAX_DOI_LEN)
+    validated_publisher = _bounded_provider_str(publisher, field="publisher", max_len=_MAX_PUBLISHER_LEN)
+    validated_version = _bounded_provider_str(version, field="version", max_len=_MAX_VERSION_LEN)
 
     paths = paths or FoundryPaths.discover()
     run_paths = paths.run_paths(run_id)
@@ -319,17 +413,21 @@ def ingest_source(
             "locator": {
                 "url": loc_url,
                 "file_path": loc_file,
-                "doi": None,
+                "doi": validated_doi,
                 "repo": None,
             },
-            "authors": [],
-            "publisher": None,
+            "authors": validated_authors,
+            "publisher": validated_publisher,
             "published_at": None,
             "accessed_at": now_iso(),
-            "version": None,
+            "version": validated_version,
         },
         "trust": {
-            "source_rank": "unknown",
+            # SMP-1.3 / OQ-4: deterministic, pure function of source_type --
+            # no model/network/clock. Stays "unknown" when source_type can't
+            # be classified (see services/source_rank.py for the mapping and
+            # its rationale) rather than ever being guessed.
+            "source_rank": derive_source_rank(source_type),
             "reliability_notes": (
                 "Content unavailable; locator recorded only."
                 if degraded

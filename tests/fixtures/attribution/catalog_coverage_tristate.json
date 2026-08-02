@@ -1,0 +1,8 @@
+{
+  "present": 2,
+  "absent": 1,
+  "not_yet_assessed": 4,
+  "assessed": 3,
+  "total": 7,
+  "coverage_line": "3 of 7 sources assessed"
+}

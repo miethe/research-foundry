@@ -535,6 +535,56 @@ class TestPromotion:
         assert outcome["outcome"] == "completed"
         assert outcome["completeness_tier"] == "passage_resolved"  # never self-assigns verified
 
+    def test_promoted_source_card_carries_the_real_external_doi(self, tmp_path: Path, workspace: FoundryPaths) -> None:
+        """SMP-4.x / AC-1 regression: ``default_promote`` must forward the
+        packet's real ``locator.doi`` through to the promoted source card's
+        ``source.locator.doi`` -- not drop it, and not fabricate one."""
+
+        from research_foundry.frontmatter import load_md
+
+        run_id = "rf_run_test_doi"
+        (workspace.runs / run_id).mkdir(parents=True)
+        doi = "10.1000/xyz123"
+        sources = [
+            {
+                "source_id": "src_001",
+                "title": "Rate limiting",
+                "locator": {"doi": doi, "url": _SOURCE_URL},
+                "publication_year": 2024,
+                "access_status": "open-access",
+            }
+        ]
+        candidates = [
+            {
+                "candidate_id": "cand_001",
+                "statement": "Token buckets allow bursts.",
+                "classification": "assertion",
+                "source_refs": ["src_001"],
+                "relation": "supports",
+                "quote": _QUOTE,
+                "selector": None,
+            }
+        ]
+        root = build_packet(tmp_path / "packet", sources=sources, candidates=candidates)
+        resolver = _resolver(workspace, candidates, content_by_locator={_SOURCE_URL: _SOURCE_TEXT.encode()})
+
+        result = _stage(workspace, root, resolver, target_run_id=run_id)
+
+        outcome = _outcome_for(result.receipt, root, "candidate", "candidate_id", "cand_001")
+        assert outcome["outcome"] == "completed"
+        assert outcome["completeness_tier"] == "passage_resolved"
+
+        # The receipt never surfaces canonical_refs/source_card_id to callers
+        # (this module's own documented "canonical_refs / effect_digest gap"
+        # -- see external_research_resolution.py's module docstring), so
+        # locate the (sole) promoted source card written on disk directly.
+        card_files = list(workspace.run_paths(run_id).sources.glob("*.md"))
+        assert len(card_files) == 1
+        front_matter, _ = load_md(card_files[0])
+        assert front_matter["source"]["locator"]["doi"] == doi
+        # url is unaffected -- both fields propagate independently.
+        assert front_matter["source"]["locator"]["url"] == _SOURCE_URL
+
     def test_verification_fail_when_target_run_missing_quarantines(self, tmp_path: Path, workspace: FoundryPaths) -> None:
         sources, candidates = _one_source_one_candidate()
         root = build_packet(tmp_path / "packet", sources=sources, candidates=candidates)

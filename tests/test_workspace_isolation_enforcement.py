@@ -21,9 +21,12 @@ this file (confirmed by direct source reading, and in the ``get_job``/
 ``list_jobs`` case by the sibling unit test's own docstring) is:
 
 * ``catalog_service``: ``get_item`` (verbatim), ``list_items`` -> ``search``,
-  ``count_items`` -> **no identity-aware equivalent exists** (``stats()``
-  takes no ``identity`` param; confirmed via ``catalog.py``'s own
-  ``TODO(WKSP-304 P4)`` comments — not a Phase 3 scoping target), ``get_draft_index``
+  ``count_items`` -> ``stats()`` -- UPDATED by the source-metadata-propagation
+  Fix 2 isolation fix: ``stats()`` now accepts ``identity``, but it scopes
+  ONLY the ``attribution_coverage`` block (the cross-workspace leak that fix
+  closed); the rest of ``stats()``'s counts (``counts``/``runs_indexed``)
+  remain unscoped — still the WKSP-304 P4 gap, confirmed via ``catalog.py``'s
+  own ``TODO(WKSP-304 P4)`` comment, unchanged by this fix. ``get_draft_index``
   / ``list_draft_index`` (verbatim), ``get_related_items`` -> the ``links``
   field embedded in ``get_item``'s response (no standalone function exists).
 * ``builder_service``: ``get_draft`` -> ``load_draft``, ``list_drafts``
@@ -758,8 +761,14 @@ class TestTargetMethodMismatchFindings:
     """Escalation findings: signature-introspection proof for the ~11
     plan-named targets that do not map 1:1 onto real functions."""
 
-    def test_catalog_stats_has_no_identity_parameter(self) -> None:
-        assert "identity" not in inspect.signature(catalog_service.stats).parameters
+    def test_catalog_stats_gained_a_narrowly_scoped_identity_parameter(self) -> None:
+        """UPDATED by the source-metadata-propagation Fix 2 isolation fix:
+        ``stats()`` now accepts ``identity`` (this test previously asserted
+        its absence as an escalation finding). The new parameter scopes
+        ONLY the ``attribution_coverage`` block; ``counts``/``runs_indexed``
+        remain unscoped by design (still the WKSP-304 P4 gap, unchanged) —
+        see ``catalog_service.stats()``'s own docstring."""
+        assert "identity" in inspect.signature(catalog_service.stats).parameters
 
     def test_builder_service_has_no_find_drafts_or_build_report_from_draft(self) -> None:
         assert not hasattr(builder_service, "find_drafts")
@@ -1253,13 +1262,19 @@ class TestIdentityNoneSingleOperatorFallback:
         explicit_none = service.load_job(job["agent_job_id"], identity=None)
         assert omitted == explicit_none
 
-    def test_catalog_stats_never_had_an_identity_concept(self, tmp_foundry: FoundryPaths) -> None:
-        """stats() has no identity parameter at all — structurally
-        unrestricted regardless of any caller's workspace, by construction
-        rather than by an identity=None passthrough."""
-        assert "identity" not in inspect.signature(catalog_service.stats).parameters
-        # Calling it never raises regardless of workspace context.
-        assert catalog_service.stats(tmp_foundry)["counts"] is not None
+    def test_catalog_stats_identity_none_equals_omitted(self, tmp_foundry: FoundryPaths) -> None:
+        """UPDATED by the source-metadata-propagation Fix 2 isolation fix:
+        stats() now accepts ``identity`` (previously it had none at all —
+        see the class-level ``TestTargetMethodMismatchFindings`` docstring
+        update), but ``identity=None`` remains byte-identical to omitting
+        the parameter, same as every other read function in this class.
+        ``counts`` stays unrestricted regardless of workspace context —
+        only ``attribution_coverage`` is scoped."""
+        assert "identity" in inspect.signature(catalog_service.stats).parameters
+        omitted = catalog_service.stats(tmp_foundry)
+        explicit_none = catalog_service.stats(tmp_foundry, identity=None)
+        assert omitted == explicit_none
+        assert omitted["counts"] is not None
 
     def test_agent_job_create_job_identity_none_equals_omitted(
         self, tmp_foundry: FoundryPaths

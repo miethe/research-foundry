@@ -1,0 +1,13 @@
+{
+  "asserter_id": "semantic_scholar",
+  "asserter_type": "third_party_api",
+  "assertion_kind": "citation_count",
+  "attribution_id": "attrib_20260115_src_frozen_b084999d",
+  "license_basis": "open_api",
+  "observed_at": "2026-01-15T00:00:00+00:00",
+  "retrieval_evidence_ref": "fetch_receipt_001",
+  "schema_version": "1.0",
+  "source": "src_frozen",
+  "supersedes_attribution_id": null,
+  "value": 42
+}

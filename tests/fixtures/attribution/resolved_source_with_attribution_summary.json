@@ -1,0 +1,48 @@
+{
+  "attribution_summary": {
+    "attribution_ids": [
+      "attrib_a",
+      "attrib_b"
+    ],
+    "count": 2,
+    "rollups": [
+      {
+        "asserter_id": "semantic_scholar",
+        "assertion_kind": "citation_count",
+        "attribution_ids": [
+          "attrib_a",
+          "attrib_b"
+        ],
+        "best_attribution_id": "attrib_b",
+        "comparable": true,
+        "count": 2,
+        "weakest_attribution_id": "attrib_a"
+      }
+    ]
+  },
+  "authors": [
+    "Jane Doe",
+    "John Roe"
+  ],
+  "dangling": false,
+  "doi": "10.1000/xyz123",
+  "evidence_id": "ev_frozen",
+  "evidence_locator": "p1",
+  "locator": "p1",
+  "publisher": "Example Press",
+  "quote": "Frozen quote.",
+  "redacted": false,
+  "relation": "supports",
+  "resolved": true,
+  "sensitivity": "public",
+  "source_card_id": "src_frozen",
+  "source_type": "paper",
+  "summary": "Frozen summary.",
+  "title": "Frozen Source",
+  "trust": {
+    "source_rank": "primary"
+  },
+  "url": "https://example.test/frozen",
+  "usage": "direct",
+  "version": "2nd edition"
+}

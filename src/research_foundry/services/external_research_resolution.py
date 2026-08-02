@@ -450,7 +450,18 @@ def default_promote(request: PromotionRequest) -> PromotionOutcome:
     second decision-maker (AC ERI-4).
     """
 
-    locator_text = request.locator.url or (f"doi:{request.locator.doi}" if request.locator.doi else request.source_key)
+    # SMP-4.x: the DOI is real, externally-supplied provider metadata
+    # (normalize_source's NormalizedLocator, sourced from the packet's own
+    # sources.yaml) -- pass it through structurally via ingest_source's
+    # ``doi=`` kwarg (SMP-1) instead of the previous ``f"doi:{...}"`` string
+    # stuffed into the locator itself, which never reached
+    # ``source.locator.doi`` and left every promoted card's DOI null (AC-1).
+    # ``locator_text`` keeps its pre-existing url-else-source_key fallback
+    # unchanged -- nothing else in the repo parses the removed "doi:" prefix
+    # (grepped `locator_text`/`f"doi:` across src/ and tests/; the only other
+    # `locator_text` symbol is term_index.py's unrelated passage-locator
+    # concept).
+    locator_text = request.locator.url or request.source_key
     try:
         result = _default_ingest_source(
             locator_text,
@@ -464,6 +475,7 @@ def default_promote(request: PromotionRequest) -> PromotionOutcome:
             assertion_registry_workspace_id=request.workspace_id,
             extraction_status=request.extraction_status,
             paths=request.paths,
+            doi=request.locator.doi,
         )
     except NotFoundError:
         return PromotionOutcome(ok=False, error="target_run_not_found")

@@ -13,8 +13,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from research_foundry.config import FoundryConfig
 from research_foundry.paths import FoundryPaths
+from research_foundry.schemas import validate
 from research_foundry.services.governance import (
     GuardContext,
     guard_check,
@@ -456,3 +459,228 @@ def test_scan_artifact_safe_noop_on_empty_and_missing_target():
         json.dumps({"tool_name": "Write", "tool_input": {"file_path": "/tmp/nope-xyz-123.md"}}),
     )
     assert proc2.returncode == 0 and json.loads(proc2.stdout)["decision"] == "allow"
+
+
+# ---------------------------------------------------------------------------
+# SMP-3.3: source_attribution's structural if/then is the PRIMARY control.
+#
+# These tests call the real ``research_foundry.schemas.validate()`` entry
+# point against ``source_attribution`` instances -- never grep the schema
+# file's text -- so SMP-3.4's later mutation (deleting the if/then) has an
+# actual assertion outcome to flip. A test that passed by reading the YAML
+# source would stay green after that mutation and would be worthless as a
+# non-vacuity proof.
+# ---------------------------------------------------------------------------
+
+SCHEMA_ATTRIBUTION = "source_attribution"
+
+# Deliberately 3 distinct third_party_* enum members (not just one) --
+# matching the schema author's stated intent that the if/then match by
+# *prefix pattern*, not by special-casing a single value.
+THIRD_PARTY_ASSERTER_TYPES = (
+    "third_party_api",
+    "third_party_manual",
+    "third_party_aggregator",
+)
+
+
+def _valid_attribution_record(asserter_type: str = "human_reviewer") -> dict:
+    """Minimal valid ``source_attribution`` instance, only required fields."""
+
+    return {
+        "schema_version": "1.0",
+        "attribution_id": "attr_adv_001",
+        "source": "src_adv_demo",
+        "asserter_id": "adv_asserter",
+        "asserter_type": asserter_type,
+        "assertion_kind": "citation_count",
+        "value": 7,
+        "observed_at": "2026-08-02T12:00:00Z",
+        "license_basis": "licensed_api",
+    }
+
+
+@pytest.mark.parametrize("asserter_type", THIRD_PARTY_ASSERTER_TYPES)
+def test_attribution_third_party_asserter_without_evidence_ref_is_rejected(asserter_type):
+    """AC-M3-1: a third_party_* asserter_type with NO retrieval_evidence_ref
+    key at all is rejected by the schema's structural if/then (SMP-3.2B),
+    across several distinct third_party_* members, not just one."""
+
+    instance = _valid_attribution_record(asserter_type)
+    assert "retrieval_evidence_ref" not in instance  # absent, not merely falsy
+    result = validate(instance, SCHEMA_ATTRIBUTION)
+    assert not result.ok, (
+        f"expected {asserter_type} without retrieval_evidence_ref to be "
+        f"rejected by the if/then, but it validated cleanly"
+    )
+    assert result.errors
+
+
+@pytest.mark.parametrize("asserter_type", THIRD_PARTY_ASSERTER_TYPES)
+def test_attribution_third_party_asserter_with_null_evidence_ref_is_rejected(asserter_type):
+    """Same AC, null variant: retrieval_evidence_ref's own declared type is
+    ``[string, "null"]``, but the if/then's ``then`` branch narrows it to
+    plain ``string`` whenever asserter_type matches -- an explicit ``null``
+    must be rejected exactly like an absent key."""
+
+    instance = _valid_attribution_record(asserter_type)
+    instance["retrieval_evidence_ref"] = None
+    result = validate(instance, SCHEMA_ATTRIBUTION)
+    assert not result.ok, (
+        f"expected {asserter_type} with a null retrieval_evidence_ref to be "
+        f"rejected, but it validated cleanly"
+    )
+    assert result.errors
+
+
+@pytest.mark.parametrize("asserter_type", THIRD_PARTY_ASSERTER_TYPES)
+def test_attribution_third_party_asserter_with_evidence_ref_is_accepted(asserter_type):
+    """Positive control: the SAME third_party_* asserter_type validates
+    cleanly once a non-null retrieval_evidence_ref string is supplied --
+    proves the if/then is a conditional gate, not a blanket rejection of the
+    third_party_* namespace."""
+
+    instance = _valid_attribution_record(asserter_type)
+    instance["retrieval_evidence_ref"] = "fetch_receipt_001"
+    result = validate(instance, SCHEMA_ATTRIBUTION)
+    assert result.ok, f"expected {asserter_type} with evidence ref to validate, got: {result.errors}"
+
+
+def test_attribution_non_third_party_asserter_without_evidence_ref_still_valid():
+    """Control: a non-third_party_* asserter_type (e.g. human_reviewer) with
+    NO retrieval_evidence_ref remains valid -- the if/then's ``if`` condition
+    genuinely narrows on the ``third_party_`` prefix rather than requiring
+    the field unconditionally for every record."""
+
+    instance = _valid_attribution_record("human_reviewer")
+    assert "retrieval_evidence_ref" not in instance
+    result = validate(instance, SCHEMA_ATTRIBUTION)
+    assert result.ok, f"expected non-third-party record to validate, got: {result.errors}"
+
+
+# ---------------------------------------------------------------------------
+# SMP-3.3B: the sibling-field bypass proof.
+#
+# source_attribution's if/then (above) can only ever see its OWN record --
+# it has no way to reach into a sibling entity like source_card.trust. The
+# bypass this whole milestone exists to close is an agent writing a
+# third_party_* key onto one of source_card.schema.yaml's still-open
+# (additionalProperties: true) seams instead of onto source_attribution.
+# `patternProperties: {"^third_party_": false}` at each of the 7 named seams
+# is what closes it -- by SHAPE (any name matching the prefix), not by
+# enumerating field names. These tests exercise the real validate() entry
+# point against source_card, never the schema text.
+# ---------------------------------------------------------------------------
+
+SCHEMA_SOURCE_CARD = "source_card"
+
+
+def _source_card_base() -> dict:
+    return {
+        "source_card_id": "src_adv_demo",
+        "type": "source_card",
+        "source": {"title": "Adversarial Demo Source"},
+    }
+
+
+def test_attribution_sibling_field_bypass_trust_third_party_citation_rank_is_rejected():
+    """THE named bypass from the plan: ``trust.third_party_citation_rank`` is
+    not on any name-based guard list (``_RIGHTS_GOVERNED_FIELDS`` doesn't
+    carry it -- see test_governance_attribution_guard.py's own
+    ``test_sibling_field_bypass_is_not_caught_by_this_rule``, which documents
+    that the NAME-based rule lets this exact write through). The structural
+    ``patternProperties`` seam on ``trust`` must reject it anyway."""
+
+    instance = _source_card_base()
+    instance["trust"] = {"third_party_citation_rank": 5}
+    result = validate(instance, SCHEMA_SOURCE_CARD)
+    assert not result.ok, (
+        "expected trust.third_party_citation_rank to be rejected by "
+        "source_card's structural patternProperties seam"
+    )
+    assert result.errors
+
+
+def test_attribution_sibling_field_bypass_generality_unenumerated_names_across_seams():
+    """Goes beyond the one name the plan mentions: two third_party_* names
+    that appear NOWHERE else in this codebase or its schemas/tests (invented
+    for this test) are rejected too, at multiple of the 7 open seams --
+    top-level, ``source``, ``source.locator``, ``trust.conflicts_with[]``
+    items, ``usage``, and ``extracted_points[]`` items. A structural control
+    must reject a name it has never seen; a test that only rejects the one
+    name everyone already knows about would itself be a disguised name list.
+    """
+
+    unenumerated_names = ("third_party_confidence_boost", "third_party_editorial_flag")
+
+    cases: list[tuple[str, dict]] = []
+
+    # Seam 1: top-level.
+    top_level = _source_card_base()
+    top_level[unenumerated_names[0]] = "sneaked in"
+    cases.append(("top_level", top_level))
+
+    # Seam 2: source.
+    source_seam = _source_card_base()
+    source_seam["source"][unenumerated_names[1]] = "sneaked in"
+    cases.append(("source", source_seam))
+
+    # Seam 3: source.locator.
+    locator_seam = _source_card_base()
+    locator_seam["source"]["locator"] = {unenumerated_names[0]: "sneaked in"}
+    cases.append(("source.locator", locator_seam))
+
+    # Seam 4: trust.conflicts_with[] items.
+    conflicts_seam = _source_card_base()
+    conflicts_seam["trust"] = {
+        "conflicts_with": [
+            {"source_card_id": "other_src", unenumerated_names[1]: "sneaked in"}
+        ]
+    }
+    cases.append(("trust.conflicts_with[]", conflicts_seam))
+
+    # Seam 5: usage.
+    usage_seam = _source_card_base()
+    usage_seam["usage"] = {unenumerated_names[0]: "sneaked in"}
+    cases.append(("usage", usage_seam))
+
+    # Seam 6: extracted_points[] items.
+    extracted_seam = _source_card_base()
+    extracted_seam["extracted_points"] = [
+        {"evidence_id": "ev1", unenumerated_names[1]: "sneaked in"}
+    ]
+    cases.append(("extracted_points[]", extracted_seam))
+
+    for seam_label, instance in cases:
+        result = validate(instance, SCHEMA_SOURCE_CARD)
+        assert not result.ok, (
+            f"expected an unenumerated third_party_* name to be rejected at "
+            f"seam {seam_label!r}, but it validated cleanly"
+        )
+        assert result.errors, seam_label
+
+
+def test_attribution_sibling_field_bypass_trust_top_level_seam_rejected_too():
+    """The plan calls out BOTH ``trust`` itself and ``trust.conflicts_with[]``
+    as required together -- either alone would still admit the bypass. This
+    covers the direct ``trust`` sibling seam with a second unenumerated name,
+    distinct from the ``conflicts_with[]`` case above."""
+
+    instance = _source_card_base()
+    instance["trust"] = {"third_party_reputation_score": 99}
+    result = validate(instance, SCHEMA_SOURCE_CARD)
+    assert not result.ok, "expected trust.third_party_reputation_score to be rejected"
+    assert result.errors
+
+
+def test_attribution_sibling_field_bypass_baseline_without_third_party_key_is_valid():
+    """Control: the exact same source_card shapes, minus the injected
+    third_party_* key, validate cleanly -- proves the rejections above are
+    caused by the injected key, not by some other defect in the fixture."""
+
+    clean = _source_card_base()
+    clean["trust"] = {"conflicts_with": [{"source_card_id": "other_src", "reason": "differs"}]}
+    clean["usage"] = {"citation_required": True}
+    clean["extracted_points"] = [{"evidence_id": "ev1", "summary": "a real point"}]
+    result = validate(clean, SCHEMA_SOURCE_CARD)
+    assert result.ok, f"expected a clean source_card to validate, got: {result.errors}"

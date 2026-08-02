@@ -1,0 +1,163 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/source_attribution.schema.yaml"
+title: Source Attribution
+description: >-
+  The authoritative record of a single third-party (or first-party) assertion
+  *about* a source — e.g. a citation count, an impact-factor value, a
+  retraction status — as distinct from the source's own content. Authored per
+  the source-metadata-propagation-v1 plan's accepted M2 decision: this is a
+  NEW top-level entity, deliberately NOT an extension of
+  ``source_assertion.schema.yaml`` (the Ledger has no asserted-by field,
+  mandates a passage anchor a citation count cannot satisfy, and write-caps
+  attestation at ``candidate`` forever). Shaped on the landed
+  ``rights_record.schema.yaml`` pattern: ``additionalProperties: false`` at
+  the record level (deliberate and load-bearing — this is the authoritative
+  record, not the permissive ``source_card.schema.yaml`` mirror), nullable
+  fields via ``type: [T, "null"]`` (never ``format``), and a ``schema_version``
+  const.
+
+  Minimum shape per the plan: ``{source, value, observed_at, license_basis}``.
+  ``asserter_id`` + ``assertion_kind`` are additionally required because a
+  later milestone's rollups propagate cross-source values as a set-union
+  keyed by ``(asserter_id, assertion_kind)`` — both must always be present and
+  comparable, or that keying silently drops records. ``asserter_type`` is
+  required for the same structural reason a name-based guard is refused
+  elsewhere in this plan: M3 adds ``if asserter_type startsWith
+  "third_party_" then retrieval_evidence_ref required`` over this schema (see
+  the root-level ``if``/``then`` below), and an omittable ``asserter_type``
+  would let a record dodge that gate simply by not carrying the field.
+  ``retrieval_evidence_ref`` exists on every record's declared shape and
+  stays optional/nullable for any non-``third_party_*`` asserter — the root
+  ``if``/``then`` is what narrows it to required-and-non-null exactly when
+  ``asserter_type`` starts with ``third_party_``. This is the PRIMARY,
+  structural control; ``governance.py``'s name-based guards are
+  defence-in-depth only, per the plan's M3 redesign.
+
+  ``observed_at`` is a write-path clock read recorded at capture time — never
+  read again at validation time; no validator here reads a wall clock.
+
+  Staleness is append-only by construction: there is no mutable "current
+  value" field and no in-place-update affordance. A refresh mints a brand
+  new record (a new ``attribution_id``, a new ``observed_at``) rather than
+  touching an existing one, so a bad value is superseded, never corrected.
+  ``supersedes_attribution_id`` is the only pointer between two records in a
+  refresh chain — it points backward from the new record to the one it
+  replaces, and is never used to locate a record to overwrite.
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - attribution_id
+  - source
+  - asserter_id
+  - asserter_type
+  - assertion_kind
+  - value
+  - observed_at
+  - license_basis
+properties:
+  schema_version:
+    const: "1.0"
+  attribution_id:
+    type: string
+    minLength: 5
+  # The source_card (or other source-scoped entity) this record asserts
+  # something about. Named `source`, not `source_id`, per the plan's stated
+  # minimum shape.
+  source:
+    type: string
+    minLength: 3
+  # Who/what is making this assertion. For a third-party API/database this
+  # is a stable provider identifier (e.g. "semantic_scholar", "openalex");
+  # for a human this is a reviewer identifier. Required — see description:
+  # rollup keying and the future provenance gate both depend on this always
+  # being present, never merely inferred.
+  asserter_id:
+    type: string
+    minLength: 1
+  # Structural classification of the asserter. Deliberately modeled as
+  # several distinct `third_party_*` members (not one) so a later
+  # `pattern: "^third_party_"` (or equivalent prefix match) in M3's if/then
+  # is meaningful rather than a single-value special case.
+  asserter_type:
+    enum:
+      - first_party
+      - human_reviewer
+      - third_party_api
+      - third_party_manual
+      - third_party_aggregator
+      - unknown
+  # What is being asserted (e.g. "citation_count", "impact_factor",
+  # "retraction_status", "altmetric_score"). Kept open (pattern-shaped, not a
+  # closed enum) because the universe of third-party assertion kinds is not
+  # known in full at plan time — closing it now would force a schema edit
+  # for every new provider signal. Snake_case identifier shape only.
+  assertion_kind:
+    type: string
+    pattern: "^[a-z][a-z0-9_]*$"
+    minLength: 1
+  # The asserted value itself. Deliberately untyped (any JSON type) because
+  # different assertion_kinds carry different natural shapes (a citation
+  # count is a number, a retraction status is an enum-like string, a
+  # structured signal may be an object). This is the ONE property that is
+  # allowed to carry a raw third-party value in this whole feature — the
+  # source_card's `attribution_summary` mirror (M2's next task) is
+  # recompute-only and value-free specifically so this field never gets a
+  # second, unguarded home to live in.
+  value: {}
+  # Write-path observation timestamp — recorded once, at capture time, by
+  # the writer (see ids.now_iso()). Never read from a wall clock by a
+  # validator; a refresh always produces a new record with a new
+  # observed_at rather than mutating this one.
+  observed_at:
+    type: string
+    format: date-time
+  # Basis for RF's authority to retrieve/hold this value at all — mirrors
+  # rights_record.access.basis's "record ignorance via an explicit unknown
+  # member" convention rather than defaulting ambiguous cases into "other".
+  license_basis:
+    enum:
+      - public_web
+      - open_api
+      - licensed_api
+      - publisher_provided
+      - manual_entry
+      - data_use_agreement
+      - other
+      - unknown
+  # Pointer to the evidence that justifies a third-party value's retrieval
+  # (e.g. a fetch receipt id, a stored response hash/URI). Present on every
+  # record's shape now; conditionally required only once M3 lands its
+  # `if asserter_type startsWith "third_party_"` gate over this schema — do
+  # NOT add that conditional here.
+  retrieval_evidence_ref:
+    type:
+      - string
+      - "null"
+  # Append-only refresh chain pointer: the id of the record this one
+  # supersedes, if any. Points backward only — nothing in this schema ever
+  # points forward from an old record to its replacement, and there is no
+  # field anywhere on this record that a refresh would overwrite in place.
+  supersedes_attribution_id:
+    type:
+      - string
+      - "null"
+# PRIMARY structural control (source-metadata-propagation-v1 M3, SMP-3.2B).
+# Whenever `asserter_type` starts with `third_party_`, `retrieval_evidence_ref`
+# becomes required AND non-null (the `type` intersection with the property's
+# own `[string, "null"]` declaration above collapses to plain `string`). This
+# is a shape constraint, not a name-based rule: it matches by prefix pattern
+# against the actual value, so it covers every current and future
+# `third_party_*` enum member without a second field-name allowlist anywhere.
+if:
+  required:
+    - asserter_type
+  properties:
+    asserter_type:
+      pattern: "^third_party_"
+then:
+  required:
+    - retrieval_evidence_ref
+  properties:
+    retrieval_evidence_ref:
+      type: string

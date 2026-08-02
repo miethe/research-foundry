@@ -57,7 +57,7 @@ import json
 import logging
 import re
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -67,6 +67,7 @@ from ..api.auth.scope import require_workspace_scope, resolve_workspace_isolatio
 from ..ids import now_iso
 from ..paths import FoundryPaths
 from . import audit_service
+from .attribution_triage import AttributionRollup
 from .audit_service import AuditEvent
 from .export_service import (
     REDACTION_MARKER,
@@ -123,7 +124,22 @@ def _isolation_active(paths: FoundryPaths) -> bool:
 # index table. Rows are rebuilt from each claim/inference item's own
 # `_term_index` block during import_run()/rebuild() — never a separate read
 # path, so a version bump is safe by the same "100% derived" argument above.
-SCHEMA_VERSION = 4
+# v5 (source-metadata-propagation-v1 M4, SMP-4.2/4.3): adds first-party
+# provider metadata columns (`doi`, `publisher`, `source_version`,
+# `authors_json`) plus a queryable projection of the M2 attribution mirror
+# (`source_rank`, `attribution_count`) to `catalog_items`. Rows are rebuilt
+# from export_run()'s resolved-source shape via `_build_source_rows()` during
+# import_run()/rebuild() — never a separate read path, so a version bump is
+# safe by the same "100% derived" argument above. `attribution_count` is
+# nullable BY DESIGN: NULL means "not yet assessed" (no `attribution_summary`
+# mirror present on the card), 0 means "assessed, none found" — collapsing
+# that distinction would recreate the no-backfill result-set bias the tri-
+# state coverage surface (SMP-4.5) exists to close. `source_rank` is the raw
+# `trust.source_rank` value (`primary`/`secondary`/`tertiary`/`unknown`),
+# deliberately distinct from the pre-existing `trust_label` column (which
+# falls back to an arbitrary string cast for legacy non-dict `trust` values
+# and is therefore not safe to treat as a rank).
+SCHEMA_VERSION = 5
 
 # --- sensitivity ranks (mirrors export_service's private helper; only the
 # public SENSITIVITY_ORDER constant is reused, per the contract) ------------
@@ -203,7 +219,13 @@ _DDL: tuple[str, ...] = (
         created_at        TEXT,
         updated_at        TEXT,
         payload_json      TEXT NOT NULL,
-        search_text       TEXT NOT NULL
+        search_text       TEXT NOT NULL,
+        doi               TEXT,
+        publisher         TEXT,
+        source_version    TEXT,
+        authors_json      TEXT,
+        source_rank       TEXT,
+        attribution_count INTEGER
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_catalog_items_run ON catalog_items(run_id)",
@@ -572,6 +594,163 @@ def _trust_label_of(trust: Any) -> str | None:
     return str(trust)
 
 
+def _source_rank_of(trust: Any) -> str | None:
+    """Extract ``trust.source_rank`` as a scalar column value, EXCLUDING the
+    legacy string-cast fallback :func:`_trust_label_of` applies.
+
+    ``trust.source_rank`` (M1 / :func:`~research_foundry.services.source_rank.
+    derive_source_rank`) is one of a closed set (``primary``/``secondary``/
+    ``tertiary``/``unknown``). A plain-string ``trust`` value (pre-M1 or
+    synthetic data) carries no such rank — :func:`_trust_label_of` treats
+    that string itself as the label, which is fine for display but would be
+    wrong to hand to a caller expecting one of the four rank values. This
+    helper returns ``None`` in that case instead of the arbitrary string, so
+    the tri-state coverage query surface (SMP-4.5) never mistakes free text
+    for a rank.
+    """
+
+    if isinstance(trust, dict):
+        rank = trust.get("source_rank")
+        return str(rank) if rank is not None else None
+    return None
+
+
+def _attribution_count_of(attribution_summary: Any) -> int | None:
+    """Coerce a card's ``attribution_summary`` mirror to a nullable count.
+
+    ``None`` — whether the key is absent, explicitly ``null``, or the value
+    is malformed/non-dict — means "not yet assessed". ``0`` means "assessed;
+    zero authoritative ``source_attribution`` records reduced into this
+    mirror". Collapsing these two into one value would recreate the
+    no-backfill result-set bias (plan named risk) the tri-state coverage
+    surface exists to close; SMP-4.5 builds the query surface on top of this
+    distinction, not here — this function only preserves it at row-build
+    time.
+    """
+
+    if not isinstance(attribution_summary, dict):
+        return None
+    count = attribution_summary.get("count")
+    return count if isinstance(count, int) else None
+
+
+def _merge_attribution_summaries(summaries: Iterable[Any]) -> dict[str, Any] | None:
+    """Combine N per-source ``attribution_summary`` mirrors into ONE
+    cross-source, catalog-level rollup (SMP-4.4 Part 2; plan decision:
+    "cross-source values propagate as set-union keyed by
+    (asserter_id, assertion_kind)").
+
+    Used to give a claim (which may cite several distinct
+    ``source_card_id``s) a single combined attribution view, built purely
+    from the value-free mirrors ``_build_source_rows`` already carries per
+    source -- never a fresh read of any authoritative ``source_attribution``
+    record, and never a raw third-party value.
+
+    Reuses :class:`~.attribution_triage.AttributionRollup` (imported, not
+    reimplemented) as the shape for each merged ``(asserter_id,
+    assertion_kind)`` entry -- this module is explicitly forbidden from
+    editing ``attribution_triage.py`` itself (concurrent M2/M3 review), so
+    the grouping/union logic below is new, but the *dataclass* that shape
+    is expressed with is the same one ``attribution_triage.triage_records``
+    (the authoritative per-card reducer) already uses, keeping field
+    names/types in one place rather than a second, drifting definition.
+
+    Monotone-only, refusing averaging by construction: there is no
+    arithmetic anywhere in this function, over ``assertion_kind``s or
+    otherwise. It goes one step further than a same-card rollup can,
+    though -- when a ``(asserter_id, assertion_kind)`` key is contributed by
+    MORE than one source, this function does **not** pick a winner between
+    the sources' respective ``best_attribution_id``s: doing so would require
+    comparing the underlying raw values, which are not present on this
+    value-free mirror (only ids/counts/pointers are) -- picking one anyway
+    would be exactly the judgment-laundering the plan refuses ("reading an
+    actual number goes through the authoritative record", the accepted
+    cost). Such a key is marked ``comparable=False`` with both pointers
+    ``None``, honestly reporting "assessed by more than one source, but not
+    itself comparable here" rather than guessing. A key contributed by
+    EXACTLY one source passes that source's already-computed pointers
+    through unchanged -- they are still traceable to a real authoritative
+    record; this function does not second-guess a single source's own
+    monotone reduction.
+
+    Every ``attribution_ids`` list (top-level and per-rollup) is
+    canonically sorted before return -- ``json.dump`` preserves insertion
+    order but does not impose one (plan decision).
+
+    Returns ``None`` when every input is absent/non-dict (nothing to
+    merge) -- distinct from a merged mirror with ``count=0``, matching
+    :func:`_attribution_count_of`'s absent-vs-zero distinction one level up.
+    """
+
+    valid = [s for s in summaries if isinstance(s, dict)]
+    if not valid:
+        return None
+
+    top_ids: set[str] = set()
+    for mirror in valid:
+        top_ids.update(str(i) for i in (mirror.get("attribution_ids") or []))
+
+    groups: dict[tuple[Any, Any], list[dict[str, Any]]] = {}
+    for mirror in valid:
+        for rollup in mirror.get("rollups") or []:
+            if not isinstance(rollup, dict):
+                continue
+            key = (rollup.get("asserter_id"), rollup.get("assertion_kind"))
+            groups.setdefault(key, []).append(rollup)
+
+    merged_rollups: list[dict[str, Any]] = []
+    for (asserter_id, assertion_kind), entries in sorted(
+        groups.items(), key=lambda kv: (str(kv[0][0]), str(kv[0][1]))
+    ):
+        union_ids = sorted({str(i) for e in entries for i in (e.get("attribution_ids") or [])})
+        if len(entries) == 1:
+            # Single contributing source: its own monotone-best/weakest
+            # pointers are still authoritative -- pass through unchanged.
+            only = entries[0]
+            best_id = only.get("best_attribution_id")
+            weakest_id = only.get("weakest_attribution_id")
+            comparable = bool(only.get("comparable"))
+        else:
+            # More than one source asserts under this (asserter_id,
+            # assertion_kind) key. Comparing them requires the raw values,
+            # which this value-free mirror never carries -- refuse to guess.
+            best_id = None
+            weakest_id = None
+            comparable = False
+        rollup = AttributionRollup(
+            asserter_id=asserter_id,
+            assertion_kind=assertion_kind,
+            attribution_ids=tuple(union_ids),
+            best_attribution_id=best_id,
+            best_value=None,
+            weakest_attribution_id=weakest_id,
+            weakest_value=None,
+            comparable=comparable,
+        )
+        # Project to the schema-shaped subset -- `best_value`/`weakest_value`
+        # are always None here (this function never has a raw value to
+        # carry) and must not appear on a value-free mirror at all, so they
+        # are excluded rather than serialized as null.
+        merged_rollups.append(
+            {
+                "asserter_id": rollup.asserter_id,
+                "assertion_kind": rollup.assertion_kind,
+                "attribution_ids": list(rollup.attribution_ids),
+                "count": len(rollup.attribution_ids),
+                "best_attribution_id": rollup.best_attribution_id,
+                "weakest_attribution_id": rollup.weakest_attribution_id,
+                "comparable": rollup.comparable,
+            }
+        )
+
+    sorted_top_ids = sorted(top_ids)
+    return {
+        "attribution_ids": sorted_top_ids,
+        "count": len(sorted_top_ids),
+        "rollups": merged_rollups,
+    }
+
+
 def _project_of(export_data: dict[str, Any]) -> str | None:
     linked = export_data.get("linked_projects")
     if isinstance(linked, list) and linked:
@@ -660,6 +839,12 @@ def _base_row(
     updated_at: str | None,
     payload: dict[str, Any],
     extra_search_text: str = "",
+    doi: str | None = None,
+    publisher: str | None = None,
+    source_version: str | None = None,
+    authors: Any = None,
+    source_rank: str | None = None,
+    attribution_count: int | None = None,
 ) -> dict[str, Any]:
     catalog_item_id = _make_item_id(item_type, run_id, local_ref)
     # Defense in depth: on-disk artifacts don't always match their schema (a
@@ -672,6 +857,23 @@ def _base_row(
     status = _scalar_text(status)
     trust_label = _scalar_text(trust_label)
     confidence = _scalar_text(confidence)
+    # SMP-4.2/4.3: first-party provider metadata (M1) + a queryable
+    # projection of the M2 attribution mirror. `doi`/`publisher`/
+    # `source_version`/`authors`/`source_rank` are only meaningful for
+    # ``item_type == "source"`` and only `_build_source_rows()` supplies
+    # them — every other caller keeps its pre-M4 byte-identical row shape
+    # via these defaults. `attribution_count` is the one exception (SMP-4.4
+    # Part 2): `_build_claim_and_inference_rows()` also supplies it, from
+    # its own cross-source merge across a claim's cited sources — a claim
+    # can be meaningfully "assessed"/"not yet assessed" too, not just a
+    # source. `_scalar_text` is the same last-line-of-defense coercion used
+    # for `trust_label` above; it also JSON-encodes `authors` (a list) into
+    # a bindable string.
+    doi = _scalar_text(doi)
+    publisher = _scalar_text(publisher)
+    source_version = _scalar_text(source_version)
+    authors_json = _scalar_text(authors)
+    source_rank = _scalar_text(source_rank)
     search_text = " ".join(
         filter(None, [title, summary or "", extra_search_text])
     ).lower()
@@ -695,6 +897,12 @@ def _base_row(
         "updated_at": updated_at,
         "payload_json": json.dumps(payload, ensure_ascii=False),
         "search_text": search_text,
+        "doi": doi,
+        "publisher": publisher,
+        "source_version": source_version,
+        "authors_json": authors_json,
+        "source_rank": source_rank,
+        "attribution_count": attribution_count,
     }
 
 
@@ -788,6 +996,16 @@ def _build_claim_and_inference_rows(
             max_source_rank = max(max_source_rank, citation_ranks.get(key, _UNKNOWN_RANK))
         item_sensitivity_rank = max(run_sensitivity_rank, max_source_rank)
 
+        # SMP-4.4 Part 2: a claim may cite several distinct source_card_ids,
+        # each carrying its own (still per-card) attribution_summary mirror.
+        # Merge them into one cross-source view via _merge_attribution_
+        # summaries — the "cross-source values propagate as set-union keyed
+        # by (asserter_id, assertion_kind)" plan decision, applied at the
+        # claim rather than the source-row level.
+        claim_attribution_summary = _merge_attribution_summaries(
+            s.get("attribution_summary") for s in resolved_sources
+        )
+
         text = claim.get("text") or ""
         title = _truncate(text, 160)
         summary = (
@@ -812,6 +1030,11 @@ def _build_claim_and_inference_rows(
                 }
                 for s in resolved_sources
             ],
+            # SMP-4.4 Part 2: value-free, cross-source rollup across every
+            # source this claim cites. Never recomputed from raw records at
+            # this layer — merged purely from the per-source mirrors, per
+            # _merge_attribution_summaries's own docstring.
+            "attribution_summary": claim_attribution_summary,
         }
 
         row = _base_row(
@@ -830,6 +1053,7 @@ def _build_claim_and_inference_rows(
             updated_at=created_at,
             payload=payload,
             extra_search_text=str(basis.get("reasoning_summary") or ""),
+            attribution_count=_attribution_count_of(claim_attribution_summary),
         )
         rows.append(row)
         claim_id_to_item_id[claim_id] = row["catalog_item_id"]
@@ -887,6 +1111,24 @@ def _build_source_rows(
                     "trust": src.get("trust"),
                     "usage": src.get("usage"),
                     "card_sensitivity": src.get("sensitivity"),
+                    # SMP-4.2: M1 first-party provider metadata + the M2
+                    # attribution mirror. First-citation-wins, same as
+                    # title/url/trust/usage above — every citation of one
+                    # `source_card_id` should describe the SAME card, and
+                    # import always runs at the max-permissive
+                    # `client_sensitive` threshold (module docstring), so
+                    # these are never `REDACTION_MARKER` at import time.
+                    # `attribution_summary` is read defensively (`.get()`,
+                    # never a raw file read) — this module's hard invariant
+                    # is "import via export_run() live"; if the export layer
+                    # has not yet been widened to carry this key, it is
+                    # simply absent (`None`), which is the correct
+                    # "not yet assessed" state, not an error.
+                    "authors": src.get("authors"),
+                    "doi": src.get("doi"),
+                    "publisher": src.get("publisher"),
+                    "version": src.get("version"),
+                    "attribution_summary": src.get("attribution_summary"),
                     "max_rank": 0,
                     "citing_claims": set(),
                     "evidence_points": [],
@@ -916,8 +1158,17 @@ def _build_source_rows(
             "title": entry["title"],
             "source_type": entry["source_type"],
             "url": entry["url"],
+            "authors": entry["authors"],
+            "doi": entry["doi"],
+            "publisher": entry["publisher"],
+            "version": entry["version"],
             "trust": entry["trust"],
             "usage": entry["usage"],
+            # Value-free mirror, propagated verbatim — never recomputed or
+            # widened here (SMP-4.4/4.5 own the rollup computation and the
+            # tri-state query surface respectively; this row builder only
+            # carries whatever the card/export layer already produced).
+            "attribution_summary": entry["attribution_summary"],
             "evidence_points": entry["evidence_points"],
         }
         body_text = " ".join(
@@ -946,6 +1197,12 @@ def _build_source_rows(
             updated_at=created_at,
             payload=payload,
             extra_search_text=body_text,
+            doi=entry["doi"],
+            publisher=entry["publisher"],
+            source_version=entry["version"],
+            authors=entry["authors"],
+            source_rank=_source_rank_of(entry["trust"]),
+            attribution_count=_attribution_count_of(entry["attribution_summary"]),
         )
         rows.append(row)
         source_id_to_item_id[sid] = row["catalog_item_id"]
@@ -1286,12 +1543,14 @@ def _insert_rows(
                 catalog_item_id, item_type, run_id, workspace_id, local_ref, project, title,
                 summary, status, sensitivity, sensitivity_rank, trust_label,
                 confidence, confidence_rank, source_count, created_at,
-                updated_at, payload_json, search_text
+                updated_at, payload_json, search_text,
+                doi, publisher, source_version, authors_json, source_rank, attribution_count
             ) VALUES (
                 :catalog_item_id, :item_type, :run_id, :workspace_id, :local_ref, :project, :title,
                 :summary, :status, :sensitivity, :sensitivity_rank, :trust_label,
                 :confidence, :confidence_rank, :source_count, :created_at,
-                :updated_at, :payload_json, :search_text
+                :updated_at, :payload_json, :search_text,
+                :doi, :publisher, :source_version, :authors_json, :source_rank, :attribution_count
             )
             """,
             row,
@@ -1451,6 +1710,21 @@ _SUMMARY_COLUMNS = (
     "source_count",
     "created_at",
     "updated_at",
+    # SMP-4.2 (M4 coupling note): `source_rank` and `attribution_count` are
+    # the two SCALAR new attributes — the tri-state coverage query surface
+    # (SMP-4.5) needs both visible in list results, not just item detail, to
+    # render a coverage indicator per search row. `doi`/`publisher`/
+    # `source_version`/`authors_json` stay detail-only (same precedent as
+    # the pre-existing `url`/`trust`/`usage`, which are payload-only and not
+    # in this tuple) — RETRACTED claim (see execution ledger): `get_item()`
+    # does NOT return every column via `dict(row)`. Its returned `summary`
+    # goes through this same `_row_to_summary()`/`_SUMMARY_COLUMNS` gate;
+    # `dict(row)` is used internally only for the `require_workspace_scope`
+    # comparison, never returned to the caller. Any column absent from this
+    # tuple and absent from `payload_json` is invisible to both `search()`
+    # and `get_item()` alike.
+    "source_rank",
+    "attribution_count",
 )
 
 
@@ -1920,10 +2194,131 @@ def get_item(
     return summary
 
 
-def stats(paths: FoundryPaths, *, sensitivity_threshold: str | None = None) -> dict[str, Any]:
-    """Aggregate counts (visible items only, per the resolved threshold)."""
+def _attribution_coverage_counts(
+    conn: sqlite3.Connection,
+    threshold_rank: int,
+    *,
+    workspace_id: str | None = None,
+) -> dict[str, int]:
+    """Raw tri-state counts over visible ``source`` catalog items (SMP-4.5).
+
+    ``attribution_count`` (SMP-4.2/4.3's nullable column, populated per
+    :func:`_attribution_count_of` at row-build time) already carries the
+    tri-state signal: ``NULL`` == not-yet-assessed, ``0`` == assessed and
+    absent, ``>0`` == assessed and present. This is a single read-only SQL
+    aggregate over already-imported rows — no recomputation, no file read,
+    no wall-clock read, no model or network call — so it stays consistent
+    with the module's "recomputable from files on every export" invariant.
+
+    The three states are returned as three distinct dict keys (never
+    collapsed into one another, never a shared ``null``) — that distinction
+    is the entire point of this milestone's no-backfill decision.
+    """
+
+    where = ["item_type = 'source'", "sensitivity_rank <= ?"]
+    params: list[Any] = [threshold_rank]
+    if workspace_id is not None:
+        where.append("workspace_id = ?")
+        params.append(workspace_id)
+    where_sql = " AND ".join(where)
+
+    row = conn.execute(
+        "SELECT "
+        "  SUM(CASE WHEN attribution_count IS NULL THEN 1 ELSE 0 END) AS not_yet_assessed, "
+        "  SUM(CASE WHEN attribution_count = 0 THEN 1 ELSE 0 END) AS absent, "
+        "  SUM(CASE WHEN attribution_count > 0 THEN 1 ELSE 0 END) AS present, "
+        "  COUNT(*) AS total "
+        f"FROM catalog_items WHERE {where_sql}",
+        params,
+    ).fetchone()
+    return {
+        "present": row["present"] or 0,
+        "absent": row["absent"] or 0,
+        "not_yet_assessed": row["not_yet_assessed"] or 0,
+        "total": row["total"] or 0,
+    }
+
+
+def _format_attribution_coverage(counts: dict[str, int]) -> dict[str, Any]:
+    """Derive ``assessed`` and the human-readable "N of M sources assessed"
+    line from :func:`_attribution_coverage_counts`'s raw tri-state counts.
+
+    ``assessed`` = ``present + absent`` — both states mean "a source's
+    attribution mirror was actually evaluated", the "N" the plan's AC names.
+    ``not_yet_assessed`` is deliberately excluded from that numerator: folding
+    it in would silently read the historical, never-assessed corpus as
+    evaluated, exactly the no-backfill result-set bias this milestone exists
+    to close.
+    """
+
+    present = counts["present"]
+    absent = counts["absent"]
+    not_yet_assessed = counts["not_yet_assessed"]
+    total = counts["total"]
+    assessed = present + absent
+    return {
+        "present": present,
+        "absent": absent,
+        "not_yet_assessed": not_yet_assessed,
+        "assessed": assessed,
+        "total": total,
+        "coverage_line": f"{assessed} of {total} sources assessed",
+    }
+
+
+def attribution_coverage(
+    paths: FoundryPaths,
+    *,
+    sensitivity_threshold: str | None = None,
+    identity: AuthIdentity | None = None,
+) -> dict[str, Any]:
+    """Tri-state attribution coverage over visible ``source`` items
+    (SMP-4.5) — the milestone's honesty control for the plan's no-backfill
+    decision.
+
+    Returns ``present`` / ``absent`` / ``not_yet_assessed`` as three
+    DISTINCT counts, plus ``assessed`` (``present + absent``) and a
+    human-readable ``coverage_line`` (``"N of M sources assessed"``).
+    Read-path only: identical recomputability guarantee as :func:`stats` —
+    no file read, no wall-clock read, no model or network call, safe to call
+    twice in a row over an unchanged catalog and get the same answer.
+
+    Also folded into :func:`stats` (which applies this SAME scoping rule to
+    its ``attribution_coverage`` block — see that function's own docstring)
+    so ``GET /catalog/stats`` surfaces the same N-of-M line without a
+    dedicated endpoint.
+    """
 
     threshold_rank = _rank(resolve_threshold(paths, sensitivity_threshold))
+    workspace_scoped = identity is not None and _isolation_active(paths)
+    with _db(paths) as conn:
+        counts = _attribution_coverage_counts(
+            conn,
+            threshold_rank,
+            workspace_id=identity.workspace_id if workspace_scoped else None,  # type: ignore[union-attr]
+        )
+    return _format_attribution_coverage(counts)
+
+
+def stats(
+    paths: FoundryPaths,
+    *,
+    sensitivity_threshold: str | None = None,
+    identity: AuthIdentity | None = None,
+) -> dict[str, Any]:
+    """Aggregate counts (visible items only, per the resolved threshold).
+
+    ``identity`` scopes ONLY the ``attribution_coverage`` block below to the
+    same workspace-scoping rule :func:`attribution_coverage` applies
+    (``None``/isolation-inactive stays unscoped, byte-identical to before).
+    The rest of this function's counts (``counts``, ``runs_indexed``,
+    ``last_import_at``) are deliberately left unscoped — that is a separate,
+    already-tracked pre-existing gap (WKSP-304 P4 TODO on the router's call
+    site), not something this fix widens.
+    """
+
+    threshold_rank = _rank(resolve_threshold(paths, sensitivity_threshold))
+    workspace_scoped = identity is not None and _isolation_active(paths)
 
     with _db(paths) as conn:
         counts = {t: 0 for t in ITEM_TYPES}
@@ -1952,10 +2347,25 @@ def stats(paths: FoundryPaths, *, sensitivity_threshold: str | None = None) -> d
             "SELECT MAX(imported_at) AS last_import_at FROM catalog_import_log"
         ).fetchone()
 
+        # SMP-4.5 / isolation fix: tri-state attribution coverage over
+        # visible `source` items. Reuses the already-open connection/
+        # threshold rather than opening a second one via
+        # attribution_coverage() — but now applies the SAME workspace scope
+        # that function applies, rather than always reading every
+        # workspace's counts (the pre-fix behavior leaked cross-workspace
+        # aggregate counts through GET /catalog/stats; see
+        # attribution_coverage()'s own docstring for the scoping rule).
+        attribution_counts = _attribution_coverage_counts(
+            conn,
+            threshold_rank,
+            workspace_id=identity.workspace_id if workspace_scoped else None,  # type: ignore[union-attr]
+        )
+
     return {
         "counts": counts,
         "runs_indexed": runs_indexed,
         "last_import_at": log_row["last_import_at"] if log_row else None,
+        "attribution_coverage": _format_attribution_coverage(attribution_counts),
     }
 
 
@@ -2233,6 +2643,7 @@ __all__ = [
     "search",
     "get_item",
     "stats",
+    "attribution_coverage",
     "index_draft",
     "remove_draft_index",
     "get_draft_index",

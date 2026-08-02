@@ -56,6 +56,12 @@ properties:
             type:
               - string
               - "null"
+        # source-metadata-propagation-v1 M3 (SMP-3.2B): forbid the
+        # third_party_ namespace at this open seam by SHAPE, not by a
+        # field-name list — see source_card.schema.yaml's top-level
+        # patternProperties comment for the full rationale.
+        patternProperties:
+          "^third_party_": false
         additionalProperties: true
       authors:
         type: array
@@ -75,6 +81,10 @@ properties:
         type:
           - string
           - "null"
+    # source-metadata-propagation-v1 M3 (SMP-3.2B): see top-level
+    # patternProperties comment below for rationale.
+    patternProperties:
+      "^third_party_": false
     additionalProperties: true
   trust:
     type: object
@@ -100,7 +110,19 @@ properties:
               type: string
             reason:
               type: string
+          # source-metadata-propagation-v1 M3 (SMP-3.2B): the named bypass
+          # this whole plan closes -- `trust.third_party_citation_rank` and
+          # every sibling `third_party_*` key -- is rejected here by SHAPE.
+          # See the top-level patternProperties comment for the full
+          # rationale; this seam and `trust`'s own seam directly below are
+          # BOTH required because either one alone would still admit the
+          # bypass (an entry inside conflicts_with[], or a direct sibling of
+          # source_rank/reliability_notes/etc on trust itself).
+          patternProperties:
+            "^third_party_": false
           additionalProperties: true
+    patternProperties:
+      "^third_party_": false
     additionalProperties: true
   usage:
     type: object
@@ -115,6 +137,10 @@ properties:
         type: boolean
       quote_limit_notes:
         type: string
+    # source-metadata-propagation-v1 M3 (SMP-3.2B): see top-level
+    # patternProperties comment below for rationale.
+    patternProperties:
+      "^third_party_": false
     additionalProperties: true
   extracted_points:
     type: array
@@ -135,6 +161,10 @@ properties:
           type: array
           items:
             type: string
+      # source-metadata-propagation-v1 M3 (SMP-3.2B): see top-level
+      # patternProperties comment below for rationale.
+      patternProperties:
+        "^third_party_": false
       additionalProperties: true
   # rights-entity-model-v1 P2-1 (AC P2-A, attach point 1 of 2 — P2-2 applies
   # the identical shape to source_assertion.schema.yaml, byte-identical
@@ -404,8 +434,159 @@ properties:
           type: string
       coverage_notes:
         type: string
+  # source-metadata-propagation-v1 M2 (SMP-2.3, RESOLVES OQ-3 per the plan's
+  # accepted decision). Denormalized, RECOMPUTE-ONLY mirror of authoritative
+  # schemas/source_attribution.schema.yaml records that assert something
+  # about this card's source (attribution_triage.py reduces those records
+  # into the shape below). Deliberately VALUE-FREE: this whole subtree
+  # carries only string ids, integer counts, and one boolean -- there is no
+  # string/number/object-typed ("any") property anywhere under
+  # `attribution_summary` for a raw third-party value (a citation count, an
+  # impact-factor number, a retraction status, ...) to be written into,
+  # hand-authored or otherwise. Reading an actual asserted value must go
+  # through the authoritative `source_attribution` record identified by one
+  # of the `*_attribution_id` pointers below -- that extra hop is the
+  # accepted cost (plan decision, RESOLVES OQ-3: "there is no value-bearing
+  # property on the card to write into"). `additionalProperties: false` at
+  # both this level and each `rollups[]` entry is the enforcement
+  # mechanism: adding a sibling field (e.g. `value`, `best_value`, or a
+  # differently-named escape hatch like `third_party_citation_rank`) is a
+  # validation error by shape, not because a field-name list says so --
+  # the same structural argument `governance.py`'s M3 control makes one
+  # level down.
+  #
+  # NOT required at the top level -- a `source_card` that predates this
+  # milestone, or one for which no `source_attribution` records exist yet,
+  # is not a validation failure at read time (same resilience posture as
+  # `rights_summary` above: absent means "not yet assessed", not "verified
+  # empty").
+  #
+  # Cross-source values propagate as a set-union keyed by
+  # `(asserter_id, assertion_kind)` (attribution_triage.py::triage_records);
+  # `attribution_ids` here (both top-level and per-rollup) must be
+  # canonically sorted before serialization by whichever writer populates
+  # this block. `attribution_triage.py`'s `_compute_rollup`/`triage_records`
+  # already sort with Python's `sorted()` over tuples, so a writer that
+  # recomputes via that module gets the sort for free -- but the invariant
+  # belongs to every writer of this block, not just that one, since
+  # `json.dump` preserves insertion order without imposing one.
+  #
+  # Rollups are monotone only (best = max(), weakest = min(), over the
+  # group's raw values, computed by attribution_triage.py) -- numeric
+  # averaging across `assertion_kind`s is refused by construction: there is
+  # no `average_value`/`mean_value` property here, and none may be added
+  # without a sibling `additionalProperties: false` violation.
+  #
+  # This block is recomputed from authoritative records at export time; it
+  # is never itself read as a source of truth for a value, only as an
+  # index of which authoritative records exist and which one is best/
+  # weakest per key.
+  attribution_summary:
+    type:
+      - object
+      - "null"
+    additionalProperties: false
+    required:
+      - attribution_ids
+      - count
+      - rollups
+    properties:
+      # Full set of authoritative source_attribution record ids reduced
+      # into this mirror, canonically sorted. An id, never a value.
+      attribution_ids:
+        type: array
+        items:
+          type: string
+      # Total number of authoritative records reduced into this mirror
+      # (== len(attribution_ids)). A count, never a value.
+      count:
+        type: integer
+        minimum: 0
+      # One entry per distinct (asserter_id, assertion_kind) key observed
+      # across this card's authoritative source_attribution records.
+      rollups:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - asserter_id
+            - assertion_kind
+            - attribution_ids
+            - count
+            - best_attribution_id
+            - weakest_attribution_id
+            - comparable
+          properties:
+            asserter_id:
+              type: string
+            assertion_kind:
+              type: string
+              pattern: "^[a-z][a-z0-9_]*$"
+            # Canonically-sorted ids of every record in this
+            # (asserter_id, assertion_kind) group. An id set, never a
+            # value set.
+            attribution_ids:
+              type: array
+              items:
+                type: string
+            # Number of records in this (asserter_id, assertion_kind)
+            # group (== len(attribution_ids) for this entry).
+            count:
+              type: integer
+              minimum: 0
+            # Pointer to the record holding this group's monotone-best
+            # value (max()) -- NOT the value itself. Null when the
+            # group's values were not mutually comparable (see
+            # `comparable`).
+            best_attribution_id:
+              type:
+                - string
+                - "null"
+            # Pointer to the record holding this group's monotone-
+            # weakest value (min()) -- NOT the value itself. Null when
+            # the group's values were not mutually comparable.
+            weakest_attribution_id:
+              type:
+                - string
+                - "null"
+            # False when the group's raw values were not mutually
+            # comparable (e.g. a mix of numbers and structured objects
+            # for the same key) -- best/weakest_attribution_id are both
+            # null in that case rather than guessing at an ordering.
+            comparable:
+              type: boolean
 required:
   - source_card_id
   - type
   - source
+# source-metadata-propagation-v1 M3 (SMP-3.2B, AC-M3-1B). Part 1 of M3 puts
+# a structural if/then on schemas/source_attribution.schema.yaml itself, but
+# that record-level control CANNOT reach a sibling field on THIS document
+# (e.g. `trust.third_party_citation_rank`) -- there is no cross-schema
+# constraint in JSON Schema, and `trust` isn't even the same entity. Closing
+# that bypass here requires banning the `third_party_` namespace by SHAPE at
+# every place on this permissive (`additionalProperties: true`) document
+# where an arbitrary property name could be typed in: this top-level object,
+# `source`, `source.locator`, `trust`, `trust.conflicts_with[]` items,
+# `usage`, and `extracted_points[]` items. `patternProperties: {"^third_
+# party_": false}` is added at each of those seven seams (a boolean `false`
+# subschema always fails, so any property whose name matches the pattern is
+# rejected regardless of its value or type).
+#
+# `rights_summary`, `rights_summary.restrictions`,
+# `rights_summary.rights_triage_failure`, `substitutability`, and
+# `attribution_summary` (incl. its `rollups[]` items) are DELIBERATELY
+# EXCLUDED from this ban: each of those is already `additionalProperties:
+# false`, so an unmodeled `third_party_*` key is already rejected there by
+# construction -- adding a redundant pattern ban to an already-closed object
+# would assert nothing new. This ban exists precisely for the seams that are
+# still open by default.
+#
+# Enumerating every seam here (rather than stopping at `trust`, the one
+# example the plan names) is itself the point: replacing a field-name list
+# with a seam list and still missing one would reproduce the exact blindness
+# this control exists to eliminate one level up.
+patternProperties:
+  "^third_party_": false
 additionalProperties: true

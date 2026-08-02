@@ -59,7 +59,7 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-EXPORT_SCHEMA_VERSION = "1.8"
+EXPORT_SCHEMA_VERSION = "1.9"
 
 AOS_CORRELATION_FIELDS = (
     "aos_run_uuid",
@@ -620,8 +620,13 @@ def _resolve_source(
                 "title": None,
                 "source_type": None,
                 "url": None,
+                "authors": None,
+                "doi": None,
+                "publisher": None,
+                "version": None,
                 "trust": None,
                 "usage": None,
+                "attribution_summary": None,
                 "sensitivity": None,
                 "evidence_locator": None,
                 "summary": None,
@@ -648,8 +653,89 @@ def _resolve_source(
             "title": src.get("title"),
             "source_type": src.get("source_type"),
             "url": locator.get("url") if isinstance(locator, dict) else None,
+            # SMP-1.4 (revised post-M1-security-gate finding, then again
+            # post-second-finding): structured provider metadata, hydrated
+            # straight from the card's frontmatter (SMP-1.2's
+            # ingest-boundary-validated `source.authors`/
+            # `source.locator.doi`/`source.publisher`/`source.version`).
+            # These are externally-controlled strings (SMP-1.6's
+            # untrusted-input bound is a length/type check at ingest, not a
+            # sensitivity check) and a card's `publisher`/`authors`/etc. can
+            # itself carry sensitive text -- so, UNLIKE title/source_type/url
+            # above (a pre-existing, wider, and deliberately out-of-scope gap
+            # logged separately), these four fields ARE gated by the exact
+            # same `effective_rank > threshold_rank` redaction check
+            # `summary`/`quote` already use below, with the same
+            # `REDACTION_MARKER` -- no second marker invented here.
+            # `doi`/`publisher`/`version` are declared `["string","null"]` in
+            # rf-run-export-schema.json's RFResolvedSource, so the bare
+            # marker string fits their type exactly, same as summary/quote's
+            # whole-field swap. `authors` is declared `["array","null"]`
+            # with string items -- a BARE marker string there would violate
+            # the contract (second gate finding), so it redacts to
+            # `[REDACTION_MARKER]` (a single-element list) instead: still one
+            # canonical marker, still a whole-field swap (not per-name
+            # redaction), but type-preserving. It must NOT become `None`:
+            # `null` already means absent/dangling/pre-migration, and
+            # collapsing withheld-for-sensitivity into that same value would
+            # make "withheld" indistinguishable from "absent" -- exactly the
+            # tri-state honesty failure this plan's no-backfill decision and
+            # M4's present/absent/not-yet-assessed model exist to prevent.
+            # The gate is a pure function of card/point sensitivity plus the
+            # caller-supplied threshold -- no wall-clock read, no network
+            # call -- so two in-process export_run() calls over an unchanged
+            # card still produce identical output.
+            "authors": [REDACTION_MARKER] if redacted else src.get("authors"),
+            "doi": REDACTION_MARKER if redacted else (
+                locator.get("doi") if isinstance(locator, dict) else None
+            ),
+            "publisher": REDACTION_MARKER if redacted else src.get("publisher"),
+            "version": REDACTION_MARKER if redacted else src.get("version"),
+            # `trust` (including SMP-1.3's `trust.source_rank`) is already
+            # the full card-level dict copied verbatim -- no widening needed
+            # here; kept as-is for clarity at the call site.
             "trust": meta.get("trust"),
             "usage": meta.get("usage"),
+            # SMP-4.4 Part 1: close the wiring gap flagged by the SMP-4.2/4.3
+            # ledger entry -- `catalog_service.py` has read
+            # `src.get("attribution_summary")` since M4's row builders
+            # landed, but nothing ever put that key on the resolved-source
+            # dict, so `attribution_count` was NULL for every source
+            # end-to-end. This one line closes that.
+            #
+            # Deliberately copied verbatim, UNGATED by the
+            # `effective_rank > threshold_rank` redaction check `authors`/
+            # `doi`/`publisher`/`version`/`summary`/`quote` all go through
+            # above. Explicit reasoning, not an oversight:
+            #   1. Shape, not vocabulary: `schemas/source_card.schema.yaml`'s
+            #      `attribution_summary` (and each `rollups[]` entry) is
+            #      `additionalProperties: false` over exactly
+            #      `attribution_ids`/`count`/`rollups[].{asserter_id,
+            #      assertion_kind,attribution_ids,count,best_attribution_id,
+            #      weakest_attribution_id,comparable}` -- ids, counts, and
+            #      monotone-rollup POINTERS only. There is no property on
+            #      this object capable of carrying a raw third-party value
+            #      or free text (unlike `authors`/`publisher`/etc., which
+            #      are externally-controlled strings that can themselves
+            #      carry sensitive content). Redacting a value-free index
+            #      would protect nothing.
+            #   2. Redacting it would actively corrupt the tri-state
+            #      coverage semantics M4 exists to preserve: `catalog_
+            #      service.py::_attribution_count_of()` treats a `None`
+            #      mirror as "not yet assessed". Swapping a sensitive card's
+            #      real (already value-free) mirror for `None` above
+            #      threshold would make an ASSESSED card read as
+            #      NOT-YET-ASSESSED for a lower-privilege viewer -- exactly
+            #      the absent/withheld conflation the plan's no-backfill
+            #      decision forbids (the same class of bug the `authors:
+            #      None` mistake in the second M1 security-gate finding
+            #      above was corrected for, inverted: here collapsing
+            #      "withheld" into "not-yet-assessed" would be the bug).
+            #      A `REDACTION_MARKER` string swap is also not viable
+            #      instead, since it isn't a schema-shaped
+            #      `attribution_summary` object and would break every
+            #      consumer's `.get("count")`/`.get("rollups")` calls.
+            "attribution_summary": meta.get("attribution_summary"),
             "sensitivity": meta.get("sensitivity"),
             "evidence_locator": (point or {}).get("locator"),
             "summary": REDACTION_MARKER if redacted else summary,

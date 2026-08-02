@@ -29,14 +29,42 @@ _WORK_SENSITIVITIES = {"work_sensitive", "client_sensitive"}
 
 # --- Rights-clearance write ceiling (FR-23) ---------------------------------
 #
-# The 4 fields no agent-writable code path may ever set to a "cleared"/
-# "approved"/"attested" value. Enumerated BY NAME — do not infer or wildcard
-# this list; future governed fields must be added here explicitly.
+# The original 4 fields no agent-writable code path may ever set to a
+# "cleared"/"approved"/"attested" value. Enumerated BY NAME — do not infer or
+# wildcard this list; future governed fields must be added here explicitly.
+#
+# M3 (source-metadata-propagation-v1, SMP-3.1/3.2) appends 2 source_attribution
+# fields to this SAME tuple rather than starting a second list — and that
+# appendage is DEFENCE-IN-DEPTH ONLY. The PRIMARY control for
+# source_attribution is a SCHEMA-SHAPE constraint, not a name list:
+# schemas/source_attribution.schema.yaml's structural
+# `if asserter_type startsWith "third_party_" then retrieval_evidence_ref
+# required` (SMP-3.2B) plus source_card.schema.yaml's `attribution_summary`
+# mirror being `additionalProperties: false` and genuinely value-free (no
+# `value`/`best_value`/etc. property exists on that mirror at all — see its
+# own docstring). A name list is structurally blind by construction: it
+# catches a write to a NAMED field below, but an agent that instead writes
+# an identical disallowed value under an unlisted sibling field name — the
+# plan's own example is `trust.third_party_citation_rank` — sails through
+# this entire tuple untouched, no matter how many entries it grows to. That
+# is exactly why the schema shape, not this tuple, is the control the M3
+# Mode-D halt actually gates; see rule 8 below for the concrete miss.
 _RIGHTS_GOVERNED_FIELDS: tuple[str, ...] = (
     "rights_record.overall_status",
     "content_reuse_assessment.decision.status",
     "rights_extension.clearance_status",
     "synthesis.attestation.status",
+    "source_attribution.asserter_type",
+    "source_attribution.license_basis",
+)
+
+# Subset of _RIGHTS_GOVERNED_FIELDS added by M3 — used only to scope rule 8's
+# violation messaging to the attribution-specific fields. Does not redefine
+# or narrow governance: rule 7 below already independently covers these same
+# two fields via the shared, extended _RIGHTS_GOVERNED_FIELDS tuple.
+_ATTRIBUTION_GOVERNED_FIELDS: tuple[str, ...] = (
+    "source_attribution.asserter_type",
+    "source_attribution.license_basis",
 )
 
 _CLEARED_VALUE_PREFIX = "CLEARED_"
@@ -514,6 +542,45 @@ def guard_check(
                         "Agent-writable code paths cannot set a rights-clearance "
                         "field to a CLEARED_*, counsel_approved, or attested value "
                         "— that requires human/counsel authorship.",
+                    ),
+                    detail=f"field={field_name!r}, value={value!r}",
+                )
+            )
+
+    # 8. no_agent_authored_attribution_value (block) — M3 (SMP-3.1/3.2).
+    # DEFENCE-IN-DEPTH ONLY. Mirrors rule 7's exact shape and deliberately
+    # reuses the SAME _is_disallowed_rights_value predicate: the "CLEARED_*/
+    # counsel_approved/attested" concept is not rights-specific, it means "a
+    # human/counsel had to bless this," and no agent-writable path may mint
+    # it onto ANY governed field, attribution included. Scoped to
+    # _ATTRIBUTION_GOVERNED_FIELDS purely so the violation message names the
+    # attribution surface distinctly; rule 7 already independently fires for
+    # the same two fields via the shared, extended _RIGHTS_GOVERNED_FIELDS
+    # tuple above.
+    #
+    # WHAT THIS RULE STILL MISSES (by construction, proving SMP-3.2B is the
+    # real control): a write to `trust.third_party_citation_rank` — a field
+    # name not on _RIGHTS_GOVERNED_FIELDS, _ATTRIBUTION_GOVERNED_FIELDS, or
+    # any name list anywhere in this module — carrying an identical
+    # disallowed value, or indeed any raw unattested third-party value at
+    # all, sails through both rule 7 and this rule untouched. Only the
+    # schema's structural if/then over asserter_type / retrieval_evidence_ref
+    # (SMP-3.2B, in schemas/source_attribution.schema.yaml) closes that gap.
+    for field_name, value in ctx.proposed_field_writes or ():
+        if field_name in _ATTRIBUTION_GOVERNED_FIELDS and _is_disallowed_rights_value(value):
+            violations.append(
+                Violation(
+                    rule_id="no_agent_authored_attribution_value",
+                    severity=_BLOCK,
+                    message=_rule_message(
+                        cfg,
+                        "no_agent_authored_attribution_value",
+                        "Agent-writable code paths cannot set a source-attribution "
+                        "field to a CLEARED_*, counsel_approved, or attested value "
+                        "— that requires human/counsel authorship. This rule is "
+                        "defence-in-depth only; the primary control is the "
+                        "source_attribution schema's structural asserter_type / "
+                        "retrieval_evidence_ref requirement (SMP-3.2B).",
                     ),
                     detail=f"field={field_name!r}, value={value!r}",
                 )

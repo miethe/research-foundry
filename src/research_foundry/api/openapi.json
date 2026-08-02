@@ -465,7 +465,7 @@
           "catalog"
         ],
         "summary": "Catalog aggregate counts",
-        "description": "Return per-item-type counts (visible only), runs indexed, last import.\n\nNever raises \u2014 an empty/never-imported catalog returns zeroed counts.",
+        "description": "Return per-item-type counts (visible only), runs indexed, last import.\n\nNever raises \u2014 an empty/never-imported catalog returns zeroed counts.\n\nAlso carries ``attribution_coverage`` (SMP-4.5): the tri-state\n``present``/``absent``/``not_yet_assessed`` breakdown over visible\n``source`` items, plus ``assessed`` and a human-readable\n``coverage_line`` (\"N of M sources assessed\"). This is the milestone's\nhonesty control for the plan's no-backfill decision \u2014 ``absent``\n(assessed, and the attribute genuinely isn't there) and\n``not_yet_assessed`` (never evaluated) are distinct keys, never\ncollapsed into each other or into ``null``. Computed by\n:func:`catalog_service.stats`; no separate endpoint is needed since\nevery caller of this route already receives it.",
         "operationId": "get_catalog_stats_api_catalog_stats_get",
         "responses": {
           "200": {

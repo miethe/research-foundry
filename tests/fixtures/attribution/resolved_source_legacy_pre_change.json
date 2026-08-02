@@ -1,0 +1,27 @@
+{
+  "attribution_summary": null,
+  "authors": null,
+  "dangling": false,
+  "doi": null,
+  "evidence_id": "ev_legacy",
+  "evidence_locator": "p1",
+  "locator": "p1",
+  "publisher": null,
+  "quote": "Legacy quote.",
+  "redacted": false,
+  "relation": "supports",
+  "resolved": true,
+  "sensitivity": "public",
+  "source_card_id": "src_legacy",
+  "source_type": "official_doc",
+  "summary": "Legacy summary.",
+  "title": "Legacy Source",
+  "trust": {
+    "source_rank": "primary"
+  },
+  "url": "https://example.test/legacy",
+  "usage": {
+    "allowed_for_public_output": true
+  },
+  "version": null
+}

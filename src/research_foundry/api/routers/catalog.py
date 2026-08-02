@@ -62,10 +62,30 @@ def get_catalog_stats(request: Request, paths: FoundryPaths = _PATHS_DEP) -> dic
     """Return per-item-type counts (visible only), runs indexed, last import.
 
     Never raises — an empty/never-imported catalog returns zeroed counts.
+
+    Also carries ``attribution_coverage`` (SMP-4.5): the tri-state
+    ``present``/``absent``/``not_yet_assessed`` breakdown over visible
+    ``source`` items, plus ``assessed`` and a human-readable
+    ``coverage_line`` ("N of M sources assessed"). This is the milestone's
+    honesty control for the plan's no-backfill decision — ``absent``
+    (assessed, and the attribute genuinely isn't there) and
+    ``not_yet_assessed`` (never evaluated) are distinct keys, never
+    collapsed into each other or into ``null``. Computed by
+    :func:`catalog_service.stats`; no separate endpoint is needed since
+    every caller of this route already receives it.
     """
-    identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (svc.stats() has no identity param; not a Phase 3 scoping target)
-    # TODO(WKSP-304 P4): svc.stats() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
-    return stamp(svc.stats(paths, sensitivity_threshold=_sensitivity_threshold_override(request)))
+    identity = getattr(request.state, "identity", None)
+    # NOTE: identity now scopes ONLY the attribution_coverage block inside
+    # svc.stats() (see that function's docstring). The rest of stats()'s
+    # counts remain unscoped — that is still the WKSP-304 P4 gap, unchanged
+    # by this fix.
+    return stamp(
+        svc.stats(
+            paths,
+            sensitivity_threshold=_sensitivity_threshold_override(request),
+            identity=identity,
+        )
+    )
 
 
 @router.get("/catalog/search", summary="Search the catalog")

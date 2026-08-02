@@ -3131,6 +3131,91 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
     app.add_typer(rights_app, name="rights")
 
+    # ----- attribution (attribution_summary mirror divergence validation — SMP-2.5) -----
+    attribution_app = typer.Typer(
+        help="Attribution-summary mirror divergence validation (source-metadata-propagation-v1)."
+    )
+
+    @attribution_app.command("validate")
+    def attribution_validate(
+        paths: list[str] = typer.Argument(
+            None,
+            help="source_card/source_assertion instance files to check. Default: every "
+            "runs/*/source_cards/*.md and runs/*/assertions/*.yaml in the workspace.",
+        ),
+        as_of: str = typer.Option(
+            ...,
+            "--as-of",
+            help="Point in time (YYYY-MM-DD) to evaluate supersession-staleness against. "
+            "Required — this command never computes a default date from the wall clock.",
+        ),
+        attribution_records_dir: str = typer.Option(
+            None,
+            "--attribution-records-dir",
+            help="Directory of <attribution_id>.yaml authoritative source_attribution "
+            "records (default: <workspace root>/attribution_records).",
+        ),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output (default: rich table)"),
+    ) -> None:
+        """Check attribution_summary mirrors for divergence from their authoritative source_attribution records.
+
+        Non-fatal ``needs_backfill``/``stale`` results never cause a non-zero
+        exit on their own; only an actual divergence finding (a result whose
+        ``.ok`` is ``False``) does.
+        """
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services.attribution_validation import check_attribution_divergence
+
+        fp = FoundryPaths.discover()
+        records_dir = (
+            Path(attribution_records_dir) if attribution_records_dir else (fp.root / "attribution_records")
+        )
+
+        if paths:
+            target_paths: list[Path] = [Path(p) for p in paths]
+        else:
+            target_paths = [
+                *sorted(fp.runs.glob("*/source_cards/*.md")),
+                *sorted(fp.runs.glob("*/assertions/*.yaml")),
+            ]
+
+        results = check_attribution_divergence(target_paths, as_of=as_of, attribution_records_dir=records_dir)
+
+        ok_count = sum(1 for r in results if r.ok)
+        backfill_count = sum(1 for r in results if r.needs_backfill)
+        stale_count = sum(1 for r in results if r.stale)
+        failed = [r for r in results if not r.ok]
+
+        if json_out:
+            records = [r.as_dict() for r in results]
+            # NOTE: root is a bare JSON array (list[dict]) — no top-level key to
+            # stamp without changing the response shape from array to object,
+            # which would not be additive-only (FR-4.4). Left unstamped; see
+            # docs/dev/architecture/machine-surface-inventory.md.
+            typer.echo(_json.dumps(records, ensure_ascii=False, indent=2))
+        else:
+            table = Table(title=f"rf attribution validate --as-of {as_of}", show_header=True)
+            table.add_column("checked", justify="right")
+            table.add_column("ok", justify="right")
+            table.add_column("needs_backfill", justify="right")
+            table.add_column("stale", justify="right")
+            table.add_column("failed", justify="right")
+            table.add_row(
+                str(len(results)), str(ok_count), str(backfill_count), str(stale_count), str(len(failed))
+            )
+            console.print(table)
+            for r in failed:
+                bad_fields = [f.field for f in r.findings]
+                console.print(f"  [red]FAIL[/red] {r.path}: {bad_fields}")
+
+        if failed:
+            raise typer.Exit(1)
+
+    app.add_typer(attribution_app, name="attribution")
+
     # ----- term-index (claim-term-indexing-v1 backfill, Phase 3) -----
     term_index_app = typer.Typer(
         help="Backfill the deterministic term/usage-role index (`_term_index`)."

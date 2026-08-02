@@ -68,6 +68,10 @@ EXPECTED_SCHEMA_NAMES: list[str] = [
     "rights_extension", "rights_failure", "rights_record", "routing_decision",
     "search_activity_receipt",
     "search_request", "search_run", "skillbom_candidate", "source_assertion",
+    # source-metadata-propagation-v1 M2 (SMP-2.2/SMP-2.3): the authoritative
+    # source_attribution record. Landed alongside SMP-2.2 but not yet added
+    # here -- this closes that gap (SMP-2.3's required side-fix #1).
+    "source_attribution",
     "source_card", "source_edition", "swarm_plan", "term_vocab", "tool_profile",
 ]
 
@@ -447,6 +451,30 @@ def _valid(name: str) -> dict:
                     "judgment_basis": "measured",
                 }
             },
+        },
+        # required: schema_version, attribution_id, source, asserter_id,
+        # asserter_type, assertion_kind, value, observed_at, license_basis
+        # (source-metadata-propagation-v1 M2, schemas/source_attribution.
+        # schema.yaml). `value` is deliberately untyped ({}) on THIS schema
+        # only -- the one property in this whole feature allowed to carry a
+        # raw third-party value; see source_card's value-free
+        # `attribution_summary` mirror for the contrast.
+        "source_attribution": {
+            "schema_version": "1.0",
+            "attribution_id": "attrib_demo",
+            "source": "src_demo",
+            "asserter_id": "semantic_scholar",
+            "asserter_type": "third_party_api",
+            "assertion_kind": "citation_count",
+            "value": 42,
+            "observed_at": "2026-08-02T00:00:00Z",
+            "license_basis": "open_api",
+            # M3 (SMP-3.2B): a `third_party_*` asserter_type now structurally
+            # requires a non-null retrieval_evidence_ref (root-level if/then
+            # on this schema) -- kept here so this minimal fixture stays
+            # valid rather than switching asserter_type away from the
+            # third_party_ case this schema is actually exercising.
+            "retrieval_evidence_ref": "fetch_receipt_demo_001",
         },
         "source_edition": {
             "schema_version": "1.0", "type": "source_edition", "source_edition_id": "sed_" + "b" * 64,
@@ -865,6 +893,7 @@ def _invalid(name: str) -> dict:
         "search_run": "run_id",
         "skillbom_candidate": "id",
         "source_assertion": "assertion_id",
+        "source_attribution": "attribution_id",
         "source_edition": "source_edition_id",
         "passage": "passage_id",
         # research-provenance-continuity-v1 P1 contract freeze (RPC-1.G)
@@ -1146,6 +1175,458 @@ def test_export_run_passes_strict_json_schema_validation(
     ]
     assert not errors, (
         f"export_run() output failed strict JSON schema validation "
+        f"({len(errors)} error(s)):\n" + "\n".join(error_messages)
+    )
+
+
+# ---------------------------------------------------------------------------
+# SMP-1.8 (source-metadata-propagation-v1 M1): rf-run-export-schema.json is
+# bumped to document claims[].sources[] authors/doi/publisher/version -- four
+# resolved-source provider-metadata properties hydrated by _resolve_source().
+# RFResolvedSource already carries additionalProperties:true, so the bump is
+# documentation-only; these tests prove it stays additive: a pre-change
+# (legacy) export payload that never had the new keys must still validate
+# unchanged, and a post-change payload that does carry them validates too.
+# ---------------------------------------------------------------------------
+
+_LEGACY_RESOLVED_SOURCE_EXPORT: dict[str, Any] = {
+    "schema_version": "1.6",
+    "run_id": "rf_run_smp_legacy_fixture",
+    "status_derived": "verified",
+    "claims": [
+        {
+            "claim_id": "clm_legacy_001",
+            "text": "Legacy claim text predating SMP-1.8's resolved-source fields.",
+            "sources": [
+                {
+                    "source_card_id": "src_legacy",
+                    "evidence_id": "ev_legacy_001",
+                    "relation": "supports",
+                    "locator": "p1",
+                    "resolved": True,
+                    "dangling": False,
+                    "title": "Legacy Source",
+                    "source_type": "official_doc",
+                    "url": "https://example.test/legacy",
+                    # No `authors`/`doi`/`publisher`/`version` keys at all --
+                    # this is exactly the pre-SMP-1.4 resolved-source shape
+                    # that shipped before source-metadata-propagation-v1.
+                    "trust": {"source_rank": "primary"},
+                    "usage": {"allowed_for_public_output": True},
+                    "sensitivity": "public",
+                    "evidence_locator": "p1",
+                    "summary": "Legacy summary.",
+                    "quote": "Legacy quote.",
+                }
+            ],
+        }
+    ],
+}
+
+
+def _load_run_export_schema() -> dict[str, Any]:
+    schema_path = (
+        Path(__file__).parent.parent
+        / "docs" / "dev" / "architecture" / "rf-run-export-schema.json"
+    )
+    assert schema_path.exists(), f"rf-run-export-schema.json not found at {schema_path}"
+    return json.loads(schema_path.read_text(encoding="utf-8"))
+
+
+def test_export_schema_is_versioned_for_resolved_source_provider_metadata() -> None:
+    """SMP-1.8: the contract must be bumped past 1.7 to document the new
+    claims[].sources[] authors/doi/publisher/version properties.
+
+    Checks membership, not position: SMP-4.4 later bumped the newest
+    example to '1.9' (attribution_summary), which is exactly the additive
+    stacking this contract's versioning scheme is supposed to tolerate --
+    pinning this assertion to `examples[0]` would make every subsequent
+    bump break an unrelated, already-shipped milestone's test.
+    """
+    schema = _load_run_export_schema()
+    examples = schema["properties"]["schema_version"]["examples"]
+    assert "1.8" in examples, (
+        f"expected rf-run-export-schema.json's schema_version examples to "
+        f"document '1.8' (SMP-1.8 bump), got {examples!r}"
+    )
+    resolved_source_props = schema["$defs"]["RFResolvedSource"]["properties"]
+    for field in ("authors", "doi", "publisher", "version"):
+        assert field in resolved_source_props, (
+            f"RFResolvedSource.{field} must be documented by SMP-1.8"
+        )
+    # Additive means additive: none of the four may be required.
+    required = schema["$defs"]["RFResolvedSource"].get("required", [])
+    for field in ("authors", "doi", "publisher", "version"):
+        assert field not in required, (
+            f"RFResolvedSource.{field} must stay optional (additive-only bump)"
+        )
+
+
+def test_export_schema_legacy_resolved_source_fixture_validates_against_bumped_schema() -> None:
+    """SMP-1.8: a pre-change export payload -- claims[].sources[] entries with
+    no ``authors``/``doi``/``publisher``/``version`` keys at all -- must still
+    validate cleanly against the bumped schema.
+
+    Proves the version bump is additive: ``RFResolvedSource`` already carried
+    ``additionalProperties: true`` and none of the four new properties are
+    required, so an export produced before SMP-1.4/1.8 keeps validating
+    unchanged after this contract change.
+    """
+    schema = _load_run_export_schema()
+    validator = jsonschema.Draft7Validator(schema)
+    errors = list(validator.iter_errors(_LEGACY_RESOLVED_SOURCE_EXPORT))
+    error_messages = [
+        f"  [{'.'.join(str(p) for p in e.absolute_path) or 'root'}] {e.message}"
+        for e in errors
+    ]
+    assert not errors, (
+        f"legacy (pre-SMP-1.8) export payload failed validation against the "
+        f"bumped schema ({len(errors)} error(s)):\n" + "\n".join(error_messages)
+    )
+
+
+def test_export_schema_resolved_source_with_new_provider_fields_validates() -> None:
+    """SMP-1.8: a post-change resolved source carrying authors/doi/publisher/
+    version validates cleanly -- the four new properties are documented
+    (not merely tolerated via ``additionalProperties``)."""
+    schema = _load_run_export_schema()
+    payload = json.loads(json.dumps(_LEGACY_RESOLVED_SOURCE_EXPORT))
+    payload["claims"][0]["sources"][0].update(
+        {
+            "authors": ["Jane Doe", "John Roe"],
+            "doi": "10.1000/xyz123",
+            "publisher": "Example Press",
+            "version": "2nd edition",
+        }
+    )
+    validator = jsonschema.Draft7Validator(schema)
+    errors = list(validator.iter_errors(payload))
+    error_messages = [
+        f"  [{'.'.join(str(p) for p in e.absolute_path) or 'root'}] {e.message}"
+        for e in errors
+    ]
+    assert not errors, (
+        f"post-SMP-1.8 export payload with new resolved-source provider "
+        f"fields failed validation ({len(errors)} error(s)):\n" + "\n".join(error_messages)
+    )
+
+
+# ---------------------------------------------------------------------------
+# SMP-4.4 (source-metadata-propagation-v1 M4): rf-run-export-schema.json is
+# bumped to 1.9 to document claims[].sources[].attribution_summary -- the
+# value-free, recompute-only source_attribution mirror, now hydrated by
+# _resolve_source() (closing the SMP-4.2/4.3 wiring gap). RFResolvedSource
+# already carries additionalProperties:true, so the bump is
+# documentation-only; same additive-proof pattern as the SMP-1.8 tests
+# above: a pre-change (legacy) payload keeps validating unchanged, and a
+# post-change payload carrying the new field validates too.
+# ---------------------------------------------------------------------------
+
+
+def test_export_schema_is_versioned_for_attribution_summary() -> None:
+    """SMP-4.4: the contract must be bumped past 1.8 to document the new
+    claims[].sources[].attribution_summary property."""
+    schema = _load_run_export_schema()
+    examples = schema["properties"]["schema_version"]["examples"]
+    assert examples[0] == "1.9", (
+        f"expected rf-run-export-schema.json's newest schema_version example "
+        f"to be '1.9' (SMP-4.4 bump), got {examples[0]!r}"
+    )
+    resolved_source_props = schema["$defs"]["RFResolvedSource"]["properties"]
+    assert "attribution_summary" in resolved_source_props, (
+        "RFResolvedSource.attribution_summary must be documented by SMP-4.4"
+    )
+    # Additive means additive: attribution_summary must stay optional.
+    required = schema["$defs"]["RFResolvedSource"].get("required", [])
+    assert "attribution_summary" not in required, (
+        "RFResolvedSource.attribution_summary must stay optional (additive-only bump)"
+    )
+
+
+def test_export_schema_legacy_resolved_source_fixture_without_attribution_summary_validates_against_bumped_schema() -> None:
+    """SMP-4.4: a pre-change export payload -- claims[].sources[] entries with
+    no ``attribution_summary`` key at all -- must still validate cleanly
+    against the 1.9-bumped schema.
+
+    Reuses the exact same legacy fixture the SMP-1.8 tests above introduced
+    (``_LEGACY_RESOLVED_SOURCE_EXPORT``): it already predates
+    ``attribution_summary`` too, so this proves the 1.8 and 1.9 additive
+    bumps stack without regressing each other's legacy-fixture guarantee.
+    """
+    schema = _load_run_export_schema()
+    validator = jsonschema.Draft7Validator(schema)
+    errors = list(validator.iter_errors(_LEGACY_RESOLVED_SOURCE_EXPORT))
+    error_messages = [
+        f"  [{'.'.join(str(p) for p in e.absolute_path) or 'root'}] {e.message}"
+        for e in errors
+    ]
+    assert not errors, (
+        f"legacy (pre-SMP-4.4) export payload failed validation against the "
+        f"bumped schema ({len(errors)} error(s)):\n" + "\n".join(error_messages)
+    )
+
+
+def test_export_schema_resolved_source_with_attribution_summary_validates() -> None:
+    """SMP-4.4: a post-change resolved source carrying attribution_summary
+    validates cleanly -- the new property is documented (not merely
+    tolerated via ``additionalProperties``)."""
+    schema = _load_run_export_schema()
+    payload = json.loads(json.dumps(_LEGACY_RESOLVED_SOURCE_EXPORT))
+    payload["claims"][0]["sources"][0]["attribution_summary"] = {
+        "attribution_ids": ["attrib_a", "attrib_b"],
+        "count": 2,
+        "rollups": [
+            {
+                "asserter_id": "semantic_scholar",
+                "assertion_kind": "citation_count",
+                "attribution_ids": ["attrib_a", "attrib_b"],
+                "count": 2,
+                "best_attribution_id": "attrib_b",
+                "weakest_attribution_id": "attrib_a",
+                "comparable": True,
+            }
+        ],
+    }
+    validator = jsonschema.Draft7Validator(schema)
+    errors = list(validator.iter_errors(payload))
+    error_messages = [
+        f"  [{'.'.join(str(p) for p in e.absolute_path) or 'root'}] {e.message}"
+        for e in errors
+    ]
+    assert not errors, (
+        f"post-SMP-4.4 export payload with attribution_summary "
+        f"failed validation ({len(errors)} error(s)):\n" + "\n".join(error_messages)
+    )
+
+
+def test_export_schema_version_constant_matches_documented_contract() -> None:
+    """Drift guard: ``EXPORT_SCHEMA_VERSION`` and the documented contract's
+    newest ``examples[0]`` must never diverge again.
+
+    This is exactly the drift the blocking review caught: SMP-1.8/SMP-4.4
+    bumped ``rf-run-export-schema.json``'s ``schema_version`` examples to
+    '1.8' then '1.9' while ``EXPORT_SCHEMA_VERSION`` stayed pinned at '1.8'
+    the whole time -- so the emitted ``schema_version`` discriminated
+    nothing the feature added. `test_export_schema_is_versioned_for_*`
+    above assert facts about the *document*; this test is the only one
+    that ties the document back to the *code constant* that actually gets
+    emitted.
+    """
+    from research_foundry.services.export_service import EXPORT_SCHEMA_VERSION
+
+    schema = _load_run_export_schema()
+    documented = schema["properties"]["schema_version"]["examples"][0]
+    assert EXPORT_SCHEMA_VERSION == documented, (
+        f"EXPORT_SCHEMA_VERSION ({EXPORT_SCHEMA_VERSION!r}) must match the "
+        f"documented contract's newest schema_version example "
+        f"({documented!r}) -- rf-run-export-schema.json and "
+        f"export_service.py have drifted apart"
+    )
+
+
+def _build_redacted_export_run(paths: FoundryPaths) -> dict[str, Any]:
+    """Build a run whose source card sits ABOVE the export threshold, so
+    `_resolve_source()`'s SMP-1.4 redaction gate actually fires.
+
+    `_build_full_export_run` above is deliberately `public`/`public` (its
+    card is never redacted), so it can never exercise the redacted shape of
+    `claims[].sources[]` -- which is exactly how the second M1 security-gate
+    finding (a bare `REDACTION_MARKER` string violating `authors`'s declared
+    `["array","null"]` type) escaped `test_export_run_passes_strict_json_
+    schema_validation` above. This builds a `client_sensitive` card and
+    exports it at `work_sensitive` to force `redacted=True`.
+    """
+    from research_foundry.frontmatter import dump_md
+    from research_foundry.services.export_service import export_run
+    from research_foundry.yamlio import dump_yaml
+
+    run_id = "rf_run_schema_guard_redacted"
+    rp = paths.run_paths(run_id)
+    rp.ensure_scaffold()
+
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "type": "run",
+            "run_id": run_id,
+            "intent_id": "intent_schema_guard_redacted",
+            "status": "planned",
+            "sensitivity": "client_sensitive",
+            "created_at": "2026-06-13T22:46:23-04:00",
+        },
+        rp.run_yaml,
+    )
+
+    dump_md(
+        {
+            "schema_version": "0.1",
+            "type": "source_card",
+            "source_card_id": "src_guard_redacted",
+            "sensitivity": "client_sensitive",
+            "source": {
+                "title": "Guard Redacted Source",
+                "source_type": "official_doc",
+                "locator": {
+                    "url": "https://example.test/guard-redacted",
+                    "doi": "10.1000/guard-redacted",
+                },
+                "authors": ["Guard Author One", "Guard Author Two"],
+                "publisher": "Guard Redacted Press",
+                "version": "v1",
+            },
+            "trust": {"source_rank": "primary"},
+            "usage": {"allowed_for_public_output": False},
+            # SMP-4.4: present on the fixture so
+            # `test_export_run_with_redacted_source_passes_strict_json_
+            # schema_validation` can assert `attribution_summary` passes
+            # through UNREDACTED above the threshold -- the plan decision
+            # this field is value-free (no property here can carry a raw
+            # third-party value or free text), so unlike authors/doi/
+            # publisher/version it does not go through the redaction gate.
+            "attribution_summary": {
+                "attribution_ids": ["attrib_guard_redacted_001"],
+                "count": 1,
+                "rollups": [],
+            },
+            "extracted_points": [
+                {
+                    "evidence_id": "ev_001",
+                    "locator": "p1",
+                    "summary": "guard redacted summary",
+                    "quote": "guard redacted quote",
+                }
+            ],
+        },
+        "",
+        rp.sources / "src_guard_redacted.md",
+    )
+
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "claims": [
+                {
+                    "claim_id": "clm_guard_redacted_001",
+                    "text": "Guard redacted claim text",
+                    "materiality": "core",
+                    "claim_type": "factual",
+                    "status": "supported",
+                    "confidence": "high",
+                    "sources": [
+                        {
+                            "source_card_id": "src_guard_redacted",
+                            "evidence_id": "ev_001",
+                            "relation": "supports",
+                            "locator": "p1",
+                        }
+                    ],
+                    "inference_basis": {"from_claims": [], "reasoning_summary": None},
+                }
+            ],
+        },
+        rp.claim_ledger,
+    )
+
+    dump_yaml(
+        {
+            "run_id": run_id,
+            "passed": True,
+            "exit_code": 0,
+            "checks": [
+                {
+                    "id": "check_01",
+                    "severity": "error",
+                    "status": "pass",
+                    "detail": "ok",
+                    "locations": [],
+                }
+            ],
+        },
+        rp.verification,
+    )
+
+    dump_yaml(
+        {
+            "schema_version": "0.1",
+            "run_id": run_id,
+            "status": "verified",
+            "counts": {"claims_total": 1, "claims_supported": 1},
+            "governance": {"sensitivity": "client_sensitive", "approved_for_writeback": False},
+        },
+        rp.evidence_bundle,
+    )
+
+    rp.report_draft.write_text(
+        "---\ntitle: Guard Redacted Report\n---\n\nBody. [claim:clm_guard_redacted_001]\n",
+        encoding="utf-8",
+    )
+
+    return export_run(paths, run_id, sensitivity_threshold="work_sensitive")
+
+
+def test_export_run_with_redacted_source_passes_strict_json_schema_validation(
+    _tmp_foundry_for_schema: FoundryPaths,
+) -> None:
+    """Second M1 security-gate finding: a REDACTED `claims[].sources[]` entry
+    must also pass strict Draft7 validation against
+    ``rf-run-export-schema.json``. The sibling regression guard
+    ``test_export_run_passes_strict_json_schema_validation`` above only ever
+    exercises the unredacted shape (its fixture card is `public`/`public`,
+    so `_resolve_source()`'s SMP-1.4 gate never fires) -- which is exactly
+    how ``authors`` redacting to a bare ``REDACTION_MARKER`` string escaped
+    to review: it violates ``RFResolvedSource.authors``'s declared
+    ``["array", "null"]`` type (jsonschema reported ``'[redacted:sensitivity]'
+    is not of type 'array', 'null'``).
+
+    Non-vacuity: if ``authors``'s redaction regressed to the bare marker
+    string, ``jsonschema`` would report that exact type violation again and
+    this test goes RED; if it regressed to ``None``, the ``is not None``
+    assertion below (distinguishing withheld from absent) goes RED first.
+    """
+    from research_foundry.services.export_service import REDACTION_MARKER
+
+    ids.set_clock(lambda: _FIXED_TS)
+    try:
+        export_dict = _build_redacted_export_run(_tmp_foundry_for_schema)
+    finally:
+        ids.set_clock(lambda: datetime.now(UTC).astimezone())
+    assert export_dict is not None
+
+    claim = next(
+        c for c in export_dict["claims"] if c["claim_id"] == "clm_guard_redacted_001"
+    )
+    src = claim["sources"][0]
+    assert src["redacted"] is True
+    assert src["authors"] == [REDACTION_MARKER]
+    assert src["authors"] is not None
+    assert src["doi"] == REDACTION_MARKER
+    assert src["publisher"] == REDACTION_MARKER
+    assert src["version"] == REDACTION_MARKER
+    # SMP-4.4: attribution_summary is deliberately NOT gated by the
+    # redaction check above -- it is value-free by schema shape (ids,
+    # counts, rollup pointers only), so it passes through verbatim even
+    # though this citation is redacted.
+    assert src["attribution_summary"] == {
+        "attribution_ids": ["attrib_guard_redacted_001"],
+        "count": 1,
+        "rollups": [],
+    }
+
+    schema_path = (
+        Path(__file__).parent.parent
+        / "docs" / "dev" / "architecture" / "rf-run-export-schema.json"
+    )
+    assert schema_path.exists(), f"rf-run-export-schema.json not found at {schema_path}"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    validator = jsonschema.Draft7Validator(schema)
+    errors = list(validator.iter_errors(export_dict))
+    error_messages = [
+        f"  [{'.'.join(str(p) for p in e.absolute_path) or 'root'}] {e.message}"
+        for e in errors
+    ]
+    assert not errors, (
+        f"redacted export_run() output failed strict JSON schema validation "
         f"({len(errors)} error(s)):\n" + "\n".join(error_messages)
     )
 
@@ -1913,6 +2394,150 @@ def test_source_card_rights_summary_valid_instance_passes_draft202012() -> None:
     validator = jsonschema.Draft202012Validator(schema)
     instance = _source_card_base()
     instance["rights_summary"] = _all_unknown_rights_summary()
+    errors = list(validator.iter_errors(instance))
+    assert not errors, [e.message for e in errors]
+
+
+# ---------------------------------------------------------------------------
+# SMP-2.3 (source-metadata-propagation-v1 M2, RESOLVES OQ-3): source_card.
+# schema.yaml — `attribution_summary` mirror. Denormalized, VALUE-FREE,
+# RECOMPUTE-ONLY mirror of authoritative schemas/source_attribution.schema.
+# yaml records. Unlike `rights_summary` above, this mirror carries no status/
+# restriction enums at all — only ids, counts, and one boolean — so there is
+# no sibling field anywhere in this subtree an agent could hand-write a raw
+# third-party value into.
+# ---------------------------------------------------------------------------
+
+
+def _attribution_rollup(
+    *,
+    asserter_id: str = "semantic_scholar",
+    assertion_kind: str = "citation_count",
+    attribution_ids: list[str] | None = None,
+    best_attribution_id: str | None = "attrib_best",
+    weakest_attribution_id: str | None = "attrib_weakest",
+    comparable: bool = True,
+) -> dict[str, Any]:
+    ids_ = attribution_ids if attribution_ids is not None else ["attrib_best", "attrib_weakest"]
+    return {
+        "asserter_id": asserter_id,
+        "assertion_kind": assertion_kind,
+        "attribution_ids": ids_,
+        "count": len(ids_),
+        "best_attribution_id": best_attribution_id,
+        "weakest_attribution_id": weakest_attribution_id,
+        "comparable": comparable,
+    }
+
+
+def _attribution_summary(*, rollups: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    rollups_ = rollups if rollups is not None else [_attribution_rollup()]
+    attribution_ids = sorted({aid for r in rollups_ for aid in r["attribution_ids"]})
+    return {
+        "attribution_ids": attribution_ids,
+        "count": len(attribution_ids),
+        "rollups": rollups_,
+    }
+
+
+def test_source_card_attribution_summary_absent_is_valid() -> None:
+    """A source_card that predates this milestone, or has no
+    source_attribution records at all, is not a validation failure — absent
+    means "not yet assessed", never "verified empty"."""
+
+    result = validate(_source_card_base(), "source_card")
+    assert result.ok, f"expected source_card without attribution_summary to validate, got: {result.errors}"
+
+
+def test_source_card_attribution_summary_null_is_valid() -> None:
+    """Explicit `null` (as opposed to the key being entirely absent) is also
+    a valid not-yet-assessed sentinel."""
+
+    instance = _source_card_base()
+    instance["attribution_summary"] = None
+    result = validate(instance, "source_card")
+    assert result.ok, f"expected null attribution_summary to validate, got: {result.errors}"
+
+
+def test_source_card_attribution_summary_well_formed_instance_passes() -> None:
+    """A well-formed mirror — ids, counts, and one monotone rollup — validates
+    cleanly."""
+
+    instance = _source_card_base()
+    instance["attribution_summary"] = _attribution_summary()
+    result = validate(instance, "source_card")
+    assert result.ok, f"expected well-formed attribution_summary to validate, got: {result.errors}"
+    assert result.errors == []
+
+
+def test_source_card_attribution_summary_empty_rollups_is_valid() -> None:
+    """A mirror with zero backing records (empty ids/rollups, count 0) is a
+    valid — and distinct from absent — "assessed, found nothing" state."""
+
+    instance = _source_card_base()
+    instance["attribution_summary"] = {"attribution_ids": [], "count": 0, "rollups": []}
+    result = validate(instance, "source_card")
+    assert result.ok, f"expected empty attribution_summary to validate, got: {result.errors}"
+
+
+def test_source_card_attribution_summary_rejects_raw_value_field() -> None:
+    """The governance control: a hand-written raw third-party `value` field
+    directly on `attribution_summary` is a validation error — there is no
+    such property in the schema for it to occupy."""
+
+    instance = _source_card_base()
+    instance["attribution_summary"] = {**_attribution_summary(), "value": 42}
+    result = validate(instance, "source_card")
+    assert not result.ok, "expected additionalProperties:false to reject a raw `value` field"
+    assert result.errors
+
+
+def test_source_card_attribution_summary_rollup_rejects_best_value_field() -> None:
+    """Sibling-field-bypass guard: a rollup entry carrying `best_value` (the
+    ACTUAL max()'d value, as opposed to `best_attribution_id`, a pointer)
+    must also fail — the value-free invariant applies inside each rollup
+    entry, not just at the top level."""
+
+    instance = _source_card_base()
+    rollup = {**_attribution_rollup(), "best_value": 99}
+    instance["attribution_summary"] = _attribution_summary(rollups=[rollup])
+    result = validate(instance, "source_card")
+    assert not result.ok, "expected additionalProperties:false to reject a rollup `best_value` field"
+    assert result.errors
+
+
+def test_source_card_attribution_summary_rollup_rejects_weakest_value_field() -> None:
+    """Mirror case of the above for `weakest_value`."""
+
+    instance = _source_card_base()
+    rollup = {**_attribution_rollup(), "weakest_value": 1}
+    instance["attribution_summary"] = _attribution_summary(rollups=[rollup])
+    result = validate(instance, "source_card")
+    assert not result.ok, "expected additionalProperties:false to reject a rollup `weakest_value` field"
+    assert result.errors
+
+
+def test_source_card_attribution_summary_missing_required_rollup_field_fails() -> None:
+    """A rollup entry missing a required field (e.g. `comparable`) fails —
+    every rollup entry must be fully shaped, never partially populated."""
+
+    instance = _source_card_base()
+    rollup = _attribution_rollup()
+    del rollup["comparable"]
+    instance["attribution_summary"] = _attribution_summary(rollups=[rollup])
+    result = validate(instance, "source_card")
+    assert not result.ok, "expected a rollup missing `comparable` to fail validation"
+    assert result.errors
+
+
+def test_source_card_attribution_summary_valid_instance_passes_draft202012() -> None:
+    """Direct Draft202012Validator check (matching the file's other
+    dedicated-fixture tests) over a fully-populated attribution_summary."""
+
+    schema = SchemaRegistry().get("source_card")
+    validator = jsonschema.Draft202012Validator(schema)
+    instance = _source_card_base()
+    instance["attribution_summary"] = _attribution_summary()
     errors = list(validator.iter_errors(instance))
     assert not errors, [e.message for e in errors]
 
