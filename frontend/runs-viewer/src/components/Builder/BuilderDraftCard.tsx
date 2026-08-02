@@ -18,6 +18,7 @@
  */
 import { formatSchemaVersion } from "@/lib/builderCoverage";
 import type { BuilderOutlineSection, ParagraphAuditSummary } from "@/lib/builderCoverage";
+import type { ClaimPreviewResolver } from "@/lib/builderMocks";
 import { BuilderOutline } from "./BuilderOutline";
 import { BuilderBlockEditor } from "./BuilderBlockEditor";
 import type { ReportBlock, ReportBlockType, ReportClaimLink } from "@/types/rf/report_draft";
@@ -37,6 +38,7 @@ export interface BuilderDraftCardProps {
   sectionCoverage: ParagraphAuditSummary;
   showClaimChips: boolean;
   disabled: boolean;
+  resolveClaimPreview: ClaimPreviewResolver;
   onSelectBlock: (blockId: string) => void;
   onCommitBlockMarkdown: (blockId: string, markdown: string) => void;
   onRemoveClaimLink: (claimLinkId: string) => void;
@@ -60,6 +62,7 @@ export function BuilderDraftCard({
   sectionCoverage,
   showClaimChips,
   disabled,
+  resolveClaimPreview,
   onSelectBlock,
   onCommitBlockMarkdown,
   onRemoveClaimLink,
@@ -108,6 +111,7 @@ export function BuilderDraftCard({
           sectionCoverage={sectionCoverage}
           showClaimChips={showClaimChips}
           disabled={disabled}
+          resolveClaimPreview={resolveClaimPreview}
           onSelectBlock={onSelectBlock}
           onCommitBlockMarkdown={onCommitBlockMarkdown}
           onRemoveClaimLink={onRemoveClaimLink}

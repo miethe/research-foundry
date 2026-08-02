@@ -21,6 +21,11 @@ export {
   catalogItemQueryKey,
 } from "./useCatalog.js";
 export {
+  useBuilderClaimPreviewResolver,
+  CLAIM_PREVIEW_UNKNOWN,
+} from "./useBuilderClaimPreviews.js";
+export type { BuilderClaimPreviewOrUnknown, ClaimPreviewResolver } from "./useBuilderClaimPreviews.js";
+export {
   useAssertionSearch,
   useEvidencePacket,
   useAssertionLineage,

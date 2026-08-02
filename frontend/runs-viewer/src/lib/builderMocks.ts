@@ -35,7 +35,15 @@ export interface BuilderClaimPreview {
   claim_id: string;
   text: string;
   status: "supported" | "mixed" | "contradicted" | "inference" | "speculation" | "unsupported";
-  confidence: "high" | "medium" | "low";
+  /**
+   * "unknown" (fix pass, post-sprint defect): live catalog data has real
+   * `confidence: null` rows (`GET /api/catalog/search` on production data
+   * returns distinct confidence values of exactly `[null, "medium"]`) — a
+   * null/unrecognized confidence must render as this explicit unknown state,
+   * never fabricated as "medium". Mirrors CLAIM_PREVIEW_UNKNOWN's role for a
+   * whole unresolved claim, one level down at the confidence field.
+   */
+  confidence: "high" | "medium" | "low" | "unknown";
   materiality: "material" | "narrative" | "background";
   sources: RFResolvedSource[];
 }
@@ -120,6 +128,19 @@ export function resolveBuilderClaimPreview(claimId: string): BuilderClaimPreview
   return BUILDER_MOCK_CLAIM_PREVIEWS[claimId] ?? null;
 }
 
+// ── Mode-aware resolver contract (runs-viewer-builder-live-claim-previews) ────
+//
+// AC-3: an unresolvable claim is an explicit third state, distinct from a
+// resolved-but-low-confidence claim — never silently coerced into one. This
+// sentinel + resolver type are the shared contract between
+// hooks/useBuilderClaimPreviews.ts (which produces resolved values) and
+// lib/builderCoverage.ts + the Builder components (which consume them).
+// Defined here (not in the hook) so lib/* consumers don't need to import
+// from hooks/* — this module has no React/network dependencies.
+export const CLAIM_PREVIEW_UNKNOWN = "unknown" as const;
+export type BuilderClaimPreviewOrUnknown = BuilderClaimPreview | typeof CLAIM_PREVIEW_UNKNOWN;
+export type ClaimPreviewResolver = (claimId: string) => BuilderClaimPreviewOrUnknown;
+
 // ── Demo catalog fallback (F5/demo-data polish pass) ──────────────────────────
 //
 // BuilderCatalogPane always queries the SAME useCatalogSearch/useCatalogStats
@@ -149,7 +170,11 @@ function demoCatalogItem(claimId: string, itemType: CatalogItemType): CatalogIte
     status: preview.status,
     sensitivity: "public",
     trust_label: null,
-    confidence: preview.confidence,
+    // preview.confidence's type includes "unknown" (fix pass) for the live-mode
+    // path; every entry in this static mock dict is hand-authored with a real
+    // high/medium/low value, so this narrows back to CatalogItemSummary's
+    // RFClaimConfidence | null without ever actually hitting the null branch.
+    confidence: preview.confidence === "unknown" ? null : preview.confidence,
     source_count: preview.sources.length,
     created_at: "2026-06-14T09:00:00Z",
     updated_at: "2026-06-14T11:58:00Z",

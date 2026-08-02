@@ -46,7 +46,8 @@ import { DetailModal } from "@/components/RunDetail/DetailModal";
 import type { DetailModalPayload, IssueDetail } from "@/components/RunDetail/DetailModal";
 import { buildOutline, computeBlockAuditSummary, computeDraftAuditSummary, computeDraftIssues } from "@/lib/builderCoverage";
 import type { BuilderIssue, BuilderOutlineSection } from "@/lib/builderCoverage";
-import { MOCK_REPORT_DRAFT, resolveBuilderClaimPreview } from "@/lib/builderMocks";
+import { CLAIM_PREVIEW_UNKNOWN, MOCK_REPORT_DRAFT } from "@/lib/builderMocks";
+import { useBuilderClaimPreviewResolver } from "@/hooks";
 import { formatRelativeTime } from "@/lib/format";
 import type { RFClaim, RFResolvedSource } from "@/types/rf";
 import type { CatalogItemSummary } from "@/types/rf/catalog";
@@ -104,25 +105,37 @@ export function BuilderScreen() {
   const activeSection = outline.find((s) => s.headingBlockId === activeHeadingBlockId) ?? null;
   const selectedBlock = selectedBlockId ? blocksById.get(selectedBlockId) ?? null : null;
 
+  // Mode-aware claim-preview resolver (runs-viewer-builder-live-claim-previews):
+  // static mode delegates to the synchronous mock dict unchanged; loopback
+  // mode fetches GET /catalog/items/{catalog_item_id} per distinct claim.
+  // Threaded into builderCoverage.ts's pure functions AND the two components
+  // below instead of each importing resolveBuilderClaimPreview() directly.
+  const { resolve: resolveClaimPreview } = useBuilderClaimPreviewResolver(draft?.claim_links ?? []);
+
   const sectionCoverage = useMemo(() => {
-    if (!draft || !activeSection) return computeDraftAuditSummary([], []);
+    if (!draft || !activeSection) return computeDraftAuditSummary([], [], resolveClaimPreview);
     const scoped = activeSection.bodyBlockIds.map((id) => blocksById.get(id)).filter((b): b is NonNullable<typeof b> => Boolean(b));
-    return computeDraftAuditSummary(scoped, draft.claim_links);
-  }, [draft, activeSection, blocksById]);
+    return computeDraftAuditSummary(scoped, draft.claim_links, resolveClaimPreview);
+  }, [draft, activeSection, blocksById, resolveClaimPreview]);
 
   const paragraphSummary = useMemo(() => {
-    if (!draft) return computeDraftAuditSummary([], []);
-    return selectedBlock ? computeBlockAuditSummary(selectedBlock, draft.claim_links) : computeDraftAuditSummary(draft.blocks, draft.claim_links);
-  }, [draft, selectedBlock]);
+    if (!draft) return computeDraftAuditSummary([], [], resolveClaimPreview);
+    return selectedBlock
+      ? computeBlockAuditSummary(selectedBlock, draft.claim_links, resolveClaimPreview)
+      : computeDraftAuditSummary(draft.blocks, draft.claim_links, resolveClaimPreview);
+  }, [draft, selectedBlock, resolveClaimPreview]);
 
-  const issues = useMemo(() => (draft ? computeDraftIssues(draft.blocks, draft.claim_links) : []), [draft]);
+  const issues = useMemo(
+    () => (draft ? computeDraftIssues(draft.blocks, draft.claim_links, resolveClaimPreview) : []),
+    [draft, resolveClaimPreview],
+  );
 
   const draftClaims = useMemo<RFClaim[]>(() => {
     if (!draft) return [];
     const claimIds = Array.from(new Set(draft.claim_links.map((link) => link.claim_id)));
     return claimIds.flatMap((claimId) => {
-      const preview = resolveBuilderClaimPreview(claimId);
-      if (!preview) return [];
+      const preview = resolveClaimPreview(claimId);
+      if (preview === CLAIM_PREVIEW_UNKNOWN) return [];
       // Coerce builder-preview materiality ("narrative"|"material"|"background") to
       // RFMateriality ("core"|"background"|"style"|"material"): narrative → background.
       const materiality = preview.materiality === "narrative" ? "background" : preview.materiality;
@@ -132,11 +145,14 @@ export function BuilderScreen() {
         materiality,
         claim_type: preview.status === "inference" || preview.status === "speculation" ? preview.status : "factual",
         status: preview.status,
-        confidence: preview.confidence,
+        // Fix pass: RFClaimConfidence has no "unknown" member, and the detail
+        // modal already renders `claim.confidence ?? "unknown"` (see
+        // ClaimAuditWorkbench.tsx) — omit rather than fabricate.
+        confidence: preview.confidence === "unknown" ? undefined : preview.confidence,
         sources: preview.sources,
       } satisfies RFClaim];
     });
-  }, [draft]);
+  }, [draft, resolveClaimPreview]);
 
   const linkedRefsByItemId = useMemo(() => {
     const refs = new Map<string, string[]>();
@@ -239,7 +255,10 @@ export function BuilderScreen() {
           }));
       case "weak_confidence": {
         const byLink = draft.claim_links
-          .filter((link) => resolveBuilderClaimPreview(link.claim_id)?.confidence === "low")
+          .filter((link) => {
+            const preview = resolveClaimPreview(link.claim_id);
+            return preview !== CLAIM_PREVIEW_UNKNOWN && preview.confidence === "low";
+          })
           .map((link) => ({
             id: link.claim_link_id,
             block_id: link.block_id,
@@ -259,6 +278,31 @@ export function BuilderScreen() {
           }));
         return [...byLink, ...byBlock];
       }
+      case "unresolved_claim":
+        return draft.claim_links
+          .filter((link) => resolveClaimPreview(link.claim_id) === CLAIM_PREVIEW_UNKNOWN)
+          .map((link) => ({
+            id: link.claim_link_id,
+            block_id: link.block_id,
+            claim_id: link.claim_id,
+            message: `Claim ${link.claim_id} could not be resolved from the catalog.`,
+            severity: "warning" as const,
+            hint: "The linked claim id may be stale, or the catalog item may have been removed.",
+          }));
+      case "confidence_unknown":
+        return draft.claim_links
+          .filter((link) => {
+            const preview = resolveClaimPreview(link.claim_id);
+            return preview !== CLAIM_PREVIEW_UNKNOWN && preview.confidence === "unknown";
+          })
+          .map((link) => ({
+            id: link.claim_link_id,
+            block_id: link.block_id,
+            claim_id: link.claim_id,
+            message: `Claim ${link.claim_id} resolved, but has no recorded confidence score.`,
+            severity: "warning" as const,
+            hint: "The catalog item has no confidence value — treat this claim as unscored, not as medium confidence.",
+          }));
       case "citation_needed":
         return draft.blocks
           .filter((block) => block.materiality === "material" && !draft.claim_links.some((link) => link.block_id === block.block_id))
@@ -404,6 +448,7 @@ export function BuilderScreen() {
           sectionCoverage={sectionCoverage}
           showClaimChips={showClaimChips}
           disabled={disabled}
+          resolveClaimPreview={resolveClaimPreview}
           onSelectBlock={setSelectedBlockId}
           onCommitBlockMarkdown={handleCommitMarkdown}
           onRemoveClaimLink={handleRemoveClaimLink}
@@ -417,6 +462,7 @@ export function BuilderScreen() {
           claimLinks={draft.claim_links}
           summary={paragraphSummary}
           issues={issues}
+          resolveClaimPreview={resolveClaimPreview}
           onOpenIssueCategory={handleOpenIssueCategory}
           onOpenSource={handleOpenSource}
           disabled={disabled}

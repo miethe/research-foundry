@@ -13,7 +13,8 @@
  */
 
 import type { ReportBlock, ReportClaimLink } from "@/types/rf/report_draft";
-import { resolveBuilderClaimPreview } from "./builderMocks";
+import { CLAIM_PREVIEW_UNKNOWN } from "./builderMocks";
+import type { ClaimPreviewResolver } from "./builderMocks";
 
 // ── Outline ───────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,25 @@ export interface ParagraphAuditSummary {
   inferences: number;
   unsupported: number;
   contradicted: number;
+  /**
+   * AC-3: claims whose live preview resolution came back CLAIM_PREVIEW_UNKNOWN
+   * (no catalog_item_id, 404, or a non-claim/inference catalog item) — an
+   * explicit third state, distinct from a resolved-but-low-confidence claim.
+   * Included in the coveragePct denominator (so an unresolvable claim drags
+   * coverage down, matching "does not count it as covered") but never in the
+   * numerator.
+   */
+  unresolved: number;
+  /**
+   * Fix pass (post-sprint defect): a claim whose preview RESOLVED but whose
+   * own `confidence` field came back null/unrecognized from the live catalog
+   * (real production data — see hooks/useBuilderClaimPreviews.ts's
+   * catalogItemToPreview()). Distinct from `unresolved` (whole claim
+   * unreachable) — the claim's text/status/sources are all real here, only
+   * confidence is missing. Excluded from the coveragePct numerator for the
+   * same reason `unresolved` is: a claim we can't score is not "covered".
+   */
+  confidenceUnknown: number;
   citationNeeded: number;
   coveragePct: number;
   /**
@@ -100,13 +120,19 @@ const EMPTY_SUMMARY: ParagraphAuditSummary = {
   inferences: 0,
   unsupported: 0,
   contradicted: 0,
+  unresolved: 0,
+  confidenceUnknown: 0,
   citationNeeded: 0,
   coveragePct: 0,
   isApplicable: false,
 };
 
 /** Classifies a single block's claim_links into the mockup's Audit Inspector count buckets. */
-export function computeBlockAuditSummary(block: ReportBlock | null, claimLinks: ReportClaimLink[]): ParagraphAuditSummary {
+export function computeBlockAuditSummary(
+  block: ReportBlock | null,
+  claimLinks: ReportClaimLink[],
+  resolvePreview: ClaimPreviewResolver,
+): ParagraphAuditSummary {
   if (!block) return EMPTY_SUMMARY;
   const links = claimLinks.filter((cl) => cl.block_id === block.block_id);
 
@@ -121,33 +147,64 @@ export function computeBlockAuditSummary(block: ReportBlock | null, claimLinks: 
   let inferences = 0;
   let unsupported = 0;
   let contradicted = 0;
+  let unresolved = 0;
+  let confidenceUnknown = 0;
   for (const link of links) {
+    // AC-3 + fix pass: both unresolvable states are checked FIRST and
+    // short-circuit — neither must ever fall through into the "supported"
+    // default bucket below.
+    const preview = resolvePreview(link.claim_id);
+    if (preview === CLAIM_PREVIEW_UNKNOWN) {
+      unresolved += 1;
+      continue;
+    }
+    if (preview.confidence === "unknown") {
+      confidenceUnknown += 1;
+      continue;
+    }
     if (link.relation === "contradicts") contradicted += 1;
     else if (link.link_status === "missing_claim" || link.link_status === "missing_source") unsupported += 1;
     else if (link.relation === "inferred_from") inferences += 1;
     else supported += 1;
   }
-  const total = supported + inferences + unsupported + contradicted;
+  const total = supported + inferences + unsupported + contradicted + unresolved + confidenceUnknown;
   const coveragePct = total > 0 ? Math.round(((supported + inferences) / total) * 100) : 0;
-  return { supported, inferences, unsupported, contradicted, citationNeeded: 0, coveragePct, isApplicable: true };
+  return {
+    supported,
+    inferences,
+    unsupported,
+    contradicted,
+    unresolved,
+    confidenceUnknown,
+    citationNeeded: 0,
+    coveragePct,
+    isApplicable: true,
+  };
 }
 
 /** Aggregates across all MATERIAL blocks — the Coverage Score shown when nothing is selected. */
-export function computeDraftAuditSummary(blocks: ReportBlock[], claimLinks: ReportClaimLink[]): ParagraphAuditSummary {
+export function computeDraftAuditSummary(
+  blocks: ReportBlock[],
+  claimLinks: ReportClaimLink[],
+  resolvePreview: ClaimPreviewResolver,
+): ParagraphAuditSummary {
   const materialBlocks = blocks.filter((b) => b.materiality === "material");
   const totals = materialBlocks.reduce(
     (acc, b) => {
-      const s = computeBlockAuditSummary(b, claimLinks);
+      const s = computeBlockAuditSummary(b, claimLinks, resolvePreview);
       acc.supported += s.supported;
       acc.inferences += s.inferences;
       acc.unsupported += s.unsupported;
       acc.contradicted += s.contradicted;
+      acc.unresolved += s.unresolved;
+      acc.confidenceUnknown += s.confidenceUnknown;
       acc.citationNeeded += s.citationNeeded;
       return acc;
     },
     { ...EMPTY_SUMMARY },
   );
-  const total = totals.supported + totals.inferences + totals.unsupported + totals.contradicted;
+  const total =
+    totals.supported + totals.inferences + totals.unsupported + totals.contradicted + totals.unresolved + totals.confidenceUnknown;
   totals.coveragePct = total > 0 ? Math.round(((totals.supported + totals.inferences) / total) * 100) : 0;
   totals.isApplicable = materialBlocks.length > 0;
   return totals;
@@ -164,20 +221,49 @@ export function computeDraftAuditSummary(blocks: ReportBlock[], claimLinks: Repo
 export type BuilderIssueSeverity = "critical" | "warning";
 
 export interface BuilderIssue {
-  key: "contradictions" | "weak_confidence" | "citation_needed";
+  key: "contradictions" | "weak_confidence" | "unresolved_claim" | "confidence_unknown" | "citation_needed";
   label: string;
   count: number;
   severity: BuilderIssueSeverity;
 }
 
 /** Draft-wide issue counters shown in the Audit Inspector's "Issues" panel. */
-export function computeDraftIssues(blocks: ReportBlock[], claimLinks: ReportClaimLink[]): BuilderIssue[] {
+export function computeDraftIssues(
+  blocks: ReportBlock[],
+  claimLinks: ReportClaimLink[],
+  resolvePreview: ClaimPreviewResolver,
+): BuilderIssue[] {
   const contradictions = claimLinks.filter((cl) => cl.relation === "contradicts").length;
+  // AC-3: only a RESOLVED preview with confidence "low" counts here — an
+  // unresolvable claim is a distinct bucket (unresolvedClaims below), never
+  // routed through this "weak confidence" path (that was the defect: a
+  // resolveBuilderClaimPreview() null/undefined optional-chained straight
+  // past the confidence check, so real claims silently never counted here
+  // OR as an unresolved gap).
   const weakConfidence = blocks.reduce((n, b) => {
-    const weakLink = claimLinks.some(
-      (cl) => cl.block_id === b.block_id && resolveBuilderClaimPreview(cl.claim_id)?.confidence === "low",
-    );
+    const weakLink = claimLinks.some((cl) => {
+      if (cl.block_id !== b.block_id) return false;
+      const preview = resolvePreview(cl.claim_id);
+      return preview !== CLAIM_PREVIEW_UNKNOWN && preview.confidence === "low";
+    });
     return n + (weakLink || b.risk_flags.includes("weak_confidence") ? 1 : 0);
+  }, 0);
+  const unresolvedClaims = blocks.reduce((n, b) => {
+    const hasUnresolved = claimLinks.some(
+      (cl) => cl.block_id === b.block_id && resolvePreview(cl.claim_id) === CLAIM_PREVIEW_UNKNOWN,
+    );
+    return n + (hasUnresolved ? 1 : 0);
+  }, 0);
+  // Fix pass: a claim that DID resolve but whose own confidence field is
+  // null/unrecognized — distinct from unresolvedClaims (whole claim
+  // unreachable) and distinct from weakConfidence (a real "low" score).
+  const confidenceUnknownClaims = blocks.reduce((n, b) => {
+    const hasUnknownConfidence = claimLinks.some((cl) => {
+      if (cl.block_id !== b.block_id) return false;
+      const preview = resolvePreview(cl.claim_id);
+      return preview !== CLAIM_PREVIEW_UNKNOWN && preview.confidence === "unknown";
+    });
+    return n + (hasUnknownConfidence ? 1 : 0);
   }, 0);
   const citationNeeded = blocks.filter(
     (b) => b.materiality === "material" && !claimLinks.some((cl) => cl.block_id === b.block_id),
@@ -186,6 +272,8 @@ export function computeDraftIssues(blocks: ReportBlock[], claimLinks: ReportClai
   return [
     { key: "contradictions", label: "Contradictions", count: contradictions, severity: "critical" },
     { key: "weak_confidence", label: "Weak/Low confidence", count: weakConfidence, severity: "warning" },
+    { key: "unresolved_claim", label: "Unresolved claims", count: unresolvedClaims, severity: "warning" },
+    { key: "confidence_unknown", label: "Confidence unknown", count: confidenceUnknownClaims, severity: "warning" },
     { key: "citation_needed", label: "Citation needed", count: citationNeeded, severity: "warning" },
   ];
 }

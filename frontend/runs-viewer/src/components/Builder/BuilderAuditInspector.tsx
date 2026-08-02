@@ -30,7 +30,8 @@
 import { useState } from "react";
 import { SourceCard } from "@/components/SourceCard/SourceCard";
 import type { BuilderIssue, ParagraphAuditSummary } from "@/lib/builderCoverage";
-import { resolveBuilderClaimPreview } from "@/lib/builderMocks";
+import { CLAIM_PREVIEW_UNKNOWN } from "@/lib/builderMocks";
+import type { ClaimPreviewResolver } from "@/lib/builderMocks";
 import type { RFResolvedSource } from "@/types/rf";
 import type { ReportBlock, ReportClaimLink, ReportPublishPreviewResult, ReportVerifyResult } from "@/types/rf/report_draft";
 
@@ -39,6 +40,7 @@ export interface BuilderAuditInspectorProps {
   claimLinks: ReportClaimLink[];
   summary: ParagraphAuditSummary;
   issues: BuilderIssue[];
+  resolveClaimPreview: ClaimPreviewResolver;
   onOpenIssueCategory?: (category: { key: string; label: string; severity: string; count: number }) => void;
   onOpenSource?: (source: RFResolvedSource) => void;
   disabled: boolean;
@@ -88,7 +90,7 @@ function InspectorSection({
   );
 }
 
-function StatRow({ tone, label, value }: { tone: "green" | "blue" | "red" | "amber"; label: string; value: number }) {
+function StatRow({ tone, label, value }: { tone: "green" | "blue" | "red" | "amber" | "gray"; label: string; value: number }) {
   return (
     <div className={`rv-builder-inspector__stat-row rv-builder-inspector__stat-row--${tone}`}>
       <span>{label}</span>
@@ -124,6 +126,7 @@ export function BuilderAuditInspector({
   claimLinks,
   summary,
   issues,
+  resolveClaimPreview,
   onOpenIssueCategory,
   onOpenSource,
   disabled,
@@ -140,7 +143,9 @@ export function BuilderAuditInspector({
   const blockLinks = selectedBlock ? claimLinks.filter((cl) => cl.block_id === selectedBlock.block_id) : [];
   const sourcesByCardId = new Map<string, RFResolvedSource>();
   for (const link of blockLinks) {
-    for (const s of resolveBuilderClaimPreview(link.claim_id)?.sources ?? []) {
+    const preview = resolveClaimPreview(link.claim_id);
+    if (preview === CLAIM_PREVIEW_UNKNOWN) continue;
+    for (const s of preview.sources) {
       if (!sourcesByCardId.has(s.source_card_id)) sourcesByCardId.set(s.source_card_id, s);
     }
   }
@@ -172,6 +177,8 @@ export function BuilderAuditInspector({
           <StatRow tone="green" label="Supported claims" value={summary.supported} />
           <StatRow tone="blue" label="Inferences" value={summary.inferences} />
           <StatRow tone="red" label="Unsupported" value={summary.unsupported + summary.contradicted} />
+          <StatRow tone="gray" label="Unresolved" value={summary.unresolved} />
+          <StatRow tone="gray" label="Confidence unknown" value={summary.confidenceUnknown} />
           <StatRow tone="amber" label="Citation needed" value={summary.citationNeeded} />
         </div>
         <div className="rv-builder-inspector__coverage-score">

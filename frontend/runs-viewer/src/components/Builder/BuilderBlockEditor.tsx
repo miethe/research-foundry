@@ -31,7 +31,8 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { BuilderOutlineSection, ParagraphAuditSummary } from "@/lib/builderCoverage";
-import { resolveBuilderClaimPreview } from "@/lib/builderMocks";
+import { CLAIM_PREVIEW_UNKNOWN } from "@/lib/builderMocks";
+import type { ClaimPreviewResolver } from "@/lib/builderMocks";
 import type { ReportBlock, ReportBlockType, ReportClaimLink } from "@/types/rf/report_draft";
 
 // ── Markdown wrap helpers (operate on a textarea's current selection) ────────
@@ -134,8 +135,16 @@ function BlockToolbar({ disabled, onFormat, onInsert }: ToolbarProps) {
 
 // ── Claim chip status dot (F6: status folded into the chip, not a separate pill) ─
 
-/** relation/link_status -> dot color, matching the audit inspector's stat tick colors (green supports / blue infers / red contradicts-or-broken / amber needs review). */
-function chipDotTone(link: ReportClaimLink): "green" | "blue" | "red" | "amber" {
+/**
+ * relation/link_status -> dot color, matching the audit inspector's stat tick
+ * colors (green supports / blue infers / red contradicts-or-broken / amber
+ * needs review). "gray" (AC-3) takes priority over all of those — an
+ * unresolvable claim's link_status/relation metadata may still say
+ * "supports"/"linked", but the chip must not look identically confident to a
+ * genuinely resolved, high-confidence claim.
+ */
+function chipDotTone(link: ReportClaimLink, isUnresolved: boolean): "green" | "blue" | "red" | "amber" | "gray" {
+  if (isUnresolved) return "gray";
   if (link.relation === "contradicts") return "red";
   if (link.link_status === "missing_claim" || link.link_status === "missing_source") return "red";
   if (link.link_status === "needs_review" || link.link_status === "stale") return "amber";
@@ -151,6 +160,7 @@ interface BlockFieldProps {
   isSelected: boolean;
   showClaimChips: boolean;
   disabled: boolean;
+  resolveClaimPreview: ClaimPreviewResolver;
   registerTextarea: (blockId: string, el: HTMLTextAreaElement | null) => void;
   onSelect: () => void;
   onCommitMarkdown: (markdown: string) => void;
@@ -164,6 +174,7 @@ function BlockField({
   isSelected,
   showClaimChips,
   disabled,
+  resolveClaimPreview,
   registerTextarea,
   onSelect,
   onCommitMarkdown,
@@ -222,17 +233,23 @@ function BlockField({
       {showClaimChips && blockLinks.length > 0 && (
         <div className="rv-builder-block__chips" data-testid={`builder-block-chips-${block.block_id}`}>
           {blockLinks.map((link) => {
-            const preview = resolveBuilderClaimPreview(link.claim_id);
+            const preview = resolveClaimPreview(link.claim_id);
+            const isUnresolved = preview === CLAIM_PREVIEW_UNKNOWN;
+            const chipText = isUnresolved ? "Claim text unavailable" : preview.text;
             return (
               <span
                 key={link.claim_link_id}
                 className="rv-builder-claim-chip"
                 data-testid={`builder-claim-chip-${link.claim_id}`}
-                title={preview?.text ?? "Claim text unavailable"}
+                data-preview-state={isUnresolved ? "unknown" : "resolved"}
+                title={chipText}
               >
-                <span className={`rv-builder-claim-chip__dot rv-builder-claim-chip__dot--${chipDotTone(link)}`} aria-hidden="true" />
+                <span
+                  className={`rv-builder-claim-chip__dot rv-builder-claim-chip__dot--${chipDotTone(link, isUnresolved)}`}
+                  aria-hidden="true"
+                />
                 <code>{link.claim_id}</code>
-                <span className="rv-builder-claim-chip__text">{preview?.text ?? "Claim text unavailable"}</span>
+                <span className="rv-builder-claim-chip__text">{chipText}</span>
                 <button
                   type="button"
                   className="rv-builder-claim-chip__expand"
@@ -276,6 +293,7 @@ export interface BuilderBlockEditorProps {
   sectionCoverage: ParagraphAuditSummary;
   showClaimChips: boolean;
   disabled: boolean;
+  resolveClaimPreview: ClaimPreviewResolver;
   onSelectBlock: (blockId: string) => void;
   onCommitBlockMarkdown: (blockId: string, markdown: string) => void;
   onRemoveClaimLink: (claimLinkId: string) => void;
@@ -292,6 +310,7 @@ export function BuilderBlockEditor({
   sectionCoverage,
   showClaimChips,
   disabled,
+  resolveClaimPreview,
   onSelectBlock,
   onCommitBlockMarkdown,
   onRemoveClaimLink,
@@ -370,6 +389,7 @@ export function BuilderBlockEditor({
             isSelected={block.block_id === selectedBlockId}
             showClaimChips={showClaimChips}
             disabled={disabled}
+            resolveClaimPreview={resolveClaimPreview}
             registerTextarea={registerTextarea}
             onSelect={() => onSelectBlock(block.block_id)}
             onCommitMarkdown={(md) => onCommitBlockMarkdown(block.block_id, md)}

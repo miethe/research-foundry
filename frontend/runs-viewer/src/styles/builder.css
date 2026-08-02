@@ -789,6 +789,10 @@ button.rv-builder-catalog__pill--static:hover {
 .rv-builder-claim-chip__dot--blue   { background: var(--it-blue-500); }
 .rv-builder-claim-chip__dot--red    { background: var(--it-red-500); }
 .rv-builder-claim-chip__dot--amber  { background: var(--it-orange-500); }
+/* AC-3: unresolved-live-claim tone — deliberately distinct from amber (weak
+   confidence / citation needed) so an unresolvable claim never reads as a
+   scored-but-weak claim. */
+.rv-builder-claim-chip__dot--gray   { background: var(--it-neutral-500); }
 
 .rv-builder-claim-chip code {
   font-family: var(--it-font-mono);
@@ -961,6 +965,7 @@ button.rv-builder-catalog__pill--static:hover {
 .rv-builder-inspector__stat-row--blue   { border-left-color: var(--it-blue-500); }
 .rv-builder-inspector__stat-row--red    { border-left-color: var(--it-red-500); }
 .rv-builder-inspector__stat-row--amber  { border-left-color: var(--it-orange-500); }
+.rv-builder-inspector__stat-row--gray   { border-left-color: var(--it-neutral-500); }
 
 .rv-builder-inspector__stat-row strong { font-variant-numeric: tabular-nums; }
 
