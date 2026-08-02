@@ -108,7 +108,7 @@ import secrets
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Literal, Mapping
+from typing import Any, Literal, Mapping, Sequence
 
 from research_foundry import ids
 from research_foundry.auth_identity import AuthIdentity
@@ -538,6 +538,41 @@ def _mint_operation_id(canonical_input_digest: str, idempotency_key: str) -> str
     ).hexdigest()
 
 
+#: K3-NB-5 (research-foundry-operator-mcp-v1 P2/P3 findings ledger): nothing
+#: bound `action_index` to the `action_id` a caller was supposed to present
+#: at that index, so a write-time-contiguous-but-WRONG `action_id` was
+#: accepted and immutable, silently skipping the real action. This reserved
+#: key inside the durable `action_manifest` open map region (never a new
+#: top-level manifest field, never a schema change) carries the
+#: AUTHORITATIVE, service-derived `{"<index>": "<action_id>", ...}` binding
+#: computed from `declared_action_ids` -- the operation's OWN ordered action
+#: list, supplied by the caller as a typed `Sequence[str]` alongside `ctx`,
+#: never parsed out of the free-form, caller-owned `action_manifest`
+#: mapping. It ALWAYS overwrites any caller-supplied value under this same
+#: key (see `_build_manifest`), so a caller cannot forge or shadow the
+#: binding by pre-populating `action_manifest` with its own value at this
+#: key. Leg-b (out of scope here) wires the real ordered `ActionSpec`
+#: sequence already available at the adapter/`run_pipeline` layer into
+#: `declared_action_ids`, and enforces it at `operator_receipt_service.
+#: record_action_receipt` write time via :meth:`OperatorOperationService.
+#: get_expected_action_id`.
+_ACTION_INDEX_BINDING_KEY = "_action_index_binding"
+
+
+def _build_action_index_binding(declared_action_ids: Sequence[str] | None) -> dict[str, str]:
+    """Derive the authoritative `{"<index>": "<action_id>", ...}` mapping
+    from `declared_action_ids`, in order, starting at index 0.
+
+    `None` or empty -- "the operation declared no actions" -- yields the
+    empty dict, never `None` itself, so `action_manifest[_ACTION_INDEX_BINDING_KEY]`
+    is always a dict (possibly empty), never a missing/optional field a
+    reader would have to additionally null-check for shape."""
+
+    if not declared_action_ids:
+        return {}
+    return {str(index): action_id for index, action_id in enumerate(declared_action_ids)}
+
+
 def _build_manifest(
     *,
     operation_id: str,
@@ -545,6 +580,7 @@ def _build_manifest(
     confirmation_id: str,
     consumed_at: str,
     action_manifest: Mapping[str, Any] | None,
+    declared_action_ids: Sequence[str] | None,
     moment: datetime,
 ) -> dict[str, Any]:
     """Build the immutable operation manifest for a freshly consumed
@@ -558,6 +594,11 @@ def _build_manifest(
     part of that request schema (which is `additionalProperties: false` and
     has no field for token-consumption proof or an operation id -- those are
     lookup-time/execute-time facts the request envelope schema predates).
+
+    `action_manifest`'s persisted value is the caller-supplied mapping (if
+    any) with :data:`_ACTION_INDEX_BINDING_KEY` ALWAYS set to the
+    authoritative binding derived from `declared_action_ids` (K3-NB-5) --
+    the one key in this open map region a caller cannot override.
 
     ``ctx.identity`` MUST NOT be ``None`` here -- callers only reach this
     function after `verify_confirmation` returned `outcome == "accepted"`,
@@ -583,6 +624,13 @@ def _build_manifest(
         "requested_at": _iso_utc(moment),
     }
 
+    effective_action_manifest: dict[str, Any] = (
+        dict(action_manifest) if action_manifest is not None else {}
+    )
+    effective_action_manifest[_ACTION_INDEX_BINDING_KEY] = _build_action_index_binding(
+        declared_action_ids
+    )
+
     return {
         "schema_version": "1.0",
         "type": "operator_mcp_operation_manifest",
@@ -597,7 +645,7 @@ def _build_manifest(
             "confirmation_id": confirmation_id,
             "consumed_at": consumed_at,
         },
-        "action_manifest": dict(action_manifest) if action_manifest is not None else {},
+        "action_manifest": effective_action_manifest,
         "created_at": _iso_utc(moment),
     }
 
@@ -1044,6 +1092,7 @@ class OperatorOperationService:
         ctx: "policy.PolicyContext",
         authorization: AuthorizationProof | None = None,
         action_manifest: Mapping[str, Any] | None = None,
+        declared_action_ids: Sequence[str] | None = None,
     ) -> OperationOutcome:
         """The DUR-1 compare-and-swap: verify the presented confirmation,
         atomically transition it `issued -> consumed`, and durably persist
@@ -1126,6 +1175,18 @@ class OperatorOperationService:
         out, and `record_confirmation`'s own `sqlite3.IntegrityError`
         disposition note (see that method's docstring) remains accurate
         precisely because this sibling is now closed too.
+
+        `declared_action_ids` (K3-NB-5) is the operation's OWN ordered
+        action-id sequence -- e.g. `[spec.action_id for spec in actions]`
+        from the SAME `ActionSpec` sequence a P3 adapter already builds for
+        `operator_cancel_resume_service.run_or_replay`, NOT anything parsed
+        out of `action_manifest` (that mapping stays free-form and
+        caller-owned). This method derives the authoritative
+        `action_index -> action_id` binding from it and persists it inside
+        the manifest's own `action_manifest` open map region (see
+        :data:`_ACTION_INDEX_BINDING_KEY`), readable back via
+        :meth:`get_expected_action_id`. `None`/empty means "this operation
+        declares no actions" -- never defaulted to something permissive.
         """
 
         if authorization is None:
@@ -1173,6 +1234,7 @@ class OperatorOperationService:
                     presented_token=presented_token,
                     ctx=ctx,
                     action_manifest=action_manifest,
+                    declared_action_ids=declared_action_ids,
                     moment=moment,
                 )
                 conn.execute("COMMIT")
@@ -1242,6 +1304,7 @@ class OperatorOperationService:
         presented_token: str,
         ctx: "policy.PolicyContext",
         action_manifest: Mapping[str, Any] | None,
+        declared_action_ids: Sequence[str] | None,
         moment: datetime,
     ) -> OperationOutcome:
         """The critical section -- MUST only ever be called while holding
@@ -1395,6 +1458,7 @@ class OperatorOperationService:
             confirmation_id=confirmation_id,
             consumed_at=updated_record["consumed_at"],
             action_manifest=action_manifest,
+            declared_action_ids=declared_action_ids,
             moment=moment,
         )
         validation = self._schemas.validate(manifest["operation"], "operator_mcp_operation")
@@ -1521,3 +1585,48 @@ class OperatorOperationService:
             )
             raise KeyError(f"operation not found: {operation_id}")
         return OperationRecord.from_manifest(json.loads(row["manifest_json"]))
+
+    def get_expected_action_id(self, operation_id: str, action_index: int) -> str | None:
+        """Read accessor (K3-NB-5) for the AUTHORITATIVE `action_id`
+        declared for `action_index` within the PERSISTED operation manifest
+        for `operation_id` -- the binding :meth:`consume_and_create_operation`
+        derived from `declared_action_ids` at creation time, never
+        recomputed from any in-memory caller state.
+
+        Returns `None` when:
+
+        * `operation_id` does not identify a persisted operation (including
+          a wrong-workspace lookup, were this method to scope by identity --
+          it deliberately does not, mirroring `load_operation`'s own
+          `identity=None` no-scoping default; a scoped caller can wrap this
+          with its own `load_operation`/`get_expected_action_id` sequence);
+        * the operation declared no actions at all (`declared_action_ids`
+          was `None`/empty at creation time -- the persisted binding is then
+          the empty dict, not a missing field);
+        * `action_index` is unknown/out of range for the declared sequence,
+          or is not a non-negative `int` at all.
+
+        Never raises for any of the above -- this is a read-side lookup
+        with a bounded `None` result, not a governed-outcome or
+        exception-raising API like `load_operation`. A transient store
+        lock (`OperationStoreUnavailableError`, from the underlying
+        `load_operation` call) is NOT swallowed here: that is a retryable
+        infrastructure condition, not "this binding does not exist," the
+        same distinction `OperationStoreUnavailableError`'s own docstring
+        draws for `load_operation`'s callers.
+        """
+
+        if isinstance(action_index, bool) or not isinstance(action_index, int) or action_index < 0:
+            return None
+        try:
+            operation = self.load_operation(operation_id)
+        except KeyError:
+            return None
+        action_manifest = operation.manifest.get("action_manifest")
+        if not isinstance(action_manifest, Mapping):
+            return None
+        binding = action_manifest.get(_ACTION_INDEX_BINDING_KEY)
+        if not isinstance(binding, Mapping):
+            return None
+        action_id = binding.get(str(action_index))
+        return action_id if isinstance(action_id, str) else None
