@@ -1394,3 +1394,176 @@ def test_all_three_kinds_are_registered() -> None:
     assert base.get_adapter("job.status") is job_lifecycle.STATUS_ADAPTER
     assert base.get_adapter("job.cancel") is job_lifecycle.CANCEL_ADAPTER
     assert base.get_adapter("job.resume") is job_lifecycle.RESUME_ADAPTER
+
+
+# ---------------------------------------------------------------------------
+# get_action_manifest_for_cancel / get_action_manifest_for_resume --
+# base.OperatorAdapterWithActionManifest accessor. Proves: (a) the accessor
+# returns the SAME ordered actions `invoke_cancel`/`invoke_resume` would run,
+# built from the SAME `_build_cancel_actions`/`_build_resume_actions` source
+# (captured via a `base.run_pipeline` spy, not by inspecting private
+# helpers); and (b) calling the accessor has zero side effects -- mirroring
+# this module's own `test_job_cancel_dry_run_never_calls_request_cancellation`/
+# `test_job_resume_dry_run_never_creates_an_attempt` spy style, monkeypatching
+# the SAME real service methods to raise if touched.
+# ---------------------------------------------------------------------------
+
+
+def test_get_action_manifest_for_cancel_matches_what_invoke_cancel_hands_to_run_pipeline(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    op_service = OperatorOperationService(tmp_foundry)
+    operation_id = _target_operation_id(tmp_foundry, op_service)
+    record, token = _cancel_confirmation(tmp_foundry, op_service, operation_id, "cancel-manifest-1")
+
+    captured_kwargs: dict[str, Any] = {}
+    real_run_pipeline = base.run_pipeline
+
+    def _spy_run_pipeline(**kwargs: Any) -> base.OperatorAdapterResult:
+        captured_kwargs.update(kwargs)
+        return real_run_pipeline(**kwargs)
+
+    monkeypatch.setattr(base, "run_pipeline", _spy_run_pipeline)
+
+    invoke_result = job_lifecycle.invoke_cancel(
+        operation_id=operation_id,
+        idempotency_key="cancel-manifest-1",
+        confirmation_record=record,
+        presented_token=token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+    assert invoke_result.ok is True, invoke_result.error
+    assert "actions" in captured_kwargs and "action_manifest" in captured_kwargs
+
+    manifest = job_lifecycle.get_action_manifest_for_cancel(operation_id=operation_id, paths=tmp_foundry)
+
+    assert manifest.action_manifest == captured_kwargs["action_manifest"]
+    assert [a.action_id for a in manifest.actions] == [
+        a.action_id for a in captured_kwargs["actions"]
+    ]
+    assert [a.action_id for a in manifest.actions] == ["request_cancellation"]
+
+
+def test_get_action_manifest_for_cancel_never_calls_request_cancellation(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mirrors `test_job_cancel_dry_run_never_calls_request_cancellation`'s
+    own spy style -- proves building the returned `ActionSpec` never calls
+    its `run()`, not merely by inspection."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    operation_id = _target_operation_id(tmp_foundry, op_service)
+
+    def _must_not_run(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("get_action_manifest_for_cancel must never call request_cancellation")
+
+    monkeypatch.setattr(OperatorCancelResumeService, "request_cancellation", _must_not_run)
+
+    manifest = job_lifecycle.get_action_manifest_for_cancel(operation_id=operation_id, paths=tmp_foundry)
+
+    assert [a.action_id for a in manifest.actions] == ["request_cancellation"]
+    assert manifest.action_manifest == {
+        "adapter": job_lifecycle.CANCEL_OPERATION_KIND,
+        "target_operation_id": operation_id,
+    }
+    # No cancellation was actually requested against the target operation --
+    # the same durable fact `test_job_cancel_requests_cancellation_and_completes`
+    # asserts becomes True only after a REAL `request_cancellation` call.
+    cancel_resume = OperatorCancelResumeService(tmp_foundry, operations=op_service)
+    assert cancel_resume.cancellation_requested(operation_id, workspace_id=_IDENTITY.workspace_id) is False
+
+
+def test_get_action_manifest_for_resume_matches_what_invoke_resume_hands_to_run_pipeline(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    op_service = OperatorOperationService(tmp_foundry)
+    operation_id = _target_operation_id(tmp_foundry, op_service)
+    record, token = _resume_confirmation(tmp_foundry, op_service, operation_id, "resume-manifest-1")
+
+    captured_kwargs: dict[str, Any] = {}
+    real_run_pipeline = base.run_pipeline
+
+    def _spy_run_pipeline(**kwargs: Any) -> base.OperatorAdapterResult:
+        captured_kwargs.update(kwargs)
+        return real_run_pipeline(**kwargs)
+
+    monkeypatch.setattr(base, "run_pipeline", _spy_run_pipeline)
+
+    invoke_result = job_lifecycle.invoke_resume(
+        operation_id=operation_id,
+        idempotency_key="resume-manifest-1",
+        confirmation_record=record,
+        presented_token=token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+    assert invoke_result.ok is True, invoke_result.error
+    assert "actions" in captured_kwargs and "action_manifest" in captured_kwargs
+
+    manifest = job_lifecycle.get_action_manifest_for_resume(operation_id=operation_id, paths=tmp_foundry)
+
+    assert manifest.action_manifest == captured_kwargs["action_manifest"]
+    assert [a.action_id for a in manifest.actions] == [
+        a.action_id for a in captured_kwargs["actions"]
+    ]
+    assert [a.action_id for a in manifest.actions] == ["authorize_and_provision_resume_attempt"]
+
+
+def test_get_action_manifest_for_resume_never_creates_an_attempt_or_reads_receipts(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mirrors `test_job_resume_dry_run_never_creates_an_attempt`'s own spy
+    style -- proves building the returned `ActionSpec` never calls its
+    `run()`: neither `create_attempt` nor the target's terminal-receipt/
+    resume-point reads it would trigger are ever touched."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    operation_id = _target_operation_id(tmp_foundry, op_service)
+
+    def _must_not_create_attempt(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("get_action_manifest_for_resume must never call create_attempt")
+
+    def _must_not_load_terminal_receipt(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("get_action_manifest_for_resume must never read the terminal receipt")
+
+    monkeypatch.setattr(OperatorAttemptAdapter, "create_attempt", _must_not_create_attempt)
+    monkeypatch.setattr(OperatorReceiptService, "load_terminal_receipt", _must_not_load_terminal_receipt)
+
+    manifest = job_lifecycle.get_action_manifest_for_resume(operation_id=operation_id, paths=tmp_foundry)
+
+    assert [a.action_id for a in manifest.actions] == ["authorize_and_provision_resume_attempt"]
+    assert manifest.action_manifest == {
+        "adapter": job_lifecycle.RESUME_OPERATION_KIND,
+        "target_operation_id": operation_id,
+    }
+
+
+def test_cancel_and_resume_adapters_satisfy_action_manifest_protocol_status_does_not() -> None:
+    """`base.OperatorAdapterWithActionManifest` is an OPTIONAL extension of
+    `base.OperatorAdapter` (see that Protocol's own docstring) -- `job.
+    cancel`/`job.resume` implement it, `job.status` (which never builds a
+    `run_pipeline`-shaped action pipeline at all) does not, and is
+    unaffected by this extension existing."""
+
+    assert isinstance(job_lifecycle.CANCEL_ADAPTER, base.OperatorAdapterWithActionManifest)
+    assert isinstance(job_lifecycle.RESUME_ADAPTER, base.OperatorAdapterWithActionManifest)
+    assert not isinstance(job_lifecycle.STATUS_ADAPTER, base.OperatorAdapterWithActionManifest)
+
+
+def test_get_action_manifest_reachable_via_base_get_adapter(tmp_foundry: FoundryPaths) -> None:
+    """The exact call shape `job_lifecycle`'s own module docstring names as
+    the missing seam for a future cross-adapter `job.resume` re-execution
+    path: `base.get_adapter(target_kind).get_action_manifest(...)`."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    operation_id = _target_operation_id(tmp_foundry, op_service)
+
+    adapter = base.get_adapter("job.resume")
+    assert adapter is not None
+    assert isinstance(adapter, base.OperatorAdapterWithActionManifest)
+
+    manifest = adapter.get_action_manifest(operation_id=operation_id, paths=tmp_foundry)
+    assert [a.action_id for a in manifest.actions] == ["authorize_and_provision_resume_attempt"]

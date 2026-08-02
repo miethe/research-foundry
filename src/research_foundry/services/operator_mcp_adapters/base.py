@@ -94,6 +94,8 @@ _logger = logging.getLogger(__name__)
 __all__ = [
     "OperatorAdapterResult",
     "OperatorAdapter",
+    "ActionManifest",
+    "OperatorAdapterWithActionManifest",
     "register",
     "get_adapter",
     "all_adapters",
@@ -148,6 +150,48 @@ class OperatorAdapter(Protocol):
     operation_kind: str
 
     def invoke(self, **kwargs: Any) -> "OperatorAdapterResult": ...
+
+
+@dataclass(frozen=True)
+class ActionManifest:
+    """Ordered, side-effect-free descriptor of an operation kind's action
+    pipeline -- the SAME `action_manifest` dict and `actions` sequence a
+    `run_pipeline` call for the same request would consume, returned
+    instead of executed (OPM-3 follow-up: the accessor `job_lifecycle`'s
+    own module docstring "documented gap" section calls out as the seam a
+    future cross-adapter `job.resume` re-execution path would need).
+
+    An adapter that exposes this (see
+    :class:`OperatorAdapterWithActionManifest`) MUST build `action_manifest`
+    and `actions` from the identical source its own `invoke` hands to
+    `run_pipeline` -- never a second, separately maintained action list --
+    so the two can never drift apart.
+    """
+
+    action_manifest: Mapping[str, Any]
+    actions: Sequence[ActionSpec]
+
+
+@runtime_checkable
+class OperatorAdapterWithActionManifest(OperatorAdapter, Protocol):
+    """Optional extension of :class:`OperatorAdapter` for adapters that can
+    report their own ordered action pipeline WITHOUT running it.
+
+    Deliberately not part of the base `OperatorAdapter` Protocol itself --
+    adding a required method there would retroactively demand every
+    existing P3 adapter module implement it. An adapter implementing this
+    extension's `get_action_manifest` MUST NOT call
+    `operator_operation_service.authorize_for_consumption`,
+    `OperatorOperationService.consume_and_create_operation`,
+    `OperatorCancelResumeService.run_or_replay`, `run_pipeline`, or invoke
+    any returned `ActionSpec.run()` -- zero side effects, zero durable
+    writes. Reads needed to build a correct `ctx` (e.g. resolving the
+    target operation's own workspace/sensitivity, the same bounded,
+    read-only lookup `job.status` itself performs) are permitted; only
+    writes/effects/execution are not.
+    """
+
+    def get_action_manifest(self, **kwargs: Any) -> ActionManifest: ...
 
 
 _REGISTRY: dict[str, OperatorAdapter] = {}
