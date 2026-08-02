@@ -48,8 +48,11 @@ related_documents:
 spike_ref: null
 prd_ref: null
 plan_ref: null
-commit_refs: []
+commit_refs:
+  - "a7f8306"  # feature-branch work commit (orphaned by the squash; see merge_commit)
 pr_refs: []
+merge_commit: "6f5f73d"
+merge_branch: main
 files_affected:
   - frontend/runs-viewer/src/lib/builderMocks.ts
   - frontend/runs-viewer/src/lib/builderCoverage.ts
