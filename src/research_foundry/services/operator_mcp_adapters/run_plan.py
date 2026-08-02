@@ -30,22 +30,23 @@ intent is denied later, through the NORMAL authorization/execution path
 `run_or_replay`'s action-failure handling turns into a governed `"failed"`
 terminal outcome), not through a special early-exit branch here.
 
-**Replay result-recovery gap (documented limitation, NOT fixed here)**: on a
-genuine exact-replay of an ALREADY-terminal operation (`run_or_replay`'s own
-fast path -- a caller re-presenting an already-consumed confirmation after
-the original run finished), the `ActionSpec.run()` closure below is never
-invoked a second time, so the captured `PlanResult` is unavailable and this
-adapter cannot reconstruct the full canonical refs from durable
-operator-layer state alone: `OperatorReceiptService` (P2, out of this task's
-file ownership) exposes no public reader for a persisted `effect_ref` by
-`operation_id`/`action_id` -- only `load_terminal_receipt` (whose
-`effect_receipt_refs` are content digests, not the refs themselves) and
-`load_checkpoint`. `_build_result` below returns a bounded, honest partial
-payload on that path (`"canonical_refs_available": False`) rather than
-fabricating refs. A follow-up adding such a reader to
-`operator_receipt_service.py` would close this; this task does not own that
-file (see the P3 implementer contract's file-ownership list) and reports the
-gap rather than making the change.
+**Replay result-recovery gap (P3-F3, CLOSED)**: on a genuine exact-replay of
+an ALREADY-terminal operation (`run_or_replay`'s own fast path -- a caller
+re-presenting an already-consumed confirmation after the original run
+finished), the `ActionSpec.run()` closure below is never invoked a second
+time, so the captured `PlanResult` is unavailable. This USED TO mean the
+adapter could not reconstruct the full canonical refs from durable
+operator-layer state alone (`OperatorReceiptService` exposed no public
+reader for a persisted `effect_ref` by `operation_id`/`action_id`). That gap
+is now closed: `OperatorReceiptService.load_effect_receipt` (added alongside
+this fix) returns the persisted `effect_receipt`, whose `effect_ref` encodes
+`run_id` (`_effect_ref_for`'s own `"run.plan:<run_id>"` shape); `_build_
+result` below (via `_recover_canonical_refs`) uses that `run_id` to read
+back `run.yaml` -- the SAME durable artifact `planning.plan_run` itself
+wrote -- and reconstructs the identical dict `_plan_result_to_dict` would
+have produced on the original run. `"canonical_refs_available": False` is
+now reserved for the genuinely-absent case (effect_receipt never recorded,
+or `run.yaml` unreadable) -- never fabricated.
 """
 
 from __future__ import annotations
@@ -57,6 +58,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
 
+from research_foundry.auth_identity import AuthIdentity
 from research_foundry.paths import FoundryPaths
 from research_foundry.services import operator_mcp_policy as policy
 from research_foundry.services.operator_cancel_resume_service import (
@@ -66,6 +68,8 @@ from research_foundry.services.operator_cancel_resume_service import (
     OperatorCancelResumeService,
 )
 from research_foundry.services.operator_operation_service import OperatorOperationService
+from research_foundry.services.operator_receipt_service import OperatorReceiptService
+from research_foundry.yamlio import load_yaml
 
 from . import base
 
@@ -95,6 +99,12 @@ _logger = logging.getLogger(__name__)
 __all__ = ["OPERATION_KIND", "RunPlanAdapter", "ADAPTER", "invoke"]
 
 OPERATION_KIND = "run.plan"
+
+#: The one, single `ActionSpec.action_id` this adapter's `invoke()` ever
+#: uses (see `actions=(ActionSpec(action_id=_PLAN_RUN_ACTION_ID, ...),)`
+#: below) -- named so `_recover_canonical_refs`'s `load_effect_receipt`
+#: lookup and the action registration can never drift apart.
+_PLAN_RUN_ACTION_ID = "plan_run"
 
 
 def _effect_ref_for(result: "planning.PlanResult") -> str:
@@ -126,6 +136,77 @@ def _plan_result_to_dict(result: "planning.PlanResult") -> dict[str, Any]:
         "swarm_path": str(result.swarm_path),
         "routing_path": str(result.routing_path),
         "evidence_plan_ref": result.evidence_plan_ref,
+        "canonical_refs_available": True,
+    }
+
+
+def _recover_canonical_refs(
+    operation_id: str, paths: FoundryPaths, *, identity: AuthIdentity | None
+) -> dict[str, Any] | None:
+    """Recover the SAME canonical-ref dict `_plan_result_to_dict` produces
+    on a first run, from durable operator-layer state alone -- the P3-F3
+    fix closing this module's own former "replay result-recovery gap" (see
+    module docstring).
+
+    `OperatorReceiptService.load_effect_receipt` (added alongside this fix)
+    returns the persisted `effect_receipt` for (`operation_id`,
+    `_PLAN_RUN_ACTION_ID`); its `effect_ref` is `_effect_ref_for`'s own
+    `"run.plan:<run_id>"` encoding, so `run_id` is recovered directly from
+    it. Every OTHER canonical ref is then re-derived from `run.yaml` --
+    the SAME durable artifact `planning.plan_run` itself wrote under
+    `paths.run_paths(run_id)` on the original run -- rather than attempting
+    to re-derive `brief_id`/`swarm_id`/`routing_id` from a slug parsed back
+    out of `run_id`'s own `rf_run_<date>_<slug>[_disambiguator]` shape:
+    that parse would be ambiguous (`slugify`'s own output already contains
+    `_`, indistinguishable from a disambiguation suffix `ids.
+    disambiguate_id` may have appended on collision).
+
+    Returns `None` -- NEVER fabricates -- if the effect_receipt is absent,
+    workspace-scoped away (see `load_effect_receipt`'s own no-existence-leak
+    contract), has an unrecognized `effect_ref` shape, or `run.yaml` cannot
+    be read back; callers fall through to the honest `"canonical_refs_
+    available": False` partial on any of these.
+    """
+
+    receipt_service = OperatorReceiptService(paths)
+    receipt = receipt_service.load_effect_receipt(
+        operation_id, _PLAN_RUN_ACTION_ID, identity=identity
+    )
+    if receipt is None:
+        return None
+    effect_ref = receipt.get("effect_ref")
+    prefix = f"{OPERATION_KIND}:"
+    if not isinstance(effect_ref, str) or not effect_ref.startswith(prefix):
+        return None
+    run_id = effect_ref[len(prefix) :]
+    if not run_id:
+        return None
+
+    run_paths = paths.run_paths(run_id)
+    try:
+        run_doc = load_yaml(run_paths.run_yaml)
+    except Exception:
+        _logger.warning(
+            "operator_mcp_adapters.run_plan: exact-replay canonical-ref "
+            "recovery failed reading run.yaml for run_id=%s -- falling "
+            "back to the bounded partial (never fabricating)",
+            run_id,
+        )
+        return None
+    if not isinstance(run_doc, dict):
+        return None
+
+    return {
+        "status": "completed",
+        "run_id": run_id,
+        "brief_id": run_doc.get("brief_id"),
+        "swarm_id": run_doc.get("swarm_id"),
+        "routing_id": run_doc.get("routing_id"),
+        "run_dir": str(run_paths.run),
+        "brief_path": str(run_paths.research_brief),
+        "swarm_path": str(run_paths.swarm_plan),
+        "routing_path": str(run_paths.routing_decision),
+        "evidence_plan_ref": run_doc.get("evidence_plan_ref"),
         "canonical_refs_available": True,
     }
 
@@ -343,8 +424,22 @@ def invoke(
         if execution.status == "completed" and captured:
             return _plan_result_to_dict(captured[0])
         if execution.status == "completed":
-            # Exact replay of an already-terminal operation -- see module
-            # docstring's "replay result-recovery gap" note.
+            # Exact replay of an already-terminal operation -- P3-F3 fix:
+            # recover the canonical refs from the durable effect_receipt
+            # (see module docstring's "replay result-recovery gap" note,
+            # now closed) rather than returning a fabricated payload.
+            operation_id = (
+                execution.terminal_receipt.get("operation_id")
+                if execution.terminal_receipt is not None
+                else None
+            )
+            recovered = (
+                _recover_canonical_refs(operation_id, resolved_paths, identity=ctx.identity)
+                if isinstance(operation_id, str) and operation_id
+                else None
+            )
+            if recovered is not None:
+                return {**recovered, "replayed": True}
             return {
                 "status": "completed",
                 "replayed": True,
@@ -364,7 +459,7 @@ def invoke(
         confirmation_record=confirmation_record,
         presented_token=presented_token,
         action_manifest=action_manifest,
-        actions=(ActionSpec(action_id="plan_run", run=_run),),
+        actions=(ActionSpec(action_id=_PLAN_RUN_ACTION_ID, run=_run),),
         build_result=_build_result,
         dry_run=dry_run,
         paths=resolved_paths,
