@@ -3,15 +3,26 @@ it_schema: 1
 feature_slug: eri-legacy-extraction-status-backfill
 title: "ERI legacy extraction_status backfill — implementation plan"
 doc_type: implementation_plan
-status: not_started
-planning_maturity: draft
+status: in_progress
+planning_maturity: shipped
 tier: 2
 priority: P2
 points: 13
 risk_level: high
 context_class: C3
 created: 2026-07-31
-updated: 2026-07-31
+updated: 2026-08-02
+merge_commit: e3ca9ba
+merge_branch: main
+open_items:
+  - "M1 COMPLETE (AC met). Dry-run over live workspace W: 35 eligible / 452 ineligible / 16 already-set, 34 full_text + 1 partial, authoritative_data_mutated false. OQ-1 resolved to the plan's PRIMARY hypothesis empirically, and caught a real defect: the 100,232-byte edition decodes to exactly 100,000 chars and its stored text is cut mid-word, so recompute must fail closed at >= (asymmetric from extract_bytes' strict >). Without that fix the backfill would have stamped full_text provenance onto a truncated document."
+  - "M2 COMPLETE (AC met on live data) under explicit human Mode-D approval 2026-08-02. 35 applied; manifest diff vs pre-apply baseline = 70 changed (35 edition records + 35 provenance.yaml), 0 removed; no content.bin touched; 35/35 pass binding recompute-and-compare; the 452 + 16 byte-identical; rollback input validated at would_restore 35 writing nothing. Receipt ral_eri_legacy_status_apply_edc5562345bf6620 in the workspace's backfill_operations/. Out-of-band snapshot at ~/rf-ledger-snapshots/20260802-modeD/ (70MB, 503 editions) plus a 16,873-file sha256 baseline manifest."
+  - "M2 scope deviation, deliberate: the repair-on-apply path was REMOVED after three consecutive review rounds found the same defect class (approval-scope drift). It was never in M2's AC — it was added mid-execution in response to a review finding, and the state it repaired is already recoverable by re-running the same rollback receipt. Result: exactly one write loop, iterating the approved set, so touching an unapproved edition is structurally impossible."
+  - "M3 FAILED — BLOCKED, needs a plan-level decision. (a) The AC as written is VACUOUS: it reads by_completeness_tier.verification_failed, but that map tallies only COMPLETED actions — quarantined actions carry completeness_tier: null — so verification_failed can never appear there for a quarantined candidate and the AC is satisfied by construction. (b) On the authoritative per-action reason codes in the import receipt's effects/, verification_failed is STILL 4, unchanged from before this work (with 12 citation_unresolved, 3 source_unavailable, 3 citation_ambiguous; 22 quarantined total). The backfill did not move the number M3 exists to move."
+  - "M3 root-cause hypothesis, UNCONFIRMED: the 4 verification_failed candidates may bind to editions in the 452 assertion_rollout population (2026-07-17) that M2 excludes PERMANENTLY by accepted decision. If so, M3's AC was never achievable under M2's own scope — a plan-internal contradiction. Quarantined candidate effects carry canonical_refs: {} (they quarantine before binding to an edition), so confirming requires a candidate -> source -> edition trace through the packet. Not done."
+  - "PROCESS FINDING (M3): the first M3 run was INERT. Run with cwd inside the git worktree, FoundryPaths.discover() resolved to the WORKTREE root, so the import created a fresh empty assertion_ledger/ there and fresh-acquired 16 sources into it, never touching the backfilled live ledger — while exiting 0 with the correct packet digest and a plausible receipt. Rule: run rf from the main checkout; the data plane does not follow the worktree."
+  - "PROCESS FINDING (M3): dry-run does NOT predict the live outcome, a regression of the property 1f982a7 established. Same packet/workspace/target against the live ledger: --dry-run reported {locator_only: 15, passage_resolved: 4, source_resolved: 4} / 23 completed / 15 quarantined, while the real import gave {source_resolved: 16} / 16 completed / 22 quarantined with passage_resolved 0. Confirmed not a receipt replay (a fresh target run id produced a new receipt and the same live numbers)."
+  - "NON-BLOCKING follow-up: a refused apply leaves a zero-byte .apply.lock in the evidence tree (the lock precedes the pinned-scope check, which is correct ordering and must stay). Now created 0600 and unlinked when nothing mutated, but any ledger-integrity check must still exclude backfill_operations/.apply.lock."
 prd_ref: null
 intenttree_node: node_01KYWX69SRH981ZGE419GM31EE
 intenttree_tree: tree_01KVTH95G09FX26HCRPBV77DAE
