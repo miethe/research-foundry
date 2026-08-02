@@ -17,14 +17,16 @@
  *     data") when the real catalog is empty in static mode.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { BuilderScreen } from "@/screens/BuilderScreen";
 import { AppShell } from "@/app/AppShell";
 import { __resetCatalogIndexCacheForTests } from "@/api/client";
+import { MOCK_REPORT_DRAFT, summarizeDraft } from "@/lib/builderMocks";
 import type { RFRunExport, RFRunSummary } from "@/types/rf";
+import type { ReportBlock, ReportClaimLink, ReportDraft } from "@/types/rf/report_draft";
 
 // ── Catalog fixture (feeds BuilderCatalogPane's left pane) ───────────────────
 
@@ -241,5 +243,200 @@ describe("BuilderCatalogPane — demo fallback when the real catalog is empty", 
     // Inferences tab also resolves from the demo set (clm_038).
     fireEvent.click(screen.getByTestId("builder-catalog-tab-inference"));
     expect(await screen.findByTestId("builder-catalog-row-clm_038")).toBeInTheDocument();
+  });
+});
+
+// ── Loopback-mode anti-flicker (builder-claim-previews-loading-affordance,
+//    AC-2/AC-3) ───────────────────────────────────────────────────────────────
+//
+// api/client.ts reads LOOPBACK_ENABLED as a module-level constant, so — same
+// technique as useBuilderClaimPreviews.test.tsx / p5-auth-header.test.ts — we
+// use vi.resetModules() + a dynamic import of BuilderScreen in each test to
+// force a fresh module evaluation with VITE_RUNS_FRONTEND_LOOPBACK_API="true".
+// The static-mode describe blocks above are unaffected: they never touch
+// import.meta.env, so their statically-imported BuilderScreen keeps seeing
+// loopback disabled.
+
+const LOOPBACK_DRAFT_ID = "rpt_loopback_loading_test";
+
+const LOOPBACK_BLOCKS: ReportBlock[] = [
+  {
+    block_id: "lb_h1",
+    block_type: "heading",
+    order: 0,
+    markdown: "## 1. Section under test",
+    materiality: "material",
+    linked_claim_ids: [],
+    linked_source_ids: [],
+    coverage_status: "narrative",
+    risk_flags: [],
+  },
+  {
+    block_id: "lb_p1",
+    block_type: "paragraph",
+    order: 1,
+    markdown: "A claim resolved from a live catalog-item fetch. [claim:clm_loading]",
+    materiality: "material",
+    linked_claim_ids: ["clm_loading"],
+    linked_source_ids: [],
+    coverage_status: "supported",
+    risk_flags: [],
+  },
+];
+
+const LOOPBACK_CLAIM_LINKS: ReportClaimLink[] = [
+  {
+    claim_link_id: "lcl_1",
+    block_id: "lb_p1",
+    claim_id: "clm_loading",
+    source_run_id: null,
+    catalog_item_id: "ci_loading",
+    relation: "supports",
+    span_start: 0,
+    span_end: 10,
+    quote_text_hash: null,
+    link_status: "linked",
+  },
+];
+
+const LOOPBACK_DRAFT: ReportDraft = {
+  ...MOCK_REPORT_DRAFT,
+  report_draft_id: LOOPBACK_DRAFT_ID,
+  blocks: LOOPBACK_BLOCKS,
+  claim_links: LOOPBACK_CLAIM_LINKS,
+  source_links: [],
+};
+
+const LOOPBACK_DRAFT_SUMMARY = summarizeDraft(LOOPBACK_DRAFT);
+
+// Verbatim-shaped catalog-item payload (same fields as the live smoke fixture
+// in useBuilderClaimPreviews.test.tsx) — only the identifiers differ.
+const LOOPBACK_CATALOG_ITEM = {
+  catalog_item_id: "ci_loading",
+  item_type: "claim",
+  title: "A claim resolved from a live catalog-item fetch.",
+  summary: "A claim resolved from a live catalog-item fetch.",
+  run_id: "rf_run_loopback_loading_test",
+  local_ref: "clm_loading",
+  project: "loopback-loading-test",
+  status: "supported",
+  sensitivity: "public",
+  trust_label: "supported",
+  confidence: "high",
+  source_count: 0,
+  created_at: "2026-08-02T00:00:00Z",
+  updated_at: "2026-08-02T00:00:00Z",
+  payload: {
+    text: "A claim resolved from a live catalog-item fetch, now settled.",
+    materiality: "material",
+    claim_type: "factual",
+    inference_basis: { from_claims: [], reasoning_summary: null },
+    report_locations: [],
+    cited_sources: [],
+  },
+  links: { outgoing: [], incoming: [], citing_drafts: [] },
+  rf_schema_version: "1.0.0",
+};
+
+function setLoopbackEnv(overrides: Record<string, string | undefined>) {
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v === undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete (import.meta.env as Record<string, unknown>)[k];
+    } else {
+      (import.meta.env as Record<string, unknown>)[k] = v;
+    }
+  }
+}
+
+describe("BuilderScreen — loopback-mode anti-flicker (AC-2/AC-3)", () => {
+  let previousFetch: typeof fetch;
+
+  beforeEach(() => {
+    vi.resetModules();
+    previousFetch = globalThis.fetch;
+    setLoopbackEnv({ VITE_RUNS_FRONTEND_LOOPBACK_API: "true", VITE_RUNS_LOOPBACK_API_BASE: "http://127.0.0.1:7432/api" });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = previousFetch;
+    setLoopbackEnv({ VITE_RUNS_FRONTEND_LOOPBACK_API: undefined, VITE_RUNS_LOOPBACK_API_BASE: undefined });
+  });
+
+  it("shows the pending affordance with no Unresolved count / coverage % while the catalog-item fetch is in flight, then the real values once it settles", async () => {
+    let resolveCatalogFetch!: (res: Response) => void;
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+      if (url.endsWith("/reports")) return makeJsonResponse([LOOPBACK_DRAFT_SUMMARY]);
+      if (url.endsWith(`/reports/${LOOPBACK_DRAFT_ID}`)) return makeJsonResponse(LOOPBACK_DRAFT);
+      if (url.includes("/catalog/items/")) {
+        return new Promise<Response>((resolve) => {
+          resolveCatalogFetch = resolve;
+        });
+      }
+      return make404Response(url);
+    }) as unknown as typeof fetch;
+
+    const { BuilderScreen: LoopbackBuilderScreen } = await import("@/screens/BuilderScreen");
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    render(
+      <MemoryRouter initialEntries={["/builder"]}>
+        <QueryClientProvider client={qc}>
+          <LoopbackBuilderScreen />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId("builder-screen")).toBeInTheDocument();
+
+    // In flight: pending affordances render, NOT an Unresolved count or a
+    // coverage percentage (AC-2).
+    expect(await screen.findByTestId("builder-inspector-pending-coverage")).toBeInTheDocument();
+    expect(screen.getByTestId("builder-inspector-pending-issues")).toBeInTheDocument();
+    expect(screen.getByTestId("builder-inspector-pending-sources")).toBeInTheDocument();
+    expect(screen.queryByText(/Unresolved/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("builder-inspector-pct-pill")).toHaveTextContent("…");
+    expect(screen.getByTestId("builder-inspector-pct-pill").textContent).not.toMatch(/%/);
+    expect(screen.queryAllByTestId(/^builder-inspector-issue-/)).toHaveLength(0);
+
+    // AC-6: pending sections carry aria-busy.
+    expect(screen.getByTestId("builder-inspector-selected").getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByTestId("builder-inspector-issues").getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByTestId("builder-inspector-sources").getAttribute("aria-busy")).toBe("true");
+
+    // The pending claim chip reads as "resolving", not as unresolved (AC-3
+    // distinguishes pending from unresolvable at the chip level too).
+    const chip = screen.getByTestId("builder-claim-chip-clm_loading");
+    expect(chip.getAttribute("data-preview-state")).toBe("pending");
+
+    // Reviewer nit: the chip's expand (⤢) action must be disabled while
+    // pending — it routes to a DetailModal lookup against draftClaims, which
+    // excludes every claim still resolving to CLAIM_PREVIEW_UNKNOWN, so
+    // firing it here would open a modal for a claim that isn't in the
+    // collection it searches.
+    expect(within(chip).getByRole("button", { name: "Expand clm_loading" })).toBeDisabled();
+
+    // Settle the fetch.
+    resolveCatalogFetch(makeJsonResponse(LOOPBACK_CATALOG_ITEM));
+
+    // After settling: real values render, no intermediate wrong-value paint
+    // survives (AC-3), and the pending affordances are gone.
+    await waitFor(() => {
+      expect(screen.queryByTestId("builder-inspector-pending-coverage")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("builder-inspector-pending-issues")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("builder-inspector-pending-sources")).not.toBeInTheDocument();
+    expect(screen.getByTestId("builder-inspector-selected").getAttribute("aria-busy")).toBeNull();
+    expect(screen.getByTestId("builder-inspector-issues").getAttribute("aria-busy")).toBeNull();
+    expect(screen.getAllByText(/Unresolved/).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("builder-inspector-pct-pill").textContent).toMatch(/%/);
+    const settledChip = screen.getByTestId("builder-claim-chip-clm_loading");
+    expect(settledChip.getAttribute("data-preview-state")).toBe("resolved");
+
+    // Reviewer nit (settled half): expand is re-enabled once the claim has
+    // actually resolved and draftClaims can back the lookup.
+    await waitFor(() => {
+      expect(within(settledChip).getByRole("button", { name: "Expand clm_loading" })).not.toBeDisabled();
+    });
   });
 });

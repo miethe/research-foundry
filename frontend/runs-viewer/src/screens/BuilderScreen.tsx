@@ -110,7 +110,20 @@ export function BuilderScreen() {
   // mode fetches GET /catalog/items/{catalog_item_id} per distinct claim.
   // Threaded into builderCoverage.ts's pure functions AND the two components
   // below instead of each importing resolveBuilderClaimPreview() directly.
-  const { resolve: resolveClaimPreview } = useBuilderClaimPreviewResolver(draft?.claim_links ?? []);
+  //
+  // builder-claim-previews-loading-affordance: previously `isLoading` was
+  // dropped here, so a claim mid-fetch resolved to the SAME "unknown"
+  // sentinel as a genuinely unresolvable claim and the audit surfaces
+  // rendered confident-looking-but-wrong coverage/issue counts for the
+  // duration of the fetch. Both `previewsLoading` (draft-wide, for
+  // section-level affordances) and `isPending` (per-claim, for chip-level
+  // affordances) are threaded into BuilderDraftCard/BuilderAuditInspector so
+  // pending can render as pending instead of as unresolved.
+  const {
+    resolve: resolveClaimPreview,
+    isLoading: previewsLoading,
+    isPending: isClaimPreviewPending,
+  } = useBuilderClaimPreviewResolver(draft?.claim_links ?? []);
 
   const sectionCoverage = useMemo(() => {
     if (!draft || !activeSection) return computeDraftAuditSummary([], [], resolveClaimPreview);
@@ -449,6 +462,8 @@ export function BuilderScreen() {
           showClaimChips={showClaimChips}
           disabled={disabled}
           resolveClaimPreview={resolveClaimPreview}
+          previewsLoading={previewsLoading}
+          isClaimPreviewPending={isClaimPreviewPending}
           onSelectBlock={setSelectedBlockId}
           onCommitBlockMarkdown={handleCommitMarkdown}
           onRemoveClaimLink={handleRemoveClaimLink}
@@ -463,6 +478,7 @@ export function BuilderScreen() {
           summary={paragraphSummary}
           issues={issues}
           resolveClaimPreview={resolveClaimPreview}
+          previewsLoading={previewsLoading}
           onOpenIssueCategory={handleOpenIssueCategory}
           onOpenSource={handleOpenSource}
           disabled={disabled}

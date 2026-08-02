@@ -161,6 +161,7 @@ interface BlockFieldProps {
   showClaimChips: boolean;
   disabled: boolean;
   resolveClaimPreview: ClaimPreviewResolver;
+  isClaimPreviewPending: (claimId: string) => boolean;
   registerTextarea: (blockId: string, el: HTMLTextAreaElement | null) => void;
   onSelect: () => void;
   onCommitMarkdown: (markdown: string) => void;
@@ -175,6 +176,7 @@ function BlockField({
   showClaimChips,
   disabled,
   resolveClaimPreview,
+  isClaimPreviewPending,
   registerTextarea,
   onSelect,
   onCommitMarkdown,
@@ -233,19 +235,29 @@ function BlockField({
       {showClaimChips && blockLinks.length > 0 && (
         <div className="rv-builder-block__chips" data-testid={`builder-block-chips-${block.block_id}`}>
           {blockLinks.map((link) => {
+            // Pending (loading-affordance) takes priority over resolve()'s
+            // answer: while the catalog-item fetch for this claim is
+            // in-flight, resolve() falls back to CLAIM_PREVIEW_UNKNOWN too —
+            // the SAME sentinel AC-3 uses for a genuinely unresolvable claim.
+            // Checking isClaimPreviewPending() first is what keeps this chip
+            // from reading as "could not be resolved" while it's just
+            // waiting on a response.
+            const pending = isClaimPreviewPending(link.claim_id);
             const preview = resolveClaimPreview(link.claim_id);
             const isUnresolved = preview === CLAIM_PREVIEW_UNKNOWN;
-            const chipText = isUnresolved ? "Claim text unavailable" : preview.text;
+            const chipText = pending ? "Resolving…" : isUnresolved ? "Claim text unavailable" : preview.text;
+            const dotTone = pending ? "pending" : chipDotTone(link, isUnresolved);
             return (
               <span
                 key={link.claim_link_id}
-                className="rv-builder-claim-chip"
+                className={`rv-builder-claim-chip${pending ? " rv-builder-claim-chip--pending" : ""}`}
                 data-testid={`builder-claim-chip-${link.claim_id}`}
-                data-preview-state={isUnresolved ? "unknown" : "resolved"}
+                data-preview-state={pending ? "pending" : isUnresolved ? "unknown" : "resolved"}
                 title={chipText}
+                aria-busy={pending || undefined}
               >
                 <span
-                  className={`rv-builder-claim-chip__dot rv-builder-claim-chip__dot--${chipDotTone(link, isUnresolved)}`}
+                  className={`rv-builder-claim-chip__dot rv-builder-claim-chip__dot--${dotTone}`}
                   aria-hidden="true"
                 />
                 <code>{link.claim_id}</code>
@@ -254,7 +266,15 @@ function BlockField({
                   type="button"
                   className="rv-builder-claim-chip__expand"
                   aria-label={`Expand ${link.claim_id}`}
-                  title="Expand claim"
+                  title={pending ? "Still resolving — nothing to expand yet" : "Expand claim"}
+                  // Nit fix: onOpenClaim() routes to a DetailModal lookup against
+                  // draftClaims (BuilderScreen.tsx), which — same as resolve() —
+                  // excludes every claim still resolving to CLAIM_PREVIEW_UNKNOWN.
+                  // Firing it while pending would open a modal for an id that
+                  // isn't in the collection it searches. Same idiom as the ×
+                  // unlink button below: a plain `disabled` attribute, no new
+                  // CSS.
+                  disabled={pending}
                   onClick={(e) => {
                     e.stopPropagation();
                     onOpenClaim?.(link.claim_id);
@@ -294,6 +314,10 @@ export interface BuilderBlockEditorProps {
   showClaimChips: boolean;
   disabled: boolean;
   resolveClaimPreview: ClaimPreviewResolver;
+  /** builder-claim-previews-loading-affordance: draft-wide, for the section coverage bar. */
+  previewsLoading: boolean;
+  /** builder-claim-previews-loading-affordance: per-claim, for chip-level pending affordances. */
+  isClaimPreviewPending: (claimId: string) => boolean;
   onSelectBlock: (blockId: string) => void;
   onCommitBlockMarkdown: (blockId: string, markdown: string) => void;
   onRemoveClaimLink: (claimLinkId: string) => void;
@@ -311,6 +335,8 @@ export function BuilderBlockEditor({
   showClaimChips,
   disabled,
   resolveClaimPreview,
+  previewsLoading,
+  isClaimPreviewPending,
   onSelectBlock,
   onCommitBlockMarkdown,
   onRemoveClaimLink,
@@ -368,12 +394,19 @@ export function BuilderBlockEditor({
         <h4>
           {section.numberLabel} {section.text}
         </h4>
-        <div className="rv-builder-editor__coverage">
+        <div className="rv-builder-editor__coverage" aria-busy={previewsLoading || undefined}>
           <span>Section coverage</span>
           <span className="rv-builder-editor__coverage-bar">
-            <span className="rv-builder-editor__coverage-fill" style={{ width: `${sectionCoverage.isApplicable ? sectionCoverage.coveragePct : 0}%` }} />
+            <span
+              className="rv-builder-editor__coverage-fill"
+              style={{ width: `${!previewsLoading && sectionCoverage.isApplicable ? sectionCoverage.coveragePct : 0}%` }}
+            />
           </span>
-          <span>{sectionCoverage.isApplicable ? `${sectionCoverage.coveragePct}%` : "—"}</span>
+          {/* previewsLoading mirrors the existing !isApplicable "—" treatment above
+              (loading-affordance §5): a fetch in flight is not a 0%-filled bar. */}
+          <span data-testid="builder-editor-section-coverage-value">
+            {previewsLoading ? "…" : sectionCoverage.isApplicable ? `${sectionCoverage.coveragePct}%` : "—"}
+          </span>
         </div>
       </div>
 
@@ -390,6 +423,7 @@ export function BuilderBlockEditor({
             showClaimChips={showClaimChips}
             disabled={disabled}
             resolveClaimPreview={resolveClaimPreview}
+            isClaimPreviewPending={isClaimPreviewPending}
             registerTextarea={registerTextarea}
             onSelect={() => onSelectBlock(block.block_id)}
             onCommitMarkdown={(md) => onCommitBlockMarkdown(block.block_id, md)}

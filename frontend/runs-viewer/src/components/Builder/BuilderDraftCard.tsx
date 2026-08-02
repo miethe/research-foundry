@@ -39,6 +39,10 @@ export interface BuilderDraftCardProps {
   showClaimChips: boolean;
   disabled: boolean;
   resolveClaimPreview: ClaimPreviewResolver;
+  /** builder-claim-previews-loading-affordance: draft-wide, for the section coverage bar. */
+  previewsLoading: boolean;
+  /** builder-claim-previews-loading-affordance: per-claim, for chip-level pending affordances. */
+  isClaimPreviewPending: (claimId: string) => boolean;
   onSelectBlock: (blockId: string) => void;
   onCommitBlockMarkdown: (blockId: string, markdown: string) => void;
   onRemoveClaimLink: (claimLinkId: string) => void;
@@ -63,6 +67,8 @@ export function BuilderDraftCard({
   showClaimChips,
   disabled,
   resolveClaimPreview,
+  previewsLoading,
+  isClaimPreviewPending,
   onSelectBlock,
   onCommitBlockMarkdown,
   onRemoveClaimLink,
@@ -112,6 +118,8 @@ export function BuilderDraftCard({
           showClaimChips={showClaimChips}
           disabled={disabled}
           resolveClaimPreview={resolveClaimPreview}
+          previewsLoading={previewsLoading}
+          isClaimPreviewPending={isClaimPreviewPending}
           onSelectBlock={onSelectBlock}
           onCommitBlockMarkdown={onCommitBlockMarkdown}
           onRemoveClaimLink={onRemoveClaimLink}

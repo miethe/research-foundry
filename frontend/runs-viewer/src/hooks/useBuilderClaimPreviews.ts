@@ -99,6 +99,7 @@ function catalogItemToPreview(claimId: string, item: CatalogItemDetail | null): 
 export function useBuilderClaimPreviewResolver(claimLinks: ReportClaimLink[]): {
   resolve: ClaimPreviewResolver;
   isLoading: boolean;
+  isPending: (claimId: string) => boolean;
 } {
   const live = isLoopbackEnabled();
 
@@ -123,14 +124,21 @@ export function useBuilderClaimPreviewResolver(claimLinks: ReportClaimLink[]): {
     return {
       resolve: (claimId: string) => resolveBuilderClaimPreview(claimId) ?? CLAIM_PREVIEW_UNKNOWN,
       isLoading: false,
+      isPending: () => false,
     };
   }
 
   const resolved = new Map<string, BuilderClaimPreviewOrUnknown>();
+  // Pending is per-claim, not per-hook-call — see builder-claim-previews-loading
+  // -affordance.md's Approach §1. A claim link with no catalog_item_id resolves
+  // to "unknown" synchronously above and is never pending; conflating it with a
+  // sibling's in-flight fetch would just swap one wrong label for another.
+  const pendingByClaimId = new Map<string, boolean>();
   let anyLoading = false;
   entries.forEach(([claimId, catalogItemId], i) => {
     if (!catalogItemId) {
       resolved.set(claimId, CLAIM_PREVIEW_UNKNOWN);
+      pendingByClaimId.set(claimId, false);
       return;
     }
     const q = queries[i];
@@ -139,13 +147,16 @@ export function useBuilderClaimPreviewResolver(claimLinks: ReportClaimLink[]): {
       // back to "unknown" for the brief window before the fetch completes,
       // rather than fabricating a preview.
       anyLoading = true;
+      pendingByClaimId.set(claimId, true);
       return;
     }
+    pendingByClaimId.set(claimId, false);
     resolved.set(claimId, catalogItemToPreview(claimId, q.data ?? null));
   });
 
   return {
     resolve: (claimId: string) => resolved.get(claimId) ?? CLAIM_PREVIEW_UNKNOWN,
     isLoading: anyLoading,
+    isPending: (claimId: string) => pendingByClaimId.get(claimId) ?? false,
   };
 }

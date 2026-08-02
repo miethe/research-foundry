@@ -41,6 +41,15 @@ export interface BuilderAuditInspectorProps {
   summary: ParagraphAuditSummary;
   issues: BuilderIssue[];
   resolveClaimPreview: ClaimPreviewResolver;
+  /**
+   * builder-claim-previews-loading-affordance: draft-wide pending flag from
+   * useBuilderClaimPreviewResolver(). While true, `summary`/`issues` were
+   * computed against the SAME "unknown" sentinel AC-3 uses for a genuinely
+   * unresolvable claim (resolve() can't tell the difference yet) — so this
+   * panel renders a pending affordance instead of those numbers rather than
+   * asserting a coverage/issue verdict it can't actually back yet.
+   */
+  previewsLoading?: boolean;
   onOpenIssueCategory?: (category: { key: string; label: string; severity: string; count: number }) => void;
   onOpenSource?: (source: RFResolvedSource) => void;
   disabled: boolean;
@@ -61,17 +70,20 @@ function InspectorSection({
   badge,
   defaultOpen = true,
   testId,
+  busy,
   children,
 }: {
   title: string;
   badge?: React.ReactNode;
   defaultOpen?: boolean;
   testId: string;
+  /** builder-claim-previews-loading-affordance (AC-6): aria-busy on a section whose content is a pending affordance, not a settled answer. */
+  busy?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className="rv-builder-inspector__card" data-testid={testId}>
+    <section className="rv-builder-inspector__card" data-testid={testId} aria-busy={busy || undefined}>
       <button
         type="button"
         className="rv-builder-inspector__card-header"
@@ -127,6 +139,7 @@ export function BuilderAuditInspector({
   summary,
   issues,
   resolveClaimPreview,
+  previewsLoading = false,
   onOpenIssueCategory,
   onOpenSource,
   disabled,
@@ -161,8 +174,13 @@ export function BuilderAuditInspector({
       <InspectorSection
         title={selectedBlock ? "Selected paragraph" : "Draft overview"}
         testId="builder-inspector-selected"
+        busy={previewsLoading}
         badge={
-          summary.isApplicable ? (
+          previewsLoading ? (
+            <span className="it-chip" data-testid="builder-inspector-pct-pill">
+              …
+            </span>
+          ) : summary.isApplicable ? (
             <span className={`it-chip ${coveragePillTone(summary.coveragePct)}`} data-testid="builder-inspector-pct-pill">
               {summary.coveragePct}% supported
             </span>
@@ -173,74 +191,109 @@ export function BuilderAuditInspector({
           )
         }
       >
-        <div className="rv-builder-inspector__stat-list">
-          <StatRow tone="green" label="Supported claims" value={summary.supported} />
-          <StatRow tone="blue" label="Inferences" value={summary.inferences} />
-          <StatRow tone="red" label="Unsupported" value={summary.unsupported + summary.contradicted} />
-          <StatRow tone="gray" label="Unresolved" value={summary.unresolved} />
-          <StatRow tone="gray" label="Confidence unknown" value={summary.confidenceUnknown} />
-          <StatRow tone="amber" label="Citation needed" value={summary.citationNeeded} />
-        </div>
-        <div className="rv-builder-inspector__coverage-score">
-          <span>Coverage score</span>
-          {summary.isApplicable ? (
-            <>
-              <span className="rv-builder-editor__coverage-bar">
-                <span className="rv-builder-editor__coverage-fill" style={{ width: `${summary.coveragePct}%` }} />
-              </span>
-              <span>{summary.coveragePct}%</span>
-            </>
-          ) : (
-            <span className="rv-muted">— not scored (narrative)</span>
-          )}
-        </div>
+        {previewsLoading ? (
+          // AC-2: no Unresolved count / coverage percentage while claim-item
+          // fetches are still in flight — those numbers would be scored
+          // against the "unknown" fallback, i.e. confidently wrong.
+          <p className="rv-loading" data-testid="builder-inspector-pending-coverage">
+            Resolving claims…
+          </p>
+        ) : (
+          <>
+            <div className="rv-builder-inspector__stat-list">
+              <StatRow tone="green" label="Supported claims" value={summary.supported} />
+              <StatRow tone="blue" label="Inferences" value={summary.inferences} />
+              <StatRow tone="red" label="Unsupported" value={summary.unsupported + summary.contradicted} />
+              <StatRow tone="gray" label="Unresolved" value={summary.unresolved} />
+              <StatRow tone="gray" label="Confidence unknown" value={summary.confidenceUnknown} />
+              <StatRow tone="amber" label="Citation needed" value={summary.citationNeeded} />
+            </div>
+            <div className="rv-builder-inspector__coverage-score">
+              <span>Coverage score</span>
+              {summary.isApplicable ? (
+                <>
+                  <span className="rv-builder-editor__coverage-bar">
+                    <span className="rv-builder-editor__coverage-fill" style={{ width: `${summary.coveragePct}%` }} />
+                  </span>
+                  <span>{summary.coveragePct}%</span>
+                </>
+              ) : (
+                <span className="rv-muted">— not scored (narrative)</span>
+              )}
+            </div>
+          </>
+        )}
       </InspectorSection>
 
       <InspectorSection
         title="Issues"
         testId="builder-inspector-issues"
-        badge={totalIssues > 0 ? <span className="it-chip orange">{totalIssues}</span> : <span className="it-chip green">0</span>}
+        busy={previewsLoading}
+        badge={
+          previewsLoading ? (
+            <span className="it-chip">…</span>
+          ) : totalIssues > 0 ? (
+            <span className="it-chip orange">{totalIssues}</span>
+          ) : (
+            <span className="it-chip green">0</span>
+          )
+        }
       >
-        <ul className="rv-builder-inspector__issue-list">
-          {issues.map((issue) => {
-            const rowContent = (
-              <>
-                <span className={`rv-builder-inspector__issue-icon rv-builder-inspector__issue-icon--${issue.severity}`} aria-hidden="true">
-                  {issue.count > 0 ? ISSUE_ICON[issue.severity] : "•"}
-                </span>
-                <span className={issue.count > 0 ? `rv-builder-inspector__issue-flag rv-builder-inspector__issue-flag--${issue.severity}` : "rv-muted"}>
-                  {issue.label}
-                </span>
-                <strong>{issue.count}</strong>
-              </>
-            );
-            return (
-              <li key={issue.key} data-severity={issue.severity} className={issue.count === 0 ? "rv-builder-inspector__issue--empty" : undefined}>
-                {issue.count > 0 && onOpenIssueCategory ? (
-                  <button
-                    type="button"
-                    className="rv-builder-inspector__issue-btn"
-                    onClick={() => onOpenIssueCategory(issue)}
-                    aria-label={`Open ${issue.label} issue group`}
-                    data-testid={`builder-inspector-issue-${issue.key}`}
-                  >
-                    {rowContent}
-                  </button>
-                ) : (
-                  <span className="rv-builder-inspector__issue-row">{rowContent}</span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        {previewsLoading ? (
+          // Suppressed wholesale, not per-category: 3 of the 5 issue
+          // categories (unresolved_claim, confidence_unknown, weak_confidence)
+          // are preview-derived, and a partially-correct issue list is
+          // exactly the false-confidence failure this affordance removes.
+          <p className="rv-loading" data-testid="builder-inspector-pending-issues">
+            Resolving claims…
+          </p>
+        ) : (
+          <ul className="rv-builder-inspector__issue-list">
+            {issues.map((issue) => {
+              const rowContent = (
+                <>
+                  <span className={`rv-builder-inspector__issue-icon rv-builder-inspector__issue-icon--${issue.severity}`} aria-hidden="true">
+                    {issue.count > 0 ? ISSUE_ICON[issue.severity] : "•"}
+                  </span>
+                  <span className={issue.count > 0 ? `rv-builder-inspector__issue-flag rv-builder-inspector__issue-flag--${issue.severity}` : "rv-muted"}>
+                    {issue.label}
+                  </span>
+                  <strong>{issue.count}</strong>
+                </>
+              );
+              return (
+                <li key={issue.key} data-severity={issue.severity} className={issue.count === 0 ? "rv-builder-inspector__issue--empty" : undefined}>
+                  {issue.count > 0 && onOpenIssueCategory ? (
+                    <button
+                      type="button"
+                      className="rv-builder-inspector__issue-btn"
+                      onClick={() => onOpenIssueCategory(issue)}
+                      aria-label={`Open ${issue.label} issue group`}
+                      data-testid={`builder-inspector-issue-${issue.key}`}
+                    >
+                      {rowContent}
+                    </button>
+                  ) : (
+                    <span className="rv-builder-inspector__issue-row">{rowContent}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </InspectorSection>
 
       <InspectorSection
         title="Source cards"
         testId="builder-inspector-sources"
-        badge={<span className="it-chip">{sourcesByCardId.size}</span>}
+        busy={previewsLoading}
+        badge={previewsLoading ? <span className="it-chip">…</span> : <span className="it-chip">{sourcesByCardId.size}</span>}
       >
-        {sourcesByCardId.size > 0 ? (
+        {previewsLoading ? (
+          <p className="rv-loading" data-testid="builder-inspector-pending-sources">
+            Resolving claims…
+          </p>
+        ) : sourcesByCardId.size > 0 ? (
           <div className="rv-catalog-inspector__source-list">
             {Array.from(sourcesByCardId.values()).map((s) => (
               <button

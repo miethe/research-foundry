@@ -794,6 +794,12 @@ button.rv-builder-catalog__pill--static:hover {
    scored-but-weak claim. */
 .rv-builder-claim-chip__dot--gray   { background: var(--it-neutral-500); }
 
+/* builder-claim-previews-loading-affordance: pending is distinct from BOTH a
+   scored claim and AC-3's unresolved-gray — a catalog-item fetch in flight is
+   not (yet) an answer either way. */
+.rv-builder-claim-chip__dot--pending { background: var(--it-neutral-300); }
+.rv-builder-claim-chip--pending { opacity: 0.7; }
+
 .rv-builder-claim-chip code {
   font-family: var(--it-font-mono);
   color: var(--it-teal-600);

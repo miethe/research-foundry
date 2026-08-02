@@ -171,3 +171,77 @@ describe("useBuilderClaimPreviewResolver — loopback mode (AC-1/AC-3/AC-5)", ()
     expect(preview.status).toBe("supported");
   });
 });
+
+// ── builder-claim-previews-loading-affordance: isLoading / isPending ────────
+
+describe("useBuilderClaimPreviewResolver — pending affordance (AC-1/AC-4)", () => {
+  let previousFetch: typeof fetch;
+
+  beforeEach(() => {
+    vi.resetModules();
+    previousFetch = globalThis.fetch;
+    setEnv({ VITE_RUNS_FRONTEND_LOOPBACK_API: "true", VITE_RUNS_LOOPBACK_API_BASE: "http://127.0.0.1:7432/api" });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = previousFetch;
+    setEnv({ VITE_RUNS_FRONTEND_LOOPBACK_API: undefined, VITE_RUNS_LOOPBACK_API_BASE: undefined });
+  });
+
+  it("isLoading is true while the catalog-item fetch is in flight, false once it settles", async () => {
+    let resolveFetch!: (res: Response) => void;
+    globalThis.fetch = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    ) as unknown as typeof fetch;
+
+    const { useBuilderClaimPreviewResolver } = await import("./useBuilderClaimPreviews");
+    const links = [link({ claim_link_id: "l1", block_id: "b1", claim_id: "clm_025", catalog_item_id: "ci_02665bb4cfd2" })];
+
+    const { result } = renderHook(() => useBuilderClaimPreviewResolver(links), { wrapper });
+
+    // In flight — isLoading true, and resolve() has not yet fabricated an answer.
+    expect(result.current.isLoading).toBe(true);
+
+    resolveFetch(makeJsonResponse(LIVE_CLAIM_ITEM));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+    expect(result.current.resolve("clm_025")).not.toBe("unknown");
+  });
+
+  it("AC-4: isPending is false for a claim link with no catalog_item_id even while a sibling claim is still loading", async () => {
+    let resolveFetch!: (res: Response) => void;
+    globalThis.fetch = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    ) as unknown as typeof fetch;
+
+    const { useBuilderClaimPreviewResolver } = await import("./useBuilderClaimPreviews");
+    const links = [
+      link({ claim_link_id: "l1", block_id: "b1", claim_id: "clm_pending", catalog_item_id: "ci_02665bb4cfd2" }),
+      link({ claim_link_id: "l2", block_id: "b2", claim_id: "clm_orphan", catalog_item_id: null }),
+    ];
+
+    const { result } = renderHook(() => useBuilderClaimPreviewResolver(links), { wrapper });
+
+    // The sibling with a catalog_item_id is still in flight...
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.isPending("clm_pending")).toBe(true);
+    // ...but the orphan (no catalog_item_id) never had a fetch to wait on.
+    expect(result.current.isPending("clm_orphan")).toBe(false);
+    expect(result.current.resolve("clm_orphan")).toBe("unknown");
+
+    resolveFetch(makeJsonResponse(LIVE_CLAIM_ITEM));
+
+    await waitFor(() => {
+      expect(result.current.isPending("clm_pending")).toBe(false);
+    });
+    expect(result.current.isPending("clm_orphan")).toBe(false);
+  });
+});
