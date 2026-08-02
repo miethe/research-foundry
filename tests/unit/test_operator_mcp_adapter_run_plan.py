@@ -352,6 +352,110 @@ def test_invoke_result_matches_direct_plan_run_call(
     assert result.result["canonical_refs_available"] is True
 
 
+def test_invoke_exact_replay_recovers_canonical_refs_via_effect_receipt(
+    tmp_foundry: FoundryPaths, sample_idea_text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P3-F3 fix: on an exact replay of an already-terminal `run.plan`
+    operation, `_build_result` no longer returns the bounded
+    `"canonical_refs_available": False` partial -- it recovers the SAME
+    canonical refs the first run produced from the durable `effect_receipt`
+    (via the new `OperatorReceiptService.load_effect_receipt` reader) and
+    `run.yaml`.
+
+    Drives a REAL first run through the adapter (uninstrumented -- unlike
+    `test_invoke_result_matches_direct_plan_run_call`, this test does not
+    need to spy on `planning.plan_run`, only on the adapter's OWN bounded
+    result), then re-presents a FRESH confirmation for the SAME
+    `idempotency_key` (the `test_fresh_confirmation_same_idempotency_key_
+    and_digest_is_exact_replay` shape from `test_operator_operation_
+    service.py`, exercised through the adapter's own `invoke()` surface) --
+    `consume_and_create_operation` resolves this to `"exact_replay"`,
+    `run_or_replay` never re-invokes the `ActionSpec.run()` closure, and
+    `_build_result` must recover the refs from durable state alone.
+    """
+
+    intent_id, _ = _make_intent(sample_idea_text, sensitivity="personal", tmp_foundry=tmp_foundry)
+
+    identity = AuthIdentity("alice", "ws-mine", ("owner",))
+    monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: identity)
+
+    effective_sensitivity = policy.resolve_effective_sensitivity(
+        run_plan._resolve_intent_sensitivity(intent_id, tmp_foundry)
+    )
+    op_service = OperatorOperationService(tmp_foundry)
+    idempotency_key = "idem-exact-replay-refs"
+
+    def _mint() -> Any:
+        ctx = policy.PolicyContext.for_configured_operator(
+            operation_kind=run_plan.OPERATION_KIND,
+            idempotency_key=idempotency_key,
+            effective_sensitivity=effective_sensitivity,
+            sensitivity_ceiling="client_sensitive",
+            input_payload={
+                "intent_id": intent_id,
+                "depth": "standard",
+                "audience": "technical",
+                "max_cost_usd": 5.0,
+                "max_runtime_minutes": 60,
+                "freshness_days": 180,
+            },
+            paths=tmp_foundry,
+        )
+        issued = policy.mint_confirmation(ctx, now=ids.now())
+        op_service.record_confirmation(issued.record)
+        return issued
+
+    issued_first = _mint()
+    first = run_plan.invoke(
+        intent_id=intent_id,
+        idempotency_key=idempotency_key,
+        confirmation_record=issued_first.record,
+        presented_token=issued_first.token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+    assert first.ok is True, first.error
+    assert first.result is not None
+    assert first.result["canonical_refs_available"] is True
+    assert "replayed" not in first.result
+
+    # A FRESH confirmation for the SAME idempotency_key/canonical digest --
+    # `consume_and_create_operation` resolves this to the pre-existing
+    # operation ("exact_replay"), so `run_or_replay` takes its fast path
+    # and `ActionSpec.run()` (and therefore `captured` inside `invoke()`)
+    # is never touched a second time.
+    issued_second = _mint()
+    second = run_plan.invoke(
+        intent_id=intent_id,
+        idempotency_key=idempotency_key,
+        confirmation_record=issued_second.record,
+        presented_token=issued_second.token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+    assert second.ok is True, second.error
+    assert second.result is not None
+    assert second.operation_id == first.operation_id
+
+    assert second.result["replayed"] is True
+    assert second.result["canonical_refs_available"] is True
+    for field in (
+        "status",
+        "run_id",
+        "brief_id",
+        "swarm_id",
+        "routing_id",
+        "run_dir",
+        "brief_path",
+        "swarm_path",
+        "routing_path",
+        "evidence_plan_ref",
+    ):
+        assert second.result[field] == first.result[field], field
+
+
 # ---------------------------------------------------------------------------
 # Dry run: zero effects (requirement 4, proven at the adapter's own surface)
 # ---------------------------------------------------------------------------

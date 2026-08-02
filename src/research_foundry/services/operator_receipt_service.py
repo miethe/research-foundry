@@ -1460,6 +1460,67 @@ class OperatorReceiptService:
             return None
         return json.loads(row["checkpoint_json"])
 
+    def load_effect_receipt(
+        self, operation_id: str, action_id: str, *, identity: AuthIdentity | None = None
+    ) -> Mapping[str, Any] | None:
+        """Return the persisted `effect_receipt` for (`operation_id`,
+        `action_id`), or `None` if none recorded yet.
+
+        **P2S-BLOCK-3**: identical identity-scoping contract as
+        :meth:`load_terminal_receipt` -- see that method's docstring.
+        `identity=None` (the default) performs no workspace scoping; when
+        `identity` IS supplied, an effect_receipt belonging to a DIFFERENT
+        workspace returns `None` -- the IDENTICAL shape as "not yet
+        recorded", indistinguishable to the caller, no derived detail
+        leaked. Unlike `terminal_receipts`/`checkpoints`, the
+        `effect_receipts` table carries NO `workspace_id` column of its
+        own (see :meth:`record_effect_receipt`'s INSERT), so the
+        comparison workspace is DERIVED via `_derive_workspace_id` from
+        the authoritative `operations` row -- the SAME helper (and the
+        SAME trust rationale: `operations` rows are immutable) the writer
+        itself uses to authorize the original write.
+
+        If more than one `effect_receipt` row somehow exists for this
+        `(operation_id, action_id)` pair, the earliest (by `rowid`) is
+        returned, deterministically -- `record_effect_receipt`'s own
+        MISMATCHED/DUPLICATE guards make this practically always exactly
+        one row, but this method does not assume that invariant holds
+        forever.
+        """
+
+        conn = _ops_store._connect(self._paths)
+        try:
+            _ops_store._ensure_schema(conn)
+            row = conn.execute(
+                "SELECT receipt_json FROM effect_receipts"
+                " WHERE operation_id = ? AND action_id = ?"
+                " ORDER BY rowid LIMIT 1",
+                (operation_id, action_id),
+            ).fetchone()
+            if row is not None and identity is not None:
+                resolved_workspace_id = _derive_workspace_id(conn, operation_id)
+        except sqlite3.OperationalError as exc:
+            # K4-NB-1: see `load_terminal_receipt`'s identical guard.
+            _raise_store_unavailable(exc, method="load_effect_receipt", operation_id=operation_id)
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        if identity is not None and resolved_workspace_id != identity.workspace_id:
+            _logger.error(
+                json.dumps(
+                    {
+                        "event": "workspace_scope_enforced_denial",
+                        "record_type": "effect_receipt",
+                        "record_id": operation_id,
+                        "record_workspace_id": resolved_workspace_id,
+                        "identity_workspace_id": identity.workspace_id,
+                    }
+                )
+            )
+            return None
+        return json.loads(row["receipt_json"])
+
     # -- internal ---------------------------------------------------------
 
     def _validate_receipt(self, receipt: Mapping[str, Any]) -> None:
