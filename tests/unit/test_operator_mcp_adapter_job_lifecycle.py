@@ -1189,6 +1189,62 @@ def test_job_cancel_denies_above_ceiling_h7_guard_stage_indistinguishable_from_m
     assert ceiling_calls == [tmp_foundry, tmp_foundry]
 
 
+def test_job_cancel_denies_above_ceiling_wet_path_never_calls_request_cancellation(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """WET-path (`dry_run=False`) sibling of the H7 guard-stage denial test
+    immediately above. `base.run_pipeline`'s own documented ordering
+    ("authorization precedes any lookup of the target") means
+    `authorize_for_consumption` runs BEFORE the confirmation stage is ever
+    reached on the non-dry-run path too -- an above-ceiling denial at the
+    guard stage returns immediately, `confirmation_record`/
+    `presented_token` (deliberately `None`/`None` here, same as this
+    file's own `dry_run=True` above-ceiling test) are never inspected, and
+    `OperatorCancelResumeService.request_cancellation` (the action
+    `job.cancel`'s OWN `ActionSpec.run()` would otherwise call) is never
+    invoked.
+
+    Spies on `request_cancellation` as a call-recording monkeypatch double
+    (mirrors `_recording_ceiling`'s own established convention in
+    `test_operator_mcp_adapter_run_plan.py`, rather than this file's other
+    convention of an `AssertionError`-raising stub, so the call count is
+    asserted explicitly rather than only implicitly via a raised
+    exception)."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_operation_id = _target_operation_id(
+        tmp_foundry, op_service, effective_sensitivity="client_sensitive"
+    )
+
+    ceiling_double, _ceiling_calls = _recording_ceiling("work_sensitive")
+    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", ceiling_double)
+
+    request_cancellation_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def _recording_request_cancellation(self: Any, *args: Any, **kwargs: Any) -> Any:
+        request_cancellation_calls.append((args, kwargs))
+        raise AssertionError("job.cancel wet-path above-ceiling denial must never call request_cancellation")
+
+    monkeypatch.setattr(
+        OperatorCancelResumeService, "request_cancellation", _recording_request_cancellation
+    )
+
+    result = job_lifecycle.invoke_cancel(
+        operation_id=real_operation_id,
+        idempotency_key="idem-above-ceiling-cancel-wet",
+        confirmation_record=None,
+        presented_token=None,
+        dry_run=False,
+        paths=tmp_foundry,
+        operations=op_service,
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error["reason_code"] == "not_found"
+    assert request_cancellation_calls == []
+
+
 def test_job_resume_allows_when_ceiling_covers_target_real_sensitivity(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
