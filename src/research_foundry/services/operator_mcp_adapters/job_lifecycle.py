@@ -137,6 +137,8 @@ __all__ = [
     "invoke_status",
     "invoke_cancel",
     "invoke_resume",
+    "get_action_manifest_for_cancel",
+    "get_action_manifest_for_resume",
     "JobStatusAdapter",
     "JobCancelAdapter",
     "JobResumeAdapter",
@@ -144,6 +146,14 @@ __all__ = [
     "CANCEL_ADAPTER",
     "RESUME_ADAPTER",
 ]
+
+#: Placeholder idempotency key `JobCancelAdapter.get_action_manifest`/
+#: `JobResumeAdapter.get_action_manifest` pass into `PolicyContext.
+#: for_configured_operator` (see those methods' own docstrings): the
+#: accessor never authorizes or consumes a confirmation, so the ACTUAL
+#: idempotency key value is inert for this path -- present only because
+#: `for_configured_operator` requires a `str`, never `None`.
+_ACTION_MANIFEST_LOOKUP_IDEMPOTENCY_KEY = "action-manifest-lookup"
 
 STATUS_OPERATION_KIND = "job.status"
 CANCEL_OPERATION_KIND = "job.cancel"
@@ -513,6 +523,55 @@ def invoke_status(
 # ---------------------------------------------------------------------------
 
 
+def _build_cancel_actions(
+    *,
+    operation_id: str,
+    ctx: policy.PolicyContext,
+    cancel_resume_service: OperatorCancelResumeService,
+) -> tuple[dict[str, Any], tuple[ActionSpec, ...]]:
+    """The ONE source of `job.cancel`'s `action_manifest` dict and ordered
+    `ActionSpec` sequence -- both `invoke_cancel` (which hands them to
+    `base.run_pipeline`) and `JobCancelAdapter.get_action_manifest` (which
+    returns them WITHOUT ever reaching `run_pipeline`, per
+    `base.OperatorAdapterWithActionManifest`) call this SAME function, so
+    the two can never drift apart.
+
+    Building the returned `ActionSpec` -- a closure over `ctx` and
+    `cancel_resume_service` -- has no side effect of its own; only calling
+    the closure's `run()` does (it calls `cancel_resume_service.
+    request_cancellation`, a durable, idempotent REQUEST).
+    """
+
+    def _run() -> ActionEffect:
+        assert ctx.identity is not None
+        outcome = cancel_resume_service.request_cancellation(
+            operation_id,
+            workspace_id=ctx.identity.workspace_id,
+            requested_by=ctx.identity.user_id,
+        )
+        if outcome.outcome == "denied":
+            raise _JobLifecycleActionError(
+                f"job.cancel: request_cancellation denied ({outcome.reason_code}) "
+                f"for target operation_id={operation_id}"
+            )
+        # effect_ref must match operator_mcp_receipt.schema.yaml's
+        # bounded canonical-reference pattern (alnum/underscore/hyphen/
+        # colon/dot only) and stay well under maxLength: 256 -- operation_id
+        # is a short, already-pattern-safe canonical id.
+        effect_ref = f"{CANCEL_OPERATION_KIND}:{operation_id}"
+        return ActionEffect(
+            effect_kind="job_cancellation_requested",
+            effect_digest=hashlib.sha256(effect_ref.encode("utf-8")).hexdigest(),
+            effect_ref=effect_ref,
+        )
+
+    action_manifest: dict[str, Any] = {
+        "adapter": CANCEL_OPERATION_KIND,
+        "target_operation_id": operation_id,
+    }
+    return action_manifest, (ActionSpec(action_id="request_cancellation", run=_run),)
+
+
 def invoke_cancel(
     *,
     operation_id: str,
@@ -561,29 +620,9 @@ def invoke_cancel(
     )
 
     cancel_resume_service = cancel_resume or OperatorCancelResumeService(resolved_paths)
-
-    def _run() -> ActionEffect:
-        assert ctx.identity is not None
-        outcome = cancel_resume_service.request_cancellation(
-            operation_id,
-            workspace_id=ctx.identity.workspace_id,
-            requested_by=ctx.identity.user_id,
-        )
-        if outcome.outcome == "denied":
-            raise _JobLifecycleActionError(
-                f"job.cancel: request_cancellation denied ({outcome.reason_code}) "
-                f"for target operation_id={operation_id}"
-            )
-        # effect_ref must match operator_mcp_receipt.schema.yaml's
-        # bounded canonical-reference pattern (alnum/underscore/hyphen/
-        # colon/dot only) and stay well under maxLength: 256 -- operation_id
-        # is a short, already-pattern-safe canonical id.
-        effect_ref = f"{CANCEL_OPERATION_KIND}:{operation_id}"
-        return ActionEffect(
-            effect_kind="job_cancellation_requested",
-            effect_digest=hashlib.sha256(effect_ref.encode("utf-8")).hexdigest(),
-            effect_ref=effect_ref,
-        )
+    action_manifest, actions = _build_cancel_actions(
+        operation_id=operation_id, ctx=ctx, cancel_resume_service=cancel_resume_service
+    )
 
     def _build_result(execution: ExecutionOutcome) -> Mapping[str, Any]:
         return {
@@ -593,17 +632,12 @@ def invoke_cancel(
             "replayed": execution.replayed,
         }
 
-    action_manifest: dict[str, Any] = {
-        "adapter": CANCEL_OPERATION_KIND,
-        "target_operation_id": operation_id,
-    }
-
     return base.run_pipeline(
         ctx=ctx,
         confirmation_record=confirmation_record,
         presented_token=presented_token,
         action_manifest=action_manifest,
-        actions=(ActionSpec(action_id="request_cancellation", run=_run),),
+        actions=actions,
         build_result=_build_result,
         dry_run=dry_run,
         paths=resolved_paths,
@@ -613,11 +647,142 @@ def invoke_cancel(
     )
 
 
+def get_action_manifest_for_cancel(
+    *,
+    operation_id: str,
+    paths: FoundryPaths | None = None,
+    cancel_resume: OperatorCancelResumeService | None = None,
+) -> base.ActionManifest:
+    """`base.OperatorAdapterWithActionManifest` implementation for
+    `job.cancel` -- returns the SAME `action_manifest`/ordered `actions`
+    pair `invoke_cancel` hands to `base.run_pipeline`, built by the SAME
+    `_build_cancel_actions` helper, WITHOUT ever calling
+    `authorize_for_consumption`, `base.run_pipeline`, or the returned
+    `ActionSpec.run()`.
+
+    This is the accessor `job_lifecycle`'s own module docstring
+    ("documented gap" section) identifies as the seam a future
+    cross-adapter `job.resume` re-execution path would need
+    (`base.get_adapter(target_kind).get_action_manifest(...)`) -- exposed
+    here on `job.cancel` for parity; wiring that re-execution path itself
+    is out of scope for this accessor.
+
+    Builds a REAL `ctx` (via `policy.PolicyContext.for_configured_operator`
+    -- structural identity resolution with no durable side effect, see
+    that factory's own docstring) so a caller who DOES later invoke the
+    returned `ActionSpec.run()` gets correct `ctx.identity` behavior. The
+    only lookup this performs is `_resolve_operation_workspace` -- the SAME
+    bounded, read-only workspace/sensitivity lookup every `invoke_*`
+    function in this module performs to build its own `ctx` -- called
+    directly (not through `_resolve_operation_workspace_or_error`) so an
+    `OperationStoreUnavailableError` propagates to the caller rather than
+    being boxed into an `OperatorAdapterResult` this function does not
+    return.
+    """
+
+    resolved_paths = paths or FoundryPaths.discover()
+    owning_workspace, effective_sensitivity = _resolve_operation_workspace(operation_id, resolved_paths)
+
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=CANCEL_OPERATION_KIND,
+        idempotency_key=_ACTION_MANIFEST_LOOKUP_IDEMPOTENCY_KEY,
+        effective_sensitivity=effective_sensitivity,
+        sensitivity_ceiling=effective_sensitivity,
+        targets=(policy.TargetRef(target_kind=_TARGET_KIND, target_ref=operation_id),),
+        resolved_target_workspaces=(owning_workspace,),
+        input_payload={"operation_id": operation_id},
+        paths=resolved_paths,
+    )
+
+    action_manifest, actions = _build_cancel_actions(
+        operation_id=operation_id,
+        ctx=ctx,
+        cancel_resume_service=cancel_resume or OperatorCancelResumeService(resolved_paths),
+    )
+    return base.ActionManifest(action_manifest=action_manifest, actions=actions)
+
+
 # ---------------------------------------------------------------------------
 # job.resume -- full base.run_pipeline. See module docstring's "documented
 # gap" section: this authorizes resume and provisions a fresh attempt; it
 # does NOT re-execute the target operation's original actions.
 # ---------------------------------------------------------------------------
+
+
+def _build_resume_actions(
+    *,
+    operation_id: str,
+    ctx: policy.PolicyContext,
+    receipt_service: OperatorReceiptService,
+    attempt_adapter: OperatorAttemptAdapter,
+    op_service_for_action: OperatorOperationService,
+    captured: list[tuple[Any, int | None, Any]],
+) -> tuple[dict[str, Any], tuple[ActionSpec, ...]]:
+    """The ONE source of `job.resume`'s `action_manifest` dict and ordered
+    `ActionSpec` sequence -- both `invoke_resume` (which hands them to
+    `base.run_pipeline`) and `JobResumeAdapter.get_action_manifest` (which
+    returns them WITHOUT ever reaching `run_pipeline`, per
+    `base.OperatorAdapterWithActionManifest`) call this SAME function, so
+    the two can never drift apart. `captured` is the caller-owned list
+    `_build_result`-style callers append the provisioned attempt to; the
+    `get_action_manifest` accessor passes its own throwaway list since it
+    never calls the returned `ActionSpec.run()`.
+
+    Building the returned `ActionSpec` -- a closure over `ctx` and the three
+    services -- has no side effect of its own; only calling the closure's
+    `run()` does (it reads the target's terminal receipt/resume point and
+    provisions a fresh attempt record).
+    """
+
+    def _run() -> ActionEffect:
+        assert ctx.identity is not None
+
+        existing_terminal = receipt_service.load_terminal_receipt(operation_id, identity=ctx.identity)
+        if existing_terminal is not None:
+            raise _JobLifecycleActionError(
+                f"job.resume: target operation_id={operation_id} already has a "
+                "terminal receipt -- nothing to resume"
+            )
+
+        resume_point = receipt_service.resolve_resume_point(operation_id, identity=ctx.identity)
+        if resume_point.outcome != "ok":
+            raise _JobLifecycleActionError(
+                f"job.resume: resolve_resume_point denied ({resume_point.reason_code}) "
+                f"for target operation_id={operation_id}"
+            )
+
+        target_operation = op_service_for_action.load_operation(operation_id, identity=ctx.identity)
+        target_kind = _operation_kind_of(target_operation.manifest) or "unknown"
+
+        # Bounded by P2S-NB-9's MAX_ATTEMPTS_PER_OPERATION cap -- raises
+        # AttemptLimitExceededError (a plain RuntimeError subclass) once
+        # exceeded, caught by the SAME run_actions boundary that catches
+        # _JobLifecycleActionError above, converting it into the identical
+        # governed "failed" outcome. Never an infinite retry, never a
+        # silent success.
+        new_attempt = attempt_adapter.create_attempt(
+            operation_id,
+            "operator_mcp",
+            "n/a",
+            f"resume:{target_kind}",
+            {"resumed_operation_id": operation_id},
+            workspace_id=ctx.identity.workspace_id,
+            identity=ctx.identity,
+        )
+        captured.append((new_attempt, resume_point.next_action_index, target_kind))
+
+        effect_ref = f"{RESUME_OPERATION_KIND}:{operation_id}:{new_attempt.attempt_id}"
+        return ActionEffect(
+            effect_kind="job_resume_attempt_created",
+            effect_digest=hashlib.sha256(effect_ref.encode("utf-8")).hexdigest(),
+            effect_ref=effect_ref,
+        )
+
+    action_manifest: dict[str, Any] = {
+        "adapter": RESUME_OPERATION_KIND,
+        "target_operation_id": operation_id,
+    }
+    return action_manifest, (ActionSpec(action_id="authorize_and_provision_resume_attempt", run=_run),)
 
 
 def invoke_resume(
@@ -673,50 +838,14 @@ def invoke_resume(
     # Captures the provisioned attempt so `_build_result` can report it --
     # mirrors run_plan.py's own `captured` list pattern.
     captured: list[tuple[Any, int | None, Any]] = []
-
-    def _run() -> ActionEffect:
-        assert ctx.identity is not None
-
-        existing_terminal = receipt_service.load_terminal_receipt(operation_id, identity=ctx.identity)
-        if existing_terminal is not None:
-            raise _JobLifecycleActionError(
-                f"job.resume: target operation_id={operation_id} already has a "
-                "terminal receipt -- nothing to resume"
-            )
-
-        resume_point = receipt_service.resolve_resume_point(operation_id, identity=ctx.identity)
-        if resume_point.outcome != "ok":
-            raise _JobLifecycleActionError(
-                f"job.resume: resolve_resume_point denied ({resume_point.reason_code}) "
-                f"for target operation_id={operation_id}"
-            )
-
-        target_operation = op_service_for_action.load_operation(operation_id, identity=ctx.identity)
-        target_kind = _operation_kind_of(target_operation.manifest) or "unknown"
-
-        # Bounded by P2S-NB-9's MAX_ATTEMPTS_PER_OPERATION cap -- raises
-        # AttemptLimitExceededError (a plain RuntimeError subclass) once
-        # exceeded, caught by the SAME run_actions boundary that catches
-        # _JobLifecycleActionError above, converting it into the identical
-        # governed "failed" outcome. Never an infinite retry, never a
-        # silent success.
-        new_attempt = attempt_adapter.create_attempt(
-            operation_id,
-            "operator_mcp",
-            "n/a",
-            f"resume:{target_kind}",
-            {"resumed_operation_id": operation_id},
-            workspace_id=ctx.identity.workspace_id,
-            identity=ctx.identity,
-        )
-        captured.append((new_attempt, resume_point.next_action_index, target_kind))
-
-        effect_ref = f"{RESUME_OPERATION_KIND}:{operation_id}:{new_attempt.attempt_id}"
-        return ActionEffect(
-            effect_kind="job_resume_attempt_created",
-            effect_digest=hashlib.sha256(effect_ref.encode("utf-8")).hexdigest(),
-            effect_ref=effect_ref,
-        )
+    action_manifest, actions = _build_resume_actions(
+        operation_id=operation_id,
+        ctx=ctx,
+        receipt_service=receipt_service,
+        attempt_adapter=attempt_adapter,
+        op_service_for_action=op_service_for_action,
+        captured=captured,
+    )
 
     def _build_result(execution: ExecutionOutcome) -> Mapping[str, Any]:
         if execution.status == "completed" and captured:
@@ -737,17 +866,12 @@ def invoke_resume(
             return {"operation_id": operation_id, "status": "resume_authorized", "replayed": True}
         return {"operation_id": operation_id, "status": execution.status, "replayed": execution.replayed}
 
-    action_manifest: dict[str, Any] = {
-        "adapter": RESUME_OPERATION_KIND,
-        "target_operation_id": operation_id,
-    }
-
     return base.run_pipeline(
         ctx=ctx,
         confirmation_record=confirmation_record,
         presented_token=presented_token,
         action_manifest=action_manifest,
-        actions=(ActionSpec(action_id="authorize_and_provision_resume_attempt", run=_run),),
+        actions=actions,
         build_result=_build_result,
         dry_run=dry_run,
         paths=resolved_paths,
@@ -755,6 +879,57 @@ def invoke_resume(
         operations=operations,
         cancel_resume=cancel_resume,
     )
+
+
+def get_action_manifest_for_resume(
+    *,
+    operation_id: str,
+    paths: FoundryPaths | None = None,
+    receipts: OperatorReceiptService | None = None,
+    attempts: OperatorAttemptAdapter | None = None,
+    operations: OperatorOperationService | None = None,
+) -> base.ActionManifest:
+    """`base.OperatorAdapterWithActionManifest` implementation for
+    `job.resume` -- returns the SAME `action_manifest`/ordered `actions`
+    pair `invoke_resume` hands to `base.run_pipeline`, built by the SAME
+    `_build_resume_actions` helper, WITHOUT ever calling
+    `authorize_for_consumption`, `base.run_pipeline`, or the returned
+    `ActionSpec.run()`. See `get_action_manifest_for_cancel`'s docstring for
+    the full rationale (identical shape, applied to `job.resume` here) --
+    this is the exact accessor the module docstring's "documented gap"
+    section names as the missing seam for a future cross-adapter
+    `job.resume` re-execution path; wiring that path itself remains out of
+    scope.
+
+    Passes a throwaway, never-inspected `captured` list to
+    `_build_resume_actions` -- it exists only so `_build_result`-style
+    callers can report a provisioned attempt after `run()` executes, and
+    this accessor never calls `run()`.
+    """
+
+    resolved_paths = paths or FoundryPaths.discover()
+    owning_workspace, effective_sensitivity = _resolve_operation_workspace(operation_id, resolved_paths)
+
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=RESUME_OPERATION_KIND,
+        idempotency_key=_ACTION_MANIFEST_LOOKUP_IDEMPOTENCY_KEY,
+        effective_sensitivity=effective_sensitivity,
+        sensitivity_ceiling=effective_sensitivity,
+        targets=(policy.TargetRef(target_kind=_TARGET_KIND, target_ref=operation_id),),
+        resolved_target_workspaces=(owning_workspace,),
+        input_payload={"operation_id": operation_id},
+        paths=resolved_paths,
+    )
+
+    action_manifest, actions = _build_resume_actions(
+        operation_id=operation_id,
+        ctx=ctx,
+        receipt_service=receipts or OperatorReceiptService(resolved_paths),
+        attempt_adapter=attempts or OperatorAttemptAdapter(resolved_paths),
+        op_service_for_action=operations or OperatorOperationService(resolved_paths),
+        captured=[],
+    )
+    return base.ActionManifest(action_manifest=action_manifest, actions=actions)
 
 
 # ---------------------------------------------------------------------------
@@ -774,22 +949,36 @@ class JobStatusAdapter:
 
 @dataclass(frozen=True)
 class JobCancelAdapter:
-    """`base.OperatorAdapter` Protocol implementation for `job.cancel`."""
+    """`base.OperatorAdapter` Protocol implementation for `job.cancel`.
+
+    Also satisfies `base.OperatorAdapterWithActionManifest` via
+    `get_action_manifest` -- see `get_action_manifest_for_cancel`'s own
+    docstring."""
 
     operation_kind: str = CANCEL_OPERATION_KIND
 
     def invoke(self, **kwargs: Any) -> base.OperatorAdapterResult:
         return invoke_cancel(**kwargs)
 
+    def get_action_manifest(self, **kwargs: Any) -> base.ActionManifest:
+        return get_action_manifest_for_cancel(**kwargs)
+
 
 @dataclass(frozen=True)
 class JobResumeAdapter:
-    """`base.OperatorAdapter` Protocol implementation for `job.resume`."""
+    """`base.OperatorAdapter` Protocol implementation for `job.resume`.
+
+    Also satisfies `base.OperatorAdapterWithActionManifest` via
+    `get_action_manifest` -- see `get_action_manifest_for_resume`'s own
+    docstring."""
 
     operation_kind: str = RESUME_OPERATION_KIND
 
     def invoke(self, **kwargs: Any) -> base.OperatorAdapterResult:
         return invoke_resume(**kwargs)
+
+    def get_action_manifest(self, **kwargs: Any) -> base.ActionManifest:
+        return get_action_manifest_for_resume(**kwargs)
 
 
 STATUS_ADAPTER = JobStatusAdapter()
