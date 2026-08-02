@@ -108,7 +108,7 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from research_foundry.paths import FoundryPaths
 from research_foundry.services import operator_mcp_policy as policy
@@ -513,6 +513,54 @@ def invoke_status(
 # ---------------------------------------------------------------------------
 
 
+def _build_cancel_actions(
+    operation_id: str,
+    ctx: policy.PolicyContext,
+    cancel_resume_service: OperatorCancelResumeService,
+) -> tuple[ActionSpec, ...]:
+    """Shared `ActionSpec` builder for `job.cancel` -- called by BOTH
+    `invoke_cancel`'s `base.run_pipeline(actions=...)` call and
+    `JobCancelAdapter.get_action_manifest`'s manifest-only accessor (see
+    `base.SupportsActionManifest`). Building the SAME closure in both call
+    sites guarantees the two callers see an IDENTICAL ordered sequence by
+    CONSTRUCTION -- there is no second, hand-duplicated action list that
+    could silently drift out of sync with this one.
+
+    Side-effect-free to CALL: constructing the closure below does not
+    invoke `cancel_resume_service.request_cancellation` -- that only
+    happens when the returned `ActionSpec.run` is later INVOKED by
+    `run_or_replay` inside `base.run_pipeline`'s own non-dry-run path. This
+    is exactly the property `get_action_manifest` relies on to return this
+    sequence without authorizing, consuming, or executing anything (see
+    that method's own docstring).
+    """
+
+    def _run() -> ActionEffect:
+        assert ctx.identity is not None
+        outcome = cancel_resume_service.request_cancellation(
+            operation_id,
+            workspace_id=ctx.identity.workspace_id,
+            requested_by=ctx.identity.user_id,
+        )
+        if outcome.outcome == "denied":
+            raise _JobLifecycleActionError(
+                f"job.cancel: request_cancellation denied ({outcome.reason_code}) "
+                f"for target operation_id={operation_id}"
+            )
+        # effect_ref must match operator_mcp_receipt.schema.yaml's
+        # bounded canonical-reference pattern (alnum/underscore/hyphen/
+        # colon/dot only) and stay well under maxLength: 256 -- operation_id
+        # is a short, already-pattern-safe canonical id.
+        effect_ref = f"{CANCEL_OPERATION_KIND}:{operation_id}"
+        return ActionEffect(
+            effect_kind="job_cancellation_requested",
+            effect_digest=hashlib.sha256(effect_ref.encode("utf-8")).hexdigest(),
+            effect_ref=effect_ref,
+        )
+
+    return (ActionSpec(action_id="request_cancellation", run=_run),)
+
+
 def invoke_cancel(
     *,
     operation_id: str,
@@ -562,29 +610,6 @@ def invoke_cancel(
 
     cancel_resume_service = cancel_resume or OperatorCancelResumeService(resolved_paths)
 
-    def _run() -> ActionEffect:
-        assert ctx.identity is not None
-        outcome = cancel_resume_service.request_cancellation(
-            operation_id,
-            workspace_id=ctx.identity.workspace_id,
-            requested_by=ctx.identity.user_id,
-        )
-        if outcome.outcome == "denied":
-            raise _JobLifecycleActionError(
-                f"job.cancel: request_cancellation denied ({outcome.reason_code}) "
-                f"for target operation_id={operation_id}"
-            )
-        # effect_ref must match operator_mcp_receipt.schema.yaml's
-        # bounded canonical-reference pattern (alnum/underscore/hyphen/
-        # colon/dot only) and stay well under maxLength: 256 -- operation_id
-        # is a short, already-pattern-safe canonical id.
-        effect_ref = f"{CANCEL_OPERATION_KIND}:{operation_id}"
-        return ActionEffect(
-            effect_kind="job_cancellation_requested",
-            effect_digest=hashlib.sha256(effect_ref.encode("utf-8")).hexdigest(),
-            effect_ref=effect_ref,
-        )
-
     def _build_result(execution: ExecutionOutcome) -> Mapping[str, Any]:
         return {
             "operation_id": operation_id,
@@ -603,7 +628,7 @@ def invoke_cancel(
         confirmation_record=confirmation_record,
         presented_token=presented_token,
         action_manifest=action_manifest,
-        actions=(ActionSpec(action_id="request_cancellation", run=_run),),
+        actions=_build_cancel_actions(operation_id, ctx, cancel_resume_service),
         build_result=_build_result,
         dry_run=dry_run,
         paths=resolved_paths,
@@ -774,12 +799,80 @@ class JobStatusAdapter:
 
 @dataclass(frozen=True)
 class JobCancelAdapter:
-    """`base.OperatorAdapter` Protocol implementation for `job.cancel`."""
+    """`base.OperatorAdapter` Protocol implementation for `job.cancel`.
+
+    Also implements the OPTIONAL `base.SupportsActionManifest` capability
+    (see `get_action_manifest` below) -- the SAME dataclass, the SAME
+    `operation_kind` field, satisfying both Protocols at once."""
 
     operation_kind: str = CANCEL_OPERATION_KIND
 
     def invoke(self, **kwargs: Any) -> base.OperatorAdapterResult:
         return invoke_cancel(**kwargs)
+
+    def get_action_manifest(self, **kwargs: Any) -> Sequence[ActionSpec]:
+        """`base.SupportsActionManifest` implementation for `job.cancel`.
+        Returns the SAME ordered `ActionSpec` sequence `invoke_cancel`
+        hands to `base.run_pipeline` -- WITHOUT authorizing, consuming, or
+        executing anything (no `authorize_for_consumption`, no
+        `consume_and_create_operation`, no `run_or_replay`; descriptor
+        construction only, per `SupportsActionManifest`'s own docstring).
+
+        Resolves `ctx` and the `OperatorCancelResumeService` instance the
+        SAME way `invoke_cancel`'s own preamble does -- `resolve_local_
+        sensitivity_ceiling`, the target's real workspace/sensitivity via
+        `_resolve_operation_workspace_or_error`, then `PolicyContext.
+        for_configured_operator` (which resolves `ctx.identity`
+        structurally, the same as every other P3 call site; this alone
+        performs no durable write) -- then delegates to the SAME
+        `_build_cancel_actions` helper `invoke_cancel` itself calls,
+        guaranteeing an IDENTICAL ordered sequence by construction rather
+        than by convention.
+
+        A store-unavailable/corrupt-manifest outcome from `_resolve_
+        operation_workspace_or_error` (its third, error, element) is
+        deliberately NOT surfaced as a denial here -- unlike `invoke_cancel`,
+        this accessor never reaches an authorization stage and has no
+        `OperatorAdapterResult` to return one through; it proceeds with
+        whichever `(workspace_id, effective_sensitivity)` pair that helper
+        resolved (a fail-closed pairing on that path, per its own
+        docstring), since neither value changes what `_build_cancel_
+        actions` returns -- only `ctx.identity`, resolved independently of
+        workspace lookup, is captured by the closure.
+
+        Accepts the same keyword arguments as `invoke_cancel`
+        (`operation_id`, `idempotency_key`, `paths`, `now`, `cancel_resume`)
+        -- `confirmation_record`/`presented_token`/`dry_run`, if present,
+        are ignored, since this accessor never reaches the confirmation
+        stage at all.
+        """
+
+        from . import resolve_local_sensitivity_ceiling  # lazy: see module import above for why
+
+        operation_id = kwargs["operation_id"]
+        idempotency_key = kwargs.get("idempotency_key", "")
+        paths = kwargs.get("paths")
+        now = kwargs.get("now")
+        cancel_resume = kwargs.get("cancel_resume")
+
+        resolved_paths = paths or FoundryPaths.discover()
+        sensitivity_ceiling = resolve_local_sensitivity_ceiling(resolved_paths)
+        owning_workspace, effective_sensitivity, _store_error = _resolve_operation_workspace_or_error(
+            operation_id, resolved_paths, now=now
+        )
+
+        ctx = policy.PolicyContext.for_configured_operator(
+            operation_kind=CANCEL_OPERATION_KIND,
+            idempotency_key=idempotency_key,
+            effective_sensitivity=effective_sensitivity,
+            sensitivity_ceiling=sensitivity_ceiling,
+            targets=(policy.TargetRef(target_kind=_TARGET_KIND, target_ref=operation_id),),
+            resolved_target_workspaces=(owning_workspace,),
+            input_payload={"operation_id": operation_id},
+            paths=resolved_paths,
+        )
+        cancel_resume_service = cancel_resume or OperatorCancelResumeService(resolved_paths)
+        return _build_cancel_actions(operation_id, ctx, cancel_resume_service)
 
 
 @dataclass(frozen=True)

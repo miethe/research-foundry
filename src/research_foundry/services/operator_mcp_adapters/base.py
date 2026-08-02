@@ -94,10 +94,12 @@ _logger = logging.getLogger(__name__)
 __all__ = [
     "OperatorAdapterResult",
     "OperatorAdapter",
+    "SupportsActionManifest",
     "register",
     "get_adapter",
     "all_adapters",
     "run_pipeline",
+    "get_action_manifest",
 ]
 
 
@@ -150,6 +152,54 @@ class OperatorAdapter(Protocol):
     def invoke(self, **kwargs: Any) -> "OperatorAdapterResult": ...
 
 
+@runtime_checkable
+class SupportsActionManifest(Protocol):
+    """OPTIONAL capability an `OperatorAdapter` MAY implement ALONGSIDE
+    `invoke()` -- exposing the SAME ordered `ActionSpec` sequence `invoke()`
+    hands to :func:`run_pipeline`, WITHOUT authorizing, consuming, or
+    executing anything.
+
+    **What this closes.** `job_lifecycle.py`'s own module docstring names
+    the exact gap this seam exists for: a generic `job.resume` adapter
+    cannot reconstruct an arbitrary TARGET operation's `actions` sequence
+    from its persisted `input_payload` alone, because every P3 adapter's
+    `invoke()` builds `actions` internally and hands them straight to
+    `run_pipeline` -- there was previously no way for one adapter to ask
+    another "what would you run, in what order, if invoked with these
+    arguments" without actually invoking it. `SupportsActionManifest` is
+    that ask, nothing more. Wiring `job.resume` to actually consume this
+    seam and replay a target operation's original actions is explicitly
+    OUT OF SCOPE for this seam itself -- see :func:`get_action_manifest`'s
+    own docstring.
+
+    **What this is NOT.** A SEPARATE Protocol from `OperatorAdapter`, never
+    a required method added to it -- adding a required method to
+    `OperatorAdapter` would break every adapter owned by a concurrent leg
+    that does not implement this capability. `get_action_manifest` MUST
+    NOT call `authorize_for_consumption`, `consume_and_create_operation`,
+    or `run_or_replay` (directly or transitively) -- descriptor
+    construction only, no authorize, no consume, no execute. `ActionSpec.
+    run` closures are themselves side-effect-free to CONSTRUCT (the side
+    effect happens only when `run()` is later INVOKED by `run_or_replay`
+    inside `run_pipeline`'s own non-dry-run path), so a conforming
+    implementation can build and return the real closures without running
+    any of them -- see `job_lifecycle.JobCancelAdapter.get_action_manifest`
+    for a worked example, which shares a single `_build_cancel_actions`
+    helper with `invoke_cancel` so the two sequences are IDENTICAL by
+    construction, never merely by convention.
+
+    `operation_kind` mirrors `OperatorAdapter.operation_kind` (an
+    implementer satisfies both Protocols with the SAME dataclass field, as
+    `JobCancelAdapter` does) -- restated on this Protocol only so
+    `isinstance(adapter, SupportsActionManifest)` alone is sufficient to
+    confirm the capability without also checking `OperatorAdapter`.
+    """
+
+    operation_kind: str
+
+    def get_action_manifest(self, **kwargs: Any) -> Sequence[ActionSpec]: ...
+
+
 _REGISTRY: dict[str, OperatorAdapter] = {}
 
 
@@ -191,6 +241,29 @@ def all_adapters() -> dict[str, OperatorAdapter]:
     one through the returned dict."""
 
     return dict(_REGISTRY)
+
+
+def get_action_manifest(adapter: OperatorAdapter, /, **kwargs: Any) -> Sequence[ActionSpec] | None:
+    """`adapter.get_action_manifest(**kwargs)` when `adapter` implements the
+    OPTIONAL `SupportsActionManifest` capability (checked via `isinstance`,
+    `runtime_checkable`'s structural check), else `None` for an adapter that
+    does not implement it -- `None` here is "this adapter has no manifest
+    accessor", the SAME no-fail-open convention `get_adapter` already uses
+    for "not registered" (requirement 5), never a default/empty sequence
+    that could be mistaken for a real, zero-action manifest.
+
+    Never authorizes, consumes, or executes anything itself -- a thin
+    capability-check-and-delegate, not a second pipeline. Does NOT wire
+    `job.resume`'s re-execution gap (see `SupportsActionManifest`'s own
+    docstring and `job_lifecycle.py`'s module docstring's "documented gap"
+    section) -- this function is the seam a future `job.resume` fix would
+    call `base.get_action_manifest(base.get_adapter(target_kind), **target_
+    kwargs)` through; that wiring is explicitly NOT done here.
+    """
+
+    if not isinstance(adapter, SupportsActionManifest):
+        return None
+    return adapter.get_action_manifest(**kwargs)
 
 
 def _denial(reason_code: str, *, retryable: bool = False, stage: str = "confirmation") -> policy.PolicyDecision:

@@ -19,6 +19,7 @@ that test needs (out of this task's file ownership; reported, not made).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -1348,3 +1349,109 @@ def test_all_three_kinds_are_registered() -> None:
     assert base.get_adapter("job.status") is job_lifecycle.STATUS_ADAPTER
     assert base.get_adapter("job.cancel") is job_lifecycle.CANCEL_ADAPTER
     assert base.get_adapter("job.resume") is job_lifecycle.RESUME_ADAPTER
+
+
+# ---------------------------------------------------------------------------
+# base.SupportsActionManifest seam (job.cancel's get_action_manifest
+# accessor) -- OPM-3.x follow-on: obtain job.cancel's ordered ActionSpec
+# sequence without authorizing/consuming/executing it.
+# ---------------------------------------------------------------------------
+
+
+def test_job_cancel_get_action_manifest_matches_invoke_cancel_run_order(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The accessor returns the SAME ordered `ActionSpec` sequence
+    `invoke_cancel` actually hands to `base.run_pipeline` -- proven by
+    spying on `base.run_pipeline`'s own `actions` kwarg during a real
+    `invoke_cancel` call, then comparing `action_id`s against a separate
+    `get_action_manifest` call for the same target."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    operation_id = _target_operation_id(tmp_foundry, op_service)
+    record, token = _cancel_confirmation(tmp_foundry, op_service, operation_id, "cancel-manifest-order")
+
+    captured: list[Any] = []
+    real_run_pipeline = base.run_pipeline
+
+    def _spy_run_pipeline(*, actions: Any, **kwargs: Any) -> Any:
+        captured.extend(actions)
+        return real_run_pipeline(actions=actions, **kwargs)
+
+    monkeypatch.setattr(base, "run_pipeline", _spy_run_pipeline)
+
+    result = job_lifecycle.invoke_cancel(
+        operation_id=operation_id,
+        idempotency_key="cancel-manifest-order",
+        confirmation_record=record,
+        presented_token=token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+    assert result.ok is True, result.error
+    assert captured, "run_pipeline spy captured no actions"
+
+    manifest = job_lifecycle.CANCEL_ADAPTER.get_action_manifest(
+        operation_id=operation_id,
+        idempotency_key="cancel-manifest-order",
+        paths=tmp_foundry,
+    )
+    assert [a.action_id for a in captured] == [a.action_id for a in manifest]
+
+
+def test_job_cancel_get_action_manifest_produces_no_side_effects(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Calling the accessor never authorizes, consumes, or executes
+    anything: `request_cancellation` and `consume_and_create_operation`
+    both raise if invoked, and the target operation's cancellation-
+    requested state is untouched afterwards."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    operation_id = _target_operation_id(tmp_foundry, op_service)
+
+    def _must_not_request_cancellation(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("get_action_manifest must never call request_cancellation")
+
+    monkeypatch.setattr(OperatorCancelResumeService, "request_cancellation", _must_not_request_cancellation)
+
+    def _must_not_consume(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("get_action_manifest must never consume an operation")
+
+    monkeypatch.setattr(OperatorOperationService, "consume_and_create_operation", _must_not_consume)
+
+    manifest = job_lifecycle.CANCEL_ADAPTER.get_action_manifest(
+        operation_id=operation_id,
+        idempotency_key="cancel-manifest-no-side-effects",
+        paths=tmp_foundry,
+    )
+
+    assert [a.action_id for a in manifest] == ["request_cancellation"]
+
+    cancel_resume = OperatorCancelResumeService(tmp_foundry, operations=op_service)
+    assert cancel_resume.cancellation_requested(operation_id, workspace_id=_IDENTITY.workspace_id) is False
+
+
+def test_base_get_action_manifest_returns_none_for_adapter_without_capability() -> None:
+    """`base.get_action_manifest` returns `None` -- never a default/empty
+    sequence -- for any adapter that does not implement
+    `base.SupportsActionManifest`, and delegates for one that does."""
+
+    @dataclass(frozen=True)
+    class _StubWithoutManifest:
+        operation_kind: str = "job.status"
+
+        def invoke(self, **kwargs: Any) -> base.OperatorAdapterResult:  # pragma: no cover
+            return base.OperatorAdapterResult(ok=True)
+
+    stub = _StubWithoutManifest()
+    assert not isinstance(stub, base.SupportsActionManifest)
+    assert base.get_action_manifest(stub) is None
+
+    # A real, registered adapter that also does not implement the capability.
+    assert not isinstance(job_lifecycle.STATUS_ADAPTER, base.SupportsActionManifest)
+    assert base.get_action_manifest(job_lifecycle.STATUS_ADAPTER, operation_id="x") is None
+
+    # The adapter that DOES implement it is picked up structurally.
+    assert isinstance(job_lifecycle.CANCEL_ADAPTER, base.SupportsActionManifest)
