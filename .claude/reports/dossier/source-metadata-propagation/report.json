@@ -1,0 +1,331 @@
+{
+  "schema_version": "1.0",
+  "report": {
+    "route": "dossier",
+    "title": "Delivery Dossier: Source Metadata Capture & Provenance-Preserving Propagation \u2014 implementation plan",
+    "revision": 1,
+    "generated_from": {
+      "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+      "ref": "plan/source-metadata-propagation",
+      "commit": "ce1d176"
+    },
+    "truth_status": "not_executed",
+    "generated_by": "seed_dossier 0.1.0 (plan-time seed)",
+    "generated_at": "2026-08-02T17:48:59.505944Z",
+    "constraints": "The manifest is canonical; the HTML is derived. Follow the phase gates in docs/project_plans/implementation_plans/infrastructure/source-metadata-propagation-v1.md; never hand-maintain this record as a parallel tracker.",
+    "project": "source-metadata-propagation"
+  },
+  "report_policy": {
+    "tier_system": "dev-execution",
+    "tier": 3,
+    "estimated_points": 0.0,
+    "explicit_request": false,
+    "signals": [
+      "seeded at plan time from docs/project_plans/implementation_plans/infrastructure/source-metadata-propagation-v1.md"
+    ]
+  },
+  "vitals": [
+    {
+      "key": "Phases",
+      "value": "0/4",
+      "sub": "done",
+      "severity": "neutral",
+      "measured_by": "stages[] entries with kind==execute and state==done vs total"
+    },
+    {
+      "key": "Open questions",
+      "value": "4",
+      "sub": "carried from the plan",
+      "severity": "warn",
+      "measured_by": "open_questions[] with status==open"
+    },
+    {
+      "key": "Tier",
+      "value": "3",
+      "sub": "dev-execution",
+      "severity": "neutral",
+      "measured_by": "plan frontmatter tier: in docs/project_plans/implementation_plans/infrastructure/source-metadata-propagation-v1.md"
+    }
+  ],
+  "domains": {
+    "UI": "build",
+    "Engine": "build",
+    "Interop": "build",
+    "Infra": "build",
+    "Evidence": "knowledge",
+    "Research": "knowledge",
+    "Validation": "knowledge",
+    "Governance": "governance",
+    "Compliance": "governance",
+    "Legal": "governance",
+    "Release": "governance"
+  },
+  "stages": [
+    {
+      "id": "research",
+      "label": "Research / feasibility",
+      "kind": "research",
+      "state": "done",
+      "narrative": "Pre-commitment research concluded before planning; recorded at docs/project_plans/exploration/source-metadata-propagation/source-metadata-propagation-charter.md.",
+      "outcome": "Research concluded; the plan below is its committed follow-through.",
+      "completed": null,
+      "domains": [
+        "Research"
+      ],
+      "evidence_refs": [
+        "research"
+      ]
+    },
+    {
+      "id": "plan",
+      "label": "Planning pass",
+      "kind": "plan",
+      "state": "done",
+      "narrative": "Implementation plan authored for source-metadata-propagation.",
+      "outcome": "Plan authored: 4 execution phase(s).",
+      "completed": "2026-08-02T17:48:59.505944Z",
+      "domains": [
+        "Engine"
+      ],
+      "evidence_refs": [
+        "plan",
+        "prd"
+      ]
+    },
+    {
+      "id": "phase-1",
+      "label": "Phase 1",
+      "kind": "execute",
+      "state": "pending",
+      "narrative": "Pending \u2014 the phase-closing agent authors this stage's narrative, outcome, decisions, and evidence at the phase boundary.",
+      "outcome": null,
+      "started": null,
+      "completed": null,
+      "domains": [
+        "Engine"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "id": "phase-2",
+      "label": "Phase 2",
+      "kind": "execute",
+      "state": "pending",
+      "narrative": "Pending \u2014 the phase-closing agent authors this stage's narrative, outcome, decisions, and evidence at the phase boundary.",
+      "outcome": null,
+      "started": null,
+      "completed": null,
+      "domains": [
+        "Engine"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "id": "phase-3",
+      "label": "Phase 3",
+      "kind": "execute",
+      "state": "pending",
+      "narrative": "Pending \u2014 the phase-closing agent authors this stage's narrative, outcome, decisions, and evidence at the phase boundary.",
+      "outcome": null,
+      "started": null,
+      "completed": null,
+      "domains": [
+        "Engine"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "id": "phase-4",
+      "label": "Phase 4",
+      "kind": "execute",
+      "state": "pending",
+      "narrative": "Pending \u2014 the phase-closing agent authors this stage's narrative, outcome, decisions, and evidence at the phase boundary.",
+      "outcome": null,
+      "started": null,
+      "completed": null,
+      "domains": [
+        "Engine"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "id": "validate",
+      "label": "End-to-end validation",
+      "kind": "validate",
+      "state": "pending",
+      "narrative": "Pending \u2014 fills at the validate stage with the validation table and final evidence; cross-links the enforced `feature` delivery report.",
+      "outcome": null,
+      "started": null,
+      "completed": null,
+      "domains": [
+        "Validation"
+      ],
+      "evidence_refs": []
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "oq-1",
+      "question": "OQ-1: which search-router providers actually return DOI / citation counts / structured authors today? M1 sizing rests on it.",
+      "context": "Carried from the plan's frontmatter at seed time (docs/project_plans/implementation_plans/infrastructure/source-metadata-propagation-v1.md).",
+      "status": "open",
+      "blocking": false,
+      "raised_in_stage": "plan",
+      "raised_at": "2026-08-02T17:48:59.505944Z",
+      "answer": null,
+      "answered_by": null,
+      "answered_at": null,
+      "channel": {
+        "type": "instruction",
+        "detail": "Reply in chat, or edit this OQ's answer in the manifest; the next phase close folds it in.",
+        "request_id": null
+      }
+    },
+    {
+      "id": "oq-2",
+      "question": "OQ-2: is the catalog sqlite migration path established, or rebuild-only? M4 sizing rests on it.",
+      "context": "Carried from the plan's frontmatter at seed time (docs/project_plans/implementation_plans/infrastructure/source-metadata-propagation-v1.md).",
+      "status": "open",
+      "blocking": false,
+      "raised_in_stage": "plan",
+      "raised_at": "2026-08-02T17:48:59.505944Z",
+      "answer": null,
+      "answered_by": null,
+      "answered_at": null,
+      "channel": {
+        "type": "instruction",
+        "detail": "Reply in chat, or edit this OQ's answer in the manifest; the next phase close folds it in.",
+        "request_id": null
+      }
+    },
+    {
+      "id": "oq-3",
+      "question": "OQ-3: does attribution_summary carry values, or only attribution_ids + counts? Values-carrying requires the divergence validator; ids-only forces every read through authoritative records. Decide at M2 entry.",
+      "context": "Carried from the plan's frontmatter at seed time (docs/project_plans/implementation_plans/infrastructure/source-metadata-propagation-v1.md).",
+      "status": "open",
+      "blocking": false,
+      "raised_in_stage": "plan",
+      "raised_at": "2026-08-02T17:48:59.505944Z",
+      "answer": null,
+      "answered_by": null,
+      "answered_at": null,
+      "channel": {
+        "type": "instruction",
+        "detail": "Reply in chat, or edit this OQ's answer in the manifest; the next phase close folds it in.",
+        "request_id": null
+      }
+    },
+    {
+      "id": "oq-4",
+      "question": "OQ-4: is trust.source_rank derivation deterministic from source_type + rights/access basis, or does it need a capture-time model call? A write-path model call does NOT violate the deal-killer (read-path only).",
+      "context": "Carried from the plan's frontmatter at seed time (docs/project_plans/implementation_plans/infrastructure/source-metadata-propagation-v1.md).",
+      "status": "open",
+      "blocking": false,
+      "raised_in_stage": "plan",
+      "raised_at": "2026-08-02T17:48:59.505944Z",
+      "answer": null,
+      "answered_by": null,
+      "answered_at": null,
+      "channel": {
+        "type": "instruction",
+        "detail": "Reply in chat, or edit this OQ's answer in the manifest; the next phase close folds it in.",
+        "request_id": null
+      }
+    }
+  ],
+  "decisions": [
+    {
+      "id": "dec-1",
+      "decision": "Owning entity is a NEW top-level source_attribution entity, not an extension of source_assertion.schema.yaml.",
+      "rationale": "Recorded in the plan's decisions block at planning time.",
+      "alternatives": [],
+      "decided_in_stage": "plan",
+      "decided_at": "2026-08-02T17:48:59.505944Z",
+      "decided_by": "planning",
+      "evidence_refs": [
+        "plan"
+      ]
+    },
+    {
+      "id": "dec-2",
+      "decision": "Propagation happens at export time in _resolve_source(), not at claim-map write time.",
+      "rationale": "Recorded in the plan's decisions block at planning time.",
+      "alternatives": [],
+      "decided_in_stage": "plan",
+      "decided_at": "2026-08-02T17:48:59.505944Z",
+      "decided_by": "planning",
+      "evidence_refs": [
+        "plan"
+      ]
+    },
+    {
+      "id": "dec-3",
+      "decision": "No backfill; tri-state coverage ships WITH the first query surface.",
+      "rationale": "Recorded in the plan's decisions block at planning time.",
+      "alternatives": [],
+      "decided_in_stage": "plan",
+      "decided_at": "2026-08-02T17:48:59.505944Z",
+      "decided_by": "planning",
+      "evidence_refs": [
+        "plan"
+      ]
+    },
+    {
+      "id": "dec-4",
+      "decision": "Rollups are monotone only (best/weakest_source_rank); numeric averaging across assertion_kinds is refused.",
+      "rationale": "Recorded in the plan's decisions block at planning time.",
+      "alternatives": [],
+      "decided_in_stage": "plan",
+      "decided_at": "2026-08-02T17:48:59.505944Z",
+      "decided_by": "planning",
+      "evidence_refs": [
+        "plan"
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": "execute-plan",
+      "title": "Execute the implementation plan for source-metadata-propagation",
+      "kind": "not_started",
+      "domains": [
+        "Engine"
+      ],
+      "detail": "4 phase(s) planned, none executed. The dossier accretes a stage narrative at each phase boundary.",
+      "handoff": {
+        "command": "/dev:execute-plan docs/project_plans/implementation_plans/infrastructure/source-metadata-propagation-v1.md",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "docs/project_plans/implementation_plans/infrastructure/source-metadata-propagation-v1.md"
+        ],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": "tree_01KVTH95FEG7Y23CA39T7BBSZJ",
+        "prompt": "Execute the implementation plan at docs/project_plans/implementation_plans/infrastructure/source-metadata-propagation-v1.md phase by phase. At each phase close, author that stage into the dossier manifest before the regeneration hook runs."
+      }
+    }
+  ],
+  "corrections": [],
+  "media": [],
+  "no_visual_reason": "Seeded at plan time \u2014 nothing has been built yet. Screenshots and evidence accrue at phase closes.",
+  "evidence": [
+    {
+      "id": "plan",
+      "label": "Implementation plan: docs/project_plans/implementation_plans/infrastructure/source-metadata-propagation-v1.md",
+      "kind": "doc",
+      "path": "docs/project_plans/implementation_plans/infrastructure/source-metadata-propagation-v1.md"
+    },
+    {
+      "id": "prd",
+      "label": "PRD: docs/project_plans/PRDs/infrastructure/source-metadata-propagation-v1.md",
+      "kind": "doc",
+      "path": "docs/project_plans/PRDs/infrastructure/source-metadata-propagation-v1.md"
+    },
+    {
+      "id": "research",
+      "label": "Pre-commitment research: docs/project_plans/exploration/source-metadata-propagation/source-metadata-propagation-charter.md",
+      "kind": "doc",
+      "path": "docs/project_plans/exploration/source-metadata-propagation/source-metadata-propagation-charter.md"
+    }
+  ]
+}
