@@ -403,7 +403,7 @@ graph TD
   - `frontend/runs-viewer/src/lib/canonicalClaimsFlag.ts`
   - `frontend/runs-viewer/src/components/ClaimLedger/ClaimAuditWorkbench.tsx`
 - propagation_contract: With `VITE_RF_CANONICAL_CLAIMS_ENABLED=true` set through the standard deploy/bootstrap path, merge-review controls render against a populated ledger on `:3030`.
-- resilience: With the flag false or unset, merge controls are absent (matches the existing P6-of-v1 behavior: "Merge controls are absent when `RF_CANONICAL_CLAIMS_ENABLED` is false").
+- resilience: With the flag false or unset, merge controls are absent (matches the existing P6-of-v1 behavior: "Merge controls are absent when `foundry.assertion_ledger.canonical_claims_enabled` is false" — the v1 doc originally cited this as `RF_CANONICAL_CLAIMS_ENABLED`, an env var that was never implemented).
 - visual_evidence_required: "Desktop >=1440px screenshot of the merge-review surface with the flag on and populated data, and with the flag off (absent)."
 - verified_by: [P5 build-flag verification, P6 runtime smoke]
 - **Note (2026-08-02):** the P6 live `:3030` runtime smoke remains deferred (see the implementation plan's `phase-5-6-ui-and-verification.md` "Open items" note); P5's build-flag verification against a documented synthetic fixture is complete.
