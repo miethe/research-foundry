@@ -4,6 +4,11 @@ feature_slug: eri-reused-edition-promotion
 title: "ERI reused-edition promotion recovery — implementation plan"
 doc_type: implementation_plan
 status: completed
+commit_refs:
+  - ccebc24  # feat(eri): reused-edition promotion recovery (M1-M3)
+  - 1c8dfc9  # fix(eri): make dry-run preview report the real run's outcome
+merge_branch: main
+merge_commit: ccebc24
 oq_resolutions:
   - "OQ-1 RESOLVED (owner, 2026-07-31): keep reusing verification_failed. No member added to CANDIDATE_REASON_CODES; the versioned vocab contract is untouched."
   - "OQ-2 RESOLVED (owner, 2026-07-31): packet dir is ~/Downloads/knitwit-s1/packet (digest 35d50aeaab09b7b6..., matches the plan's 35d50aea...)."
