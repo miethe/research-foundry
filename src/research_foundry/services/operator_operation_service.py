@@ -1247,6 +1247,24 @@ class OperatorOperationService:
         """The critical section -- MUST only ever be called while holding
         the `BEGIN IMMEDIATE` exclusive lock acquired by the caller."""
 
+        if ctx.operation_kind in policy.CONFIRMATION_NOT_REQUIRED_KINDS:
+            # `policy.CONFIRMATION_NOT_REQUIRED_KINDS` (currently just
+            # `job.status`) is "a bounded read with no canonical effect"
+            # (see `operator_mcp_adapters.job_lifecycle`'s module docstring,
+            # which documents this exact gap). `policy.verify_confirmation`
+            # already short-circuits to `"accepted"` for these kinds
+            # WITHOUT reading `record`/`presented_token`, and
+            # `authorize_operation` mirrors that at the confirmation stage
+            # -- but this method's own confirmation-row `SELECT` below had
+            # no counterpart short-circuit, so a caller routing one of
+            # these kinds through here would ALWAYS deny
+            # `confirmation_missing` (no row was ever minted for a kind
+            # that never mints one) even though authorization just allowed
+            # it. Returning the accepted shape here, before that `SELECT`
+            # runs, closes that gap. No manifest is built or persisted --
+            # these kinds have no canonical effect to record.
+            return OperationOutcome("created", None, None)
+
         row = conn.execute(
             "SELECT record_json FROM confirmations WHERE confirmation_id = ?",
             (confirmation_id,),

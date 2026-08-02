@@ -608,6 +608,79 @@ def test_missing_confirmation_id_denies(tmp_foundry: FoundryPaths) -> None:
 
 
 # ---------------------------------------------------------------------------
+# CONFIRMATION_NOT_REQUIRED_KINDS short-circuit in `_consume_locked`
+# ---------------------------------------------------------------------------
+
+
+def test_confirmation_not_required_kind_consumes_with_no_confirmation_row_and_no_manifest(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """`job.status` is the sole member of
+    `policy.CONFIRMATION_NOT_REQUIRED_KINDS` -- "a bounded read with no
+    canonical effect". No confirmation is ever minted or recorded for it
+    (mirrors `operator_mcp_adapters.job_lifecycle`'s real call pattern:
+    `confirmation_record=None`, `presented_token=None`). Routing it through
+    `consume_and_create_operation` must still accept -- not deny
+    `confirmation_missing` -- and must persist zero operation manifest
+    rows, since this kind has no canonical effect to record."""
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(operation_kind="job.status", targets=(policy.TargetRef("agent_job", "aj_1"),))
+
+    authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=None, presented_token=None
+    )
+    assert authorization.decision.allowed
+    assert authorization.decision.stage == "confirmation"
+
+    # No confirmation was ever minted/recorded for this kind -- the
+    # confirmation_id is a placeholder that has no row in `confirmations`.
+    outcome = service.consume_and_create_operation(
+        confirmation_id="opc_" + "0" * 64,
+        presented_token=None,
+        ctx=ctx,
+        authorization=authorization,
+    )
+
+    assert outcome.outcome == "created"
+    assert outcome.reason_code is None
+    assert outcome.operation is None
+    assert _count_operations(tmp_foundry) == 0
+
+
+def test_confirmation_required_kind_still_denies_confirmation_missing_with_no_row(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """Contrast case for the fix above: a kind NOT in
+    `CONFIRMATION_NOT_REQUIRED_KINDS` (the default `_basic_ctx` kind,
+    `run.plan`) must still deny `confirmation_missing` -- and persist zero
+    manifest rows -- when no confirmation row exists. The new
+    `CONFIRMATION_NOT_REQUIRED_KINDS` short-circuit in `_consume_locked`
+    must not be reached for, or change behaviour of, this kind."""
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets())
+    assert ctx.operation_kind not in policy.CONFIRMATION_NOT_REQUIRED_KINDS
+
+    authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=None, presented_token="whatever-token"
+    )
+    assert authorization.decision.stage == "confirmation"
+    assert authorization.decision.reason_code == "confirmation_missing"
+
+    outcome = service.consume_and_create_operation(
+        confirmation_id="opc_" + "1" * 64,
+        presented_token="whatever-token",
+        ctx=ctx,
+        authorization=authorization,
+    )
+    assert outcome.outcome == "denied"
+    assert outcome.reason_code == "confirmation_missing"
+    assert outcome.operation is None
+    assert _count_operations(tmp_foundry) == 0
+
+
+# ---------------------------------------------------------------------------
 # Wrong-workspace lookup is indistinguishable from missing
 # ---------------------------------------------------------------------------
 
