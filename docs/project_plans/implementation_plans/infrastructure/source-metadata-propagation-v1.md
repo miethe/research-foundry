@@ -3,8 +3,12 @@ it_schema: 1
 feature_slug: source-metadata-propagation
 title: "Source Metadata Capture & Provenance-Preserving Propagation — implementation plan"
 doc_type: implementation_plan
-status: not_started
-planning_maturity: draft
+status: completed
+planning_maturity: shipped
+merge_commit: 794824d0737fda33fe0dfb671c951c8a4fafc132   # squash of M1-M4 + gate remediation into main
+merge_branch: main
+commit_refs:
+  - 794824d0737fda33fe0dfb671c951c8a4fafc132   # only main-reachable sha; the 5 worktree commits went orphan on squash
 tier: 3
 priority: P2
 points: 48
@@ -34,16 +38,23 @@ related_documents:
   - docs/dev/architecture/rf-run-export-schema.json
   - docs/project_plans/human-briefs/source-metadata-propagation.md
 acceptance_criteria:
+  # MET WITH A NAMED LIMIT: the capture path, ingest-boundary bounds, and deterministic
+  # trust.source_rank are real and live. DOI now flows from a real producer
+  # (external_research_resolution.default_promote, wired post-gate). authors/publisher/version have
+  # NO live producer — no registered search-router provider emits them (OQ-1) and live third-party
+  # ingestion is deferred Phase C (PRD DEF-1..DEF-6). Shipped as capability + one real DOI path,
+  # not as "all four fields now populate in production".
   - "A newly ingested source card carries real authors/DOI/publisher/version instead of hardcoded-empty."
   - "Source attributes reach claims at export time, recomputed from files on every run, with no read-path model call, network call, or clock read."
   - "A third_party_* attribution value cannot exist without retrieval evidence — enforced by schema shape, not a field-name list."
   - "All 7 committed pediatric_cds bundles still verify after the schema change, proven by a live 7-of-7 counted sweep."
   - "The first query surface reports tri-state coverage (N of M sources assessed) — absent is distinguishable from not-yet-assessed."
   - "Every change to the exported payload shape lands a versioned rf-run-export-schema.json plus a legacy fixture that still validates."
-open_questions:
-  - "OQ-1: which search-router providers actually return DOI / citation counts / structured authors today? M1 sizing rests on it."
-  - "OQ-2: is the catalog sqlite migration path established, or rebuild-only? M4 sizing rests on it."
-  - "OQ-4: is trust.source_rank derivation deterministic from source_type + rights/access basis, or does it need a capture-time model call? A write-path model call does NOT violate the deal-killer (read-path only)."
+open_questions:   # all RESOLVED at their milestone's entry; resolutions + evidence in the execution ledger
+  - "RESOLVED (M1 entry) OQ-1: none of the six registered search-router providers returns DOI / citation counts / structured authors — none is a bibliographic API, and SearchHit/ExtractedDoc carry no such fields. CAVEAT found later by the feature gate: this enumerated PROVIDERS, not ingest CALL SITES, and missed that external_research_resolution.default_promote already held a real external DOI and dropped it. Now wired."
+  - "RESOLVED (M4 entry) OQ-2: rebuild-only — no ALTER TABLE, no Alembic chain. A SCHEMA_VERSION int drives drop-and-recreate via _ensure_schema(), which does NOT repopulate. Safe because the catalog is a derived index, but `rf catalog rebuild` is a MANDATORY post-deploy step or the catalog silently reports zeroed counts."
+  - "RESOLVED (M1 entry) OQ-4: deterministic from source_type alone; no capture-time model call needed. rights_summary.access_basis is always 'unknown' at real capture time, so folding it in would have been dead code."
+  - "RESOLVED (at plan time, per the accepted decision) OQ-3: attribution_summary carries attribution_ids, counts and monotone rollups only — never a raw third-party value."
 decisions:
   - decision: "Owning entity is a NEW top-level source_attribution entity, not an extension of source_assertion.schema.yaml."
     rationale: "The Ledger has no asserted-by field, mandates a passage anchor a citation count cannot satisfy, and write-caps attestation at `candidate` forever. Shaped on the landed rights_record.schema.yaml. Prior-art leg's dissent (sibling third_party_assertions[]) is preserved in the PRD, not erased."
