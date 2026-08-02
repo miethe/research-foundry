@@ -1245,6 +1245,59 @@ def test_job_cancel_denies_above_ceiling_wet_path_never_calls_request_cancellati
     assert request_cancellation_calls == []
 
 
+def test_job_cancel_denies_above_ceiling_wet_path_with_valid_confirmation(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stronger sibling of `test_job_cancel_denies_above_ceiling_wet_path_
+    never_calls_request_cancellation` immediately above: that test supplies
+    NO confirmation (`confirmation_record=None`), so its denial is not
+    attributable to the ceiling guard alone -- `confirmation_missing` would
+    produce the same bounded `not_found` shape. This one mints a CORRECT
+    confirmation for the same target/ceiling setup, so the denial can only
+    come from the ceiling guard, and additionally asserts the full bounded
+    error envelope (`retryable`/`operation_id`/`receipt_ref`/no `detail`)
+    plus that the ceiling resolver was consulted exactly once."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    real_operation_id = _target_operation_id(
+        tmp_foundry, op_service, effective_sensitivity="client_sensitive"
+    )
+    record, token = _cancel_confirmation(
+        tmp_foundry,
+        op_service,
+        real_operation_id,
+        "idem-above-ceiling-cancel-wet",
+        target_effective_sensitivity="client_sensitive",
+    )
+
+    ceiling_double, ceiling_calls = _recording_ceiling("work_sensitive")
+    monkeypatch.setattr(adapters_pkg, "resolve_local_sensitivity_ceiling", ceiling_double)
+
+    def _must_not_run(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("above-ceiling denial must never reach request_cancellation")
+
+    monkeypatch.setattr(OperatorCancelResumeService, "request_cancellation", _must_not_run)
+
+    above_ceiling_result = job_lifecycle.invoke_cancel(
+        operation_id=real_operation_id,
+        idempotency_key="idem-above-ceiling-cancel-wet",
+        confirmation_record=record,
+        presented_token=token,
+        dry_run=False,
+        paths=tmp_foundry,
+        operations=op_service,
+    )
+
+    assert above_ceiling_result.ok is False
+    assert above_ceiling_result.error is not None
+    assert above_ceiling_result.error["reason_code"] == "not_found"
+    assert above_ceiling_result.error["retryable"] is False
+    assert above_ceiling_result.error["operation_id"] is None
+    assert above_ceiling_result.error["receipt_ref"] is None
+    assert "detail" not in above_ceiling_result.error
+    assert ceiling_calls == [tmp_foundry]
+
+
 def test_job_resume_allows_when_ceiling_covers_target_real_sensitivity(
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
