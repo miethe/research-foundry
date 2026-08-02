@@ -173,37 +173,56 @@ class _JobLifecycleActionError(RuntimeError):
 
 def _operation_effective_sensitivity_of(manifest: Mapping[str, Any]) -> str:
     """Bounded, fail-closed extraction of a persisted operation manifest's
-    OWN `effective_sensitivity` (P3 hardening pass, HIGH-2 defect fix).
+    OWN `effective_sensitivity` (P3 hardening pass, HIGH-2 defect fix; this
+    docstring updated for a subsequent defense-in-depth cross-check pass).
 
     `operator_operation_service._build_manifest` (:541, sole caller
-    `_consume_locked` :1392) writes the
-    ORIGINAL `ctx.effective_sensitivity` into the persisted manifest at BOTH
-    a top-level `manifest["effective_sensitivity"]` field and a nested
+    `_consume_locked` :1392) writes the ORIGINAL `ctx.effective_sensitivity`
+    into the persisted manifest at BOTH a top-level
+    `manifest["effective_sensitivity"]` field and a nested
     `manifest["operation"]["effective_sensitivity"]` duplicate
-    (`operator_operation_service.py` ~:582/:594) -- this reads the
-    top-level one, the SAME field `OperationRecord`'s own callers already
-    treat as authoritative.
+    (`operator_operation_service.py` ~:582/:594). Only the nested envelope
+    is schema-validated at write time -- the top-level copy is not. This
+    function therefore reads BOTH copies and cross-checks them rather than
+    trusting either one alone:
 
-    Returns that value only when it is a `str` member of
-    `policy.SENSITIVITY_LEVELS`; otherwise -- a missing/absent field, a
-    non-string value, or an unknown label (a manifest this function did not
-    itself produce could in principle carry any of these, e.g. K4-NB-3-style
-    corruption that got past `OperationRecord.from_manifest`'s own
-    subscripting) -- returns `SENSITIVITY_LEVELS[-1]` (`"client_sensitive"`,
-    the STRICTEST label). This mirrors `policy.resolve_effective_
-    sensitivity`'s own "unresolvable content is maximally sensitive"
-    convention (`operator_mcp_policy.py`'s NEW-4 fix) -- the OPPOSITE
-    fail-closed direction from `resolve_local_sensitivity_ceiling`'s own
-    convention one module up (a ceiling is a GRANT of clearance and fails
-    closed toward the LOOSEST-denying value; this is a DESCRIPTION of
-    content risk and fails closed toward the STRICTEST-denying value).
-    Never raises.
+    - If both copies are present and are valid `str` members of
+      `policy.SENSITIVITY_LEVELS`, and they AGREE, that shared value is
+      returned.
+    - If they DISAGREE (or only one of the two is a valid member), the
+      STRICTER of the valid candidate(s) wins -- ranked via
+      `policy._sensitivity_rank` (higher rank = stricter), the SAME ranking
+      `policy.resolve_effective_sensitivity` itself uses. This means either
+      copy alone being valid is sufficient to produce a real label (the
+      other missing/invalid does not cause a fall-back to strictest); it
+      is only when NEITHER copy is a valid member of `SENSITIVITY_LEVELS`
+      that this function falls back to `SENSITIVITY_LEVELS[-1]`
+      (`"client_sensitive"`, the STRICTEST label). A non-mapping
+      `manifest["operation"]` value is treated the same as an absent one
+      (never raises).
+
+    This mirrors `policy.resolve_effective_sensitivity`'s own "unresolvable
+    content is maximally sensitive" convention (`operator_mcp_policy.py`'s
+    NEW-4 fix) -- the OPPOSITE fail-closed direction from
+    `resolve_local_sensitivity_ceiling`'s own convention one module up (a
+    ceiling is a GRANT of clearance and fails closed toward the
+    LOOSEST-denying value; this is a DESCRIPTION of content risk and fails
+    closed toward the STRICTEST-denying value). Never raises.
     """
 
-    value = manifest.get("effective_sensitivity")
-    if isinstance(value, str) and value in policy.SENSITIVITY_LEVELS:
-        return value
-    return policy.SENSITIVITY_LEVELS[-1]
+    top = manifest.get("effective_sensitivity")
+    operation = manifest.get("operation")
+    nested = (
+        operation.get("effective_sensitivity") if isinstance(operation, Mapping) else None
+    )
+    candidates = [
+        value
+        for value in (top, nested)
+        if isinstance(value, str) and value in policy.SENSITIVITY_LEVELS
+    ]
+    if not candidates:
+        return policy.SENSITIVITY_LEVELS[-1]
+    return max(candidates, key=policy._sensitivity_rank)
 
 
 def _resolve_operation_workspace(

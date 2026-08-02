@@ -1344,6 +1344,52 @@ def test_operation_effective_sensitivity_of_fails_closed_on_missing_or_invalid_v
     assert job_lifecycle._operation_effective_sensitivity_of({"effective_sensitivity": "public"}) == "public"
 
 
+def test_operation_effective_sensitivity_of_cross_checks_top_and_nested_copies() -> None:
+    """`operator_operation_service._build_manifest` writes
+    `effective_sensitivity` at BOTH a top-level key and
+    `manifest["operation"]["effective_sensitivity"]`, but only the nested
+    envelope is schema-validated at write time. `_operation_effective_
+    sensitivity_of` must read BOTH copies and fail closed to the STRICTEST
+    label on disagreement, rather than trusting the (unvalidated) top-level
+    copy alone."""
+
+    assert "internal" not in policy.SENSITIVITY_LEVELS
+    assert "work_sensitive" in policy.SENSITIVITY_LEVELS
+
+    # (a) Both copies agree ("public") -> returns "public".
+    agreeing_manifest = {
+        "effective_sensitivity": "public",
+        "operation": {"effective_sensitivity": "public"},
+    }
+    assert job_lifecycle._operation_effective_sensitivity_of(agreeing_manifest) == "public"
+
+    # (b) Copies disagree (top="public", nested="client_sensitive") ->
+    # returns the stricter of the two, "client_sensitive".
+    disagreeing_manifest = {
+        "effective_sensitivity": "public",
+        "operation": {"effective_sensitivity": "client_sensitive"},
+    }
+    stricter = max(
+        ("public", "client_sensitive"), key=policy._sensitivity_rank
+    )
+    assert stricter == "client_sensitive"
+    assert job_lifecycle._operation_effective_sensitivity_of(disagreeing_manifest) == "client_sensitive"
+
+    # (c) Only the nested copy is present (no top-level key at all);
+    # nested="work_sensitive" -> returns "work_sensitive", proving this does
+    # NOT silently fall back to the strictest label just because the
+    # top-level copy is absent.
+    nested_only_manifest = {"operation": {"effective_sensitivity": "work_sensitive"}}
+    assert job_lifecycle._operation_effective_sensitivity_of(nested_only_manifest) == "work_sensitive"
+
+    # (d) Neither copy present -> falls back to SENSITIVITY_LEVELS[-1].
+    assert job_lifecycle._operation_effective_sensitivity_of({}) == policy.SENSITIVITY_LEVELS[-1]
+    assert (
+        job_lifecycle._operation_effective_sensitivity_of({"operation": {}})
+        == policy.SENSITIVITY_LEVELS[-1]
+    )
+
+
 def test_all_three_kinds_are_registered() -> None:
     assert base.get_adapter("job.status") is job_lifecycle.STATUS_ADAPTER
     assert base.get_adapter("job.cancel") is job_lifecycle.CANCEL_ADAPTER
