@@ -35,6 +35,17 @@ This block records only the new decisions for implementation planning. Stable be
   task IDs `P0-001` through `P0-004`). `P0-GATES` is explicitly pending
   task-completion-validator and Karen review.
 
+> **Correction (2026-08-02):** The locked decision above to "Keep
+> `RF_ASSERTION_REUSE_ENABLED=false` and `RF_CANONICAL_CLAIMS_ENABLED=false`"
+> named an environment-variable mechanism that was never implemented
+> (`research_foundry` has no such env reads), so as written it was
+> unenforceable — there was no flag to keep false. The real controls are
+> `foundry.assertion_ledger.automated_reuse_enabled` and
+> `foundry.assertion_ledger.canonical_claims_enabled` in `foundry.yaml`, which
+> fail closed (default `false`) unless `foundry.assertion_ledger.ledger_write_enabled`
+> is also `true`; see `docs/dev/architecture/assertion-ledger-contract.md`. The
+> decision text above is left unchanged for the historical record.
+
 ## 1. Scope and Product Boundary
 
 ### In scope

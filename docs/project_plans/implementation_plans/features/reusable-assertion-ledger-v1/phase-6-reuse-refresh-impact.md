@@ -2,9 +2,9 @@
 schema_version: 2
 doc_type: phase_plan
 title: "Phase 6 (P5): Reuse, Refresh, and Impact"
-status: draft
+status: completed
 created: 2026-07-12
-updated: 2026-07-12
+updated: 2026-08-02
 feature_slug: reusable-assertion-ledger
 feature_version: v1
 phase: 6

@@ -173,7 +173,7 @@ Phase 8) per plan.
 - **Lineage DTO omissions (P6-003 finding)**: `AssertionLineage` carries no qualifiers/access/
   rights (inspector combines with packet data) and no `exports` uses field (mockup pill omitted
   rather than invented).
-- **No frontend plumbing for `RF_CANONICAL_CLAIMS_ENABLED`**: canonical-claim generated types
+- **No frontend plumbing for `foundry.assertion_ledger.canonical_claims_enabled`**: canonical-claim generated types
   exist, but no feature flag reaches the runs-viewer (explorer-verified). P6-003 must wire the
   signal; safe default when absent = assertion-only mode (a first-class state per design spec §5.4).
 - **`replacement_edition_id` is always `null`**: P5 persisted receipts do not carry a separately

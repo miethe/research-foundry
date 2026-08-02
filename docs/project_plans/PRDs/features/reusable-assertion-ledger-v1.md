@@ -6,9 +6,9 @@ description: >
   Add a private-first, durable ledger of passage-bound source assertions so
   Research Foundry can safely reuse evidence across research runs while
   preserving provenance, qualifiers, correction lineage, and workspace policy.
-status: draft
+status: completed
 created: 2026-07-12
-updated: 2026-07-13
+updated: 2026-08-02
 feature_slug: reusable-assertion-ledger
 feature_version: v1
 tier: 3
@@ -53,7 +53,15 @@ tags:
   - evidence-memory
   - private-first
 milestone: null
-commit_refs: []
+commit_refs:
+  - e186fdb836ff06d15b9dd69c2b4e971f7ac247a5
+  - 7fec855e8f5221d7af9076cf82e7e6371e59821f
+  - 67e2271b9783138b80c37ba7580628696c522156
+  - c305aae37f3953315da3f1da6e0600622e9413e7
+  - b0e923bf88c81cafa46ccb6501d6d833b555a28c
+  - f95585b35a66c6b296630e02918cd92707c40f98
+  - ba9e551bf34d1c1e02737cb64902696e4475bc7f
+  - 70d7e02c26c23a2827b030b1c10f4e86ac9a0a15
 pr_refs: []
 files_affected: []
 changelog_required: true
@@ -107,7 +115,7 @@ risks:
 P0 has local deterministic fixture evidence only. Its three result artifacts
 are conditional because representative private-corpus replay and concluded
 citation, segmentation, and contradiction contracts are unavailable. Keep
-`RF_ASSERTION_REUSE_ENABLED` and `RF_CANONICAL_CLAIMS_ENABLED` disabled; allow
+`foundry.assertion_ledger.automated_reuse_enabled` and `foundry.assertion_ledger.canonical_claims_enabled` disabled; allow
 only assertion-only, provenance-preserving contract work after independent
 review. See the phase plan's P0-004 synthesis and
 `.Codex/progress/reusable-assertion-ledger/phase-1-progress.md`.
@@ -510,10 +518,10 @@ flowchart LR
 
 ### Feature flags
 
-- `RF_ASSERTION_LEDGER_ENABLED`: enables ledger writes and read APIs.
-- `RF_ASSERTION_REUSE_ENABLED`: enables automated reuse only after replay,
+- `foundry.assertion_ledger.ledger_write_enabled`: enables ledger writes and read APIs.
+- `foundry.assertion_ledger.automated_reuse_enabled`: enables automated reuse only after replay,
   provenance, propagation, and isolation gates pass.
-- `RF_CANONICAL_CLAIMS_ENABLED`: enables candidate canonical grouping only after
+- `foundry.assertion_ledger.canonical_claims_enabled`: enables candidate canonical grouping only after
   the identity/merge gate passes.
 
 ## 10. Risks and mitigations

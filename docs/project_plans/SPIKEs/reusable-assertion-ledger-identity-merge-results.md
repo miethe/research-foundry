@@ -17,6 +17,16 @@ promoted_to: ["docs/project_plans/implementation_plans/features/reusable-asserti
 
 # Identity and Semantic Merge Audit Result
 
+> **Correction (2026-08-02):** This result was authored using flag names
+> (`RF_ASSERTION_LEDGER_ENABLED`, `RF_ASSERTION_REUSE_ENABLED`,
+> `RF_CANONICAL_CLAIMS_ENABLED`) that were never implemented — `research_foundry`
+> has no such environment-variable reads. The real controls are the
+> `foundry.assertion_ledger.*` keys in `foundry.yaml`
+> (`ledger_write_enabled`, `automated_reuse_enabled`, `canonical_claims_enabled`;
+> see `docs/dev/architecture/assertion-ledger-contract.md`). References below
+> have been corrected to the real keys; the `conditional` verdict and findings
+> are unchanged.
+
 ## Scope and evidence class
 
 The same frozen local fixture manifest and deterministic Phase 0 harness cover
@@ -87,7 +97,7 @@ behavior or semantic merge safety. The result is **conditional**: P1/P2 may
 proceed with immutable edition/passage/assertion identity, while canonical claim
 grouping remains disabled.
 
-`RF_CANONICAL_CLAIMS_ENABLED=false` is mandatory. Any future merge audit must
+`foundry.assertion_ledger.canonical_claims_enabled: false` is mandatory. Any future merge audit must
 use 100–250 narrow-domain candidates, at least 40 hard negatives, two
 independent reviewers, adjudication, >=80% acceptance, <2% harmful false
 merges, and zero silent material-qualifier loss. An identity regression is a

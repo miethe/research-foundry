@@ -3,8 +3,9 @@ title: "Phase 1: Write-Path Foundation & WKSP-304 Scoping Contract"
 schema_version: 2
 doc_type: phase_plan
 it_schema: 1
-status: draft
+status: completed
 created: 2026-07-15
+updated: 2026-08-02
 phase: P1
 phase_title: "Write-path foundation & WKSP-304 scoping contract"
 feature_slug: assertion-ledger-activation

@@ -3,8 +3,9 @@ title: "Phase 1.5: Forward Extraction/Ingest Contract Fix"
 schema_version: 2
 doc_type: phase_plan
 it_schema: 1
-status: draft
+status: completed
 created: 2026-07-15
+updated: 2026-08-02
 phase: P1.5
 phase_title: "Forward extraction/ingest contract fix"
 feature_slug: assertion-ledger-activation

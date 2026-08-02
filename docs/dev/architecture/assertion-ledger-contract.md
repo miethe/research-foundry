@@ -85,8 +85,9 @@ lineage context, not an invalidation cause.
 
 ## Canonical grouping, split, and rollback
 
-Canonical claims are optional. With `RF_CANONICAL_CLAIMS_ENABLED=false`, the
-system operates assertion-only and omits canonical references. The lifecycle
+Canonical claims are optional. With `foundry.assertion_ledger.canonical_claims_enabled: false`
+(the default when the key is omitted), the system operates assertion-only and
+omits canonical references. The lifecycle
 of a canonical claim is `proposed -> reviewed -> active`, with `split`,
 `superseded`, and `rolled_back` states. A `split` or `rolled_back` record must
 include non-empty versioned `replacement_claims`, plus `reversal` with its
@@ -112,8 +113,10 @@ RF type barrel exports both the generated P1 types and
 
 ## Safety invariants
 
-- Do not enable `RF_ASSERTION_LEDGER_ENABLED`, `RF_ASSERTION_REUSE_ENABLED`, or
-  `RF_CANONICAL_CLAIMS_ENABLED` as part of this contract phase.
+- Do not enable `foundry.assertion_ledger.ledger_write_enabled`,
+  `foundry.assertion_ledger.automated_reuse_enabled`, or
+  `foundry.assertion_ledger.canonical_claims_enabled` as part of this contract
+  phase.
 - Unknown qualifiers are preserved in `qualifier_extensions`; dropping them is
   an identity failure, not normalization.
 - An `inference_record` is derived reasoning and cannot validate as a

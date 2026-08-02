@@ -6,7 +6,7 @@ doc_subtype: feature_brief
 root_kind: project_plans
 id: BRIEF-reusable-assertion-ledger
 title: "Reusable Assertion Ledger — Human Brief"
-status: draft
+status: completed
 category: human-briefs
 feature_slug: reusable-assertion-ledger
 feature_family: reusable-assertion-ledger
@@ -26,7 +26,7 @@ audience: [humans]
 priority: high
 confidence: 0.82
 created: 2026-07-12
-updated: 2026-07-14
+updated: 2026-08-02
 target_release: null
 tags: [human-brief, tier-3, assertions, provenance, private-first]
 ---
@@ -34,7 +34,7 @@ tags: [human-brief, tier-3, assertions, provenance, private-first]
 # Reusable Assertion Ledger — Human Brief
 
 > Living document for human orchestrators. Agents: do not load unless explicitly instructed.
-> Status: draft | Updated: 2026-07-14
+> Status: completed | Updated: 2026-08-02
 
 ## 1. Context Pointers
 
@@ -94,7 +94,7 @@ H1–H6 heuristic application:
 - **Shared lexical/vector/graph indexes**: Prohibited in v1 because counts, candidates, caches, facets, and graph traversal can leak corpus membership across workspaces. Promote only after private value is proven and an adversarial isolation gate shows zero unauthorized disclosure at acceptable operating cost.
 - **Public corpus rights and promotion**: Prohibited in v1 because lawful reuse, license/retention state, moderation, revocation, poisoning response, and correction operations are a separate product boundary. Promote only with a rights-cleared corpus, explicit allowed-use policy, auditable withdrawal, and proven private economics.
 - **Public interchange**: Nanopublication/RO-Crate export stays bundled with public promotion; internal schemas should remain mappable but need not ship a public contract.
-- **Canonical claims after a failed merge gate**: Keep `RF_CANONICAL_CLAIMS_ENABLED` off and ship the useful assertion-only ledger. Reopen with domain-specific fixtures rather than weakening the threshold.
+- **Canonical claims after a failed merge gate**: Keep `foundry.assertion_ledger.canonical_claims_enabled` off and ship the useful assertion-only ledger. Reopen with domain-specific fixtures rather than weakening the threshold.
 
 ## 6. Risk Narrative
 

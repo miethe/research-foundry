@@ -337,6 +337,7 @@ All Python code should include type hints throughout for IDE support and runtime
 - `.claude/rules/context-budget.md` — Token budget invariants
 - `.claude/rules/lsp-diagnostics.md` — LSP diagnostic handling
 - `.claude/rules/git-workflow.md` — Commit + squash-merge on completion (overrides "ask first"); push stays gated
+- `.claude/rules/plan-bookkeeping.md` — Commit-ref reachability, twin progress trackers, phase-id and status-vocabulary hygiene for plan artifacts
 
 **Key Context** (read when working in domain):
 - `.claude/context/key-context/context-loading-playbook.md` — Trigger matrix for what to read first

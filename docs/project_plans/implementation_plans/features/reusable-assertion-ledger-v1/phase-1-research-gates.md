@@ -2,9 +2,9 @@
 schema_version: 2
 doc_type: phase_plan
 title: "Phase 1 (P0): Research Gates"
-status: review
+status: completed
 created: 2026-07-12
-updated: 2026-07-13
+updated: 2026-08-02
 feature_slug: reusable-assertion-ledger
 feature_version: v1
 phase: 1
@@ -101,9 +101,9 @@ verdicts.
 |---|---|
 | P1 canonical contracts | Freeze immutable hash, opaque-ID/version, lineage, eligibility, lifecycle-event, idempotency, and dependency-edge fields. Preserve source assertion/canonical claim/inference distinction. |
 | P2–P4 registry/materialization/catalog | Support assertion-only records and auditable predecessor lineage; retain rejection and provenance fields. Do not expose merge-derived grouping or replay savings claims. |
-| P5 reuse/impact | `RF_ASSERTION_REUSE_ENABLED=false` for unknown, stale, invalid, or unreviewed evidence; synchronous blocking precedes cleanup; unknown adapters default-denied/manual queue. |
-| Canonical claims | `RF_CANONICAL_CLAIMS_ENABLED=false`; no automatic canonical merge until two-reviewer narrow-domain audit clears the charter threshold. |
-| Ledger writes | `RF_ASSERTION_LEDGER_ENABLED` may not be enabled beyond a local development fixture until P1 contracts and independent review pass. |
+| P5 reuse/impact | `foundry.assertion_ledger.automated_reuse_enabled: false` for unknown, stale, invalid, or unreviewed evidence; synchronous blocking precedes cleanup; unknown adapters default-denied/manual queue. |
+| Canonical claims | `foundry.assertion_ledger.canonical_claims_enabled: false`; no automatic canonical merge until two-reviewer narrow-domain audit clears the charter threshold. |
+| Ledger writes | `foundry.assertion_ledger.ledger_write_enabled` may not be enabled beyond a local development fixture until P1 contracts and independent review pass. |
 
 **Fallback and stop conditions:** assertion-only, provenance-preserving storage
 is the only allowable scope after review. Any nondeterministic identity, missing

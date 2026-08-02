@@ -3,8 +3,9 @@ title: "Phase 2: Historical Claim to Assertion Backfill Migration"
 schema_version: 2
 doc_type: phase_plan
 it_schema: 1
-status: draft
+status: completed
 created: 2026-07-15
+updated: 2026-08-02
 phase: P2
 phase_title: "Historical claim to assertion backfill migration"
 feature_slug: assertion-ledger-activation

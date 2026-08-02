@@ -185,6 +185,15 @@ progress: 100
 
 # Reusable Assertion Ledger — Phase 1 (P0): Research Gates
 
+> **Correction (2026-08-02):** This record's `RF_ASSERTION_LEDGER_ENABLED`,
+> `RF_ASSERTION_REUSE_ENABLED`, and `RF_CANONICAL_CLAIMS_ENABLED` references name
+> an environment-variable mechanism that was never implemented
+> (`research_foundry` has no such env reads). The real controls are the
+> `foundry.assertion_ledger.*` keys in `foundry.yaml`
+> (`ledger_write_enabled`, `automated_reuse_enabled`, `canonical_claims_enabled`;
+> see `docs/dev/architecture/assertion-ledger-contract.md`). Left unchanged below
+> for the historical record.
+
 Phase 0 is complete following independent reviewer approval. The tracked task
 IDs intentionally remain `P0-*` because the governing phase plan declares
 `phase: 1`, `phase_id: P0`.

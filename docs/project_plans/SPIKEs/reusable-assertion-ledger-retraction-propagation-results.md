@@ -17,6 +17,16 @@ promoted_to: ["docs/project_plans/implementation_plans/features/reusable-asserti
 
 # Correction and Retraction Propagation Audit Result
 
+> **Correction (2026-08-02):** This result was authored using flag names
+> (`RF_ASSERTION_LEDGER_ENABLED`, `RF_ASSERTION_REUSE_ENABLED`,
+> `RF_CANONICAL_CLAIMS_ENABLED`) that were never implemented — `research_foundry`
+> has no such environment-variable reads. The real controls are the
+> `foundry.assertion_ledger.*` keys in `foundry.yaml`
+> (`ledger_write_enabled`, `automated_reuse_enabled`, `canonical_claims_enabled`;
+> see `docs/dev/architecture/assertion-ledger-contract.md`). References below
+> have been corrected to the real keys; the `conditional` verdict and findings
+> are unchanged.
+
 ## Scope and evidence class
 
 The frozen local-only manifest defines 12 isolated dependency graphs: four each
@@ -102,7 +112,7 @@ replay state, or duplicate downstream action is a no-go for automated reuse.
   cause, and dependency-edge type separately from contradiction evidence.
 - **P2–P4:** persist enough source/assertion/report/export lineage to enumerate
   impact; current projections must honor authoritative invalidation.
-- **P5:** require synchronous `RF_ASSERTION_REUSE_ENABLED=false` on unknown,
+- **P5:** require synchronous `foundry.assertion_ledger.automated_reuse_enabled: false` on unknown,
   stale, or invalid state; adapters default-denied and reconcile via a manual
   queue until local adapter fixtures and review pass.
 - **Fallback:** a bounded derived-index rebuild is allowed only while reuse is

@@ -109,7 +109,7 @@ Extend existing catalog, claim-audit, provenance, lineage, and run-detail patter
 - [ ] Component tests cover full, denied, missing-field, stale, and assertion-only responses.
 - [ ] P6-000 impact read denial exposes zero actions, counts, object IDs, replacement targets, or membership hints.
 - [ ] Stale-impact UI and evidence use only the frozen P6-000 generated DTO; no frontend file read or inferred dependency traversal exists.
-- [ ] Merge controls are absent when `RF_CANONICAL_CLAIMS_ENABLED` is false.
+- [ ] Merge controls are absent when `foundry.assertion_ledger.canonical_claims_enabled` is false.
 - [ ] Inference labels cannot be mistaken for source assertions.
 - [ ] Keyboard navigation, focus return, accessible names, and contrast pass.
 - [ ] Logical P7 task P7-004 in physical Phase 8 schedules runtime smoke for every `target_surfaces` path.

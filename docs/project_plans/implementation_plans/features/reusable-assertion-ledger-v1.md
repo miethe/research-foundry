@@ -43,9 +43,15 @@ test_plan_ref: null
 plan_structure: independent
 progress_init: pre-created
 commit_refs:
-- f5ce6ae004b7a83970320e4ec6f992cb1e8ed68a
-- 9cf7e6b8f12cb16d8f755eb50bf8be0d513c0ee1
-- 26e8f77afc2f8fb079f8e49cf2f760844a51214d
+- e186fdb836ff06d15b9dd69c2b4e971f7ac247a5
+- 7fec855e8f5221d7af9076cf82e7e6371e59821f
+- 67e2271b9783138b80c37ba7580628696c522156
+- c305aae37f3953315da3f1da6e0600622e9413e7
+- b0e923bf88c81cafa46ccb6501d6d833b555a28c
+- f95585b35a66c6b296630e02918cd92707c40f98
+- ba9e551bf34d1c1e02737cb64902696e4475bc7f
+- 70d7e02c26c23a2827b030b1c10f4e86ac9a0a15
+- a9daaa2ece15e260cb4dcb4314a07a2ce6a13274
 pr_refs: []
 files_affected:
   - schemas/
@@ -141,14 +147,16 @@ and contradiction contracts were available. Its pending `P0-GATES` language
 is historical and no longer describes the current tracker state.
 
 At the current checkpoint, logical P0-P8 repository-owned work is complete.
-Phase 8/P7 was approved by Terra at
-`f5ce6ae004b7a83970320e4ec6f992cb1e8ed68a` /
-`d6f3fe1ad01b53907aab6ad949941fe0a62f7673`; Phase 9/P8 was approved after
-correction at `9cf7e6b8f12cb16d8f755eb50bf8be0d513c0ee1` /
-`26e8f77afc2f8fb079f8e49cf2f760844a51214d`, with Sol's final high-risk review
-also approved. P8-004 remains `not_executed_owner_data_absent`; therefore this
-is repository-readiness closeout only and does not claim private rollout,
-deployment, release, or external writeback.
+Phase 8/P7 was approved by Terra, and Phase 9/P8 was approved after
+correction, with Sol's final high-risk review also approved; both approvals
+land on-main at `f95585b35a66c6b296630e02918cd92707c40f98`. The original
+review citations (`f5ce6ae…` for Phase 8/P7, `9cf7e6b…` for Phase 9/P8) were
+pre-squash worktree commits that went unreachable once that squash landed;
+the two accompanying tree ids (`d6f3fe1…`, `26e8f77…`) came from this
+project's `<commit> / <tree>` citation convention and were never commits in
+their own right. P8-004 remains `not_executed_owner_data_absent`; therefore
+this is repository-readiness closeout only and does not claim private
+rollout, deployment, release, or external writeback.
 
 **Human Brief:** `docs/project_plans/human-briefs/reusable-assertion-ledger.md`
 **Decisions Block:** `.codex/worknotes/reusable-assertion-ledger/decisions-block.md`
@@ -170,7 +178,7 @@ The target is private beta only. Public promotion, shared retrieval indexes, cro
 - Search, caches, counts, facets, suggestions, and impact reads are workspace scoped.
 - Retraction blocking is authoritative and synchronous; downstream reconciliation may resume asynchronously.
 - Assertion-only operation is the required fallback when semantic-merge safety is not proven.
-- The feature flags are `RF_ASSERTION_LEDGER_ENABLED`, `RF_ASSERTION_REUSE_ENABLED`, and `RF_CANONICAL_CLAIMS_ENABLED`.
+- The feature controls are `foundry.yaml` keys under `foundry.assertion_ledger`: `ledger_write_enabled`, `automated_reuse_enabled`, and `canonical_claims_enabled` (the `RF_ASSERTION_LEDGER_ENABLED`/`RF_ASSERTION_REUSE_ENABLED`/`RF_CANONICAL_CLAIMS_ENABLED` env-var names were planning-era placeholders and were never implemented).
 
 ## Implementation strategy
 
@@ -276,7 +284,7 @@ P6 begins only after P5-002 and P5-003 are complete. P6-000 is the phase-entry s
 | P7 | Gold-set metrics, leakage suite, runtime smoke, rollback rehearsal | task-completion-validator + Karen |
 | P8 | Docs/CHANGELOG, migration receipt, private-beta health evidence, no public release action | task-completion-validator + Karen final |
 
-No phase is complete until its named reviewer records `pass`. A failed canonical-merge gate selects assertion-only delivery; a failed replay, deterministic-identity, propagation, or isolation gate blocks automated reuse.
+No phase is complete until its named reviewer records `pass`. A failed canonical-merge gate selects assertion-only delivery; a failed replay, deterministic-identity, propagation, or isolation gate blocks automated reuse. See the dated addendum under "Private rollout boundary" below — the shipped repo state deliberately departs from this gate table's default posture.
 
 ## Deferred items and findings policy
 
@@ -296,3 +304,36 @@ Each phase file narrows its commands. Feature closeout runs the project-supporte
 ## Private rollout boundary
 
 P8 may prepare and execute only a private, workspace-scoped beta when separately authorized. It does not publish a corpus, enable shared indexes, contact external writeback systems during tests, promote assertions publicly, or infer production deployment authority. The default state after implementation is ledger writes enabled for the pilot workspace, automated reuse off until gate receipts are attached, and canonical claims off unless the merge verdict is `go`.
+
+**Addendum (2026-08-02): single-operator override.** All three controls
+(`ledger_write_enabled`, `automated_reuse_enabled`, `canonical_claims_enabled`)
+were enabled in this repo's `foundry.yaml` by commit `ba9e551` as a
+deliberate, reversible single-operator opt-in — a departure from this
+section's stated default. This is disclosed in
+`docs/user/assertion-ledger.md:49-53` and the readiness runbook.
+
+`canonical_claims_enabled` has since been returned to `false` (2026-08-02)
+because the identity-merge SPIKE records it as mandatory-false; it was inert
+regardless, since `publish_canonical_claim` has zero production callers.
+
+`automated_reuse_enabled` is **knowingly left `true`** by operator decision.
+The historical-replay SPIKE's corpus-scale reuse-fidelity measurement
+(10-20 historical runs, 100-300 sources, 60-assertion audit) was not run.
+This is accepted because the blast radius is one operator's own reports on a
+private LAN, and every structural failure mode (unknown/blocked/retracted
+lifecycle, missing freshness/rights/sensitivity, failed evaluation, workspace
+mismatch) is denied by `evaluate_reuse()` in
+`src/research_foundry/services/assertion_reuse.py:37-94` independent of the
+flag — the capability is consulted only after, at `run_launch.py:112-113`,
+and can only narrow an `allow` to `deny`, never widen it.
+
+All three SPIKE verdicts were `conditional`, none `go`:
+`historical-replay-results.md:105`, `identity-merge-results.md:81`,
+`retraction-propagation-results.md:88`.
+
+There is no code-level receipt enforcement: every capability read resolves
+directly from `foundry.yaml`; "gate receipts" from
+`scripts/assertion_ledger_readiness.py` are a process artifact only.
+
+P8-004 (live private-beta health evidence) remains the sole open item,
+operator-gated.

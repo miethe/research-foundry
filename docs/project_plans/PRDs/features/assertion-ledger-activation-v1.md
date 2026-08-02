@@ -4,9 +4,9 @@ schema_version: 2
 doc_type: prd
 it_schema: 1
 description: "Wires the already-shipped assertion-ledger schemas/services/UI (reusable-assertion-ledger-v1) to a workspace-scoped write path — historical claim backfill, a forward ingest driver, reuse reachability, and canonical-merge UI activation — so the three enabled foundry.yaml flags produce observable ledger population instead of a silent no-op."
-status: draft
+status: completed
 created: 2026-07-15
-updated: 2026-07-15
+updated: 2026-08-02
 feature_slug: assertion-ledger-activation
 feature_version: v1
 tier: 2
@@ -36,7 +36,16 @@ risk_level: high
 category: features
 tags: [prd, planning, feature, assertion-ledger, wksp-304, security, backfill]
 milestone: null
-commit_refs: []
+commit_refs:
+  - 5c6569f2e1f66a336ccc6554c0e276f21007688e
+  - 13265e0bd1e3394ae55dbcfaf09041e99bb1f51c
+  - aa15871d9393d4b46f531c038b84ad4700e15c74
+  - 054837dab690425625f246b530fe733f3fe64f28
+  - 55ffccc8ce9d6379da209f3dd332ff33b3f2e3aa
+  - db6dec85e9145dab578824bddaf2a46d42e52f0f
+  - 24e5bd0470fa5a2d9fbc4245cb282902e37a0707
+  - 59d01c8825920bb1a3b567b127c8880594240495
+  - 7b170cba7076031a41f68755107c006eefd46877
 pr_refs: []
 files_affected:
   - src/research_foundry/services/assertion_rollout.py
@@ -397,6 +406,7 @@ graph TD
 - resilience: With the flag false or unset, merge controls are absent (matches the existing P6-of-v1 behavior: "Merge controls are absent when `RF_CANONICAL_CLAIMS_ENABLED` is false").
 - visual_evidence_required: "Desktop >=1440px screenshot of the merge-review surface with the flag on and populated data, and with the flag off (absent)."
 - verified_by: [P5 build-flag verification, P6 runtime smoke]
+- **Note (2026-08-02):** the P6 live `:3030` runtime smoke remains deferred (see the implementation plan's `phase-5-6-ui-and-verification.md` "Open items" note); P5's build-flag verification against a documented synthetic fixture is complete.
 
 #### AC-7: DI-1-scoped audit closes this feature's new-write-site delta
 - target_surfaces:

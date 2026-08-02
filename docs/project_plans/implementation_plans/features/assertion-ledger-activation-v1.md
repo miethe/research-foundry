@@ -3,9 +3,9 @@ title: "Implementation Plan: Assertion-Ledger Population & Activation"
 schema_version: 2
 doc_type: implementation_plan
 it_schema: 1
-status: complete
+status: completed
 created: 2026-07-15
-updated: 2026-07-15
+updated: 2026-08-02
 feature_slug: assertion-ledger-activation
 feature_version: v1
 tier: 3  # PROMOTED from decisions block's Tier 2 (SPIKE-waived). Both promotion triggers fired: (1)
@@ -50,7 +50,16 @@ risk_level: high
 category: "product-planning"
 tags: [implementation, planning, phases, tasks, assertion-ledger, wksp-304, security, backfill, spike-resolved, tier-3-promotion, extraction-contract-fix]
 milestone: null
-commit_refs: []
+commit_refs:
+  - 5c6569f2e1f66a336ccc6554c0e276f21007688e
+  - 13265e0bd1e3394ae55dbcfaf09041e99bb1f51c
+  - aa15871d9393d4b46f531c038b84ad4700e15c74
+  - 054837dab690425625f246b530fe733f3fe64f28
+  - 55ffccc8ce9d6379da209f3dd332ff33b3f2e3aa
+  - db6dec85e9145dab578824bddaf2a46d42e52f0f
+  - 24e5bd0470fa5a2d9fbc4245cb282902e37a0707
+  - 59d01c8825920bb1a3b567b127c8880594240495
+  - 7b170cba7076031a41f68755107c006eefd46877
 pr_refs: []
 files_affected:
   - src/research_foundry/services/extraction.py
@@ -78,7 +87,7 @@ open_questions:
     status: resolved
   - q: "OQ-3: What assertion_registry_workspace_id does a single-operator run resolve to?"
     owner: python-backend-engineer
-    status: open
+    status: resolved
   - q: "OQ-4: Does the merge UI (P5) require populated canonical claims, or can it be verified against a synthetic fixture?"
     owner: ui-engineer
     status: open
@@ -115,7 +124,7 @@ decision_gates:
   - gate: "P2-01 SPIKE decision: RESOLVED per docs/project_plans/SPIKEs/assertion-ledger-backfill-mapping.md (2026-07-15) -- primary: fix-forward-extraction-contract (new blocking Phase 1.5); backfill: accept-low-yield + narrow fuzzy>=0.9 quote-recovery add-on (~6.8% total yield, +1-2 pts); rejected: open-ended gate-relaxation, defer"
     status: resolved
   - gate: "Defect 1c integrity analysis (P2-01a): the relaxed claim-ledger bijection check must still catch real tampering (a fact-derived claim modified, reordered, or deleted within the fact-derived prefix) while tolerating only legitimately-typed trailing inference/speculation claims -- validated against an adversarial fixture, not a blind relaxation of the byte-identity check."
-    status: pending
+    status: resolved
 wave_plan:
   serialization_barriers:
     - src/research_foundry/cli_commands.py
@@ -541,6 +550,8 @@ Python (FastAPI, Pydantic, content-addressed file I/O), the existing `assertion_
 ## Success Metrics
 
 See frontmatter `success_metrics` (revised per the P2-01 SPIKE verdict) and the PRD's §4 Success Metrics table, §11 structured acceptance criteria (AC-1..AC-9), and §11 Functional/Technical/Quality/Documentation Acceptance checklists -- this plan's phase task tables map directly to those via each phase detail file's AC-mapping section.
+
+**Deferred (2026-08-02):** AC-6's live `:3030` runtime smoke (the P6 Quality Gate's runtime-verification anchor, distinct from P5-02's build-flag activation check against a documented synthetic fixture) is outstanding -- it was self-admittedly deferred to the next node redeploy (commit `7b170cb`) and has not been performed since. This is what keeps this plan's `completed` status from silently implying the smoke ran; see `phase-5-6-ui-and-verification.md`'s "Open items (2026-08-02)" note for the tracked follow-up.
 
 ### Delivery Metrics
 - Every phase's `task-completion-validator` gate passes before the next dependent phase starts.

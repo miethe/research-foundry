@@ -17,6 +17,16 @@ promoted_to: ["docs/project_plans/implementation_plans/features/reusable-asserti
 
 # Historical Replay and Reuse Economics Result
 
+> **Correction (2026-08-02):** This result was authored using flag names
+> (`RF_ASSERTION_LEDGER_ENABLED`, `RF_ASSERTION_REUSE_ENABLED`,
+> `RF_CANONICAL_CLAIMS_ENABLED`) that were never implemented — `research_foundry`
+> has no such environment-variable reads. The real controls are the
+> `foundry.assertion_ledger.*` keys in `foundry.yaml`
+> (`ledger_write_enabled`, `automated_reuse_enabled`, `canonical_claims_enabled`;
+> see `docs/dev/architecture/assertion-ledger-contract.md`). References below
+> have been corrected to the real keys; the `conditional` verdict and findings
+> are unchanged.
+
 ## Scope and evidence class
 
 This is a deterministic, **synthetic/local-only** harness result, not an
@@ -108,7 +118,7 @@ The local fixture crosses the charter's numerical `go` bands (`>=20%` reuse and
 `>=95%` provenance), but it is not representative evidence and the dependent
 extraction contracts are unresolved. This result is therefore **conditional**:
 it validates a bounded replay protocol only. It does not authorize
-`RF_ASSERTION_REUSE_ENABLED` or any savings claim.
+`foundry.assertion_ledger.automated_reuse_enabled` or any savings claim.
 
 ### Required next measurement
 
@@ -125,7 +135,7 @@ aggregate/redact any failure detail.
   assert a production reuse-rate baseline.
 - **P3/P4:** must retain per-decision rejection reasons and passage provenance
   fields; no replay-derived performance claim may ship.
-- **P5:** keep `RF_ASSERTION_REUSE_ENABLED=false` until representative replay,
+- **P5:** keep `foundry.assertion_ledger.automated_reuse_enabled: false` until representative replay,
   citation/segmentation contracts, and lifecycle gates pass.
 - **Fallback:** continue with provenance-preserving ingestion and assertion-only
   storage; re-extract whenever a reuse predicate is unknown or denied.

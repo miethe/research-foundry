@@ -94,6 +94,16 @@ The implementation preserves the following governance truth:
 - External writeback was **`not_executed`** where the writeback destination, authorization, or release gate was unavailable.
 - `not_executed` states are intentional evidence states, not test passes, approvals, or defects to be silently converted into approvals.
 
+> **Correction (2026-08-02):** The "explicit `RF_ASSERTION_LEDGER_ENABLED`,
+> `RF_ASSERTION_REUSE_ENABLED`, and `RF_CANONICAL_CLAIMS_ENABLED` flags" named
+> in the "governance truth" bullet above describe a control mechanism that
+> never existed — `research_foundry` has no such environment-variable reads.
+> The real controls are the `foundry.assertion_ledger.*` keys in `foundry.yaml`
+> (`ledger_write_enabled`, `automated_reuse_enabled`, `canonical_claims_enabled`);
+> see `docs/dev/architecture/assertion-ledger-contract.md`. The remainder of
+> this AAR's findings and evidence are unaffected; the bullet above is left
+> unchanged for the historical record.
+
 ## Plan-review analysis
 
 This partial review cannot compute actual effort or an estimate multiplier because the implementation plan provides no estimated timeline and the complete plan is not finished. No H1-H5 sanity-input dataset was supplied. CCDash enrichment is `null`: the local shim failed with `ModuleNotFoundError: No module named 'ccdash_cli'`, and no CCDash MCP capability was available for this review.

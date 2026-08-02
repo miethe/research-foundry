@@ -75,7 +75,7 @@ cannot satisfy logical P7-004 / physical Phase 8 runtime evidence.
 | `mockup-legacy-missing-provenance.png` | Are absent additive fields honest and useful? | Legacy fixture with fields genuinely absent/null. |
 | `mockup-denied-catalog.png` | Does fail-closed denial avoid membership leakage? | Typed denied response with zero results, facets, counts, candidates, or object hints. |
 | `mockup-stale-impact-workbench.png` | Can a reviewer understand authoritative blocking and downstream impact? | Stale/impact fixture from the implemented impact read seam. |
-| `mockup-assertion-only-lineage.png` | Is canonical-claim absence clearly intentional rather than broken? | Runtime with `RF_CANONICAL_CLAIMS_ENABLED=false`. |
+| `mockup-assertion-only-lineage.png` | Is canonical-claim absence clearly intentional rather than broken? | Runtime with `foundry.assertion_ledger.canonical_claims_enabled: false`. |
 
 ### 2.1 Imagegen prompt record
 
@@ -243,7 +243,7 @@ Restore is a distinct governed lifecycle decision.
 
 ### 5.4 Assertion-only lineage
 
-When `RF_CANONICAL_CLAIMS_ENABLED=false`, lineage starts with the source
+When `foundry.assertion_ledger.canonical_claims_enabled` is `false`, lineage starts with the source
 edition and exact passage, continues to the source assertion version, then to
 typed inference/report/run uses. It omits the canonical-claim lane entirely and
 shows one neutral inline notice titled `Assertion-only mode` with the text:
@@ -508,7 +508,7 @@ the contracts above do.
 
 ### AC UX-5 — Assertion-only is first-class
 
-- With `RF_CANONICAL_CLAIMS_ENABLED=false`, merge controls and canonical nodes
+- With `foundry.assertion_ledger.canonical_claims_enabled: false`, merge controls and canonical nodes
   are absent and the assertion-only notice is present.
 - Source-edition, passage, assertion, inference, report, and run relationships
   remain reviewable.

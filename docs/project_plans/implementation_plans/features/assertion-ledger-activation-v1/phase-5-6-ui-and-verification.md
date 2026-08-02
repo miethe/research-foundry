@@ -3,8 +3,9 @@ title: "Phase 5-6: Canonical-Merge UI Activation & Verification/Audit/Docs"
 schema_version: 2
 doc_type: phase_plan
 it_schema: 1
-status: draft
+status: in_progress
 created: 2026-07-15
+updated: 2026-08-02
 phase: P5-P6
 phase_title: "Canonical-merge UI activation; verification, DI-1-scoped audit, docs"
 feature_slug: assertion-ledger-activation
@@ -17,6 +18,19 @@ exit_criteria: ["P5: merge UI renders against populated ledger on :3030, tsc cle
 # Phase 5: Canonical-Merge UI Activation & Phase 6: Verification, DI-1-Scoped Audit, Docs
 
 [<- Back to parent plan](../assertion-ledger-activation-v1.md)
+
+**Open items (2026-08-02):** This phase file bundles P5 and P6 and is not yet closeable as `completed` --
+two honest open items remain:
+
+- (a) **P5's `task-completion-validator` pass has not yet been run** (already flagged in this file's P5
+  Quality Gates as unchecked -- see below).
+- (b) **P6's live `:3030` runtime smoke (Quality Gate, P6-02) -- AC-6's second verification anchor -- has
+  never been performed.** It was self-admittedly deferred to the next node redeploy per commit `7b170cb`
+  ("deferred to the next node redeploy"), and no later commit touches this feature. Per the feature guide's
+  own caveat (`.claude/worknotes/assertion-ledger-activation/feature-guide.md`, "Node redeploy" section):
+  a node redeploy syncs the data-plane but does **not** auto-transfer locally-backfilled ledger data --
+  closing (b) requires an explicit re-run of the backfill (or manual ledger transfer) on the node, plus a
+  visual check there, not just a redeploy.
 
 ---
 

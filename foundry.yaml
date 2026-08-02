@@ -44,14 +44,24 @@ foundry:
   # not authorize private rollout, public promotion, shared indexes, or an
   # external writeback.
   #
-  # Single-operator opt-in: this deployment enables all three local capabilities
-  # (durable ledger writes + automated reuse + canonical-claim grouping). Per the
-  # user guide this local enablement grants no private-workspace, pilot, shared-
-  # index, public-promotion, or external-writeback authority — those remain gated.
+  # Single-operator opt-in: this deployment enables durable ledger writes and
+  # automated reuse. Per the user guide this local enablement grants no private-
+  # workspace, pilot, shared-index, public-promotion, or external-writeback
+  # authority — those remain gated.
+  #
+  # 2026-08-02: canonical_claims_enabled returned to false. The identity-merge
+  # SPIKE records it as mandatory-false
+  # (docs/project_plans/SPIKEs/reusable-assertion-ledger-identity-merge-results.md:81),
+  # and it is inert either way — CanonicalClaimMaterializer.publish_canonical_claim
+  # has no production caller. automated_reuse_enabled is knowingly left true by
+  # operator decision despite the historical-replay SPIKE's unrun corpus-scale
+  # measurement; every structural failure mode is denied flag-independently by
+  # evaluate_reuse() (services/assertion_reuse.py:37-94). See the plan's
+  # "Private rollout boundary" addendum.
   assertion_ledger:
     ledger_write_enabled: true
     automated_reuse_enabled: true
-    canonical_claims_enabled: true
+    canonical_claims_enabled: false
 
   # Authentication provider for ``rf serve`` (P5.1 canonical auth selector).
   # The provider abstracts the auth boundary — swappable adapters connect to

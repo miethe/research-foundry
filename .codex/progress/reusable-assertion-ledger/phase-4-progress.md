@@ -155,6 +155,15 @@ files_modified:
 
 # Reusable Assertion Ledger — Phase 4 (P3): Assertion Materialization
 
+> **Correction (2026-08-02):** This record's `RF_ASSERTION_LEDGER_ENABLED`,
+> `RF_ASSERTION_REUSE_ENABLED`, and `RF_CANONICAL_CLAIMS_ENABLED` references name
+> an environment-variable mechanism that was never implemented
+> (`research_foundry` has no such env reads). The real controls are the
+> `foundry.assertion_ledger.*` keys in `foundry.yaml`
+> (`ledger_write_enabled`, `automated_reuse_enabled`, `canonical_claims_enabled`;
+> see `docs/dev/architecture/assertion-ledger-contract.md`). Left unchanged below
+> for the historical record.
+
 ## Independent approval recorded
 
 P3-001 through P3-003 are implemented at

@@ -3,8 +3,9 @@ title: "Phase 3-4: Forward Write Driver & Reuse Reachability"
 schema_version: 2
 doc_type: phase_plan
 it_schema: 1
-status: draft
+status: completed
 created: 2026-07-15
+updated: 2026-08-02
 phase: P3-P4
 phase_title: "Forward write driver; reuse reachability"
 feature_slug: assertion-ledger-activation

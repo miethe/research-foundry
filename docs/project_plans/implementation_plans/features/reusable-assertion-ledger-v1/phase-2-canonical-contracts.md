@@ -2,9 +2,9 @@
 schema_version: 2
 doc_type: phase_plan
 title: "Phase 2 (P1): Canonical Contracts"
-status: draft
+status: completed
 created: 2026-07-12
-updated: 2026-07-12
+updated: 2026-08-02
 feature_slug: reusable-assertion-ledger
 feature_version: v1
 phase: 2

@@ -203,6 +203,15 @@ progress: 75
 
 # Reusable Assertion Ledger — Phase 2 (P1): Canonical Contracts
 
+> **Correction (2026-08-02):** This record's `RF_ASSERTION_LEDGER_ENABLED`,
+> `RF_ASSERTION_REUSE_ENABLED`, and `RF_CANONICAL_CLAIMS_ENABLED` references name
+> an environment-variable mechanism that was never implemented
+> (`research_foundry` has no such env reads). The real controls are the
+> `foundry.assertion_ledger.*` keys in `foundry.yaml`
+> (`ledger_write_enabled`, `automated_reuse_enabled`, `canonical_claims_enabled`;
+> see `docs/dev/architecture/assertion-ledger-contract.md`). Left unchanged below
+> for the historical record.
+
 Independent review approved P1-001 through P1-003 and the corrected tracker;
 `P1-REVIEW` is complete and the phase is marked complete.
 
