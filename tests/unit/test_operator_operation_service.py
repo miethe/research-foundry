@@ -285,6 +285,111 @@ def test_consume_creates_operation_and_consumes_confirmation(
 
 
 # ---------------------------------------------------------------------------
+# K3-NB-5: authoritative, persisted action_index -> action_id binding
+# ---------------------------------------------------------------------------
+
+
+def test_declared_action_ids_bind_action_index_to_action_id_for_every_contiguous_index(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """(a) a created operation exposes the expected `action_id` for each
+    contiguous `action_index` 0..N-1, read back via the PERSISTED manifest
+    (`get_expected_action_id`), not any in-memory state from this test."""
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets(), idempotency_key="idem-k3nb5-a")
+    confirmation_id, token, record = _mint_and_record(service, ctx)
+    authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=record, presented_token=token
+    )
+
+    declared_action_ids = ["fetch_source", "extract_claims", "write_bundle"]
+    outcome = service.consume_and_create_operation(
+        confirmation_id=confirmation_id,
+        presented_token=token,
+        ctx=ctx,
+        authorization=authorization,
+        declared_action_ids=declared_action_ids,
+    )
+    assert outcome.outcome == "created"
+    assert outcome.operation is not None
+    operation_id = outcome.operation.operation_id
+
+    for index, action_id in enumerate(declared_action_ids):
+        assert service.get_expected_action_id(operation_id, index) == action_id
+
+    # The binding is persisted inside the open `action_manifest` map region,
+    # never a new top-level manifest field.
+    persisted = service.load_operation(operation_id).manifest["action_manifest"]
+    assert persisted["_action_index_binding"] == {"0": "fetch_source", "1": "extract_claims", "2": "write_bundle"}
+
+
+def test_get_expected_action_id_returns_none_for_unknown_or_out_of_range_index(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """(b) an index the operation never declared -- past the end of the
+    sequence, or negative -- returns `None`, never a raised exception or a
+    fabricated action_id."""
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets(), idempotency_key="idem-k3nb5-b")
+    confirmation_id, token, record = _mint_and_record(service, ctx)
+    authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=record, presented_token=token
+    )
+
+    outcome = service.consume_and_create_operation(
+        confirmation_id=confirmation_id,
+        presented_token=token,
+        ctx=ctx,
+        authorization=authorization,
+        declared_action_ids=["only_action"],
+    )
+    assert outcome.outcome == "created"
+    assert outcome.operation is not None
+    operation_id = outcome.operation.operation_id
+
+    assert service.get_expected_action_id(operation_id, 0) == "only_action"
+    assert service.get_expected_action_id(operation_id, 1) is None
+    assert service.get_expected_action_id(operation_id, 999) is None
+    assert service.get_expected_action_id(operation_id, -1) is None
+
+    # A wholly unknown operation_id is likewise `None`, never an exception.
+    assert service.get_expected_action_id("opm_does_not_exist", 0) is None
+
+
+def test_operation_with_no_declared_actions_has_empty_binding_and_none_accessor(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """(c) an operation created with no action list at all (`declared_action_ids`
+    omitted) persists an empty binding, not a missing/None `action_manifest`
+    field, and the accessor returns `None` for any index without error."""
+
+    service = OperatorOperationService(tmp_foundry)
+    ctx = _basic_ctx(targets=_run_targets(), idempotency_key="idem-k3nb5-c")
+    confirmation_id, token, record = _mint_and_record(service, ctx)
+    authorization = _authorize(
+        tmp_foundry, ctx, confirmation_record=record, presented_token=token
+    )
+
+    outcome = service.consume_and_create_operation(
+        confirmation_id=confirmation_id,
+        presented_token=token,
+        ctx=ctx,
+        authorization=authorization,
+    )
+    assert outcome.outcome == "created"
+    assert outcome.operation is not None
+    operation_id = outcome.operation.operation_id
+
+    persisted = service.load_operation(operation_id).manifest["action_manifest"]
+    assert persisted["_action_index_binding"] == {}
+
+    assert service.get_expected_action_id(operation_id, 0) is None
+    assert service.get_expected_action_id(operation_id, 1) is None
+
+
+# ---------------------------------------------------------------------------
 # Exact manifest replay resolves the SAME operation
 # ---------------------------------------------------------------------------
 
