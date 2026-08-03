@@ -3,7 +3,10 @@ it_schema: 1
 feature_slug: attribution-rollup-phase-c-seam
 title: "Attribution Rollup Relocation, Partial-Coverage Fix & Phase C Seam (inert) — implementation plan"
 doc_type: implementation_plan
-status: draft
+status: completed
+planning_maturity: shipped
+merge_commit: 3c77e92720f9056d61d6b51732c6bd29434365a9   # squash of all 3 waves + the W2 gate remediation into main
+merge_branch: main
 tier: 3
 priority: P2
 points: 25
@@ -20,9 +23,22 @@ related_documents:
   - docs/project_plans/human-briefs/source-metadata-propagation.md
   - docs/dev/architecture/rf-run-export-schema.json
   - docs/dev/architecture/adr-rights-entity-model.md
-commit_refs: []
+commit_refs:
+  - 3c77e92720f9056d61d6b51732c6bd29434365a9   # only main-reachable sha; the 7 branch commits went orphan on squash
 pr_refs: []
-files_affected: []
+files_affected:
+  - src/research_foundry/services/attribution_triage.py
+  - src/research_foundry/services/catalog_service.py
+  - src/research_foundry/services/attribution_fetch/__init__.py
+  - src/research_foundry/services/attribution_fetch/openalex.py
+  - src/research_foundry/services/attribution_fetch/crossref.py
+  - src/research_foundry/services/attribution_fetch/semantic_scholar.py
+  - src/research_foundry/config.py
+  - src/research_foundry/cli_commands.py
+  - tests/test_attribution_triage.py
+  - tests/test_catalog_attribution_columns.py
+  - tests/test_attribution_fetch_seam.py
+  - tests/test_attribution_fetch_cli.py
 merge_commit: null
 merge_branch: null
 worktree: .claude/worktrees/autopilot-attribution-rollup-phase-c-seam
