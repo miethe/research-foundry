@@ -14,6 +14,9 @@ created: 2026-07-31
 updated: 2026-08-03
 merge_commit: e3ca9ba
 merge_branch: main
+commit_refs:
+  - "e3ca9ba — M1+M2 implementation (2026-08-02)"
+  - "8a6d4b3 — M3 closed: root cause traced, AC re-pointed, live re-prove passing (2026-08-03)"
 open_items:
   - "M1 COMPLETE (AC met). Dry-run over live workspace W: 35 eligible / 452 ineligible / 16 already-set, 34 full_text + 1 partial, authoritative_data_mutated false. OQ-1 resolved to the plan's PRIMARY hypothesis empirically, and caught a real defect: the 100,232-byte edition decodes to exactly 100,000 chars and its stored text is cut mid-word, so recompute must fail closed at >= (asymmetric from extract_bytes' strict >). Without that fix the backfill would have stamped full_text provenance onto a truncated document."
   - "M2 COMPLETE (AC met on live data) under explicit human Mode-D approval 2026-08-02. 35 applied; manifest diff vs pre-apply baseline = 70 changed (35 edition records + 35 provenance.yaml), 0 removed; no content.bin touched; 35/35 pass binding recompute-and-compare; the 452 + 16 byte-identical; rollback input validated at would_restore 35 writing nothing. Receipt ral_eri_legacy_status_apply_edc5562345bf6620 in the workspace's backfill_operations/. Out-of-band snapshot at ~/rf-ledger-snapshots/20260802-modeD/ (70MB, 503 editions) plus a 16,873-file sha256 baseline manifest."
