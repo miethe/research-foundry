@@ -1,0 +1,250 @@
+{
+  "schema_version": "1.0",
+  "report": {
+    "route": "dossier",
+    "title": "Delivery Dossier: Agent-research loopback slice \u2014 hardening \u2014 implementation plan",
+    "revision": 1,
+    "generated_from": {
+      "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+      "ref": "main",
+      "commit": "ecba431"
+    },
+    "truth_status": "not_executed",
+    "generated_by": "seed_dossier 0.1.0 (plan-time seed)",
+    "generated_at": "2026-08-03T17:21:54.208809Z",
+    "constraints": "The manifest is canonical; the HTML is derived. Follow the phase gates in docs/project_plans/implementation_plans/enhancements/agent-research-loopback-slice-v1.md; never hand-maintain this record as a parallel tracker.",
+    "project": "agent-research-loopback-slice"
+  },
+  "report_policy": {
+    "tier_system": "dev-execution",
+    "tier": 2,
+    "estimated_points": 0.0,
+    "explicit_request": false,
+    "signals": [
+      "seeded at plan time from docs/project_plans/implementation_plans/enhancements/agent-research-loopback-slice-v1.md"
+    ]
+  },
+  "vitals": [
+    {
+      "key": "Phases",
+      "value": "0/3",
+      "sub": "done",
+      "severity": "neutral",
+      "measured_by": "stages[] entries with kind==execute and state==done vs total"
+    },
+    {
+      "key": "Open questions",
+      "value": "2",
+      "sub": "carried from the plan",
+      "severity": "warn",
+      "measured_by": "open_questions[] with status==open"
+    },
+    {
+      "key": "Tier",
+      "value": "2",
+      "sub": "dev-execution",
+      "severity": "neutral",
+      "measured_by": "plan frontmatter tier: in docs/project_plans/implementation_plans/enhancements/agent-research-loopback-slice-v1.md"
+    }
+  ],
+  "domains": {
+    "UI": "build",
+    "Engine": "build",
+    "Interop": "build",
+    "Infra": "build",
+    "Evidence": "knowledge",
+    "Research": "knowledge",
+    "Validation": "knowledge",
+    "Governance": "governance",
+    "Compliance": "governance",
+    "Legal": "governance",
+    "Release": "governance"
+  },
+  "stages": [
+    {
+      "id": "plan",
+      "label": "Planning pass",
+      "kind": "plan",
+      "state": "done",
+      "narrative": "Implementation plan authored for agent-research-loopback-slice.",
+      "outcome": "Plan authored: 3 execution phase(s).",
+      "completed": "2026-08-03T17:21:54.208809Z",
+      "domains": [
+        "Engine"
+      ],
+      "evidence_refs": [
+        "plan",
+        "prd"
+      ]
+    },
+    {
+      "id": "phase-1",
+      "label": "Phase 1",
+      "kind": "execute",
+      "state": "pending",
+      "narrative": "Pending \u2014 the phase-closing agent authors this stage's narrative, outcome, decisions, and evidence at the phase boundary.",
+      "outcome": null,
+      "started": null,
+      "completed": null,
+      "domains": [
+        "Engine"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "id": "phase-2",
+      "label": "Phase 2",
+      "kind": "execute",
+      "state": "pending",
+      "narrative": "Pending \u2014 the phase-closing agent authors this stage's narrative, outcome, decisions, and evidence at the phase boundary.",
+      "outcome": null,
+      "started": null,
+      "completed": null,
+      "domains": [
+        "Engine"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "id": "phase-3",
+      "label": "Phase 3",
+      "kind": "execute",
+      "state": "pending",
+      "narrative": "Pending \u2014 the phase-closing agent authors this stage's narrative, outcome, decisions, and evidence at the phase boundary.",
+      "outcome": null,
+      "started": null,
+      "completed": null,
+      "domains": [
+        "Engine"
+      ],
+      "evidence_refs": []
+    },
+    {
+      "id": "validate",
+      "label": "End-to-end validation",
+      "kind": "validate",
+      "state": "pending",
+      "narrative": "Pending \u2014 fills at the validate stage with the validation table and final evidence; cross-links the enforced `feature` delivery report.",
+      "outcome": null,
+      "started": null,
+      "completed": null,
+      "domains": [
+        "Validation"
+      ],
+      "evidence_refs": []
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "oq-1",
+      "question": "Does stream_events() accept the resume id as a Last-Event-ID header, or only as the existing query param?",
+      "context": "Carried from the plan's frontmatter at seed time (docs/project_plans/implementation_plans/enhancements/agent-research-loopback-slice-v1.md).",
+      "status": "open",
+      "blocking": false,
+      "raised_in_stage": "plan",
+      "raised_at": "2026-08-03T17:21:54.208809Z",
+      "answer": null,
+      "answered_by": null,
+      "answered_at": null,
+      "channel": {
+        "type": "instruction",
+        "detail": "Reply in chat, or edit this OQ's answer in the manifest; the next phase close folds it in.",
+        "request_id": null
+      }
+    },
+    {
+      "id": "oq-2",
+      "question": "Is a globalThis.fetch spy sufficient for M3, or does MSW earn a new dependency?",
+      "context": "Carried from the plan's frontmatter at seed time (docs/project_plans/implementation_plans/enhancements/agent-research-loopback-slice-v1.md).",
+      "status": "open",
+      "blocking": false,
+      "raised_in_stage": "plan",
+      "raised_at": "2026-08-03T17:21:54.208809Z",
+      "answer": null,
+      "answered_by": null,
+      "answered_at": null,
+      "channel": {
+        "type": "instruction",
+        "detail": "Reply in chat, or edit this OQ's answer in the manifest; the next phase close folds it in.",
+        "request_id": null
+      }
+    }
+  ],
+  "decisions": [
+    {
+      "id": "dec-1",
+      "decision": "Carry the SSE token in an Authorization header via fetch + ReadableStream; retire EventSource for this stream.",
+      "rationale": "Recorded in the plan's decisions block at planning time.",
+      "alternatives": [],
+      "decided_in_stage": "plan",
+      "decided_at": "2026-08-03T17:21:54.208809Z",
+      "decided_by": "planning",
+      "evidence_refs": [
+        "plan"
+      ]
+    },
+    {
+      "id": "dec-2",
+      "decision": "Keep the 7 existing hooks-mocking agents-* tests; add a layer beneath them.",
+      "rationale": "Recorded in the plan's decisions block at planning time.",
+      "alternatives": [],
+      "decided_in_stage": "plan",
+      "decided_at": "2026-08-03T17:21:54.208809Z",
+      "decided_by": "planning",
+      "evidence_refs": [
+        "plan"
+      ]
+    },
+    {
+      "id": "dec-3",
+      "decision": "Static (non-loopback) mode is untouched.",
+      "rationale": "Recorded in the plan's decisions block at planning time.",
+      "alternatives": [],
+      "decided_in_stage": "plan",
+      "decided_at": "2026-08-03T17:21:54.208809Z",
+      "decided_by": "planning",
+      "evidence_refs": [
+        "plan"
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": "execute-plan",
+      "title": "Execute the implementation plan for agent-research-loopback-slice",
+      "kind": "not_started",
+      "domains": [
+        "Engine"
+      ],
+      "detail": "3 phase(s) planned, none executed. The dossier accretes a stage narrative at each phase boundary.",
+      "handoff": {
+        "command": "/dev:execute-plan docs/project_plans/implementation_plans/enhancements/agent-research-loopback-slice-v1.md",
+        "repo": "/Users/miethe/dev/homelab/development/research-foundry",
+        "paths": [
+          "docs/project_plans/implementation_plans/enhancements/agent-research-loopback-slice-v1.md"
+        ],
+        "requirement_ids": [],
+        "gates": [],
+        "tracker": "node_01KZ49ZWATPNKDNGF3APTBEFQP",
+        "prompt": "Execute the implementation plan at docs/project_plans/implementation_plans/enhancements/agent-research-loopback-slice-v1.md phase by phase. At each phase close, author that stage into the dossier manifest before the regeneration hook runs."
+      }
+    }
+  ],
+  "corrections": [],
+  "media": [],
+  "no_visual_reason": "Seeded at plan time \u2014 nothing has been built yet. Screenshots and evidence accrue at phase closes.",
+  "evidence": [
+    {
+      "id": "plan",
+      "label": "Implementation plan: docs/project_plans/implementation_plans/enhancements/agent-research-loopback-slice-v1.md",
+      "kind": "doc",
+      "path": "docs/project_plans/implementation_plans/enhancements/agent-research-loopback-slice-v1.md"
+    },
+    {
+      "id": "prd",
+      "label": "PRD: docs/project_plans/PRDs/enhancements/agent-research-loopback-slice-v1.md",
+      "kind": "doc",
+      "path": "docs/project_plans/PRDs/enhancements/agent-research-loopback-slice-v1.md"
+    }
+  ]
+}
