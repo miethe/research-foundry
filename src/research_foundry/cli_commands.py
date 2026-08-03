@@ -3214,6 +3214,97 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         if failed:
             raise typer.Exit(1)
 
+    @attribution_app.command("fetch")
+    def attribution_fetch_cmd(
+        provider: str = typer.Argument(
+            ...,
+            help="Provider adapter: crossref, openalex, or semantic_scholar. Accepted "
+            "for future call-site symmetry -- the mechanism is disabled today "
+            "regardless of this value.",
+        ),
+        identifier: str = typer.Argument(
+            ...,
+            help="Provider-specific identifier (DOI / OpenAlex work id / Semantic "
+            "Scholar paper id). Accepted for future call-site symmetry -- never sent "
+            "anywhere today.",
+        ),
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output (default: rich table)"),
+    ) -> None:
+        """Fetch third-party attribution metadata from a provider (disabled by default).
+
+        This is the CLI surface for the deferred "Phase C" mechanism scaffolded in
+        ``services/attribution_fetch/`` (source-metadata-propagation-v1 PRD Sec7).
+        It never issues a network call under any input combination: the umbrella
+        ``attribution_fetch_enabled`` config flag (read via
+        ``FoundryConfig.attribution_fetch_controls()``) gates *visibility* only, and
+        every provider adapter under ``services/attribution_fetch/`` is
+        unconditionally unreachable by construction regardless of that flag's
+        value -- see that package's docstring for the two open gates, DEF-1
+        (per-provider license terms verified for bundle redistribution) and DEF-6
+        (live ToS re-verification for Semantic Scholar / NCBI), that this command
+        does not close. Asserts no license posture for any provider.
+
+        Exits 0 (non-error) whether reporting the umbrella-flag-off disabled
+        message or a provider adapter's own disabled result -- DEF-1/DEF-6 being
+        open is expected default state, not a CLI failure.
+        """
+
+        import json as _json
+
+        from .config import FoundryConfig
+
+        config = FoundryConfig.load()
+        controls = config.attribution_fetch_controls()
+
+        if not controls.attribution_fetch_enabled:
+            reason = (
+                "attribution fetch is disabled -- see DEF-1/DEF-6 "
+                "(services/attribution_fetch/__init__.py). No network call was attempted."
+            )
+            if json_out:
+                typer.echo(
+                    _json.dumps(_stamp({"status": "disabled", "reason": reason}), ensure_ascii=False, indent=2)
+                )
+            else:
+                console.print("[yellow]disabled[/yellow] -- see DEF-1/DEF-6. No network call was attempted.")
+            raise typer.Exit(0)
+
+        # Umbrella flag on: still fully inert. Every adapter below returns a
+        # value-free ProviderFetchResult built purely in-process (status is
+        # always "disabled") -- no socket, HTTP client, or DNS lookup is ever
+        # touched, independent of this flag's value (see package docstring).
+        from .services.attribution_fetch import crossref, openalex, semantic_scholar
+
+        adapters: dict[str, Any] = {
+            crossref.PROVIDER_NAME: (crossref.fetch, crossref.CrossrefRequest),
+            openalex.PROVIDER_NAME: (openalex.fetch, openalex.OpenAlexRequest),
+            semantic_scholar.PROVIDER_NAME: (semantic_scholar.fetch, semantic_scholar.SemanticScholarRequest),
+        }
+        if provider not in adapters:
+            err_console.print(f"[red]unknown provider[/red] {provider!r}; choices: {sorted(adapters)}")
+            raise typer.Exit(1)
+
+        fetch_fn, request_cls = adapters[provider]
+        result = fetch_fn(request_cls(identifier))
+
+        if json_out:
+            typer.echo(
+                _json.dumps(
+                    _stamp({"provider": result.provider, "status": result.status, "reason": result.reason}),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            table = Table(title="rf attribution fetch", show_header=True)
+            table.add_column("provider")
+            table.add_column("status")
+            table.add_column("reason")
+            table.add_row(result.provider, result.status, result.reason)
+            console.print(table)
+
+        raise typer.Exit(0)
+
     app.add_typer(attribution_app, name="attribution")
 
     # ----- term-index (claim-term-indexing-v1 backfill, Phase 3) -----

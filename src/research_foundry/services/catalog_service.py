@@ -57,7 +57,7 @@ import json
 import logging
 import re
 import sqlite3
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -67,7 +67,7 @@ from ..api.auth.scope import require_workspace_scope, resolve_workspace_isolatio
 from ..ids import now_iso
 from ..paths import FoundryPaths
 from . import audit_service
-from .attribution_triage import AttributionRollup
+from .attribution_triage import _merge_attribution_summaries
 from .audit_service import AuditEvent
 from .export_service import (
     REDACTION_MARKER,
@@ -634,123 +634,6 @@ def _attribution_count_of(attribution_summary: Any) -> int | None:
     return count if isinstance(count, int) else None
 
 
-def _merge_attribution_summaries(summaries: Iterable[Any]) -> dict[str, Any] | None:
-    """Combine N per-source ``attribution_summary`` mirrors into ONE
-    cross-source, catalog-level rollup (SMP-4.4 Part 2; plan decision:
-    "cross-source values propagate as set-union keyed by
-    (asserter_id, assertion_kind)").
-
-    Used to give a claim (which may cite several distinct
-    ``source_card_id``s) a single combined attribution view, built purely
-    from the value-free mirrors ``_build_source_rows`` already carries per
-    source -- never a fresh read of any authoritative ``source_attribution``
-    record, and never a raw third-party value.
-
-    Reuses :class:`~.attribution_triage.AttributionRollup` (imported, not
-    reimplemented) as the shape for each merged ``(asserter_id,
-    assertion_kind)`` entry -- this module is explicitly forbidden from
-    editing ``attribution_triage.py`` itself (concurrent M2/M3 review), so
-    the grouping/union logic below is new, but the *dataclass* that shape
-    is expressed with is the same one ``attribution_triage.triage_records``
-    (the authoritative per-card reducer) already uses, keeping field
-    names/types in one place rather than a second, drifting definition.
-
-    Monotone-only, refusing averaging by construction: there is no
-    arithmetic anywhere in this function, over ``assertion_kind``s or
-    otherwise. It goes one step further than a same-card rollup can,
-    though -- when a ``(asserter_id, assertion_kind)`` key is contributed by
-    MORE than one source, this function does **not** pick a winner between
-    the sources' respective ``best_attribution_id``s: doing so would require
-    comparing the underlying raw values, which are not present on this
-    value-free mirror (only ids/counts/pointers are) -- picking one anyway
-    would be exactly the judgment-laundering the plan refuses ("reading an
-    actual number goes through the authoritative record", the accepted
-    cost). Such a key is marked ``comparable=False`` with both pointers
-    ``None``, honestly reporting "assessed by more than one source, but not
-    itself comparable here" rather than guessing. A key contributed by
-    EXACTLY one source passes that source's already-computed pointers
-    through unchanged -- they are still traceable to a real authoritative
-    record; this function does not second-guess a single source's own
-    monotone reduction.
-
-    Every ``attribution_ids`` list (top-level and per-rollup) is
-    canonically sorted before return -- ``json.dump`` preserves insertion
-    order but does not impose one (plan decision).
-
-    Returns ``None`` when every input is absent/non-dict (nothing to
-    merge) -- distinct from a merged mirror with ``count=0``, matching
-    :func:`_attribution_count_of`'s absent-vs-zero distinction one level up.
-    """
-
-    valid = [s for s in summaries if isinstance(s, dict)]
-    if not valid:
-        return None
-
-    top_ids: set[str] = set()
-    for mirror in valid:
-        top_ids.update(str(i) for i in (mirror.get("attribution_ids") or []))
-
-    groups: dict[tuple[Any, Any], list[dict[str, Any]]] = {}
-    for mirror in valid:
-        for rollup in mirror.get("rollups") or []:
-            if not isinstance(rollup, dict):
-                continue
-            key = (rollup.get("asserter_id"), rollup.get("assertion_kind"))
-            groups.setdefault(key, []).append(rollup)
-
-    merged_rollups: list[dict[str, Any]] = []
-    for (asserter_id, assertion_kind), entries in sorted(
-        groups.items(), key=lambda kv: (str(kv[0][0]), str(kv[0][1]))
-    ):
-        union_ids = sorted({str(i) for e in entries for i in (e.get("attribution_ids") or [])})
-        if len(entries) == 1:
-            # Single contributing source: its own monotone-best/weakest
-            # pointers are still authoritative -- pass through unchanged.
-            only = entries[0]
-            best_id = only.get("best_attribution_id")
-            weakest_id = only.get("weakest_attribution_id")
-            comparable = bool(only.get("comparable"))
-        else:
-            # More than one source asserts under this (asserter_id,
-            # assertion_kind) key. Comparing them requires the raw values,
-            # which this value-free mirror never carries -- refuse to guess.
-            best_id = None
-            weakest_id = None
-            comparable = False
-        rollup = AttributionRollup(
-            asserter_id=asserter_id,
-            assertion_kind=assertion_kind,
-            attribution_ids=tuple(union_ids),
-            best_attribution_id=best_id,
-            best_value=None,
-            weakest_attribution_id=weakest_id,
-            weakest_value=None,
-            comparable=comparable,
-        )
-        # Project to the schema-shaped subset -- `best_value`/`weakest_value`
-        # are always None here (this function never has a raw value to
-        # carry) and must not appear on a value-free mirror at all, so they
-        # are excluded rather than serialized as null.
-        merged_rollups.append(
-            {
-                "asserter_id": rollup.asserter_id,
-                "assertion_kind": rollup.assertion_kind,
-                "attribution_ids": list(rollup.attribution_ids),
-                "count": len(rollup.attribution_ids),
-                "best_attribution_id": rollup.best_attribution_id,
-                "weakest_attribution_id": rollup.weakest_attribution_id,
-                "comparable": rollup.comparable,
-            }
-        )
-
-    sorted_top_ids = sorted(top_ids)
-    return {
-        "attribution_ids": sorted_top_ids,
-        "count": len(sorted_top_ids),
-        "rollups": merged_rollups,
-    }
-
-
 def _project_of(export_data: dict[str, Any]) -> str | None:
     linked = export_data.get("linked_projects")
     if isinstance(linked, list) and linked:
@@ -1002,8 +885,16 @@ def _build_claim_and_inference_rows(
         # summaries — the "cross-source values propagate as set-union keyed
         # by (asserter_id, assertion_kind)" plan decision, applied at the
         # claim rather than the source-row level.
+        #
+        # Phase C: pass (source_card_id, attribution_summary) PAIRS, not bare
+        # summaries. `resolved_sources` can (and, for the ordinary "one card
+        # cited via several evidence anchors" case, does) contain multiple
+        # entries for the SAME source_card_id — `distinct_source_ids` three
+        # lines above exists precisely because of that. The merge function
+        # dedupes by source_card_id internally so sources_assessed/
+        # sources_total count DISTINCT sources, never input positions.
         claim_attribution_summary = _merge_attribution_summaries(
-            s.get("attribution_summary") for s in resolved_sources
+            (s.get("source_card_id"), s.get("attribution_summary")) for s in resolved_sources
         )
 
         text = claim.get("text") or ""
@@ -1033,7 +924,9 @@ def _build_claim_and_inference_rows(
             # SMP-4.4 Part 2: value-free, cross-source rollup across every
             # source this claim cites. Never recomputed from raw records at
             # this layer — merged purely from the per-source mirrors, per
-            # _merge_attribution_summaries's own docstring.
+            # attribution_triage._merge_attribution_summaries's own
+            # docstring (relocated there per the duplicate-rollup-owner
+            # cleanup).
             "attribution_summary": claim_attribution_summary,
         }
 

@@ -116,6 +116,25 @@ class AssertionLedgerControls:
 
 
 @dataclass(frozen=True)
+class AttributionFetchControls:
+    """Independent, default-off control for the deferred DEF-1 attribution
+    fetch mechanism (``services/attribution_fetch/``,
+    source-metadata-propagation-v1 PRD §7 deferrals table).
+
+    This flag governs config *visibility* only — it does not make any
+    provider adapter reachable. Every adapter in ``services/attribution_fetch/``
+    is unconditionally unreachable (no HTTP client is ever instantiated or
+    called) regardless of this flag's value, and no per-provider override
+    exists that could individually enable one even if this umbrella flag
+    were set. See ``services/attribution_fetch/__init__.py`` for the two
+    open gates (DEF-1, DEF-6) this flag does not close. Setting this flag
+    asserts no license posture for any provider.
+    """
+
+    attribution_fetch_enabled: bool = False
+
+
+@dataclass(frozen=True)
 class AssertionLedgerCapabilities:
     """Resolved assertion-ledger capabilities after dependency checks.
 
@@ -499,6 +518,30 @@ class FoundryConfig:
             ledger_write_enabled=ledger.get("ledger_write_enabled") is True,
             automated_reuse_enabled=ledger.get("automated_reuse_enabled") is True,
             canonical_claims_enabled=ledger.get("canonical_claims_enabled") is True,
+        )
+
+    @property
+    def attribution_fetch(self) -> dict[str, Any]:
+        """Return the ``attribution_fetch`` control block with an empty default."""
+
+        block = self.foundry.get("attribution_fetch", {})
+        return block if isinstance(block, dict) else {}
+
+    def attribution_fetch_controls(self) -> AttributionFetchControls:
+        """Resolve the attribution-fetch umbrella control. Defaults to ``False``.
+
+        This resolver intentionally does not infer an enabled state from
+        test fixtures, workspace contents, or other feature flags — same
+        explicit-opt-in convention as :meth:`assertion_ledger_controls`.
+        Even when this returns ``True``, no provider adapter under
+        ``services/attribution_fetch/`` becomes reachable: every adapter's
+        network call is unconditionally unreachable by construction (see
+        that package's docstring), independent of this flag.
+        """
+
+        block = self.attribution_fetch
+        return AttributionFetchControls(
+            attribution_fetch_enabled=block.get("attribution_fetch_enabled") is True,
         )
 
     def assertion_ledger_capabilities(self) -> AssertionLedgerCapabilities:
@@ -1583,6 +1626,7 @@ def resolve_workspace_isolation_active(paths: FoundryPaths) -> bool:
 __all__ = [
     "AssertionLedgerCapabilities",
     "AssertionLedgerControls",
+    "AttributionFetchControls",
     "AuthRbacEnforcement",
     "FoundryConfig",
     "GOVERNANCE",

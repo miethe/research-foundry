@@ -378,12 +378,12 @@ def test_claim_rows_unaffected_by_new_optional_columns(tmp_foundry: FoundryPaths
 
     `attribution_count` is the one exception as of SMP-4.4 Part 2: claim
     rows now DO pass it (from a cross-source merge over the claim's own
-    cited sources — see the `_merge_attribution_summaries` tests below).
-    It still reads null here because this fixture's single source card
-    carries no `attribution_summary` mirror at all — that is the honest
-    "not yet assessed" default, not evidence the kwarg is unwired for
-    claims (see `test_claim_attribution_count_populates_from_multiple_
-    cited_sources` for the wired, non-null case).
+    cited sources — see the `_merge_attribution_summaries` tests in
+    `test_attribution_triage.py`). It still reads null here because this
+    fixture's single source card carries no `attribution_summary` mirror at
+    all — that is the honest "not yet assessed" default, not evidence the
+    kwarg is unwired for claims (see `test_claim_attribution_count_populates_
+    from_multiple_cited_sources` for the wired, non-null case).
     """
 
     _plant_metadata_run(tmp_foundry)
@@ -401,188 +401,6 @@ def test_claim_rows_unaffected_by_new_optional_columns(tmp_foundry: FoundryPaths
     assert claim_row["authors_json"] is None
     assert claim_row["source_rank"] is None
     assert claim_row["attribution_count"] is None
-
-
-# ---------------------------------------------------------------------------
-# SMP-4.4 Part 2: `_merge_attribution_summaries` — cross-source rollup
-# consumption. Monotone-only (no averaging path exists), refuses to launder
-# a raw value when a (asserter_id, assertion_kind) key is contributed by
-# more than one source, and canonically sorts every id list.
-# ---------------------------------------------------------------------------
-
-_ROLLUP_KEYS = {
-    "asserter_id",
-    "assertion_kind",
-    "attribution_ids",
-    "count",
-    "best_attribution_id",
-    "weakest_attribution_id",
-    "comparable",
-}
-
-
-def test_merge_attribution_summaries_returns_none_when_all_absent() -> None:
-    assert svc._merge_attribution_summaries([None, None]) is None
-    assert svc._merge_attribution_summaries([]) is None
-    assert svc._merge_attribution_summaries([None, "not-a-dict", 42]) is None
-
-
-def test_merge_attribution_summaries_single_source_passthrough() -> None:
-    """Exactly one contributing source per key: that source's own
-    already-computed best/weakest pointers are still authoritative and
-    must pass through unchanged — this function never second-guesses a
-    single source's own monotone reduction."""
-
-    mirror = {
-        "attribution_ids": ["attrib_b", "attrib_a"],
-        "count": 2,
-        "rollups": [
-            {
-                "asserter_id": "semantic_scholar",
-                "assertion_kind": "citation_count",
-                "attribution_ids": ["attrib_b", "attrib_a"],
-                "count": 2,
-                "best_attribution_id": "attrib_b",
-                "weakest_attribution_id": "attrib_a",
-                "comparable": True,
-            }
-        ],
-    }
-    merged = svc._merge_attribution_summaries([mirror])
-    assert merged == {
-        "attribution_ids": ["attrib_a", "attrib_b"],  # canonically sorted
-        "count": 2,
-        "rollups": [
-            {
-                "asserter_id": "semantic_scholar",
-                "assertion_kind": "citation_count",
-                "attribution_ids": ["attrib_a", "attrib_b"],
-                "count": 2,
-                "best_attribution_id": "attrib_b",
-                "weakest_attribution_id": "attrib_a",
-                "comparable": True,
-            }
-        ],
-    }
-
-
-def test_merge_attribution_summaries_cross_source_ambiguous_key_refuses_to_pick_a_winner() -> None:
-    """Two DIFFERENT sources both assert under the SAME (asserter_id,
-    assertion_kind) key. Picking a "best" between them would require the
-    raw values, which this value-free mirror never carries — the merge
-    must NOT launder a winner. It degrades to `comparable=False` with both
-    pointers `None`, while still unioning the id set and disjoint keys
-    (`crossref` below) still pass through as single-source, unaffected.
-    """
-
-    source_a = {
-        "attribution_ids": ["a1", "a2", "a3"],
-        "count": 3,
-        "rollups": [
-            {
-                "asserter_id": "semantic_scholar",
-                "assertion_kind": "citation_count",
-                "attribution_ids": ["a1", "a2"],
-                "count": 2,
-                "best_attribution_id": "a2",
-                "weakest_attribution_id": "a1",
-                "comparable": True,
-            },
-            {
-                "asserter_id": "crossref",
-                "assertion_kind": "citation_count",
-                "attribution_ids": ["a3"],
-                "count": 1,
-                "best_attribution_id": "a3",
-                "weakest_attribution_id": "a3",
-                "comparable": True,
-            },
-        ],
-    }
-    source_b = {
-        "attribution_ids": ["b1"],
-        "count": 1,
-        "rollups": [
-            {
-                "asserter_id": "semantic_scholar",
-                "assertion_kind": "citation_count",
-                "attribution_ids": ["b1"],
-                "count": 1,
-                "best_attribution_id": "b1",
-                "weakest_attribution_id": "b1",
-                "comparable": True,
-            }
-        ],
-    }
-
-    merged = svc._merge_attribution_summaries([source_a, source_b])
-    assert merged is not None
-    assert merged["attribution_ids"] == ["a1", "a2", "a3", "b1"]
-    assert merged["count"] == 4
-
-    by_key = {(r["asserter_id"], r["assertion_kind"]): r for r in merged["rollups"]}
-
-    ambiguous = by_key[("semantic_scholar", "citation_count")]
-    assert ambiguous["attribution_ids"] == ["a1", "a2", "b1"]
-    assert ambiguous["count"] == 3
-    assert ambiguous["comparable"] is False
-    assert ambiguous["best_attribution_id"] is None
-    assert ambiguous["weakest_attribution_id"] is None
-
-    unambiguous = by_key[("crossref", "citation_count")]
-    assert unambiguous["attribution_ids"] == ["a3"]
-    assert unambiguous["best_attribution_id"] == "a3"
-    assert unambiguous["weakest_attribution_id"] == "a3"
-    assert unambiguous["comparable"] is True
-
-    # Structural, not vocabulary-based, non-averaging proof: every rollup
-    # entry has EXACTLY the schema-shaped 7 keys — no `best_value`/
-    # `weakest_value`/`average_value`/`mean_value` leaked through, and no
-    # numeric field exists anywhere for an averaging path to write into.
-    for entry in merged["rollups"]:
-        assert set(entry.keys()) == _ROLLUP_KEYS
-
-
-def test_merge_attribution_summaries_is_order_independent() -> None:
-    """Canonical sort means the merge result must not depend on the order
-    mirrors are passed in — `json.dump` preserves insertion order but does
-    not impose one (plan decision)."""
-
-    source_a = {
-        "attribution_ids": ["z9", "a1"],
-        "count": 2,
-        "rollups": [
-            {
-                "asserter_id": "openalex",
-                "assertion_kind": "citation_count",
-                "attribution_ids": ["z9"],
-                "count": 1,
-                "best_attribution_id": "z9",
-                "weakest_attribution_id": "z9",
-                "comparable": True,
-            }
-        ],
-    }
-    source_b = {
-        "attribution_ids": ["m5"],
-        "count": 1,
-        "rollups": [
-            {
-                "asserter_id": "openalex",
-                "assertion_kind": "retraction_status",
-                "attribution_ids": ["m5"],
-                "count": 1,
-                "best_attribution_id": "m5",
-                "weakest_attribution_id": "m5",
-                "comparable": True,
-            }
-        ],
-    }
-
-    forward = svc._merge_attribution_summaries([source_a, source_b])
-    backward = svc._merge_attribution_summaries([source_b, source_a])
-    assert forward == backward
-    assert forward["attribution_ids"] == sorted(forward["attribution_ids"])
 
 
 def test_claim_attribution_count_populates_from_multiple_cited_sources() -> None:
@@ -686,3 +504,129 @@ def test_claim_attribution_count_populates_from_multiple_cited_sources() -> None
     }
     assert by_key[("semantic_scholar", "citation_count")]["best_attribution_id"] == "a2"
     assert by_key[("crossref", "citation_count")]["best_attribution_id"] == "b1"
+
+
+def test_claim_attribution_count_end_to_end_partial_vs_full_coverage() -> None:
+    """Named risk in the attribution-rollup-phase-c-seam-v1 plan: a fix that
+    only changes `_merge_attribution_summaries`'s return shape but leaves the
+    catalog call site collapsing partial coverage into `attribution_count`
+    exactly like full coverage would let the conflation survive one layer
+    up. Prove end-to-end through `_build_claim_and_inference_rows()` (not
+    just the merge function's own unit-test boundary) that:
+
+    1. `attribution_count`'s NUMERIC VALUE is unaffected by the fix -- a
+       claim citing one assessed + one unassessed source still gets the
+       honest count of ids from the source(s) that COULD be assessed (this
+       was already correct pre-fix; the fix does not change it).
+    2. The coverage gap the pre-fix code silently dropped is now visible in
+       the row's own `payload_json.attribution_summary` (`sources_assessed`
+       < `sources_total`), reachable by any consumer of the item detail
+       payload without a DB migration -- resolving OQ-B: no catalog
+       SCHEMA_VERSION bump is required for this fix.
+    """
+
+    mirror_a = {
+        "attribution_ids": ["a1", "a2"],
+        "count": 2,
+        "rollups": [
+            {
+                "asserter_id": "semantic_scholar",
+                "assertion_kind": "citation_count",
+                "attribution_ids": ["a1", "a2"],
+                "count": 2,
+                "best_attribution_id": "a2",
+                "weakest_attribution_id": "a1",
+                "comparable": True,
+            }
+        ],
+    }
+
+    def _claim_row(*, second_source_assessed: bool) -> dict[str, Any]:
+        sources = [
+            {
+                "resolved": True,
+                "dangling": False,
+                "source_card_id": "src_a",
+                "evidence_id": "ev_a",
+                "relation": "supports",
+                "locator": "p1",
+                "evidence_locator": "p1",
+                "attribution_summary": mirror_a,
+            },
+            {
+                "resolved": True,
+                "dangling": False,
+                "source_card_id": "src_b",
+                "evidence_id": "ev_b",
+                "relation": "supports",
+                "locator": "p2",
+                "evidence_locator": "p2",
+                "attribution_summary": (
+                    {
+                        "attribution_ids": ["b1"],
+                        "count": 1,
+                        "rollups": [
+                            {
+                                "asserter_id": "crossref",
+                                "assertion_kind": "citation_count",
+                                "attribution_ids": ["b1"],
+                                "count": 1,
+                                "best_attribution_id": "b1",
+                                "weakest_attribution_id": "b1",
+                                "comparable": True,
+                            }
+                        ],
+                    }
+                    if second_source_assessed
+                    else None
+                ),
+            },
+        ]
+        export_data = {
+            "claims": [
+                {
+                    "claim_id": "clm_cov",
+                    "text": "A claim with a mixed-coverage source set.",
+                    "materiality": "core",
+                    "claim_type": "factual",
+                    "status": "supported",
+                    "confidence": "high",
+                    "report_locations": [],
+                    "inference_basis": {"from_claims": [], "reasoning_summary": None},
+                    "sources": sources,
+                }
+            ]
+        }
+        rows, *_ = svc._build_claim_and_inference_rows(
+            export_data,
+            "rf_run_synth_cov",
+            project=None,
+            created_at="2026-08-03T00:00:00Z",
+            run_sensitivity_rank=0,
+            citation_ranks={},
+        )
+        assert len(rows) == 1
+        return rows[0]
+
+    partial_row = _claim_row(second_source_assessed=False)
+    full_row = _claim_row(second_source_assessed=True)
+
+    # (1) attribution_count's numeric value is identical either way -- both
+    # claims cite src_a (assessed, ids a1/a2); src_b only ever adds b1 to
+    # the union when IT is assessed too. Confirms the fix did not change
+    # what this column already meant.
+    assert partial_row["attribution_count"] == 2
+    assert full_row["attribution_count"] == 3
+
+    # (2) the coverage gap is visible in the payload without any schema
+    # change -- payload_json is a pre-existing free-form TEXT column.
+    import json as _json
+
+    partial_payload = _json.loads(partial_row["payload_json"])
+    full_payload = _json.loads(full_row["payload_json"])
+
+    assert partial_payload["attribution_summary"]["sources_assessed"] == 1
+    assert partial_payload["attribution_summary"]["sources_total"] == 2
+
+    assert full_payload["attribution_summary"]["sources_assessed"] == 2
+    assert full_payload["attribution_summary"]["sources_total"] == 2

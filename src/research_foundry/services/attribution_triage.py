@@ -77,6 +77,7 @@ __all__ = [
     "load_attribution_records",
     "triage_records",
     "compute_source_attribution_triage",
+    "_merge_attribution_summaries",
 ]
 
 SCHEMA_VERSION = "1.0"
@@ -422,3 +423,227 @@ def compute_source_attribution_triage(
                 "attempted_at": attempted_at,
             },
         )
+
+
+def _merge_attribution_summaries(pairs: Iterable[tuple[Any, Any]]) -> dict[str, Any] | None:
+    """Combine per-source ``attribution_summary`` mirrors into ONE
+    cross-source, catalog-level rollup (SMP-4.4 Part 2; plan decision:
+    "cross-source values propagate as set-union keyed by
+    (asserter_id, assertion_kind)").
+
+    Used to give a claim (which may cite several distinct
+    ``source_card_id``s) a single combined attribution view, built purely
+    from the value-free mirrors ``_build_source_rows`` already carries per
+    source -- never a fresh read of any authoritative ``source_attribution``
+    record, and never a raw third-party value.
+
+    Input contract: ``(source_card_id, attribution_summary)`` pairs, not
+    bare summaries (Phase C bug fix -- position vs. cardinality)
+    -----------------------------------------------------------------------
+    The sole call site (``catalog_service._build_claim_and_inference_rows``)
+    iterates a claim's resolved sources, a list that can -- and, in the
+    ordinary "one card cited via several evidence anchors" case, does --
+    contain MULTIPLE entries for the SAME ``source_card_id``; the citation
+    key is ``(claim_id, source_card_id, evidence_id)``, and the same call
+    site computes ``distinct_source_ids = {s.get("source_card_id") for s in
+    resolved_sources}`` three lines above this call for exactly that reason.
+    A prior version of this function took bare summaries and counted INPUT
+    POSITIONS for ``sources_assessed``/``sources_total``, so a claim citing
+    one source through three evidence anchors reported "3 of 3 sources" when
+    there was exactly one distinct source. Requiring the id alongside each
+    mirror lets this function dedupe by ``source_card_id`` itself, making
+    that over-count structurally impossible regardless of what a future
+    caller passes -- a documented precondition ("dedupe before calling") is
+    exactly the kind of contract a second caller can forget to honor;
+    changing the input shape removes the possibility of forgetting it.
+
+    Design decisions
+    ------------------
+    - **Winner on a duplicate id**: first-wins, in the caller's iteration
+      order. The mirror is a deterministic per-card cache (this module's own
+      :func:`compute_source_attribution_triage`, one value per
+      ``source_card_id``), so two entries sharing an id are the SAME mirror
+      by construction -- which one is kept cannot change the merged result.
+      This keeps the *function* order-independent (merging ``[a, b]`` equals
+      merging ``[b, a]``) without ever needing to compare mirror contents.
+    - **Missing/empty/None ``source_card_id``**: treated as "this source's
+      identity is unknown", never as "this is the one canonical unidentified
+      source". Two different unidentified sources must not silently
+      collapse into a single bucket -- that would recreate an under-count of
+      the same shape as the bug this contract change fixes, just moved from
+      "shares a real id" to "shares no id at all". Every falsy id is
+      therefore given its own one-off dedup bucket (a fresh ``object()``
+      sentinel, never equal to any other sentinel or to a real string id),
+      so N unidentified sources always count as N distinct sources, never
+      fewer.
+    - **Order-independence**: preserved because ``source_card_id`` (or the
+      per-entry sentinel standing in for a falsy id) is the ONLY dedup key --
+      iteration order only decides which of two identical duplicate mirrors
+      is kept (immaterial per the point above), never which ids exist or how
+      many distinct ones there are.
+
+    Reuses :class:`AttributionRollup` as the shape for each merged
+    ``(asserter_id, assertion_kind)`` entry -- the grouping/union logic
+    below is new, but the *dataclass* that shape is expressed with is the
+    same one :func:`triage_records` (the authoritative per-card reducer)
+    already uses, keeping field names/types in one place rather than a
+    second, drifting definition.
+
+    Monotone-only, refusing averaging by construction: there is no
+    arithmetic anywhere in this function, over ``assertion_kind``s or
+    otherwise. It goes one step further than a same-card rollup can,
+    though -- when a ``(asserter_id, assertion_kind)`` key is contributed by
+    MORE than one DISTINCT source (post-dedupe: two entries sharing a
+    ``source_card_id`` -- one card, several evidence anchors -- count as
+    ONE source for this rule, never two), this function does **not** pick a
+    winner between the sources' respective ``best_attribution_id``s: doing
+    so would require comparing the underlying raw values, which are not
+    present on this value-free mirror (only ids/counts/pointers are) --
+    picking one anyway would be exactly the judgment-laundering the plan
+    refuses ("reading an actual number goes through the authoritative
+    record", the accepted cost). Such a key is marked ``comparable=False``
+    with both pointers ``None``, honestly reporting "assessed by more than
+    one source, but not itself comparable here" rather than guessing. A key
+    contributed by EXACTLY one distinct source passes that source's
+    already-computed pointers through unchanged -- they are still traceable
+    to a real authoritative record; this function does not second-guess a
+    single source's own monotone reduction. Deduping the SAME source's
+    repeated anchors down to one entry before grouping is what keeps this
+    rule from misfiring in either direction: it must not manufacture
+    ambiguity out of one card cited twice, and it must not launder away
+    genuine ambiguity between two different cards.
+
+    Every ``attribution_ids`` list (top-level and per-rollup) is
+    canonically sorted before return -- ``json.dump`` preserves insertion
+    order but does not impose one (plan decision).
+
+    Returns ``None`` when every input is absent/non-dict (nothing to
+    merge) -- distinct from a merged mirror with ``count=0``, matching
+    ``catalog_service._attribution_count_of``'s absent-vs-zero distinction
+    one level up.
+
+    Partial-coverage honesty (bug fix)
+    -----------------------------------
+    A claim may cite several distinct sources where SOME have been assessed
+    (their mirror is a dict) and others have NOT (their mirror is ``None`` --
+    absent/malformed reads identically, same as everywhere else in this
+    module). The original version of this function silently dropped the
+    unassessed entries via the ``isinstance(s, dict)`` filter before doing
+    anything else, so a claim citing one assessed source and one unassessed
+    source produced a merged mirror byte-identical to a claim citing only
+    the assessed source -- i.e. "some of this claim's sources were never
+    checked" collapsed into "this claim is fully assessed", exactly the
+    absent/not-yet-assessed conflation the tri-state coverage model exists
+    to forbid.
+
+    Fixed by carrying two plain counts on the merged result -- never a raw
+    third-party value, never a computed statistic, just cardinalities
+    already implied by the input, and (Phase C) counted over DISTINCT
+    ``source_card_id``s post-dedupe, never over input positions/anchors:
+
+    - ``sources_assessed`` -- how many DISTINCT sources' mirrors were valid
+      dicts (i.e. contributed real rollup data).
+    - ``sources_total`` -- how many DISTINCT sources were passed in at all,
+      assessed or not.
+
+    ``sources_assessed < sources_total`` is exactly "partial coverage: at
+    least one cited source has not yet been assessed". ``sources_assessed
+    == sources_total`` is full coverage. Both counts are always present
+    together on a non-``None`` result -- there is no third count and no
+    derived "partial" boolean stored redundantly; callers compare the two
+    ints. Unassessed sources contribute to ``sources_total`` only -- they
+    add no ids, no rollups, and do not change ``attribution_ids``/``count``
+    (those two fields keep meaning exactly what they meant before: the
+    union over sources that COULD be reduced). ``attribution_ids``/``count``
+    are numerically UNCHANGED by the Phase C dedupe fix: they were already a
+    SET-union over each mirror's own ``attribution_ids``, and two mirrors
+    sharing a ``source_card_id`` are (per the deterministic-per-card-cache
+    assumption above) identical, carrying the identical id-set -- so the
+    union already absorbed that redundancy before this fix. Only
+    ``sources_assessed``/``sources_total``, which counted raw list length
+    rather than a union, were ever wrong.
+    """
+
+    materialized = list(pairs)
+
+    # Dedupe by source_card_id -- see the class docstring's "Input contract"
+    # and "Design decisions" sections above for the id-collision and
+    # falsy-id rules. `per_source` maps each DISTINCT source (by id, or by a
+    # private per-entry sentinel when the id is falsy) to the first mirror
+    # seen for it; iteration order only affects which of two identical
+    # duplicate mirrors is kept, never which distinct sources exist.
+    per_source: dict[Any, Any] = {}
+    for source_card_id, mirror in materialized:
+        key = source_card_id if source_card_id else object()
+        if key not in per_source:
+            per_source[key] = mirror
+
+    valid = [m for m in per_source.values() if isinstance(m, dict)]
+    if not valid:
+        return None
+
+    top_ids: set[str] = set()
+    for mirror in valid:
+        top_ids.update(str(i) for i in (mirror.get("attribution_ids") or []))
+
+    groups: dict[tuple[Any, Any], list[dict[str, Any]]] = {}
+    for mirror in valid:
+        for rollup in mirror.get("rollups") or []:
+            if not isinstance(rollup, dict):
+                continue
+            key = (rollup.get("asserter_id"), rollup.get("assertion_kind"))
+            groups.setdefault(key, []).append(rollup)
+
+    merged_rollups: list[dict[str, Any]] = []
+    for (asserter_id, assertion_kind), entries in sorted(
+        groups.items(), key=lambda kv: (str(kv[0][0]), str(kv[0][1]))
+    ):
+        union_ids = sorted({str(i) for e in entries for i in (e.get("attribution_ids") or [])})
+        if len(entries) == 1:
+            # Single contributing source: its own monotone-best/weakest
+            # pointers are still authoritative -- pass through unchanged.
+            only = entries[0]
+            best_id = only.get("best_attribution_id")
+            weakest_id = only.get("weakest_attribution_id")
+            comparable = bool(only.get("comparable"))
+        else:
+            # More than one source asserts under this (asserter_id,
+            # assertion_kind) key. Comparing them requires the raw values,
+            # which this value-free mirror never carries -- refuse to guess.
+            best_id = None
+            weakest_id = None
+            comparable = False
+        rollup = AttributionRollup(
+            asserter_id=asserter_id,
+            assertion_kind=assertion_kind,
+            attribution_ids=tuple(union_ids),
+            best_attribution_id=best_id,
+            best_value=None,
+            weakest_attribution_id=weakest_id,
+            weakest_value=None,
+            comparable=comparable,
+        )
+        # Project to the schema-shaped subset -- `best_value`/`weakest_value`
+        # are always None here (this function never has a raw value to
+        # carry) and must not appear on a value-free mirror at all, so they
+        # are excluded rather than serialized as null.
+        merged_rollups.append(
+            {
+                "asserter_id": rollup.asserter_id,
+                "assertion_kind": rollup.assertion_kind,
+                "attribution_ids": list(rollup.attribution_ids),
+                "count": len(rollup.attribution_ids),
+                "best_attribution_id": rollup.best_attribution_id,
+                "weakest_attribution_id": rollup.weakest_attribution_id,
+                "comparable": rollup.comparable,
+            }
+        )
+
+    sorted_top_ids = sorted(top_ids)
+    return {
+        "attribution_ids": sorted_top_ids,
+        "count": len(sorted_top_ids),
+        "sources_assessed": len(valid),
+        "sources_total": len(per_source),
+        "rollups": merged_rollups,
+    }
