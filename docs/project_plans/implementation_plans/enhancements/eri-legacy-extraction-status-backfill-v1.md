@@ -3,7 +3,7 @@ it_schema: 1
 feature_slug: eri-legacy-extraction-status-backfill
 title: "ERI legacy extraction_status backfill — implementation plan"
 doc_type: implementation_plan
-status: in_progress
+status: complete
 planning_maturity: shipped
 tier: 2
 priority: P2
@@ -11,15 +11,17 @@ points: 13
 risk_level: high
 context_class: C3
 created: 2026-07-31
-updated: 2026-08-02
+updated: 2026-08-03
 merge_commit: e3ca9ba
 merge_branch: main
 open_items:
   - "M1 COMPLETE (AC met). Dry-run over live workspace W: 35 eligible / 452 ineligible / 16 already-set, 34 full_text + 1 partial, authoritative_data_mutated false. OQ-1 resolved to the plan's PRIMARY hypothesis empirically, and caught a real defect: the 100,232-byte edition decodes to exactly 100,000 chars and its stored text is cut mid-word, so recompute must fail closed at >= (asymmetric from extract_bytes' strict >). Without that fix the backfill would have stamped full_text provenance onto a truncated document."
   - "M2 COMPLETE (AC met on live data) under explicit human Mode-D approval 2026-08-02. 35 applied; manifest diff vs pre-apply baseline = 70 changed (35 edition records + 35 provenance.yaml), 0 removed; no content.bin touched; 35/35 pass binding recompute-and-compare; the 452 + 16 byte-identical; rollback input validated at would_restore 35 writing nothing. Receipt ral_eri_legacy_status_apply_edc5562345bf6620 in the workspace's backfill_operations/. Out-of-band snapshot at ~/rf-ledger-snapshots/20260802-modeD/ (70MB, 503 editions) plus a 16,873-file sha256 baseline manifest."
   - "M2 scope deviation, deliberate: the repair-on-apply path was REMOVED after three consecutive review rounds found the same defect class (approval-scope drift). It was never in M2's AC — it was added mid-execution in response to a review finding, and the state it repaired is already recoverable by re-running the same rollback receipt. Result: exactly one write loop, iterating the approved set, so touching an unapproved edition is structurally impossible."
-  - "M3 FAILED — BLOCKED, needs a plan-level decision. (a) The AC as written is VACUOUS: it reads by_completeness_tier.verification_failed, but that map tallies only COMPLETED actions — quarantined actions carry completeness_tier: null — so verification_failed can never appear there for a quarantined candidate and the AC is satisfied by construction. (b) On the authoritative per-action reason codes in the import receipt's effects/, verification_failed is STILL 4, unchanged from before this work (with 12 citation_unresolved, 3 source_unavailable, 3 citation_ambiguous; 22 quarantined total). The backfill did not move the number M3 exists to move."
-  - "M3 root-cause hypothesis, UNCONFIRMED: the 4 verification_failed candidates may bind to editions in the 452 assertion_rollout population (2026-07-17) that M2 excludes PERMANENTLY by accepted decision. If so, M3's AC was never achievable under M2's own scope — a plan-internal contradiction. Quarantined candidate effects carry canonical_refs: {} (they quarantine before binding to an edition), so confirming requires a candidate -> source -> edition trace through the packet. Not done."
+  - "M3 COMPLETE (AC met on live data, 2026-08-03) after the AC was re-pointed at the field that carries the signal and the missing target run was scaffolded. Receipt erh_6221f13ef51a4891b6f5b61edadfc3eb8f9c7515057c8fad9c075f4efde1bf50 against run rf_run_20260803_knitwit_s1_rights_evidence: 38 actions, 20 completed / 18 quarantined, by_completeness_tier {source_resolved: 16, passage_resolved: 4}, and verification_failed == 0 on the per-action reason codes (was 4). All four formerly-failing candidates completed at passage_resolved with real source cards in the run's sources/."
+  - "M3 ROOT CAUSE (resolved 2026-08-03) — the earlier 'excluded 452' hypothesis is REFUTED. The 4 verification_failed candidates are hobbii-/lion-brand-/lovecrafts-/yarnspirations-product-pages. All four bind to editions with basis: producer_declared_access_status that ALREADY carried extraction_status: full_text (the 16 already-set, acquired 2026-07-31) — not the excluded 452, and not the 35 M2 applied. All four rehydrate cleanly (1 exact passage, 1 distinct edition, content loads), so the bound.extraction_status is None guard never fires. The real cause: default_promote raises NotFoundError because the --run ids passed to M3 (rf_run_20260731_knitwit_s1_postbackfill, ..._v2) NEVER EXISTED in runs/ — no KnitWit run has ever existed in data-plane git history — and the resolver maps that to _candidate_quarantine('verification_failed'). Positive control reproduces error='target_run_not_found' for both ids; natural control group: every receipt whose target run exists has verification_failed 0, while all four KnitWit receipts had exactly 4, the same 4 action ids, invariant before and after the backfill. So M3's premise was wrong, not just its field — the backfill could never have moved this number, because these 4 failures never depended on extraction_status at all. Note this does NOT diminish M1+M2: the 35 editions genuinely needed and received honest status; M3 was simply measuring something else."
+  - "FOLLOW-UP DEFECT (filed): reason_code verification_failed CONFLATES a missing target run with a genuine verification failure, and default_promote's bare `except Exception` funnels every other staging failure into promotion_failed — an operator input error is reported as an evidence problem. Reason codes are the authoritative surface for M3-class ACs, so a misattributing code is load-bearing."
+  - "FOLLOW-UP DEFECT (filed): the 'dry-run does not predict live' finding below is NOT an independent regression of 1f982a7 — same single root cause. _finish_passage_resolved short-circuits on self._dry_run BEFORE the promotion call, so a preview is STRUCTURALLY INCAPABLE of seeing any promotion failure. Hoisting the content/status guard above that early return fixed only half the class."
   - "PROCESS FINDING (M3): the first M3 run was INERT. Run with cwd inside the git worktree, FoundryPaths.discover() resolved to the WORKTREE root, so the import created a fresh empty assertion_ledger/ there and fresh-acquired 16 sources into it, never touching the backfilled live ledger — while exiting 0 with the correct packet digest and a plausible receipt. Rule: run rf from the main checkout; the data plane does not follow the worktree."
   - "PROCESS FINDING (M3): dry-run does NOT predict the live outcome, a regression of the property 1f982a7 established. Same packet/workspace/target against the live ledger: --dry-run reported {locator_only: 15, passage_resolved: 4, source_resolved: 4} / 23 completed / 15 quarantined, while the real import gave {source_resolved: 16} / 16 completed / 22 quarantined with passage_resolved 0. Confirmed not a receipt replay (a fresh target run id produced a new receipt and the same live numbers)."
   - "NON-BLOCKING follow-up: a refused apply leaves a zero-byte .apply.lock in the evidence tree (the lock precedes the pinned-scope check, which is correct ordering and must stay). Now created 0600 and unlinked when nothing mutated, but any ledger-integrity check must still exclude backfill_operations/.apply.lock."
@@ -31,7 +33,7 @@ related_documents:
   - .claude/worknotes/eri-reused-edition-promotion/implementation-notes.md
 acceptance_criteria:
   - "The 35 ERI-acquired editions carry a recomputed extraction_status; the 452 rollout editions are untouched."
-  - "A live re-run of the operator packet shows verification_failed < 4."
+  - "A live re-run of the operator packet, against an EXISTING target run, shows verification_failed == 0 measured on the per-action reason codes in receipts/<receipt_digest>/effects/*.yaml (NOT by_completeness_tier, which tallies only completed actions and can never hold the value)."
 open_questions:
   - "OQ-1: does the 100,232-byte edition decode to exactly 100_000 chars (=> partial) or fewer (=> full_text)? M1 must answer empirically."
   - "OQ-2: could promotion create a duplicate run source card for candidates that previously quarantined?"
@@ -67,7 +69,7 @@ wave_plan:
     - id: M3
       title: "Live re-prove with the real packet"
       depends_on: ["M2"]
-      exit_criteria: ["Operator packet re-import yields passage_resolved with verification_failed < 4"]
+      exit_criteria: ["Target run exists BEFORE the import (a nonexistent --run id degrades silently into per-candidate quarantine, not an error); operator packet re-import yields passage_resolved 4 with verification_failed == 0 on the per-action reason codes in receipts/<receipt_digest>/effects/*.yaml"]
       gate_lens: [validator]
 ---
 
@@ -140,9 +142,14 @@ prior state; the 452 untouched, digests unchanged.
 ### M3 — Live re-prove with the real packet
 
 Re-run the operator packet import through the real intake entry point, not a unit-test stand-in.
+**The target run must exist first** — `default_promote` raises `NotFoundError` for an unknown run id
+and the resolver maps that to a per-candidate `verification_failed` quarantine, so a missing run looks
+like an evidence problem rather than an operator input error.
 
-**AC:** `rf intake external-report ~/Downloads/knitwit-s1/packet --workspace default --run
-rf_run_20260731_knitwit_s1_postbackfill` yields `verification_failed < 4`.
+**AC:** with the target run scaffolded (`rf capture` → `rf triage` → `rf plan`),
+`rf intake external-report ~/Downloads/knitwit-s1/packet --workspace default --run
+<existing_run_id>` yields `passage_resolved: 4` and `verification_failed == 0` measured on
+`receipts/<receipt_digest>/effects/*.yaml`.
 
 ## AC -> command -> evidence
 
@@ -151,7 +158,7 @@ rf_run_20260731_knitwit_s1_postbackfill` yields `verification_failed < 4`.
 | M1 dry-run counts | recompute dry-run script over W | 35/452/16 split + 34 full_text/1 partial (or 35/0); `authoritative_data_mutated: false` |
 | M2 re-attestation | `verify_source_card_binding` per edition | all 35 pass; digest diff on the 452 = zero change |
 | M2 rollback | apply then rollback, diff workspace tree | byte-identical to pre-apply snapshot |
-| M3 live re-run | `rf intake external-report ... --run rf_run_20260731_knitwit_s1_postbackfill` | `by_completeness_tier.verification_failed < 4` |
+| M3 live re-run | `rf intake external-report ... --run <existing_run_id>` | `passage_resolved: 4`; `grep -l verification_failed receipts/<digest>/effects/*.yaml \| wc -l` = 0 |
 
 ## Sequencing
 

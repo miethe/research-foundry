@@ -1,0 +1,14 @@
+schema_version: '1.0'
+type: external_research_import_effect
+receipt_digest: 6221f13ef51a4891b6f5b61edadfc3eb8f9c7515057c8fad9c075f4efde1bf50
+action_id: era_be10f69dc60bbdf397e349245493ea30fc21f72c81e1ee378e3df17edfc07d05
+kind: candidate
+outcome: completed
+completeness_tier: passage_resolved
+reason_code: null
+canonical_refs:
+  source_edition_id: sed_3c39a98ce055e29888cd827cb7c01490230b97af00358b562f861e3a584d8697
+  passage_id: psg_791d0e888cb3073e5574f1824c5938ee5bef9871c88ad2a2f33f20b014cac4c0
+  source_card_id: src_20260803_hobbii_official_product_pages_17f6dad8
+effect_digest: 7c1663d8deed16665e775ab666766968497d0c44a20092b5ac5c216798ab157e
+created_at: '2026-08-03T12:12:34-04:00'

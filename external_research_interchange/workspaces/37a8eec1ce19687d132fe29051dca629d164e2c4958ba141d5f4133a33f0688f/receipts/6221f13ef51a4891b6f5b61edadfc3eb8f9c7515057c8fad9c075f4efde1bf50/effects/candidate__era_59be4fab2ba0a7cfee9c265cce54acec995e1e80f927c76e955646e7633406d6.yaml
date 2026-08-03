@@ -1,0 +1,14 @@
+schema_version: '1.0'
+type: external_research_import_effect
+receipt_digest: 6221f13ef51a4891b6f5b61edadfc3eb8f9c7515057c8fad9c075f4efde1bf50
+action_id: era_59be4fab2ba0a7cfee9c265cce54acec995e1e80f927c76e955646e7633406d6
+kind: candidate
+outcome: completed
+completeness_tier: passage_resolved
+reason_code: null
+canonical_refs:
+  source_edition_id: sed_70849330ee241d633e6a3fe6609b803030ec2e58727cc02a7d57ad6f4ee2c68c
+  passage_id: psg_d63d72c9beb506854f44dcf1c9808029bc0a568750cf13fb1560455591efede1
+  source_card_id: src_20260803_lion_brand_official_product_pages_b747be3b
+effect_digest: 4b140f8d4125b935b627df8629ba05541a9428519c87b2f4d6324bce59fc8194
+created_at: '2026-08-03T12:12:34-04:00'

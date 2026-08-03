@@ -1,0 +1,14 @@
+schema_version: '1.0'
+type: external_research_import_effect
+receipt_digest: 6221f13ef51a4891b6f5b61edadfc3eb8f9c7515057c8fad9c075f4efde1bf50
+action_id: era_d8e356aabd44d7ad8f41bc8ded96dcebe860977b662451aa804747f9409b4f18
+kind: candidate
+outcome: completed
+completeness_tier: passage_resolved
+reason_code: null
+canonical_refs:
+  source_edition_id: sed_e5f8643333db3a88b53f2f1dc5d63b65e43324e15853df7a6994a7262def1846
+  passage_id: psg_a78d9d282d1812fc0f24b33a5acb33392228c479af101a6c21d590fb8a33ad09
+  source_card_id: src_20260803_yarnspirations_official_product_pages_583e7240
+effect_digest: 458d6837ef79fc5adc6e36f1551166f323257fe804acfe18263c5fde381d8a82
+created_at: '2026-08-03T12:12:34-04:00'

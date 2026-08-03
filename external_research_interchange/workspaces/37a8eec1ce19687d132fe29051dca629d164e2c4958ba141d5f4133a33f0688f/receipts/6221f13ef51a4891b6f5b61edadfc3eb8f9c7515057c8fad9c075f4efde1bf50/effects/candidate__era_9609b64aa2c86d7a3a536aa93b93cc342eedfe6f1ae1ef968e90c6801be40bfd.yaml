@@ -1,0 +1,14 @@
+schema_version: '1.0'
+type: external_research_import_effect
+receipt_digest: 6221f13ef51a4891b6f5b61edadfc3eb8f9c7515057c8fad9c075f4efde1bf50
+action_id: era_9609b64aa2c86d7a3a536aa93b93cc342eedfe6f1ae1ef968e90c6801be40bfd
+kind: candidate
+outcome: completed
+completeness_tier: passage_resolved
+reason_code: null
+canonical_refs:
+  source_edition_id: sed_09ee4f5746b148a4199e5dd92f981358c50ab6139faf33e6f80ce275adf7486d
+  passage_id: psg_5d038e5b3e8538c39befa62b327ebbe86fe02d830b6be3c3fc4bfe44d9f36af1
+  source_card_id: src_20260803_lovecrafts_product_pages_b762f314
+effect_digest: cb81ade6a5e5c0786e0230d66460ed7ae525b0139c555c918d175639925e4ccd
+created_at: '2026-08-03T12:12:34-04:00'
