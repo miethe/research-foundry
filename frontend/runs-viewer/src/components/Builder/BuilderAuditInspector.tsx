@@ -50,7 +50,7 @@ export interface BuilderAuditInspectorProps {
    * asserting a coverage/issue verdict it can't actually back yet.
    */
   previewsLoading?: boolean;
-  onOpenIssueCategory?: (category: { key: string; label: string; severity: string; count: number }) => void;
+  onOpenIssueCategory?: (category: BuilderIssue) => void;
   onOpenSource?: (source: RFResolvedSource) => void;
   disabled: boolean;
   onVerify: () => void;

@@ -45,7 +45,7 @@ import { ClaimBasket } from "@/components/Builder/ClaimBasket";
 import { DetailModal } from "@/components/RunDetail/DetailModal";
 import type { DetailModalPayload, IssueDetail } from "@/components/RunDetail/DetailModal";
 import { buildOutline, computeBlockAuditSummary, computeDraftAuditSummary, computeDraftIssues } from "@/lib/builderCoverage";
-import type { BuilderIssue, BuilderOutlineSection } from "@/lib/builderCoverage";
+import type { BuilderIssue, BuilderIssueSeverity, BuilderOutlineSection } from "@/lib/builderCoverage";
 import { CLAIM_PREVIEW_UNKNOWN, MOCK_REPORT_DRAFT } from "@/lib/builderMocks";
 import { useBuilderClaimPreviewResolver } from "@/hooks";
 import { formatRelativeTime } from "@/lib/format";
@@ -54,7 +54,11 @@ import type { CatalogItemSummary } from "@/types/rf/catalog";
 import type { ReportBlockType } from "@/types/rf/report_draft";
 import "@/styles/builder.css";
 
-type BuilderIssueCategory = { key: string; label: string; severity: string; count: number };
+type BuilderIssueCategory = { key: BuilderIssue["key"]; label: string; severity: BuilderIssueSeverity; count: number };
+
+const assertNever = (value: never): never => {
+  throw new Error(`Unhandled builder issue key: ${String(value)}`);
+};
 
 export function BuilderScreen() {
   const loopback = isBuilderLoopbackEnabled();
@@ -249,12 +253,12 @@ export function BuilderScreen() {
   }
 
   function issueSeverity(category: BuilderIssueCategory): IssueDetail["severity"] {
-    return category.severity === "critical" || category.severity === "error" ? "error" : "warning";
+    return category.severity === "critical" ? "error" : "warning";
   }
 
   function deriveIssueItems(category: BuilderIssueCategory): IssueDetail[] {
     if (!draft) return [];
-    switch (category.key as BuilderIssue["key"]) {
+    switch (category.key) {
       case "contradictions":
         return draft.claim_links
           .filter((link) => link.relation === "contradicts")
@@ -327,8 +331,7 @@ export function BuilderScreen() {
             hint: "Add a supporting claim or mark the block as narrative/background.",
           }));
       default:
-        // TODO: replace with real issue-level data when the RF API exposes it.
-        return [];
+        return assertNever(category.key);
     }
   }
 
