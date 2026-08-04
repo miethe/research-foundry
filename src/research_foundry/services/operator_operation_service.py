@@ -1214,10 +1214,11 @@ class OperatorOperationService:
                 # lock (or, in principle, during schema setup) -- no
                 # transaction was ever opened on this path.
                 _logger.error(
-                    "operator_operation_service: DUR-1 lock acquisition failed (%s) "
+                    "operator_operation_service: DUR-1 lock acquisition failed (%s: %s) "
                     "for confirmation_id=%s -- busy_timeout exhausted or schema "
                     "setup failed",
                     type(exc).__name__,
+                    exc,
                     confirmation_id,
                 )
                 return OperationOutcome("denied", "internal_error", None)
@@ -1281,9 +1282,10 @@ class OperatorOperationService:
                     "locked past BEGIN IMMEDIATE's own acquisition (e.g. promoting "
                     "to an exclusive lock while a concurrent reader still holds a "
                     "shared one); denying as retryable rather than letting a raw "
-                    "sqlite3.OperationalError escape this module's boundary",
+                    "sqlite3.OperationalError escape this module's boundary (%s)",
                     type(exc).__name__,
                     confirmation_id,
+                    exc,
                 )
                 try:
                     conn.execute("ROLLBACK")
