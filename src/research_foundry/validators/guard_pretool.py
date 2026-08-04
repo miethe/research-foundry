@@ -2,13 +2,18 @@
 
 Reads a Claude Code hook payload from stdin (``tool_name``, ``tool_input``),
 runs a lightweight governance preflight: secret-scans Write/Edit content and
-flags reads/writes to ``.env``/secret paths. Prints a JSON decision and exits:
+flags reads/writes to ``.env``/secret paths, then signals by **exit code**:
 
-* ``0`` + ``{"decision": "allow"}`` — proceed.
-* non-zero + ``{"decision": "deny", ...}`` — block the tool call.
+* ``0`` + empty stdout — no decision; the normal permission flow applies.
+* ``2`` + reason on stderr — block the tool call.
 
-Safe no-op when there is no stdin or no workspace: prints an allow decision and
-exits ``0`` so it never wedges an interactive session.
+Claude Code's contract is "exit codes alone, or exit 0 plus JSON — never both":
+on a non-zero exit it discards stdout and feeds stderr back to Claude as the
+blocking reason. Signalling by exit code therefore keeps this guard fail-closed
+and emits nothing that could fail hook-output schema validation.
+
+Safe no-op when there is no stdin or no workspace: exits ``0`` silently so it
+never wedges an interactive session.
 """
 
 from __future__ import annotations
@@ -67,20 +72,33 @@ def _touches_secret_path(target: str) -> bool:
 
 
 def _emit(decision: str, *, reason: str = "", violations: list[str] | None = None) -> int:
-    payload: dict[str, Any] = {"decision": decision}
-    if reason:
-        payload["reason"] = reason
+    """Signal ``decision`` to Claude Code using exit codes only.
+
+    Nothing is written to stdout. The previous implementation printed
+    ``{"decision": "allow"}`` / ``{"decision": "deny"}``, neither of which is a
+    member of the top-level ``decision`` enum (only ``"block"`` is, and the field
+    is deprecated for PreToolUse in favour of
+    ``hookSpecificOutput.permissionDecision``), so **every** invocation failed
+    hook-output validation and the verdict was discarded — including the denies.
+
+    Exit-code signalling keeps the guard *fail-closed*: a deny blocks on the exit
+    status alone and cannot degrade into an allow if a payload field is ever
+    rejected.
+    """
+
+    if decision == "allow":
+        # Exit 0 with empty stdout == "no decision"; normal permission flow
+        # applies. Deliberately NOT permissionDecision "allow", which would
+        # auto-approve every matched Bash/Write/Edit and skip the user's
+        # permission prompt entirely.
+        return 0
+
+    detail = reason or "Governance guard blocked this tool call."
     if violations:
-        payload["violations"] = violations
-    # Hook-spec friendly fields (PreToolUse permissionDecision).
-    if decision == "deny":
-        payload["hookSpecificOutput"] = {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": reason or "Governance guard blocked this tool call.",
-        }
-    print(json.dumps(payload))
-    return 0 if decision == "allow" else 2
+        detail = f"{detail} [{', '.join(violations)}]"
+    # stderr is what Claude Code surfaces as the blocking reason on exit 2.
+    print(detail, file=sys.stderr)
+    return 2
 
 
 def main(argv: list[str] | None = None) -> int:

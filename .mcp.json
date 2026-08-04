@@ -2,9 +2,8 @@
   "mcpServers": {
     "rf-mcp": {
       "type": "stdio",
-      "command": "python",
-      "args": ["-m", "research_foundry.services.search_router.mcp_server"],
-      "cwd": "${workspaceFolder}"
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "research_foundry.services.search_router.mcp_server"]
     }
   }
 }

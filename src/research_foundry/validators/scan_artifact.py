@@ -89,18 +89,26 @@ def _lint_claims(text: str, path: str) -> list[str]:
 
 
 def _emit(warnings: list[str]) -> int:
+    """Hand advisory ``warnings`` back to Claude as PostToolUse context.
+
+    Always exits ``0``. The clean path prints nothing at all, and the warning
+    path carries only ``hookSpecificOutput.additionalContext`` — the documented
+    channel for advisory text. The previous payload led with
+    ``{"decision": "allow"}``, which is not a member of PostToolUse's
+    ``decision`` enum (``"block"`` is the only value; omit it to allow), so the
+    whole object was rejected and the warnings never reached the model. This is
+    the first version whose warnings are actually delivered.
+    """
+
     if not warnings:
-        print(json.dumps({"decision": "allow"}))
         return 0
     print(
         json.dumps(
             {
-                "decision": "allow",
-                "warnings": warnings,
                 "hookSpecificOutput": {
                     "hookEventName": "PostToolUse",
                     "additionalContext": " ".join(warnings),
-                },
+                }
             }
         )
     )

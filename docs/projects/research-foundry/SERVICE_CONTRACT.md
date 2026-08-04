@@ -390,13 +390,27 @@ exit_code: any block → 3; else any require_approval → 7; else 0.
 ### Hook entrypoints (owner: W2-1), under validators/:
 - `validators/guard_pretool.py` — reads Claude Code hook JSON from stdin
   (tool_name, tool_input), runs a lightweight governance preflight + secret scan
-  on Write/Edit content and `.env`/secret path access; prints a JSON decision and
-  exits 0 (allow) / non-zero/blocking JSON (deny). `main()` + `__main__`.
+  on Write/Edit content and `.env`/secret path access; signals **by exit code
+  only** — 0 with empty stdout (no decision; normal permission flow) / 2 with the
+  reason on stderr (block). `main()` + `__main__`.
 - `validators/scan_artifact.py` — PostToolUse: secret-scan the written file and
-  lint claim labels; warn (non-blocking). `main()` + `__main__`.
+  lint claim labels; warn (non-blocking) via
+  `hookSpecificOutput.additionalContext`, always exit 0. `main()` + `__main__`.
 - `validators/emit_ccdash_event.py` — Stop hook shim → calls
-  `services.telemetry.emit_latest_or_noop()`. `main()` + `__main__`.
+  `services.telemetry.emit_latest_or_noop()`; emits only `{"suppressOutput": true}`.
+  `main()` + `__main__`.
 All three must be safe no-ops when not inside a foundry workspace / no stdin.
+
+**Hook-output schema constraint (all validators).** Claude Code's top-level
+`decision` field accepts only `"block"` — never `"allow"`/`"deny"` — and is
+deprecated for PreToolUse in favour of `hookSpecificOutput.permissionDecision`
+(`allow`/`deny`/`ask`/`defer`). Unrecognised top-level keys are not part of the
+schema. A rejected payload discards the hook's verdict entirely, so an invalid
+enum silently turns a guard into a no-op. Signalling with exit codes keeps a
+*deny* fail-closed. An affirmative `permissionDecision: "allow"` must not be
+emitted on the allow path: it would bypass the user's permission prompt for every
+matched tool call. Conformance is enforced by `tests/test_hook_output_schema.py`,
+which sweeps every validator registered in `.claude/settings.json`.
 
 ## 9. writeback.py  (owner: W2-6)  — `rf bundle`, `rf writeback`, `rf council`, `rf skillbom`
 

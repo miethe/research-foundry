@@ -49,8 +49,9 @@ def main(argv: list[str] | None = None) -> int:
         emitted = None
 
     # This hook is a telemetry side effect, not a stop gate: it must not emit a
-    # ``decision``. The Stop schema only accepts decision ``approve``/``block`` and
-    # has no ``ccdash_event`` field, so any such payload fails hook-output validation.
+    # ``decision``. The Stop schema accepts only decision ``"block"`` (omit it to
+    # allow) and has no ``ccdash_event`` field, so any such payload fails
+    # hook-output validation.
     # Emit schema-valid stdout (suppressed from the transcript) and surface the
     # emitted event path on stderr for debugging.
     if emitted is not None:

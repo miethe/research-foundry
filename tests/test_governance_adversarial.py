@@ -378,8 +378,12 @@ def test_guard_pretool_denies_env_write():
         "research_foundry.validators.guard_pretool",
         json.dumps({"tool_name": "Write", "tool_input": {"file_path": "/h/.env", "content": "x"}}),
     )
+    # The hook signals by exit code: Claude Code discards stdout on a non-zero
+    # exit and feeds stderr back as the blocking reason. See
+    # tests/test_hook_output_schema.py for the schema rationale.
     assert proc.returncode == 2
-    assert json.loads(proc.stdout)["decision"] == "deny"
+    assert proc.stdout.strip() == ""
+    assert "secret_path_access" in proc.stderr
 
 
 def test_guard_pretool_denies_secret_content():
@@ -396,14 +400,17 @@ def test_guard_pretool_denies_secret_content():
         ),
     )
     assert proc.returncode == 2
-    assert json.loads(proc.stdout)["decision"] == "deny"
+    assert proc.stdout.strip() == ""
+    assert "no_secret_in_markdown" in proc.stderr
 
 
 def test_guard_pretool_safe_noop_on_empty_and_malformed_stdin():
     for stdin in ("", "   ", "not json {{{"):
         proc = _run_hook("research_foundry.validators.guard_pretool", stdin)
         assert proc.returncode == 0
-        assert json.loads(proc.stdout)["decision"] == "allow"
+        # Silence == "no decision"; the normal permission flow applies. An
+        # affirmative permissionDecision "allow" would skip the user's prompt.
+        assert proc.stdout.strip() == ""
 
 
 def test_guard_pretool_does_not_inspect_bash_commands_weakness():
@@ -420,7 +427,7 @@ def test_guard_pretool_does_not_inspect_bash_commands_weakness():
         ),
     )
     assert proc.returncode == 0  # documents the Bash bypass
-    assert json.loads(proc.stdout)["decision"] == "allow"
+    assert proc.stdout.strip() == ""
 
     proc2 = _run_hook(
         "research_foundry.validators.guard_pretool",
@@ -444,21 +451,23 @@ def test_scan_artifact_warns_but_never_blocks():
         )
         assert proc.returncode == 0  # advisory only, never blocks
         out = json.loads(proc.stdout)
-        assert out["decision"] == "allow"
-        assert out.get("warnings"), "expected a secret warning"
+        # Advisory text travels as PostToolUse additionalContext; a top-level
+        # `decision` would be rejected outright (its only value is "block").
+        assert "decision" not in out
+        assert out["hookSpecificOutput"]["additionalContext"], "expected a secret warning"
     finally:
         p.unlink(missing_ok=True)
 
 
 def test_scan_artifact_safe_noop_on_empty_and_missing_target():
     proc = _run_hook("research_foundry.validators.scan_artifact", "")
-    assert proc.returncode == 0 and json.loads(proc.stdout)["decision"] == "allow"
+    assert proc.returncode == 0 and proc.stdout.strip() == ""
 
     proc2 = _run_hook(
         "research_foundry.validators.scan_artifact",
         json.dumps({"tool_name": "Write", "tool_input": {"file_path": "/tmp/nope-xyz-123.md"}}),
     )
-    assert proc2.returncode == 0 and json.loads(proc2.stdout)["decision"] == "allow"
+    assert proc2.returncode == 0 and proc2.stdout.strip() == ""
 
 
 # ---------------------------------------------------------------------------
