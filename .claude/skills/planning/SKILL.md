@@ -13,9 +13,9 @@ description: >
   with task assignments. Example: "Create a PRD for user authentication
   feature" or "Create an implementation plan for the advanced-filtering PRD"
   or "Create progress tracking for data-layer-fixes PRD".
-version: 2.0
-app_version: "2026-07-30"
-updated: 2026-07-30
+version: 2.1
+app_version: "2026-07-31"
+updated: 2026-07-31
 ---
 
 # Planning Skill
@@ -143,7 +143,7 @@ canonical "check first" source; the node query is the queryable complement.
 User: "Create a PRD for advanced filtering on the prompts page"
 
 # Skill generates PRD at:
-# docs/project_plans/PRDs/[category]/advanced-filtering-v1.md
+# docs/project_plans/PRDs/advanced-filtering-v1.md
 ```
 
 ### Create Implementation Plan from PRD
@@ -169,7 +169,7 @@ python scripts/generate-planning-board.py \
 
 # Or from a specific implementation plan path
 python scripts/generate-planning-board.py \
-  --plan docs/project_plans/implementation_plans/features/some-feature-v1.md
+  --plan docs/project_plans/implementation_plans/some-feature-v1.md
 
 # Preview what would be discovered without generating
 python scripts/generate-planning-board.py --feature-slug xyz --dry-run
@@ -205,17 +205,17 @@ User: "Create progress tracking for data-layer-fixes PRD"
 ```bash
 # Mark PRD approved
 python .claude/skills/artifact-tracking/scripts/manage-plan-status.py \
-  --file docs/project_plans/PRDs/features/feature-name-v1.md \
+  --file docs/project_plans/PRDs/feature-name-v1.md \
   --status approved
 
 # Mark implementation in progress
 python .claude/skills/artifact-tracking/scripts/manage-plan-status.py \
-  --file docs/project_plans/implementation_plans/features/feature-name-v1.md \
+  --file docs/project_plans/implementation_plans/feature-name-v1.md \
   --status in-progress
 
 # Mark implementation completed
 python .claude/skills/artifact-tracking/scripts/manage-plan-status.py \
-  --file docs/project_plans/implementation_plans/features/feature-name-v1.md \
+  --file docs/project_plans/implementation_plans/feature-name-v1.md \
   --status completed
 ```
 
@@ -231,10 +231,18 @@ Before authoring any planning artifact, determine the feature's tier. Tier drive
 
 | Tier | Size | Pre-commitment exploration | Planning artifact | Execution model | Reviewer | Model routing |
 |------|------|---------------------------|-------------------|-----------------|----------|---------------|
-| **0** | 1–3 pts, single file | skip | none | `/dev:quick-feature` | optional | sonnet executor |
+| **0** | 1–3 pts, single file | skip | none | `/dev:quick-feature` | mandatory `task-completion-validator` (one pass) | sonnet executor |
 | **1** | 3–8 pts | optional (use when ambiguity exists, skip when outcome is clear) | **Feature Contract** (~200–400 lines) | one autonomous sprint per contract | **mandatory** `task-completion-validator` | sonnet executor + sonnet contract writer + Opus design block |
-| **2** | 8–13 pts | **strongly suggested** — required when no comparable past-feature anchor exists or `risk_level: high` | PRD + milestone Implementation Plan | milestone-by-milestone execution | mandatory `task-completion-validator` per milestone; `karen` at feature end | `routing_constraints` (MUST-stay classes, offload-eligibility, capability bar) — resolved at dispatch by `delegation-router`, never plan-time model ids |
-| **3** | 13+ pts | **strongly suggested** — required when no comparable past-feature anchor exists or `risk_level: high` | SPIKE + PRD + milestone Implementation Plan | milestone-by-milestone execution | mandatory `karen` per milestone + end of feature | `routing_constraints` (MUST-stay classes, offload-eligibility, capability bar) — resolved at dispatch by `delegation-router`, never plan-time model ids |
+| **2** | 8–13 pts | **strongly suggested** — required when no comparable past-feature anchor exists or `risk_level: high` | PRD + milestone Implementation Plan | milestone-by-milestone execution | mandatory `task-completion-validator` per milestone; one `karen` final-tree pass at feature end | `routing_constraints` (MUST-stay classes, offload-eligibility, capability bar) — resolved at dispatch by `delegation-router`, never plan-time model ids |
+| **3** | 13+ pts | **strongly suggested** — required when no comparable past-feature anchor exists or `risk_level: high` | SPIKE + PRD + milestone Implementation Plan | milestone-by-milestone execution | mandatory `task-completion-validator` per milestone; one `karen` final-tree pass at feature end (+ a per-milestone `karen` only for `context_class` C3/C4) | `routing_constraints` (MUST-stay classes, offload-eligibility, capability bar) — resolved at dispatch by `delegation-router`, never plan-time model ids |
+
+> **The Reviewer column is the base gate — one lens — not the whole gate set.** A **second** lens is
+> added per-milestone only when that milestone's surface matches one of three triggers: it **parses
+> untrusted input**, it **is an authorization/identity boundary**, or its effect is **irreversible or
+> leaves the system**. **Tier does not add lenses** — a Tier 3 CRUD milestone gets one; a Tier 2
+> authorization milestone gets two. Classify per milestone and record `gate_lens` +
+> `gate_lens_reason` in `wave_plan.phases[]` (§5.4). Ruleset:
+> [`dev-execution/references/gate-risk-classes.md`](../dev-execution/references/gate-risk-classes.md) §2.
 
 **Large-file override (capacity, not points)**: Story points size *behavior*; they don't size *agent context*. Any refactor that **deletes, relocates, splits, or substantially rewrites a single file >~2K lines** (>5K = always) is **Tier 2 minimum regardless of point estimate**. A Tier 1 single-agent sprint cannot hold the large source + its call-sites + edit targets at once and will blow context mid-sprint (observed: a 10,156-line deletion crashed a Tier 1 sprint with all wiring undone). Classify it as Tier 2 up front and decompose file-ownership-first per `.claude/specs/workflows/large-file-refactor-decomposition-spec.md`. Localized edits *inside* a large file (a few functions) are exempt.
 
@@ -299,9 +307,9 @@ All planning documents follow a canonical location pattern by doc type, enabling
 |----------|---------|-------------------|-------------------|
 | `exploration_charter` | Pre-commitment exploration boundary contract; contains hypothesis, deal_killer, timebox, legs, verdict | `docs/project_plans/exploration/[idea-slug]/[idea-slug]-charter.md` | `report` (feasibility_brief), proposed ADR, `prd` (on go verdict) |
 | `design_spec` | Pre-PRD ideation and design, varying maturity | `docs/project_plans/design-specs/[name].md` | `prd` |
-| `prd` | Formal product requirements | `docs/project_plans/PRDs/[category]/[name]-v1.md` | `implementation_plan` |
-| `implementation_plan` | Milestone-based technical plan (`references/plan-doctrine.md`) | `docs/project_plans/implementation_plans/[category]/[name]-v1.md` | `phase_plan`, `progress` |
-| `phase_plan` | Single phase (if parent plan >800 lines) | `docs/project_plans/implementation_plans/[category]/[name]-v1/phase-[N]-[title].md` | `progress` |
+| `prd` | Formal product requirements | `docs/project_plans/PRDs/[name]-v1.md` | `implementation_plan` |
+| `implementation_plan` | Milestone-based technical plan (`references/plan-doctrine.md`) | `docs/project_plans/implementation_plans/[name]-v1.md` | `phase_plan`, `progress` |
+| `phase_plan` | Single phase (if parent plan >800 lines) | `docs/project_plans/implementation_plans/[name]-v1/phase-[N]-[title].md` | `progress` |
 | `progress` | Phase task tracking and orchestration | `.claude/progress/[feature-slug]/phase-[N]-progress.md` | — |
 | `spike` | Formal research investigation with charter | `docs/project_plans/SPIKEs/[name]-charter.md` or `docs/project_plans/SPIKEs/[name].md` | `design_spec`, `prd`, ADR |
 | `report` | Investigation, audit, finding, post-mortem | `docs/project_plans/reports/[category]/[name].md` or `.claude/findings/[name].md` | `design_spec`, `prd` |
@@ -334,14 +342,14 @@ All planning documents follow a canonical location pattern by doc type, enabling
 ```yaml
 # OLD (avoid):
 related_prds:
-  - docs/project_plans/PRDs/features/xyz-v1.md
+  - docs/project_plans/PRDs/xyz-v1.md
 
 # NEW (correct):
-prd_ref: docs/project_plans/PRDs/features/xyz-v1.md
+prd_ref: docs/project_plans/PRDs/xyz-v1.md
 
 # Multiple related docs:
 related_documents:
-  - docs/project_plans/PRDs/features/xyz-v1.md
+  - docs/project_plans/PRDs/xyz-v1.md
   - docs/dev/architecture/adr-123.md
   - .claude/context/some-pattern.md
 ```
@@ -417,7 +425,7 @@ Use `manage-plan-status.py` to advance status lifecycle:
 
 ```bash
 python .claude/skills/artifact-tracking/scripts/manage-plan-status.py \
-  --file docs/project_plans/PRDs/features/feature-name-v1.md \
+  --file docs/project_plans/PRDs/feature-name-v1.md \
   --status approved
 ```
 
@@ -426,14 +434,14 @@ Use `update-field.py` to append to list fields (`--append "key=value"`; lists: `
 ```bash
 # Append to a list field
 python .claude/skills/artifact-tracking/scripts/update-field.py \
-  -f docs/project_plans/implementation_plans/features/feature-name-v1.md \
+  -f docs/project_plans/implementation_plans/feature-name-v1.md \
   --append "pr_refs=https://github.com/owner/repo/pull/123"
 
 # On merge to the destination branch, set the landing SHA + branch (scalar fields).
 # For direct squash-merges with no PR, merge_commit is the only in-repo way to
 # resolve where the feature landed (the branch SHA becomes an orphan).
 python .claude/skills/artifact-tracking/scripts/update-field.py \
-  -f docs/project_plans/implementation_plans/features/feature-name-v1.md \
+  -f docs/project_plans/implementation_plans/feature-name-v1.md \
   --set "merge_commit=4e64e630" \
   --set "merge_branch=main"
 ```
@@ -518,10 +526,10 @@ maturity: ready           # Ready to promote to PRD
 **When**: The design_spec is at `maturity: ready` and you're ready to formalize as a product requirement.
 
 **What to do**:
-1. Create a new PRD at `docs/project_plans/PRDs/[category]/[name]-v1.md`
+1. Create a new PRD at `docs/project_plans/PRDs/[name]-v1.md`
 2. Update the design_spec:
    - Set `maturity: promoted`
-   - Add `prd_ref: docs/project_plans/PRDs/[category]/[name]-v1.md`
+   - Add `prd_ref: docs/project_plans/PRDs/[name]-v1.md`
 3. Reference the design_spec in the PRD as context/background
 4. Move forward with PRD lifecycle and implementation planning
 
@@ -529,7 +537,7 @@ maturity: ready           # Ready to promote to PRD
 ```yaml
 # In design_spec:
 maturity: promoted
-prd_ref: docs/project_plans/PRDs/features/realtime-sync-v1.md
+prd_ref: docs/project_plans/PRDs/realtime-sync-v1.md
 ```
 
 ### Workflow/Process/Tooling Change → `meta_plan`
@@ -588,8 +596,8 @@ title: "SQLAlchemy Comparator Cache Poisoning"
 status: accepted
 source: agent
 created: 2026-04-08
-prd_ref: docs/project_plans/PRDs/features/enterprise-database-v1.md
-promoted_to: [docs/project_plans/implementation_plans/features/enterprise-database-v1.md]
+prd_ref: docs/project_plans/PRDs/enterprise-database-v1.md
+promoted_to: [docs/project_plans/implementation_plans/enterprise-database-v1.md]
 outcome: "Implemented manual cache refresh in enterprise repository tests"
 ---
 ```
@@ -729,7 +737,7 @@ Human sign-off is required for `go` and `no-go` verdicts. Opus recommendation al
 
 **Applies to**: Features estimated at 3–8 story points with a clear, bounded scope and enumerable acceptance criteria. Single-feature scope; does not require multi-phase orchestration.
 
-**Artifact**: `docs/project_plans/feature_contracts/[category]/[feature-slug].md`
+**Artifact**: `docs/project_plans/feature_contracts/[feature-slug].md`
 
 **Template**: `.claude/skills/planning/templates/feature-contract-template.md`
 
@@ -789,6 +797,7 @@ Human sign-off is required for `go` and `no-go` verdicts. Opus recommendation al
    - Use template: `./templates/prd-template.md`
    - Follow MP architecture patterns (see `./references/mp-architecture.md`)
    - Include frontmatter with proper metadata — author the canonical plan frontmatter (`it_schema: 1`) per `./references/plan-frontmatter-schema.md`: the templates emit the MUST set + `open_questions`/`decisions` (YAML lists) + `agent_*`/`execution_mode`/`scores`; lint with `artifact-tracking/scripts/validate-plan-frontmatter.py` (advisory). When IntentTree sync is in use, also carry the binding (`intenttree_workspace` / `intenttree_tree`) so capture resolves to the bound human workspace/tree (see `.claude/rules/intenttree-integration.md`)
+   - Run the authoring-time gate — `python .claude/skills/artifact-tracking/scripts/check-plan-authoring.py <this-file>` — right after writing the frontmatter. **Advisory (FR-12/D-M4-1)**: it exits non-zero and names the file + field on a bad `status` or a missing `feature_slug`, but nothing consumes that exit code to block a commit or CI; treat it the same way as the status linter above. A missing `itt_node_id`/`intenttree_tree` is only a warning at this point — the tree may not exist yet
    - Organize into standard PRD sections
 
 3. **Add Implementation Context**
@@ -798,7 +807,7 @@ Human sign-off is required for `go` and `no-go` verdicts. Opus recommendation al
    - Define success criteria and acceptance tests
 
 4. **Determine Location**
-   - Category: `docs/project_plans/PRDs/[category]/`
+   - Category: `docs/project_plans/PRDs/`
    - Categories: `harden-polish`, `features`, `enhancements`, `refactors`
    - Naming: `[feature-name]-v1.md` (kebab-case)
 
@@ -809,7 +818,7 @@ Human sign-off is required for `go` and `no-go` verdicts. Opus recommendation al
    - Add to project tracking if needed
 
 **Output**:
-- PRD file at: `docs/project_plans/PRDs/[category]/[feature-name]-v1.md`
+- PRD file at: `docs/project_plans/PRDs/[feature-name]-v1.md`
 - Follows template structure
 - Ready for implementation planning
 
@@ -818,7 +827,7 @@ Human sign-off is required for `go` and `no-go` verdicts. Opus recommendation al
 ```markdown
 Input: "Add real-time collaboration features to prompt editing"
 
-Output Location: docs/project_plans/PRDs/features/realtime-collaboration-v1.md
+Output Location: docs/project_plans/PRDs/realtime-collaboration-v1.md
 
 Sections:
 1. Executive Summary - Real-time collaborative editing
@@ -998,9 +1007,18 @@ Sections:
      links to them). See `./references/optimization-patterns.md`.
 
 9. **Generate Files**
-   - Main plan: `docs/project_plans/implementation_plans/[category]/[feature-name]-v1.md`
-   - Phase files (if needed): `docs/project_plans/implementation_plans/[category]/[feature-name]-v1/phase-[N]-[name].md`
+   - Main plan: `docs/project_plans/implementation_plans/[feature-name]-v1.md`
+   - Phase files (if needed): `docs/project_plans/implementation_plans/[feature-name]-v1/phase-[N]-[name].md`
    - Link phase files from parent plan
+
+9.5. **Run the Authoring-Time Gate (advisory — FR-12/D-M4-1)**
+   - `python .claude/skills/artifact-tracking/scripts/check-plan-authoring.py <main-plan-file>`
+   - Checks two things at the moment of authoring: the top-level `status` is a NodeStatus or a
+     resolvable alias, and the plan carries `feature_slug` (the join key). Exit 2 names the
+     file + field on a bad status or a missing `feature_slug` — fix it before moving on.
+   - **Advisory only**: this does not block a commit or CI, and no hook consumes its exit code.
+     A missing `itt_node_id`/`intenttree_tree` is a warning, not a violation — the plan may
+     legitimately be authored before its IntentTree binding exists (step 11 below creates it).
 
 10. **Seed the Delivery Dossier (default-on; Tier 2/3; non-blocking)**
 
@@ -1009,7 +1027,7 @@ Sections:
     this manifest existing*, so a feature planned without a seed accretes no record at all.
 
     ```bash
-    DOSSIER_PLAN_FILE="docs/project_plans/implementation_plans/[category]/[feature-name]-v1.md" \
+    DOSSIER_PLAN_FILE="docs/project_plans/implementation_plans/[feature-name]-v1.md" \
       .claude/skills/dev-execution/hooks/seed-dossier.sh
     ```
 
@@ -1084,7 +1102,7 @@ Sections:
     - Unknown frontmatter fields survive verbatim in `binding.raw_source_task`.
 
     **References**:
-    - Contract: `docs/project_plans/implementation_plans/features/awpr-v2-task-node-contract.md`
+    - Contract: `docs/project_plans/implementation_plans/awpr-v2-task-node-contract.md`
     - CLI source: `client/src/intenttree_client/cli/commands/sync_cmd.py`
     - Plan task: TASK-6.1 (FR-10, skill-wiring phase of AWPR v2)
 
@@ -1098,10 +1116,10 @@ Sections:
 **Example**:
 
 ```markdown
-Input PRD: docs/project_plans/PRDs/features/realtime-collaboration-v1.md
+Input PRD: docs/project_plans/PRDs/realtime-collaboration-v1.md
 
 Output:
-Main Plan: docs/project_plans/implementation_plans/features/realtime-collaboration-v1.md
+Main Plan: docs/project_plans/implementation_plans/realtime-collaboration-v1.md
 (milestone-plan-template.md; ~130 lines)
 
 Milestones:
@@ -1297,33 +1315,72 @@ When authoring contracts or decisions blocks, load context in this order — sto
 
 ## Reviewer Gates (Summary Pointer)
 
-Reviewer-agent passes are **mandatory at tier-appropriate checkpoints**. Planning artifacts are not complete until the matching reviewer has signed off.
+Reviewer-agent passes are **mandatory at tier-appropriate checkpoints**. Planning artifacts are not
+complete until the matching reviewer has signed off. **What is mandatory is that a gate fires — not
+that a fixed set of lenses fires at it.**
+
+The base gate — **one lens, every tier**:
 
 | Tier | Gate | Reviewer |
 |------|------|----------|
+| 0 | End of the change | `task-completion-validator` |
 | 1 | End of autonomous sprint | `task-completion-validator` |
 | 2 | End of each phase | `task-completion-validator` |
-| 2 | End of feature | `karen` |
+| 2 | End of feature | `karen` (final tree, once) |
 | 3 | End of each phase | `task-completion-validator` |
-| 3 | Mid-feature milestones + end of feature | `karen` |
+| 3 | End of feature | `karen` (final tree, once) |
+| 3 | Plan-milestone boundary — **`context_class` C3/C4 only** | `karen` |
 
 A phase or sprint is not "complete" until the reviewer passes it. Do not commit before the gate clears.
 
-### Council Routing — High-Risk Plans Invoke ARC
+**Author for one lens.** The ordinary plan is *implement → tests → one review → ship*: no pre-gate, no
+second lens, no per-milestone `karen`. When authoring, only reach for the second lens where you can
+name the trigger below — that is a planning-time judgment the plan records, not something execution
+adds defensively.
 
-**Additive** to the table above, never a replacement: when a PRD or implementation plan's
-frontmatter carries `risk_level: high`, or sets an explicit `review_intensity: council` field, run
-an Agent Review Council pass before or alongside the standard `task-completion-validator`/`karen`
-gates.
+### The second lens — three triggers, nothing else
+
+Add a **second** lens (`security`) to a milestone only when its surface matches one of exactly three
+triggers. Record it in `wave_plan.phases[]` as `gate_lens` plus a **mandatory** `gate_lens_reason`:
+
+| `gate_lens_reason` | The milestone's surface… |
+|---|---|
+| `untrusted-input` | **parses input the caller controls** — deserialization, request/query parsing, path or filename handling, template rendering with caller data, regex over caller input, uploads, URL/host parsing, archive extraction |
+| `authz-boundary` | **is an authorization or identity boundary** — authorize/RBAC/policy/permission/guard, identity/principal/actor/session/tenant, tokens/nonces/confirmation/replay, isolation/sandbox/subprocess/tool-permission, secrets/credentials/redaction |
+| `irreversible-outward` | **has an irreversible effect, or leaves the system** — publish/deploy, send to an external service, PR or issue creation, force-push, schema migration, secret rotation, data deletion, preview/writeback "must-not-execute" surfaces, CAS/atomicity/single-writer durability |
+
+A two-lens milestone with no named trigger is a **classification error, not a cautious default**.
+Once a trigger assigns the `security` lens it is **never removable** by budget or cost pressure.
+Note the overlap with the Mode-D halt list (auth · payments/billing · schema migrations · data
+deletion · secret rotation · infrastructure): Mode-D governs whether a **human approves**, these
+triggers govern whether a **second reviewer runs**. They are different gates; a milestone can hit one
+without the other.
+
+Full ruleset and row-level signals:
+[`dev-execution/references/gate-risk-classes.md`](../dev-execution/references/gate-risk-classes.md) §2.
+
+### Council Routing — ARC is the second lens, not a third pass
+
+**ARC *is* the `security` lens.** When a milestone matches a trigger above — or a plan explicitly sets
+`review_intensity: council` — the Agent Review Council pass **is** that milestone's second lens:
 
 ```
 Skill("council-review")
 ```
 
 Target the plan/PRD file as the council's object; write the run to `runs/<date>-<feature-slug>/`
-per the skill's workflow, and record the run path in the plan's `related_documents`. Both
-`task-completion-validator` and `karen` still run at their normal checkpoints — ARC is an extra,
-higher-scrutiny pass for high-risk work, not a substitute for either.
+per the skill's workflow, and record the run path in the plan's `related_documents`.
+
+> **Changed 2026-07-31 (gate-tiering v4.1).** This section previously made ARC **additive** — "both
+> `task-completion-validator` and `karen` still run at their normal checkpoints; ARC is an extra
+> pass." On `risk_level: high` that produced three lenses per gate. ARC now *occupies* the second-lens
+> slot rather than stacking on top of a full base set. `risk_level: high` alone no longer triggers it
+> — the three surface triggers do. Risk level sizes the *plan*; the triggers classify the *surface*,
+> and only the surface determines the lens count.
+>
+> The `validator` still runs at its own checkpoint where the milestone genuinely has heavy AC
+> bookkeeping *in addition to* a triggered surface — that is a deliberate judgment call recorded as
+> `gate_lens: [security, validator]`, not the default.
 
 **Full gate definitions and reviewer output format**: `.claude/skills/dev-execution/validation/completion-criteria.md`
 
@@ -1364,6 +1421,18 @@ through execution.
 
 The **backward** `feature` route (a completed feature) is a *dev-execution* end-of-feature DoD gate,
 not a planning-time artifact — see `dev-execution/validation/completion-criteria.md`.
+
+**Hosting/linking composes with, and is distinct from, the dossier.** Once any route's HTML is
+rendered, `dev-execution/hooks/publish-report.sh` (PF-3 M3) MAY host it in the atlas capsule store
+and link it onto the bound IntentTree node — recommended/non-blocking, never a planning gate. The
+dossier is the **ONE** living per-feature record (seeded here, accreted through execution, one
+manifest per feature); publish+link is **N per-scope hosted artifacts** (one per `feature`/
+`program`/`phase`/`readiness`/`dossier` report actually rendered) plus their IntentTree pointers —
+a browsable index layer one level up, not a second dossier. Today only the `dossier` route's close
+fires this automatically (`dev-execution/modes/plan-execution.md` §8); the forward routes above are
+manually publishable via `scripts/publish_report.py` until their own close-hooks are wired. See
+`dev-execution/SKILL.md` and `.claude/rules/aos-operating-rules.md` for the look-first/save-after
+posture.
 
 ## Next Actions Table (the standard close — every planning output)
 
@@ -1520,7 +1589,7 @@ All scripts are in `./scripts/` directory and use Node.js (NOT Python).
 2. Determine category and filename
 3. Load PRD template
 4. Generate PRD content
-5. Write to `docs/project_plans/PRDs/[category]/[feature-name]-v1.md`
+5. Write to `docs/project_plans/PRDs/[feature-name]-v1.md`
 
 **Output**: PRD file path
 
@@ -1695,11 +1764,11 @@ reached by thinness, not by pre-emptively planning a split.
 ### Directory Organization
 
 **PRDs**:
-- `docs/project_plans/PRDs/[category]/`
+- `docs/project_plans/PRDs/`
 - Categories: `harden-polish`, `features`, `enhancements`, `refactors`
 
 **Implementation Plans**:
-- `docs/project_plans/implementation_plans/[category]/`
+- `docs/project_plans/implementation_plans/`
 - Match PRD category
 - Phase breakouts in subdirectory: `[plan-name]/`
 
@@ -1783,7 +1852,7 @@ prd_ref: null
 ---
 ```
 
-**Maturity progression**: Update `maturity` field as design_spec evolves: `idea` → `shaping` → `ready`. When promoting to PRD, set `maturity: promoted` and add `prd_ref: docs/project_plans/PRDs/[category]/[name]-v1.md`.
+**Maturity progression**: Update `maturity` field as design_spec evolves: `idea` → `shaping` → `ready`. When promoting to PRD, set `maturity: promoted` and add `prd_ref: docs/project_plans/PRDs/[name]-v1.md`.
 
 **Meta Plans** (schema v2, process/tooling/workflow changes):
 ```yaml
@@ -1828,7 +1897,7 @@ User: "Create a PRD for adding advanced filtering to the prompts page. Users nee
 
 **Output**:
 ```
-File: docs/project_plans/PRDs/features/advanced-filtering-v1.md
+File: docs/project_plans/PRDs/advanced-filtering-v1.md
 
 # Advanced Filtering - PRD
 
@@ -1854,7 +1923,7 @@ Current filtering supports single criteria only. Users frequently need to filter
 
 **Input**:
 ```
-User: "Create implementation plan for docs/project_plans/PRDs/features/advanced-filtering-v1.md"
+User: "Create implementation plan for docs/project_plans/PRDs/advanced-filtering-v1.md"
 ```
 
 **Process**:
@@ -1871,7 +1940,7 @@ User: "Create implementation plan for docs/project_plans/PRDs/features/advanced-
 
 **Output**:
 ```
-Main Plan: docs/project_plans/implementation_plans/features/advanced-filtering-v1.md (200 lines)
+Main Plan: docs/project_plans/implementation_plans/advanced-filtering-v1.md (200 lines)
 
 # Implementation Plan: Advanced Filtering
 
@@ -1966,8 +2035,8 @@ Follows CLAUDE.md documentation policy:
 
 ### File Organization
 
-**PRDs**: `/docs/project_plans/PRDs/[category]/[feature-name]-v1.md`
-**Plans**: `/docs/project_plans/implementation_plans/[category]/[feature-name]-v1.md`
+**PRDs**: `/docs/project_plans/PRDs/[feature-name]-v1.md`
+**Plans**: `/docs/project_plans/implementation_plans/[feature-name]-v1.md`
 **Phase Files**: `[plan-name]/phase-[N]-[name].md`
 
 ## Advanced Usage

@@ -118,7 +118,7 @@ wave_plan:
 **Author**: [Implementation Planner Agent]
 **Human Brief**: [path to human brief, or "N/A — not created (feature too small)"]
 **Related Documents**:
-- **PRD**: `/docs/project_plans/PRDs/[category]/[feature-name]-v1.md`
+- **PRD**: `/docs/project_plans/PRDs/[feature-name]-v1.md`
 - **ADRs**: [Links to relevant Architecture Decision Records]
 
 **Complexity**: [Small | Medium | Large | XL]

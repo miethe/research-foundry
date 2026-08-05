@@ -10,9 +10,10 @@
 
 Plans were tuned for 2025-era models: enumerate every task, pin an agent and a model to each,
 lock phase boundaries, gate every hop. Measured against six real plans, that structure *caused*
-cost rather than controlling it — the most expensive effort carried 35 plan-time agent pins and
-35 model pins; the cheapest comparable carried none. Frontier models degrade under prescription
-density. Plan for a capable executor, not a task queue.
+cost rather than controlling it — burn spread from 18M to 138M tokens-in per point at near-equal
+per-task estimates. Every plan in that corpus was 100% pinned, so pins are an artifact of the era,
+not the discriminator within it. Frontier models degrade under prescription density. Plan for a
+capable executor, not a task queue.
 
 ## The four authoring rules
 
@@ -68,6 +69,36 @@ Context class generalizes H7 (`estimation-heuristics.md`): a task touching a >2K
 from the CCDash token rollup; two consecutive misses on a class recalibrates **the class table**,
 not the individual estimate. Points were non-predictive in the retro — an 18M-138M spread per
 point across six plans with near-equal per-task estimates.
+
+## Design rule — surface reduction before guard proliferation
+
+**Ask "what can the caller even say?" before "is every input guarded?"** When a plan names a risk that
+is really about unsafe input, unsafe state, or an unsafe call path, spec the destination as a *narrower
+surface*, not as a longer list of checks.
+
+The order is:
+
+1. **Make the unsafe state unrepresentable** — a narrower type, a closed enum instead of a free
+   string, a required parameter instead of an optional one with a permissive default, one constructor
+   instead of five. If the caller cannot express the unsafe thing, there is nothing to guard.
+2. **Route every caller through one choke point** — one primitive all writes go through, with the raw
+   path inaccessible or statically detectable. Then one bounded review covers it.
+3. **Only then, guard what remains.** Guards are the residue after 1 and 2, not the opening move.
+
+This is an **authoring** lever, which is why it lives here: a plan that specs a choke point produces
+one reviewable surface, while a plan that specs "validate all inputs" produces N call sites, N guards,
+and a standing obligation to remember the guard at site N+1. It is also the counter-move to the
+recurrence trigger in `dev-execution/references/execution-doctrine.md` rule 1 — when two review rounds
+find the same defect class, **this** is what the required design change is.
+
+> From the 2026-07-24 cross-AAR review: "Turn cross-cutting invariants into non-bypassable routes …
+> when every operation of type X must go through seam Y, land Y first and fail CI if anything bypasses
+> it." Its verdict line is the argument in one sentence: **"Review is finding the defects. Architecture
+> should prevent their class."**
+
+Surface reduction also lowers the gate cost of the plan: a milestone whose unsafe states are
+unrepresentable may stop matching a second-lens trigger at all
+(`dev-execution/references/gate-risk-classes.md` §2, §3b).
 
 ## Model-conditional expansion
 

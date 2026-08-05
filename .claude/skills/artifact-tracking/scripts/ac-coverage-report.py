@@ -69,25 +69,31 @@ def _parse_ac_block_fields(text_after_heading: str) -> Dict[str, Any]:
     Extract YAML-like structured fields from the markdown lines immediately
     following an AC heading, until the next heading.
 
-    Handles two shapes:
-      1. A fenced ```yaml ... ``` block
-      2. Bare indented YAML-ish lines (- field:\n    - value)
+    Handles three shapes:
+      1. A fenced ```yaml ... ``` block (optionally inside > blockquotes)
+      2. Bare indented YAML mapping lines (key: value / key:\n  - item)
+      3. Bare indented YAML list-of-mappings (- key:\n    - item\n- key2: val)
     """
     # Stop at next heading
     stop = re.search(r"^#{1,6}\s", text_after_heading, re.MULTILINE)
     block = text_after_heading[: stop.start()] if stop else text_after_heading
 
-    # Try fenced YAML block first
-    fenced = re.search(r"```(?:yaml)?\n(.*?)```", block, re.DOTALL)
-    if fenced:
-        try:
-            data = yaml.safe_load(fenced.group(1))
-            return data if isinstance(data, dict) else {}
-        except yaml.YAMLError:
-            pass
-
-    # Try to parse as bare YAML (strip leading >-style blockquote markers first)
+    # Strip leading >-style blockquote markers first so fenced blocks inside
+    # blockquotes become plain fenced blocks (> ```yaml\n> ...\n> ``` → ```yaml\n...\n```)
     clean = re.sub(r"^>\s?", "", block, flags=re.MULTILINE)
+
+    # 1. Try fenced YAML block (works on original block or after blockquote stripping)
+    for source in (block, clean):
+        fenced = re.search(r"```(?:yaml)?\n(.*?)```", source, re.DOTALL)
+        if fenced:
+            try:
+                data = yaml.safe_load(fenced.group(1))
+                if isinstance(data, dict):
+                    return data
+            except yaml.YAMLError:
+                pass
+
+    # 2. Try to parse the stripped block as a bare YAML mapping
     try:
         data = yaml.safe_load(clean)
         if isinstance(data, dict):
@@ -95,12 +101,40 @@ def _parse_ac_block_fields(text_after_heading: str) -> Dict[str, Any]:
     except yaml.YAMLError:
         pass
 
-    # Fall back: extract verified_by lines manually
+    # 3. Try bare YAML list-of-mappings (the "- key:\n    - val" format used in
+    #    structured AC blocks without fencing).  Backtick-quoted paths prevent the
+    #    YAML scanner from tokenising, so we strip inline code spans first.
+    clean_no_bt = re.sub(r"`([^`]*)`", r"\1", clean)
+    list_start = re.search(r"^- ", clean_no_bt, re.MULTILINE)
+    if list_start:
+        yaml_list_text = clean_no_bt[list_start.start():]
+        try:
+            data = yaml.safe_load(yaml_list_text)
+            if isinstance(data, list):
+                # Merge list of single-key dicts into one flat dict
+                merged: Dict[str, Any] = {}
+                for item in data:
+                    if isinstance(item, dict):
+                        merged.update(item)
+                if merged:
+                    return merged
+        except yaml.YAMLError:
+            pass
+
+    # 4. Regex fallback: extract verified_by and target_surfaces manually
     fields: Dict[str, Any] = {}
+    # Inline form: verified_by: [T1-001, T1-002]
     vb_matches = re.findall(r"verified_by\s*:\s*\[([^\]]*)\]", block)
     if vb_matches:
         raw = vb_matches[0]
         fields["verified_by"] = [s.strip().strip('"').strip("'") for s in raw.split(",") if s.strip()]
+    # Nested-list form: verified_by:\n  - item
+    if "verified_by" not in fields:
+        vb_section = re.search(r"verified_by\s*:\s*\n((?:[ \t]*-[ \t]+.+\n?)+)", block)
+        if vb_section:
+            items = re.findall(r"^\s+-\s+(.+)$", vb_section.group(0), re.MULTILINE)
+            if items:
+                fields["verified_by"] = [i.strip().strip('"').strip("'") for i in items]
     ts_matches = re.findall(r"target_surfaces\s*:", block)
     if ts_matches:
         # Grab indented list items following the key
@@ -361,7 +395,7 @@ def main() -> None:
 Examples:
   # Full coverage check
   python ac-coverage-report.py \\
-      --plan docs/project_plans/implementation_plans/enhancements/my-plan.md \\
+      --plan docs/project_plans/implementation_plans/my-plan.md \\
       --progress .claude/progress/my-prd/phase-13-progress.md \\
       --progress .claude/progress/my-prd/phase-16-progress.md
 

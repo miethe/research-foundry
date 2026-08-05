@@ -40,14 +40,24 @@ wave_plan:
       title: "[Milestone 1 name]"
       depends_on: []
       exit_criteria: ["[the AC that makes M1 reviewable]"]
+      # GATE — one lens is the default. Add `security` (and a gate_lens_reason) ONLY when this
+      # milestone's surface parses untrusted input, is an authorization/identity boundary, or has
+      # an irreversible/outward-facing effect. Most milestones keep [validator] — that is correct,
+      # not under-specified. Ruleset: dev-execution/references/gate-risk-classes.md §2
+      gate_lens: [validator]
     - id: M2
       title: "[Milestone 2 name]"
       depends_on: ["M1"]
       exit_criteria: ["[...]"]
+      # Example of a triggered milestone. gate_lens_reason is REQUIRED when gate_lens has 2+
+      # entries: untrusted-input | authz-boundary | irreversible-outward | ambiguity-tie
+      gate_lens: [security, validator]
+      gate_lens_reason: authz-boundary
     - id: M3
       title: "[Milestone 3 name]"
       depends_on: ["M2"]
       exit_criteria: ["[...]"]
+      gate_lens: [validator]
 ---
 
 # Implementation Plan — [Feature Name]

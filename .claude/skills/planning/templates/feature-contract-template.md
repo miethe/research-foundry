@@ -37,7 +37,7 @@ files_affected: []
 
 # How To Use This Template
 
-This template is for **Tier 1 features (3–8 points)**. Copy this file to `docs/project_plans/feature_contracts/[category]/[slug].md`, fill in each section, then:
+This template is for **Tier 1 features (3–8 points)**. Copy this file to `docs/project_plans/feature_contracts/[slug].md`, fill in each section, then:
 
 1. Submit for review (Opus design block + brief sanity pass).
 2. Once approved, delegate the entire contract to a single `feature-sprint-executor` agent for autonomous implementation.

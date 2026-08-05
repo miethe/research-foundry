@@ -9,9 +9,11 @@ of truth for what planning artifacts (PRDs, implementation plans, phase breakdow
 contracts, progress files) should author in YAML frontmatter so the IntentTree capture pipeline can
 project them onto the command-center plan-lens.
 
-> Authoritative origin: PRD §5 of
-> `docs/project_plans/PRDs/features/intenttree-frontmatter-capture-schema-v1.md`. Every §5 row is
-> reproduced here. When the PRD and this doc disagree, the PRD wins and this doc must be updated.
+> Authority: the ratified cross-app contract referenced above
+> (`docs/agentic-operator/contracts/frontmatter-schema.md`) governs field semantics; this doc is its
+> IntentTree-plan projection. (A prior "authoritative origin" pointer to a PRD §5 at
+> `docs/project_plans/PRDs/intenttree-frontmatter-capture-schema-v1.md` was removed — that
+> PRD was never created; corrected per shipped-work-ledger FR-14.)
 
 Consumed by:
 - `.claude/skills/artifact-tracking/scripts/validate-plan-frontmatter.py` (the linter — parses the
@@ -94,7 +96,7 @@ never as a non-zero MUST violation.
 | `test_plan_ref` | path | plan | MAY | H | CR-3 → `meta` | `SourceReference(ref_kind="test_plan")`. |
 | `branch` / `repo` | str | plan/task | SHOULD | H | CR-1 → `Node.branch`/`Node.repo` | Binds git evidence at capture. |
 | `intenttree_workspace` | str | plan | MAY | H/D | binding stamp (not node-captured) | Records the IntentTree **human** workspace the plan's nodes live in. Per-plan override at the top of the resolution precedence (D2). **Not written by any code today** — `itt sync import --apply` records the binding only in IntentTree's `WorkItemBinding` DB table; the `--stamp-frontmatter` writeback (see `intenttree_tree` below) stamps `intenttree_tree`/`source_artifact_id`/`itt_node_id` but **not** `intenttree_workspace`. Must be hand-authored or env-supplied (`INTENTTREE_TREE`/`ITT_NODE_ID`). See the ratified contract `docs/agentic-operator/contracts/frontmatter-schema.md` (OQ-3). See `.claude/rules/intenttree-integration.md`. |
-| `intenttree_tree` | str | plan | MAY | H/D | binding stamp (opt-in writeback) | Records the tree id the plan binds to; the sdlc-sync hooks pass it as `--tree`. Defaults to the project tree (`aos-intenttree`) when absent. **Stamped by `itt sync import --apply --stamp-frontmatter`** — the opt-in flag (shipped 2026-07-21), not bare `--apply` (which stays DB-only, zero file writes). The same write stamps `source_artifact_id` and, for single-node imports only, `itt_node_id`, additive-only (never overwrites a present value; a mismatch prints a warning). Implementation: `client/src/intenttree_client/cli/frontmatter_stamp.py` + `sync_cmd.py` in the `intenttree` repo; contract `docs/project_plans/feature_contracts/enhancements/itt-sync-frontmatter-stampback.md`. Without the flag, still hand-authored or env-supplied. See `.claude/rules/intenttree-integration.md`. |
+| `intenttree_tree` | str | plan | MAY | H/D | binding stamp (opt-in writeback) | Records the tree id the plan binds to; the sdlc-sync hooks pass it as `--tree`. Defaults to the project tree (`aos-intenttree`) when absent. **Stamped by `itt sync import --apply --stamp-frontmatter`** — the opt-in flag (shipped 2026-07-21), not bare `--apply` (which stays DB-only, zero file writes). The same write stamps `source_artifact_id` and, for single-node imports only, `itt_node_id`, additive-only (never overwrites a present value; a mismatch prints a warning). Implementation: `client/src/intenttree_client/cli/frontmatter_stamp.py` + `sync_cmd.py` in the `intenttree` repo; contract `docs/project_plans/feature_contracts/itt-sync-frontmatter-stampback.md`. Without the flag, still hand-authored or env-supplied. See `.claude/rules/intenttree-integration.md`. |
 
 ## §5.2 Lifecycle & maturity (plan level)
 
@@ -147,6 +149,14 @@ adversarially gated + novel). Full class table + assignment drivers: `planning/r
 | `exit_criteria` | `str[]` | phase | SHOULD | H | CR-3 → `Node.meta` | Phase-gate primitive. |
 | `contributors` | `str[]` | plan | SHOULD | H | CR-3 → `Node.meta` | Column only if queried. |
 | `changelog_required` | bool | plan | MAY | H | CR-3 → `Node.meta` | Operational. |
+| `gate_lens` | `enum[]` (`security`, `validator`, `karen`, `karen-final-tree-only`) | phase | SHOULD | H/A | CR-3 → phase `Node.meta` | **New (gate-tiering v4.1).** The reviewer lens set for this milestone/phase. Lives on a `wave_plan.phases[]` entry. **Read at dispatch** by `councilEscalation` in `MeatySkills/meaty-agentic-ops/workflows/execute-plan.js` — `security` → `council-review`, `karen`/`karen-final-tree-only` → `karen`, otherwise `task-completion-validator`. Default is a **single** lens (`[validator]`); a second is added only on a named trigger. Ruleset: `dev-execution/references/gate-risk-classes.md` §2. |
+| `gate_lens_reason` | enum (`untrusted-input`, `authz-boundary`, `irreversible-outward`, `ambiguity-tie`) | phase | SHOULD — **conditionally required** | H/A | CR-3 → phase `Node.meta` | **New (gate-tiering v4.1).** Which second-lens trigger justified a 2+-lens `gate_lens`. **Required whenever `gate_lens` has ≥2 entries** — a two-lens phase with no named trigger is a classification error, not a cautious default. Absent/ignored when `gate_lens` has ≤1 entry. Linter-checked (advisory in v1). |
+| `gate_shared_with` | str (phase id) \| null | phase | MAY | H/A | CR-3 → phase `Node.meta` | **New (gate-tiering v4.1)** — pre-existing in live plans, registered here. Set on the *later* of two phases serialized for **file-ownership** reasons whose review is the same body of work; its gate rides the earlier phase's. Only where the shared review genuinely covers both — never to avoid a distinct lens. |
+
+> **Gate fields were load-bearing before they were registered.** `gate_lens` / `gate_shared_with` were
+> emitted by the plan-optimizer (2026-07-29) and are now *read at dispatch*, but were absent from this
+> schema — so the linter could not see them and plan authors did not know they existed. That is the
+> same gap `routing_constraints` fell into. Registered 2026-07-31; do not add a fourth.
 
 ## §5.5 Task-level fields
 
@@ -184,7 +194,7 @@ provisioning gate (`hooks/provision-artifacts.sh`) and, once shipped, by `skillm
 reconcile`. Complementary to (not a replacement for) the *derived* set a scanner extracts from
 `.claude/` conventions: the declared set can express artifacts that **do not exist yet**
 (`status: needs_creation`/`needs_enhancement`), which derivation cannot. Authoring workflow:
-`references/required-artifacts-guidance.md`. Design: PRD `docs/project_plans/PRDs/features/dynamic-artifact-provisioning.md`.
+`references/required-artifacts-guidance.md`. Design: PRD `docs/project_plans/PRDs/dynamic-artifact-provisioning.md`.
 
 | Field | Type | Level | Tier | Author | Capture | Notes |
 |-------|------|-------|------|--------|---------|-------|
@@ -223,6 +233,14 @@ must_set_plan:        # the "thin six" — linter exits non-zero on absence
 effort_aliases: [points, effort_estimate, estimated_points]
 must_set_task:
   - node_type         # advisory-only at task level in v1
+conditional_required:   # gate-tiering v4.1 — advisory in v1, same posture as must_set_plan
+  # A phase carrying two or more reviewer lenses MUST name the trigger that earned the
+  # second one. A two-lens phase with no named trigger is a classification error, not a
+  # cautious default (dev-execution/references/gate-risk-classes.md §2).
+  - field: gate_lens_reason
+    level: phase
+    when: {field: gate_lens, min_len: 2}
+    allowed: [untrusted-input, authz-boundary, irreversible-outward, ambiguity-tie]
 fields:
   # §5.1 identity & lineage
   - {name: it_schema, level: plan, tier: must, author: H, capture: cr1, type: int}
@@ -278,6 +296,10 @@ fields:
   - {name: exit_criteria, level: phase, tier: should, author: H, capture: cr3, type: str[]}
   - {name: contributors, level: plan, tier: should, author: H, capture: cr3, type: str[]}
   - {name: changelog_required, level: plan, tier: may, author: H, capture: cr3, type: bool}
+  # gate-tiering v4.1 — reviewer-lens fields on wave_plan.phases[] entries
+  - {name: gate_lens, level: phase, tier: should, author: H/A, capture: cr3, type: enum[]}
+  - {name: gate_lens_reason, level: phase, tier: should, author: H/A, capture: cr3, type: enum}  # REQUIRED when gate_lens has >=2 entries — see conditional_required below
+  - {name: gate_shared_with, level: phase, tier: may, author: H/A, capture: cr3, type: str}
   # §5.5 task-level
   - {name: node_type, level: task, tier: must, author: H, capture: cr1, type: enum}
   - {name: acceptance_criteria, level: task/plan, tier: should, author: H, capture: cr1, type: str[]}

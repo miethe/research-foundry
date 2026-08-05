@@ -25,20 +25,20 @@ User: "Create a PRD for advanced filtering on prompts"
 Skill:
 1. Extracts feature details
 2. Uses prd-template.md
-3. Generates: docs/project_plans/PRDs/features/advanced-filtering-v1.md
+3. Generates: docs/project_plans/PRDs/advanced-filtering-v1.md
 ```
 
 ### Generate Implementation Plan
 
 ```
-User: "Create implementation plan for docs/project_plans/PRDs/features/advanced-filtering-v1.md"
+User: "Create implementation plan for docs/project_plans/PRDs/advanced-filtering-v1.md"
 
 Skill (default, Tier 2/3 — see references/plan-doctrine.md):
 1. Reads PRD
 2. Uses milestone-plan-template.md
 3. Structures 3-4 reviewable-state milestones with AC + routing_constraints
    (no plan-time model/agent pins — delegation-router resolves those at dispatch)
-4. Creates: docs/project_plans/implementation_plans/features/advanced-filtering-v1.md
+4. Creates: docs/project_plans/implementation_plans/advanced-filtering-v1.md
    (target <=150 lines; phase files only for legacy/expanded-template or oversized plans)
 ```
 

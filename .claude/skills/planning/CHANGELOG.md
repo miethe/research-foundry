@@ -1,5 +1,40 @@
 # Changelog — planning
 
+## v2.1 — 2026-07-31 — Gate tiering (workflow-set v4.1)
+
+The authoring half of gate tiering. Execution half: `dev-execution` v1.3. Ruleset:
+`dev-execution/references/gate-risk-classes.md` §2.
+
+- **Author for one lens.** Both reviewer tables (the Tier Matrix `Reviewer` column and the Reviewer
+  Gates pointer) now describe a **base gate of one lens for every tier**, with a second added only on
+  a named trigger. **Tier no longer adds lenses** — a Tier 3 CRUD milestone gets one; a Tier 2
+  authorization milestone gets two. Tier 3's blanket per-milestone `karen` is narrowed to
+  `context_class` C3/C4; otherwise `karen` is one final-tree pass. Tier 0 gains an explicit
+  one-validator row.
+- **The three triggers are the whole second-lens test**: the milestone's surface **parses untrusted
+  input**, **is an authorization/identity boundary**, or its effect is **irreversible or leaves the
+  system**. Recorded per milestone as `gate_lens` + a mandatory `gate_lens_reason`. A two-lens
+  milestone with no named trigger is a classification error, not a cautious default.
+- **ARC is now the second lens, not a third pass.** The Council Routing section previously made ARC
+  *additive* — "both `task-completion-validator` and `karen` still run; ARC is an extra pass" — which
+  on `risk_level: high` produced three lenses per gate. ARC now occupies the second-lens slot, and
+  `risk_level: high` alone no longer triggers it: risk level sizes the *plan*, the surface triggers
+  classify the *surface*, and only the surface sets the lens count.
+- **`references/plan-frontmatter-schema.md` §5.4 registers the gate fields** — `gate_lens`,
+  `gate_lens_reason`, `gate_shared_with`. These were emitted by the plan-optimizer since 2026-07-29
+  and are now read at dispatch, but were absent from the schema, so the linter could not see them and
+  authors did not know they existed (the same gap `routing_constraints` fell into). Adds a
+  `conditional_required:` block making `gate_lens_reason` required when `gate_lens` has ≥2 entries,
+  enforced advisorily by `artifact-tracking/scripts/validate-plan-frontmatter.py`. The mandatory
+  same-PR diff to `docs/agentic-operator/contracts/frontmatter-schema.md` (OQ-4 gate) landed with it.
+- **`references/plan-doctrine.md`** gains the design rule behind the recurrence trigger: ask *what
+  can the caller even say?* before *is every input guarded?* — surface reduction over guard
+  proliferation.
+- **`templates/milestone-plan-template.md`** carries `gate_lens` slots with an authoring comment and
+  one worked triggered example, stating that keeping `[validator]` is correct rather than
+  under-specified.
+- **`/plan:plan-feature`** instructs per-milestone gate classification with a concrete YAML example.
+
 ## v2.0 — 2026-07-30
 
 - **Wire in the Claude-5-generation plan doctrine** (`references/plan-doctrine.md` +

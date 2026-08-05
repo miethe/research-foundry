@@ -18,22 +18,19 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import yaml
 
+# Shared status vocabulary — single source of truth for the canonical enum + alias map. When run
+# as a script the script dir is on sys.path[0]; the insert keeps the import working if imported.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _status_aliases as sa  # noqa: E402
 
-VALID_STATUSES = [
-    "draft",
-    "pending",
-    "planning",
-    "in_progress",
-    "in-progress",
-    "review",
-    "completed",
-    "complete",
-    "approved",
-    "deferred",
-    "blocked",
-    "archived",
-    "superseded",
-]
+
+# Canonical accepted set = the ratified 15-value IntentTree NodeStatus enum
+# (docs/agentic-operator/contracts/frontmatter-schema.md §4). Legacy / CCDash-era synonyms
+# (draft, complete, pending, in-progress, review, accepted, …) are still ACCEPTED for backward
+# compatibility via the shared alias map, but are NORMALIZED to their NodeStatus on write.
+# NOTE: the CCDash-era `approved` / `superseded` spellings are intentionally dropped — they are
+# neither NodeStatus nor in the ratified alias map; use `ready` / `archived` instead.
+VALID_STATUSES = sorted(sa.NODE_STATUSES)
 
 PLAN_DIRECTORIES: Dict[str, List[str]] = {
     "prd": ["docs/project_plans/PRDs"],
@@ -191,14 +188,33 @@ def read_status(filepath: Path) -> Optional[str]:
 
 
 def validate_status(status: str) -> bool:
-    """Validate status value against supported superset."""
-    if status in VALID_STATUSES:
+    """Validate a status value: a NodeStatus, or a back-compat alias spelling.
+
+    Hand-review / unknown values (not a NodeStatus and not in the alias map) are rejected.
+    """
+    if sa.is_acceptable(status):
         return True
     print(
-        f"Error: Invalid status '{status}'. Must be one of: {', '.join(VALID_STATUSES)}",
+        "Error: Invalid status '{s}'. Must be a NodeStatus ({n}) "
+        "or a recognized alias ({a}).".format(
+            s=status,
+            n=", ".join(VALID_STATUSES),
+            a=", ".join(sorted(sa.STATUS_ALIASES)),
+        ),
         file=sys.stderr,
     )
     return False
+
+
+def normalize_status_value(status: str) -> str:
+    """Normalize an accepted status to its canonical NodeStatus for writeback.
+
+    A NodeStatus is returned as-is; a recognized alias is resolved to its NodeStatus. (Callers
+    validate first, so a hand-review value never reaches here — but it is returned unchanged if
+    it somehow does, rather than raising.)
+    """
+    canonical = sa.resolve(status)[0]
+    return canonical if canonical is not None else status
 
 
 def update_fields(filepath: Path, status: Optional[str], field: Optional[str], value: Optional[str]) -> bool:
@@ -225,13 +241,15 @@ def update_fields(filepath: Path, status: Optional[str], field: Optional[str], v
     old_status = frontmatter.get("status", "not set")
 
     if status is not None:
-        frontmatter["status"] = status
+        # Accept an alias spelling but persist the canonical NodeStatus.
+        frontmatter["status"] = normalize_status_value(status)
 
     if field is not None and value is not None:
         parsed_value = parse_yaml_value(value)
         if field == "status" and isinstance(parsed_value, str):
             if not validate_status(parsed_value):
                 return False
+            parsed_value = normalize_status_value(parsed_value)
         frontmatter[field] = parsed_value
 
     # Always touch updated on write operations.
@@ -245,7 +263,7 @@ def update_fields(filepath: Path, status: Optional[str], field: Optional[str], v
 
     print(f"✓ Updated file: {filepath}")
     if status is not None:
-        print(f"  Status: {old_status} -> {status}")
+        print(f"  Status: {old_status} -> {frontmatter['status']}")
     if field is not None:
         print(f"  Field: {field} = {frontmatter.get(field)!r}")
     return True
@@ -308,8 +326,8 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python manage-plan-status.py --read docs/project_plans/PRDs/features/my-feature.md
-  python manage-plan-status.py --file docs/project_plans/PRDs/features/my-feature.md --status approved
+  python manage-plan-status.py --read docs/project_plans/PRDs/my-feature.md
+  python manage-plan-status.py --file docs/project_plans/PRDs/my-feature.md --status approved
   python manage-plan-status.py --file docs/project_plans/SPIKEs/foo.md --field priority --value high
   python manage-plan-status.py --query --type spike --status draft
 """,

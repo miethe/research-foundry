@@ -82,7 +82,7 @@ lacks an explicit `target_surfaces:` list.
 ```bash
 # Full matrix (run at phase exit)
 python ac-coverage-report.py \
-    --plan docs/project_plans/implementation_plans/enhancements/my-plan.md \
+    --plan docs/project_plans/implementation_plans/my-plan.md \
     --progress .claude/progress/my-prd/phase-13-progress.md \
     --progress .claude/progress/my-prd/phase-16-progress.md
 

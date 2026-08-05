@@ -4,15 +4,8 @@ description: "Expert frontend development with intelligent symbol context loadin
 category: engineering
 color: blue
 tools: Write, Read, Edit, MultiEdit, Bash, Grep, Glob, Task
-model: sonnet
-permissionMode: acceptEdits
-skills:
-  - frontend-design
-  - aesthetic
-  - artifact-tracking
-  - symbols
-memory: project
 ---
+
 # UI Engineer (Symbol-Aware)
 
 ## Core Mission
@@ -35,7 +28,7 @@ Task("codebase-explorer", "Find existing [component/hook] patterns for [feature]
 
 ### 2. Design System Integration
 ```markdown
-Task("codebase-explorer", "Load @miethe/ui design system patterns:
+Task("codebase-explorer", "Load @meaty/ui design system patterns:
 - Focus: [Button/Card/Input] components being used
 - Include: Prop interfaces and variant types
 - Include: Accessibility patterns (WCAG 2.1 AA)
@@ -133,10 +126,10 @@ Task("codebase-explorer", "Find existing page structures:
 # Follow loading/error patterns
 ```
 
-## Integration with SkillMeat Architecture
+## Integration with MeatyPrompts Architecture
 
 ### Design System Compliance
-- **Always import from @miethe/ui**: Never direct Radix imports
+- **Always import from @meaty/ui**: Never direct Radix imports
 - **Use @meaty/tokens**: For design consistency
 - **Follow accessibility standards**: WCAG 2.1 AA via codebase-explorer examples
 
@@ -149,7 +142,7 @@ Task("codebase-explorer", "Find existing page structures:
 ```markdown
 Task("codebase-explorer", "Validate architectural compliance:
 - Check: No direct Radix imports in implementation
-- Check: Using @miethe/ui components
+- Check: Using @meaty/ui components
 - Check: Following error handling patterns
 - Check: Proper type usage from shared domain")
 ```
@@ -209,7 +202,7 @@ Task("codebase-explorer", "Get specific context for [question]:
 - ❌ Don't load entire UI symbol domain (191KB)
 - ❌ Don't read files without symbol guidance
 - ❌ Don't create components without checking existing patterns
-- ❌ Don't bypass design system (@miethe/ui) constraints
+- ❌ Don't bypass design system (@meaty/ui) constraints
 
 ## Workflow Summary
 
@@ -228,7 +221,3 @@ Task("codebase-explorer", "Get specific context for [question]:
 ```
 
 This symbol-aware approach provides comprehensive codebase understanding while maintaining optimal token usage and ensuring architectural consistency across all UI implementations.
-
-## Output Format
-
-When reporting completion, list what changed in ≤5 lines, cite file:line, no narrative.

@@ -1,6 +1,5 @@
 /**
  * auto-feature — autopilot lane: request → plan → feasibility gate → execute
- * (Research Foundry port)
  *
  * Spec: .claude/specs/workflows/auto-feature-workflow-spec.md
  * Master contract: .claude/specs/workflows/workflow-authoring-spec.md
@@ -15,16 +14,14 @@
  * returns needs_opus with a specific reason so Opus routes to full planning — always
  * leaving a durable plan artifact on disk so escalation gets a head start.
  *
- * Patterns used: two-stage structuring (durability), modeBoundary (gate), sub-workflow
- *   nesting (one level only). Reviewer gating + fix-loops are delegated to the nested
- *   engines — NOT reimplemented here.
+ * Post-execution, a Phase 4 Verify gate runs an adversarial claims-vs-code pass over the finished
+ * diff (only when the nested engine reported complete). "Green per-phase validators" is necessary
+ * but not sufficient — two AARs caught a critical data bug + a refresh gap that survived green
+ * per-phase gates. Confirmed critical/high findings downgrade complete → needs_opus/post_verify_failed.
  *
- * RF adaptation notes:
- *   - The planner is instructed to write artifacts to RF's docs/project_plans tree and to
- *     build task prompts whose validation references RF commands (./.venv/bin/python -m pytest,
- *     --cov=research_foundry; frontend only when frontend/runs-viewer changes).
- *   - Nested engines are RF's execute-contract.js / execute-plan.js ports; the contractArgs /
- *     planExecArgs signatures below match those scripts' args envelopes exactly.
+ * Patterns used: two-stage structuring (durability), modeBoundary (gate), sub-workflow
+ *   nesting (one level only), adversarialVerify (Phase 4). Per-phase reviewer gating + fix-loops
+ *   are delegated to the nested engines — NOT reimplemented here; Phase 4 is the whole-diff pass on top.
  *
  * Durability design (see workflow-authoring-spec.md §16):
  *   - Plan stage: implementation-planner, NO schema. Writes the plan artifact (with an
@@ -35,7 +32,8 @@
  * Four-constraints checklist:
  *   [x] No FS/shell access in script body (planner writes the artifact; nested git merges = Opus)
  *   [x] Mode D triggers early return before the Execute phase / nested engine spawns
- *   [x] All reviewer agents use edit-less agentType (transitively, inside nested engines)
+ *   [x] All reviewer agents use edit-less agentType (nested engines + Phase 4 senior-code-reviewer)
+ *   [x] Phase 4 verify skeptics are read-only; they read the diff via git, never EnterWorktree
  *   [x] No Date.now() / Math.random() / new Date() in script body
  *   [x] meta is a pure literal object
  *   [x] phase() titles match meta.phases exactly
@@ -52,8 +50,9 @@ export const meta = {
     { title: 'Plan' },
     { title: 'Structure plan' },
     { title: 'Execute' },
+    { title: 'Verify' },
   ],
-  whenToUse: 'A raw feature request that has no PRD/contract yet and plausibly fits single-pass capacity (≤13 pts, ≤3 waves, no auth/payments/migrations/deletion/secrets, no research unknowns). Invoke via /autopilot. For clearly large/risky work, use /plan:explore or /plan:plan-feature directly.',
+  whenToUse: 'A raw feature request that has no PRD/contract yet and plausibly fits single-pass capacity (≤13 pts, ≤3 waves, no auth/payments/migrations/deletion, no research unknowns). Invoke via /dev:autopilot. For clearly large/risky work, use /plan:explore or /plan:plan-feature directly.',
 }
 
 // ─── inline schema ────────────────────────────────────────────────────────────
@@ -89,6 +88,34 @@ const AUTOPILOT_PLAN_SCHEMA = {
   },
 }
 
+// Post-execution claims-vs-code verify (Phase 4). Each skeptic returns this.
+// adversarialVerify precedent: workflow-patterns.md §adversarialVerify + explore.js Phase 3.
+const VERIFY_FINDINGS_SCHEMA = {
+  type: 'object',
+  required: ['verified', 'findings'],
+  additionalProperties: false,
+  properties: {
+    // true = the diff faithfully implements the plan's claims with no unresolved defect.
+    verified: { type: 'boolean' },
+    summary: { type: 'string' },
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['severity', 'summary'],
+        additionalProperties: false,
+        properties: {
+          severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
+          summary: { type: 'string' },
+          claim: { type: 'string' },          // the plan/contract claim this challenges
+          code_location: { type: 'string' },  // file:line or symbol the defect lives at
+          mismatch: { type: 'string' },        // how the code diverges from the claim / the bug
+        },
+      },
+    },
+  },
+}
+
 // ─── high-risk path heuristic (Mode D backstop) ───────────────────────────────
 // Mirrors modeBoundary pattern + execute-contract.js HIGH_RISK_PATTERNS.
 
@@ -116,7 +143,7 @@ function resolveCeiling(parsed) {
 
 // ─── prompts ──────────────────────────────────────────────────────────────────
 
-// Tier C nesting pilot. Returns a governed read-only scoping clause when enabled,
+// Phase 4 Tier C nesting pilot. Returns a governed read-only scoping clause when enabled,
 // or an empty string (byte-for-byte preservation) when off. Read-only enforcement lives in the
 // child agentType's disallowedTools, not in this prompt text (permissionMode propagates to depth).
 function buildPlannerNestingClause(enabled) {
@@ -132,7 +159,8 @@ most 2 child scouts via the Agent tool. Rules:
     secret-rotation, do NOT delegate it — STOP and note 'needs_opus / mode_d' in the plan artifact.
   - Claude-primary-only; children write nothing to git. You remain the single author of the plan
     artifact and consolidate child findings into it.
-This is a decomposition aid, not a throughput tool — prefer planning inline when feasible.`
+This is a decomposition aid, not a throughput tool — prefer planning inline when feasible.
+Governance: .claude/specs/subagent-nesting-spec.md.`
 }
 
 /**
@@ -178,16 +206,10 @@ STEPS:
      max_waves ${ceiling.max_waves}, max_phases ${ceiling.max_phases}, max_files ${ceiling.max_files}).
      This is ADVISORY — a deterministic gate re-checks it.
 5. Build each task's prompt fully: first line a Mode marker, then file paths and acceptance
-   detail. Each task prompt MUST tell the implementer to run the RIGHT validation for what it
-   changed: Python → ./.venv/bin/python -m pytest (NOT the pyenv 'python' shim — it fails with
-   "No module named research_foundry"), --cov=research_foundry for coverage, ruff/flake8 lint,
-   mypy type-check; Frontend → ONLY when files under frontend/runs-viewer/ change, scoped pnpm
-   commands (pnpm --dir frontend/runs-viewer test / build / exec tsc --noEmit). End every task
-   prompt with "Do NOT git add/commit/push/stash." Assign each task an appropriate implementation
-   agentType from RF's roster (python-backend-engineer, ui-engineer-enhanced, ui-engineer,
-   data-layer-expert, refactoring-expert, etc.). Set per-phase review_intensity ('standard'
-   default; 'tier3' for core-path/risky phases; 'council' only if cross-domain architecture
-   review is warranted).
+   detail, ending with "Do NOT git add/commit/push/stash." Assign each task an appropriate
+   implementation agentType (python-backend-engineer, ui-engineer-enhanced, data-layer-expert,
+   refactoring-expert, etc.). Set per-phase review_intensity ('standard' default; 'tier3' for
+   core-path/risky phases; 'council' only if cross-domain architecture review is warranted).
 6. WRITE the artifact:
    - Feature Contract → docs/project_plans/feature_contracts/${category}/<slug>.md
    - Implementation Plan → docs/project_plans/implementation_plans/${category}/<slug>-v1.md
@@ -222,23 +244,133 @@ Do NOT implement code. Do NOT git add/commit/push/stash.`
  * Structure stage (Stage B — haiku general-purpose, schema: AUTOPILOT_PLAN_SCHEMA).
  * Reads the artifact, extracts the `autopilot-graph` JSON block. Read-only.
  */
-function structurePrompt() {
+function structurePrompt(planText) {
+  // The planner's own report is passed in VERBATIM. Previously this function took no
+  // arguments at all (the call site's `parsed` was silently ignored), so the structurer
+  // was told "the planner's summary names the path" while never being shown that summary.
+  // Its only recourse was the step-1 fallback — "most recently modified file matching the
+  // slug" — which twice resolved to an unrelated, already-shipped contract and sent the
+  // executor off to rebuild the wrong feature (AARs 2026-08-03, 2026-08-04).
   return `Mode: A — Exploration Only
 
 The autopilot planner just wrote a plan artifact under docs/project_plans/ (a Feature Contract
 or an Implementation Plan). Its body contains a fenced \`\`\`json block tagged "autopilot-graph".
 
+Here is the planner's own report, verbatim. It names the exact artifact path it wrote. This is
+AUTHORITATIVE — the path you return MUST be the one named here:
+
+<planner-report>
+${planText}
+</planner-report>
+
 STEPS:
-1. Locate the artifact. It was written this run; the planner's summary names the path. If needed,
-   search docs/project_plans/feature_contracts/ and docs/project_plans/implementation_plans/ for
-   the most recently modified file matching the request slug.
-2. Read the artifact and find the fenced "autopilot-graph" JSON block.
+1. Take the artifact path from the planner report above. Do NOT search for it, and do NOT fall
+   back to "most recently modified file" — a stale artifact from an earlier, unrelated feature
+   is the single failure this stage has actually produced in practice, twice. If the report
+   somehow names no path, return single_pass_feasible=false and say so in
+   escalation_recommendation rather than guessing.
+2. Read THAT artifact and find the fenced "autopilot-graph" JSON block.
 3. Return that object EXACTLY as the structured AutopilotPlan, conforming to the schema. Pass
    execution_graph through verbatim. Do not invent or alter values; copy what the planner wrote.
+   In particular tier / effort_points / execution_graph must match the artifact — the caller's
+   feasibility gate depends on them, so understating tier silently disables it.
 4. If you cannot find the artifact or the block, return your best-effort object with
    single_pass_feasible=false and escalation_recommendation explaining the miss.
 
 Do NOT edit any files. Read only. Do NOT git add/commit/push/stash.`
+}
+
+// Cheap, deterministic drift check — no filesystem access needed, which matters because
+// workflow scripts have none. If the structurer returns an artifact path the planner never
+// mentioned, the two stages are describing different features and everything downstream
+// (feasibility gate, nested engine, report) is about to be applied to the wrong one.
+function planTextClaimsArtifact(planText, artifactPath) {
+  if (!planText || typeof artifactPath !== 'string' || !artifactPath.trim()) return false
+  if (planText.includes(artifactPath)) return true
+  // Tolerate a leading ./ or a repo-root prefix difference; compare on the basename+parent
+  // so a cosmetic path spelling does not halt an otherwise-consistent run.
+  const tail = artifactPath.split('/').slice(-2).join('/')
+  return tail.length > 0 && planText.includes(tail)
+}
+
+/**
+ * Verify stage (Phase 4 — adversarial claims-vs-code skeptic, edit-less senior-code-reviewer).
+ *
+ * Runs ONLY after the nested engine returns status:complete. The nested engines already ran a
+ * per-phase reviewer + fix-loop ("phase validators green"); this is the whole-diff pass that green
+ * per-phase validators demonstrably miss. Codified lesson (workflow-authoring-spec.md): a checklist
+ * validator rationalizes real bugs a code-tracing adversarial reviewer catches — and two autopilot
+ * AARs (cc-item-display-iteration-v2 + the cascade-revert/refresh-gap run) hit that exact miss.
+ *
+ * Harness note: background Workflow agents IGNORE EnterWorktree — the skeptic reads the finished
+ * work through git in the current working tree, never by switching worktrees.
+ */
+function verifyPrompt(parsed, plan) {
+  const artifact = plan.plan_artifact_path || '(the plan/contract artifact written this run)'
+  // Pin the diff base when the caller recorded one. The merge-base guess below is correct only
+  // while the parent branch holds still; when main moves mid-run it resolves to a phantom range
+  // that mixes this run's work with other people's commits, which is how a skeptic came to review
+  // a diff that was not the run's diff.
+  const baseBlock = parsed.branch_base
+    ? `     - This run's pre-run checkpoint is ${parsed.branch_base}. Use it as the base — do NOT
+       re-derive one from merge-base, which drifts when the parent branch moves mid-run:
+         \`git diff ${parsed.branch_base}..HEAD\`
+     - \`git log --oneline ${parsed.branch_base}..HEAD\` to see exactly this run's commits.`
+    : `     - \`git log --oneline -20\` to see this run's commits.
+     - \`git diff \$(git merge-base HEAD @{upstream} 2>/dev/null || git merge-base HEAD main)..HEAD\`
+       to see the full net diff. If that base resolution fails, diff against the earliest commit that
+       is clearly part of this run (inspect the log). Read the actual changed files as needed.`
+  return `Mode: E — Reviewer (read-only adversarial verify; NO edits, NO git writes)
+
+An autopilot run just reported its nested engine COMPLETE with all per-phase validators green. That
+is necessary but NOT sufficient: per-phase checklist validators have repeatedly rationalized real
+defects (data-corruption and state-refresh bugs) that only a whole-diff, code-tracing pass catches.
+You are that pass. Be adversarial: assume the "green" result is hiding a defect until you prove otherwise.
+
+STEPS:
+1. Get the finished work via git IN THE CURRENT WORKING TREE (do NOT use EnterWorktree — background
+   workflow agents ignore it, so switching worktrees would silently review a different tree):
+${baseBlock}
+2. Read the plan/contract artifact at: ${artifact}
+   Extract every concrete CLAIM / acceptance criterion it makes about behavior.
+3. Trace each claim to the actual diff. For each, decide: does the code REALLY do what is claimed?
+   Prioritize these two recurring failure classes (the ones prior AARs caught):
+     (a) DATA-INTEGRITY / STATE-MUTATION bugs — e.g. a revert/undo/cascade that overwrites or wipes
+         unrelated rows/fields; a write that clobbers concurrent state; an off-by-one on a batch.
+     (b) REFRESH / REFLECTION gaps — the mutation succeeds but the UI, cache, query, or derived state
+         is NOT refreshed/invalidated, so the change is invisible or stale to the next read.
+   Also flag: claims with no supporting code, error/empty paths left unhandled, and swallowed failures.
+4. Return VERIFY_FINDINGS_SCHEMA:
+     - verified: true ONLY if you traced the claims and found no critical/high defect.
+     - findings: one entry per real defect. Set severity honestly (critical = data loss / correctness
+       break / security; high = a claimed behavior is broken or a refresh gap makes it non-functional;
+       medium/low = smells worth noting). Include claim, code_location (file:line), and mismatch.
+   Do NOT invent findings to look thorough; an empty findings array with verified:true is the right
+   answer for a genuinely clean diff.
+
+Request under review:
+=== REQUEST ===
+${parsed.request}
+=== END REQUEST ===
+
+Do NOT edit any files. Read only. Do NOT git add/commit/push/stash.`
+}
+
+// ─── verify-gate decision (pure) ──────────────────────────────────────────────
+// Conservative bias (correctness over speed): downgrade on ANY confirmed critical, or when ≥2
+// independent skeptics each raise a high-severity finding. Returns {failed, findings}.
+function evaluateVerify(verdicts) {
+  const findings = []
+  let anyCritical = false
+  let highVoters = 0
+  for (const v of verdicts) {
+    if (!v || !Array.isArray(v.findings)) continue
+    const sevs = v.findings.map(f => f && f.severity)
+    if (sevs.includes('critical')) anyCritical = true
+    if (sevs.includes('high')) highVoters += 1
+    findings.push(...v.findings.filter(Boolean))
+  }
+  return { failed: anyCritical || highVoters >= 2, findings }
 }
 
 // ─── nested-engine arg builders (pure — timestamp threaded from args) ─────────
@@ -246,6 +378,22 @@ Do NOT edit any files. Read only. Do NOT git add/commit/push/stash.`
 function nestedBudget(plan) {
   const pts = typeof plan.effort_points === 'number' ? plan.effort_points : 4
   return Math.max(25000, Math.round(pts * 6250))
+}
+
+// The branch-placement fields are threaded VERBATIM from args into every nested engine. They were
+// the missing link in the 2026-08-05 bypass: autopilot's Opus pre-flight created a run branch and
+// recorded a base SHA, then passed neither, so the engines had nothing to check placement against
+// and the structurer fell back to a `HEAD~10` guess for its diff base. Omitted when unset, so an
+// un-updated caller produces exactly the previous envelope.
+function placementArgs(parsed) {
+  const out = {}
+  if (parsed.run_branch) out.run_branch = parsed.run_branch
+  if (parsed.parent_branch) out.parent_branch = parsed.parent_branch
+  if (parsed.branch_base) out.branch_base = parsed.branch_base
+  if (parsed.parent_tip_at_start) out.parent_tip_at_start = parsed.parent_tip_at_start
+  if (parsed.session_repo) out.session_repo = parsed.session_repo
+  if (parsed.target_repo) out.target_repo = parsed.target_repo
+  return out
 }
 
 function contractArgs(parsed, plan) {
@@ -257,6 +405,7 @@ function contractArgs(parsed, plan) {
     budget_total: nestedBudget(plan),
     review_intensity: plan.review_intensity || 'standard',
     context_paths: parsed.context_paths || [],
+    ...placementArgs(parsed),
     contract_metadata: {
       slug: plan.slug || '',
       mode: 'C',
@@ -274,6 +423,7 @@ function planExecArgs(parsed, plan) {
     plan_ref: plan.plan_artifact_path,
     timestamp: parsed.timestamp,
     budget_total: nestedBudget(plan),
+    ...placementArgs(parsed),
   }
 }
 
@@ -295,6 +445,55 @@ function autopilotAnnotation(plan, executionTarget, recommendation) {
 // Parse args defensively: the Workflow tool may deliver args as a JSON string or object.
 const parsed = typeof args === 'string' ? JSON.parse(args) : args
 
+// ── repo-target guard ─────────────────────────────────────────────────────────
+// Workflow agents run in the SESSION's cwd — there is no per-agent cwd, and
+// isolation:'worktree' branches the session repo. So an autopilot request whose work lives in
+// a sibling repo does not fail: every agent runs against the wrong repository and reports
+// success. This is autopilot's own recorded failure (`.claude/worknotes/
+// di294-outcome-consolidation/AAR.md` lesson 5 — "Autopilot's scripted lane cannot target a
+// sibling repo", where an executor committed to `main` ignoring its worktree and still
+// reported `complete`). The script cannot resolve either repo itself (no FS/shell), so Opus
+// pre-flight passes both and this compares them. Full rationale + contract: the identical
+// guard in execute-plan.js.
+// Checked before the dry-run short-circuit: a dry run of a cross-repo request has nothing
+// useful to report, and this is the one defect a graph-shape inspection cannot see.
+function repoKey(v) {
+  if (typeof v !== 'string') return null
+  const trimmed = v.trim().replace(/\/+$/, '')
+  if (trimmed.length === 0) return null
+  const base = trimmed.split('/').pop()
+  return base && base.length > 0 ? base : trimmed
+}
+
+const _target = repoKey(parsed?.target_repo)
+const _session = repoKey(parsed?.session_repo)
+if (_target && !_session) {
+  log(`HALTING — cross_repo_unverified: target_repo '${parsed.target_repo}' declared with no session_repo.`)
+  return {
+    status: 'blocked',
+    reason: 'cross_repo_unverified',
+    report: [],
+    blockers: [{
+      description: `Request declares target_repo '${parsed.target_repo}' but carries no session_repo, so the workflow cannot confirm it is running in the right repository. No agents were spawned.`,
+      resolution_hint: 'In Opus pre-flight, resolve `basename "$(git rev-parse --show-toplevel)"` and pass it as session_repo. Do NOT drop target_repo to silence this.',
+    }],
+    autopilot: { execution_target: 'none', escalation_recommendation: 'Pass session_repo alongside target_repo, or hand-orchestrate in the target repo.' },
+  }
+}
+if (_target && _session && _target !== _session) {
+  log(`HALTING — cross_repo_target: plan targets '${parsed.target_repo}' but session is '${parsed.session_repo}'.`)
+  return {
+    status: 'blocked',
+    reason: 'cross_repo_target',
+    report: [],
+    blockers: [{
+      description: `Request targets repo '${parsed.target_repo}' but this session is in '${parsed.session_repo}'. Autopilot's agents always run in the session's cwd and isolation:'worktree' branches the SESSION repo, so every task would have executed against the wrong repository while reporting success. No agents were spawned.`,
+      resolution_hint: `Start a session in the '${parsed.target_repo}' checkout and re-run there, or hand-orchestrate and verify \`git rev-parse --show-toplevel\` + \`git branch --show-current\` + \`git diff\` yourself at each step (.claude/skills/dev-execution/git-worktree-pr-protocol.md).`,
+    }],
+    autopilot: { execution_target: 'none', escalation_recommendation: `Cross-repo autopilot is not supported. Re-run from the '${parsed.target_repo}' repo, or hand-orchestrate.` },
+  }
+}
+
 // ── dry-run short-circuit ─────────────────────────────────────────────────────
 if (parsed.dry_run === true) {
   log('Dry-run mode — returning parsed args envelope without spawning agents.')
@@ -308,8 +507,9 @@ if (parsed.dry_run === true) {
 
 const ceiling = resolveCeiling(parsed)
 
-// Tier C nesting pilot — DEFAULT FALSE. When off, the planner prompt is byte-for-byte
-// identical to pre-pilot. When true, the planner MAY nest bounded read-only scouts for scoping.
+// Phase 4 Tier C nesting pilot — DEFAULT FALSE. When off, the planner prompt is byte-for-byte
+// identical to pre-pilot. When true, the planner MAY nest bounded read-only scouts for scoping
+// (governed by .claude/specs/subagent-nesting-spec.md).
 const {
   planner_nesting_enabled = false,
 } = parsed
@@ -334,7 +534,7 @@ if (!planText) {
     status: 'needs_opus',
     reason: 'plan_structure_failed',
     report: [],
-    autopilot: { execution_target: 'none', escalation_recommendation: 'Planner agent was skipped; re-run /autopilot or plan manually.' },
+    autopilot: { execution_target: 'none', escalation_recommendation: 'Planner agent was skipped; re-run /dev:autopilot or plan manually.' },
   }
 }
 
@@ -344,7 +544,7 @@ log('Structuring the plan artifact into an AutopilotPlan.')
 
 let plan
 try {
-  plan = await agent(structurePrompt(parsed), {
+  plan = await agent(structurePrompt(planText), {
     label: 'plan-structurer',
     phase: 'Structure plan',
     agentType: 'general-purpose',
@@ -362,6 +562,39 @@ if (!plan) {
     reason: 'plan_structure_failed',
     report: [],
     autopilot: { execution_target: 'none', escalation_recommendation: 'Could not structure the plan artifact. Read the most recent file under docs/project_plans/ and decide manually.' },
+  }
+}
+
+// ── Plan-identity gate (deterministic; runs BEFORE the feasibility gate) ─────
+// The structurer must be describing the artifact the planner actually wrote. When it is not,
+// every field below is about a different feature — and because the feasibility gate reads
+// plan.tier / plan.effort_points, a drifted-down tier silently DISABLES that gate too.
+//
+// This is not hypothetical. It has fired twice in production, both times resolving to an
+// unrelated already-shipped contract and dispatching the executor to "re-implement" it:
+//   2026-08-03 — plan_artifact_path → enhancements/codex-effort-tier-ingestion.md
+//   2026-08-04 — plan_artifact_path → harden-polish/op-story-scan-worktree-sweep-guard.md
+//                (planner said tier 3 / 15 pts → would have escalated; structurer said tier 1
+//                 / 5 pts → executed the wrong feature and reported 4/4 ACs met)
+// Halting here costs one wasted planning stage. Not halting costs a full execution against the
+// wrong feature plus a completion report asserting work that was never done.
+if (!planTextClaimsArtifact(planText, plan.plan_artifact_path)) {
+  log(`HALT: plan-identity mismatch. The structurer returned plan_artifact_path=` +
+      `"${plan.plan_artifact_path}", which the planner's own report never names. ` +
+      `Refusing to execute against an artifact this run may not have written.`)
+  return {
+    status: 'needs_opus',
+    reason: 'plan_identity_mismatch',
+    report: [],
+    autopilot: autopilotAnnotation(
+      plan,
+      'none',
+      `Stage-B structurer drifted off the planner's artifact (returned ` +
+      `"${plan.plan_artifact_path}", unmentioned by the planner). The planner's own report is ` +
+      `trustworthy and the artifact IS on disk — read the planner output, confirm the real path ` +
+      `under docs/project_plans/, and either relaunch or execute it directly. Do NOT trust the ` +
+      `tier/effort figures in this annotation: they describe the wrong artifact.`,
+    ),
   }
 }
 
@@ -412,7 +645,7 @@ if (parsed.plan_only === true) {
     status: 'needs_opus',
     reason: 'plan_only',
     report: [],
-    autopilot: autopilotAnnotation(plan, plan.execution_target, 'Plan is single-pass feasible. Relaunch /autopilot with plan_only:false to execute.'),
+    autopilot: autopilotAnnotation(plan, plan.execution_target, 'Plan is single-pass feasible. Relaunch /dev:autopilot with plan_only:false to execute.'),
   }
 }
 
@@ -453,6 +686,71 @@ const result = {
 if (childReport.reason) result.reason = childReport.reason
 if (childReport.blocked_phase) result.blocked_phase = childReport.blocked_phase
 if (childReport.hitl_tasks) result.hitl_tasks = childReport.hitl_tasks
+// Placement provenance is the evidence the §4b post-flight guard reads. Dropping it here would make
+// the outer report weaker than the inner one it wraps — and this is the report Opus acts on.
+if (childReport.run_placement) result.run_placement = childReport.run_placement
+if (childReport.blockers) result.blockers = childReport.blockers
+
+// A nested engine that halted on placement must not be re-interpreted as merely "unfinished".
+// Autopilot's §4b guard exists because the workflow used to report `complete` in exactly this
+// situation; now that the engine detects it, the outer report must carry the reason through
+// verbatim rather than flattening it into a generic escalation.
+if (result.reason === 'wrong_branch' || result.reason === 'nothing_on_run_branch') {
+  const hint = result.reason === 'wrong_branch'
+    ? 'Commits landed off the assigned run branch — locate them with `git branch -a --contains <sha>` and cherry-pick onto the run branch before opening a PR. Do NOT merge from wherever they landed.'
+    : 'Nothing was committed to the run branch — treat every past-tense claim in the nested report as unproven, and check `git status --porcelain` plus the reflog before re-running.'
+  result.autopilot.escalation_recommendation = hint
+  result.autopilot.post_verify = 'not_run_placement_failed'
+  log(`Nested engine halted on placement (${result.reason}). Skipping the verify gate — there is no diff on the run branch to verify.`)
+}
+
+// ── Phase 4: Verify (post-execution adversarial claims-vs-code gate) ─────────
+// Only meaningful when the nested engine reported complete. A non-complete result is already
+// Opus's to own, so we leave it untouched. This gate turns "green per-phase" into "green diff".
+if (result.status === 'complete') {
+  phase('Verify')
+  const VERIFY_FLOOR = 40000
+  if (budget && budget.total && budget.remaining() < VERIFY_FLOOR) {
+    // No silent caps: announce the skip so a buggy-but-green run is not mistaken for verified.
+    log(`WARNING: skipping post-workflow verify — budget remaining (${Math.round(budget.remaining() / 1000)}k) below floor (${VERIFY_FLOOR / 1000}k). Opus MUST run an adversarial claims-vs-code pass before merging.`)
+    result.autopilot.post_verify = 'skipped_budget'
+  } else {
+    log('Post-workflow adversarial verify: 2 skeptics tracing plan claims against the finished diff.')
+    const verdicts = (await parallel(
+      [0, 1].map(i => () =>
+        agent(verifyPrompt(parsed, plan), {
+          label: `verify-skeptic-${i}`,
+          phase: 'Verify',
+          agentType: 'senior-code-reviewer',
+          model: 'sonnet',
+          schema: VERIFY_FINDINGS_SCHEMA,
+        })
+      )
+    )).filter(Boolean)
+
+    if (verdicts.length === 0) {
+      // Both skeptics failed to return — treat as unverified, not as a pass.
+      log('WARNING: post-workflow verify produced no verdicts — escalating to Opus for manual verification.')
+      result.status = 'needs_opus'
+      result.reason = 'post_verify_failed'
+      result.verify_findings = []
+      result.autopilot.post_verify = 'inconclusive'
+    } else {
+      const { failed, findings } = evaluateVerify(verdicts)
+      if (failed) {
+        log(`Post-workflow verify FAILED: ${findings.length} finding(s), including confirmed critical/high defects. Downgrading complete → needs_opus.`)
+        result.status = 'needs_opus'
+        result.reason = 'post_verify_failed'
+        result.verify_findings = findings
+        result.autopilot.post_verify = 'failed'
+      } else {
+        log(`Post-workflow verify PASSED (${findings.length} advisory finding(s), none critical/high).`)
+        result.verify_findings = findings
+        result.autopilot.post_verify = 'passed'
+      }
+    }
+  }
+}
 
 log(`Autopilot complete — nested ${plan.execution_target} returned status: ${result.status}.`)
 return result

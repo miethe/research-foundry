@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import importlib.util
 import json
 import os
 import re
@@ -53,7 +54,71 @@ except ImportError:  # pragma: no cover
     sys.stderr.write("intenttree_capture: PyYAML required (pip install pyyaml)\n")
     sys.exit(2)
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _itt_client as itc  # noqa: E402
+
 DEFAULT_API = os.environ.get("INTENTTREE_API_URL", "http://10.42.10.76:8032")
+
+
+# --------------------------------------------------------------- creation-time slug stamp
+# M4 L4: stamp ``meta.feature_slug`` (+``meta.plan_ref``) onto the nodes a capture just created,
+# so the ledger join never reopens the gap. The read-merge-write-via-PATCH discipline and the
+# FR-7 conflict rule are load-bearing — we REUSE ``stamp-node-slug.py`` verbatim rather than
+# re-implement either (``itt node update --meta`` REPLACES the whole meta dict server-side, so a
+# naive write would destroy ``plan_ref``/``fingerprint``). The stamper filename has hyphens, so
+# it is loaded via importlib rather than a plain import.
+_STAMP_MOD: Any = None
+
+
+def _stamp_module() -> Any:
+    global _STAMP_MOD
+    if _STAMP_MOD is None:
+        path = Path(__file__).resolve().parent / "stamp-node-slug.py"
+        spec = importlib.util.spec_from_file_location("stamp_node_slug_mod", path)
+        if spec is None or spec.loader is None:  # pragma: no cover - packaging guard
+            raise RuntimeError(f"cannot load stamper module at {path}")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _STAMP_MOD = mod
+    return _STAMP_MOD
+
+
+def stamp_created_nodes(
+    tree: str,
+    slug: str,
+    *,
+    repo_root: str | None,
+    plan_root: str | None,
+    api_url: str,
+    itt_client: itc.IttClient | None = None,
+) -> dict:
+    """Stamp ``meta.feature_slug`` (+``plan_ref``) onto the nodes just created for *slug*.
+
+    Reuses ``stamp-node-slug.py``'s ``gather``/``classify``/``apply_stamps`` pipeline unchanged —
+    including its anchor/subtree resolution, its FR-7 "never overwrite a differing feature_slug"
+    conflict rule, its read-merge-write PATCH, and its idempotency — then narrows the resolved
+    candidate set to the single feature captured this run (``c.slug == slug``). Callers invoke
+    this only after a successful ``--apply`` import; dry-run never reaches here.
+    """
+    stamp = _stamp_module()
+    client = itt_client or itc.IttClient(api_url=api_url)
+    root = Path(repo_root or ".").resolve()
+    proot = Path(plan_root) if plan_root else root / "docs" / "project_plans"
+    if not proot.is_absolute():
+        proot = root / proot
+
+    nodes, candidates, _rejected, _ambiguous = stamp.gather(client, tree, proot, root)
+    scoped = {nid: cand for nid, cand in candidates.items() if cand.slug == slug}
+    would_stamp, already_correct, conflicts = stamp.classify(nodes, scoped)
+    applied = stamp.apply_stamps(client, would_stamp)
+    return {
+        "ok": not conflicts,
+        "slug": slug,
+        "stamped": applied,
+        "would_stamp": len(would_stamp),
+        "already_correct": len(already_correct),
+        "conflicts": conflicts,
+    }
 COMPLETE = {"completed", "complete", "done", "superseded", "archived",
             "cancelled", "merged", "shipped", "resolved"}
 VALID_KINDS = {"prd", "implementation_plan", "phase_plan", "feature_contract", "spike",
@@ -116,6 +181,49 @@ def phase_label(fm: dict, path: Path) -> str:
     return f"Phase {m.group(1)}" if m else "Phase 1"
 
 
+def _collect_phase(p: dict, plan_status: str, seen: set[str]) -> dict | None:
+    """Map a ``wave_plan.phases[]`` milestone entry into the task-shaped dict `capture_feature()`
+    already consumes unchanged (this fallback fires when a doctrine-conformant plan has no
+    ``tasks[]`` — see `plan-doctrine.md` rule 2, "milestones, not phases").
+
+    Unlike ``_collect_task()`` (a thin passthrough — the backend normalizes everything a task row
+    carries), this is a deliberate narrow *allowlist*: a phase entry can carry ``depends_on``,
+    ``gate_lens``, ``required_artifacts``, ``context_class``, etc. that have no analog in the
+    task-shaped import contract. Only the fields the contract's mapping specifies are copied, so
+    ``depends_on`` structurally never reaches ``capture_feature()`` / the import call — this is how
+    Risk Area R2 (no dependency-edge wiring in this pass) is satisfied: by construction, not by a
+    filter that could be bypassed or forgotten at a second call site.
+
+    Status (Risk Area R1): plan doctrine's ``wave_plan.phases[]`` has no per-phase status field.
+    Rather than defaulting every milestone to ``not_started`` forever (the original defect this
+    contract exists to fix), this derives a coarse but real signal from the *plan's own*
+    frontmatter ``status``: once the plan itself reaches a ``COMPLETE`` value (the same transition
+    ``complete-phase.py`` performs on ship, and the same moment the standard `/dev:execute-phase`
+    workflow re-runs ``intenttree_capture.py --apply`` — see Risk Area R4), every phase flips to
+    "completed" in one shot. While the plan is still open, every phase reads "not_started". Finer,
+    mid-plan, per-milestone granularity (cross-referencing
+    ``.claude/progress/<slug>/phase-N-progress.md``) is deliberately deferred: those files are
+    numbered ``phase-N`` under the OLDER doctrine this plan shape replaced, and new-doctrine plans
+    using ``wave_plan.phases[]`` milestone ids (``M1``/``M2``/…) have no reliable mapping to that
+    naming scheme. See the Completion Report for the full rationale.
+    """
+    pid = p.get("id")
+    if not pid:
+        return None
+    pid = str(pid)
+    if pid in seen:
+        pid = f"phase-{pid}"
+    seen.add(pid)
+    exit_criteria = p.get("exit_criteria")
+    return {
+        "id": pid,
+        "title": p.get("title") or pid,
+        "acceptance_criteria": exit_criteria if isinstance(exit_criteria, list) else [],
+        "node_type": "milestone",
+        "status": "completed" if plan_status.strip().lower() in COMPLETE else "not_started",
+    }
+
+
 def _collect_task(t: dict, plabel: str, seen: set[str]) -> dict | None:
     """Forward a raw progress-file task with orchestration-only fixups (thin shim).
 
@@ -170,14 +278,30 @@ def tasks_from_progress_dir(
 
 
 def feature_from_file(path: Path) -> dict | None:
-    """Build a feature payload from a single plan/progress file's own tasks[]."""
+    """Build a feature payload from a single plan/progress file's own tasks[], falling back to
+    wave_plan.phases[] milestones when tasks[] is absent/not a list (doctrine-conformant Tier 2/3
+    plans deliberately carry no tasks[] — plan-doctrine.md rule 2, "milestones, not phases").
+
+    Returns None when neither shape yields anything to capture — callers rely on this exact
+    contract (main()'s "nothing to sync" skip path checks `is None`).
+    """
     fm = load_fm(path)
     raw = fm.get("tasks")
-    if not isinstance(raw, list) or not raw:
-        return None
     seen: set[str] = set()
-    pl = phase_label(fm, path)
-    tasks = [nt for rt in raw if isinstance(rt, dict) and (nt := _collect_task(rt, pl, seen))]
+    tasks: list[dict] = []
+    if isinstance(raw, list):
+        if raw:  # tasks[] present and non-empty — existing path, unchanged.
+            pl = phase_label(fm, path)
+            tasks = [nt for rt in raw if isinstance(rt, dict) and (nt := _collect_task(rt, pl, seen))]
+        # else: tasks[] present but explicitly empty — nothing to capture from this shape; no
+        # wave_plan fallback is attempted (an explicit empty list is not "absent").
+    else:
+        wave_plan = fm.get("wave_plan")
+        phases = wave_plan.get("phases") if isinstance(wave_plan, dict) else None
+        if isinstance(phases, list) and phases:
+            plan_status = str(fm.get("status") or "")
+            tasks = [nt for rp in phases
+                     if isinstance(rp, dict) and (nt := _collect_phase(rp, plan_status, seen))]
     if not tasks:
         return None
     slug = fm.get("feature_slug") or path.stem
@@ -240,7 +364,17 @@ def discover_features(repo_root: Path, cutoff: datetime.date) -> list[dict]:
 
 
 # -------------------------------------------------------------------------- apply
-def capture_feature(api: str, workspace: str, tree: str, feat: dict, apply: bool) -> dict:
+def capture_feature(
+    api: str,
+    workspace: str,
+    tree: str,
+    feat: dict,
+    apply: bool,
+    *,
+    repo_root: str | None = None,
+    plan_root: str | None = None,
+    itt_client: itc.IttClient | None = None,
+) -> dict:
     reg_body = {
         "workspace_id": workspace, "tree_id": tree, "path": feat["artifact_path"],
         "kind": feat["kind"], "title": feat["title"], "feature_slug": feat["slug"],
@@ -276,8 +410,24 @@ def capture_feature(api: str, workspace: str, tree: str, feat: dict, apply: bool
         return {"ok": False, "stage": "import", "reason": "failed after retries"}
     # Progress is derived server-side from task status (DI-105) — no /complete post-pass needed.
     counts = imp.get("counts", {})
-    return {"ok": True, "artifact": sid, "inserts": counts.get("inserts", 0),
-            "updates": counts.get("updates", 0), "edges": counts.get("edges_created", 0)}
+    result = {"ok": True, "artifact": sid, "inserts": counts.get("inserts", 0),
+              "updates": counts.get("updates", 0), "edges": counts.get("edges_created", 0)}
+    # M4 L4: stamp the feature_slug onto the just-created nodes at creation time, so the ledger
+    # join is established up front instead of by a later stamp-node-slug.py pass. A stamp conflict
+    # (FR-7) or an unreachable server surfaces as ok=False rather than a silent success.
+    try:
+        stamp = stamp_created_nodes(
+            tree, feat["slug"], repo_root=repo_root, plan_root=plan_root,
+            api_url=api, itt_client=itt_client,
+        )
+    except itc.IttError as exc:
+        result["ok"] = False
+        result["stamp"] = {"ok": False, "error": str(exc)}
+        return result
+    result["stamp"] = stamp
+    if not stamp["ok"]:
+        result["ok"] = False
+    return result
 
 
 # --------------------------------------------------------------------------- main
@@ -286,6 +436,9 @@ def main() -> int:
     ap.add_argument("mode", choices=["sync", "backfill"])
     ap.add_argument("file", nargs="?", help="plan/progress file (sync mode)")
     ap.add_argument("--repo-root", default=".", help="repo root (backfill mode)")
+    ap.add_argument("--plan-root", default=None,
+                    help="plan corpus root for the creation-time slug stamp "
+                         "(default: <repo-root>/docs/project_plans)")
     ap.add_argument("--api-url", default=DEFAULT_API)
     ap.add_argument("--workspace", default=os.environ.get("INTENTTREE_WORKSPACE"))
     ap.add_argument("--tree", default=os.environ.get("INTENTTREE_TREE"))
@@ -305,9 +458,10 @@ def main() -> int:
             return 2
         feat = feature_from_file(Path(args.file))
         if feat is None:
-            print(f"no tasks[] in {args.file}; nothing to sync")
+            print(f"no tasks[] or wave_plan.phases[] in {args.file}; nothing to sync")
             return 0
-        res = capture_feature(api, ws, args.tree, feat, args.apply)
+        res = capture_feature(api, ws, args.tree, feat, args.apply,
+                              repo_root=args.repo_root, plan_root=args.plan_root)
         print(json.dumps(res))
         return 0 if res.get("ok") else 1
 
@@ -317,7 +471,8 @@ def main() -> int:
           f"{len(feats)} in-flight features")
     ok = True
     for f in feats:
-        res = capture_feature(api, ws, args.tree, f, args.apply)
+        res = capture_feature(api, ws, args.tree, f, args.apply,
+                              repo_root=args.repo_root, plan_root=args.plan_root)
         flag = "OK " if res.get("ok") else "!! "
         ok = ok and res.get("ok", False)
         print(f"  {flag}{f['slug']:42s} tasks={len(f['tasks']):3d} "

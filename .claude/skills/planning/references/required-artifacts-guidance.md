@@ -4,7 +4,7 @@
 > dev-execution pre-execution provisioning gate can guarantee every artifact a plan needs is present
 > before execution starts — deploying in-catalog gaps and surfacing (never silently skipping) the
 > ones that must be built first. Initiative PRD:
-> `docs/project_plans/PRDs/features/dynamic-artifact-provisioning.md`.
+> `docs/project_plans/PRDs/dynamic-artifact-provisioning.md`.
 
 ## Why this exists
 
