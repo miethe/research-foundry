@@ -4,6 +4,16 @@
       "type": "stdio",
       "command": "uv",
       "args": ["run", "--no-sync", "python", "-m", "research_foundry.services.search_router.mcp_server"]
+    },
+    "rf-knowledge-mcp": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--no-sync", "rf-knowledge-mcp"]
+    },
+    "rf-operator-mcp": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--no-sync", "rf-operator-mcp"]
     }
   }
 }
