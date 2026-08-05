@@ -7,6 +7,9 @@
  *   - status badge (supported/inference/speculation/…)
  *   - confidence badge (low/medium/high)
  *   - materiality badge (core/background/style/material)
+ *   - clinical-attestation badge (clearance-gates-v1 M4; "unattested" only,
+ *     present when the claim is clinically eligible per the backend's
+ *     claim_clinical_eligibility() heuristic)
  *   - row click → onClaimSelect(claimId)
  *
  * Accepts a filtered claim array from LedgerFacets.
@@ -87,6 +90,7 @@ export function ClaimLedgerTable({ claims, onClaimSelect, selectedClaimId, onExp
             <th className="rv-ledger-th rv-ledger-th--conf">Confidence</th>
             <th className="rv-ledger-th rv-ledger-th--mat">Materiality</th>
             <th className="rv-ledger-th rv-ledger-th--terms">Terms</th>
+            <th className="rv-ledger-th rv-ledger-th--clinical">Clinical</th>
           </tr>
         </thead>
         <tbody>
@@ -208,6 +212,30 @@ export function ClaimLedgerTable({ claims, onClaimSelect, selectedClaimId, onExp
                         );
                       })}
                     </div>
+                  )}
+                </td>
+
+                {/*
+                  Clinical-attestation badge (clearance-gates-v1 M4).
+                  Present only when the backend's clinical_attestation_status
+                  is "unattested" -- the ONLY value it can ever hold today
+                  (RF has no counsel/attestation workflow). Deliberately
+                  reuses the dashed/monospace, non-`.it-chip` convention the
+                  term badge above establishes -- with its own amber/caution
+                  styling -- so it can never be mistaken for an attested
+                  clinical value while still clearly signalling "pay
+                  attention here", unlike the neutral term badge.
+                */}
+                <td className="rv-ledger-td rv-ledger-td--clinical" data-testid={`ledger-clinical-${claim.claim_id}`}>
+                  {claim.clinical_attestation_status === "unattested" && (
+                    <span
+                      className="rv-ledger-clinical-badge"
+                      data-testid={`ledger-clinical-badge-${claim.claim_id}`}
+                      title="Clinical content — viewable and rule-buildable locally, but not attested for clinical reliance"
+                    >
+                      <span className="rv-ledger-clinical-badge__mark" aria-hidden="true">⚕</span>
+                      unattested
+                    </span>
                   )}
                 </td>
               </tr>

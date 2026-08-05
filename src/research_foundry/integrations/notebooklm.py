@@ -30,6 +30,7 @@ import shutil
 import subprocess
 from typing import Any
 
+from ..services.clearance import MediatedPayload
 from .base import IntegrationClient
 
 _CLI_ENV_PATH = "NOTEBOOKLM_CLI_PATH"
@@ -290,8 +291,29 @@ class NotebookLMClient(IntegrationClient):
     # ------------------------------------------------------------------
     # Override HTTP helpers — redirect to CLI (same contract: dict | None)
     # ------------------------------------------------------------------
+    #
+    # THESE ARE DEAD STUBS, AND THAT IS WHY THIS CLIENT NEEDS ITS OWN GATE.
+    # All three return ``None`` unconditionally; the real work happens in
+    # :meth:`_run_cli`, a ``subprocess`` call to the ``notebooklm`` CLI. So the
+    # clearance backstop that ``IntegrationClient._post``/``_patch`` apply
+    # (services/clearance.py::assert_payload_mediated) is UNREACHABLE from this
+    # client — nothing here ever calls up to it.
+    #
+    # The previous blanket ``# type: ignore[override]`` on each signature made
+    # that worse than merely uncovered: it suppressed the whole override check,
+    # so when the base class's ``payload`` type widened to accept a
+    # ``MediatedPayload`` these three would have silently kept the old narrow
+    # signature with no diagnostic at all. The ignores are now NARROWED to the
+    # keyword-default mismatch they were actually needed for, and the payload
+    # parameter type is kept in sync with the base class deliberately, so a
+    # future base-class change surfaces here instead of being swallowed.
+    #
+    # The real gate for this client is at its call site:
+    # ``services/writeback.py::_render_notebooklm_update`` requires a
+    # ``MediationClearance`` parameter, so it cannot be invoked without one
+    # before it reaches ``add_source``.
 
-    def _get(  # type: ignore[override]
+    def _get(
         self,
         path: str,
         *,
@@ -302,22 +324,26 @@ class NotebookLMClient(IntegrationClient):
 
         return None
 
-    def _post(  # type: ignore[override]
+    def _post(
         self,
         path: str,
-        payload: dict[str, Any],
+        payload: dict[str, Any] | MediatedPayload,
         *,
         timeout: float = 10.0,
         headers: dict[str, str] | None = None,
     ) -> dict[str, Any] | None:
-        """Not used for CLI transport; always returns ``None`` (degrade)."""
+        """Not used for CLI transport; always returns ``None`` (degrade).
+
+        Payload type mirrors the base class so a future widening there is a
+        visible mismatch here rather than a silently-stale override.
+        """
 
         return None
 
-    def _patch(  # type: ignore[override]
+    def _patch(
         self,
         path: str,
-        payload: dict[str, Any],
+        payload: dict[str, Any] | MediatedPayload,
         *,
         timeout: float = 10.0,
         headers: dict[str, str] | None = None,

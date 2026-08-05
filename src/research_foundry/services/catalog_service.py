@@ -57,7 +57,7 @@ import json
 import logging
 import re
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -66,7 +66,7 @@ from ..api.auth.provider import AuthIdentity
 from ..api.auth.scope import require_workspace_scope, resolve_workspace_isolation_active
 from ..ids import now_iso
 from ..paths import FoundryPaths
-from . import audit_service
+from . import audit_service, clearance
 from .attribution_triage import _merge_attribution_summaries
 from .audit_service import AuditEvent
 from .export_service import (
@@ -701,6 +701,120 @@ def _probe_citation_ranks(
 
 
 # ---------------------------------------------------------------------------
+# Clearance mediation (clearance-gates-v1 M5)
+# ---------------------------------------------------------------------------
+#
+# This module's own hard invariant is "import via export_run(), live" (module
+# docstring above) -- catalog_service NEVER reads a source card / claim
+# ledger file directly. That means, from THIS module's point of view,
+# export_run()'s resolved-source dicts (export_service._resolve_source's
+# output) ARE the "raw loaded record": there is nothing more raw available
+# here to check. export_service.py already mediates the TRUE raw card/point
+# record before projecting it, and carries any clearance stamp forward
+# verbatim into that projection specifically so this module (and
+# knowledge_access.py, which reads this module's own payload_json output
+# directly) still has something to find. The row-build functions below carry
+# `clearance` through their own hand-listed payload dicts for the same
+# reason -- if THEY dropped it, the stamp would read as clean forever once
+# serialized to `payload_json`. The actual mediate_egress() calls for THIS
+# module live at its two read chokepoints, search() and get_item(), because
+# payload_json (not a row builder's transient in-memory dict) is the only
+# representation catalog_service can re-load without re-invoking export_run().
+
+
+def _stamped_clearance_candidates(*records: Any) -> list[dict[str, Any]]:
+    """Filter *records* down to only those structurally carrying a clearance stamp.
+
+    Mirrors ``services.export_service._stamped_clearance_candidates`` /
+    ``services.writeback._stamped_attribution_records``'s identical filter
+    convention: a dict with no ``clearance`` dict key was never produced by
+    ``services.clearance.stamp_taint()`` and must never be fed to
+    :func:`~research_foundry.services.clearance.mediate_egress` under
+    ``kind="source_attribution"`` -- doing so would refuse every pre-existing
+    catalog item (claims, sources, reports — none of which carry a stamp
+    today), converting the backward-compatibility mechanism
+    ``applies_to_kinds`` exists to provide into a correctness regression.
+    """
+
+    return [
+        dict(record)
+        for record in records
+        if isinstance(record, Mapping) and isinstance(record.get(clearance.TAINT_KEY), dict)
+    ]
+
+
+def _catalog_payload_candidates(payload: Any) -> list[Any]:
+    """Every dict inside one deserialized ``payload_json`` blob worth checking
+    for a clearance stamp.
+
+    The payload itself (a "source" item's card-level stamp, carried forward
+    by ``_build_source_rows`` below) plus each entry of
+    ``cited_sources``/``evidence_points`` (a "claim"/"inference" item's
+    per-citation stamps, carried forward by
+    ``_build_claim_and_inference_rows`` below). Returns raw candidates,
+    unfiltered — callers pass the result through
+    :func:`_stamped_clearance_candidates` before mediating.
+    """
+
+    if not isinstance(payload, Mapping):
+        return []
+    candidates: list[Any] = [payload]
+    for key in ("cited_sources", "evidence_points"):
+        nested = payload.get(key)
+        if isinstance(nested, list):
+            candidates.extend(nested)
+    return candidates
+
+
+def _mediate_catalog_payloads(
+    *payloads: Any,
+    paths: FoundryPaths,
+    target: str,
+    registry: "clearance.GateRegistry | None" = None,
+) -> None:
+    """Mediate every clearance-stamped record reachable inside *payloads*.
+
+    See :func:`_catalog_payload_candidates` for what is inspected. Raises
+    ``clearance.ClearanceDenied`` (propagated, never swallowed) if any
+    stamped record blocks ``redistribution`` or ``acquisition`` -- callers
+    (``search``/``get_item``) must map that to a policy-denial response, not
+    a generic 500.
+
+    ``paths`` is REQUIRED and keyword-only (M5 gate finding: "mediation loses
+    the caller's workspace context"). It is threaded straight into
+    :func:`~research_foundry.services.clearance.mediate_egress`, which resolves
+    the gate registry from it via ``load_registry(paths=paths)``. Before this
+    was mandatory, both call sites below omitted it, so clearance resolved
+    against ``FoundryPaths.discover()`` -- the process CWD's workspace -- while
+    the ROWS being mediated came from the caller's ``paths`` workspace. In a
+    multi-workspace deployment (this repo already carries row-level
+    workspace-isolation work, WKSP-304, so that is a real configuration) a
+    tenant whose own ``config/clearance_gates.yaml`` blocked ``redistribution``
+    would have been evaluated against a CWD registry that permitted it, and the
+    payload served -- a governance control reporting success while reading the
+    wrong config, which is strictly worse than no control. Making the parameter
+    required rather than defaulted is deliberate: a future caller cannot
+    reintroduce the silent-discovery fallback without the call failing loudly.
+
+    Every caller in this module has ``paths`` in scope (it is the first
+    positional parameter of both public read functions), so there is no site
+    here that must fall back to discovery.
+    """
+
+    candidates: list[Any] = []
+    for payload in payloads:
+        candidates.extend(_catalog_payload_candidates(payload))
+    clearance.mediate_egress(
+        _stamped_clearance_candidates(*candidates),
+        kind="source_attribution",
+        target_scope="redistribution",
+        target=target,
+        paths=paths,
+        registry=registry,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Row construction (item mapping table — plan §"Item mapping (import contract)")
 # ---------------------------------------------------------------------------
 
@@ -918,6 +1032,15 @@ def _build_claim_and_inference_rows(
                     "evidence_id": s.get("evidence_id"),
                     "relation": s.get("relation"),
                     "locator": s.get("locator"),
+                    # clearance-gates-v1 M5 (projection-strip vector): carried
+                    # forward verbatim from export_service._resolve_source's
+                    # own additive "clearance" key. `s` is export_run()'s
+                    # resolved-source dict, this module's own "raw loaded
+                    # record" (see the mediation block above _base_row) — if
+                    # this hand-listed allowlist omitted the key, a stamp
+                    # would read as clean forever once serialized into
+                    # payload_json.
+                    "clearance": s.get("clearance"),
                 }
                 for s in resolved_sources
             ],
@@ -1022,6 +1145,14 @@ def _build_source_rows(
                     "publisher": src.get("publisher"),
                     "version": src.get("version"),
                     "attribution_summary": src.get("attribution_summary"),
+                    # clearance-gates-v1 M5 (projection-strip vector):
+                    # first-citation-wins, same as title/url/trust/etc.
+                    # above — a card's clearance stamp (if any) is the same
+                    # for every citation of one source_card_id, since it was
+                    # produced by at most one acquisition. Carried forward
+                    # verbatim from export_service._resolve_source's own
+                    # additive "clearance" key; never recomputed here.
+                    "clearance": src.get("clearance"),
                     "max_rank": 0,
                     "citing_claims": set(),
                     "evidence_points": [],
@@ -1063,6 +1194,10 @@ def _build_source_rows(
             # carries whatever the card/export layer already produced).
             "attribution_summary": entry["attribution_summary"],
             "evidence_points": entry["evidence_points"],
+            # clearance-gates-v1 M5: the card-level stamp, carried through —
+            # see the aggregation dict above for why this is the one place
+            # (not per-evidence-point) a "source" item's stamp lives.
+            "clearance": entry["clearance"],
         }
         body_text = " ".join(
             filter(
@@ -1127,6 +1262,10 @@ def _build_report_row(
 
     title = export_data.get("title") or run_id
     summary = _first_non_heading_paragraph(report_draft)
+    # clearance-gates-v1 M5 (projection-strip audit): this payload carries
+    # free-text report prose plus run-level writeback/claim-count summaries —
+    # no per-citation structure (no `cited_sources`/`evidence_points` list)
+    # for a stamp to ride on. Audited, no `clearance` key to carry forward.
     payload = {
         "report_draft": report_draft,
         "writebacks": export_data.get("writebacks"),
@@ -1178,6 +1317,12 @@ def _build_reusable_output_rows(
     module docstring / delivery report for the full rationale.
     """
 
+    # clearance-gates-v1 M5 (projection-strip audit): this docstring's own
+    # "documented deviation" note already establishes that `candidates` is
+    # always `[]` today (export_run() never emits
+    # `reusable_output_candidates`) — there is currently no citation-derived
+    # record here for a stamp to ride on. Audited; no `clearance` handling
+    # added, since there is nothing yet to carry.
     candidates = export_data.get("reusable_output_candidates") or []
     rows: list[dict[str, Any]] = []
     for idx, candidate in enumerate(candidates):
@@ -1791,6 +1936,29 @@ def search(
                 [*params, page_size, offset],
             ).fetchall()
 
+    # clearance-gates-v1 M5: mediate every result row's raw payload_json
+    # BEFORE returning the page. `_row_to_summary`/`_SUMMARY_COLUMNS` never
+    # surface a raw fetched value today (see that tuple's own comment — doi/
+    # publisher/source_version/authors_json stay detail-only), so this call
+    # is presently defense-in-depth rather than closing an active leak on
+    # THIS specific field set; it is the explicit chokepoint the plan names
+    # (search()), and it protects any future _SUMMARY_COLUMNS/_row_to_summary
+    # addition sourced from a stamped field. All-or-nothing across the whole
+    # page, matching services.writeback.mediate_run_egress's own
+    # "one decision for the batch, no partial" precedent — a single blocked
+    # row denies the page rather than being silently excluded.
+    #
+    # `paths=paths` threads THIS caller's workspace (M5 gate finding) — the
+    # rows above came from `paths`' catalog.db, so the gate registry consulted
+    # must be `paths`' own config/clearance_gates.yaml, never the process
+    # CWD's. Routed through the shared helper rather than calling
+    # mediate_egress directly: an inline copy here is exactly how this call
+    # site drifted out of sync with get_item()'s in the first place.
+    _mediate_catalog_payloads(
+        *(json.loads(r["payload_json"] or "{}") for r in page_rows),
+        paths=paths,
+        target="catalog.search",
+    )
     return {
         "items": [_row_to_summary(r) for r in page_rows],
         "total": total,
@@ -1991,6 +2159,20 @@ def get_item(
             return None
 
         payload = json.loads(row["payload_json"])
+        # clearance-gates-v1 M5: mediate BEFORE any further processing of the
+        # deserialized payload. This module never reads a source card or
+        # claim ledger file directly (module docstring, "import via
+        # export_run(), live") — payload_json, once parsed back, IS this
+        # module's own "raw loaded record" (design invariant 4), the same
+        # role export_service._resolve_source's `meta`/`point` play one
+        # layer up. Raises clearance.ClearanceDenied (propagated) if any
+        # stamped record here blocks redistribution/acquisition; callers
+        # (api/routers/catalog.py, knowledge_access) must map that to a
+        # policy-denial response, never a generic 500.
+        # `paths=paths` threads THIS caller's workspace (M5 gate finding) —
+        # `row` was read from `paths`' catalog.db, so the registry consulted
+        # must be `paths`' own config/clearance_gates.yaml, not the CWD's.
+        _mediate_catalog_payloads(payload, paths=paths, target="catalog.get_item")
         if row["item_type"] == "source":
             payload = _redact_evidence_points(payload, threshold_rank)
 

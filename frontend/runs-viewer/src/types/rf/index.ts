@@ -28,6 +28,7 @@ export type {
   RFReportAnchorClaimLink,
   RFReportAnchorBlock,
   RFClaim,
+  RFClinicalAttestationStatus,
   RFPersistentReferences,
   RFClaimCounts,
   RFVerificationCheck,

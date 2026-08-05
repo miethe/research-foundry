@@ -38,6 +38,7 @@ from ...errors import GovernanceError, NotFoundError, RFError, SchemaError
 from ...paths import FoundryPaths
 from ...services import audit_service, run_launch
 from ...services.audit_service import AuditEvent
+from ...services.clearance import ClearanceDenied
 from ...services.export_service import (
     SENSITIVITY_ORDER,
     ExportError,
@@ -120,6 +121,13 @@ def _enforce_existence_gate(
 
     Raises:
         HTTPException(400): *sensitivity_threshold* is not a recognised label.
+        HTTPException(403): a clearance-stamped citation cited by this run
+            blocks the ``redistribution``/``acquisition`` scope
+            (``clearance.ClearanceDenied`` from
+            :func:`~research_foundry.services.export_service.export_run`,
+            clearance-gates-v1 M5). Distinct from the 404s below — a
+            genuine clearance refusal is a decision, not an existence leak,
+            so it is surfaced rather than folded into the generic 404.
         HTTPException(404): run not found, run sensitivity exceeds the
             threshold, **or** the run is workspace-scoped away from
             *identity* (DF-004) — all three cases are intentionally
@@ -138,6 +146,16 @@ def _enforce_existence_gate(
     # the same override used for the existence gate.
     try:
         data = export_run(paths, run_id, sensitivity_threshold=threshold, identity=identity)
+    except ClearanceDenied as exc:
+        # clearance-gates-v1 M5: export_run() now mediates every citation's
+        # raw source-card record before projecting it (export_service.py
+        # _resolve_source). Without this handler, ClearanceDenied (an
+        # RFError, not an ExportError) would propagate unhandled out of this
+        # route and surface as a bare 500 — technically fail-closed (no data
+        # leaks) but a poor signal. Mapped to 403, matching this codebase's
+        # existing policy-refusal convention (see api/routers/assertions.py,
+        # reports.py, admin.py).
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ExportError as exc:
         raise HTTPException(status_code=404, detail="not found") from exc
 

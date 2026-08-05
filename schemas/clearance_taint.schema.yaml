@@ -1,0 +1,116 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://research-foundry.dev/schemas/clearance_taint.schema.yaml"
+title: Clearance Taint
+description: >-
+  The durable, per-record record of which use scopes were blocked at the moment
+  a value was acquired. Rides on a governed record as its ``clearance`` block
+  and is the authority consulted by
+  ``services/clearance.py::mediate_egress`` before that record may cross an
+  outward boundary.
+
+  WHY PER-RECORD AND WHY DURABLE. A posture-level lockout ("while dev/test is
+  declared, refuse all egress") carries no marker on the record itself, so
+  lifting the posture later silently re-exposes everything already acquired
+  under it. This block instead records the posture that was true AT ACQUISITION
+  TIME, permanently. ``mediate_egress`` reads only this stamp and never
+  re-derives from the clearance registry's current gate ``state``, so closing a
+  gate — or deleting the posture declaration entirely — cannot retroactively
+  release a record acquired while it was open.
+
+  ABSENCE MEANS UNTRUSTED, NOT CLEAN. For any record kind listed in
+  ``config/clearance_gates.yaml``'s ``applies_to_kinds``, a missing or
+  malformed ``clearance`` block is refused outward. This direction is
+  deliberate and is the opposite of the fail-open convention documented in
+  ``services/source_cards.py::ingest_source``: DEF-5 records that run-export
+  and the catalog both project records through HAND-LISTED key allowlists that
+  silently drop unknown fields, so if a dropped stamp read as "clean" the
+  allowlist itself would become the leak. The stamping writer sits above
+  ``ingest_source`` rather than modifying its long-standing contract.
+
+  AGENT WRITES ARE MONOTONE. ``services/governance.py`` rule 9
+  (``no_agent_cleared_clearance_taint``) permits an agent-writable path to ADD
+  a blocked scope but never to remove one or to assert the empty set. There is
+  therefore no agent-reachable path that widens a record's permitted use. The
+  vocabulary here is deliberately distinct from the rights-clearance family
+  (``CLEARED_*``, ``counsel_approved``, ``attested`` — human-only per
+  ``docs/dev/architecture/adr-rights-entity-model.md`` Invariant 1); reusing
+  those literals would make this block a laundering path into rights state.
+
+  ``gate_refs`` names the gates that were open at acquisition time so a future
+  operator-run re-evaluation can know what to re-check. That re-evaluation path
+  is deliberately not built: a closing gate does not auto-clear existing
+  records.
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - blocked_scopes
+  - stamped_at
+  - stamped_by
+  - posture_at_stamp
+  - gate_refs
+properties:
+  schema_version:
+    const: "1.0"
+
+  blocked_scopes:
+    description: >-
+      Use scopes this record may NOT be used for. MUST be non-empty
+      (``minItems: 1``) — clearance-gates M3 CHANGES_REQUESTED round 2,
+      finding "schema and runtime now disagree": the schema previously
+      permitted an empty array as a legal shape while
+      ``services/clearance.py::mediate_egress`` already refused it at
+      runtime (finding B3, superseding the original M1 "explicitly
+      unrestricted" design), so a record the runtime will always deny
+      could still validate as schema-clean. Tightening the shape closes
+      that gap — a would-be-empty stamp is now invalid at the SAME layer
+      that will refuse it at read time, not merely a layer above it.
+      Duplicate entries are refused so two readers can never disagree on
+      membership by counting.
+    type: array
+    uniqueItems: true
+    minItems: 1
+    items:
+      enum:
+        - acquisition
+        - redistribution
+        - clinical_reliance
+
+  stamped_at:
+    description: >-
+      Write-path clock read taken when the stamp was created. Never re-read at
+      validation time; no validator here reads a wall clock.
+    type: string
+
+  stamped_by:
+    description: >-
+      Identifier of the code path or human that created the stamp, e.g.
+      ``attribution_fetch.openalex``. Provenance only — carries no authority
+      and is never consulted to decide whether a scope is blocked.
+    type: string
+
+  posture_at_stamp:
+    description: >-
+      The operator posture in force when the value was acquired. ``dev_test``
+      means it was acquired under the dev/test posture and is local-evaluation
+      only. ``none`` means no posture was declared. This field is the durable
+      half of the guarantee: it is never recomputed from live config.
+    enum:
+      - none
+      - dev_test
+
+  gate_refs:
+    description: >-
+      ``gate_id`` values from ``config/clearance_gates.yaml`` that were open at
+      acquisition time and produced this record's blocked scopes. Advisory
+      provenance for a future re-evaluation; ``mediate_egress`` decides from
+      ``blocked_scopes`` alone, so an empty or stale ``gate_refs`` can never
+      widen permitted use.
+    type: array
+    uniqueItems: true
+    items:
+      type: string
+
+  note:
+    description: Optional free-text operator annotation.
+    type: [string, "null"]

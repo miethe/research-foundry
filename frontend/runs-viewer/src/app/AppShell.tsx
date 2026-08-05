@@ -7,6 +7,7 @@ import type { ShellSelectionContext } from "./shellContext";
 import { useAuth } from "../auth/AuthContext";
 import { getRateLimitState, subscribeRateLimitState } from "@/api/client";
 import type { RateLimitState } from "@/api/client";
+import { getClinicalContentPresent, subscribeClinicalContentPresent } from "@/api/client";
 
 type NavState = "enabled" | "contextual" | "disabled";
 
@@ -72,6 +73,16 @@ export function AppShell() {
   // loopbackGet() whenever rate-limit headers are parsed or a 429 fires.
   const [rlState, setRlState] = useState<RateLimitState | null>(getRateLimitState);
   useEffect(() => subscribeRateLimitState(setRlState), []);
+
+  // clearance-gates-v1 M4: reactive clinical-attestation banner state.
+  // Same initialize-from-getter + subscribe-for-updates wiring as the
+  // rate-limit badge above -- see getClinicalContentPresent()'s docstring
+  // (api/client.ts) for why AppShell needs a module-level store rather than
+  // route-local state.
+  const [clinicalContentPresent, setClinicalContentPresent] = useState<boolean>(
+    getClinicalContentPresent,
+  );
+  useEffect(() => subscribeClinicalContentPresent(setClinicalContentPresent), []);
 
   // Apply persisted theme on mount so the stored theme takes effect on app boot
   useEffect(() => {
@@ -157,6 +168,29 @@ export function AppShell() {
           >
             <span aria-hidden="true">RL</span>
             <span data-testid="rv-rate-limit-retry-after">{rlState.retryAfter}s</span>
+          </div>
+        )}
+
+        {/* clearance-gates-v1 M4: non-dismissible clinical-content banner.
+            Structurally non-dismissible -- no dismiss control, no
+            local-storage suppression, no auto-hide timer, no aria-hidden
+            escape -- mirroring the rate-limit badge above (the only other
+            genuinely non-dismissible precedent in this codebase; see
+            OneTimeSecretCallout.tsx for the WRONG, dismissible, precedent).
+            It appears/disappears purely as a function of the currently
+            fetched run's data -- same conditional-render contract as the
+            rate-limit badge, never a user action. Viewing this content is
+            explicitly permitted (clearance-gates-v1 decision 4); the banner
+            marks only that it is not attested for CLINICAL RELIANCE. */}
+        {clinicalContentPresent && (
+          <div
+            className="rv-clinical-attestation-banner"
+            role="status"
+            aria-label="This run contains clinical content that has not been attested for clinical reliance. View and reason over it locally; do not rely on it clinically."
+            data-testid="rv-clinical-attestation-banner"
+          >
+            <span aria-hidden="true">⚕</span>
+            <span>Unattested clinical content — view only, not for clinical reliance</span>
           </div>
         )}
       </aside>

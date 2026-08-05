@@ -171,6 +171,63 @@ function _setRateLimitState(state: RateLimitState | null): void {
   for (const fn of _rateLimitListeners) fn(state);
 }
 
+// ── Clinical attestation state (clearance-gates-v1 M4) ────────────────────────
+
+/**
+ * True when the most recently fetched run detail (fetchRunDetail()) carries
+ * at least one claim with `clinical_attestation_status === "unattested"`.
+ * Derived client-side, purely from data already present on `RFRunExport` --
+ * no separate network call, no separate endpoint.
+ *
+ * Mirrors the `RateLimitState` reactive-singleton pattern above so AppShell
+ * (which wraps every route's `<Outlet>` and has no direct access to a given
+ * screen's fetched run data) can render its non-dismissible clinical-content
+ * banner without prop-drilling run data through the entire route tree.
+ */
+let _clinicalContentPresent = false;
+
+/** Reactive subscribers — notified whenever _clinicalContentPresent changes. */
+const _clinicalContentListeners = new Set<(present: boolean) => void>();
+
+/** Returns whether the last fetched run detail carried unattested clinical content. */
+export function getClinicalContentPresent(): boolean {
+  return _clinicalContentPresent;
+}
+
+/**
+ * Subscribe to clinical-content-presence changes. Returns an unsubscribe
+ * function. AppShell uses this to render/hide its banner reactively as the
+ * user navigates between runs.
+ */
+export function subscribeClinicalContentPresent(
+  fn: (present: boolean) => void,
+): () => void {
+  _clinicalContentListeners.add(fn);
+  return () => {
+    _clinicalContentListeners.delete(fn);
+  };
+}
+
+/** Internal setter — updates _clinicalContentPresent and notifies all subscribers. */
+function _setClinicalContentPresent(present: boolean): void {
+  _clinicalContentPresent = present;
+  for (const fn of _clinicalContentListeners) fn(present);
+}
+
+/**
+ * True when any claim in *run* carries `clinical_attestation_status ===
+ * "unattested"` -- the only value that field can ever hold today (RF has no
+ * counsel/attestation workflow, ADR OQ-RF-6). Pure function, no I/O; never
+ * reads `clearance`/`blocked_scopes` -- this is a client-side read of a
+ * field the backend already derived exclusively from
+ * `claim_clinical_eligibility()` (see export_service.py).
+ */
+function _runHasUnattestedClinicalContent(run: RFRunExport): boolean {
+  return (run.claims ?? []).some(
+    (claim) => claim.clinical_attestation_status === "unattested",
+  );
+}
+
 // ── Base URL (for static asset fetches) ──────────────────────────────────────
 
 const BASE_URL =
@@ -319,6 +376,15 @@ export async function fetchRunList(): Promise<RFRunSummary[]> {
  * Loopback mode: calls GET /api/runs/:runId.
  */
 export async function fetchRunDetail(runId: string): Promise<RFRunExport> {
+  const run = await _fetchRunDetailUnstamped(runId);
+  // clearance-gates-v1 M4: recompute on every fetch (never sticky) so
+  // navigating from a clinical run to a clean one clears the banner --
+  // same "reflects the latest fetch" contract as _setRateLimitState above.
+  _setClinicalContentPresent(_runHasUnattestedClinicalContent(run));
+  return run;
+}
+
+async function _fetchRunDetailUnstamped(runId: string): Promise<RFRunExport> {
   if (LOOPBACK_ENABLED) {
     return loopbackGet<RFRunExport>(`/runs/${encodeURIComponent(runId)}`);
   }

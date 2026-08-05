@@ -27,9 +27,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
+from research_foundry.paths import FoundryPaths
 from research_foundry.services.agent_job_schemas import AgentJob, AgentJobStatus
 from research_foundry.services.agent_job_service import AgentJobService
 from research_foundry.services.agent_providers.base import BaseProvider, register
+from research_foundry.services.prompt_clearance import mediate_prompt_egress
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +109,29 @@ class ClaudeAgentSDKProvider(BaseProvider):
         -------
         str
             The ``job_id`` under which the job was registered in the service.
+
+        Raises
+        ------
+        research_foundry.services.clearance.ClearanceDenied
+            clearance-gates-v1 M5. Any record inside the raw *job* mapping that
+            carries a durable ``clearance`` stamp blocking ``redistribution``
+            (or ``acquisition``) refuses the whole spawn. ``spawn_job`` below
+            hands the job to a child process that drives the third-party SDK, so
+            this is the last in-process point before source text leaves the
+            machine on this path — and ``AgentJob`` has a fixed field list that
+            drops any stamp, so mediating the raw mapping (not the constructed
+            ``AgentJob``) is what design invariant 4 requires.
         """
+        svc_paths = getattr(self._svc, "_paths", None)
+        mediate_prompt_egress(
+            job,
+            target=f"agent_provider:{self.id}",
+            # An injected mock service may carry any object here; only a real
+            # FoundryPaths is usable for registry resolution (None falls back to
+            # FoundryPaths.discover(), which is the pre-existing behaviour of
+            # every other clearance call site).
+            paths=svc_paths if isinstance(svc_paths, FoundryPaths) else None,
+        )
         job_id = str(job.get("agent_job_id") or job.get("job_id") or uuid.uuid4().hex)
         now = _iso_now()
 

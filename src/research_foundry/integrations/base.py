@@ -12,6 +12,30 @@ Every integration client:
 
 No new required dependency is introduced — all HTTP calls use the stdlib
 ``urllib.request`` / ``urllib.error`` so the package installs without httpx.
+
+CLEARANCE BACKSTOP (clearance-gates M2)
+---------------------------------------
+``_post`` / ``_patch`` route their payload through
+``services.clearance.assert_payload_mediated`` before a socket is opened. A
+payload carrying a clearance-stamped record with blocked scopes is refused
+unless it arrives wrapped in a ``MediatedPayload`` proving
+``mediate_egress()`` already ran on the raw records.
+
+This is a BACKSTOP, not the control. Two limits are deliberate and must not be
+mistaken for coverage:
+
+1. It inspects a POST-PROJECTION payload. DEF-5 records that run-export and the
+   catalog project records through hand-listed key allowlists which silently
+   drop unknown fields; a projection that strips ``clearance`` leaves nothing
+   here to find. The control is ``mediate_egress()`` on raw records at each
+   payload constructor.
+2. It only covers clients that actually reach these helpers.
+   ``integrations/notebooklm.py`` overrides all three as no-op stubs and does
+   its real work through a ``subprocess`` call to the ``notebooklm`` CLI, so it
+   is gated at its own call site instead — see that module's overrides.
+
+A bare dict with no taint marker passes unchanged, which is what keeps every
+pre-existing call site working.
 """
 
 from __future__ import annotations
@@ -20,6 +44,8 @@ import json
 import urllib.error
 import urllib.request
 from typing import Any
+
+from ..services.clearance import MediatedPayload, assert_payload_mediated
 
 
 class IntegrationClient:
@@ -72,13 +98,21 @@ class IntegrationClient:
     def _post(
         self,
         path: str,
-        payload: dict[str, Any],
+        payload: dict[str, Any] | MediatedPayload,
         *,
         timeout: float = 10.0,
         headers: dict[str, str] | None = None,
     ) -> dict[str, Any] | None:
-        """POST JSON ``payload`` to ``{base_url}{path}``, return parsed JSON or None."""
+        """POST JSON ``payload`` to ``{base_url}{path}``, return parsed JSON or None.
 
+        Refuses (raises ``ClearanceDenied``) when *payload* carries a
+        clearance-stamped record with blocked scopes and no proof of mediation.
+        That refusal is deliberately NOT swallowed by the fail-soft ``except``
+        below: a governance decision must surface, whereas a network error
+        degrades. See the module docstring for why this is a backstop only.
+        """
+
+        payload = assert_payload_mediated(payload, target=self.base_url + path)
         url = self.base_url + path
         try:
             body = json.dumps(payload).encode()
@@ -93,13 +127,17 @@ class IntegrationClient:
     def _patch(
         self,
         path: str,
-        payload: dict[str, Any],
+        payload: dict[str, Any] | MediatedPayload,
         *,
         timeout: float = 10.0,
         headers: dict[str, str] | None = None,
     ) -> dict[str, Any] | None:
-        """PATCH JSON ``payload`` to ``{base_url}{path}``, return parsed JSON or None."""
+        """PATCH JSON ``payload`` to ``{base_url}{path}``, return parsed JSON or None.
 
+        Same clearance backstop as :meth:`_post`.
+        """
+
+        payload = assert_payload_mediated(payload, target=self.base_url + path)
         url = self.base_url + path
         try:
             body = json.dumps(payload).encode()

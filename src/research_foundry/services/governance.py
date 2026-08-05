@@ -81,6 +81,204 @@ def _is_disallowed_rights_value(value: Any) -> bool:
     return value in _RIGHTS_DISALLOWED_EXACT_VALUES
 
 
+# --- Clearance write ceiling (rule 9) ---------------------------------------
+#
+# Clearance (services/clearance.py, config/clearance_gates.yaml,
+# schemas/clearance_taint.schema.yaml) records which USE SCOPES are blocked for
+# a record. Two kinds of write must never come from an agent-writable path:
+# closing a gate, and releasing a record.
+#
+# The vocabulary here is deliberately DISTINCT from the rights family above.
+# `CLEARED_*`/`counsel_approved`/`attested` are human-only per
+# docs/dev/architecture/adr-rights-entity-model.md Invariant 1, and reusing
+# those literals for clearance would make this mechanism a laundering path into
+# rights state — an agent legitimately stamping a clearance value would be
+# writing a token the rights guards are built to refuse.
+#
+# THE PREDICATE IS MONOTONE, NOT STATEFUL. guard_check is deterministic and
+# stateless: it sees proposed (field, value) pairs and never reads the record's
+# prior on-disk value, so it cannot ask "did this write remove a scope?".
+# Instead the direction of travel is constrained: an agent may ADD a blocked
+# scope (tightening) but may never assert the empty set (releasing). That makes
+# every agent-reachable clearance write monotonically restrictive, which is a
+# stronger and far cheaper guarantee than diffing against prior state — and it
+# holds even for a caller that never read the prior value at all.
+#
+# THE THIRD WRITE: NARROWING `applies_to_kinds` (the global release lever).
+# `clearance.py::governs_kind()` is `kind in applies_to_kinds()`, and when it is
+# False `mediate_egress` returns a clean clearance token UNCONDITIONALLY. So
+# removing a kind from `config/clearance_gates.yaml`'s top-level
+# `applies_to_kinds` releases EVERY stamped record of that kind at EVERY egress
+# chokepoint, globally, in one line — a strictly larger blast radius than
+# releasing one record or closing one gate. That is why it belongs on this rule
+# and not in a parallel mechanism.
+#
+# Narrowing is a REMOVAL, and a stateless predicate cannot see a removal by
+# diffing — but it does not have to. The direction is instead pinned against a
+# FLOOR that lives in CODE (`_CLEARANCE_REQUIRED_KINDS` below), not on disk: a
+# proposed value is refused unless it still contains every required kind.
+# Deriving the floor from the registry file would be circular, because the file
+# is exactly what the release lever edits. With the floor in code:
+#   * dropping a required kind (`[]`, or a narrowed list) -> refused;
+#   * adding a kind (superset of the floor)               -> permitted, monotone;
+#   * an operator narrowing governance for real            -> must edit CODE (and
+#     `test_clearance_required_kinds_covers_the_shipped_registry` fails until they
+#     do), i.e. it becomes a reviewed change instead of a one-line config edit.
+#
+# WHAT THIS RULE STILL MISSES, deliberately, in the same spirit as rule 8's
+# note. Three gaps, stated plainly rather than papered over:
+#   1. A write to some unlisted sibling field name carrying a release-shaped
+#      value sails through this tuple. For `blocked_scopes`/`posture_at_stamp`
+#      the PRIMARY control is structural — schemas/clearance_taint.schema.yaml is
+#      `additionalProperties: false` with an enum-constrained `blocked_scopes`,
+#      and mediate_egress treats an absent or malformed block as blocked rather
+#      than clean. This rule is the governance-layer backstop over those.
+#   2. For `applies_to_kinds` there is NO schema backstop — the registry file is
+#      validated only by `GateRegistry._load` (list-of-non-empty-strings), which
+#      accepts a narrowed list happily. This rule is therefore the ONLY control
+#      on that field, which is why its predicate fails CLOSED on an
+#      uninterpretable value instead of deferring like the other three.
+#   3. `applies_to_kinds` remains an OPERATOR-editable release lever by design
+#      (config is operator territory, and clearance has no counsel workflow —
+#      ADR OQ-RF-6). Guard rule 9 constrains agent-writable CODE paths, not a
+#      human's text editor. Nothing here makes a human edit to
+#      config/clearance_gates.yaml impossible; it makes an agent-authored one a
+#      governance violation.
+_CLEARANCE_GOVERNED_FIELDS: tuple[str, ...] = (
+    "clearance.blocked_scopes",
+    "clearance.posture_at_stamp",
+    "clearance_gate.state",
+    # The registry-level global release lever. Three spellings are listed
+    # because, unlike the record-level fields above, this one has no schema to
+    # normalize it and callers serialize `proposed_field_writes` keys
+    # inconsistently (see _CLEARANCE_RELEASE_VALUES' own note on that). A
+    # spelling this tuple misses is a silent no-op on the only control the
+    # field has, so the alias set is cheap insurance, not redundancy.
+    "clearance_registry.applies_to_kinds",
+    "clearance.applies_to_kinds",
+    "applies_to_kinds",
+)
+
+#: Field names in :data:`_CLEARANCE_GOVERNED_FIELDS` that address the registry's
+#: top-level ``applies_to_kinds`` list. Scoped separately because this field's
+#: predicate is a set-containment check against a floor, not a value-literal
+#: match, and because it evaluates non-string values (a Python list is the
+#: field's natural shape) where the other three deliberately defer.
+_CLEARANCE_APPLIES_TO_KINDS_FIELDS: tuple[str, ...] = (
+    "clearance_registry.applies_to_kinds",
+    "clearance.applies_to_kinds",
+    "applies_to_kinds",
+)
+
+#: The record kinds clearance must ALWAYS govern — the floor that makes
+#: "removal" expressible without prior state. Must stay a superset-or-equal of
+#: whatever `config/clearance_gates.yaml` ships (enforced by
+#: tests/test_clearance_registry.py::test_clearance_required_kinds_covers_the_shipped_registry).
+#: Adding a kind to the registry without adding it here leaves REMOVAL of that
+#: new kind unguarded — the drift test exists precisely so that cannot happen
+#: quietly.
+_CLEARANCE_REQUIRED_KINDS: frozenset[str] = frozenset({"source_attribution"})
+
+#: Values asserting a record carries no blocked scopes. An agent proposing any
+#: of these is asserting a release, which only a human editing the record may
+#: do. Includes the several ways an empty list renders once stringified into a
+#: ``proposed_field_writes`` pair, since callers serialize inconsistently.
+_CLEARANCE_RELEASE_VALUES = {"", "[]", "()", "none", "null", "empty", "unrestricted"}
+
+#: The only gate state an agent may not propose. Opening a gate is always safe
+#: (it restricts); closing one is the human determination.
+_CLEARANCE_DISALLOWED_GATE_STATE = "closed"
+
+
+def _parse_proposed_kind_set(value: Any) -> frozenset[str] | None:
+    """Best-effort parse of a proposed ``applies_to_kinds`` value into a kind set.
+
+    Returns ``None`` — meaning "shape not interpretable" — rather than guessing.
+    :func:`_is_disallowed_clearance_value` treats ``None`` as a REFUSAL for this
+    field, because an unparseable proposal on the one clearance field with no
+    schema backstop must not be waved through.
+
+    Accepts the shapes a ``proposed_field_writes`` pair actually arrives in: a
+    real sequence of strings (the field's natural Python shape), or a string
+    rendering of one (``"[a, b]"``, ``"a, b"``, ``"- a\\n- b"``, ``"[]"``).
+    """
+
+    if value is None:
+        # An explicit null is "no kinds governed" — the maximal release. It
+        # parses cleanly to the empty set and is then refused by the floor
+        # check, rather than being called uninterpretable.
+        return frozenset()
+    if isinstance(value, (list, tuple, set, frozenset)):
+        kinds: list[str] = []
+        for entry in value:
+            if not isinstance(entry, str):
+                return None
+            cleaned = entry.strip().strip("\"'").strip()
+            if cleaned:
+                kinds.append(cleaned)
+        return frozenset(kinds)
+    if isinstance(value, str):
+        text = value.strip()
+        if len(text) >= 2 and text[0] in "[(" and text[-1] in "])":
+            text = text[1:-1]
+        kinds = []
+        for part in text.replace("\n", ",").split(","):
+            cleaned = part.strip()
+            if cleaned.startswith("-"):
+                cleaned = cleaned[1:]
+            cleaned = cleaned.strip().strip("\"'").strip()
+            if cleaned:
+                kinds.append(cleaned)
+        return frozenset(kinds)
+    # A bool/int/dict proposal for a list-valued field is not something to
+    # interpret charitably.
+    return None
+
+
+def _is_disallowed_clearance_value(field_name: str, value: Any) -> bool:
+    """True when *value* on *field_name* would widen permitted use.
+
+    ``clearance_gate.state``
+        ``closed`` is refused — closing a gate is an operator edit of
+        ``config/clearance_gates.yaml``, never a code path.
+    ``clearance.blocked_scopes``
+        A release-shaped value (empty set) is refused; adding a scope passes.
+    ``clearance.posture_at_stamp``
+        ``none`` is refused when proposed as an overwrite, because restamping a
+        dev/test-acquired record as though no posture applied is exactly the
+        retroactive-release move the durable stamp exists to prevent.
+    ``applies_to_kinds`` (any spelling in
+    :data:`_CLEARANCE_APPLIES_TO_KINDS_FIELDS`)
+        Refused unless the proposed set still contains every kind in
+        :data:`_CLEARANCE_REQUIRED_KINDS`. Narrowing the governed-kind set is
+        the global release lever (``governs_kind`` False ⇒ ``mediate_egress``
+        hands back a clean token), so removal is refused while ADDING a kind —
+        which widens what is governed — passes. Checked before the
+        ``isinstance(value, str)`` guard below on purpose: this field's natural
+        value is a list, and deferring on a list would be the whole hole.
+    """
+
+    if field_name in _CLEARANCE_APPLIES_TO_KINDS_FIELDS:
+        proposed = _parse_proposed_kind_set(value)
+        if proposed is None:
+            return True
+        return not _CLEARANCE_REQUIRED_KINDS.issubset(proposed)
+
+    if not isinstance(value, str):
+        # A non-string proposed value cannot be evaluated here; the schema's
+        # enum + additionalProperties:false is the control for shape. Refusing
+        # would block legitimate typed callers, so defer rather than guess.
+        return False
+    normalized = value.strip().strip("\"'").lower()
+    if field_name == "clearance_gate.state":
+        return normalized == _CLEARANCE_DISALLOWED_GATE_STATE
+    if field_name == "clearance.blocked_scopes":
+        return normalized in _CLEARANCE_RELEASE_VALUES
+    if field_name == "clearance.posture_at_stamp":
+        return normalized == "none"
+    return False
+
+
 # --- Release-gate: judgment_basis: unassessed (decisions-block OQ-6) -------
 #
 # ``judgment_basis`` (P1) lives on ``source_assertion.extensions.evidence_taxonomy``
@@ -581,6 +779,49 @@ def guard_check(
                         "defence-in-depth only; the primary control is the "
                         "source_attribution schema's structural asserter_type / "
                         "retrieval_evidence_ref requirement (SMP-3.2B).",
+                    ),
+                    detail=f"field={field_name!r}, value={value!r}",
+                )
+            )
+
+    # 9. no_agent_cleared_clearance_taint (block) — clearance write ceiling.
+    # Mirrors rule 7's shape but with its OWN predicate and its OWN vocabulary:
+    # clearance never reuses CLEARED_*/counsel_approved/attested (ADR Invariant
+    # 1 reserves those for humans, and borrowing them would make a legitimate
+    # agent stamp look like a rights-clearance forgery).
+    #
+    # Monotone by construction, on all three axes: adding a blocked scope
+    # passes and asserting the empty set is blocked; opening a gate passes and
+    # closing one is blocked; ADDING a governed record kind passes and dropping
+    # one below _CLEARANCE_REQUIRED_KINDS is blocked. So no agent-reachable path
+    # can widen a record's permitted use, close a gate, or take a whole record
+    # kind out of clearance's scope (the global release lever — see the module
+    # comment above _CLEARANCE_GOVERNED_FIELDS for why that one is the largest
+    # blast radius of the three and why its floor lives in code).
+    for field_name, value in ctx.proposed_field_writes or ():
+        if field_name in _CLEARANCE_GOVERNED_FIELDS and _is_disallowed_clearance_value(
+            field_name, value
+        ):
+            violations.append(
+                Violation(
+                    rule_id="no_agent_cleared_clearance_taint",
+                    severity=_BLOCK,
+                    message=_rule_message(
+                        cfg,
+                        "no_agent_cleared_clearance_taint",
+                        "Agent-writable code paths cannot release a clearance taint, "
+                        "close a clearance gate, or narrow the governed record kinds — "
+                        "all three are human determinations. An agent may ADD a blocked "
+                        "scope but never assert the empty set; may OPEN a gate but not "
+                        "close one; may ADD a kind to applies_to_kinds but never drop a "
+                        "required one, because a kind outside applies_to_kinds gets a "
+                        "clean token from mediate_egress unconditionally. Closing a gate "
+                        "or narrowing applies_to_kinds is an operator edit of "
+                        "config/clearance_gates.yaml. For the taint fields this rule is "
+                        "defence-in-depth (the primary controls are "
+                        "clearance_taint.schema.yaml's structural shape and mediate_egress "
+                        "treating an absent stamp as blocked); for applies_to_kinds there "
+                        "is no schema backstop, so this rule is the only control.",
                     ),
                     detail=f"field={field_name!r}, value={value!r}",
                 )

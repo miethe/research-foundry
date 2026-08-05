@@ -489,7 +489,7 @@
           "catalog"
         ],
         "summary": "Search the catalog",
-        "description": "Search catalog items. Over-threshold items are excluded (fail-closed).\n\nEmpty corpus / no matches \u2192 ``{\"items\": [], \"total\": 0, ...}`` \u2014 never 404.\n\n``term``/``role`` (claim-term-indexing v1, TASK-2.6) are passed straight\nthrough to :func:`catalog_service.search` with zero additional\ncomputation here (FR-13) \u2014 the service layer owns both the OR-within-\nrepeats/AND-across-flags semantics (OQ-C) and the sensitivity-rank gate\non ``catalog_terms`` (D3).",
+        "description": "Search catalog items. Over-threshold items are excluded (fail-closed).\n\nEmpty corpus / no matches \u2192 ``{\"items\": [], \"total\": 0, ...}`` \u2014 never 404.\n\n``term``/``role`` (claim-term-indexing v1, TASK-2.6) are passed straight\nthrough to :func:`catalog_service.search` with zero additional\ncomputation here (FR-13) \u2014 the service layer owns both the OR-within-\nrepeats/AND-across-flags semantics (OQ-C) and the sensitivity-rank gate\non ``catalog_terms`` (D3).\n\nRaises:\n    HTTPException(403): a clearance-stamped record inside a matched row's\n        raw ``payload_json`` blocks the ``redistribution``/``acquisition``\n        scope (``clearance.ClearanceDenied`` from\n        :func:`catalog_service.search`, clearance-gates-v1 M5).",
         "operationId": "get_catalog_search_api_catalog_search_get",
         "parameters": [
           {
@@ -692,7 +692,7 @@
           "catalog"
         ],
         "summary": "Get a catalog item's full detail",
-        "description": "Return the summary fields + payload + links for *catalog_item_id*.\n\n404 for both an unknown id and an id excluded by the resolved sensitivity\nthreshold \u2014 the two cases are indistinguishable to the caller by design\n(fail-closed: existence of hidden sensitive items is not leaked).",
+        "description": "Return the summary fields + payload + links for *catalog_item_id*.\n\n404 for both an unknown id and an id excluded by the resolved sensitivity\nthreshold \u2014 the two cases are indistinguishable to the caller by design\n(fail-closed: existence of hidden sensitive items is not leaked).\n\n403 \u2014 deliberately distinct from those 404s \u2014 when a clearance-stamped\nrecord inside this item's raw payload blocks the ``redistribution``/\n``acquisition`` scope (``clearance.ClearanceDenied`` from\n:func:`catalog_service.get_item`, clearance-gates-v1 M5); see\n:func:`_clearance_refusal`.",
         "operationId": "get_catalog_item_api_catalog_items__catalog_item_id__get",
         "parameters": [
           {
@@ -737,7 +737,7 @@
           "catalog"
         ],
         "summary": "(Re)import a single run",
-        "description": "(Re)import one run. Delete-then-insert \u2014 idempotent. 404 on unknown run.",
+        "description": "(Re)import one run. Delete-then-insert \u2014 idempotent. 404 on unknown run.\n\n403 when a clearance-stamped record cited by the run blocks the\n``redistribution``/``acquisition`` scope: ``import_run`` derives its rows via\n``_build_catalog_rows`` -> ``export_service.export_run``, which leg B made\nmediating, and ``ClearanceDenied`` is not a ``svc.CatalogError`` so the\nexisting handler below never saw it (clearance-gates-v1 M5).",
         "operationId": "post_catalog_import_run_api_catalog_import_run__run_id__post",
         "parameters": [
           {
@@ -782,7 +782,7 @@
           "catalog"
         ],
         "summary": "(Re)import every discovered run",
-        "description": "(Re)import every discovered run. Best-effort \u2014 a malformed run is skipped.\n\n``errors`` carries ``import_all()``'s per-run failure list through to the\ncaller (``[]`` when every run imported cleanly) instead of silently\ndropping it.",
+        "description": "(Re)import every discovered run. Best-effort \u2014 a malformed run is skipped.\n\n``errors`` carries ``import_all()``'s per-run failure list through to the\ncaller (``[]`` when every run imported cleanly) instead of silently\ndropping it.\n\n403 on a clearance refusal (clearance-gates-v1 M5). NOTE the asymmetry:\n``import_all`` catches only ``svc.CatalogError`` per-run, so a\n``ClearanceDenied`` from one run aborts the whole sweep rather than landing\nin ``errors`` \u2014 reported as a leg-B-file observation, not changed here\n(``catalog_service.py`` is another leg's file).",
         "operationId": "post_catalog_import_all_api_catalog_import_post",
         "responses": {
           "200": {

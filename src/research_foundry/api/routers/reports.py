@@ -59,6 +59,7 @@ from ...paths import FoundryPaths
 from ...services import audit_service
 from ...services import builder_service as bsvc
 from ...services.audit_service import AuditEvent
+from ...services.clearance import ClearanceDenied
 from ...services.export_service import SENSITIVITY_ORDER, ExportError, resolve_threshold
 from ...services.verification import verify_draft
 from ..auth.rbac import require_role
@@ -307,6 +308,18 @@ def create_draft(
                 identity=identity,
             )
         )
+    except ClearanceDenied as exc:
+        # clearance-gates-v1 M5: builder_service.create_draft_from_run's
+        # export_run() read, and create_draft_from_collection's
+        # catalog_service.get_item() reads, now mediate every raw record before
+        # projecting it. ClearanceDenied is an RFError — neither NotFoundError
+        # nor bsvc.BuilderError — so without this handler it escaped both
+        # handlers below and surfaced as a bare 500. 403 (this codebase's
+        # policy-refusal convention: runs.py, assertions.py, admin.py) and
+        # deliberately NOT the 404 below: a clearance refusal is a decision, not
+        # an existence question, and folding it into the no-existence-leak 404
+        # would hide the governance event and make a blocked run look missing.
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except NotFoundError as exc:
         # F3 (DI-1 delta re-audit): create_draft_from_run's underlying
         # export_run() read is now identity-scoped (DF-004) and raises

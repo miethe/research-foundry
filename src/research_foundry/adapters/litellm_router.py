@@ -21,6 +21,7 @@ from typing import Any
 
 from ..config import FoundryConfig
 from ..paths import FoundryPaths
+from ..services import prompt_clearance
 from ..services.governance import GuardContext, guard_check
 from .base import AdapterResult, BaseAdapter, register
 
@@ -135,6 +136,7 @@ class LiteLLMRouterAdapter(BaseAdapter):
         sensitivity: str | None = None,
         profile: str = "personal",
         run_id: str | None = None,
+        source_records: Any = None,
     ) -> dict[str, Any]:
         """Run a raw LLM completion for ``model_profile`` — **DARK by default**.
 
@@ -243,7 +245,41 @@ class LiteLLMRouterAdapter(BaseAdapter):
         merits). A blocked guard returns ``degraded=True,
         reason="governance_blocked"`` with the fired rule ids — never a live
         call, regardless of key/availability state.
+
+        Clearance gate — per-record, upstream of everything above (clearance-gates-v1 M5)
+        ---------------------------------------------------------------------------------
+        ``litellm.completion(...)`` below is the only live third-party-model call
+        in this package, so this method is the last in-process point before
+        source text leaves the machine. Anything reachable inside ``messages`` or
+        ``source_records`` that carries a durable ``clearance`` stamp
+        (``schemas/clearance_taint.schema.yaml``) is mediated by
+        :func:`~research_foundry.services.prompt_clearance.mediate_prompt_egress`
+        against the ``redistribution`` scope BEFORE ``call_kwargs`` is built —
+        raising :class:`~research_foundry.services.clearance.ClearanceDenied`,
+        never returning a degraded dict, so a policy refusal can never be
+        mistaken for "no provider was reachable". This is a *different* control
+        from the ``guard_check`` above, which reads run-level ``sensitivity`` +
+        routed provider and structurally cannot say "this record is blocked,
+        allow the others".
+
+        ``prompt`` is a ``str`` and is therefore opaque to a per-record check: a
+        caller composing source text into a prompt MUST pass the raw records it
+        composed from as ``source_records`` (a mapping, or any nesting of
+        mappings/sequences of them). Records are read raw — never a projection —
+        per design invariant 4.
         """
+
+        # --- Clearance gate (clearance-gates-v1 M5) — strictly upstream of the
+        # governance gate, of route(), and of the wire. Placed OUTSIDE the
+        # live-path try/except below deliberately: that handler degrades on any
+        # Exception, which would swallow a ClearanceDenied into
+        # `live_completion_failed` and turn this control into a no-op.
+        prompt_clearance.mediate_prompt_egress(
+            messages,
+            source_records,
+            target=f"llm_completion:{self.id}",
+            paths=paths,
+        )
 
         env = env if env is not None else dict(os.environ)
         decision = self.route(model_profile, paths=paths, env=env)

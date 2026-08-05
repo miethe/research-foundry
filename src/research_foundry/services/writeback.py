@@ -32,8 +32,9 @@ from ..paths import FoundryPaths
 from ..registry import REPORT_INDEX, SKILLBOM_INDEX, Registry
 from ..schemas import default_registry, validate
 from ..yamlio import append_jsonl, dump_yaml, load_yaml
-from . import audit_service, governance, telemetry
+from . import audit_service, clearance, governance, telemetry
 from .audit_service import AuditEvent
+from .clearance import MediationClearance
 from .governance import GuardResult
 
 _REGISTRY = default_registry()
@@ -188,6 +189,48 @@ def build_bundle(run_id: str, *, verify: bool = True, paths: FoundryPaths | None
     status and ``governance.approved_for_writeback``.
     """
 
+    # DELIBERATELY UNMEDIATED — no clearance.mediate_run_egress call here, and
+    # that is a judgement, not an oversight. The clearance-gates plan's
+    # Verification section reads "confirm `rf bundle` and all 6 writeback
+    # targets refuse"; the 6 targets do (see writeback() below, and
+    # tests/test_writeback_clearance_mediation.py). This function does not, for
+    # two independent reasons:
+    #
+    # 1. IT EMITS NO SOURCE-DERIVED CONTENT. The bundle is a POINTER MANIFEST.
+    #    Exhaustively, every value it writes is: generated ids (`id`,
+    #    `intent_id`, `run_id`, `lineage.*`), a timestamp, a status literal
+    #    ("verified"/"draft"), integer counts (`counts.*` from `_count_files` /
+    #    `_claim_status_counts`), a governance classification label
+    #    (`governance.sensitivity`, from the controlled public/personal/
+    #    work_sensitive/client_sensitive vocabulary), booleans/nulls, and
+    #    HARDCODED relative paths (`artifacts.*`; `report` is one of two
+    #    literals). No quote, excerpt, title, author, DOI, abstract, or claim
+    #    statement reaches it. Note `_source_card_titles` DOES read source
+    #    titles — it is called by `_render_meatywiki`, never from here, and that
+    #    path IS mediated. Verified empirically, not just by reading: a marker
+    #    string injected into a run's source-card title/author/DOI/abstract/
+    #    quote and into its claim statements is absent from the emitted
+    #    evidence_bundle.yaml while present in the cards it points at. (The ids
+    #    embed a slug of the OPERATOR's own intent text — never a source's.)
+    #
+    # 2. IT IS NOT AN EGRESS. `dump_yaml(bundle, rp.evidence_bundle)` writes
+    #    inside the run directory on the local machine. Mediation governs
+    #    content LEAVING the machine, and the chokepoints that do leave —
+    #    writeback()'s 6 targets and export_service — each mediate on their own
+    #    read of the referenced artifacts.
+    #
+    # Scope check against the gate itself: DEF-1 blocks `redistribution` and is
+    # summarised in config/clearance_gates.yaml as "Per-provider license terms
+    # verified for BUNDLE REDISTRIBUTION" — redistributing the bundle's
+    # CONTENTS, i.e. the artifacts it points at, which is what the mediated
+    # chokepoints above actually do. Building the manifest is not that act.
+    #
+    # WHAT WOULD INVALIDATE THIS: adding any source-derived field to the
+    # `bundle` dict below — a title map, an excerpt, a source list with
+    # metadata, an inlined claim statement. If that happens, this function
+    # becomes a mediation site and needs a `mediate_run_egress` call following
+    # writeback()'s convention plus a behaviour-delta test asserting the tainted
+    # string is absent from the output.
     paths = paths or FoundryPaths.discover()
     rp = paths.run_paths(run_id)
     if not rp.run.exists():
@@ -984,6 +1027,75 @@ def _notebooklm_update_payload(
     return candidate
 
 
+def _stamped_attribution_records(rp) -> list[dict[str, Any]]:
+    """Collect clearance-stamped attribution records carried by a run's source cards.
+
+    Reads the RAW source-card frontmatter off disk — deliberately not a projected
+    payload. ``services/clearance.py``'s contract is that mediation must see the
+    whole record, because checking after projection trivially passes anything the
+    projection stripped, and DEF-5 records that this repo's outward projections
+    are hand-listed key allowlists.
+
+    Returns only records that actually carry a ``clearance`` block. A card with
+    no attribution, or attribution with no stamp, contributes nothing: until M3
+    lands a stamping writer nothing in the corpus is stamped, so this returns
+    empty and mediation is a no-op. That is intended for M2 — the wiring is
+    proven against fixtures before any real taint exists (avoiding the ordering
+    hazard where enforcement lands on records that can never comply).
+    """
+
+    records: list[dict[str, Any]] = []
+    sources_dir = getattr(rp, "sources", None)
+    if not sources_dir or not sources_dir.exists():
+        return records
+    for card_path in sorted(sources_dir.glob("*.md")):
+        try:
+            meta, _ = load_md(card_path)
+        except Exception:  # noqa: BLE001 — an unreadable card is not a clearance finding
+            continue
+        if not isinstance(meta, dict):
+            continue
+        # The card's own stamp, if any.
+        if isinstance(meta.get(clearance.TAINT_KEY), dict):
+            records.append(meta)
+        # Stamps on the non-authoritative attribution mirror.
+        mirror = meta.get("attribution_summary")
+        if isinstance(mirror, dict) and isinstance(mirror.get(clearance.TAINT_KEY), dict):
+            records.append(mirror)
+        elif isinstance(mirror, list):
+            records.extend(
+                entry
+                for entry in mirror
+                if isinstance(entry, dict) and isinstance(entry.get(clearance.TAINT_KEY), dict)
+            )
+    return records
+
+
+def mediate_run_egress(
+    rp,
+    *,
+    target: str,
+    target_scope: str = "redistribution",
+    paths: FoundryPaths | None = None,
+) -> MediationClearance:
+    """Mediate everything a run is about to ship to *target*; return the proof token.
+
+    The single place writeback obtains a :class:`MediationClearance`. Raises
+    ``clearance.ClearanceDenied`` when any stamped record blocks *target_scope*,
+    which deliberately propagates rather than degrading: every other failure in
+    the writeback path is best-effort and swallowed, but a clearance refusal is a
+    decision, and swallowing it would turn the control into a no-op.
+    """
+
+    return clearance.mediate_egress(
+        _stamped_attribution_records(rp),
+        kind="source_attribution",
+        target_scope=target_scope,
+        target=target,
+        paths=paths,
+    )
+
+
 def _render_notebooklm_update(
     rp,
     paths: FoundryPaths,
@@ -991,6 +1103,7 @@ def _render_notebooklm_update(
     bundle_ident: str,
     ledger: dict[str, Any],
     requires_review: bool,
+    mediation: MediationClearance,
     profile: str = "personal",
 ) -> Path:
     """Write writebacks/notebooklm_update.yaml (schema-valid candidate).
@@ -1009,9 +1122,27 @@ def _render_notebooklm_update(
     correlation resolution (which legitimately needs the real client for its
     create-on-first-push behavior) stays here, UNCHANGED from before the
     split.
+
+    CLEARANCE (clearance-gates M2). ``mediation`` is REQUIRED, and that is this
+    path's only real gate. This function performs the richest content egress in
+    the codebase — it pushes the full report file AND every source-card markdown
+    to Google's NotebookLM cloud (see the ``add_source`` calls below) — and it
+    reaches that cloud through ``NotebookLMClient._run_cli``, a ``subprocess``
+    call. The clearance backstop in ``IntegrationClient._post``/``_patch`` is
+    therefore structurally unreachable from here: this client overrides all three
+    HTTP helpers as dead ``return None`` stubs. Requiring the token as a
+    parameter makes the function impossible to invoke without mediation having
+    run, which is the strongest available guarantee absent a compile-time hook on
+    ``subprocess``.
     """
 
     from ..integrations import get_notebooklm_client
+
+    if not isinstance(mediation, MediationClearance):  # pragma: no cover - defensive
+        raise clearance.ClearanceDenied(
+            "_render_notebooklm_update requires a MediationClearance from "
+            "clearance.mediate_egress(); refusing to push report + source cards."
+        )
 
     run_meta = _run_meta(rp)
     run_id = rp.run.name
@@ -1740,6 +1871,28 @@ def governed_writeback(
     (offline), this is a pure no-op that writes nothing and returns
     ``skipped_unavailable`` (retryable later) — so the deterministic drive stays
     a clean no-op in the offline suite.
+
+    CLEARANCE (clearance-gates M5): mediated via ``mediate_run_egress`` before
+    either dispatch path is attempted, ADDITIVE to the existing
+    ``governance.redact_payload`` call in ``_build_intake_payload`` — the two
+    answer different questions (secret leakage vs. may-this-leave-at-all) and
+    neither substitutes for the other. Raises ``clearance.ClearanceDenied``
+    for a governed-and-blocked record; this propagates rather than degrading,
+    unlike every other failure on this path.
+
+    NO POLICY/FAULT CONFLATION HERE (audited for the M5 gate fix). Unlike
+    ``approve_and_dispatch``, this function has no per-target ``except
+    Exception`` and writes no audit row on the mediation path: the
+    ``mediate_run_egress`` call below sits BEFORE the lock's ``try``/
+    ``finally``, so a refusal propagates as a bare ``ClearanceDenied``
+    carrying ``ExitCode.GOVERNANCE``, distinguishable from every one of this
+    function's fault outcomes — each of which is a returned
+    ``GovernedWritebackResult`` status (``skipped_unavailable`` etc.), never an
+    exception. Nothing needs narrowing here. NOTE the one remaining
+    conflation is in the CALLER, not here: ``services/swarm_drive.py:688``
+    catches this with a broad ``except Exception`` and records
+    ``"writeback skipped: <msg>"``, indistinguishable from an offline flake —
+    reported to the coordinator, out of this leg's file ownership.
     """
 
     paths = paths or FoundryPaths.discover()
@@ -1780,6 +1933,19 @@ def governed_writeback(
             request_id=receipt.get("request_id"),
             requires_review=bool(receipt.get("requires_review")),
         )
+
+    # CLEARANCE (clearance-gates M5). Additive to the ``governance.
+    # redact_payload`` call inside ``_build_intake_payload`` below — redaction
+    # answers "does this payload leak a secret", clearance answers "may this
+    # run's content leave the machine at all", and the two must not be
+    # conflated into one control. Mediated on the run's RAW stamped source-
+    # attribution records (never the rendered writeback markdown) BEFORE
+    # either dispatch path (auto-emit or the HITL gate) is attempted, so a
+    # governed-and-blocked record refuses the whole writeback rather than
+    # merely having a secret redacted out of an otherwise-shipped payload.
+    # Raised here, before the idempotency-short-circuit's lock is acquired,
+    # so a denial never leaves a lock or a non-terminal receipt behind.
+    mediate_run_egress(rp, target="meatywiki", paths=paths)
 
     auto = sensitivity in _AUTO_WRITEBACK_SENSITIVITIES and verified
 
@@ -2279,6 +2445,13 @@ def writeback(
     - ``intenttree``: patch the originating IntentTree node + upload artifacts.
     - ``arc``: scaffold an ARC council review for evidence bundle quality.
     - ``notebooklm``: push the report + source cards to a NotebookLM notebook.
+
+    CLEARANCE (clearance-gates M5). Every one of the six real target names
+    accepted here — the ``targets`` default is only three of them, but the
+    check-and-dispatch branches below cover all six — is preceded by a
+    ``mediate_run_egress`` call on the run's raw source-attribution records.
+    A denial for any requested target propagates out of this function; it is
+    the one failure on this path that is never swallowed.
     """
 
     paths = paths or FoundryPaths.discover()
@@ -2309,11 +2482,26 @@ def writeback(
         notebooklm_update_path: Path | None = None
         ccdash_event_id_value = ""
 
+        # CLEARANCE (clearance-gates M5). Every one of the six real target
+        # branches below now calls ``mediate_run_egress`` on the run's RAW
+        # stamped source-attribution records BEFORE that target's render/
+        # dispatch primitive runs — not five of six, which was the actual gap
+        # this milestone closes (only the ``notebooklm`` branch mediated
+        # before M5; ``writeback()`` never called ``guard_check`` or any
+        # mediation primitive for the other five). A refusal propagates out
+        # of ``writeback()`` deliberately: every other failure on this path
+        # is best-effort, but silently swallowing a clearance denial would
+        # make the control a no-op. Mediation is evaluated eagerly, before
+        # the render call, so a denial for one target never reaches that
+        # target's renderer — mirroring the pattern the ``notebooklm``
+        # branch already established.
         if "ccdash" in targets:
+            mediate_run_egress(rp, target="ccdash", paths=paths)
             ccdash_event_id_value = str(telemetry.emit_ccdash_event(run_id, paths=paths) or "")
             ccdash_path = rp.ccdash_event
 
         if "meatywiki" in targets:
+            mediate_run_egress(rp, target="meatywiki", paths=paths)
             meatywiki_path = _render_meatywiki(
                 rp,
                 paths,
@@ -2333,6 +2521,7 @@ def writeback(
             )
 
         if "skillmeat" in targets:
+            mediate_run_egress(rp, target="skillmeat", paths=paths)
             skillbom_path = _render_skillbom(
                 rp,
                 paths,
@@ -2343,6 +2532,7 @@ def writeback(
             )
 
         if "intenttree" in targets:
+            mediate_run_egress(rp, target="intenttree", paths=paths)
             _, _, node_id, _ = _intent_ibom_node(rp, paths)
             intenttree_update_path = _render_intenttree_update(
                 rp,
@@ -2354,6 +2544,7 @@ def writeback(
             )
 
         if "arc" in targets:
+            mediate_run_egress(rp, target="arc", paths=paths)
             arc_review_path = _render_arc_council(
                 rp,
                 paths,
@@ -2364,12 +2555,21 @@ def writeback(
             )
 
         if "notebooklm" in targets:
+            # Mediation is obtained here, from the RAW source-card records, and
+            # passed down — never computed inside the renderer, so the renderer
+            # cannot be reached without it. A refusal propagates out of
+            # writeback() deliberately: every other failure on this path is
+            # best-effort, but silently swallowing a clearance denial would make
+            # the control a no-op.
             notebooklm_update_path = _render_notebooklm_update(
                 rp,
                 paths,
                 bundle_ident=bundle_ident,
                 ledger=ledger,
                 requires_review=requires_review,
+                mediation=mediate_run_egress(
+                    rp, target="notebooklm", paths=paths
+                ),
             )
 
         report_meta, report_path = _report_meta(rp)
@@ -2400,6 +2600,33 @@ def writeback(
             notebooklm_update_path=notebooklm_update_path,
             requires_review=requires_review,
         )
+
+    except clearance.ClearanceDenied as exc:
+        # CLEARANCE (clearance-gates M5 gate fix). A clearance refusal is a
+        # DECISION, not a fault, so it is audited ``result="denied"`` — the
+        # third first-class ``AuditEvent.result`` value (``success | failure |
+        # denied``, see audit_service.py) — never the generic ``"failure"``
+        # the RFError branch below records. Without this narrower branch, an
+        # auditor reading the log could not tell an intentional GOVERNANCE
+        # refusal from a schema error or an I/O flake, which is the same
+        # conflation the gate flagged one layer down in
+        # ``approve_and_dispatch``'s ``target_status``.
+        #
+        # The exception itself is re-raised UNCHANGED, so the caller still
+        # receives ``ClearanceDenied`` carrying ``ExitCode.GOVERNANCE`` — a
+        # CLI surfaces it as exit 3 (policy refusal), not exit 1 (crash).
+        # Nothing here downgrades or wraps it.
+        audit_service.record_event(
+            paths,
+            AuditEvent(
+                mutation_type="writeback",
+                action="writeback",
+                target_ref=run_id,
+                result="denied",
+                error_detail=str(exc),
+            ),
+        )
+        raise
 
     except RFError as exc:
         # Audit: record writeback failure — fail-open; never re-raises audit call itself.
@@ -2622,8 +2849,50 @@ class ApproveDispatchResult:
     reviewer_notes: str
     required_fix: str | None
     guard_result: GuardResult  # .passed / .exit_code / .violations — see governance.py
-    target_status: dict[str, str]  # per requested target: "success" | "failed" | "skipped"
+    # Per requested target; one of APPROVE_DISPATCH_TARGET_STATUSES.
+    target_status: dict[str, str]
     overall_status: str  # "success" | "partial" | "blocked"
+
+
+#: The closed per-target status vocabulary :data:`ApproveDispatchResult.
+#: target_status` values are drawn from (clearance-gates M5 gate fix).
+#:
+#: ``"denied"`` is the member M5 added, and the distinction it draws is the
+#: whole point: a ``clearance.ClearanceDenied`` is an intentional GOVERNANCE
+#: refusal (``ExitCode.GOVERNANCE``), whereas ``"failed"`` is a transient or
+#: unexpected fault — a renderer raising, a network error, a malformed
+#: artifact. Flattening the former into the latter tells a caller to retry
+#: something that will (and must) refuse again forever, and understates a
+#: policy block as mere degradation.
+#:
+#: WHY A NEW `target_status` VALUE AND NOT A NEW `overall_status` MEMBER OR A
+#: NEW RESULT FIELD. Both alternatives are structurally unavailable here:
+#:
+#: * ``api/routers/writeback.py``'s ``ApproveDispatchResponse`` pins
+#:   ``overall_status: Literal["success", "partial"]`` while typing
+#:   ``target_status: dict[str, str]`` — an OPEN mapping. So a new
+#:   ``target_status`` VALUE serializes cleanly through the HTTP boundary,
+#:   but a new ``overall_status`` member would fail FastAPI's response-model
+#:   validation and surface as an opaque HTTP 500, converting a legible
+#:   policy refusal into an unreadable server error. Strictly worse than
+#:   reporting ``"partial"``.
+#: * ``ApproveDispatchResult``'s field set is frozen by the ORC-001 design
+#:   lock (see the contract block above), and the router's
+#:   ``_result_to_dict`` hand-lists every field, so a parallel reason field
+#:   would be invisible over HTTP anyway.
+#:
+#: The runs-viewer degrades gracefully on the new value: its
+#: ``targetStatusChipClass`` falls through to an unstyled chip and renders
+#: the raw string, so ``"denied"`` displays as ``denied`` rather than
+#: crashing. ``ExitCode.GOVERNANCE`` itself is preserved out-of-band in the
+#: run trace (see the per-target handler), since the result contract has
+#: nowhere to carry an integer.
+APPROVE_DISPATCH_TARGET_STATUSES: tuple[str, ...] = (
+    "success",  # the target's dispatch primitive ran and returned
+    "denied",   # clearance refused egress for this target (ExitCode.GOVERNANCE)
+    "failed",   # transient/unexpected fault — retryable, unlike "denied"
+    "skipped",  # target not requested, or the pre-dispatch gate never passed
+)
 
 
 # Advisory-only TTL (seconds) recorded in the ``.dispatch.lock`` file written
@@ -2672,7 +2941,19 @@ def approve_and_dispatch(
         Which writeback targets to attempt, restricted to the MVP set
         ``{"ccdash", "meatywiki", "skillmeat"}``. Order of attempt is always
         ccdash -> meatywiki -> skillmeat regardless of tuple order, matching
-        ``writeback()``'s existing target-check order.
+        ``writeback()``'s existing target-check order. NOTE (clearance-gates
+        M5 finding, not fixed here — file-ownership/scope boundary): despite
+        ``WRITEBACK_TARGET_NAMES`` naming six targets and ``writeback()``
+        having a real dispatch branch for each, this function's Step 4 has
+        ONLY these three branches. Passing ``"intenttree"``/``"arc"``/
+        ``"notebooklm"`` here does not (and after this change still does not)
+        dispatch to them — worse, it raises ``KeyError`` at the
+        ``requested_statuses`` comprehension below, since no branch ever
+        populates a ``target_status`` entry for an unrecognized name. That is
+        a pre-existing, clearance-unrelated bug; each of ccdash/meatywiki/
+        skillmeat IS mediated (see the per-branch comment at Step 4), and
+        there is nothing to mediate for the other three because this function
+        cannot reach them.
     paths:
         Optional :class:`FoundryPaths` override, threaded through unchanged
         to every composed primitive (same convention as ``writeback()``,
@@ -2760,6 +3041,21 @@ def approve_and_dispatch(
     # matches writeback()'s existing target-check order. Each call is
     # independently wrapped in its own try/except so one target's exception
     # never prevents the other two from being attempted (PRD FR-7).
+    #
+    # CLEARANCE (clearance-gates M5): each branch below calls
+    # ``mediate_run_egress`` on the run's raw source-attribution records
+    # BEFORE its render primitive runs, inside that target's OWN try — so a
+    # ``ClearanceDenied`` for one target never aborts the other two, which is
+    # ORC-003's isolation guarantee and must hold for a policy refusal
+    # exactly as it holds for a network error.
+    #
+    # M5 GATE FIX: the refusal is caught by a NARROW
+    # ``except clearance.ClearanceDenied`` that lands the DISTINCT
+    # ``"denied"`` status (see :data:`APPROVE_DISPATCH_TARGET_STATUSES`),
+    # ordered BEFORE the broad ``except Exception`` that lands ``"failed"``.
+    # Isolation is preserved; the refusal is no longer flattened into a
+    # generic fault a caller would reasonably retry. Discrimination is by
+    # EXCEPTION TYPE, never by sniffing a message string.
     sensitivity = _sensitivity(rp)
     ledger = _ledger(rp)
     requires_review = sensitivity in _WORK_SENSITIVITIES
@@ -2767,10 +3063,34 @@ def approve_and_dispatch(
     target_status: dict[str, str] = {}
     ccdash_event_id_value = ""
 
+    def _note_denial(target: str, exc: clearance.ClearanceDenied) -> None:
+        """Record the GOVERNANCE classification the result cannot carry.
+
+        ``ApproveDispatchResult`` has nowhere to put an integer exit code (its
+        field set is frozen by ORC-001, and the router hand-lists every field),
+        so ``ExitCode.GOVERNANCE`` is preserved out-of-band in the run trace
+        rather than discarded. Best-effort, exactly like every other ``_trace``
+        call in this module — a trace-write failure must never change the
+        dispatch outcome.
+        """
+
+        _trace(
+            rp,
+            "approve_dispatch_clearance_denied",
+            run_id=run_id,
+            target=target,
+            exit_code=int(getattr(exc, "exit_code", 0) or 0),
+            detail=str(exc),
+        )
+
     if "ccdash" in targets:
         try:
+            mediate_run_egress(rp, target="ccdash", paths=paths)
             ccdash_event_id_value = str(telemetry.emit_ccdash_event(run_id, paths=paths) or "")
             target_status["ccdash"] = "success"
+        except clearance.ClearanceDenied as exc:
+            _note_denial("ccdash", exc)
+            target_status["ccdash"] = "denied"
         except Exception:
             target_status["ccdash"] = "failed"
     else:
@@ -2778,6 +3098,7 @@ def approve_and_dispatch(
 
     if "meatywiki" in targets:
         try:
+            mediate_run_egress(rp, target="meatywiki", paths=paths)
             _render_meatywiki(
                 rp,
                 paths,
@@ -2787,6 +3108,9 @@ def approve_and_dispatch(
                 requires_review=requires_review,
             )
             target_status["meatywiki"] = "success"
+        except clearance.ClearanceDenied as exc:
+            _note_denial("meatywiki", exc)
+            target_status["meatywiki"] = "denied"
         except Exception:
             target_status["meatywiki"] = "failed"
     else:
@@ -2794,6 +3118,7 @@ def approve_and_dispatch(
 
     if "skillmeat" in targets:
         try:
+            mediate_run_egress(rp, target="skillmeat", paths=paths)
             _render_skillbom(
                 rp,
                 paths,
@@ -2803,6 +3128,9 @@ def approve_and_dispatch(
                 ledger=ledger,
             )
             target_status["skillmeat"] = "success"
+        except clearance.ClearanceDenied as exc:
+            _note_denial("skillmeat", exc)
+            target_status["skillmeat"] = "denied"
         except Exception:
             target_status["skillmeat"] = "failed"
     else:
@@ -2827,6 +3155,33 @@ def approve_and_dispatch(
     # multiple return statements in this function.
 
     requested_statuses = [target_status[target] for target in targets]
+    # ``overall_status`` DELIBERATELY does not gain a "denied"/"all_denied"
+    # member, even when every requested target was denied (clearance-gates M5
+    # gate fix — judgement recorded here rather than left implicit):
+    #
+    # * A new member is structurally unavailable. ``api/routers/writeback.py``
+    #   pins ``overall_status: Literal["success", "partial"]`` on its response
+    #   model; anything else fails FastAPI's response-model validation and
+    #   surfaces as an opaque HTTP 500 instead of a legible refusal. The
+    #   router is owned by another leg and is off-limits here.
+    # * Reusing the existing ``"blocked"`` would actively LIE about which gate
+    #   refused. The locked contract reserves ``"blocked"`` for "the
+    #   pre-dispatch combined gate did not pass, so no target was attempted",
+    #   and the router maps it onto ``_governance_rejected_exception``, which
+    #   builds its 422 envelope from ``guard_result.violations``. On this path
+    #   ``guard_check`` PASSED, so that list is empty — the caller would get a
+    #   ``governance_rejected`` 422 carrying zero violations: less legible
+    #   than "partial", not more.
+    # * ``"partial"``'s documented meaning ("the gate passed, dispatch was
+    #   attempted, and it went badly") remains literally true for an
+    #   all-denied invocation, and ``"success"`` would of course be far worse.
+    #
+    # So the policy-vs-fault distinction lives entirely in ``target_status``,
+    # which is the surface that can actually carry it. A caller wanting the
+    # aggregate reads it off there (``"denied" in target_status.values()``).
+    # Widening ``overall_status`` requires a coordinated change to the
+    # router's Literal + the runs-viewer chip mapping; filed for whoever owns
+    # those files rather than half-landed here.
     overall_status = (
         "success" if all(status == "success" for status in requested_statuses) else "partial"
     )
@@ -2916,6 +3271,7 @@ __all__ = [
     "_intenttree_update_payload",
     "_arc_review_payload",
     "_notebooklm_update_payload",
+    "APPROVE_DISPATCH_TARGET_STATUSES",
     "WRITEBACK_PREVIEW_TARGET_STATUSES",
     "WRITEBACK_TARGET_NAMES",
     "WRITEBACK_PREVIEW_SUPPORTED_TARGETS",

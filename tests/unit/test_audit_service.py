@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import pytest
+import yaml
 
 from research_foundry.api.auth.provider import AuthIdentity
 from research_foundry.config import FoundryConfig
@@ -545,7 +548,8 @@ class TestFaultInjection:
 class TestTaxonomyCompleteness:
     # Original 6 (public-multiuser-release Phase 5) + 4 added by Phase 3
     # ACT-303 (public-multiuser-release-activation) for the admin API's
-    # principal/token/role-change mutation surface.
+    # principal/token/role-change mutation surface + 1 added by
+    # clearance-gates M3 for the dev_test_posture activation event.
     EXPECTED_MUTATION_TYPES = {
         "catalog_mutation",
         "report_edit",
@@ -557,9 +561,10 @@ class TestTaxonomyCompleteness:
         "access_token_issued",
         "access_token_revoked",
         "role_change",
+        "dev_test_posture_activated",
     }
 
-    def test_all_ten_mutation_types_present(self) -> None:
+    def test_all_eleven_mutation_types_present(self) -> None:
         assert self.EXPECTED_MUTATION_TYPES == MUTATION_TYPES
 
     def test_mutation_types_is_frozenset(self) -> None:
@@ -570,7 +575,7 @@ class TestTaxonomyCompleteness:
         assert "agent_job_launched" in MUTATION_TYPES
 
     def test_no_extra_mutation_types(self) -> None:
-        assert len(MUTATION_TYPES) == 10
+        assert len(MUTATION_TYPES) == 11
 
 
 # ---------------------------------------------------------------------------
@@ -764,6 +769,101 @@ class TestAuditHealthCheck:
         # Verify single row via get_health_state (healthy and has timestamp).
         state = get_health_state(paths)
         assert state.healthy is True
+
+
+# ---------------------------------------------------------------------------
+# clearance-gates M3 CHANGES_REQUESTED round 2, finding M2 (concurrency):
+# emit_dev_test_posture_activated_once's dedup must hold under REAL
+# concurrent callers, not merely under sequential ones. A check-then-act
+# race (check "already audited?", write, THEN mark audited) lets two
+# threads both pass the check before either finishes record_event() if the
+# whole sequence is not serialized by a lock.
+# ---------------------------------------------------------------------------
+
+
+def _dev_test_posture_config(paths: FoundryPaths) -> FoundryConfig:
+    (paths.root / "foundry.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "foundry": {
+                    "owner": "Test",
+                    "dev_test_posture": {
+                        "live_fetch_enabled": True,
+                        "rationale": "M2 concurrency test",
+                        "declared_at": "2026-08-05",
+                        "declared_by": "nick",
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    return FoundryConfig(paths=paths)
+
+
+class TestDevTestPostureAuditConcurrency:
+    def test_concurrent_calls_on_same_config_emit_exactly_one_row(
+        self, paths: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """8 threads call ``emit_dev_test_posture_activated_once`` for the
+        SAME config at (as close to) the same instant as a ``threading.
+        Barrier`` can arrange. ``record_event`` is wrapped with a small
+        artificial delay so the check-then-act window is wide enough that a
+        missing lock would reliably produce more than one row here, not
+        merely "possibly" -- this is a real regression guard, not a test
+        that happens to pass because a single-threaded write is fast.
+        """
+
+        config = _dev_test_posture_config(paths)
+
+        real_record_event = audit_service.record_event
+
+        def _slow_record_event(*args: Any, **kwargs: Any) -> Any:
+            time.sleep(0.05)
+            return real_record_event(*args, **kwargs)
+
+        monkeypatch.setattr(audit_service, "record_event", _slow_record_event)
+
+        thread_count = 8
+        barrier = threading.Barrier(thread_count)
+        results: list[Any] = []
+        results_lock = threading.Lock()
+
+        def _worker() -> None:
+            barrier.wait()
+            result = audit_service.emit_dev_test_posture_activated_once(
+                config, source_ref="concurrency-test"
+            )
+            with results_lock:
+                results.append(result)
+
+        threads = [threading.Thread(target=_worker) for _ in range(thread_count)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+
+        non_none = [r for r in results if r is not None]
+        assert len(non_none) == 1, f"expected exactly one winning caller, got {non_none}"
+
+        rows = list_events(config.paths, mutation_type="dev_test_posture_activated")["items"]
+        assert len(rows) == 1, f"expected exactly one audit row under concurrency, got {rows}"
+
+    def test_sequential_calls_still_dedup_as_before(
+        self, paths: FoundryPaths
+    ) -> None:
+        """Non-regression: the lock must not change the SEQUENTIAL (no
+        contention) behaviour -- still exactly one row across many calls."""
+
+        config = _dev_test_posture_config(paths)
+
+        for _ in range(5):
+            audit_service.emit_dev_test_posture_activated_once(
+                config, source_ref="sequential-test"
+            )
+
+        rows = list_events(config.paths, mutation_type="dev_test_posture_activated")["items"]
+        assert len(rows) == 1
 
 
 # ---------------------------------------------------------------------------

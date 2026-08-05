@@ -34,6 +34,24 @@
   z-index: 20;
 }
 
+/* GATE-900 rate-limit badge + clearance-gates-v1 M4 clinical-attestation
+   banner both live in .rv-shell-rail (see AppShell.tsx). Neither carries a
+   dismiss control by design -- both are pure functions of live state
+   (rate-limit headers / the currently fetched run's claims), never a user
+   action, matching the non-dismissible marker requirement. */
+.rv-clinical-attestation-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--it-gold-500, #c99a1e);
+  border-radius: 6px;
+  background: rgba(201, 154, 30, 0.16);
+  color: var(--it-gold-300, #e8c766);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
 .rv-shell-brand,
 .rv-shell-help,
 .rv-shell-nav__item {
@@ -3079,6 +3097,32 @@ button.active .rv-tab-count {
   font-size: 9px;
   letter-spacing: 0.04em;
   opacity: 0.65;
+}
+
+/* Clinical-attestation badge (clearance-gates-v1 M4). Reuses the
+   .rv-ledger-term-badge dashed/transparent/monospace convention above --
+   deliberately NOT .it-chip (solid pill) -- for the same reason: a badge
+   marking content as UNATTESTED must never read as an authoritative,
+   attested value. A distinct amber/caution border+text differentiates it
+   from the neutral .rv-ledger-term-badge (vocabulary terms carry no
+   caution signal; this one does). */
+.rv-ledger-clinical-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border: 1px dashed var(--it-gold-500, #c99a1e);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--it-gold-600, #a9791a);
+  font-family: var(--it-font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.rv-ledger-clinical-badge__mark {
+  opacity: 0.8;
 }
 
 .rv-ledger-empty {

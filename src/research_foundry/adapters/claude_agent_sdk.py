@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..paths import FoundryPaths
+from ..services import prompt_clearance
 from .base import AdapterResult, BaseAdapter, register
 
 # ---------------------------------------------------------------------------
@@ -80,7 +82,36 @@ class ClaudeAgentSDKAdapter(BaseAdapter):
         return self._sdk_client is not None or super().available()
 
     def run(self, request: dict[str, Any]) -> AdapterResult:
-        """Dispatch the request in real mode if available, else degrade."""
+        """Dispatch the request in real mode if available, else degrade.
+
+        Clearance gate (clearance-gates-v1 M5) — per-record, before *anything*
+        consumes *request*. ``_run_real`` projects ``request`` into a hand-listed
+        ``job_brief`` (``job_id``/``model_profile``/``allowed_tools``/``intent``/
+        ``policy_snapshot``) and hands it to ``client.run_agent``, which is the
+        third-party-SDK boundary; ``_degraded`` echoes ``request["prompt"]`` into
+        a returned stub artifact. Both drop a ``clearance`` stamp, so the raw
+        ``request`` mapping is the last point at which a per-record check can see
+        one (design invariant 4 — mediate raw records, never a projection).
+
+        The check runs on BOTH branches on purpose. Refusing only in real mode
+        would leave the degraded stub echoing the tainted text back to the
+        caller, and would make enforcement depend on whether a third-party SDK
+        happens to be installed.
+
+        Raises
+        ------
+        research_foundry.services.clearance.ClearanceDenied
+            A record inside *request* carries a stamp blocking
+            ``redistribution`` (or ``acquisition``), or carries a stamp whose
+            ``blocked_scopes`` is absent/emptied/malformed. Unstamped requests —
+            i.e. every pre-existing caller — are unaffected.
+        """
+        raw_paths = request.get("paths")
+        prompt_clearance.mediate_prompt_egress(
+            request,
+            target=f"llm_agent:{self.id}",
+            paths=raw_paths if isinstance(raw_paths, FoundryPaths) else None,
+        )
         if not self.available():
             return self._degraded(request)
         client = self._sdk_client or self._make_sdk_client()

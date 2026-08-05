@@ -301,6 +301,11 @@ class FoundryConfig:
     # request/resolver, not just once) only ever warns/audits once per
     # process launch — see _emit_trusted_single_operator_warning_once().
     _deployment_mode_warned: bool = field(default=False, repr=False, compare=False)
+    # clearance-gates M3: tracks whether the dev_test_posture startup warning
+    # has already fired for THIS config instance -- mirrors
+    # _deployment_mode_warned above; see
+    # _emit_dev_test_posture_warning_once().
+    _dev_test_posture_warned: bool = field(default=False, repr=False, compare=False)
 
     @classmethod
     def load(cls, start: str | Path | None = None) -> FoundryConfig:
@@ -1242,6 +1247,168 @@ class FoundryConfig:
             "combination that would otherwise be inferred as multi_user "
             "(DI-1 delta re-audit G1). declared_by=%r declared_at=%r "
             "rationale=%r",
+            posture.get("declared_by"),
+            posture.get("declared_at"),
+            posture.get("rationale"),
+        )
+
+    # --- dev_test_posture block (clearance-gates M3: dev/test live-fetch
+    # escape hatch) --------------------------------------------------------
+    #
+    # Mirrors trusted_single_operator_posture above EXACTLY in shape and
+    # fail-closed behaviour. The only structural difference is that this
+    # posture's activation key IS the opt-in flag itself
+    # (``live_fetch_enabled``) rather than a separate ``declared`` boolean
+    # guarding an unrelated resolver choice -- there is no other config knob
+    # this posture could be "kept" against, so there is nothing else to
+    # gate.
+
+    def dev_test_posture(self) -> dict[str, Any]:
+        """Return the raw ``foundry.dev_test_posture`` block.
+
+        Clearance-gates M3: the dev/test escape hatch that permits real live
+        provider fetch for local development and testing ONLY. This
+        accessor returns the block verbatim (never validated); use
+        :meth:`dev_test_posture_live_fetch_enabled` for the validated,
+        fail-closed resolution of whether the posture is actually in
+        effect.
+
+        This posture affects ONLY whether a live network fetch is attempted
+        at all -- it never grants redistribution or clinical-reliance
+        rights, and it must never be reused to derive a
+        ``CLEARED_*``/``counsel_approved``/``attested`` value (those are
+        reserved for humans; see the rights-entity-model ADR's Invariant 1).
+        Every record fetched while the posture is active is stamped
+        ``blocked_scopes: ["redistribution"]`` unconditionally at fetch
+        time (clearance-gates M3, second half) and that stamp survives the
+        posture later being disabled or removed (design invariant 2 in
+        ``docs/project_plans/implementation_plans/infrastructure/``
+        ``clearance-gates-v1.md``) -- this method itself does not perform
+        that stamping; it only resolves whether the fetch may proceed.
+
+        Supported keys
+        ---------------
+        live_fetch_enabled : bool
+            Must be exactly ``True`` to activate the posture at all. This
+            IS the opt-in flag (there is no separate ``declared`` key on
+            this block, unlike :meth:`trusted_single_operator_posture`).
+        rationale : str
+            Required, non-empty, when ``live_fetch_enabled`` is ``True``.
+        declared_at : str
+            Required, non-empty, when ``live_fetch_enabled`` is ``True``
+            (an ISO 8601 date or datetime is expected, but not parsed/
+            validated as one -- a human-auditable free-text trail, not a
+            machine gate).
+        declared_by : str
+            Required, non-empty, when ``live_fetch_enabled`` is ``True``.
+        """
+        raw = self.foundry.get("dev_test_posture", {})
+        return raw if isinstance(raw, dict) else {}
+
+    def _dev_test_posture_declared(self) -> bool:
+        """Resolve whether the M3 dev/test live-fetch posture is active.
+
+        A conscious, auditable operator act -- ``live_fetch_enabled: true``
+        PLUS a non-empty ``rationale``, ``declared_at``, and
+        ``declared_by`` -- is required to activate the posture; it can
+        never be inferred from any other config value. Mirrors
+        :meth:`_trusted_single_operator_posture_declared` exactly,
+        including its fail-closed half-declared behaviour: a
+        **half-declared** posture (``live_fetch_enabled: true`` with any of
+        the three fields missing or empty) is refused at load time
+        (fail-closed) rather than silently activating with blank fields or
+        silently falling through as if undeclared -- an operator who sets
+        ``live_fetch_enabled: true`` clearly intended to declare something,
+        so ambiguity there must surface loudly, not default away.
+
+        Returns:
+            ``False`` when ``live_fetch_enabled`` is unset, ``False``, or
+            any value other than the literal ``True``. ``True`` only when
+            fully populated.
+
+        Raises:
+            RFError: If ``live_fetch_enabled`` is ``True`` but one or more
+                of ``rationale``/``declared_at``/``declared_by`` is
+                missing/empty.
+        """
+        posture = self.dev_test_posture()
+        if posture.get("live_fetch_enabled") is not True:
+            return False
+        missing = [
+            field_name
+            for field_name in ("rationale", "declared_at", "declared_by")
+            if not str(posture.get(field_name) or "").strip()
+        ]
+        if missing:
+            raise RFError(
+                "foundry.dev_test_posture.live_fetch_enabled=true requires "
+                f"non-empty {', '.join(missing)} — a half-declared posture "
+                "is refused (fail-closed). Populate all of "
+                "live_fetch_enabled/rationale/declared_at/declared_by "
+                "together, or remove the dev_test_posture block entirely."
+            )
+        return True
+
+    def dev_test_posture_live_fetch_enabled(self) -> bool:
+        """Return whether the M3 dev/test live-fetch posture is active.
+
+        Default ``False``. This is the single call site adapters/services
+        must use to decide whether a real live provider fetch may be
+        attempted at all for local development/testing -- NEVER re-derive
+        this from ``clearance.blocked_scopes`` or any other runtime gate
+        state (design invariant 2: taint is stamped from posture-at-fetch-
+        time and never re-derived from live state, and the same
+        never-re-derive rule applies symmetrically to the posture check
+        that gates the fetch itself).
+
+        Emits the one-time startup warning
+        (:meth:`_emit_dev_test_posture_warning_once`) the first time the
+        posture resolves active for this :class:`FoundryConfig` instance --
+        callers may check this many times per process (once per fetch
+        attempt), so the warning must not re-fire on every call.
+
+        Returns:
+            ``True`` only when :meth:`_dev_test_posture_declared` resolves
+            ``True`` (fully populated). ``False`` by default, and whenever
+            the block is absent or ``live_fetch_enabled`` is not the
+            literal ``True``.
+
+        Raises:
+            RFError: Propagated from :meth:`_dev_test_posture_declared`
+                when the block is half-declared.
+        """
+        if self._dev_test_posture_declared():
+            self._emit_dev_test_posture_warning_once()
+            return True
+        return False
+
+    def _emit_dev_test_posture_warning_once(self) -> None:
+        """Emit the M3 dev/test live-fetch posture startup warning once.
+
+        Mirrors :meth:`_emit_trusted_single_operator_warning_once`: every
+        process that resolves the posture active logs a WARNING naming who
+        declared it and why, deduplicated on
+        ``self._dev_test_posture_warned`` (a ``repr=False, compare=False``
+        dataclass field) rather than firing on every
+        :meth:`dev_test_posture_live_fetch_enabled` call.
+
+        The audit-trail half of this control (a persisted
+        ``audit_service.MUTATION_TYPES`` row, ``dev_test_posture_activated``)
+        is emitted from a startup site OUTSIDE this module --
+        ``research_foundry.api.app.create_app`` -- because importing
+        ``audit_service`` here would be circular (``audit_service`` ->
+        ``api.auth.scope`` -> ``config``). This method stays warning-only,
+        exactly like its sibling.
+        """
+        if self._dev_test_posture_warned:
+            return
+        self._dev_test_posture_warned = True
+        posture = self.dev_test_posture()
+        _logger.warning(
+            "dev_test_posture: foundry.dev_test_posture.live_fetch_enabled "
+            "is declared — real live provider fetch is permitted for local "
+            "development/testing only (clearance-gates M3). "
+            "declared_by=%r declared_at=%r rationale=%r",
             posture.get("declared_by"),
             posture.get("declared_at"),
             posture.get("rationale"),

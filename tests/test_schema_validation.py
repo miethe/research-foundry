@@ -43,7 +43,13 @@ from research_foundry.schemas import SchemaRegistry, validate
 # against ``SchemaRegistry().names()`` in ``test_registry_lists_all_schemas``.
 EXPECTED_SCHEMA_NAMES: list[str] = [
     "arc_review_request", "assertion_evaluation", "assertion_lifecycle_event",
-    "canonical_claim", "ccdash_event", "claim_ledger", "content_reuse_assessment",
+    "canonical_claim", "ccdash_event", "claim_ledger",
+    # clearance-gates M1: durable per-record use-scope taint. Separates dev/test
+    # enablement from ship enablement so local work does not wait on a legal
+    # determination (DEF-1/DEF-6 remain OPEN; this schema asserts no license
+    # posture).
+    "clearance_taint",
+    "content_reuse_assessment",
     "evidence_bundle",
     # external-research-report-interchange-v1 P1 contract freeze (ERI-1.1):
     # 6 net-new schemas for the external_research_handoff/v1 packet contract.
@@ -125,6 +131,15 @@ def _valid(name: str) -> dict:
         "claim_ledger": {
             "id": "claim_demo",
             "intent_id": "intent_demo",
+        },
+        # clearance-gates M1 durable per-record use-scope taint.
+        "clearance_taint": {
+            "schema_version": "1.0",
+            "blocked_scopes": ["redistribution"],
+            "stamped_at": "2026-08-03T00:00:00Z",
+            "stamped_by": "attribution_fetch.openalex",
+            "posture_at_stamp": "dev_test",
+            "gate_refs": ["DEF-1"],
         },
         # required: id, intent_id, run_id
         "evidence_bundle": {
@@ -854,6 +869,7 @@ def _invalid(name: str) -> dict:
         "canonical_claim": "canonical_claim_id",
         "ccdash_event": "event_id",
         "claim_ledger": "id",
+        "clearance_taint": "schema_version",
         "evidence_bundle": "id",
         "external_assertion_candidates": "schema_name",
         "external_research_acquisition_policy": "allowed_schemes",
@@ -1325,12 +1341,22 @@ def test_export_schema_resolved_source_with_new_provider_fields_validates() -> N
 
 def test_export_schema_is_versioned_for_attribution_summary() -> None:
     """SMP-4.4: the contract must be bumped past 1.8 to document the new
-    claims[].sources[].attribution_summary property."""
+    claims[].sources[].attribution_summary property.
+
+    Relaxed from an exact `examples[0] == "1.9"` check (clearance-gates-v1
+    M4): a subsequent, legitimate version bump (2.0) now legitimately sits
+    at index 0, and pinning this test to the newest-overall example would
+    make it fail on every future bump regardless of whether SMP-4.4's own
+    fact -- that 1.9 documents attribution_summary -- still holds.
+    `test_export_schema_version_constant_matches_documented_contract` is the
+    one test that ties `examples[0]` to `EXPORT_SCHEMA_VERSION`; this test's
+    job is only to prove '1.9' is still documented somewhere.
+    """
     schema = _load_run_export_schema()
     examples = schema["properties"]["schema_version"]["examples"]
-    assert examples[0] == "1.9", (
-        f"expected rf-run-export-schema.json's newest schema_version example "
-        f"to be '1.9' (SMP-4.4 bump), got {examples[0]!r}"
+    assert "1.9" in examples, (
+        f"expected rf-run-export-schema.json's schema_version examples to "
+        f"still include '1.9' (SMP-4.4 bump), got {examples!r}"
     )
     resolved_source_props = schema["$defs"]["RFResolvedSource"]["properties"]
     assert "attribution_summary" in resolved_source_props, (

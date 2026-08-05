@@ -41,6 +41,8 @@ from ..frontmatter import split_frontmatter
 from ..ids import now_iso
 from ..paths import FoundryPaths, RunPaths
 from ..yamlio import append_jsonl, loads_yaml
+from . import clearance
+from .clearance import GateRegistry
 
 # NOTE (serve-extra decoupling, FU-1 — same convention as
 # ``agent_job_service.py``): ``api.auth.provider`` module-imports
@@ -59,7 +61,7 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-EXPORT_SCHEMA_VERSION = "1.9"
+EXPORT_SCHEMA_VERSION = "2.0"
 
 AOS_CORRELATION_FIELDS = (
     "aos_run_uuid",
@@ -83,6 +85,27 @@ DEFAULT_THRESHOLD = "public"
 # threshold so an unknown label can never leak (fail-closed).
 _UNKNOWN_SENSITIVITY = len(SENSITIVITY_ORDER)
 REDACTION_MARKER = "[redacted:sensitivity]"
+
+# --- clinical attestation marker (clearance-gates-v1 M4) --------------------
+# Deliberately a DIFFERENT marker from REDACTION_MARKER above.
+# REDACTION_MARKER means "withheld" -- the value never reaches the viewer.
+# CLINICAL_UNATTESTED_MARKER means the opposite: the claim IS shown, in full,
+# because viewing clinical content and reasoning/rule-building over it
+# locally is explicitly permitted (clearance-gates-v1 decision 4). It marks
+# only that no clinician has attested it for CLINICAL RELIANCE.
+#
+# Derived exclusively from the UNCHANGED
+# services.verification.claim_clinical_eligibility() heuristic -- NEVER from
+# clearance.blocked_scopes. That decoupling is load-bearing: the CLIN-ATTEST
+# gate (config/clearance_gates.yaml) never closes in this plan (no
+# counsel/attestation workflow exists, ADR OQ-RF-6), and `clearance` is a
+# per-record stamp that only source_attribution records can ever carry
+# (config/clearance_gates.yaml's applies_to_kinds). Claims and source cards
+# predate clearance entirely and are structurally incapable of carrying a
+# stamp -- most concretely the 7 committed pediatric_cds bundles under
+# `runs/`. Gating this marker on a clearance stamp would make it silently
+# never fire for exactly the content it exists to flag.
+CLINICAL_UNATTESTED_MARKER = "unattested"
 
 # --- derived-status ladder (OQ-2) -------------------------------------------
 # Highest reached rung wins. Computed from on-disk artifacts + verification.
@@ -598,10 +621,76 @@ def _load_source_cards(rp: RunPaths, *, run_id: str | None) -> dict[str, dict[st
     return cards
 
 
+# ---------------------------------------------------------------------------
+# Clearance mediation at the export payload constructor (clearance-gates-v1
+# M5). See _resolve_source's own comment below for the full rationale; this
+# is the PRIMARY control point for run.json's per-citation content, because
+# it is the last place the RAW loaded record (a source card's `meta`/`point`
+# dicts, as read by _load_source_cards()) is available before it gets
+# flattened into the hand-listed `resolved` dict every downstream consumer
+# (api/routers/runs.py, catalog_service, knowledge_access) treats as ITS OWN
+# "raw" input.
+# ---------------------------------------------------------------------------
+
+
+def _stamped_clearance_candidates(*records: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """Filter *records* down to only those structurally carrying a clearance stamp.
+
+    Mirrors ``services.writeback._stamped_attribution_records``'s own filter
+    convention exactly (``isinstance(meta.get(clearance.TAINT_KEY), dict)``):
+    a record with no ``clearance`` dict key was never produced by
+    :func:`~research_foundry.services.clearance.stamp_taint` (the only
+    writer that exists), so it is not a governed-kind record at all and must
+    never be fed to :func:`~research_foundry.services.clearance.mediate_egress`
+    under ``kind="source_attribution"`` — doing so would refuse every
+    pre-existing source card, including the 7 committed pediatric bundles,
+    which predate clearance and are structurally incapable of carrying a
+    stamp. Filtering here (rather than relying on ``applies_to_kinds``
+    alone) is what lets this call site use the record's OWN structural
+    signal to decide whether it is a governed-kind record, independent of
+    what file format/kind label it happens to be persisted under.
+    """
+
+    return [
+        dict(record)
+        for record in records
+        if isinstance(record, Mapping) and isinstance(record.get(clearance.TAINT_KEY), dict)
+    ]
+
+
+def _clearance_stamp_of(
+    meta: Mapping[str, Any], point: Mapping[str, Any] | None
+) -> dict[str, Any] | None:
+    """The record's own clearance taint block, card-level first, then point-level.
+
+    Card-level wins: one source card is the product of at most one
+    acquisition, so every extracted point on it shares the same
+    provenance/taint. A point-level stamp is consulted only as a fallback for
+    a shape this module has never produced but does not rule out. Returns
+    ``None`` (never a malformed/empty dict) when neither candidate carries a
+    usable-looking stamp, so callers can use "is not None" as the omit/carry
+    decision without re-deriving :class:`~research_foundry.services.clearance
+    .GateRegistry` state — this helper does not validate the stamp's
+    contents; that is :func:`~research_foundry.services.clearance
+    .mediate_egress`'s job, called separately, on the raw ``meta``/``point``
+    themselves, before this helper's return value is ever used to populate an
+    outward projection.
+    """
+
+    for candidate in (meta, point):
+        if isinstance(candidate, Mapping):
+            stamp = candidate.get(clearance.TAINT_KEY)
+            if isinstance(stamp, dict):
+                return stamp
+    return None
+
+
 def _resolve_source(
     citation: dict[str, Any],
     cards: dict[str, dict[str, Any]],
     threshold_rank: int,
+    *,
+    registry: GateRegistry | None = None,
 ) -> dict[str, Any]:
     sid = str(citation.get("source_card_id") or "")
     eid = citation.get("evidence_id")
@@ -641,6 +730,36 @@ def _resolve_source(
     src = meta.get("source") or {}
     locator = src.get("locator") or {}
     point = card["points"].get(str(eid)) if eid is not None else None
+
+    # clearance-gates-v1 M5: mediate the RAW card/point record BEFORE any
+    # projection (design invariant 4 — "always mediate raw loaded records,
+    # never a projected payload"). `meta`/`point` are exactly what
+    # _load_source_cards() read off disk, unflattened. _stamped_clearance_
+    # candidates() filters to only the records that structurally carry a
+    # stamp, so this call is a documented no-op for every existing source
+    # card (none of them carry clearance.TAINT_KEY today — only
+    # services.attribution_fetch.stamp_taint() ever produces one, and
+    # nothing currently writes it onto a card's frontmatter) and becomes
+    # real enforcement the moment a future writer does.
+    # target_scope="redistribution" matches the only scope
+    # attribution_fetch.PROVIDER_GATE_SCOPE ever stamps (DEF-1/DEF-3/DEF-6);
+    # target names this specific egress boundary — export_run()'s
+    # denormalized run.json, which api/routers/runs.py serves outward and
+    # catalog_service/knowledge_access re-import as THEIR OWN "raw" record
+    # (see those modules for why the stamp must SURVIVE this projection
+    # rather than merely being checked here). Raises clearance.ClearanceDenied
+    # (propagated, not swallowed) if this citation's card/point is
+    # stamped-and-blocked for redistribution or acquisition — callers of
+    # export_run() (api/routers/runs.py, knowledge_access.RunKindProjector)
+    # must map that exception to a policy-denial response, never a 500.
+    clearance.mediate_egress(
+        _stamped_clearance_candidates(meta, point),
+        kind="source_attribution",
+        target_scope="redistribution",
+        target="export_run",
+        registry=registry,
+    )
+
     card_rank = _sensitivity_rank(meta.get("sensitivity"))
     point_rank = _sensitivity_rank((point or {}).get("sensitivity")) if point else card_rank
     effective_rank = max(card_rank, point_rank)
@@ -744,6 +863,24 @@ def _resolve_source(
             "dangling": False,
         }
     )
+    # clearance-gates-v1 M5: carry the stamp forward VERBATIM into the
+    # outward projection — omitted entirely (never a bare `None`) when
+    # absent, matching this file's existing additive-field convention
+    # (`_term_index`, `_provenance_lineage` below). catalog_service.py
+    # re-imports THIS dict as its own "raw loaded record" (its module
+    # docstring: "every run is read through export_service.export_run(),
+    # never by parsing run.json or source-card files directly"), and
+    # knowledge_access.SourceKindProjector reads catalog_service's resulting
+    # `payload_json` directly. If this hand-listed `resolved` dict dropped
+    # the key here, the stamp would read as clean forever at every
+    # downstream layer — the exact projection-strip vector this milestone
+    # exists to close. Not added to rf-run-export-schema.json / dual-typed
+    # in run-export.ts: this key is additive/non-authoritative, the same
+    # precedent `_provenance_lineage` already sets, and EXPORT_SCHEMA_VERSION
+    # stays at "2.0" (M4) — this is not a breaking or type-relevant change.
+    stamp = _clearance_stamp_of(meta, point)
+    if stamp is not None:
+        resolved["clearance"] = stamp
     return resolved
 
 
@@ -811,6 +948,24 @@ def _claim_provenance_lineage(
     }
 
 
+def _clinical_source_index(cards: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Adapt this module's already-loaded ``cards`` shape (from
+    :func:`_load_source_cards`: ``{"meta": ..., "points": {evidence_id: point}}``)
+    into the ``source_index`` shape
+    :func:`services.verification.claim_clinical_eligibility` expects:
+    ``{source_card_id: {"sensitivity": ..., "points": [point, ...]}}`` (a list,
+    keyed positionally the same way
+    ``services.verification._index_source_cards`` builds it for ``rf
+    verify``). Built once per export from data already read for the export
+    pass -- zero additional file I/O, zero additional YAML/markdown parsing.
+    """
+
+    return {
+        sid: {"sensitivity": card["meta"].get("sensitivity"), "points": list(card["points"].values())}
+        for sid, card in cards.items()
+    }
+
+
 def _build_claims(
     ledger: dict[str, Any],
     cards: dict[str, dict[str, Any]],
@@ -818,13 +973,27 @@ def _build_claims(
     *,
     paths: FoundryPaths | None = None,
     workspace_id: str | None = None,
+    registry: GateRegistry | None = None,
 ) -> list[dict[str, Any]]:
+    # Lazy import (clearance-gates-v1 M4): services.verification imports
+    # DEFAULT_THRESHOLD / SENSITIVITY_ORDER / discover_run_yamls from THIS
+    # module at module scope, so a module-level `from .verification import
+    # claim_clinical_eligibility` up top would deadlock at import time --
+    # whichever of the two modules is imported first would find the other
+    # only partially initialized. Deferred to call time (when both modules
+    # are always fully loaded) breaks the cycle, mirroring the same
+    # lazy-import convention `_claim_provenance_lineage` already uses above
+    # for `AuthIdentity`/`AssertionCatalog`.
+    from .verification import claim_clinical_eligibility
+
+    clinical_source_index = _clinical_source_index(cards)
+
     claims_out: list[dict[str, Any]] = []
     for claim in ledger.get("claims") or []:
         if not isinstance(claim, dict):
             continue
         sources = [
-            _resolve_source(c, cards, threshold_rank)
+            _resolve_source(c, cards, threshold_rank, registry=registry)
             for c in (claim.get("sources") or [])
             if isinstance(c, dict)
         ]
@@ -843,6 +1012,14 @@ def _build_claims(
             },
             "sources": sources,
         }
+        # clearance-gates-v1 M4 (schema 2.0): derived EXCLUSIVELY from the
+        # UNCHANGED claim_clinical_eligibility() heuristic, called here with
+        # the RAW ledger claim (its own `sources[]` shape, pre-resolution) --
+        # never from clearance.blocked_scopes (see CLINICAL_UNATTESTED_MARKER's
+        # docstring). Omitted entirely (not null) in the common non-clinical
+        # case, matching `_term_index`'s own omit-when-absent convention below.
+        if claim_clinical_eligibility(claim, clinical_source_index):
+            claim_out["clinical_attestation_status"] = CLINICAL_UNATTESTED_MARKER
         # Persistent references are additive. Never manufacture IDs for legacy
         # claim ledgers; omission remains the assertion-ledger-absent signal.
         if "persistent_references" in claim:
@@ -1448,8 +1625,25 @@ def export_run(
     ledger = _load_yaml_dict(rp.claim_ledger, run_id=run_id)
     cards = _load_source_cards(rp, run_id=run_id)
 
+    # clearance-gates-v1 M5: build ONE GateRegistry for the whole export pass
+    # and thread it down to every _resolve_source() call (via _build_claims)
+    # rather than letting each per-citation mediate_egress() call build its
+    # own — clearance.load_registry() is deliberately uncached process-wide
+    # (its own docstring: a long-lived process must not pin a stale copy
+    # after a config file edit), so without this a run with many citations
+    # would re-read and re-parse config/clearance_gates.yaml from disk once
+    # per citation. Building it once per export_run() call is still fresh
+    # enough for a single request/CLI invocation while avoiding the
+    # per-citation file I/O.
+    clearance_registry = clearance.load_registry(paths=paths)
+
     claims = _build_claims(
-        ledger, cards, threshold_rank, paths=paths, workspace_id=run_meta.get("workspace_id")
+        ledger,
+        cards,
+        threshold_rank,
+        paths=paths,
+        workspace_id=run_meta.get("workspace_id"),
+        registry=clearance_registry,
     )
     governance = dict(bundle.get("governance") or {})
     # AC-4: thread allowed_writebacks and requires_human_review from run.yaml

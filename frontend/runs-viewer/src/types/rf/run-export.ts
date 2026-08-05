@@ -2,7 +2,9 @@
  * RF Run Export Types — hand-written to match the frozen run.json contract.
  *
  * Source of truth: docs/dev/architecture/rf-run-export-schema.json (JSON Schema draft-07)
- * Bound to schema_version "1.7".
+ * Bound to schema_version "2.0" (clearance-gates-v1 M4 dual-update: this file's
+ * new `RFClaim.clinical_attestation_status` field was added in the same change
+ * as the "1.9" -> "2.0" bump — see EXPORT_SCHEMA_VERSION in export_service.py).
  *
  * Codegen evaluated (P1/SCH-003): json-schema-to-typescript was tested against
  * rf-run-export-schema.json. Rejected because: (1) codegen inlines all
@@ -222,8 +224,26 @@ export interface RFClaim {
    * MUST use optional access (`?.`).
    */
   _term_index?:      RFTermIndex | null;
+  /**
+   * Schema 2.0 (clearance-gates-v1 M4). Present ONLY when the backend's
+   * UNCHANGED `claim_clinical_eligibility()` heuristic finds this claim
+   * clinically eligible -- NEVER derived from a `clearance` stamp (claims
+   * cannot carry one at all; see the backend's `CLINICAL_UNATTESTED_MARKER`
+   * docstring). Absent (key omitted, not `null`) for the common non-clinical
+   * case -- consumers MUST use optional access (`?.`). Marks the claim as
+   * viewable and rule-buildable, but not attested for clinical reliance.
+   */
+  clinical_attestation_status?: RFClinicalAttestationStatus;
   sources:           RFResolvedSource[];
 }
+
+/**
+ * Schema 2.0 (clearance-gates-v1 M4). The only value this can ever hold
+ * today: RF has no counsel/attestation workflow (ADR OQ-RF-6), so a claim
+ * flagged as clinically eligible can only ever read "unattested" -- there is
+ * no code path that could ever produce a second, "attested" value.
+ */
+export type RFClinicalAttestationStatus = "unattested";
 
 // ── Claim Counts ─────────────────────────────────────────────────────────────
 

@@ -64,6 +64,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ..config import FoundryConfig
+from ..services import audit_service
 from ._bind_gate import assert_bind_is_safe
 from .auth.adapters import (
     local_static as _local_static_module,  # noqa: F401 — triggers self-registration
@@ -150,6 +151,34 @@ def create_app(config: FoundryConfig) -> FastAPI:
     # app state is constructed so a misconfigured multi_user deployment
     # refuses to start rather than serving with a fail-open gap.
     config.deployment_mode_validate(bind_host=config.viewer_bind_host())
+
+    # --- clearance-gates M3: dev_test_posture activation audit event --------
+    #
+    # config.dev_test_posture_live_fetch_enabled() is warning-only on its own
+    # (see its docstring) -- importing audit_service from config.py would be
+    # circular (audit_service -> api.auth.scope -> config). create_app()
+    # already imports FoundryConfig and sits above audit_service in the
+    # import graph, so this is the startup seam that turns posture
+    # activation into a persisted, queryable audit_event row rather than a
+    # log line alone. This does NOT gate or grant any clearance -- it only
+    # records that the operator's dev/test escape hatch was active for this
+    # process launch; the actual per-record blocked_scopes stamping happens
+    # at fetch time (clearance-gates M3, second half), independently of
+    # this event.
+    #
+    # emit_dev_test_posture_activated_once() (not a bare record_event() call
+    # -- CHANGES_REQUESTED finding M2) is the SAME dedup point
+    # ``services.attribution_fetch``'s fetch-authorization site uses, keyed
+    # on this ``config`` instance's identity. Whichever of the two sites
+    # reaches it first for a given config wins; the other is a no-op. Before
+    # this unification each site tracked dedup independently, so a
+    # create_app() call followed by a fetch against the SAME config produced
+    # two rows. It remains fail-open end to end -- a failed write is not
+    # marked audited, so a later call (from either site) retries.
+    if config.dev_test_posture_live_fetch_enabled():
+        audit_service.emit_dev_test_posture_activated_once(
+            config, source_ref="api.app.create_app"
+        )
 
     app = FastAPI(
         title="Research Foundry API",

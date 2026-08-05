@@ -104,6 +104,7 @@ class TestRenderNotebooklmUpdateOffline:
             _ledger,
             _load_bundle,
             _render_notebooklm_update,
+            mediate_run_egress,
         )
 
         svc.build_bundle(run_id, verify=True, paths=paths)
@@ -117,6 +118,13 @@ class TestRenderNotebooklmUpdateOffline:
             bundle_ident=bundle_ident,
             ledger=ledger,
             requires_review=kwargs.get("requires_review", False),
+            # clearance-gates M2: mediation is a REQUIRED parameter now, because
+            # this renderer pushes the full report + every source card to
+            # NotebookLM's cloud through a subprocess the transport-level
+            # clearance backstop cannot reach. The token is obtained the real
+            # way (never fabricated — MediationClearance refuses direct
+            # construction), so these tests exercise the actual gate.
+            mediation=mediate_run_egress(rp, target="notebooklm", paths=paths),
         )
 
     def test_always_writes_yaml(self, tmp_foundry: FoundryPaths):
@@ -237,6 +245,7 @@ class TestRenderNotebooklmUpdateOffline:
             _ledger,
             _load_bundle,
             _render_notebooklm_update,
+            mediate_run_egress,
         )
 
         bundle = _load_bundle(rp)
@@ -255,6 +264,7 @@ class TestRenderNotebooklmUpdateOffline:
                 bundle_ident=bundle_ident,
                 ledger=ledger,
                 requires_review=False,
+                mediation=mediate_run_egress(rp, target="notebooklm", paths=tmp_foundry),
             )
 
         assert path.exists()

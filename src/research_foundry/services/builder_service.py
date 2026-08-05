@@ -56,6 +56,7 @@ from ..paths import FoundryPaths
 from ..yamlio import dumps_yaml, load_yaml
 from . import audit_service, catalog_service
 from .audit_service import AuditEvent
+from .clearance import ClearanceDenied
 from .export_service import SENSITIVITY_ORDER, export_run
 
 _logger = logging.getLogger(__name__)
@@ -1068,9 +1069,32 @@ def create_draft_from_run(
     unknown run id gets (no-existence-leak).
     """
 
-    export_data = export_run(
-        paths, run_id, sensitivity_threshold=sensitivity_threshold, identity=identity
-    )
+    try:
+        export_data = export_run(
+            paths, run_id, sensitivity_threshold=sensitivity_threshold, identity=identity
+        )
+    except ClearanceDenied as exc:
+        # clearance-gates-v1 M5: export_run() now mediates every citation's raw
+        # source-card record (export_service._resolve_source) and raises
+        # ClearanceDenied when one blocks redistribution/acquisition.
+        #
+        # Re-raised — NOT converted to NotFoundError or BuilderError. Those are
+        # this module's two error conventions and both would be wrong here:
+        # NotFoundError is mapped to a generic 404 by every caller, which would
+        # make a blocked run indistinguishable from a missing one and silently
+        # hide the governance event (leg B's runs.py records the same reasoning);
+        # BuilderError means "bad enum / failed draft validation" and is mapped
+        # to 422. ClearanceDenied already carries ExitCode.GOVERNANCE, so the CLI
+        # path (cli_commands.py -> `except RFError` -> _fail) surfaces exit 3
+        # correctly without any change, and the HTTP path is handled by the new
+        # `except ClearanceDenied -> 403` in api/routers/reports.py::create_draft
+        # (previously an unhandled 500 — the gap this closes).
+        #
+        # Re-raised with the seeding context prepended so the 403 detail names
+        # the operation the operator actually invoked, not export internals.
+        raise ClearanceDenied(
+            f"cannot seed a report draft from run {run_id}: {exc}"
+        ) from exc
     if export_data is None:
         # DF-004/F3: export_run() returns None on a workspace-scope enforced
         # denial (or a genuinely-missing run) — map both to the same

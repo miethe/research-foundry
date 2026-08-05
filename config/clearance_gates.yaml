@@ -1,0 +1,115 @@
+# Research Foundry clearance gates — ship-blocking determinations, recorded as DATA.
+#
+# Top-level keys: schema_version, applies_to_kinds, gates
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# A feature flag answers "is the mechanism reachable?". It cannot answer "has a
+# human with standing signed off?" — yet before this file, the two were welded
+# together, so the only safe posture for anything license-gated was total
+# inertness (see services/attribution_fetch/__init__.py, which imports no
+# networking library at all). That blocked local development on a *legal*
+# determination. Clearance now lives here, separately from any flag, so the
+# site stays usable while redistribution and clinical reliance stay blocked.
+#
+# THIS FILE IS DATA ONLY — DELIBERATELY
+# -------------------------------------
+# There are NO `condition:` or `severity:` keys here, and none may be added.
+# config/governance.yaml's `policy_rules` list carries exactly such keys and
+# they are NEVER PARSED — they are documentation, while the real conditions are
+# hardcoded `if` blocks in services/governance.py::guard_check. That shape
+# yields a file which *looks* enforcing and is not. Every value below is read
+# through one typed accessor (services/clearance.py::GateRegistry) and all rule
+# logic stays in Python.
+#
+# HOW A GATE IS CLOSED
+# --------------------
+# By editing this file. There is deliberately NO `rf` subcommand that closes a
+# gate: any such command would be agent-runnable by definition, and
+# docs/dev/architecture/adr-rights-entity-model.md OQ-RF-6 records that RF has
+# no counsel/attestation workflow — the boundary is "human-only by exclusion".
+# `rf clearance status` is read-only. services/governance.py rule 9
+# (no_agent_cleared_clearance_taint) additionally blocks any agent-writable
+# path from proposing `state: closed`.
+#
+# Closing a gate does NOT retroactively clear records already stamped under it.
+# Each record's own `clearance` block (schemas/clearance_taint.schema.yaml)
+# records the posture that was true at acquisition time, permanently; its
+# `gate_refs` name the gates a future operator-run re-evaluation would consult.
+# That re-evaluation path is deliberately not built yet (see the plan's
+# non-goals).
+
+schema_version: "1.0"
+
+# Record kinds subject to the fail-closed absence check in
+# services/clearance.py::mediate_egress. A record whose kind is NOT listed here
+# skips the check entirely.
+#
+# This list is the backward-compatibility mechanism, not a loophole. Every
+# record kind that predates clearance — source_card, claim, report, assertion,
+# and notably the 7 committed pediatric bundles — can never carry a `clearance`
+# block, because nothing stamped one when they were written. Listing such a
+# kind here would make absence fail closed for records that are structurally
+# incapable of complying, turning a safety control into a correctness
+# regression. Kinds are added here one at a time, deliberately, only once a
+# writer exists that stamps them.
+applies_to_kinds:
+  - source_attribution
+
+gates:
+  - gate_id: DEF-1
+    blocks_scope: redistribution
+    state: open
+    summary: >-
+      Per-provider license terms verified for bundle redistribution. Propagation
+      architecture is proven independent of what feeds it; ingestion itself is
+      the licensing-gated piece.
+    evidence_pointer: docs/project_plans/PRDs/infrastructure/source-metadata-propagation-v1.md#deferrals
+    closed_by: null
+
+  - gate_id: DEF-2
+    blocks_scope: acquisition
+    state: open
+    summary: >-
+      Scopus / Web of Science and journal-ranking vendors (JCR, SCImago).
+      Proprietary; contractual terms explicitly prohibit caching or
+      redistributing derived data without a paid license RF does not hold.
+      Procurement precondition. Blocks ACQUISITION, not merely redistribution —
+      the dev/test posture must never open this scope, and no adapter for any of
+      these providers exists in services/attribution_fetch/.
+    evidence_pointer: docs/project_plans/PRDs/infrastructure/source-metadata-propagation-v1.md#deferrals
+    closed_by: null
+
+  - gate_id: DEF-3
+    blocks_scope: redistribution
+    state: open
+    summary: >-
+      Semantic Scholar / PubMed ingestion. Per-record-only terms make these
+      usable but not redistributable until an owning entity exists to carry the
+      provenance.
+    evidence_pointer: docs/project_plans/PRDs/infrastructure/source-metadata-propagation-v1.md#deferrals
+    closed_by: null
+
+  - gate_id: DEF-6
+    blocks_scope: redistribution
+    state: open
+    summary: >-
+      Live ToS re-verification for Semantic Scholar / NCBI. The licensing table
+      in risk-findings.md is stated from general domain knowledge of these
+      programs' public policies, not re-verified against live current ToS pages.
+      Explicitly NOT legal advice.
+    evidence_pointer: docs/project_plans/PRDs/infrastructure/source-metadata-propagation-v1.md#deferrals
+    closed_by: null
+
+  - gate_id: CLIN-ATTEST
+    blocks_scope: clinical_reliance
+    state: open
+    summary: >-
+      Clinical attestation for pediatric CDS content. RF validates
+      pediatric_cds blocks for STRUCTURAL completeness only
+      (src/research_foundry/schemas/pediatric_cds.schema.json); no clinical
+      enum or semantic validation is performed, and no clinician has attested
+      any threshold value for clinical use. Content may be viewed and reasoned
+      over locally; it may not be relied upon clinically.
+    evidence_pointer: docs/dev/architecture/adr-rights-entity-model.md#oq-rf-6
+    closed_by: null

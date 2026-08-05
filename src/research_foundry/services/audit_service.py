@@ -32,14 +32,19 @@ import dataclasses
 import json
 import logging
 import sqlite3
+import threading
 import uuid
+import weakref
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from research_foundry.auth_identity import AuthIdentity
 from research_foundry.config import resolve_workspace_isolation_active
 from research_foundry.paths import FoundryPaths
 from research_foundry.services.rbac_store import _connect, _ensure_schema
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from research_foundry.config import FoundryConfig
 
 log = logging.getLogger(__name__)
 
@@ -98,6 +103,12 @@ MUTATION_TYPES: frozenset[str] = frozenset(
         "access_token_issued",  # PAT issuance, service-account token issue/rotate
         "access_token_revoked",  # PAT revoke, service-account token revoke
         "role_change",           # workspace member role update
+        # Wired clearance-gates M3 — operator activated
+        # foundry.dev_test_posture.live_fetch_enabled (real live provider
+        # fetch permitted for local dev/test only). Emitted from
+        # api.app.create_app, not config.py, to avoid the
+        # config -> audit_service -> api.auth.scope -> config cycle.
+        "dev_test_posture_activated",
     }
 )
 
@@ -189,6 +200,109 @@ def record_event(paths: FoundryPaths, event: AuditEvent) -> Optional[str]:
     except Exception as exc:
         _emit_record_error(exc, event)
         return None
+
+
+# ---------------------------------------------------------------------------
+# dev_test_posture_activated: ONE dedup point for BOTH emission sites
+# (clearance-gates M3 CHANGES_REQUESTED review, findings M1 + M2)
+# ---------------------------------------------------------------------------
+#
+# Two independent call sites can trigger this event for the same
+# FoundryConfig instance: ``api.app.create_app()`` at server startup, and
+# ``services.attribution_fetch``'s fetch-authorization point (which fires
+# for a bare CLI/script run that never calls create_app() at all -- the
+# original audit gap M3 closed). Before this unification each site kept
+# its OWN dedup state, so calling both against the SAME config produced
+# TWO rows (M2). This module is now the single place that decides whether
+# a fresh emission is warranted, so either call site landing first wins
+# and the other is a no-op.
+_AUDITED_DEV_TEST_POSTURE_CONFIG_IDS: set[int] = set()
+
+# CHANGES_REQUESTED round 2, finding M2 (concurrency): the ORIGINAL
+# unification still had a check-then-act race -- two concurrent authorized
+# calls (two threads fetching against the same config, or a startup thread
+# racing a fetch thread) could both observe "not yet audited" before either
+# one finished record_event(), so both would write a row. A single process
+# -wide lock serializes the whole check -> write -> mark-audited sequence,
+# which is what makes "exactly once per config" true under concurrency, not
+# merely likely. Global (not per-config) deliberately: this path fires at
+# most once per FoundryConfig's lifetime and is never a hot loop, so there
+# is no throughput reason to build a per-config lock registry (which would
+# need its own cleanup/lifecycle bookkeeping); a single lock keeps the fix
+# small, per the round-2 framing.
+_dev_test_posture_audit_lock = threading.Lock()
+
+
+def _forget_audited_dev_test_posture_config_id(config_id: int) -> None:
+    """``weakref.finalize`` callback — drop *config_id* once its
+    ``FoundryConfig`` is garbage-collected, so this module never leaks ids
+    forever nor keeps a config instance alive past its natural lifetime."""
+
+    _AUDITED_DEV_TEST_POSTURE_CONFIG_IDS.discard(config_id)
+
+
+def emit_dev_test_posture_activated_once(
+    config: "FoundryConfig", *, source_ref: str
+) -> Optional[str]:
+    """Emit ``dev_test_posture_activated`` exactly once per ``FoundryConfig``
+    instance, regardless of which call site reaches it first.
+
+    Callers (``api.app.create_app`` at startup; ``services.
+    attribution_fetch``'s fetch-authorization point for a bare CLI/script
+    fetch) are responsible for checking ``config.
+    dev_test_posture_live_fetch_enabled()`` themselves before calling this
+    -- this function does not re-resolve the posture, only the dedup +
+    write.
+
+    Returns the new ``audit_event_id`` on a fresh emission, or ``None``
+    when either (a) this ``config`` was already marked audited, or (b) the
+    underlying :func:`record_event` write itself failed. Case (b) is
+    deliberately NOT marked audited (clearance-gates M3 CHANGES_REQUESTED
+    finding M1): ``record_event`` is documented fail-open -- it returns
+    ``None`` on failure without raising -- so marking the config audited
+    BEFORE confirming the write succeeded would permanently suppress every
+    later retry for a config whose very first audit write happened to fail
+    (a transient sqlite lock, a full disk, ...), leaving real network
+    egress proceeding with no accountability record and no way to ever
+    recover one for that config instance. Marking audited only AFTER a
+    confirmed non-``None`` id keeps a later call free to retry.
+
+    The check ("already audited?"), the write, and the mark-audited step
+    all happen under :data:`_dev_test_posture_audit_lock` (round 2, finding
+    M2): without it, two concurrent calls for the SAME config -- e.g. a
+    startup thread and a fetch thread, or two concurrent authorized
+    fetches -- could both observe "not yet audited" before either finished
+    ``record_event()``, and both would write a row, defeating "exactly
+    once per config" under real concurrency even though the sequential
+    logic looks dedup'd.
+    """
+
+    config_id = id(config)
+    with _dev_test_posture_audit_lock:
+        if config_id in _AUDITED_DEV_TEST_POSTURE_CONFIG_IDS:
+            return None
+
+        posture = config.dev_test_posture()
+        event_id = record_event(
+            config.paths,
+            AuditEvent(
+                mutation_type="dev_test_posture_activated",
+                action="dev_test_posture.live_fetch_enabled",
+                target_ref="foundry.dev_test_posture",
+                source_ref=source_ref,
+                policy_snapshot={
+                    "declared_by": posture.get("declared_by"),
+                    "declared_at": posture.get("declared_at"),
+                    "rationale": posture.get("rationale"),
+                },
+            ),
+        )
+        if event_id is None:
+            return None
+
+        _AUDITED_DEV_TEST_POSTURE_CONFIG_IDS.add(config_id)
+        weakref.finalize(config, _forget_audited_dev_test_posture_config_id, config_id)
+    return event_id
 
 
 def _record_event_inner(paths: FoundryPaths, event: AuditEvent) -> str:

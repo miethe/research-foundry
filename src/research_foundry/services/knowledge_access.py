@@ -140,7 +140,7 @@ from ..api.auth.scope import resolve_workspace_isolation_active
 from ..errors import NotFoundError, RFError
 from ..frontmatter import split_frontmatter
 from ..paths import FoundryPaths
-from . import builder_service, catalog_service
+from . import builder_service, catalog_service, clearance
 from .assertion_catalog import (
     AssertionCatalog,
     AssertionCatalogDenied,
@@ -838,6 +838,91 @@ def _load_source_payload(raw: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _stamped_clearance_candidates(*records: Any) -> list[dict[str, Any]]:
+    """Filter *records* down to only those structurally carrying a clearance stamp.
+
+    Mirrors ``services.export_service``/``services.catalog_service``'s
+    identically-named helper (each module keeps its own small copy rather
+    than importing another module's private name — the same self-contained
+    convention this codebase already uses elsewhere, e.g.
+    ``services.writeback._stamped_attribution_records``). A dict with no
+    ``clearance`` dict key was never produced by
+    ``services.clearance.stamp_taint()`` and must never be fed to
+    :func:`~research_foundry.services.clearance.mediate_egress` under
+    ``kind="source_attribution"`` — doing so would refuse every pre-existing
+    catalog row, which predates clearance and cannot carry a stamp.
+    """
+
+    return [
+        dict(record)
+        for record in records
+        if isinstance(record, Mapping) and isinstance(record.get(clearance.TAINT_KEY), dict)
+    ]
+
+
+def _knowledge_payload_candidates(payload: Any) -> list[Any]:
+    """Every dict inside one deserialized source *payload* worth checking
+    for a clearance stamp -- the payload itself plus each ``evidence_points``
+    entry. Returns raw candidates, unfiltered — callers pass the result
+    through :func:`_stamped_clearance_candidates` before mediating.
+    """
+
+    candidates: list[Any] = [payload]
+    if isinstance(payload, Mapping):
+        nested = payload.get("evidence_points")
+        if isinstance(nested, list):
+            candidates.extend(nested)
+    return candidates
+
+
+def _mediate_knowledge_payloads(*payloads: Any, paths: FoundryPaths, target: str) -> None:
+    """Mediate every clearance-stamped record inside one or more catalog
+    *payloads* (KMCP-3.1's own read of ``catalog_items.payload_json``,
+    clearance-gates-v1 M5).
+
+    ``SourceKindProjector`` deliberately reads ``payload_json`` via its own
+    raw SQL + :func:`_load_source_payload` rather than
+    ``catalog_service.search``/``catalog_service.get_item`` (see that
+    class's docstring — those two are write-capable, this projector must
+    never be), so ``catalog_service``'s own mediation at those two functions
+    does NOT cover this path. This IS the same chokepoint for both transports
+    this class serves (Knowledge MCP stdio and the ``/knowledge/*`` HTTP
+    surface both call through ``KnowledgeAccessService`` -> this projector),
+    so one insertion point here suffices for both — see this module's other
+    ``KindProjector`` implementations (``AssertionKindProjector``,
+    ``ReportKindProjector``) for the two kinds that do NOT route through one
+    of clearance-gates-v1 M5's four owned files and are therefore explicitly
+    OUT of this milestone's scope.
+
+    ``paths`` is REQUIRED and keyword-only (M5 gate finding: "mediation loses
+    the caller's workspace context"). Callers pass their own ``self.paths`` --
+    the SAME ``FoundryPaths`` whose ``catalog_items`` rows they just read via
+    :func:`catalog_service.query_only_connection` -- so the gate registry
+    consulted is that workspace's ``config/clearance_gates.yaml``. Before this
+    was mandatory it was omitted entirely, so a ``KnowledgeAccessService``
+    constructed for a non-default workspace mediated against
+    ``FoundryPaths.discover()`` (the process CWD) instead: source text could
+    leave through the Knowledge MCP stdio surface or ``/knowledge/*`` HTTP
+    despite the reading workspace's own gate denying it, while the control
+    reported success. Required rather than defaulted so the silent-discovery
+    fallback cannot be reintroduced without the call failing loudly.
+
+    Every caller has ``self.paths`` in scope (both projectors set it in
+    ``__init__``), so no site here needs to fall back to discovery.
+    """
+
+    candidates: list[Any] = []
+    for payload in payloads:
+        candidates.extend(_knowledge_payload_candidates(payload))
+    clearance.mediate_egress(
+        _stamped_clearance_candidates(*candidates),
+        kind="source_attribution",
+        target_scope="redistribution",
+        target=target,
+        paths=paths,
+    )
+
+
 def _allowed_source_evidence_points(
     payload: Mapping[str, Any],
     threshold_rank: int,
@@ -1099,6 +1184,21 @@ class SourceKindProjector:
         except catalog_service.CatalogUnavailable:
             return KindSearchPage(items=(), truncated=False)
 
+        # clearance-gates-v1 M5: mediate every row's raw payload BEFORE
+        # deriving any search-result field from it (design invariant 4).
+        # All-or-nothing across the whole page — see _mediate_knowledge_
+        # payloads' docstring for why this path needs its own call
+        # independent of catalog_service.search()'s identical-in-spirit one.
+        # `paths=self.paths` threads THIS projector's workspace (M5 gate
+        # finding): `rows` came from self.paths' catalog.db via the
+        # query_only_connection above, so the gate registry consulted must be
+        # that workspace's, never the process CWD's.
+        _mediate_knowledge_payloads(
+            *(_load_source_payload(row["payload_json"]) for row in rows),
+            paths=self.paths,
+            target="knowledge_access.source.search",
+        )
+
         items: list[RfKnowledgeSearchResultItem] = []
         for row in rows:
             payload = _load_source_payload(row["payload_json"])
@@ -1141,6 +1241,13 @@ class SourceKindProjector:
             raise KnowledgeDenied("not_found")
 
         payload = _load_source_payload(row["payload_json"])
+        # clearance-gates-v1 M5: mediate BEFORE deriving any document field
+        # (text, evidence_points, rf_metadata) from the raw payload.
+        # `paths=self.paths` threads THIS projector's workspace (M5 gate
+        # finding) — `row` came from self.paths' catalog.db above.
+        _mediate_knowledge_payloads(
+            payload, paths=self.paths, target="knowledge_access.source.fetch"
+        )
         evidence_points = _allowed_source_evidence_points(payload, context.sensitivity_rank)
         title = _truncate_title(str(row["title"] or opaque))
         body_parts = [title]
@@ -1525,6 +1632,16 @@ class RunKindProjector:
             )
         except ExportError as exc:
             raise KnowledgeDenied("not_found") from exc
+        except clearance.ClearanceDenied as exc:
+            # clearance-gates-v1 M5: export_run() now mediates every
+            # citation's raw source-card record before projecting it
+            # (export_service.py _resolve_source). Without this handler,
+            # ClearanceDenied would propagate as an unmapped exception out
+            # of this projector — mapped to KnowledgeDenied instead, this
+            # class's own single bounded, no-existence-leak denial contract
+            # (KnowledgeDenied's own docstring, AC KMCP-3) rather than a
+            # bespoke shape.
+            raise KnowledgeDenied("clearance_denied") from exc
         if data is None:
             # DF-004 workspace-scope denial (export_run returns None rather
             # than raising) -- same generic shape as a genuinely missing run.

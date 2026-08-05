@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from ...paths import FoundryPaths
 from ...services import catalog_service as svc
+from ...services.clearance import ClearanceDenied
 from ..auth.rbac import require_role
 from ..response_stamp import stamp
 from .runs import get_paths
@@ -42,6 +43,27 @@ _RBAC_CATALOG_WRITE = Depends(require_role("owner", "admin", "researcher"))
 # are, TASK-2.6).
 _TERM_QUERY = Query(None)
 _ROLE_QUERY = Query(None)
+
+
+def _clearance_refusal(exc: ClearanceDenied) -> HTTPException:
+    """Map a clearance refusal to 403 (clearance-gates-v1 M5).
+
+    ``catalog_service.search``/``get_item`` (and, via ``_build_catalog_rows`` ->
+    ``export_service.export_run``, ``import_run``/``import_all``) now mediate
+    every raw record before projecting it, and raise ``ClearanceDenied`` — an
+    ``RFError`` subclass, NOT a ``svc.CatalogError``. Without this mapping the
+    exception escaped every handler in this router and surfaced as a bare 500:
+    technically fail-closed (no data left the process) but an unreadable signal.
+
+    403, not 404: a genuine clearance refusal is a *decision*, not an existence
+    question, so it must not be folded into this router's no-existence-leak 404s
+    (that would make a blocked item indistinguishable from a missing one and
+    silently hide the governance event). Matches the convention leg B used in
+    ``api/routers/runs.py`` and the pre-existing 403s in ``assertions.py`` /
+    ``reports.py`` / ``admin.py``.
+    """
+
+    return HTTPException(status_code=403, detail=str(exc))
 
 
 def _sensitivity_threshold_override(request: Request) -> str | None:
@@ -113,10 +135,16 @@ def get_catalog_search(
     computation here (FR-13) — the service layer owns both the OR-within-
     repeats/AND-across-flags semantics (OQ-C) and the sensitivity-rank gate
     on ``catalog_terms`` (D3).
+
+    Raises:
+        HTTPException(403): a clearance-stamped record inside a matched row's
+            raw ``payload_json`` blocks the ``redistribution``/``acquisition``
+            scope (``clearance.ClearanceDenied`` from
+            :func:`catalog_service.search`, clearance-gates-v1 M5).
     """
     identity = getattr(request.state, "identity", None)
-    return stamp(
-        svc.search(
+    try:
+        result = svc.search(
             paths,
             q=q,
             item_type=item_type,
@@ -132,7 +160,9 @@ def get_catalog_search(
             sensitivity_threshold=_sensitivity_threshold_override(request),
             identity=identity,
         )
-    )
+    except ClearanceDenied as exc:
+        raise _clearance_refusal(exc) from exc
+    return stamp(result)
 
 
 @router.get("/catalog/items/{catalog_item_id}", summary="Get a catalog item's full detail")
@@ -146,14 +176,23 @@ def get_catalog_item(
     404 for both an unknown id and an id excluded by the resolved sensitivity
     threshold — the two cases are indistinguishable to the caller by design
     (fail-closed: existence of hidden sensitive items is not leaked).
+
+    403 — deliberately distinct from those 404s — when a clearance-stamped
+    record inside this item's raw payload blocks the ``redistribution``/
+    ``acquisition`` scope (``clearance.ClearanceDenied`` from
+    :func:`catalog_service.get_item`, clearance-gates-v1 M5); see
+    :func:`_clearance_refusal`.
     """
     identity = getattr(request.state, "identity", None)
-    item = svc.get_item(
-        paths,
-        catalog_item_id,
-        sensitivity_threshold=_sensitivity_threshold_override(request),
-        identity=identity,
-    )
+    try:
+        item = svc.get_item(
+            paths,
+            catalog_item_id,
+            sensitivity_threshold=_sensitivity_threshold_override(request),
+            identity=identity,
+        )
+    except ClearanceDenied as exc:
+        raise _clearance_refusal(exc) from exc
     if item is None:
         raise HTTPException(status_code=404, detail="catalog item not found")
     return stamp(item)
@@ -166,11 +205,20 @@ def post_catalog_import_run(
     paths: FoundryPaths = _PATHS_DEP,
     _rbac: None = _RBAC_CATALOG_WRITE,
 ) -> dict[str, Any]:
-    """(Re)import one run. Delete-then-insert — idempotent. 404 on unknown run."""
+    """(Re)import one run. Delete-then-insert — idempotent. 404 on unknown run.
+
+    403 when a clearance-stamped record cited by the run blocks the
+    ``redistribution``/``acquisition`` scope: ``import_run`` derives its rows via
+    ``_build_catalog_rows`` -> ``export_service.export_run``, which leg B made
+    mediating, and ``ClearanceDenied`` is not a ``svc.CatalogError`` so the
+    existing handler below never saw it (clearance-gates-v1 M5).
+    """
     identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (svc.import_run() has no identity param; not a Phase 3 scoping target)
     try:
         # TODO(WKSP-304 P4): svc.import_run() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
         result = svc.import_run(paths, run_id)
+    except ClearanceDenied as exc:
+        raise _clearance_refusal(exc) from exc
     except svc.CatalogError as exc:
         raise HTTPException(status_code=404, detail="run not found") from exc
     return stamp({"imported": {"runs": 1, "items": result["items"]}})
@@ -187,10 +235,19 @@ def post_catalog_import_all(
     ``errors`` carries ``import_all()``'s per-run failure list through to the
     caller (``[]`` when every run imported cleanly) instead of silently
     dropping it.
+
+    403 on a clearance refusal (clearance-gates-v1 M5). NOTE the asymmetry:
+    ``import_all`` catches only ``svc.CatalogError`` per-run, so a
+    ``ClearanceDenied`` from one run aborts the whole sweep rather than landing
+    in ``errors`` — reported as a leg-B-file observation, not changed here
+    (``catalog_service.py`` is another leg's file).
     """
     identity = getattr(request.state, "identity", None)  # noqa: F841 — reserved for WKSP-304 P4 (svc.import_all() has no identity param; not a Phase 3 scoping target)
     # TODO(WKSP-304 P4): svc.import_all() does not accept identity (confirmed not a Phase 3 scoping target); wire once a future phase adds scoping here.
-    result = svc.import_all(paths)
+    try:
+        result = svc.import_all(paths)
+    except ClearanceDenied as exc:
+        raise _clearance_refusal(exc) from exc
     return stamp(
         {
             "imported": {"runs": result["runs"], "items": result["items"]},

@@ -70,7 +70,33 @@ def _arc_council_via(run_id: str, console: Console, err_console: Console, svc: o
             _render_arc_council,
             _sensitivity,
             build_bundle,
+            mediate_run_egress,
         )
+
+        # CLEARANCE (clearance-gates M2). This is the SECOND path that reaches
+        # ARC — services/writeback.py::_render_arc_council is the other — and it
+        # ships claim id/text/status for every material claim off the machine. A
+        # CLI body has no compile-time hook, so the call is explicit here and is
+        # an acknowledged manual-discipline point. Mediation runs on the RAW
+        # source-card records (not the assembled ARC payload) per the module
+        # contract, and a refusal must abort rather than fall back to the local
+        # council: falling back would silently convert a governance refusal into
+        # a quiet success.
+        #
+        # THE EXPLICIT CATCH IS LOAD-BEARING, not decoration. ClearanceDenied is
+        # an RFError, i.e. an Exception, and this function's outer handler is a
+        # bare `except Exception` that falls back to the local council (see the
+        # bottom of this function). Letting the denial propagate uncaught would
+        # therefore be swallowed into "ARC error — falling back to local", which
+        # reads as success and silently drops the control. Converting it to
+        # typer.Exit via _fail() is what escapes that handler, because the
+        # sibling `except typer.Exit: raise` re-raises.
+        from .services import clearance as _clearance
+
+        try:
+            mediate_run_egress(rp, target="arc", paths=paths)
+        except _clearance.ClearanceDenied as exc:
+            _fail(exc)
 
         bundle = _load_bundle(rp)
         if not bundle:
@@ -1481,6 +1507,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
         from .paths import FoundryPaths
         from .services import export_service as svc
+        from .services.clearance import ClearanceDenied
 
         paths = FoundryPaths.discover()
 
@@ -1510,6 +1537,14 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                     paths, run_id, sensitivity_threshold=sensitivity_threshold
                 )
                 console.print(f"[green]exported[/green] {out}")
+        # CLEARANCE (clearance-gates M5). export_run()/export_to_file() now
+        # mediate every citation's raw source-card record internally
+        # (export_service.py _resolve_source) -- without this clause a
+        # genuine denial here would propagate as an unhandled exception
+        # rather than the graceful `_fail(exc)` every other refusal in this
+        # command already uses.
+        except ClearanceDenied as exc:
+            _fail(exc)
         except svc.ExportError as exc:
             print(_json.dumps(_stamp(exc.as_payload())), file=_sys.stderr)
             raise typer.Exit(int(exc.exit_code)) from exc
@@ -1664,11 +1699,37 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         from .paths import FoundryPaths
         from .services import catalog_service as svc
 
+        from .services import clearance as _clearance
+
         paths = FoundryPaths.discover()
-        item = svc.get_item(paths, catalog_item_id, sensitivity_threshold=sensitivity_threshold)
+        # CLEARANCE (clearance-gates M5). get_item() now mediates its own raw
+        # payload_json internally (services/catalog_service.py) BEFORE
+        # returning — the PRIMARY control, distinct from the backstop scan
+        # below. Without this try/except, a genuine denial here would
+        # propagate as an unhandled exception instead of the same graceful
+        # `_fail(exc)` path the backstop already uses a few lines down.
+        try:
+            item = svc.get_item(paths, catalog_item_id, sensitivity_threshold=sensitivity_threshold)
+        except _clearance.ClearanceDenied as exc:
+            _fail(exc)
         if item is None:
             _fail(RFError(f"catalog item not found (or excluded by sensitivity threshold): "
                           f"{catalog_item_id}"))
+        # CLEARANCE (clearance-gates M2). A CLI command body has no compile-time
+        # hook comparable to IntegrationClient's, so this call is explicit and is
+        # an acknowledged manual-discipline point: a NEW command that dumps
+        # records must remember to add one.
+        #
+        # The backstop scan (not mediate_egress) is the right tool HERE
+        # specifically because the catalog item is already a projection — its
+        # payload came out of catalog_service's payload_json — and what this
+        # command puts on stdout IS that projection. Note the corollary: this can
+        # only see a stamp the projection preserved, which is exactly why M5 must
+        # carry clearance.* through catalog_service's row-builder allowlists.
+        try:
+            _clearance.assert_payload_mediated(item, target="stdout")
+        except _clearance.ClearanceDenied as exc:
+            _fail(exc)
         typer.echo(_json.dumps(_stamp(item), ensure_ascii=False, indent=2))
 
     @catalog_app.command("stats")
@@ -1717,6 +1778,63 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             err_console.print(f"[yellow]{err['run_id']}: {err['error']}[/yellow]")
 
     app.add_typer(catalog_app, name="catalog")
+
+    # ----- clearance (clearance-gates M1) -----
+    #
+    # READ-ONLY BY DESIGN. There is deliberately no `rf clearance close` (or any
+    # other mutating subcommand): a gate is closed by an operator editing
+    # config/clearance_gates.yaml, because any CLI verb that closed a gate would
+    # be agent-runnable by definition, and
+    # docs/dev/architecture/adr-rights-entity-model.md OQ-RF-6 records that RF
+    # has no counsel/attestation workflow — the boundary is "human-only by
+    # exclusion". Do not add a mutating command to this group.
+    clearance_app = typer.Typer(
+        help="Clearance gates — read-only view of ship-blocking determinations."
+    )
+
+    @clearance_app.command("status")
+    def clearance_status(
+        json_out: bool = typer.Option(False, "--json/--no-json", help="JSON output"),
+    ) -> None:
+        """Show clearance gates, their blocking scopes, and governed record kinds."""
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services import clearance as svc
+
+        paths = FoundryPaths.discover()
+        result = svc.summarize(svc.load_registry(paths=paths))
+        if json_out:
+            typer.echo(_json.dumps(_stamp(result), ensure_ascii=False, indent=2))
+            return
+
+        table = Table(title="rf clearance status")
+        table.add_column("Gate")
+        table.add_column("Blocks scope")
+        table.add_column("State")
+        table.add_column("Closed by")
+        for gate in result["gates"]:
+            state = gate["state"]
+            styled = f"[yellow]{state}[/yellow]" if state == "open" else f"[green]{state}[/green]"
+            table.add_row(
+                gate["gate_id"],
+                gate["blocks_scope"],
+                styled,
+                gate["closed_by"] or "-",
+            )
+        console.print(table)
+        console.print(
+            f"open scopes: {', '.join(result['open_scopes']) or '(none)'}\n"
+            f"governed record kinds: {', '.join(result['applies_to_kinds']) or '(none)'}\n"
+            f"registry: {result['registry_path']}"
+        )
+        console.print(
+            "[dim]A gate is closed by editing config/clearance_gates.yaml. No CLI verb "
+            "closes one. This command asserts no license posture for any provider.[/dim]"
+        )
+
+    app.add_typer(clearance_app, name="clearance")
 
     # ----- workspace (public-multiuser-release Phase 5, WKSP-301 / DF-004) -----
     workspace_app = typer.Typer(help="Workspace isolation management.")
@@ -2125,6 +2243,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         import json as _json
 
         from .paths import FoundryPaths
+        from .services.clearance import ClearanceDenied
         from .services.export_service import (
             SENSITIVITY_ORDER,
             ExportError,
@@ -2147,6 +2266,12 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         # back to its own default re-resolve.
         try:
             data = export_run(paths, run_id, sensitivity_threshold=threshold)
+        except ClearanceDenied as exc:
+            # CLEARANCE (clearance-gates M5): export_run() now mediates every
+            # citation's raw source-card record internally; without this
+            # clause the denial would propagate unhandled instead of the
+            # same graceful `_fail(exc)` path every other refusal here uses.
+            _fail(exc)
         except ExportError as exc:
             _fail(RFError(f"run not found: {run_id}"))
 
