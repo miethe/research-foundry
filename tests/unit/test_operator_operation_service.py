@@ -78,7 +78,9 @@ from research_foundry.services.operator_cancel_resume_service import (
 from research_foundry.services.operator_operation_service import (
     AuthorizationProof,
     ConfirmationPersistenceError,
+    CorruptManifestError,
     OperationOutcome,
+    OperationRecord,
     OperatorOperationService,
     authorize_for_consumption,
 )
@@ -831,6 +833,40 @@ def test_wrong_workspace_operation_lookup_indistinguishable_from_missing(
     # Same-workspace lookup succeeds.
     same_workspace = service.load_operation(operation_id, identity=_IDENTITY)
     assert same_workspace.operation_id == operation_id
+
+
+def test_corrupt_manifest_missing_key_is_corruption_not_not_found() -> None:
+    # A persisted manifest truncated to drop a required key must surface as
+    # CorruptManifestError (K4-NB-3) -- an integrity fault -- NOT as the
+    # bare KeyError that genuine absence produces, so no `except KeyError`
+    # reader can fold it into `not_found`.
+    corrupt = {"workspace_id": "ws_1", "action_manifest": {}}  # no "operation_id"
+
+    with pytest.raises(CorruptManifestError) as raised:
+        OperationRecord.from_manifest(corrupt)
+
+    # Deliberately NOT a KeyError subclass: it propagates past `except KeyError`.
+    assert not isinstance(raised.value, KeyError)
+    # The message names ONLY the missing key -- no other manifest value leaks.
+    message = str(raised.value)
+    assert "operation_id" in message
+    assert "ws_1" not in message
+    assert "action_manifest" not in message
+
+
+def test_genuinely_absent_operation_still_maps_to_not_found(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    # Regression guard for K4-NB-3: distinguishing corruption from absence
+    # must NOT change absence itself -- a truly missing id still raises the
+    # existing not_found KeyError that governed callers deny into.
+    service = OperatorOperationService(tmp_foundry)
+    fake_id = "opm_" + "a" * 64
+
+    with pytest.raises(KeyError) as absent:
+        service.load_operation(fake_id)
+    assert type(absent.value) is KeyError
+    assert str(absent.value) == repr(f"operation not found: {fake_id}")
 
 
 # ---------------------------------------------------------------------------
