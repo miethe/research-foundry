@@ -45,7 +45,7 @@ import { ClaimBasket } from "@/components/Builder/ClaimBasket";
 import { DetailModal } from "@/components/RunDetail/DetailModal";
 import type { DetailModalPayload, IssueDetail } from "@/components/RunDetail/DetailModal";
 import { buildOutline, computeBlockAuditSummary, computeDraftAuditSummary, computeDraftIssues } from "@/lib/builderCoverage";
-import type { BuilderIssue, BuilderIssueSeverity, BuilderOutlineSection } from "@/lib/builderCoverage";
+import type { BuilderIssue, BuilderOutlineSection } from "@/lib/builderCoverage";
 import { CLAIM_PREVIEW_UNKNOWN, MOCK_REPORT_DRAFT } from "@/lib/builderMocks";
 import { useBuilderClaimPreviewResolver } from "@/hooks";
 import { formatRelativeTime } from "@/lib/format";
@@ -53,8 +53,6 @@ import type { RFClaim, RFResolvedSource } from "@/types/rf";
 import type { CatalogItemSummary } from "@/types/rf/catalog";
 import type { ReportBlockType } from "@/types/rf/report_draft";
 import "@/styles/builder.css";
-
-type BuilderIssueCategory = { key: BuilderIssue["key"]; label: string; severity: BuilderIssueSeverity; count: number };
 
 const assertNever = (value: never): never => {
   throw new Error(`Unhandled builder issue key: ${String(value)}`);
@@ -252,11 +250,11 @@ export function BuilderScreen() {
     setDetailPayload({ kind: "source", source });
   }
 
-  function issueSeverity(category: BuilderIssueCategory): IssueDetail["severity"] {
+  function issueSeverity(category: BuilderIssue): IssueDetail["severity"] {
     return category.severity === "critical" ? "error" : "warning";
   }
 
-  function deriveIssueItems(category: BuilderIssueCategory): IssueDetail[] {
+  function deriveIssueItems(category: BuilderIssue): IssueDetail[] {
     if (!draft) return [];
     switch (category.key) {
       case "contradictions":
@@ -335,7 +333,7 @@ export function BuilderScreen() {
     }
   }
 
-  function handleOpenIssueCategory(category: BuilderIssueCategory) {
+  function handleOpenIssueCategory(category: BuilderIssue) {
     setDetailPayload({
       kind: "issues",
       category,

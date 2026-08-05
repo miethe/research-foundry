@@ -91,3 +91,16 @@ No new issue category, and no RF API change. This task only makes the seam fail 
 Test-file paths differ from the node's shorthand — actual locations are
 `src/test/builder-screen.test.tsx`, `src/hooks/useBuilderClaimPreviews.test.tsx`,
 `src/lib/builderCoverage.claimresolution.test.ts` (not co-located under `__tests__/`).
+
+## Follow-up: collapse `BuilderIssueCategory` (2026-08-05)
+
+Closed the one follow-up this change left open. After narrowing, `BuilderIssueCategory` was
+structurally identical to `BuilderIssue` — pure indirection — so it was deleted and its three
+annotations (`issueSeverity`, `deriveIssueItems`, `handleOpenIssueCategory`) now take
+`BuilderIssue` directly. The `BuilderIssueSeverity` import existed only for the alias and was
+dropped with it. Type-level only: no runtime logic, JSX, or the `assertNever` guard touched.
+
+Gates re-run independently on the follow-up tree: `tsc -p tsconfig.app.json --noEmit` exit 0 ·
+23/23 builder tests · `eslint src/screens/BuilderScreen.tsx` exit 0 · positive control still
+fails as designed (`BuilderScreen.tsx(332,28): error TS2345: … not assignable to parameter of
+type 'never'`), probe reverted and tree clean · `grep -rn BuilderIssueCategory src` → no matches.
