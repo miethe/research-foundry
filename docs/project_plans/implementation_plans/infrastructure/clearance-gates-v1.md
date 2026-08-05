@@ -3,8 +3,8 @@ it_schema: 1
 feature_slug: clearance-gates
 title: "Clearance Gates — separating dev/test enablement from ship enablement"
 doc_type: implementation_plan
-status: in_progress
-planning_maturity: executing
+status: completed
+planning_maturity: shipped
 tier: 3
 priority: P1
 points: 52
@@ -22,12 +22,15 @@ related_documents:
   - docs/dev/architecture/adr-rights-entity-model.md
   - .claude/worknotes/clearance-gates/context.md
 # commit_refs holds ONLY commits reachable from main (.claude/rules/plan-bookkeeping.md
-# invariant 1). This work is unmerged, so it is empty by design; branch commits are
-# recorded in the Milestones table below and must be re-cited as the squash sha on merge.
-commit_refs: []
+# invariant 1). Verified with `git merge-base --is-ancestor 576778a main`, not `git log -1`
+# — the latter resolves an object and succeeds on an orphan, so it is not proof of
+# reachability. The branch shas in the Milestones table below are pre-squash and are now
+# orphaned by design; do not cite them here.
+commit_refs:
+  - 576778a
 pr_refs: []
-merge_commit: null
-merge_branch: null
+merge_commit: 576778a
+merge_branch: main
 worktree: .claude/worktrees/clearance-gates
 branch: feat/clearance-gates
 base_commit: ff5a23f
