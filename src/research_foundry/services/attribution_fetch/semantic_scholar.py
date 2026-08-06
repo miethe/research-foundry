@@ -5,9 +5,15 @@ and for the clearance-gates M3 dev/test live-fetch posture that gates the
 one real-fetch path this module now has.
 
 This provider is one of the two DEF-6 names explicitly: "Live ToS
-re-verification for Semantic Scholar / NCBI" is open — the PRD's licensing
-table is stated from general domain knowledge of Semantic Scholar's public
-API policies, not re-verified against its live current ToS, and that is
+re-verification for Semantic Scholar / NCBI". That verification ran
+2026-08-06 (``docs/project_plans/exploration/source-metadata-propagation/
+spikes/def-6-tos-verification-2026-08-06.md``) and the gate is **still
+open** — verifying the terms is not closing the gate. What the pass found
+makes this adapter's inertness more load-bearing, not less: the S2 API
+License Agreement defers per-dataset ("such as CC BY-NC or ODC-BY"), so no
+blanket redistribution license for S2 data exists to rely on, and any
+future ``license_basis`` this adapter stamps must come from the payload's
+own accompanying license rather than a hardcoded default. That record is
 **not legal advice**. This module asserts no licensing determination for
 Semantic Scholar, even on the gated dev/test path below.
 

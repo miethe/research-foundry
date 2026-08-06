@@ -23,12 +23,19 @@ DEF-1
     cache, or redistribute a live third-party value **for redistribution**.
 
 DEF-6
-    Live ToS re-verification for Semantic Scholar / NCBI — NOT yet done.
-    PRD §7: "Licensing table in risk-findings.md is stated from general
-    domain knowledge of these programs' public policies, not re-verified
-    against live current ToS pages." This is explicitly **not legal
-    advice**, and nothing in this package should be read as a licensing or
-    legal determination for any provider.
+    Live ToS re-verification for Semantic Scholar / NCBI — the VERIFICATION
+    was performed 2026-08-06 and recorded in ``docs/project_plans/
+    exploration/source-metadata-propagation/spikes/
+    def-6-tos-verification-2026-08-06.md``; the GATE REMAINS OPEN. Those are
+    two different things: the record supplies the reading a human with
+    standing needs, and closing the gate is theirs alone (``governance.py``
+    rule 9 blocks any agent-writable path from proposing ``state: closed``).
+    The pass did not vindicate the prior table — Semantic Scholar's license
+    proved to be per-dataset and possibly ``CC BY-NC``, so redistribution
+    scope is *less* determinable than the superseded "ODC-BY with
+    attribution" claim implied. This is explicitly **not legal advice**, and
+    nothing in this package should be read as a licensing or legal
+    determination for any provider.
 
 Clearance-gates M3: the dev/test live-fetch escape hatch
 ----------------------------------------------------------
