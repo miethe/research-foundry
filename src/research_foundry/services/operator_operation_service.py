@@ -730,6 +730,18 @@ class ConfirmationPersistenceError(RuntimeError):
     """
 
 
+class CorruptManifestError(RuntimeError):
+    """Raised when a persisted operation manifest is missing a required key.
+
+    Deliberately NOT a KeyError subclass so it is never mapped to not_found.
+    A truncated/corrupt manifest is an integrity fault, not "this operation
+    does not exist": `get_expected_action_id` (and any other reader that folds
+    genuine absence into `None`/`not_found` via `except KeyError`) must let
+    this propagate as corruption/internal rather than silently reporting the
+    row as absent.
+    """
+
+
 # ---------------------------------------------------------------------------
 # F1: authorization as a data dependency (DUR-1's other half)
 # ---------------------------------------------------------------------------
@@ -857,9 +869,16 @@ class OperationRecord:
 
     @classmethod
     def from_manifest(cls, manifest: Mapping[str, Any]) -> "OperationRecord":
+        try:
+            operation_id = manifest["operation_id"]
+            workspace_id = manifest["workspace_id"]
+        except KeyError as exc:
+            raise CorruptManifestError(
+                f"manifest missing required key: {exc.args[0]!r}"
+            ) from None
         return cls(
-            operation_id=manifest["operation_id"],
-            workspace_id=manifest["workspace_id"],
+            operation_id=operation_id,
+            workspace_id=workspace_id,
             manifest=manifest,
         )
 
