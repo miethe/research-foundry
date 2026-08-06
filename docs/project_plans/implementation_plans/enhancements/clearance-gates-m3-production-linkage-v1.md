@@ -4,6 +4,8 @@ feature_slug: clearance-gates-m3-production-linkage
 title: "Clearance-gates M3 production linkage — implementation plan"
 doc_type: implementation_plan
 status: completed
+commit_refs:
+  - 83bc76bb2bfbe69a639deb2985bca72225110252
 tier: 2
 priority: P1
 points: 9
