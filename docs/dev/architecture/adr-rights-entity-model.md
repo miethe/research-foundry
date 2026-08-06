@@ -191,6 +191,41 @@ gate. They may not be relaxed without a superseding ADR.
   v1.0 baseline structurally risked) would force every consumer that only
   cares about one axis to reason about both.
 
+#### Invariant 4 — Single Clearance-Taint Write Path (clearance-gates-v1 M3)
+
+> **`services.attribution_fetch.stamp_source_card` is the single sanctioned
+> mechanism for writing a `clearance` taint onto a source card. No other
+> module may write the `clearance` taint key onto card frontmatter.**
+
+- The writer is type-gated to `ClearedProviderFetchResult`: its signature
+  structurally refuses a hand-assembled taint (a plain dict, a
+  `ProviderFetchResult`, or any other shape) with `TypeError`, before any
+  byte is written. The only stamp reachable through this function is one
+  `clearance.stamp_taint` already produced at real fetch time — never one a
+  caller assembled to look like it.
+- The composed block is validated against `clearance_taint` fail-**CLOSED**
+  before any write: an unavailable schema raises rather than skipping (the
+  opposite of `source_cards._validate`'s skip-if-absent behaviour), because
+  here a skip would mean persisting an unvalidated governance stamp.
+- Merges of an existing stamp with an incoming one are monotone and
+  widen-only on every axis — union on `blocked_scopes`, `dev_test` never
+  downgraded to `none` on `posture_at_stamp`, and the merged result can
+  never be empty or carry a `CLEARED_*`/`counsel_approved`/`attested` value
+  (Invariant 1's prohibition, re-checked at this point of use).
+- This writer intentionally has **no production caller yet**. Wiring one is
+  deferred until an attribution-value -> source-card merge path exists
+  (`ClearedProviderFetchResult.to_record()`'s own docstring names this "a
+  separate, later concern") — stamping a card's `clearance` block before the
+  provider data it describes has actually landed on that card would assert
+  a governance fact that isn't true. `services/export_service.py`'s
+  `_stamped_clearance_candidates` mediation is already armed for the moment
+  a writer runs: it reads and carries forward an existing stamp, but never
+  authors one.
+- Enforced by `tests/test_clearance_stamp_single_write_path.py`, which
+  statically scans every module under `src/research_foundry` and fails,
+  naming the offending module, if a second write path to the taint key
+  appears.
+
 ---
 
 ## OQ-RF-1..4 Resolutions
