@@ -3359,19 +3359,32 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
         This is the CLI surface for the deferred "Phase C" mechanism scaffolded in
         ``services/attribution_fetch/`` (source-metadata-propagation-v1 PRD Sec7).
-        It never issues a network call under any input combination: the umbrella
-        ``attribution_fetch_enabled`` config flag (read via
-        ``FoundryConfig.attribution_fetch_controls()``) gates *visibility* only, and
-        every provider adapter under ``services/attribution_fetch/`` is
-        unconditionally unreachable by construction regardless of that flag's
-        value -- see that package's docstring for the two open gates, DEF-1
-        (per-provider license terms verified for bundle redistribution) and DEF-6
-        (live ToS re-verification for Semantic Scholar / NCBI), that this command
-        does not close. Asserts no license posture for any provider.
+        Two independent config controls gate it, and DEFAULT (both off) is no
+        network call under any input combination:
+
+        * ``attribution_fetch_enabled`` (read via
+          ``FoundryConfig.attribution_fetch_controls()``) gates *visibility* of
+          this command's intent only. With it on and no dev/test posture
+          declared, every provider adapter still returns a value-free,
+          ``status="disabled"`` ``ProviderFetchResult`` built purely in-process.
+        * ``foundry.dev_test_posture.live_fetch_enabled`` (clearance-gates M3) is
+          the SEPARATE, explicit, auditable operator opt-in that permits a REAL
+          live provider fetch for LOCAL development/testing only. ``config`` is
+          threaded into every adapter ``fetch()`` below so that declared posture
+          is honoured; when it resolves ``True`` the adapter returns a
+          ``ClearedProviderFetchResult`` carrying a durable clearance taint
+          stamped at fetch time.
+
+        Neither control closes the two open gates, DEF-1 (per-provider license
+        terms verified for bundle redistribution) and DEF-6 (live ToS
+        re-verification for Semantic Scholar / NCBI) -- see the
+        ``services/attribution_fetch/`` package docstring. This command asserts
+        no license posture for any provider.
 
         Exits 0 (non-error) whether reporting the umbrella-flag-off disabled
-        message or a provider adapter's own disabled result -- DEF-1/DEF-6 being
-        open is expected default state, not a CLI failure.
+        message, a provider adapter's own disabled result, or a posture-gated
+        real fetch -- DEF-1/DEF-6 being open is expected default state, not a
+        CLI failure.
         """
 
         import json as _json
@@ -3394,11 +3407,19 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                 console.print("[yellow]disabled[/yellow] -- see DEF-1/DEF-6. No network call was attempted.")
             raise typer.Exit(0)
 
-        # Umbrella flag on: still fully inert. Every adapter below returns a
-        # value-free ProviderFetchResult built purely in-process (status is
-        # always "disabled") -- no socket, HTTP client, or DNS lookup is ever
-        # touched, independent of this flag's value (see package docstring).
-        from .services.attribution_fetch import crossref, openalex, semantic_scholar
+        # Umbrella flag on. Which of the two result shapes an adapter returns is
+        # decided ENTIRELY inside the adapter, from the `config` threaded below:
+        # with no dev/test posture declared it is a value-free
+        # ProviderFetchResult built purely in-process (status "disabled", no
+        # socket/HTTP client/DNS lookup); with the posture declared it is a
+        # ClearedProviderFetchResult carrying a fetch-time clearance stamp. This
+        # command never decides that itself -- it only renders what it is handed.
+        from .services.attribution_fetch import (
+            ClearedProviderFetchResult,
+            crossref,
+            openalex,
+            semantic_scholar,
+        )
 
         adapters: dict[str, Any] = {
             crossref.PROVIDER_NAME: (crossref.fetch, crossref.CrossrefRequest),
@@ -3410,12 +3431,24 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             raise typer.Exit(1)
 
         fetch_fn, request_cls = adapters[provider]
-        result = fetch_fn(request_cls(identifier))
+        result = fetch_fn(request_cls(identifier), config=config)
+
+        # ClearedProviderFetchResult (the posture-gated real-fetch shape) has NO
+        # `.reason` field -- it is a deliberately separate type from the
+        # value-free ProviderFetchResult, not that type with fields bolted on
+        # (see the package docstring's "Non-laundering guarantee"). Derive a
+        # human reason for it rather than reaching for an attribute it does not
+        # have; the value/clearance block it carries is intentionally NOT
+        # rendered here (this surface reports posture + status only).
+        if isinstance(result, ClearedProviderFetchResult):
+            reason = f"fetched (dev/test posture): {result.status}"
+        else:
+            reason = result.reason
 
         if json_out:
             typer.echo(
                 _json.dumps(
-                    _stamp({"provider": result.provider, "status": result.status, "reason": result.reason}),
+                    _stamp({"provider": result.provider, "status": result.status, "reason": reason}),
                     ensure_ascii=False,
                     indent=2,
                 )
@@ -3425,7 +3458,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
             table.add_column("provider")
             table.add_column("status")
             table.add_column("reason")
-            table.add_row(result.provider, result.status, result.reason)
+            table.add_row(result.provider, result.status, reason)
             console.print(table)
 
         raise typer.Exit(0)

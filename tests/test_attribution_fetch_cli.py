@@ -160,3 +160,132 @@ def test_attribution_validate_still_works_unchanged(tmp_foundry: FoundryPaths) -
 
     assert out.exit_code == 0, out.output
     assert "0" in out.output
+
+
+# --- clearance-gates M3: the posture-on path renders without AttributeError --
+
+
+def _declare_posture(root: Path) -> None:
+    """Turn BOTH controls on in *root*'s ``foundry.yaml``.
+
+    Mirrors ``tests/test_attribution_fetch_dev_test_posture.py::
+    _posture_config``'s ``dev_test_posture`` block, but merged into the
+    fixture's real ``foundry.yaml`` (rather than a hand-built minimal one) so
+    the CLI's own ``FoundryConfig.load()`` discovery resolves it from cwd
+    exactly as it does in production.
+    """
+
+    import yaml
+
+    data = yaml.safe_load((root / "foundry.yaml").read_text(encoding="utf-8")) or {}
+    foundry = data.setdefault("foundry", {})
+    foundry["attribution_fetch"] = {"attribution_fetch_enabled": True}
+    foundry["dev_test_posture"] = {
+        "live_fetch_enabled": True,
+        "rationale": "local dev/test only; no license/ToS posture asserted",
+        "declared_at": "2026-08-05",
+        "declared_by": "nick",
+    }
+    (root / "foundry.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+
+@pytest.mark.parametrize("json_flag", ["--json", "--no-json"])
+def test_posture_on_path_renders_without_attribute_error(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch, json_flag: str
+) -> None:
+    """Regression guard: with both the umbrella flag and the dev/test posture
+    declared, ``crossref.fetch`` returns a ``ClearedProviderFetchResult`` --
+    which has ``provider``/``status``/``value``/``clearance`` but deliberately
+    NO ``reason`` field. The renderer previously read ``result.reason``
+    unconditionally and raised ``AttributeError`` on this shape.
+
+    Mocked at the ``_fetch_json`` seam (the same seam
+    ``test_attribution_fetch_dev_test_posture.py`` uses), so no socket is
+    opened -- the module-level ``_blocked_socket`` autouse fixture would fail
+    the test outright if one were.
+    """
+
+    _declare_posture(tmp_foundry.root)
+    monkeypatch.setattr(
+        crossref,
+        "_fetch_json",
+        lambda url, **kw: {"status": "ok", "message": {"DOI": "10.1/x", "is-referenced-by-count": 3}},
+    )
+
+    out = _invoke(["attribution", "fetch", "crossref", "10.1/x", json_flag], tmp_foundry.root)
+
+    assert out.exit_code == 0, out.output
+    assert out.exception is None or isinstance(out.exception, SystemExit), out.exception
+    if json_flag == "--json":
+        payload = json.loads(out.output)
+        assert payload["provider"] == "crossref"
+        assert payload["status"] == "fetched"
+        assert payload["reason"] == "fetched (dev/test posture): fetched"
+        # The fetched value and its clearance stamp are NOT rendered on this
+        # surface -- it reports posture + status only.
+        assert "value" not in payload
+        assert "clearance" not in payload
+    else:
+        assert "crossref" in out.output
+        assert "fetched" in out.output
+
+
+def test_posture_on_result_is_the_cleared_shape_with_no_reason_field(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pins the premise of the test above: the object the CLI renders on the
+    posture-on path really is ``ClearedProviderFetchResult`` and really has no
+    ``reason`` attribute. Without this, the regression guard could pass
+    vacuously if a future edit gave that type a ``reason`` field.
+    """
+
+    from research_foundry.config import FoundryConfig
+    from research_foundry.services.attribution_fetch import ClearedProviderFetchResult
+
+    _declare_posture(tmp_foundry.root)
+    monkeypatch.setattr(
+        crossref,
+        "_fetch_json",
+        lambda url, **kw: {"status": "ok", "message": {"DOI": "10.1/x", "is-referenced-by-count": 3}},
+    )
+
+    prev = Path.cwd()
+    os.chdir(tmp_foundry.root)
+    try:
+        config = FoundryConfig.load()
+        result = crossref.fetch(crossref.CrossrefRequest(doi="10.1/x"), config=config)
+    finally:
+        os.chdir(prev)
+
+    assert isinstance(result, ClearedProviderFetchResult)
+    assert not hasattr(result, "reason")
+    assert result.clearance, "every ClearedProviderFetchResult carries a stamp"
+
+
+def test_posture_off_with_umbrella_on_still_renders_adapter_reason(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The middle state -- umbrella flag on, posture NOT declared -- still
+    goes through the plain ``ProviderFetchResult`` ``.reason`` rendering,
+    unchanged. Threading ``config`` into ``fetch()`` must not have flipped
+    this path on by itself.
+    """
+
+    import yaml
+
+    def _boom(*a: object, **k: object) -> None:
+        raise AssertionError("no fetch may be issued without a declared posture")
+
+    monkeypatch.setattr(crossref, "_fetch_json", _boom)
+
+    root = tmp_foundry.root
+    data = yaml.safe_load((root / "foundry.yaml").read_text(encoding="utf-8")) or {}
+    data.setdefault("foundry", {})["attribution_fetch"] = {"attribution_fetch_enabled": True}
+    (root / "foundry.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    out = _invoke(["attribution", "fetch", "crossref", "10.1/x", "--json"], root)
+
+    assert out.exit_code == 0, out.output
+    payload = json.loads(out.output)
+    assert payload["status"] == "disabled"
+    assert "DEF-1" in payload["reason"]

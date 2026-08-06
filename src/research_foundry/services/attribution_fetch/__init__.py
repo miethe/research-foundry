@@ -85,15 +85,28 @@ around that schema gate.
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from ...errors import AdapterError
-from ..clearance import ClearanceConfigError, stamp_taint
+from ...errors import AdapterError, SchemaError
+from ...frontmatter import dump_md, load_md
+from ...paths import FoundryPaths, distribution_root
+from ...schemas import SchemaRegistry
+from ..clearance import (
+    BLOCKED_SCOPES_KEY,
+    BLOCKING_SCOPES,
+    TAINT_KEY,
+    ClearanceConfigError,
+    stamp_taint,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ...config import FoundryConfig
@@ -543,6 +556,283 @@ def stamp_dev_test_fetch(*, provider: str) -> dict[str, Any]:
     )
 
 
+#: Human-only rights-clearance literals (``docs/dev/architecture/
+#: adr-rights-entity-model.md`` Invariant 1). This writer never constructs one;
+#: the constant exists so :func:`_merged_blocked_scopes`' refusal can name the
+#: family it is refusing rather than failing with a bare vocabulary error, and
+#: so the prohibition is asserted at the point of use rather than only in prose.
+#: Note these are NOT members of ``clearance.BLOCKING_SCOPES`` — the two
+#: vocabularies are deliberately disjoint, and the subset check below is what
+#: makes that disjointness load-bearing instead of incidental.
+_HUMAN_ONLY_RIGHTS_VALUES: frozenset[str] = frozenset({"counsel_approved", "attested"})
+
+#: Schema governing the ``clearance`` block this writer emits.
+_CLEARANCE_TAINT_SCHEMA = "clearance_taint"
+
+
+def _clearance_schema_registry(paths: FoundryPaths | None) -> SchemaRegistry | None:
+    """Locate the schema registry holding ``clearance_taint.schema.yaml``.
+
+    Mirrors ``services/source_cards.py::_schema_registry`` (workspace schemas
+    first, distribution schemas as fallback) but deliberately does NOT call
+    ``FoundryPaths.discover()`` when *paths* is ``None``: discovery resolves
+    relative to the current working directory, which in a git worktree points
+    at a tree that may carry no ``schemas/`` at all. Returning ``None`` here
+    hands :func:`stamp_source_card` a fail-CLOSED refusal instead of a
+    silently-unvalidated write.
+    """
+
+    if paths is not None and paths.schemas.exists():
+        return SchemaRegistry(schemas_dir=paths.schemas)
+    dist = distribution_root() / "schemas"
+    return SchemaRegistry(schemas_dir=dist) if dist.exists() else None
+
+
+def _read_scopes(block: Mapping[str, Any], *, source: str) -> list[str]:
+    """Read a stamp's ``blocked_scopes``, refusing an unreadable shape.
+
+    *source* names where the block came from (the card path, or
+    ``result.clearance``) so a refusal says which side was malformed.
+
+    Refusing (rather than treating an unreadable list as absent) is what makes
+    the merge monotone in practice: if a malformed existing value were read as
+    the empty set, a scope a human had recorded could be dropped by a
+    subsequent stamp. This raises BEFORE any write, so the on-disk card is
+    left byte-identical.
+    """
+
+    raw = block.get(BLOCKED_SCOPES_KEY, [])
+    if isinstance(raw, str) or not isinstance(raw, (list, tuple)):
+        raise SchemaError(
+            f"stamp_source_card: {source} carries a {TAINT_KEY!r} block whose "
+            f"{BLOCKED_SCOPES_KEY!r} is {type(raw).__name__}, not a list -- refusing "
+            "to merge against a shape that cannot be read back as a scope set. "
+            "Repair the card by hand; a writer that guessed here could silently "
+            "narrow an existing stamp."
+        )
+    scopes: list[str] = []
+    for entry in raw:
+        if not isinstance(entry, str):
+            raise SchemaError(
+                f"stamp_source_card: {source}'s {BLOCKED_SCOPES_KEY!r} "
+                f"contains a non-string entry {entry!r} -- refusing before any write."
+            )
+        scopes.append(entry)
+    return scopes
+
+
+def _merged_blocked_scopes(
+    *, existing_scopes: list[str], incoming_scopes: list[str], card_path: Path
+) -> list[str]:
+    """Set-union the two scope lists — monotone, widen-only, never empty.
+
+    Union is the ONLY merge operation used: it cannot remove a scope the card
+    already carried, and it cannot introduce a scope that neither the existing
+    stamp nor ``result.clearance`` already asserted (so this writer can never
+    widen permitted use, nor invent a restriction out of nothing).
+
+    Both invariants that ``governance.py`` rule 9
+    (``no_agent_cleared_clearance_taint``) protects are re-checked here at the
+    point of use, because rule 9 evaluates ``proposed_field_writes`` and this
+    writer does not route through that surface: the result must be non-empty
+    (an empty set is the release assertion) and must stay inside
+    ``clearance.BLOCKING_SCOPES`` — which structurally excludes the
+    ``CLEARED_*``/``counsel_approved``/``attested`` family, so no value from
+    that family can reach disk through this path.
+    """
+
+    merged = sorted(set(existing_scopes) | set(incoming_scopes))
+    forged = sorted(s for s in merged if s in _HUMAN_ONLY_RIGHTS_VALUES or s.startswith("CLEARED_"))
+    if forged:
+        raise ClearanceConfigError(
+            f"stamp_source_card: refusing to write human-only rights-clearance "
+            f"value(s) {forged} into {TAINT_KEY}.{BLOCKED_SCOPES_KEY} of {card_path} "
+            "-- those literals are reserved for humans (ADR Invariant 1) and are "
+            "not clearance scopes."
+        )
+    unknown = sorted(s for s in merged if s not in BLOCKING_SCOPES)
+    if unknown:
+        raise ClearanceConfigError(
+            f"stamp_source_card: merged blocked_scopes for {card_path} contain "
+            f"unknown scope(s) {unknown}; expected members of "
+            f"{sorted(BLOCKING_SCOPES)}."
+        )
+    if not merged:
+        raise ClearanceConfigError(
+            f"stamp_source_card: refusing to write an EMPTY "
+            f"{TAINT_KEY}.{BLOCKED_SCOPES_KEY} to {card_path} -- the empty set is a "
+            "release assertion, which only a human editing the record may make."
+        )
+    return merged
+
+
+def _merged_clearance_block(
+    *,
+    incoming: Mapping[str, Any],
+    existing: Mapping[str, Any] | None,
+    card_path: Path,
+) -> dict[str, Any]:
+    """Compose the block to write from *incoming* (authoritative) + *existing*.
+
+    ``incoming`` is ``result.clearance`` verbatim — built by
+    :func:`~research_foundry.services.clearance.stamp_taint` at fetch time.
+    Nothing here re-derives a taint, consults gate state, or hand-assembles a
+    field ``stamp_taint`` owns; this function only chooses, per field, between
+    a value already present in one of the two blocks.
+
+    Per-field merge, all widen-only:
+
+    ``blocked_scopes``   union (see :func:`_merged_blocked_scopes`).
+    ``posture_at_stamp`` ``dev_test`` wins over ``none``. Overwriting a
+                         dev/test-acquired card with ``none`` is exactly the
+                         retroactive release rule 9 refuses.
+    ``gate_refs``        union — advisory provenance; a superset can never
+                         widen permitted use (``mediate_egress`` reads only
+                         ``blocked_scopes``).
+    ``note``            incoming when it carries one, else the existing
+                         operator annotation is preserved rather than dropped.
+    ``stamped_at`` /
+    ``stamped_by``       incoming; provenance for THIS acquisition, and
+                         carrying no authority per the schema.
+    """
+
+    existing = existing or {}
+    incoming_scopes = _read_scopes(incoming, source="result.clearance")
+    block: dict[str, Any] = {
+        "schema_version": incoming.get("schema_version", "1.0"),
+        BLOCKED_SCOPES_KEY: _merged_blocked_scopes(
+            existing_scopes=_read_scopes(existing, source=str(card_path)),
+            incoming_scopes=incoming_scopes,
+            card_path=card_path,
+        ),
+        "stamped_at": incoming.get("stamped_at"),
+        "stamped_by": incoming.get("stamped_by"),
+        "posture_at_stamp": (
+            "dev_test"
+            if "dev_test" in {existing.get("posture_at_stamp"), incoming.get("posture_at_stamp")}
+            else incoming.get("posture_at_stamp")
+        ),
+        "gate_refs": sorted(
+            {str(g) for g in _iter_refs(existing.get("gate_refs"))}
+            | {str(g) for g in _iter_refs(incoming.get("gate_refs"))}
+        ),
+    }
+    note = incoming.get("note", existing.get("note"))
+    if note is not None:
+        block["note"] = note
+    return block
+
+
+def _iter_refs(value: Any) -> tuple[Any, ...]:
+    """Coerce a ``gate_refs`` value to a tuple; a non-sequence contributes none."""
+
+    if isinstance(value, str) or not isinstance(value, (list, tuple, set, frozenset)):
+        return ()
+    return tuple(value)
+
+
+def stamp_source_card(
+    card_path: Path,
+    result: ClearedProviderFetchResult,
+    *,
+    paths: FoundryPaths | None = None,
+) -> None:
+    """Persist *result*'s durable clearance taint onto an existing source card.
+
+    The production caller for the M3 stamp: a real dev/test fetch produced a
+    :class:`ClearedProviderFetchResult` whose ``clearance`` block records the
+    posture in force at acquisition time, and that block has to ride on the
+    card from here on — ``clearance.mediate_egress`` reads the stamp off the
+    record and treats its ABSENCE as blocked for any governed kind, so an
+    unstamped card is refused outward rather than leaking.
+
+    Contract:
+
+    * The taint is taken from ``result.clearance`` verbatim. This function
+      never calls ``stamp_taint``, never reads gate state, and never
+      hand-assembles a taint dict — a second derivation point could disagree
+      with the fetch-time one about what was true at acquisition.
+    * Merging an existing stamp is monotone and widen-only on every axis: a
+      scope already on the card survives, the empty set is refused, and
+      ``posture_at_stamp: dev_test`` is never downgraded to ``none``.
+    * No ``CLEARED_*``/``counsel_approved``/``attested`` value is ever
+      constructed or written — those are human-only (ADR Invariant 1) and are
+      not clearance vocabulary. Re-checked at the point of use.
+    * The composed block is schema-validated (``clearance_taint``) BEFORE any
+      byte is written, and validation is fail-CLOSED: an unavailable schema
+      raises rather than skipping (unlike ``source_cards._validate``, whose
+      skip-if-absent behaviour would here mean writing an unvalidated
+      governance stamp).
+    * The write is atomic — temp file in the card's own directory then
+      ``os.replace`` — so a failure at any point leaves the card
+      byte-identical, never half-rewritten frontmatter.
+
+    Only the ``clearance`` key is touched; every other frontmatter field and
+    the Markdown body are round-tripped unchanged.
+
+    Raises:
+        TypeError: *result* is not a :class:`ClearedProviderFetchResult`.
+        FileNotFoundError: *card_path* does not exist.
+        SchemaError: the card has no frontmatter, its existing ``clearance``
+            block has an unreadable shape, or the composed block fails
+            ``clearance_taint`` validation (or that schema is unavailable).
+        ClearanceConfigError: the merge would produce a non-monotone,
+            empty, or out-of-vocabulary stamp.
+    """
+
+    if not isinstance(result, ClearedProviderFetchResult):
+        # A dict/ProviderFetchResult would let a caller supply a hand-assembled
+        # taint; the whole point of this signature is that the only stamp it can
+        # write is one stamp_taint already produced at fetch time.
+        raise TypeError(
+            "stamp_source_card: result must be a ClearedProviderFetchResult "
+            f"(got {type(result).__name__}) -- a hand-assembled clearance block "
+            "is not an acceptable input."
+        )
+
+    card_path = Path(card_path)
+    meta, body = load_md(card_path)
+    if not meta:
+        raise SchemaError(
+            f"stamp_source_card: {card_path} has no YAML frontmatter to stamp -- "
+            "refusing to synthesize a governed record around a clearance block."
+        )
+
+    existing = meta.get(TAINT_KEY)
+    if existing is not None and not isinstance(existing, Mapping):
+        raise SchemaError(
+            f"stamp_source_card: {card_path}'s {TAINT_KEY!r} key is "
+            f"{type(existing).__name__}, not a mapping -- refusing before any write."
+        )
+
+    block = _merged_clearance_block(
+        incoming=result.clearance, existing=existing, card_path=card_path
+    )
+
+    registry = _clearance_schema_registry(paths)
+    if registry is None or not registry.has(_CLEARANCE_TAINT_SCHEMA):
+        raise SchemaError(
+            f"stamp_source_card: {_CLEARANCE_TAINT_SCHEMA}.schema.yaml is unavailable, "
+            "so the composed clearance block cannot be validated. Refusing to write an "
+            "unvalidated governance stamp (fail-closed: an absent or malformed stamp "
+            "is refused outward, so a bad one is worse than no write)."
+        )
+    validation = registry.validate(block, _CLEARANCE_TAINT_SCHEMA)
+    if not validation.ok:
+        raise SchemaError(
+            f"stamp_source_card: {_CLEARANCE_TAINT_SCHEMA} validation failed for "
+            f"{card_path}: " + "; ".join(validation.errors)
+        )
+
+    meta[TAINT_KEY] = block
+    tmp_path = card_path.parent / f".{card_path.name}.clearance-{uuid.uuid4().hex}.tmp"
+    try:
+        dump_md(meta, body, tmp_path)
+        os.replace(tmp_path, card_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
 __all__ = [
     "DISABLED_STATUS",
     "FETCHED_STATUS",
@@ -554,6 +844,7 @@ __all__ = [
     "authorize_live_fetch",
     "disabled_result",
     "stamp_dev_test_fetch",
+    "stamp_source_card",
 ]
 # NOTE (finding B1): `_fetch_json` is deliberately NOT exported here. It is
 # a private, authorization-gated network primitive -- see its own
