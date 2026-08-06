@@ -6,6 +6,7 @@ doc_type: implementation_plan
 status: completed
 commit_refs:
   - 83bc76bb2bfbe69a639deb2985bca72225110252
+  - 1a1585e61467a3406b58e316a2f337c32d86db62
 tier: 2
 priority: P1
 points: 9
@@ -320,3 +321,37 @@ declare must stay claude-primary. It needs explicit operator sign-off, not an au
 Consequence for tracking: the parent IntentTree finding
 (`node_01KZ9WKCPA8RBG3722QN3KH3S6`) stays **open**. Do not mark it resolved on the strength of this
 plan's `completed` status.
+
+### Operator decision, 2026-08-06 — deferral accepted and made safe (`1a1585e`)
+
+The gap above was put to the operator as three options: (A) add `--card`/`--source-card-id` to
+`rf attribution fetch` so it calls the writer, (B) build the attribution-value -> source-card merge
+path and stamp inseparably as part of that write, or (C) accept "mechanism ready, no caller yet" and
+make the deferral safe by documentation plus a guard.
+
+**Chosen: C now, B later.** The reasoning that decided it: the `clearance` block is a *taint*
+meaning "this record carries provider-derived data whose redistribution rights (DEF-1/DEF-6) are not
+cleared." Nothing puts provider data on a card yet — `ClearedProviderFetchResult.value` has no
+consumer anywhere in `src/` and `to_record()` has zero callers, exactly as its docstring defers.
+Option A would therefore stamp a taint onto a card carrying no provider data: over-blocking (the safe
+direction) but asserting something untrue, and the card's export would then deny for a reason not
+visible on the card. On a rights-clearance surface a false assertion is worse than an absent one.
+Note also that A made semantically honest simply *becomes* B.
+
+Landed for C in `1a1585e`:
+
+- **ADR Invariant 4** (`docs/dev/architecture/adr-rights-entity-model.md`, "Single Clearance-Taint
+  Write Path") — `stamp_source_card` is the single sanctioned mechanism for persisting a taint onto a
+  card; records its type gate, fail-closed schema validation, monotone widen-only merge, the
+  intentional no-caller state, and that `export_service.py`'s `_stamped_clearance_candidates`
+  mediation is already armed for the moment a writer runs.
+- **`tests/test_clearance_stamp_single_write_path.py`** — an AST guard (no `rg`/`grep` subprocess)
+  asserting only an explicit, reasoned allowlist of modules writes the taint key: the sanctioned
+  writer, plus `export_service.py`'s non-persisting outward projection. Detection is purely key-based
+  and indifferent to the subscripted base expression's name or shape, and two non-vacuity pins
+  ensure the guard cannot rot into a no-op (the sanctioned write must still be *detected*, and
+  export_service's site must still be detected-then-allowlisted rather than merely unseen).
+
+B is filed as IntentTree `node_01KZCB1SQ5DKW965J202PW7JSC`, with a `depends_on` edge from this
+finding. Its constraint: route the merge's write **through** `stamp_source_card` — do not add a
+second taint write path, or Invariant 4's guard will fail by design.
