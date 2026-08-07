@@ -5,11 +5,13 @@ title: "Agent-research loopback slice — hardening — implementation plan"
 doc_type: implementation_plan
 status: in_progress
 # M1 LANDED on main as 3276bfa (squash of efb3919/f641c3c/957cc93/975db10/6fa2401),
-# both gate lenses APPROVED. M2 and M3 are PARKED on feat/agent-research-loopback-slice:
-# M2 is implemented at 620105d but carries an open CHANGES_REQUESTED review (see the
-# execution ledger on that branch); M3 was never started.
+# both gate lenses APPROVED. M2 LANDED on main as 161cf2f, findings 1+2 of the parked-branch
+# CHANGES_REQUESTED review closed and re-gated APPROVED by codex/gpt-5.6-terra (the mandated
+# single validator lens). M3 was never started — findings 3+4 + M1's open coverage gap fold
+# into it, then the Tier-2 karen final-tree pass before the feature closes.
 commit_refs:
   - 3276bfa   # M1 squash to main — verified reachable via git merge-base --is-ancestor
+  - 161cf2f   # M2 squash to main — verified reachable via git merge-base --is-ancestor
 tier: 2
 priority: P1
 points: 13
@@ -84,7 +86,13 @@ wave_plan:
       depends_on: ["M1"]
       itt_node_id: node_01KZ4A2GHGR6QG4EP1AMNKAR3D
       gate_lens: [validator]
-      exit_criteria:
+      exit_criteria:   # MET — landed on main as 161cf2f; validator lens (codex) APPROVED
+        # Findings 1+2 of the parked-branch review closed by a call-site design change (key the
+        # job-scoped subtree by jobId; share the live job query to the event panel). Findings 3+4
+        # (assertion-shaped pre-existing cancel tests + partial-real-module mock repair) explicitly
+        # deferred to M3. The confirm-row double-click fragility remains OPEN — the review's claim
+        # that keying closes it was verified WRONG (keying resets state across jobs, not cursor
+        # geometry within one job); tracked separately.
         - "useCancelAgentJob has a real caller; confirm-then-cancel and failure paths both tested"
     - id: M3
       title: "Contract test exercises the real client with no hooks mocks"

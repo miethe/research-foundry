@@ -7,9 +7,9 @@ feature_slug: agent-research-loopback-slice
 milestone: M2
 phase: 2
 title: Cancel affordance reaches the live cancel endpoint
-status: pending
+status: completed
 created: '2026-08-03'
-updated: '2026-08-03'
+updated: '2026-08-07'
 prd_ref: docs/project_plans/PRDs/enhancements/agent-research-loopback-slice-v1.md
 plan_ref: docs/project_plans/implementation_plans/enhancements/agent-research-loopback-slice-v1.md
 intenttree_tree: tree_01KVTH95G09FX26HCRPBV77DAE
@@ -21,7 +21,7 @@ completed: null
 overall_progress: 0
 completion_estimate: on-track
 total_tasks: 4
-completed_tasks: 0
+completed_tasks: 4
 in_progress_tasks: 0
 blocked_tasks: 0
 gate_lens:
@@ -33,28 +33,52 @@ tasks:
   description: Add a cancel affordance to AgentsScreen.tsx (or AgentJobEventPanel.tsx)
     wired to useCancelAgentJob(), visible only for jobs in a cancellable (running)
     state per RUNNING_STATUSES (FR-5).
-  status: pending
+  status: completed
   dependencies: []
+  started: '2026-08-07T14:30:00Z'
+  completed: '2026-08-07T15:10:00Z'
+  evidence:
+  - commit: 161cf2f
+  verified_by:
+  - ARLS-2.G
 - id: ARLS-2.2
-  description: Add an explicit confirm step (confirm dialog or two-step button)
-    before dispatching cancelAgentJob() (FR-6).
-  status: pending
+  description: Add an explicit confirm step (confirm dialog or two-step button) before
+    dispatching cancelAgentJob() (FR-6).
+  status: completed
   dependencies:
   - ARLS-2.1
+  started: '2026-08-07T14:30:00Z'
+  completed: '2026-08-07T15:10:00Z'
+  evidence:
+  - commit: 161cf2f
+  verified_by:
+  - ARLS-2.G
 - id: ARLS-2.3
   description: Verify job-detail query invalidation and terminal-state reactivity
-    on success (no manual refresh needed), and that failures surface an error
-    rather than appearing successful; test both success and failure cancel paths
-    (FR-7).
-  status: pending
+    on success (no manual refresh needed), and that failures surface an error rather
+    than appearing successful; test both success and failure cancel paths (FR-7).
+  status: completed
   dependencies:
   - ARLS-2.2
+  started: '2026-08-07T14:30:00Z'
+  completed: '2026-08-07T15:10:00Z'
+  evidence:
+  - commit: 161cf2f
+  verified_by:
+  - ARLS-2.G
 - id: ARLS-2.G
   description: 'Milestone gate (validator lens): useCancelAgentJob has a real caller;
     confirm-then-cancel and failure paths both tested.'
-  status: pending
+  status: completed
   dependencies:
   - ARLS-2.3
+  started: '2026-08-07T14:30:00Z'
+  completed: '2026-08-07T15:10:00Z'
+  evidence:
+  - commit: 161cf2f
+  - review: codex-gpt-5.6-terra-APPROVED
+  verified_by:
+  - ARLS-2.G
 parallelization:
   batch_1:
   - ARLS-2.1
@@ -91,7 +115,7 @@ success_criteria:
   description: Both success and failure cancel paths are tested.
   status: pending
 files_modified: []
-progress: 0
+progress: 100
 ---
 
 # agent-research-loopback-slice - Phase 2 (M2): Cancel affordance reaches the live cancel endpoint
