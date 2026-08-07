@@ -3,7 +3,13 @@ it_schema: 1
 feature_slug: agent-research-loopback-slice
 title: "Agent-research loopback slice — hardening — implementation plan"
 doc_type: implementation_plan
-status: draft
+status: in_progress
+# M1 LANDED on main as 3276bfa (squash of efb3919/f641c3c/957cc93/975db10/6fa2401),
+# both gate lenses APPROVED. M2 and M3 are PARKED on feat/agent-research-loopback-slice:
+# M2 is implemented at 620105d but carries an open CHANGES_REQUESTED review (see the
+# execution ledger on that branch); M3 was never started.
+commit_refs:
+  - 3276bfa   # M1 squash to main — verified reachable via git merge-base --is-ancestor
 tier: 2
 priority: P1
 points: 13
@@ -14,7 +20,7 @@ feature_end_gate: karen    # Tier 2 mandate: ONE karen final-tree pass after M3,
                            # gate-risk-classes.md § Karen placement), which is why every
                            # phase progress file carries karen_required_this_milestone: false.
 created: 2026-08-03
-updated: 2026-08-03
+updated: 2026-08-07
 changelog_required: true
 prd_ref: docs/project_plans/PRDs/enhancements/agent-research-loopback-slice-v1.md
 plan_ref: null
@@ -26,6 +32,9 @@ related_documents:
   - docs/project_plans/feature_contracts/enhancements/runs-viewer-builder-live-claim-previews.md
   - docs/project_plans/implementation_plans/features/public-multiuser-p4-agents-v1.md
 acceptance_criteria:   # terse by design — the AC -> command -> evidence matrix below is the detail
+  # "at parity" SUPERSEDED for M1 (landed 3276bfa): byte-parity with the retired EventSource meant
+  # preserving a duplication bug (gate finding DUP-01). Read as: reconnect delay and last_event_id
+  # preserved, replayed history de-duplicated. Rationale in the branch execution ledger.
   - "SSE authenticates by header from the runtime resolver, zero diff under src/research_foundry/, reconnect+replay at parity"
   - "Positive control fails when the Authorization header is dropped; contract test covers the real client with no hooks mocks"
   - "A job is cancellable from the UI; static (non-loopback) mode byte-unchanged"
@@ -62,8 +71,13 @@ wave_plan:
       itt_node_id: node_01KZ4A1ZHFXH1ZRDXPPFGEV95Z
       gate_lens: [security, validator]
       gate_lens_reason: authz-boundary
-      exit_criteria:
+      exit_criteria:   # MET — landed on main as 3276bfa; both gate lenses APPROVED
         - "SSE request carries a runtime-resolved Authorization header; no token in any URL"
+        # "replay at parity" was deliberately SUPERSEDED — see gate finding DUP-01. Parity with the
+        # retired EventSource meant re-appending the whole event history on every reconnect. The
+        # client now de-duplicates by sequence; reconnect delay (3000ms) and last_event_id are
+        # unchanged. Two further gate findings closed in the same milestone: CAST-01 (payload-less
+        # frame crashed the panel) and JOBID-LEAK-01 (the DUP-01 guard leaked across a jobId change).
         - "Positive control fails when the header is removed; reconnect + replay at parity"
     - id: M2
       title: "Cancel affordance reaches the live cancel endpoint"
