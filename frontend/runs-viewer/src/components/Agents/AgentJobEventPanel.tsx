@@ -45,7 +45,10 @@ export interface AgentJobEventPanelProps {
 
 // ── Running-status helpers ────────────────────────────────────────────────────
 
-const RUNNING_STATUSES = new Set(["queued", "running", "streaming"]);
+// Exported (ARLS-2.1): CancelJobControl.tsx uses this as the single source of
+// truth for "cancellable" status so the cancel affordance and the event
+// stream agree on which statuses count as running.
+export const RUNNING_STATUSES = new Set(["queued", "running", "streaming"]);
 
 /**
  * Known terminal states — stream is closed; accumulated events remain visible.

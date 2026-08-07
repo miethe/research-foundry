@@ -345,3 +345,292 @@ events actually appear (`[1, 2]`) and none of job A's stale sequences (`>= 10`) 
   convention).
 - Static (non-loopback) mode: untouched — no change to the `!jobId || !enabled ||
   !isAgentsLoopbackEnabled()` early-return branch or its `setStatus("idle")`.
+
+## M2 — Cancel affordance reaches the live cancel endpoint (ARLS-2.1 … ARLS-2.3)
+
+Files touched:
+
+- `frontend/runs-viewer/src/components/Agents/AgentJobEventPanel.tsx` — exported `RUNNING_STATUSES`
+  (one-word change: added `export`); no behavior change.
+- `frontend/runs-viewer/src/components/Agents/CancelJobControl.tsx` — new component (the affordance).
+- `frontend/runs-viewer/src/screens/AgentsScreen.tsx` — mounts `<CancelJobControl>` inside the
+  existing `{activeJob && (...)}` events section.
+- `frontend/runs-viewer/src/styles/agents.css` — `.rv-cancel-job*` rules (layout only; buttons reuse
+  the existing `.it-btn.danger`/`.it-btn.ghost` design-system classes, no new button styling).
+- `frontend/runs-viewer/src/test/agents-cancel.test.tsx` — new (18 tests).
+
+`useCancelAgentJob` (`useAgentJobs.ts:89`) had zero callers before this milestone; it now has one
+(`CancelJobControl.tsx`), plus `hooks/index.ts`'s barrel re-export.
+
+### Key design decision — where the hooks live, and why
+
+The plan offered a choice: `AgentsScreen.tsx` or `AgentJobEventPanel.tsx`. I picked neither file's
+render body directly — I put the cancel control in its **own new component**
+(`CancelJobControl.tsx`), mounted only inside `AgentsScreen`'s existing `{activeJob && (...)}`
+guard. Reason: **all seven protected `agents-*.test.tsx` files render `AgentsScreen` and/or
+`AgentJobEventPanel` against a `vi.mock("@/hooks/useAgentJobs", () => ({...}))` factory that only
+exports a narrow subset of hooks** (e.g. `agents-launch.test.tsx`/`agents-launch-smoke.test.tsx`
+export only `isAgentsLoopbackEnabled` + `useLaunchAgentJob`; `agents-event-panel.test.tsx`/
+`agents-resilience.test.tsx`/`agents-events-smoke.test.tsx` export only `useAgentJobEvents` +
+friends). Calling `useAgentJob()`/`useCancelAgentJob()` unconditionally at the top of
+`AgentsScreenLoopback` or `AgentJobEventPanel` would resolve to `undefined` under those mocks and
+throw `TypeError: ... is not a function` the moment either component rendered under the narrower
+mock — breaking files I am barred from touching.
+
+Verified this is actually safe before relying on it: grepped every `agents-launch*.test.tsx` call
+site and confirmed `mutate: vi.fn()` never invokes its `onSuccess` option, so `activeJob` never
+becomes non-null in any of the 7 protected files — `CancelJobControl` therefore never mounts, and
+its internal hook calls never execute, under any of those files' mocks. Ran the full
+`agents-*` + whole-suite pass to confirm (below) rather than trusting the reasoning alone.
+
+### ARLS-2.1 — visibility
+
+`CancelJobControl` calls `useAgentJob(jobId)` (the already-existing, previously-uncalled-from-the-UI
+query) so the affordance reacts to the *live* server status, not just the caller-supplied
+`jobStatus` prop (which is `activeJob.status` — a snapshot from the launch response, never
+otherwise refreshed in `AgentsScreen` today). `effectiveStatus = jobQuery.data?.status ?? jobStatus`
+— live status wins once resolved; the prop is only the pre-first-fetch fallback. Cancellability is
+decided by the **same `RUNNING_STATUSES` set** `AgentJobEventPanel` uses for the SSE-enable decision
+(now `export`ed from that file rather than duplicated), so the two surfaces can never disagree about
+what "running" means.
+
+### ARLS-2.2 — confirm gating
+
+Two-step inline button, not `window.confirm`: initial "Cancel Job" button only sets a `confirming`
+boolean; `cancelMutation.mutate(jobId, ...)` is called from exactly one place
+(`handleConfirm`), reachable only after that state flips. Chose the inline two-step pattern over
+`window.confirm()` for two reasons: (1) it's trivially keyboard-reachable with zero extra ARIA work
+— both branches are plain `<button>` elements; (2) it's directly assertable in RTL without stubbing
+`window.confirm`, which the test file's own "does NOT dispatch on a single click" + "dispatches only
+after Confirm" pair rely on.
+
+### ARLS-2.3 — success / failure reactivity
+
+- **Success:** `useCancelAgentJob()`'s `onSuccess` (pre-existing, unchanged, `useAgentJobs.ts:94`)
+  already invalidates `agentJobQueryKey(jobId)`. `CancelJobControl` is the query's new subscriber
+  (via its own `useAgentJob(jobId)` call) — no other consumer of that key existed before this
+  milestone. Once the invalidated query refetches with a terminal status, `effectiveStatus` leaves
+  `RUNNING_STATUSES` and the component returns `null` on its own next render — no manual refresh,
+  no prop plumbing back up to `AgentsScreen` needed. The component's own `mutate(...,{onSuccess})`
+  additionally resets the local `confirming` flag so a fast in-place refetch doesn't leave a stale
+  confirm UI behind for the instant before the query settles.
+- **Failure:** `cancelMutation.isError` renders a `role="alert"` inline message
+  (`data-testid="cancel-job-error"`) and does **not** touch `confirming` or `effectiveStatus` — the
+  control stays exactly where the operator left it (armed or not), so a failed cancel cannot be
+  mistaken for a successful one, and the operator can retry without re-arming.
+
+### Why the success test doesn't assert a real query-invalidation-driven refetch
+
+The new test file mocks `@/hooks/useAgentJobs` wholesale (matching every other `agents-*.test.tsx`
+file's convention) — so `useCancelAgentJob`'s *actual* `invalidateQueries` call is not exercised by
+`agents-cancel.test.tsx`; that behavior is pre-existing code this milestone did not modify. What the
+tests do verify directly: (1) the component-level confirm-gating and dispatch wiring (the actual new
+logic), and (2) that **given** the live query already reflects a terminal status (i.e. simulating
+what a real invalidation-driven refetch would produce), the control correctly disappears — proving
+the wiring between "live query data" and "affordance visibility" is correct, which is the part of
+FR-7 this milestone actually owns ("Hook-side invalidation exists; this FR is the UI wiring +
+terminal-state reactivity"). A true end-to-end proof of the invalidate→refetch cycle would need the
+real hooks against a mocked `fetch` (the `p5-auth-header.test.ts` pattern) — left as an M3-adjacent
+opportunity since M3 owns "real client, no hooks mock" contract coverage; not required by this
+milestone's AC table.
+
+### Deviations / conservative choices
+
+1. Did not add `key={activeJob.agent_job_id}` to `AgentJobEventPanel` or `CancelJobControl` in
+   `AgentsScreen.tsx` — out of this milestone's scope (M1's JOBID-LEAK-01 fix already made the event
+   hook itself jobId-change-safe without a `key`; `CancelJobControl`'s own state (`confirming`) is
+   safe to carry across a jobId change in the same slot since it's just a UI-armed flag, not
+   accumulated data).
+2. `CancelJobControl` receives `jobId`/`jobStatus` as two plain props rather than the whole
+   `AgentJobDetail` object, mirroring `AgentJobEventPanel`'s existing prop shape for the same job.
+3. No new dependency, no `window.confirm`, no modal/dialog library — plain conditional JSX, per the
+   "smallest change" rubric in the plan.
+
+### Verification output (M2 close)
+
+- `npx tsc -p tsconfig.app.json --noEmit` → silent, exit 0.
+- `npx vitest run src/test/agents-` → `Test Files 9 passed (9)`, `Tests 208 passed (208)` — all 7
+  protected `agents-*.test.tsx` files pass unmodified, plus `agents-sse-auth.test.ts` (M1) and the
+  new `agents-cancel.test.tsx` (18 tests, M2).
+- `npx vitest run` (whole suite) → `Test Files 1 failed | 50 passed (51)`, `Tests 1128 passed
+  (1128)`. The single failing file is the pre-existing `codegen/generate-types.contract.test.mjs`
+  (codegen drift on `src/types/rf/source_card.generated.ts`) — same failing-file set as the M1
+  baseline; +18 tests vs the M1-close count (1110), all new and all passing.
+- `rg -n 'useCancelAgentJob' frontend/runs-viewer/src --glob '!hooks/**'` → hits in
+  `CancelJobControl.tsx`, `hooks/index.ts` (barrel re-export), and `agents-cancel.test.tsx` — the
+  hook has a real caller outside the hooks directory (AC-M2-5).
+- `git diff --stat -- src/research_foundry/` → empty (zero server changes; the plan's cancel
+  endpoint at `agent_jobs.py:436` was read for method/path, not edited).
+- `git status --porcelain` → exactly 5 paths: 3 modified (`AgentJobEventPanel.tsx`,
+  `AgentsScreen.tsx`, `agents.css`) + 2 new (`CancelJobControl.tsx`, `agents-cancel.test.tsx`).
+- Static (non-loopback) mode: untouched — `CancelJobControl` is only ever mounted inside
+  `AgentsScreenLoopback`'s `activeJob`-gated block, which itself only renders when
+  `isAgentsLoopbackEnabled()` is true.
+
+### Tooling note — shared-checkout drift mid-session (not a code issue)
+
+Mid-verification, a `PreToolUse:Bash` hook twice injected an "index stat-cache is stale, use
+`aos-git refresh`/`aos-git read`" warning, and one `git diff --stat` call was outright blocked by a
+"shared-checkout guard" reporting HEAD had moved (a concurrent M1 gate-closure docs commit,
+`6fa2401`, unrelated to this milestone's files). Per this repo's own recorded tooling trap
+(`silent-wrong-answer-tooling-multiworktree.md`), did not blindly trust the steer — ran
+`aos-git pin --repin` to acknowledge the legitimate HEAD movement, then `aos-git refresh` and plain
+`git status --porcelain`/`git diff --stat`, both of which agreed with each other and with the
+pre-block reads: the concurrent commit never touched any file this milestone modified. No corrective
+action was needed beyond the acknowledgment.
+
+---
+
+## 2026-08-07 — M2 REVIEW: CHANGES_REQUESTED (codex/gpt-5.6-terra). Branch PARKED.
+
+M1 landed on `main` as `3276bfa`. **M2 (`620105d`) is implemented but NOT approved.** The operator
+elected to bank M1 and park M2/M3 rather than continue in-session. Do not merge `620105d` as-is.
+
+### Why the review ran on codex rather than the Claude gate
+
+The `reviewer-gate` workflow failed four different ways on this run: (1) the ARC council
+artifact-writer received 2 of 11 adjudicated findings (`arc_validate_passed: false`); (2) a
+Bash-capable lens left a mutation-verify un-restored, silently deleting a committed guard on disk;
+(3) parallel lenses sharing one working tree produced a false-negative rejection when one read a file
+the other was mid-edit; (4) the M2 validator lens stalled on all 6 attempts, burning ~1M tokens for
+no verdict. Filed as `node_01KZDKF2VTHXNH2GXM9DTVEEQH`. `codex exec --model gpt-5.6-terra
+--sandbox read-only` returned a substantive verdict in ~7 minutes / 89k tokens.
+
+### The four blocking findings
+
+1. **Confirm state leaks across a jobId change — SAME CLASS AS JOBID-LEAK-01.** `confirming` lives in
+   `CancelJobControl`'s `useState`, and `AgentsScreen` mounts the control **unkeyed**. Arm the confirm
+   for job A, relaunch to job B, and the still-armed "Confirm Cancel" calls `mutate(job-B)` — a
+   confirm gesture intended for one job cancels another. This is the second occurrence of one class:
+   *per-job state in an unkeyed child surviving a jobId transition*. M1 fixed its instance inside the
+   hook (`prevJobIdRef`); this one is in a sibling component. **The same-class stop rule applies — the
+   next action is a DESIGN change, not another point fix.** The design fix is keying the job-scoped
+   subtree by `jobId` at the `AgentsScreen` call site, which closes the class and retro-hardens
+   JOBID-LEAK-01. M1 deliberately declined to touch `AgentsScreen` for scope reasons; that deferral is
+   what let the class recur one layer up.
+
+2. **AC-M2-3 is not met as written.** `useCancelAgentJob`'s `onSuccess` invalidates the right query
+   key, but only `CancelJobControl` subscribes to it. `AgentsScreen` retains launch-time
+   `activeJob.status`, so `AgentJobEventPanel` keeps receiving `"running"` and never renders terminal
+   state. The invalidation happens; the observable outcome the AC describes does not. Fix by lifting
+   or sharing the live job query so terminal status reaches the panel. **Third instance in this plan
+   of an AC that passes on the letter while being wrong** (cf. AC-M1-3 "byte-for-byte parity").
+
+3. **The success/failure tests are assertion-shaped.** Success manually invokes the per-call callback;
+   the "terminal refresh" test starts already terminal without cancelling; the failure test starts
+   already errored without a failed request. So AC-M2-4 and AC-M2-6 are nominally covered only — none
+   of the three proves the real mutation's invalidation, refetch, or failure transition. This is
+   precisely the defect class the whole plan exists to eliminate. The remedy is M3's job: drive real
+   request transitions instead of pre-loading hook state.
+
+4. **The conditional-mounting trick holds only by accident.** The new hooks were placed inside
+   `CancelJobControl` so the 7 protected `agents-*.test.tsx` files' narrow `@/hooks/useAgentJobs`
+   mocks stay valid. That works only while none of those tests invokes launch `onSuccess`; the first
+   one that does will mount `CancelJobControl` and call missing hook exports. Repair via partial
+   real-module mocks plus a screen-level flow test.
+
+### Non-blocking, verified by two independent readings (orchestrator + codex)
+
+**Double-click cannot currently dispatch a cancel, but only by layout luck.** After the first click
+the button is replaced by `.rv-cancel-job__confirm` (`display: flex`, a row) whose FIRST child is the
+~30-character confirm `<span>`; the original cursor position therefore lands on the span, not on
+"Confirm Cancel". Reorder the markup, shorten the text, or switch to `row-reverse` and the confirm
+button slides under the cursor. The safety property is not structural, and no test covers it.
+
+### What IS verified about M2 (first-party, orchestrator-run at 620105d, clean tree)
+
+`npx tsc -p tsconfig.app.json --noEmit` exit 0 silent. `npx vitest run` => 1128/1128 passing, sole
+failing file the pre-existing `codegen/generate-types.contract.test.mjs` drift (also fails on
+`98495a4`). `git diff -- src/research_foundry/` empty. All 7 protected `agents-*.test.tsx`
+unmodified. `useCancelAgentJob` has a real caller at `CancelJobControl.tsx:59`. AC-M2-2 holds
+structurally — `mutate()` is called only from `handleConfirm`, reachable only once `confirming` is
+armed by a separate click.
+
+### Resuming
+
+Recommended order: (a) key the job-scoped subtree by `jobId` in `AgentsScreen` — closes findings 1
+and (structurally) the double-click fragility; (b) share/lift the live job query so terminal status
+reaches `AgentJobEventPanel` — closes finding 2; (c) do M3, and fold findings 3 and 4 plus M1's open
+coverage gap into it (nothing asserts that toggling `enabled` false->true with an UNCHANGED `jobId`
+must not reset `events`/`lastSequenceRef` — the M1 security lens verified that by trace and correctly
+declined to call it blocking). Then the Tier-2 `karen` final-tree pass. Gate with codex, not the
+Claude `reviewer-gate`, until `node_01KZDKF2VTHXNH2GXM9DTVEEQH` is closed.
+
+---
+
+## 2026-08-07 — M2 RESUMED: findings 1 and 2 closed by a call-site design change
+
+Branch reconciled with `main` first (`344ffb3`, merge of `main` into the branch). This mattered:
+the branch's copy of the plan file was the **pre-M1-landing** version (`status: draft`, no
+`commit_refs`), so a naive `git merge --squash feat/...` onto `main` would have silently REVERTED
+`c2b86fe`'s M1 landing pointer and DUP-01 rationale. The merge resolved the plan file in `main`'s
+favour (branch side had no post-merge-base edit to it) and `implementation-notes.md` in the
+branch's favour (verified byte-exact superset: `main`'s 347 lines are a prefix of the branch's
+557). After the merge the branch is a descendant of `main` and its delta is exactly M2's content.
+
+### Finding 1 — CLOSED by keying the job-scoped subtree (the design change, not a point fix)
+
+`AgentsScreen.tsx` now carries `key={`events-${jobId}`}` / `key={`intake-${jobId}`}` on the two
+`{activeJob && …}` sections. A jobId transition unmounts and remounts the whole job-scoped
+subtree, so `CancelJobControl`'s `confirming` — and any future per-job child mounted in either
+slot — resets without per-component logic. This is what closes the CLASS (`per-job state in an
+unkeyed child surviving a jobId transition`) rather than adding a third `prevJobIdRef`.
+
+Two secondary effects, both intentional: (a) `EvidenceIntakePanel`'s own unkeyed per-job
+`selectedIds`/`rejected` state is retro-hardened by the same mechanism, without touching that
+file; (b) the new live-status query cannot serve a previous job's data across a transition,
+because it remounts with it.
+
+### Finding 2 — CLOSED by sharing the live query, verified key-identical
+
+A new `ActiveJobPanel` (inside `AgentsScreen.tsx`, not a new file) calls `useAgentJob(jobId)` once
+and hands `jobQuery.data?.status ?? activeJob.status` to BOTH `AgentJobEventPanel` and
+`CancelJobControl`. Confirmed at code truth, not by inference: `useAgentJob` queries
+`agentJobQueryKey(jobId)` (`useAgentJobs.ts:53`) and `useCancelAgentJob`'s `onSuccess`
+invalidates `agentJobQueryKey(jobId)` (`:94`) — the same key, so the terminal transition now
+reaches the panel by the same path it already reached the cancel control. `useAgentJob` is
+`enabled: Boolean(jobId) && isAgentsLoopbackEnabled()` (`:55`), so static mode never issues the
+query and falls back to the launch snapshot — static behaviour unchanged.
+
+### Positive controls — run by the orchestrator, independently of the implementer
+
+Both mutations were applied to a byte-checksummed copy and reverted (restore verified identical):
+
+| Mutation | Result |
+|---|---|
+| drop the `events-` section `key` | finding-1 test FAILS (1 failed / 1 passed) |
+| freeze `effectiveStatus` to `activeJob.status` | finding-2 test FAILS (1 failed / 1 passed) |
+| unmutated control | 2 passed |
+
+Each mutation fails exactly its own test and no other — the two tests are non-vacuous and
+independent. Both drive real transitions (real form submit → real click → real jobId change /
+real query-value change), which is deliberately NOT the assertion-shaped style finding 3 flagged.
+
+### Verified state at this commit (orchestrator-run, clean tree, worktree `arls-m2`)
+
+`npx tsc -p tsconfig.app.json --noEmit` exit 0 silent. `npx vitest run` => **1129/1130 passing**,
+`2 failed | 50 passed (52)` files. The 2 failing files are the declared environmental baseline and
+did NOT grow: `codegen/generate-types.contract.test.mjs` (pre-existing type drift, fails on
+`98495a4` too) and `src/test/provenance-correctness.test.ts` — the latter is a **worktree
+data-plane phantom**: it reads `<repo-root>/runs/rf_run_20260613_…/reports/report_draft.md`, which
+exists in the primary checkout but not in a worktree (`runs/` is a separate private data repo that
+shares only the primary worktree). Do not chase it from a worktree. All 8 protected
+`agents-*.test.*` files byte-identical; `git diff -- src/research_foundry/` empty.
+
+### Two things NOT closed — do not read this milestone as closing them
+
+1. **The double-click fragility is still open, and the M2 review's parenthetical claim that keying
+   closes it "structurally" is WRONG.** Verified at code truth after the fix:
+   `CancelJobControl.tsx:97-113` still renders the ~44-character confirm `<span>` as the FIRST
+   child of `.rv-cancel-job__confirm`, which is still `display: flex` + row (`agents.css:309`).
+   Keying by `jobId` changes nothing about within-one-job cursor geometry — it only resets state
+   across jobs. The safety property remains layout luck, and nothing tests it. Filed as a tracker
+   node rather than fixed here (out of the requested scope).
+2. **`useAgentJob` has joined finding 4's blast radius.** `ActiveJobPanel` deliberately reuses the
+   same conditional-mounting invariant `CancelJobControl` already relies on (mounted only inside
+   `{activeJob && …}`; the 8 protected files' narrow `@/hooks/useAgentJobs` mocks never let
+   `activeJob` go non-null). That does not make finding 4 more likely to trigger, but when it does
+   trigger there are now TWO missing exports to repair, not one. M3's partial-real-module-mock
+   repair must cover `useAgentJob` as well as the cancel hooks.
+
+Findings 3 and 4 remain M3's scope, unchanged.
