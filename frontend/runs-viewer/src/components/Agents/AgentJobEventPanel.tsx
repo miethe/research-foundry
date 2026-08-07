@@ -117,8 +117,17 @@ const PAYLOAD_SUMMARY_MAX = 120;
  * - Output is capped at PAYLOAD_SUMMARY_MAX characters.
  * - SECURITY: never log the raw payload — only the sanitised result is
  *   included in rendered output.
+ *
+ * CAST-01: `AgentJobEvent.payload` is declared non-optional, but nothing at
+ * the wire boundary enforced that — a malformed frame could previously reach
+ * this function with `payload` absent or `null`, and `Object.entries`
+ * throws `TypeError: Cannot convert undefined or null to object` on either.
+ * `useAgentJobs.ts`'s `handleFrame` now normalises `payload` to `{}` before
+ * a frame ever reaches state, but this guard stays as defence-in-depth for
+ * any other caller of this function.
  */
-function formatPayloadSummary(payload: Record<string, unknown>): string {
+function formatPayloadSummary(payload: Record<string, unknown> | null | undefined): string {
+  if (payload == null || typeof payload !== "object") return "";
   const sanitised: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(payload)) {
     sanitised[k] = CREDENTIAL_KEY_RE.test(k) ? "[REDACTED]" : v;
