@@ -38,13 +38,20 @@ once, on a plan that already has a `wave_plan`.
 - `wave_plan.serialization_barriers` — file-ownership serialization groups (for shared-gate detection).
 - The risk-class ruleset + defect checklist + cost calibration in `../references/gate-risk-classes.md`.
 
-## Outputs (advisory keys written back onto the plan + three reports)
+## Outputs (gate keys written back onto the plan + three reports)
 
-The pass writes two **additive advisory keys** onto each `wave_plan.phases[]` entry — already
-load-bearing in the RF operator-mcp plan, so these are the canonical names:
+The pass writes these **additive** keys onto each `wave_plan.phases[]` entry — already load-bearing in
+the RF operator-mcp plan, so these are the canonical names:
 
-- `gate_lens: [security | validator | karen | karen-final-tree-only, ...]` — non-empty for every phase.
+- `gate_lens: [security | validator | karen | karen-final-tree-only, ...]` — non-empty for every phase;
+  **one entry by default**.
+- `gate_lens_reason: untrusted-input | authz-boundary | irreversible-outward | ambiguity-tie` —
+  **required whenever `gate_lens` has ≥2 entries**, absent otherwise.
 - `gate_shared_with: <phase-id> | null` — set on the later phase of a shared-gate merge.
+
+All three are now registered in `planning/references/plan-frontmatter-schema.md` §5.4 and the
+cross-app contract, and `gate_lens` is **read at dispatch** by `councilEscalation` — these are no
+longer advisory-only keys.
 
 …plus three emitted reports (duplicate-lens, defect-checklist text, cost projection).
 
@@ -54,17 +61,25 @@ Run these steps in order. Steps 1–4 are the emitter; 5–6 are the wiring; 7 i
 
 ### 1. Classify each phase
 
-For each phase in `wave_plan.phases[]`, match `files_affected` + title/description against the
-risk-class table (`gate-risk-classes.md` §2), top to bottom. Assign a non-empty `gate_lens[]`.
+For each phase in `wave_plan.phases[]`, run the **two-step tier** in `gate-risk-classes.md` §2.
 **For every phase, record which rule matched** (e.g. "P2 → R7 durability/atomicity") — the
 classification must be justifiable by citing the matched rule, not asserted.
 
-- Any R1–R7 match → `security` is assigned and is **non-removable** for the rest of the pass.
-- M1–M3 only → `validator`.
-- Ambiguous, or an M-row that also reaches an R-surface (D1) → the more expensive lens wins:
-  `[security, validator]`. Log the tie.
-- Last phase's karen → `karen-final-tree-only`; keep per-phase `karen` only where a foundational
-  phase warrants an end-of-phase reality-check.
+- **Step 1 — the default, one lens.** F1 (ordinary product surface: CRUD, UI, reporting, read path,
+  internal API shaping, test-only) or M1–M3 → `[validator]`. A phase matching **no row** also gets
+  `[validator]`. Step 1 has no path to two lenses.
+- **Step 2 — the second-lens test.** Add `security` (non-removable) **only** on one of three named
+  triggers, and record the trigger as `gate_lens_reason`:
+  - `untrusted-input` → R8
+  - `authz-boundary` → R1, R2, R3, R4, R6
+  - `irreversible-outward` → R5, R7, R9
+- **Ambiguity resolves to a question, not a second reviewer.** If a phase might reach an R-surface
+  but you cannot confirm it, assign **one** lens and state the named unknown — which value, caller,
+  or surface you could not rule out — then resolve it by reading the code. Do **not** escalate to
+  two lenses by tie-break. (The old D1 "more expensive lens wins" rule is **retired**; it was the
+  largest source of default-two-lens inflation.)
+- `karen` is the **one whole-tree pass per feature**: last phase → `karen-final-tree-only`. Add a
+  plan-milestone-boundary `karen` only when `context_class` is C3/C4.
 
 ### 2. Emit the duplicate-lens report
 
@@ -81,7 +96,11 @@ on the later phase. Do not merge if the shared review would not genuinely cover 
 ### 4. Confirm every phase carries a lens
 
 No phase may exit the pass with an empty `gate_lens[]`. A phase with no matched rule defaults to
-`validator` (mechanical), never to "no review".
+`[validator]` — one lens, never to "no review" and never to two.
+
+**And no phase may exit with 2+ lenses and no `gate_lens_reason`.** That combination is a
+classification error, not a cautious default: go back to step 1 and either name the trigger or drop
+to one lens. `validate-plan-frontmatter.py` reports it as an advisory conditional-required gap.
 
 ### 5. Emit the front-loaded defect checklist
 
@@ -91,8 +110,13 @@ This is an output the pass hands the orchestrator, not a reference.
 
 ### 6. Emit a pre-gate dispatch instruction for every security-lens phase
 
-For each phase whose `gate_lens` includes `security`, emit — to run **first**, before the expensive
-Opus-class security lens — a cheap pre-gate sweep instruction:
+**Only for phases whose `gate_lens` includes `security`** — i.e. only phases with a named step-2
+trigger. **Never emit a pre-gate for a one-lens phase.** The pre-gate is the cheap first rung of the
+*second* lens, not an extra step bolted onto the default path; an ordinary F1/M phase's gate is
+exactly one validator pass and nothing before it.
+
+For each such phase, emit — to run **first**, before the expensive Opus-class security lens — a cheap
+pre-gate sweep instruction:
 
 - **Agent / model:** Sonnet-class (cheap), per MODEL-ROUTING §1.5.
 - **Budget:** ~30k tokens (fixed first-pass default; P3's cost model may size it per-phase once more
@@ -112,15 +136,20 @@ phase carrying `security` should assume ≥2 review rounds in its estimate (the 
 
 ## Hand-off
 
-The emitted gate plan is advisory input to the execution engine: the orchestrator threads each phase's
+The emitted gate plan is input to the execution engine: the orchestrator threads each phase's
 `gate_lens` into which reviewer(s) run at that phase's Mandatory Reviewer Gate, pastes the §5 defect
-checklist into every implementer prompt, and dispatches the pre-gate sweep before each security lens.
-The pass itself dispatches nothing and gates nothing.
+checklist into every implementer prompt, and dispatches the pre-gate sweep before each security lens
+(and **only** there). **The pass itself dispatches nothing and gates nothing** — but its output is no
+longer inert: `councilEscalation` in the live `execute-plan.js` selects the reviewer from `gate_lens`
+before anything else, so a `security` assignment here becomes a `council-review` dispatch there.
 
 ## Do Not Say
 
-- Do **not** claim the risk classifier is validated. It is calibrated against exactly one labelled
-  retro (n=1 — RF Operator MCP P1). It has not been validated against a plan whose actual review
+- Do **not** claim the F1 / R8 / R9 rows or the retired-D1 behaviour are measured. They are
+  **doctrine** (gate-tiering v4.1), added to close surfaces the ruleset had no row for. Only the cost
+  model (§4) and defect checklist (§3) rest on the labelled retro.
+- Do **not** claim the risk classifier is validated. Its cost calibration is against exactly one
+  labelled retro (n=1 — RF Operator MCP P1). It has not been validated against a plan whose actual review
   outcome diverged from its prediction; on that one plan, the rule and the human judgment already
   disagreed on P1 (see the reference file's §5 "one divergence"). Treat its output as a strong default
   an orchestrator reviews, not an authority.

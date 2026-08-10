@@ -20,7 +20,7 @@ Never overwrites an existing manifest without ``--force``: the dossier is an *ac
 and clobbering it would destroy phase narratives authored during execution.
 
 Usage:
-  seed_dossier.py --plan docs/project_plans/implementation_plans/features/foo-v1.md
+  seed_dossier.py --plan docs/project_plans/implementation_plans/foo-v1.md
   seed_dossier.py --plan <plan.md> --out .claude/reports/dossier/foo/report.json --json
 
 Exit codes (the wrapper swallows all of them — seeding never blocks planning):

@@ -136,7 +136,22 @@ async function reviewerGate(p, taskOut, tier) {
     schema: VERDICT_SCHEMA,
   })
 
-  if (!verdict?.approved) {
+  // §8b: no verdict at all ⇒ the gate did not RUN. Not an approval, and not a rejection —
+  // so do NOT enter the fix loop. There is no finding, so a cycle edits blind and then
+  // re-reviews unchanged code. Escalate with the reason named.
+  if (!verdict) {
+    log(`GATE FAILURE on phase ${p.id}: reviewer ${reviewerType} returned no structured verdict.`)
+    return {
+      phase: p.id,
+      tasks: taskOut,
+      verdict: gateFailureVerdict(reviewerType, 'reviewer returned no structured verdict'),
+      fix_cycles: 0,
+      gate_ran: false,
+      escalate: true,
+    }
+  }
+
+  if (!verdict.approved) {
     return fixLoop(p, taskOut, verdict, reviewerType)
   }
 
@@ -145,15 +160,48 @@ async function reviewerGate(p, taskOut, tier) {
     tasks: taskOut,
     verdict,
     fix_cycles: 0,
+    gate_ran: true,
     escalate: false,
   }
 }
 ```
 
 **Notes**:
+- **A gate that could not run is not a gate that passed** (authoring-spec §8b). Four requirements, all
+  mandatory in every workflow:
+  1. `schema:` on every reviewer dispatch — always. Never accept and parse a free-text
+     `APPROVED` / `CHANGES_REQUESTED` string: without a schema nothing forces a decision to exist, so
+     the reviewer can end mid-thought and the caller infers approval from tone.
+  2. A `null` verdict is converted **loudly** — `verdict_source: 'gate_failure'`, a named reason, a
+     `log()` line. `verdict?.approved` reads false correctly, but a bare `?? {approved:false}` loses
+     *why*.
+  3. `gate_ran` separates *did not run* from *said no*, because their next actions differ: a rejection
+     goes to `fixLoop`, a gate failure goes to re-dispatch or an operator override. **Never send the
+     fix loop after a gate failure** — it burns a cycle editing blind, then re-reviews unchanged code.
+  4. **No `||` fallback reviewer.** An unmapped lens/intensity is a gate failure, not a default agent.
+     A `||` fallback to a non-existent agent is how one phantom name silently disabled two
+     `review-council` lenses (2026-08-03 agent-roster-drift AAR).
+  5. **An unverified approval is not an approval** (R3, 2026-08-06). `verification_path` is a
+     required `VERDICT_SCHEMA` field; an approving verdict without an established path is converted
+     to `verdict_source: 'gate_integrity_failure'` with `gate_ran: false` — same handling as a
+     conditional council verdict, and never a fix cycle. Any `self_reported_claims` entry downgrades
+     an approval to an ordinary rejection instead, because the missing artifact is implementer work.
+     Enforced in `reviewer-gate.js` (`applyEvidenceRules`) and in `execute-plan.js` /
+     `execute-contract.js` (`enforceEvidenceRules`), at every point a verdict lands — including each
+     fix-cycle re-review. See `validation/completion-criteria.md` § "The verification-path evidence
+     rule".
+  - This buys **no wall-clock timeout** — `agent()` has no deadline and a script cannot impose one.
+    What it buys against a *slow* reviewer is that the wait is observable and out-of-line (visible in
+    `/workflows`, not blocking the main loop). Do not document it as a timeout.
+- Gates **outside** `execute-plan` / `execute-contract` do not re-derive this: they invoke the
+  `reviewer-gate` workflow (`.claude/workflows/reviewer-gate.js`), which owns the lens→reviewer map,
+  the parallel lens fan-out, and the fail-loud conversion. It deliberately has **no** fix loop, so it
+  composes with whichever budget the caller already owns.
 - `reviewerType` is always an edit-less `agentType` (constraint 3). Never pass an inline prompt to a
   write-capable agent as a reviewer.
-- `VERDICT_SCHEMA` forces structured output — the agent retries on mismatch at the tool layer.
+- `VERDICT_SCHEMA` forces structured output — the agent retries on mismatch at the tool layer. It
+  carries `approved`, `reviewer_type`, `required_fixes`, `council_artifacts`, and **`defect_class`**
+  (the stable class label the same-class stop rule reads — see the `fixLoop` notes).
 - `fixPrompt` is an author-supplied helper (not a primitive) that builds the fix agent's prompt from
   `p` and `verdict.required_fixes`.
 - **`reviewPrompt(p, taskOut)` is now a defined contract, not an open-ended author-supplied helper**
@@ -172,10 +220,13 @@ async function reviewerGate(p, taskOut, tier) {
 specialist to fix, re-runs the reviewer, repeats up to 2 cycles. Escalates if still failing.
 
 ```js
-// fixLoop — fix → re-review, max 2 cycles, budget-guarded.
+// fixLoop — fix → re-review, max 2 cycles, budget-guarded, same-class-stop-guarded.
 // p: Phase.  taskOut: TaskResult[].  verdict: ReviewerVerdict.  reviewerType: agentType string.
 async function fixLoop(p, taskOut, verdict, reviewerType) {
   let cycles = 0
+  // execution-doctrine.md rule 1, same-class stop rule: the class the PREVIOUS round found.
+  let priorDefectClass = verdict?.defect_class ?? null
+  let sameClassRepeat = null
 
   while (!verdict?.approved && cycles < 2 && budget.remaining() > 60_000) {
     // Doctrine intent (execution-doctrine.md rule 3, "Continue; don't re-dispatch"): the fix agent
@@ -198,6 +249,18 @@ async function fixLoop(p, taskOut, verdict, reviewerType) {
     })
 
     cycles++
+
+    // Same-class stop rule: two consecutive rounds naming the SAME defect class means the
+    // shape is wrong. Exit to redesign rather than spend the remaining budget cycle
+    // rediscovering the class one layer down. Absent defect_class never triggers it; two
+    // rounds finding DIFFERENT classes is normal review progress.
+    if (!verdict?.approved && verdict?.defect_class && priorDefectClass &&
+        verdict.defect_class === priorDefectClass) {
+      sameClassRepeat = verdict.defect_class
+      log(`Same-class stop rule: '${sameClassRepeat}' twice on ${p.id} — design change, not another review.`)
+      break
+    }
+    if (!verdict?.approved && verdict?.defect_class) priorDefectClass = verdict.defect_class
   }
 
   return {
@@ -205,6 +268,7 @@ async function fixLoop(p, taskOut, verdict, reviewerType) {
     tasks: taskOut,
     verdict,
     fix_cycles: cycles,
+    needs_redesign: sameClassRepeat ? { defect_class: sameClassRepeat, rounds: cycles } : null,
     escalate: !verdict?.approved,
   }
 }
@@ -215,6 +279,20 @@ async function fixLoop(p, taskOut, verdict, reviewerType) {
   re-passes, then re-scope"); the prose cap and the runtime cap were already the same number, so the
   loop bound itself is unchanged. What changes is what happens once the cap is hit (see the
   escalation note below) and how each cycle is dispatched (see the next note).
+- **The same-class stop rule can end the loop before the cap** (execution-doctrine.md rule 1). It only
+  ever exits *earlier* — it never extends the loop. Requirements and boundaries:
+  - The reviewer must set `defect_class` on a non-approving verdict (`VERDICT_SCHEMA`). It is a
+    **stable class label** (`fail-open-default`, `unguarded-sibling-callsite`,
+    `missing-ac-coverage`), not a restatement of the individual finding — class *identity* is what
+    the rule tests, so a per-finding string defeats it.
+  - An **absent** `defect_class` never triggers the rule. The loop does not guess at class identity.
+  - Two rounds finding **different** classes is normal review progress, not a trigger.
+  - On trigger, the return carries `needs_redesign: { defect_class, rounds }` and a blocker whose
+    `resolution_hint` names the design change (`references/gate-risk-classes.md` §3b — make the
+    unsafe state unrepresentable, or route callers through one choke point). Opus routes to redesign;
+    it does **not** adjudicate another review pass.
+  - After the redesign, re-entering the gate is a **new scope**, so the budget resets. That is not a
+    loophole — the shape being reviewed genuinely changed.
 - **Continue, don't re-dispatch — known gap, stated honestly.** The doctrine wants the fix agent to
   resume the session that implemented the phase, not be re-spawned. This file's real primitive set
   (`agent`, `parallel`, `pipeline`, `phase`, `log`, `args`, `budget`, `workflow` — the
@@ -247,43 +325,64 @@ async function fixLoop(p, taskOut, verdict, reviewerType) {
 ## Pattern: `councilEscalation`
 
 **When to use**: Inside `reviewerGate` to select the correct reviewer `agentType`. Routine phases get
-a single `task-completion-validator`; core-path phases with `review_intensity: 'council'` get the
-full Agent Review Council run.
+a single `task-completion-validator`; a phase whose risk class assigned a `security` lens, or that
+carries `review_intensity: 'council'`, gets the full Agent Review Council run.
 
 ```js
 // councilEscalation — reviewer agentType routing per authoring-spec §8.
-// p: Phase.  tier: 1|2|3.
+// p: Phase.  tier: retained for signature compatibility; NEVER changes the default.
 // Returns the agentType string to pass to agent().
-function councilEscalation(p, tier) {
-  // gate_lens wins when the plan-optimizer assigned one. Without this branch the optimizer's
-  // "security is non-removable" invariant was advisory-only: it wrote gate_lens into the plan
-  // and nothing ever read it, so a Tier 2 phase over an R1–R7 surface silently got just
-  // task-completion-validator. See modes/plan-optimization.md + references/gate-risk-classes.md.
-  const lenses = p.gate_lens ?? []
+function councilEscalation(p, _tier) {
+  // gate_lens wins when the plan-optimizer assigned one. Security first — it is the
+  // non-removable lens, so no later branch may displace it.
+  const lenses = Array.isArray(p.gate_lens) ? p.gate_lens : []
   if (lenses.includes('security')) return 'council-review'
   if (lenses.includes('karen') || lenses.includes('karen-final-tree-only')) return 'karen'
 
   if (p.review_intensity === 'council') return 'council-review'
-  if (tier === 3)                        return 'karen'
+  if (p.review_intensity === 'tier3')   return 'karen'
   return 'task-completion-validator'
 }
 ```
+
+> **Reconciled to the live script, 2026-07-31 (gate-tiering v4.1).** This pattern had drifted from
+> `MeatySkills/meaty-agentic-ops/workflows/execute-plan.js`, the code that actually executes, in two
+> ways — and in both the doc was wrong:
+>
+> - The doc showed a `gate_lens` branch that **did not exist in the script**. `gate_lens` was written
+>   by the plan-optimizer and read by nothing, so the "security is non-removable" invariant was
+>   documentary only. The branch is now real (script + doc agree).
+> - The doc showed `if (tier === 3) return 'karen'`. The script **deliberately removed** that rule,
+>   because it fired on every tier-3 phase and silently overrode the per-phase default — making
+>   `karen` (opus) the reviewer for every phase of a tier-3 plan regardless of intent. Tier does not
+>   promote the reviewer. `review_intensity: 'tier3'` is the explicit opt-in, set only on milestone
+>   phases.
+>
+> When these two disagree again, **the script is the truth** — check it before trusting this block.
 
 **Notes**:
 - `council-review` embeds the full ARC run (authoring-spec §9). The `verdict` returned by a
   `council-review` agent includes a `council_artifacts` object with paths to all six ARC artifacts
   (`run_dir`, `findings_yaml`, `scorecard_json`, `risk_register_yaml`, `decision_record_md`,
   `validation_plan_md`). Opus post-run reads these paths from the `ExecutionReport`.
-- Trigger `council` for phases touching auth/payments/data-deletion, architecture-changing phases
-  (new routers, schema migrations), or any phase where `tier === 3` and `mode === 'C'` and
-  `files_affected` includes API contracts.
-- `karen` is the adversarial reviewer for Tier 3 and core-path phases; `task-completion-validator`
-  is the default for Tier 2 standard phases.
-- **Selection order is `gate_lens` first, then intensity/tier.** A phase carrying
+- **`task-completion-validator` is the default, for every tier.** One lens is the norm; a phase gets
+  more only because its risk class earned it (`references/gate-risk-classes.md` §2, step 2 — the
+  surface parses untrusted input, is an authorization/identity boundary, or its effect is
+  irreversible/outward-facing). **Tier does not promote the reviewer.**
+- Trigger `council` — via `gate_lens: [security, …]` at plan-optimization time, or
+  `review_intensity: 'council'` — for phases matching a step-2 trigger: auth/authz, identity,
+  tokens/nonces, isolation, secrets, untrusted-input parsing, preview/writeback safety,
+  durability/atomicity, or an outward-facing/irreversible effect (publish, deploy, send, migrate,
+  rotate, delete).
+- `karen` is the **one whole-tree reality-check per feature**, at end-of-feature
+  (`karen-final-tree-only`); a plan-milestone-boundary pass is reserved for `context_class` C3/C4.
+  Set it explicitly via `gate_lens` or `review_intensity: 'tier3'` — never inferred from tier.
+  Karen does not fan out to other reviewers (see its agent definition).
+- **Selection order is `gate_lens` first, then `review_intensity`.** A phase carrying
   `gate_lens: [security, …]` gets the security-capable reviewer regardless of tier — that is what
   makes the plan-optimizer's non-removable-lens invariant real rather than advisory. Gate *budgets*
   cap how many times a lens re-runs; they never remove a lens
-  (`references/execution-doctrine.md` § Frequency, not existence).
+  (`references/execution-doctrine.md` § Frequency, composition, not existence).
 
 ---
 
@@ -705,7 +804,7 @@ judgePanel                      (N attempts + M judges)
 | Pattern | Primitive used | Key constraint |
 |---|---|---|
 | `waveFanout` | `for`, `parallel` | `modeBoundary` before every wave |
-| `reviewerGate` | `agent` | Always edit-less `agentType` |
+| `reviewerGate` | `agent` | Always edit-less `agentType`; always `schema:`; null verdict ⇒ `gate_failure`, never the fix loop |
 | `fixLoop` | `while` | Cap 2 cycles → `needs_rescope`; `budget.remaining() > 60_000`; fresh `agent()` per cycle is a known continuation gap |
 | `councilEscalation` | — (pure routing) | `council` → ARC artifacts in verdict |
 | `exploreLegs` | `parallel`, `pipeline` | Verdict boundary stays with Opus |

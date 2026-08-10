@@ -173,6 +173,14 @@ Always use task-completion-validator after:
 
 ## Delegation Template
 
+> **The leg contract is mandatory, and the full template lives in one place.** Every delegated
+> implementation leg carries the five leg-contract fields (file-ownership boundary, interface names,
+> real endpoint/field names, verification path, budget + exit) plus the missing-name escape —
+> [`../references/execution-doctrine.md`](../references/execution-doctrine.md) rule 6, rendered as a
+> paste-ready template in [`batch-delegation.md`](./batch-delegation.md) § "Task Delegation
+> Template". Use that template; the skeleton below is the agent-selection view of the same dispatch,
+> not a lighter alternative to it.
+
 ```
 @{agent}
 
@@ -180,10 +188,14 @@ Phase ${phase_num}, {task_id}: {task_title}
 
 Context:
 - Story/Feature: {context}
-- Related files: {files}
+- Files you own (ONE ownership boundary; everything else read-only): {files}
+- Interfaces / real field names (verbatim from the tree): {names}
 
 Requirements:
 {requirements}
+
+Verification path (test through the path production takes; name the command):
+{command} — an offline fake or a test-only code path is not evidence.
 
 Project Patterns:
 - Layered architecture

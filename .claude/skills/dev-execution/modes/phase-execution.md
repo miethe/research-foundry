@@ -4,8 +4,11 @@ Detailed guidance for multi-phase YAML-driven development with batch delegation.
 
 > **Git workflow:** this mode follows the canonical worktree → PR-to-parent → squash-merge-on-approval
 > protocol in [`../git-worktree-pr-protocol.md`](../git-worktree-pr-protocol.md). The per-task `git add`/
-> `git commit` calls below run **inside the run's worktree**; the orchestrator/phase-owner is the only
-> committer (offloaded/nested executors never touch git), and the run branch PRs to the **parent
+> `git commit` calls below run **inside the run's worktree**; nested helpers and offloaded executors
+> never touch git, while a phase's batch task agents commit only their own assigned files by explicit
+> pathspec and never rewrite history (no `git add -A`/`git add .`, no `reset`/`rebase`/`amend`/
+> force-push) — they share one index with their concurrently-running batch-mates. The
+> orchestrator/phase-owner orchestrates all commits, and the run branch PRs to the **parent
 > branch** (not hard-coded `main`), squash-merging on approval or an in-prompt override.
 >
 > **Model selection** follows [`MODEL-ROUTING.md`](../../../../docs/agentic-operator/MODEL-ROUTING.md):
@@ -213,6 +216,17 @@ Phase 4, final in Phase 5) should assemble its input packet the same way. If a r
 than this to judge the task, the task description is under-specified — fix it rather than widening
 the packet.
 
+**One lens, unless the phase carries a trigger.** `task-completion-validator` above is the default and
+usually the only reviewer. Substitute or add the `security` lens (`council-review`) **only** when this
+phase's `gate_lens` says so — i.e. its surface **parses untrusted input**, **is an
+authorization/identity boundary**, or has an **irreversible/outward-facing effect**
+(`references/gate-risk-classes.md` §2). **Tier does not add a lens**, and neither does the reviewer
+itself: `task-completion-validator` returns a verdict, it does not dispatch follow-on reviewers.
+
+Where a `security` lens does run, run the cheap ~30k pre-gate sweep first and escalate only what
+survives it (`modes/plan-optimization.md` §6). The pre-gate exists **only** on the security path —
+never add it to a one-lens phase.
+
 ### 2.5 Commit After Each Task
 
 ```bash
@@ -359,9 +373,19 @@ fi
 # Capsule hook (independent guard: SKILLMEAT_CAPSULES_ENABLED=1)
 PROGRESS_FILE="${progress_file}" PHASE_NUM="${PHASE_NUM}" PRD="${PRD_NAME}" \
     .claude/skills/dev-execution/hooks/phase-complete-capsule.sh
+
+# Publish + link this phase's delivery-report (route `phase`) — best-effort, ON BY DEFAULT.
+# A true no-op unless PHASE_REPORT_MANIFEST points at an already-rendered `phase`-route report
+# manifest for this plan (authoring one is out of this hook's scope). instance_key derives from
+# PHASE_NUM — the field that distinguishes one phase close from the next — so two successive
+# phase closes never collapse onto one IntentTree link row (D1/D5, risk R1b / DI-283); disable
+# with AOS_DELIVERY_REPORT_PUBLISH=0.
+DELIVERY_REPORT_MANIFEST="${PHASE_REPORT_MANIFEST:-}" ITT_NODE_ID="${ITT_NODE_ID:-}" \
+    PHASE_NUM="${PHASE_NUM}" \
+    .claude/skills/dev-execution/hooks/publish-report.sh
 ```
 
-> **Reference**: `docs/project_plans/implementation_plans/features/awpr-v2-task-node-contract.md`
+> **Reference**: `docs/project_plans/implementation_plans/awpr-v2-task-node-contract.md`
 > (field projection + writeback policy). CLI: `client/src/intenttree_client/cli/commands/sync_cmd.py`.
 > Plan task: TASK-6.2 (FR-11, dev-execution skill wiring).
 
@@ -386,6 +410,50 @@ manifest at `.claude/reports/dossier/${feature_slug}/report.json`), on by defaul
    The dossier is **recommended / non-blocking** — never a completion gate (the enforced
    end-of-feature artifact is the `feature` DoD report). Spec:
    `docs/skill-development/delivery-dossier/spec.md` §A.6.
+
+### 5.2c Finding Sweep — Phase Done (backstop; best-effort, ON BY DEFAULT)
+
+Reconcile the findings this phase *named* against the nodes actually *filed* for them. On by
+default (disable with `AOS_FINDING_SWEEP=0`); a true no-op when the phase produced no findings doc
+and no plan file is bound. Reports only — always exits 0, never gates the phase.
+
+**This is a backstop, not the mechanism.** The rule is that you file a node the moment you detect a
+deferral/bug/gap, ungated (`.claude/rules/finding-capture.md`). An item surfacing in this sweep
+means that already got missed — so when it reports something, file the node before closing the
+phase rather than deferring it to the plan close.
+
+```bash
+# Reconcile findings named this phase against nodes actually filed. Catches BOTH shapes of
+# miss: an entry with no node id, and an id that does not exist (a fabricated id reads as
+# satisfied, which makes it the worse of the two).
+FINDING_SWEEP_FINDINGS_DOC="${findings_doc:-}" FINDING_SWEEP_PLAN_FILE="${plan_file:-}" \
+    FEATURE_SLUG="${FEATURE_SLUG:-}" \
+    .claude/skills/dev-execution/hooks/finding-sweep.sh
+```
+
+### 5.2d Mode-D Output Scan — Phase Done (GATES the phase when an offload lane breached)
+
+Scan what any **delegated/offloaded** leg in this phase actually *wrote* for Mode-D signatures —
+generated key material, an auth/migration/deletion path, a history rewrite. On by default (disable
+with `AOS_MODE_D_SCAN=0`); a true no-op when no range/diff/paths are given.
+
+**Unlike every other hook in this section, this one can gate.** Exit 2 means an offload lane crossed
+the Mode-D boundary: do not merge that output, and re-run the leg on claude-primary. Infra failures
+(no python, bad range) are still swallowed to exit 0 — only a *detected breach* halts.
+
+This is the check no declaration can substitute for. The pre-dispatch guards read what a leg said it
+would touch; on 2026-08-06 a leg declared nothing crypto-shaped, was routed to an offload lane on
+that clean declaration, and then invented HMAC signing — minting a key with `secrets.token_bytes(32)`
+(`.claude/rules/mode-d-enforcement.md`). Skip this and the leg's own report is your only evidence,
+which is exactly what failed.
+
+```bash
+# Only meaningful when this phase delegated to an offload lane. Set the provider to the lane
+# that produced the commits; on claude-primary the scan reports but never fails.
+MODE_D_SCAN_PROVIDER="${PHASE_OFFLOAD_PROVIDER:-claude}" \
+    MODE_D_SCAN_RANGE="${phase_base_sha:-HEAD~1}..HEAD" \
+    .claude/skills/dev-execution/hooks/mode-d-scan.sh
+```
 
 ### 5.3 Push All Changes
 

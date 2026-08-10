@@ -5,8 +5,9 @@ Guidance for implementing user stories with existing plans or creating plans on-
 > **Git workflow:** this mode follows the canonical worktree → PR-to-parent → squash-merge-on-approval
 > protocol in [`../git-worktree-pr-protocol.md`](../git-worktree-pr-protocol.md). Set up a run worktree
 > at the start (don't `git checkout -b` in place), commit per logical unit inside it, and PR to the
-> **parent branch** (not hard-coded `main`). The orchestrator/phase-owner is the only committer;
-> offloaded/nested executors never touch git.
+> **parent branch** (not hard-coded `main`). Nested helpers and offloaded executors never touch git;
+> batch task agents commit only their own assigned files by explicit pathspec and never rewrite
+> history. The orchestrator/phase-owner orchestrates all commits.
 >
 > **Model selection** follows [`MODEL-ROUTING.md`](../../../../docs/agentic-operator/MODEL-ROUTING.md):
 > subscription default **Sonnet 5** (`claude-sonnet-5`) for implementation, **Opus 5** for spine,
@@ -260,8 +261,11 @@ gh pr create \
   --body-file .claude/pr-body.md \
   --draft
 
-# On approval / in-prompt override only:
-gh pr merge "$BRANCH" --squash --delete-branch
+# On approval / in-prompt override only. Two steps — never --delete-branch (it aborts before the
+# delete when the parent is checked out elsewhere, orphaning the remote branch):
+gh pr merge "$BRANCH" --squash
+gh pr view "$BRANCH" --json state,mergeCommit -q '.state'   # expect MERGED before deleting
+git push origin --delete "$BRANCH"
 ```
 
 ## Error Recovery

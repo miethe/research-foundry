@@ -19,10 +19,24 @@ Keep the two consistent — same field names, same item-kind semantics.
 |---|---|---|
 | **#** | Priority rank (`1`, `2`, …) when ordering is meaningful; `—` when the rows are independent. Order the table by this. | Your judgment of dependency + risk order. |
 | **Next action** | The exact command to run, with its argument form: `` `/dev:execute-plan` `` , `` `/plan:spike` `` , `` `/plan:plan-feature --tier=N` ``. For an item no agent can advance, write `human decision` (never a fake command). | `handoff.command` — `null` renders as `human decision`. |
-| **Target — path / ITT node / project** | The concrete object the action acts on: repo-relative path(s), the bound IntentTree node id, and — **only for cross-project rows** — a `project:<slug>` prefix. Paths must exist; node ids must be real. | `handoff.paths` + `handoff.tracker` (+ target project when it differs from the current repo). |
+| **Target — path / ITT node / project** | The concrete object the action acts on: repo-relative path(s), the bound IntentTree node id, and — **only for cross-project rows** — a `project:<slug>` prefix. Paths must exist; node ids must be real **and, for a `deferred` or `finding` row, must be present** — a path alone is not a Target for newly-discovered work (see below). | `handoff.paths` + `handoff.tracker` (+ target project when it differs from the current repo). |
 | **Achieves** | One line: what running this yields. Imperative, concrete. | The item title / intent. |
 | **Gates / blockers** | Blocking gate ids (`G0`, plan-gate), a one-phrase blocker, `blocked-external` for human-only waits, or `—` when clear to run. | `handoff.gates` + item kind. |
 | **Model** | Recommended model in registry short form (`opus-5`, `sonnet-5`, `haiku-4-5`, `fable-5`). For an orchestrated command name both roles: `opus-5 orch / sonnet-5 exec`. `—` for `human decision` rows. | `MODEL-ROUTING.md` §1.5, resolved per-leg via the `delegation-router` skill. Never guess — the plan's `orchestrator_model` frontmatter is deleted (execution-doctrine.md, Bookkeeping demotions: advisory, never read); resolve fresh via the router every time. |
+
+### A `deferred` or `finding` row must carry a tracker node id
+
+The table is a *pointer into* the tracker, not the tracker itself. For every other kind the work
+already exists somewhere durable — a plan, a phase file, a contract. `deferred` and `finding` rows
+are the exception: they describe work discovered **during this run**, so if the row is the only
+record, the item dies when the response scrolls away.
+
+So: **file the node when you detect the item** — ungated, straight into the target tree
+([`.claude/rules/finding-capture.md`](../../../rules/finding-capture.md)) — and put its id in the
+Target column. Omitting the id and listing only a file path is **not** conformant, even though the
+older "node ids must be real" wording technically allowed it; that gap is exactly how a deferral
+once shipped with nothing filed behind it. The same requirement is enforced mechanically on the
+report side as blocking rule 7 of the handoff contract.
 
 Below the table, add at most **one** line for shared context if any command needs it (the project
 invariant a dispatched agent must not violate — the report-global `constraints` of the handoff
@@ -77,3 +91,4 @@ callout so the reader sees the next move before opening anything.
 - Model resolution: `docs/agentic-operator/MODEL-ROUTING.md` §1.5 + the `delegation-router` skill.
 - Tier → execute-command routing: `planning/SKILL.md` § "Tier Matrix".
 - Deferred-item lifecycle (what becomes a `deferred` row): `planning/references/deferred-items-and-findings.md`.
+- Filing the node behind a `deferred`/`finding` row (ungated, at detection time): `.claude/rules/finding-capture.md`.

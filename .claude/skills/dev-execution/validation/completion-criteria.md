@@ -4,18 +4,106 @@ Definition of done for stories, features, and tasks.
 
 ## Mandatory Reviewer Gates
 
-Tiered features require reviewer-agent gates at specific checkpoints. Phases and sprints are **not complete** without the reviewer pass listed below.
+Every feature requires a reviewer-agent gate at the checkpoints below. Phases and sprints are **not
+complete** without the reviewer pass listed. **What is mandatory is that a gate fires — not that a
+fixed set of lenses fires at it.** The lens count is risk-tiered.
+
+### The base gate — one lens, every tier
 
 | Tier | Gate | Reviewer | Inputs |
 |------|------|----------|--------|
+| 0 | end of the change | `task-completion-validator` | AC + touched files |
 | 1 | end of sprint | `task-completion-validator` | contract + diff + Completion Report |
 | 2 | end of each phase | `task-completion-validator` | failure summary (on a re-pass) + touched files + AC in question |
-| 2 | end of feature | `karen` | AC matrix + cumulative diff |
+| 2 | end of feature | `karen` (final tree, once) | AC matrix + cumulative diff |
 | 3 | end of each phase | `task-completion-validator` | failure summary (on a re-pass) + touched files + AC in question |
-| 3 | mid-feature milestones | `karen` | AC matrix + cumulative diff |
-| 3 | end of feature | `karen` | AC matrix + cumulative diff |
+| 3 | end of feature | `karen` (final tree, once) | AC matrix + cumulative diff |
+| 3 | plan-milestone boundary — **`context_class` C3/C4 only** | `karen` | AC matrix + cumulative diff |
 
-**Invariant**: This is non-optional. A phase/sprint cannot be marked complete until the reviewer at the listed checkpoint has approved.
+**Invariant**: This is non-optional. A phase/sprint cannot be marked complete until the reviewer at
+the listed checkpoint has approved.
+
+### The verdict is a validated tool call — and "did not run" ≠ "said no"
+
+Every gate above is dispatched as a **schema'd workflow stage**, never as a bare
+`Task("task-completion-validator", "… Verdict: APPROVED or CHANGES_REQUESTED")`. Inside
+`/dev:execute-plan` and `/dev:execute-contract` the reviewer stage already carries
+`schema: VERDICT_SCHEMA`; every other gate invokes the `reviewer-gate` workflow. Rationale and the
+`args` shape: `../SKILL.md` § "How a gate is dispatched".
+
+The consequence for this file's invariant: **a missing verdict does not satisfy a gate, and it is not
+a rejection either.** Three outcomes, three next actions:
+
+| Outcome | Envelope | Marked complete? | Next action |
+|---|---|---|---|
+| Approved | `approved: true` | yes | proceed / commit |
+| Rejected | `approved: false`, `gate_ran: true` | no | fix, re-invoke with `failure_summary`. **Consumes** a gate-budget re-pass |
+| Gate failed to run | `approved: false`, `gate_ran: false`, `verdict_source: 'gate_failure'` | **no** | re-dispatch the lens, or record an explicit operator override. **Do not run a fix cycle** — nothing was found, so a cycle edits blind and then re-reviews unchanged code. Does **not** consume the gate budget |
+| Approved without a verification path | `approved: false`, `gate_ran: false`, `verdict_source: 'gate_integrity_failure'`, plus a `gate_integrity_failures[]` entry | **no** | re-dispatch the lens requiring a named verification path, or record an explicit operator override. **Do not run a fix cycle** — what did not finish is the reviewer, not the implementer. Does **not** consume the gate budget |
+
+A gate failure is the one outcome that used to be silently survivable: a reviewer that died after
+retries returned nothing, and "nothing" read the same as an unhelpful rejection or — worse, on the
+in-session prose form — as tacit approval. It now carries a named reason and is logged.
+
+### The verification-path evidence rule (R3) — enforced, not advisory
+
+An approving verdict must say **how** it established that the evidence exercises the path
+production takes. `verification_path` is a required field on `VERDICT_SCHEMA` in `reviewer-gate`,
+`execute-plan`, and `execute-contract`, and `established: true` is only accepted with one of four
+kinds:
+
+| Kind | What the reviewer must have seen |
+|---|---|
+| `live-smoke` | the real entry point run against the real dependency, output shown |
+| `path-equivalence` | the seam the test drives IS the object production calls — both call sites named `file:line` and shown to resolve to the same thing |
+| `real-endpoint-field-check` | every field/key name in a fake checked against a real response or schema |
+| `production-callsite-trace` | production's entry point traced to the changed code, and reachable |
+
+Anything else — including `established: true` with `kind: 'not-established'` — is converted into the
+gate-integrity outcome in the table above. A companion rule covers the second failure class: any
+entry in `self_reported_claims` (a side effect accepted on a leg's own report, with no artifact)
+**downgrades an approval to an ordinary rejection**, because producing the artifact is implementer
+work and the fix loop is the right next action.
+
+Why enforced rather than documented: in the seven days to 2026-08-06 the dominant delegate defect
+was a green suite over a path production does not take (8 findings, the same signature five times in
+one program — a fake echoing `system` where the live API returns `source_system`, a branch made dead
+by an earlier step but still unit-tested, a dry-run validating preconditions `apply` does not), and
+the second was legs self-reporting side effects they never performed (5 findings). Every one of
+those runs produced a passing suite and a coherent report, so prompt text alone cannot catch the
+class — the reports already satisfied every instruction they were given. Grounding:
+`docs/project_plans/reports/workflow-v41-delegate-retro-2026-08-06.md` (leg B); tracker
+`node_01KZC05GF9R5YXC99AXE9RE3KK`.
+
+**The ordinary shape is: implement → tests → one review → ship.** For most work — CRUD, UI,
+reporting, read paths, mechanical refactors — the table above is the *entire* gate structure. No
+pre-gate, no second lens, no per-phase `karen`.
+
+### The second lens — three triggers, nothing else
+
+A **second** lens (`security`, run via `council-review`) is added to a phase's gate only when that
+phase matches one of exactly three triggers:
+
+| Trigger | The phase's surface… |
+|---|---|
+| `untrusted-input` | **parses input the caller controls** (deserialization, request/query parsing, path or filename handling, template rendering with caller data, regex over caller input, uploads, URL/host parsing, archive extraction) |
+| `authz-boundary` | **is an authorization or identity boundary** (authorize/RBAC/policy/permission/guard, identity/principal/actor/session/tenant, tokens/nonces/confirmation/replay, isolation/sandbox/subprocess/tool-permission, secrets/credentials/redaction) |
+| `irreversible-outward` | **has an irreversible effect, or leaves the system** (publish/deploy, send to an external service, PR or issue creation, force-push, schema migration, secret rotation, data deletion, preview/writeback "must-not-execute" surfaces, CAS/atomicity/single-writer durability) |
+
+Full ruleset, row-by-row signals, and the surface vocabulary: `references/gate-risk-classes.md` §2.
+The classification is recorded per phase as `gate_lens` + `gate_lens_reason`, and **a two-lens phase
+with no named trigger is a classification error, not a cautious default.**
+
+**Tier does not add lenses.** A Tier 3 CRUD phase gets one lens; a Tier 2 authorization phase gets
+two. This is deliberate: tier sizes the *work*, the triggers size the *risk*, and conflating them
+made `karen` (opus) the reviewer for every phase of every Tier 3 plan regardless of intent.
+
+**Never removable.** Once a trigger assigns the `security` lens, no budget, merge, or cost pressure
+removes it (`references/gate-risk-classes.md`, "The hard invariant"). Where a one-lens default and a
+triggered phase conflict, the `security` lens is the one that survives — not the `validator`.
+
+**Reviewers do not add lenses either.** Neither `karen` nor `task-completion-validator` dispatches
+follow-on reviewers; each returns a verdict. The plan decides the lens count, not the reviewer.
 
 **Delta context, not the full stack** (execution-doctrine.md rule 2). Per-phase `task-completion-validator`
 gates carry the delta — the failure summary, the touched files, and the AC actually in question — never
@@ -29,6 +117,14 @@ against the same scope × lens does not escalate to "a human/Opus looks at it" �
 re-scope/redesign**. Re-passes count per scope × lens, not per dispatch: re-spawning the executor does
 not reset the budget. This is a hard cap, not an expectation — see `references/gate-risk-classes.md`
 §4 for the cost calibration it bounds.
+
+**Same-class stop rule** (execution-doctrine.md rule 1, hard): if **two consecutive rounds surface the
+same defect class**, the next action is a **design change — not a third review**, even with a re-pass
+left in the budget. Recurrence of a class means the review is rediscovering an expanding diff rather
+than verifying a bounded route. Name each round's defect class as you go; you cannot apply this rule
+if you never labelled the classes. What the design change concretely is:
+`references/gate-risk-classes.md` §3b (surface reduction before guard proliferation). Two rounds
+finding *different* classes is normal review progress and does not trigger it.
 
 **Tier 1's Completion Report is a different artifact from the retired plan-level one.** The Tier 1 row
 above still carries a Completion Report because Tier 1 has no wave/phase record to fall back on — see
@@ -67,6 +163,13 @@ DELIVERY_REPORT_ASSET_ROOT="${DELIVERY_REPORT_ASSET_ROOT:-.}" \
 The report is derived evidence, not the completion authority. It must preserve exact git, test,
 review, deployment, and owner-held/private-execution truth. Place it in the repository's native
 completion-artifact directory, or `.claude/reports/<feature-slug>/` when no convention exists.
+
+Once rendered, `hooks/publish-report.sh` (PF-3 M3) MAY host the report in the atlas capsule store
+and link it onto the bound IntentTree node (see `SKILL.md` § "Hosts both `dossier` lifecycle
+hooks" table). This is **recommended / non-blocking** — the reviewer never withholds `APPROVED`
+because publish/link failed or was skipped (offline atlas, unbound tree, missing `itt` verb, etc.
+all degrade to a logged no-op). It stays on the non-blocking side of this DoD row, distinct from
+the `verify-delivery-report.sh` gate above.
 
 ### Forward Status Reports (recommended, non-blocking)
 
@@ -209,9 +312,39 @@ Reviewer agents must produce a structured report using this template:
 
 ---
 
-## Test-Rigor Acceptance Criteria (conditional)
+## Test-Rigor Acceptance Criteria
 
-These ACs are **mandatory** when the trigger applies; a phase/sprint is not complete without them.
+> **Namespace note.** `R1`/`R2`/`R3` here are **test-rigor ACs**. They are unrelated to `R1`–`R9` in
+> `references/gate-risk-classes.md`, which are **risk classes** for reviewer-lens selection. Two
+> different R-namespaces, deliberately not renamed (cross-file churn for a cosmetic win); read the
+> file you are in.
+
+**R3 is standing — it applies to every feature.** R1 and R2 are **conditional**: mandatory when their
+trigger applies. A phase/sprint is not complete without whichever apply.
+
+### R3 — One end-to-end pass through the real entry point, early (standing)
+
+**Every feature ships at least one test that exercises the product through its own real entry point** —
+the actual CLI command, HTTP route, page, or public API a user or caller reaches — not only through
+units, mocks, or components in isolation.
+
+**Land it early: before the first reviewer gate, not as the last task.** This is a cheap standing
+requirement, **not a gate** — nothing blocks on it beyond the ordinary DoD — but its value is almost
+entirely in the timing. An e2e pass written after implementation confirms what you already believe; the
+same test written first finds the wiring that was never connected. On the run that motivated this rule,
+one early e2e pass through the real entry point would have caught **half of the first review round's
+findings** — findings that instead cost a full review cycle each.
+
+- **"Real entry point" means the one the caller uses.** If shipping a CLI subcommand, invoke the CLI.
+  If shipping an endpoint, issue the request. If shipping UI, render through the actual parent route
+  or page. Reaching the leaf function directly is a unit test, however integrated it feels.
+- **One is enough.** This is not a mandate for an e2e suite. One pass along the primary path, plus the
+  narrow tests that actually localize failures (execution-doctrine rule 5).
+- **It composes with R2**, which is the stricter conditional form for wiring/dual-surface work.
+- **A green unit suite does not satisfy it.** That is precisely the failure mode: 64 isolated tests
+  passed while the feature was invisible in production (see R2).
+
+### R1 / R2 — conditional
 
 **R1 — Real-session test (transaction/session/dedup tasks).** Any task touching DB transactions, sessions, savepoints, rollback, or dedup MUST ship ≥1 test against a **real session** (in-memory SQLite suffices for savepoint/rollback semantics), not only `MagicMock(spec=Session)`. Mocks have no transaction state and silently pass on `rollback()`-vs-`begin_nested()` bugs. *(Retro P1: a full-`rollback()` savepoint bug passed all mock tests; caught only by a real-SQLite savepoint test.)*
 
@@ -234,6 +367,7 @@ A user story is complete when:
 
 - [ ] Unit tests added for new logic
 - [ ] Integration tests for API flows
+- [ ] **≥1 e2e pass through the real entry point, landed before the first reviewer gate** (test-rigor `R3`, standing)
 - [ ] E2E tests for critical user paths
 - [ ] Negative test cases included
 - [ ] All tests passing
@@ -328,6 +462,7 @@ A Tier 1 feature sprint is complete when:
 
 - [ ] Unit tests added for new logic
 - [ ] Integration tests for API flows (if applicable)
+- [ ] **≥1 e2e pass through the real entry point, landed before the validator gate** (test-rigor `R3`, standing)
 - [ ] All tests passing (`pnpm test`, `pytest`, etc.)
 - [ ] TypeScript strict mode, no `any`
 - [ ] Lint errors resolved

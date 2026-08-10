@@ -25,7 +25,7 @@
 #   INTENTTREE_SDLC_SYNC  — enable flag (1/true/yes); default: off.
 #
 # SPEC REFERENCE:
-#   docs/project_plans/implementation_plans/features/awpr-v2-task-node-contract.md
+#   docs/project_plans/implementation_plans/awpr-v2-task-node-contract.md
 #   Plan task: TASK-7.1 (FR-14, pre-commit drift-sync hook)
 #   CLI source: client/src/intenttree_client/cli/commands/sync_cmd.py
 #   Related:    .claude/skills/dev-execution/hooks/sdlc-sync.sh (workflow hook)

@@ -104,13 +104,32 @@ for wave in waves:
     #     close still happens inside the phase-owner (phase-execution.md §5.2b);
     #     the regeneration call itself moves to step 7 below.
 
-# 4. Feature-level reviewer gate (after final wave)
-#    Tier 3 → karen; Tier 2 → task-completion-validator
+# 4. Feature-level reviewer gate (after final wave) — ONE whole-tree pass, not a lens set.
+#    Tier 3 → karen-final-tree-only; Tier 2 → validator.
+#    Do not add a second plan-level lens: phase gates already ran, scoped to bounded
+#    diffs, and a security-relevant surface carried its lens there.
 #    Full gate matrix: ./validation/completion-criteria.md
-if tier == 3:
-    Task("karen", "Mode E: Reviewer. Review plan-level completion …")
-else:
-    Task("task-completion-validator", "Mode E: Reviewer. Review plan-level completion …")
+#
+#    Dispatched as a SCHEMA'D WORKFLOW STAGE, never a bare Task() — see ../SKILL.md
+#    § "How a gate is dispatched". A bare Task blocks the main loop, forces no decision to
+#    exist, and makes a dead reviewer indistinguishable from an approving one.
+gate = Workflow({"name": "reviewer-gate", "args": {
+    "scope": {"id": plan_slug, "title": feature_title, "kind": "plan", "tier": tier},
+    "lenses": ["karen-final-tree-only"] if tier == 3 else ["validator"],
+    "acceptance_criteria": plan_level_acs,
+    "files_changed": files_touched_across_waves,
+    "plan_ref": plan_path,
+    "timestamp": iso8601_now,
+}})
+
+# `approved: false` means two different things. Branch on gate_ran, not on approved alone:
+#   gate_ran=True  → a real rejection. Fix, re-invoke with failure_summary; counts against
+#                    the gate budget (max 2 re-passes per scope x lens).
+#   gate_ran=False → the gate DID NOT RUN (reviewer died after retries, or was skipped).
+#                    Re-dispatch it, or record an explicit operator override. Do NOT run a
+#                    fix cycle — nothing was found, so a cycle edits blind and then
+#                    re-reviews unchanged code. Does not consume the gate budget.
+# Steps 5-9 below run only after an approving verdict.
 
 # 5. IntentTree SDLC Sync — plan done (best-effort, ON BY DEFAULT)
 # After the reviewer approves, sync the plan file itself so the feature root node
@@ -134,6 +153,27 @@ Bash(f'SDLC_SYNC_FILE="{plan_path}" INTENTTREE_TREE="${{INTENTTREE_TREE:-}}" '
 # manifest. Spec: docs/skill-development/delivery-dossier/spec.md §A.6
 Bash(f'DELIVERY_DOSSIER_MANIFEST=".claude/reports/dossier/{feature_slug}/report.json" '
      f'.claude/skills/dev-execution/hooks/update-dossier.sh')
+
+# 8. Publish + link the dossier — plan done (best-effort, ON BY DEFAULT)
+# Now that step 7 has rendered the dossier's HTML, host it (atlas) and link it into
+# IntentTree (route `dossier`, collapsing on (route, subject) by design — D1). Must run
+# AFTER step 7: publishing before the render would host a stale artifact. Recommended /
+# non-blocking; disable with AOS_DELIVERY_REPORT_PUBLISH=0; no-op without a manifest AND
+# an IntentTree binding. Spec: .claude/worknotes/delivery-report-hosting-and-linking/
+# implementation-notes.md (D1-D5).
+Bash(f'DELIVERY_REPORT_MANIFEST=".claude/reports/dossier/{feature_slug}/report.json" '
+     f'ITT_NODE_ID="${{ITT_NODE_ID:-}}" INTENTTREE_TREE="${{INTENTTREE_TREE:-}}" '
+     f'.claude/skills/dev-execution/hooks/publish-report.sh')
+
+# 9. Finding sweep — plan done (backstop; best-effort, ON BY DEFAULT)
+# Reconcile findings NAMED across the plan (the findings doc + the DOC-006 deferred-items
+# triage table) against nodes actually FILED. This is the last net under the detection-time
+# rule (.claude/rules/finding-capture.md): anything it reports was already missed in-session,
+# so file it now rather than shipping a plan with untracked findings. Reports only — always
+# exits 0; disable with AOS_FINDING_SWEEP=0; no-op when neither artifact exists.
+Bash(f'FINDING_SWEEP_FINDINGS_DOC=".claude/findings/{feature_slug}-findings.md" '
+     f'FINDING_SWEEP_PLAN_FILE="{plan_path}" FEATURE_SLUG="{feature_slug}" '
+     f'.claude/skills/dev-execution/hooks/finding-sweep.sh')
 ```
 
 ### Implementation Notes Over Halt
@@ -238,14 +278,33 @@ finish under their own rules"), honor a legacy pin exactly as before — forward
 
 ## Validator Gating
 
-**Per-wave (inside phase-owner)**: Each phase-owner runs `task-completion-validator` at the end of its phase before writing its Completion Note. Internal to the phase-owner; orchestrator does not run it directly. Gate matrix: `./validation/completion-criteria.md`. Gate input is delta context only (see above) — the failure summary, touched files, and AC in question, never the full plan stack.
+**Per-phase (inside phase-owner) — one lens by default.** Each phase-owner runs the phase's assigned
+reviewer at the end of its phase before writing its Completion Note. Internal to the phase-owner;
+orchestrator does not run it directly. Gate input is delta context only (see above) — the failure
+summary, touched files, and AC in question, never the full plan stack.
 
-**Plan-level (after final wave)**:
+**Which reviewer: read the phase, not the tier.**
+
+| Phase carries | Reviewer |
+|---|---|
+| `gate_lens` including `security` | `council-review` (the adversarial security lens) |
+| `gate_lens` including `karen` / `karen-final-tree-only` | `karen` |
+| anything else — **the default** | `task-completion-validator` |
+
+`gate_lens` is assigned per phase by the three second-lens triggers (untrusted-input / authz-boundary /
+irreversible-outward) — `references/gate-risk-classes.md` §2. **Tier does not select the reviewer and
+does not add lenses.** A Tier 3 CRUD phase gets one `task-completion-validator`; a Tier 2 authorization
+phase gets the security lens. A phase carrying two lenses must name its `gate_lens_reason`.
+
+**Plan-level (after final wave) — one whole-tree pass:**
 
 | Tier | Reviewer |
 |------|----------|
 | Tier 2 | `task-completion-validator` |
-| Tier 3 | `karen` |
+| Tier 3 | `karen` (final tree, once) |
+
+Do not add a second plan-level lens. The phase gates already ran, scoped to bounded diffs; a
+security-relevant surface carried its lens there.
 
 A phase, wave, or plan is not complete until the applicable reviewer approves. **Gate budget**
 (`references/execution-doctrine.md` rule 1): a reviewer/validator gate on the **same scope x
@@ -254,6 +313,14 @@ continuing its existing session (see §Worktree Merge Protocol — fix loops con
 re-dispatch). The **3rd failure against the same scope x lens does not escalate to "a human looks
 at it"** — it auto-escalates to re-scope/redesign of that phase. Count re-passes per scope x lens,
 not per dispatch: re-spawning the phase-owner does not reset the budget.
+
+**Same-class stop rule** (`references/execution-doctrine.md` rule 1, hard): if two consecutive rounds
+on the same scope surface the **same defect class**, stop — the next action is a **design change, not a
+third review**, even with a re-pass left in the budget. Label each round's defect class in the
+Completion Note as you go; without labels the rule is unenforceable. The design change is
+`references/gate-risk-classes.md` §3b: make the unsafe state unrepresentable, or route callers through
+one choke point, then re-enter the gate against the new shape (budget resets — the scope changed).
+Different classes across rounds is normal progress and does not trigger this.
 
 ### Wave Wait Protocol
 

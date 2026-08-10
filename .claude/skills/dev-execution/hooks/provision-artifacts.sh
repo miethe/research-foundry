@@ -80,6 +80,52 @@ if [ ! -f "${ENGINE}" ]; then
     echo "[provision-artifacts] engine not found: ${ENGINE} — skipping (non-fatal)" >&2
     exit 0
 fi
+
+# ---------------------------------------------------------------------------
+# Credential + CLI resolution — this is what makes the correctness gate REAL.
+#
+# The engine shells `skillmeat` to classify a declared artifact. Without the PAT it gets
+# HTTP 401, which is correctly treated as "availability UNKNOWN" (never as "absent") — so
+# the exit-2 hard gate silently never fires, in exactly the case it exists for. Measured
+# live: the gate was OFF on the production path for this reason while an interactive shell
+# authenticated fine — nothing in dev-execution sourced the credential, and a bare
+# `skillmeat` under this wrapper's python3 resolves to a pyenv shim rather than the AOS one.
+#
+# So: source the canonical secrets file (the standing rule is that a SkillMeat 401 is a
+# missing-credential bug to be fixed by SOURCING it, never by falling back), and prefer the
+# AOS shim every other caller uses. Both are best-effort and never fatal:
+#   * a caller-supplied SKILLMEAT_BIN always wins (tests point it at a fake),
+#   * an already-exported SKILLMEAT_PAT always wins (never clobber the environment),
+#   * a missing secrets file or shim leaves things exactly as they were.
+# ---------------------------------------------------------------------------
+AOS_SECRETS="${AOS_SECRETS_ENV:-${HOME}/.config/aos/secrets.env}"
+if [ -r "${AOS_SECRETS}" ]; then
+    # Deliberately NOT `set -a; . file`. That exports everything in the file AND overwrites
+    # values the caller already set — it silently clobbered a caller-supplied
+    # SKILLMEAT_API_URL during verification, so a test pointed at an unreachable host quietly
+    # hit the real node instead. Fill only SKILLMEAT_* keys, and only when unset/empty, so an
+    # explicit caller value and an already-loaded credential both win.
+    while IFS= read -r _line || [ -n "${_line}" ]; do
+        _line="${_line#"${_line%%[![:space:]]*}"}"          # ltrim
+        case "${_line}" in ''|'#'*) continue ;; esac
+        _line="${_line#export }"
+        _key="${_line%%=*}"
+        case "${_key}" in
+            SKILLMEAT_*) ;;                                  # in scope
+            *) continue ;;                                   # not ours to touch
+        esac
+        case "${_key}" in ''|*[!A-Za-z0-9_]*) continue ;; esac
+        [ -n "${!_key:-}" ] && continue                      # caller/env wins
+        _val="${_line#*=}"
+        _val="${_val%\"}"; _val="${_val#\"}"
+        _val="${_val%\'}"; _val="${_val#\'}"
+        export "${_key}=${_val}"
+    done < "${AOS_SECRETS}"
+    unset _line _key _val
+fi
+if [ -z "${SKILLMEAT_BIN:-}" ] && [ -x "${HOME}/.aos/shims/skillmeat" ]; then
+    export SKILLMEAT_BIN="${HOME}/.aos/shims/skillmeat"
+fi
 if ! command -v python3 >/dev/null 2>&1; then
     echo "[provision-artifacts] python3 not found — skipping (non-fatal)" >&2
     exit 0

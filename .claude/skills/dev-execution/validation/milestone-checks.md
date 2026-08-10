@@ -104,22 +104,36 @@ echo "✅ All quality gates passed"
 
 ### Final Validation with Subagent
 
+**Delta context, not the full stack** (`references/execution-doctrine.md` rule 2). Pass the AC in
+question and the touched files — **never** `Plan: ${plan_path}` or `Progress: ${progress_file}` in
+full. Inline the AC text; do not hand over a path to a document the reviewer will read end to end.
+
 ```
 @task-completion-validator
 
 Phase ${phase_num} FINAL VALIDATION
 
-Plan: ${plan_path}
-Progress: ${progress_file}
+Acceptance criteria in question (inline, this phase only):
+${phase_ac_list}
+
+Files touched this phase:
+${files_affected}
+
+Failure summary (ONLY on a re-pass — omit entirely on the first pass):
+${failure_summary}
 
 Comprehensive validation required:
-1. All tasks in plan completed
-2. All success criteria met
-3. All tests passing
-4. No critical issues
-5. Documentation complete
-6. Ready for next phase
+1. Every AC above met
+2. All tests passing
+3. No critical issues
+4. Documentation for the touched surface complete
+5. Ready for next phase
 ```
+
+> A reviewer that needs the whole plan to judge one AC is a signal the **AC is under-specified** — fix
+> the AC, do not widen the packet. Previously this template passed the full plan and progress file,
+> contradicting the delta-context rule stated in `completion-criteria.md`; corrected 2026-07-31
+> (gate-tiering v4.1).
 
 ## Success Criteria Review
 

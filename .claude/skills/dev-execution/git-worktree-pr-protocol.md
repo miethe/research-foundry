@@ -17,15 +17,186 @@ helpers never touch git** (single-committer rule, [`dev-execution` SKILL §Nesti
 
 | Mode / command | Worktree-first? | PR to parent? |
 |---|---|---|
-| `/dev:execute-plan` (Tier 2/3) | **Yes** | **Yes** |
-| `/dev:execute-contract` (Tier 1 sprint) | **Yes** | **Yes** |
+| `/dev:execute-plan` (Tier 2/3) | **Yes** — hand-orchestrated via §2. Via the workflow script: **default-on** entered + probed worktree, falling back to a run branch in the session repo (§1a → the lane reference) | **Yes** |
+| `/dev:execute-contract` (Tier 1 sprint) | **Yes** — hand-orchestrated via §2. Via the workflow script: **default-on** entered + probed worktree, same fallback (§1a) | **Yes** |
 | `/dev:execute-phase` | **Yes** | **Yes** |
-| `/dev:autopilot` | **Yes** (already mandated) | **Yes** |
+| `/dev:autopilot` | **Yes by default** — entered + probed worktree; falls back to a run branch in the session repo (§1a) | **Yes** |
 | `/dev:implement-story` / `/dev:complete-user-story` | **Yes** | **Yes** |
 | `/dev:quick-feature` | Yes when multi-step / >1 file; a true one-file one-commit change may commit in place on a short-lived branch | PR when worktree used |
 
 Exception: a trivial single-file fix the user explicitly scoped as "just commit it" may skip the
 worktree. When unsure, use the worktree — it is cheap and isolating.
+
+### 1a. The scripted-workflow lane — a worktree is allowed, but only an *entered and verified* one
+
+**When the work is executed by a Dynamic Workflow script (`auto-feature`, `execute-contract`,
+`execute-plan` invoked via `Workflow(...)`), the run happens in a worktree **by default** — but only
+one the session has actually `EnterWorktree`d into, and only after a placement probe confirms the
+agents followed. On a failed or unverifiable probe, check the run branch out in the session repo, pass
+its name to the workflow, and *say the isolation degraded*.**
+
+All three engines follow the same procedure, from the same file:
+[`references/worktree-isolation-lane.md`](references/worktree-isolation-lane.md). This section is the
+doctrine behind it — read it once; follow that file every run.
+
+Workflow agents run in the **session's cwd**. The operative question is therefore not "worktree or
+not" but **"did the session's cwd move, and did the agents follow it"**.
+
+**There is no stable answer to inherit — only a probe.** Two measurements to date:
+
+| Spawn path | CC **2.1.224** (2026-08-07) | CC **2.1.226** (2026-08-08) |
+|---|---|---|
+| Session `Bash` | yes | yes |
+| `Agent` subagent | yes | not re-measured |
+| **Background `Workflow` agent** | **yes** | **yes** — 4 independent two-sided probes, all agreeing, all with a verified tool call |
+| Main checkout meanwhile | untouched | untouched |
+
+⚠️ **A contested 2.1.226 report is why the probe below was rebuilt.** `node_01KZGQE6GVJTGXRSHA57FYKNDQ`
+reported the dangerous shape — `Workflow` agents giving the worktree as their `pwd` while filesystem
+and git operations resolved against the **main checkout on `main`**, which a probe that trusts the
+agent's self-reported git identity passes. It did **not** reproduce: four two-sided marker probes on
+2.1.226 returned a clean `inherits`. Its own weaker probes had also contradicted each other, and one
+reported a `HEAD_SHA` matching no ref in the repo — the same fabrication signature as the `tool_uses=0`
+case recorded in the lane reference's probe section (§4). So the finding was answered by **rebuilding the probe**, not by
+retiring the lane: whichever way that report was wrong, a probe that cannot tell a regression from a
+fabrication is the actual defect.
+
+⚠️ **No row above is doctrine, and this section has been wrong in both directions.** It once said
+background workflow agents *ignore* `EnterWorktree` and prohibited the lane outright — an
+over-generalization from the 2026-08-05 incident below, where the worktree was created with
+`git worktree add` and the session's cwd **never moved**, so the agents were never in it (the
+mechanism that failed was creating-without-entering, not the worktree). Treat every row as a dated
+observation of one harness build on one machine; the probe is the only thing a run may rely on.
+
+**The incident is still the reason for every guard here.** On 2026-08-05 (`wf_944c5c91-78e`)
+autopilot created `.claude/worktrees/autopilot-op-story-backlog-drain` on
+`autopilot/op-story-backlog-drain`; that branch received **zero** commits, both real commits landed
+on **`main`**, and one was **pushed** — the PR, review, and squash gates were all skipped while the
+report read `status: complete` and the validator's own evidence string quoted the wrong branch as
+neutral context. A worktree the executors are not in is worse than no isolation, because it reads
+as isolation in the report. So the lane is **verified, never assumed**: the harness behaviour above
+is a measurement of one version, and a doctrine that froze at one harness version is exactly what
+produced this section's previous error.
+
+#### The five hazards that make a naive worktree wrong
+
+1. **`git worktree add` is not entering.** Creating a worktree from Bash leaves the session cwd
+   where it was, which is the 2026-08-05 failure verbatim. Use the `EnterWorktree` tool (or start
+   the session inside the worktree). Creating and entering are different acts.
+2. **`worktree.baseRef` defaults to `fresh`** (`~/.claude/settings.json`; verified set to `fresh`
+   here) — a new worktree branches from **`origin/<default-branch>`, not local `HEAD`**. Run from a
+   feature branch, or from a `main` with unpushed commits, and the worktree silently starts from the
+   wrong base; the PR is then built on a parent that is not the parent you recorded. Always
+   re-point the run branch at the recorded parent tip after entering
+   (`git switch -C "$BRANCH" "$PARENT_TIP"`) rather than trusting the base you were given.
+3. **`basename "$(git rev-parse --show-toplevel)"` is the *worktree dir* name inside a worktree**,
+   not the repo name — so it trips the engines' `cross_repo_target` guard as a false positive.
+   Derive repo identity from the shared git dir instead:
+   `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`.
+4. **Entering a worktree does not sandbox absolute paths.** The session cwd moves; an absolute path
+   (or `git -C <main-checkout>`) still reads and writes the main checkout, silently. Verified while
+   authoring this section: `Edit` calls issued from inside a worktree against absolute
+   main-checkout paths landed on `main`, with the worktree left clean. Re-point `REPO_ROOT` to the
+   worktree and pass `-C "$REPO_ROOT"` everywhere — **the isolation you report is only as real as
+   the paths you used.**
+5. **An agent's reported cwd is a claim, not a measurement.** `pwd`, `--show-toplevel` and
+   `--show-current` are all *self-reports*, and both observed failure modes defeat them: an agent has
+   returned plausible values having made **zero tool calls**, and a 2.1.226 report (unreproduced —
+   table above) described a `pwd` that pointed at the worktree while the reads went to `main`. Either
+   way, none of those fields is evidence; only a planted two-sided discriminator (probe below)
+   settles it. Note hazards 1 and 5 are different failures with the same symptom, so a fix for one
+   is not a fix for the other.
+
+#### Why the worktree lane is worth having — and why it is nevertheless probe-gated
+
+Branching in place (below) mutates the **shared checkout every other session is standing in** —
+`git switch -c` moves HEAD under any concurrent agent, which is the hazard
+[`shared-checkout-safety.md`](../../rules/shared-checkout-safety.md) exists for. On a harness that
+inherits, the worktree lane leaves the main checkout on its own branch and is the only lane that
+supports concurrent autopilot runs in one repo. Prefer it when other sessions are live.
+
+**The two lanes fail differently, and that asymmetry is why the probe is not optional.** In-place is
+*noisy*: HEAD moves where other sessions can see it, and the damage is visible and recoverable. A
+worktree the agents are not in is *silent*: the report says `isolation: worktree`, the commits land on
+the parent branch, and nothing in the run says otherwise. A lane whose failure mode is silence may be
+the default only while something keeps checking — so the lane is default-on **and** gated, and a probe
+failure is a fallback, never an inconvenience to route around.
+
+#### The procedure — one place, three consumers
+
+**The five-step procedure lives in
+[`references/worktree-isolation-lane.md`](references/worktree-isolation-lane.md)**: resolve identity
+from the shared git dir *before* entering → `EnterWorktree` (never `git worktree add`) → force the run
+branch onto the recorded `PARENT_TIP` and assert three invariants → the two-sided-marker placement
+probe with its version+shape-keyed cache and fail-closed fallback → the placement fields the engines'
+guards read. It also owns both dirty-tree tables, the post-flight baseline read-back, the in-place
+fallback in the one order that works, the report-the-lane rule, and cleanup.
+
+`/dev:autopilot`, `/dev:execute-contract`, and `/dev:execute-plan` all point at that file rather than
+carrying their own copy. **This section deliberately does not restate the steps.** The procedure lived
+in `autopilot.md` alone while this section permitted the lane for all three engines, so two commands
+were documented as having a lane whose steps did not exist
+(`node_01KZERZRYYKE43Q5D76RCC4T0Q`) — and the duplication cost was then paid in the open: rebuilding
+the probe on 2026-08-08 had to land in *both* copies, and took two PRs to get there. A third copy here
+would reopen exactly that.
+
+Hand-orchestrated runs (`/dev:execute-phase`, the story modes, the plan-execution wave loop) are not
+subject to the "agents inherit the session cwd" constraint that makes the procedure necessary; they
+use §2 below.
+
+Either lane, **§3–§7 below apply unchanged** (commit cadence, validation, PR to parent,
+approval-gated squash-merge, cleanup) — substitute `git -C "$REPO_ROOT"` for `cd "$WORKTREE_PATH"`,
+where `REPO_ROOT` is whichever tree the lane actually landed in.
+
+**Parallelism is what the in-place lane trades away**, and it is recoverable two ways: the probed
+worktree lane (same session), or a **separate session whose cwd is already a worktree directory**
+(always safe, no probe needed — the session never had to move). What is never safe is reaching a
+worktree from a session standing outside it; that is the 2026-08-05 failure.
+
+---
+
+## 1b. Main-line work — the class that cannot be worktree-isolated
+
+§1 enumerates **execution** modes, and §1a covers the scripted-workflow exception to worktree
+isolation. That left a third case unnamed: the classes below operate on `main` *by definition*, so a
+worktree cannot isolate them either — and because they appeared nowhere, an agent doing them had no
+protocol at all and defaulted to working directly in the shared checkout alongside whoever else was
+there. Unlike §1a (which branches in place), these cannot use a run branch at all.
+
+**The main-line class:**
+
+| Work | Why a worktree can't isolate it |
+|---|---|
+| branch sync / prune (`fetch`, `pull --ff-only`, deleting merged branches) | the point is to update `main` and the branch set |
+| **squash-merging a PR into the parent** (§6) | the merge target is the shared branch |
+| `git worktree prune` / removing other runs' worktrees | operates on the repo's worktree registry |
+| release / tag / changelog-on-`main` | mutates `main` and its refs |
+| deploy-from-origin (`/redeploy`, `svc_repo_sync`) | reads and resets the primary checkout |
+
+**These serialize instead of isolating.** Take the repository lease for the whole operation:
+
+```bash
+aos-git lease -t 120 -- git merge --squash "$BRANCH"
+aos-git lease -t 120 -- bash scripts/sync-and-prune.sh
+```
+
+And before drawing any conclusion from repository content while other agents may be present:
+
+```bash
+aos-git pin                  # once, at the start — records BASE_SHA for this session
+aos-git read <path>          # content claims go through the pinned ref, never the worktree file
+aos-git refresh              # before any diff-derived conclusion (a stale index UNDER-reports)
+aos-git drift                # before commit/push/merge, and before stating a finding
+```
+
+`git` protects the data — a non-fast-forward push is rejected — but it does not protect conclusions.
+A stale index once reported an 8-insertion diff for a 49-insertion change here, and HEAD moving
+mid-session produced PR #114, which claimed a defect was "still live" and had to be retracted.
+
+Rule + rationale: [`.claude/rules/shared-checkout-safety.md`](../../rules/shared-checkout-safety.md).
+Helper, hook, and install: [`infra/git-guard/README.md`](../../../infra/git-guard/README.md). The
+`PreToolUse` guard denies a mutating git op once when HEAD has drifted since your pin, so the
+`drift` check above is enforced rather than remembered.
 
 ---
 
@@ -65,8 +236,7 @@ cd "$WORKTREE_PATH"
   explore→implement→test slice; a story's per-file completion). The phase-owner commits everything
   intended to survive **before** emitting its completion signal (P3 safety contract — never rely on
   uncommitted state across sessions).
-- **Single committer:** the orchestrator/phase-owner is the only one that runs `git add/commit`.
-  Offloaded executors and nested helpers never commit, stash, or push.
+- **Single committer (nested children):** nested helpers (depth-1 subagents spawned by a phase-owner) never `git add/commit/stash/push`. Batch task agents within a parallel phase MAY commit their own assigned files by explicit pathspec (no wildcard adds) and may never rewrite history. The orchestrator/phase-owner orchestrates all commits.
 - Conventional-commit messages, scoped, with a plan/contract/phase ref:
   ```
   feat(<scope>): <what landed this phase>
@@ -133,19 +303,71 @@ these is true:
    green", "squash and merge", "land it", "no need to ask — merge". Absent such language, **do not
    self-merge** a run branch into the parent.
 
-On approval/override (and only then):
+On approval/override (and only then) — this is **main-line work** (§1b), so hold the repo lease and
+re-check drift first; another agent may have moved the parent branch since your run started:
 
 ```bash
-gh pr merge "$BRANCH" --squash --delete-branch     # squash-merge into PARENT_BRANCH
+aos-git drift || aos-git pin --repin               # re-derive if the parent moved
+
+# Merge and delete as TWO steps — never `--delete-branch`. See the note below.
+aos-git lease -t 120 -- gh pr merge "$BRANCH" --squash
+
+# Confirm the merge from repository STATE, not from the exit code or the visible output:
+gh pr view "$PR" --json state,mergeCommit -q '.state + " " + (.mergeCommit.oid // "none")'
+# expect: MERGED <sha>.   Anything else = not merged; stop and investigate.
+
+# Only once MERGED is confirmed, delete the remote branch explicitly:
+git push origin --delete "$BRANCH"
+
 # or, when merging locally without the PR API:
-git switch "$PARENT_BRANCH"
-git merge --squash "$BRANCH"
-git commit -m "feat(<scope>): <summary> (#<pr>)"
-git push origin "$PARENT_BRANCH"
+aos-git lease -t 120 -- bash -c '
+  git switch "$PARENT_BRANCH" &&
+  git merge --squash "$BRANCH" &&
+  git commit -m "feat(<scope>): <summary> (#<pr>)" &&
+  git push origin "$PARENT_BRANCH"'
 ```
+
+> ⚠️ **Why not `--delete-branch`, and why the merge is confirmed from state.** In this layout the
+> parent branch is checked out in the primary checkout, so `gh`'s post-merge step — switch to the
+> parent locally, then delete — cannot switch, and prints:
+>
+> ```
+> failed to run git: fatal: 'main' is already used by worktree at '<primary checkout>'
+> ```
+>
+> This fails **after** the merge has already landed, and produces two distinct hazards:
+>
+> 1. **It reads like a merge failure.** The `fatal:` is the most prominent output, so an agent that
+>    trusts it will report a false failure or retry an already-merged PR. Under this two-step form
+>    the message is *expected and benign* — but the merge is still confirmed via `gh pr view`, so
+>    the conclusion never rests on interpreting output at all.
+> 2. **The remote branch silently survives.** Because `gh` aborted before its delete step,
+>    `--delete-branch` never ran against the remote. Origin then accumulates merged branches that
+>    later have to be told apart from genuinely-unmerged ones — and squash-merge makes ancestry
+>    useless for that judgement, so it is manual work every time.
+>
+> Recorded three times in this repo (PR #116 2026-08-05, PR #201 and PR #208 2026-08-09); each
+> leftover was deleted by hand after the fact. `node_01KZ97XA10D09CKTS1E178KEWQ`.
 
 Then record the landing pointer (`merge_commit` ← post-squash SHA, `merge_branch` ← parent) in the
 plan/contract frontmatter, so the orphaned per-phase SHAs in `commit_refs` remain resolvable.
+
+**Then fire the post-merge evidence hook** — it turns those frontmatter fields into typed
+`ExternalLink(github)` + `CompletionEvidence(delivery_class=shipped)` rows on the bound IntentTree
+node, so "what shipped in project X" stays answerable by one query instead of by re-reading prose:
+
+```bash
+POST_MERGE_PLAN_FILE="${PLAN_PATH}" \
+POST_MERGE_MERGE_COMMIT="$(git rev-parse HEAD)" \
+POST_MERGE_APPLY=1 \
+    .claude/skills/dev-execution/hooks/post-merge-evidence.sh
+```
+
+Default-on, binding-gated (a true no-op with no `ITT_NODE_ID`/`INTENTTREE_TREE` and no
+`itt_node_id:`/`intenttree_tree:`/`feature_slug:` frontmatter), and **always exits 0** — it is a
+best-effort recorder, never a gate, so it can never block a merge. Disable with
+`AOS_POST_MERGE_EVIDENCE=0`. Contract: the hook's own header comment; rule:
+[`.claude/rules/intenttree-integration.md`](../../rules/intenttree-integration.md).
 
 > This refines the universal git-workflow preference (commit + squash-merge on completion) for
 > *orchestrated multi-phase execution*: the unit that merges is the **run branch**, the target is the
@@ -160,7 +382,12 @@ plan/contract frontmatter, so the orphaned per-phase SHAs in `commit_refs` remai
 # After a successful merge:
 cd "$PARENT_BRANCH worktree (repo root)"
 git worktree remove "$WORKTREE_PATH"
-git branch -D "$BRANCH"        # if not already deleted by --delete-branch
+git branch -D "$BRANCH"        # local ref — §6 deleted the REMOTE one explicitly
+
+# Confirm no leftover on origin (belt-and-braces; §6's explicit delete should have handled it):
+git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null \
+  && echo "LEFTOVER: origin/$BRANCH still exists — delete it or report it explicitly" \
+  || echo "clean: no origin/$BRANCH"
 
 # If the run is abandoned / scope exceeded:
 git worktree remove --force "$WORKTREE_PATH"

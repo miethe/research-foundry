@@ -27,7 +27,7 @@
 # TRIGGER REGISTRATION:
 #   Called from the planning skill at the end of Workflow 2 (implementation plan
 #   written) and from /plan:plan-feature for Tier 2/3:
-#     DOSSIER_PLAN_FILE="docs/project_plans/implementation_plans/features/foo-v1.md" \
+#     DOSSIER_PLAN_FILE="docs/project_plans/implementation_plans/foo-v1.md" \
 #       .claude/skills/dev-execution/hooks/seed-dossier.sh
 #   Tier 0/1 (or any explicit request) opts in:
 #     DOSSIER_PLAN_FILE="<plan.md>" DOSSIER_SEED_FORCE=1 \
