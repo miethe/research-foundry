@@ -43,8 +43,18 @@
  * guard.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
+
+// File-level safety net: every `it()` restores env + spies in its own
+// afterEach, but this catches the case where a beforeEach/afterEach itself
+// throws before reaching its own vi.unstubAllEnvs()/vi.restoreAllMocks()
+// call, so a leak can never survive past this file into the files that run
+// after it in the same worker.
+afterAll(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
 
 const API_BASE = "http://127.0.0.1:7432/api";
 const JOB_ID = "aj_contract_0001";
@@ -62,15 +72,34 @@ const LOOPBACK_ON = {
   VITE_RUNS_LOOPBACK_API_BASE: API_BASE,
 } as const;
 
-/** Set import.meta.env for a test; must be called before the dynamic import. */
+/**
+ * Set import.meta.env for a test via vi.stubEnv, which — unlike hand-mutating
+ * `import.meta.env` directly — records each key's PRIOR value (including
+ * "was absent") the first time it is touched, so `vi.unstubAllEnvs()` in
+ * afterEach restores every key to its exact prior state (present or absent),
+ * not just the ones this helper's caller happened to remember to clear.
+ *
+ * ROOT-CAUSE NOTE (fixed 2026-08-10): the prior version of this helper wrote
+ * straight onto `import.meta.env` — a single object that Vitest shares live
+ * across the whole worker process, NOT a fresh per-test-file snapshot. Every
+ * `it()` here called `setEnv({ ...LOOPBACK_ON, ... })`, which sets
+ * VITE_RUNS_FRONTEND_LOOPBACK_API and VITE_RUNS_LOOPBACK_API_BASE, but the
+ * old `afterEach` only ever cleared VITE_RUNS_LOOPBACK_API_TOKEN. Those two
+ * LOOPBACK_ON keys were never restored, so they stayed "true" / the fake API
+ * base on `import.meta.env` for the rest of the worker's lifetime — leaking
+ * into every later test file's fresh `client.ts` import (each file's own
+ * `vi.resetModules()` gives a fresh MODULE registry, but not a fresh
+ * `import.meta.env` object) and flipping unrelated components like
+ * BuilderScreen into loopback mode they never expect. Confirmed via a
+ * standalone probe: `vi.stubEnv("X", "y"); expect(import.meta.env.X).toBe("y")`
+ * followed by `vi.unstubAllEnvs()` correctly deletes the key again — i.e.
+ * `import.meta.env` genuinely is the same live object `vi.stubEnv` targets,
+ * and only `vi.stubEnv`'s own bookkeeping (not hand-rolled key tracking)
+ * reliably reverses it.
+ */
 function setEnv(overrides: Record<string, string | boolean | undefined>) {
   for (const [k, v] of Object.entries(overrides)) {
-    if (v === undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete (import.meta.env as Record<string, unknown>)[k];
-    } else {
-      (import.meta.env as Record<string, unknown>)[k] = v;
-    }
+    vi.stubEnv(k, v === undefined ? undefined : String(v));
   }
 }
 
@@ -148,7 +177,10 @@ describe("agentJobsClient — real HTTP contract (REST calls 1-5 of 6)", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    setEnv({ VITE_RUNS_LOOPBACK_API_TOKEN: undefined });
+    // Restores every key vi.stubEnv touched in this test — including the two
+    // LOOPBACK_ON keys, not just the per-test credential — to its exact
+    // prior value (present or absent). See setEnv()'s ROOT-CAUSE NOTE above.
+    vi.unstubAllEnvs();
   });
 
   it("1. launchAgentJob() → POST /api/agent-jobs with Authorization + JSON body", async () => {
@@ -266,13 +298,27 @@ function sseFrame(sequence: number, eventType: string): string {
   return `data: ${JSON.stringify({ event_type: eventType, payload: {}, sequence })}\n\n`;
 }
 
-function sseByteStream(chunks: string[]): ReadableStream<Uint8Array> {
+/**
+ * Builds an SSE byte stream and hands the caller its controller so the test
+ * can close it explicitly once assertions are done. Left open through
+ * `start()` (no `controller.close()` there) so `status` settles on "live"
+ * rather than immediately cycling to "error"/reconnect — but an
+ * ever-open stream leaves the hook's `await reader.read()` pending forever
+ * if nothing ever closes it, which is a dangling-microtask leak of its own
+ * (independent of the import.meta.env leak fixed above). `onController`
+ * captures the controller so the test can close it before `unmount()`,
+ * letting that pending read() resolve with `done: true` and the hook's
+ * internal loop exit cleanly instead of leaking past the test.
+ */
+function sseByteStream(
+  chunks: string[],
+  onController: (controller: ReadableStreamDefaultController<Uint8Array>) => void,
+): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({
     start(controller) {
       for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
-      // Deliberately left open (no controller.close()) so `status` settles
-      // on "live" rather than immediately cycling to "error"/reconnect.
+      onController(controller);
     },
   });
 }
@@ -284,13 +330,17 @@ describe("useAgentJobEvents — real SSE reader contract (call 6 of 6)", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    setEnv({ VITE_RUNS_LOOPBACK_API_TOKEN: undefined });
+    // Restores every key vi.stubEnv touched in this test — including the two
+    // LOOPBACK_ON keys, not just the per-test credential — to its exact
+    // prior value (present or absent). See setEnv()'s ROOT-CAUSE NOTE above.
+    vi.unstubAllEnvs();
   });
 
   it("6. opens GET /api/agent-jobs/{job_id}/events with an Authorization bearer header and delivers frames", async () => {
     setEnv({ ...LOOPBACK_ON, VITE_RUNS_LOOPBACK_API_TOKEN: SSE_CRED });
 
     const requests: CapturedRequest[] = [];
+    let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = urlOf(input as RequestInfo | URL);
       requests.push({
@@ -299,10 +349,12 @@ describe("useAgentJobEvents — real SSE reader contract (call 6 of 6)", () => {
         authorization: headerOf(init, "Authorization"),
         body: undefined,
       });
-      return new Response(sseByteStream([sseFrame(1, "stage_start")]), {
-        status: 200,
-        headers: { "Content-Type": "text/event-stream" },
-      });
+      return new Response(
+        sseByteStream([sseFrame(1, "stage_start")], (controller) => {
+          streamController = controller;
+        }),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      );
     });
 
     const { useAgentJobEvents } = await loadHookModule();
@@ -324,6 +376,14 @@ describe("useAgentJobEvents — real SSE reader contract (call 6 of 6)", () => {
     expect(requests[0]!.pathname).toBe(`/api/agent-jobs/${JOB_ID}/events`);
     expect(requests[0]!.authorization).toBe(`Bearer ${SSE_CRED}`);
 
+    // Close the stream before unmounting: the hook's read loop is currently
+    // parked on a second `await reader.read()` that will never resolve on
+    // its own (the stream was left open on purpose so `status` could settle
+    // on "live" above). Closing it here lets that read() resolve with
+    // `done: true` and the loop exit cleanly, instead of leaving a
+    // permanently-pending promise referencing this test's closures behind
+    // once the test finishes.
+    streamController?.close();
     unmount();
   });
 });
