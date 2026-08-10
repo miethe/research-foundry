@@ -14,7 +14,8 @@ prd_ref: docs/project_plans/PRDs/enhancements/agent-research-loopback-slice-v1.m
 plan_ref: docs/project_plans/implementation_plans/enhancements/agent-research-loopback-slice-v1.md
 intenttree_tree: tree_01KVTH95G09FX26HCRPBV77DAE
 itt_node_id: node_01KZ4A1ZHFXH1ZRDXPPFGEV95Z
-commit_refs: []
+commit_refs:
+- 755e7d3
 pr_refs: []
 started: null
 completed: null
@@ -95,29 +96,34 @@ success_criteria:
 - id: AC-M1-1
   description: Authorization header sourced via buildAuthHeaders() precedence (runtime
     resolver wins over build-time env; header omitted when neither resolves).
-  status: pending
+  status: completed
 - id: AC-M1-2
   description: "Zero diff under src/research_foundry/ \u2014 no server changes required\
     \ by the chosen design."
-  status: pending
+  status: completed
 - id: AC-M1-3
-  description: Reconnect at 3000ms resumes from the last sequence id (last_event_id
-    replay parity, byte-for-byte unchanged).
-  status: pending
+  description: >-
+    Reconnect at 3000ms resumes from the last sequence id (last_event_id replay
+    parity). SUPERSEDED clause, per plan lines ~37-39/~78-82 (gate finding DUP-01)
+    -- "byte-for-byte unchanged" is dropped as worded, because byte-parity with
+    the retired EventSource meant preserving a duplication bug. Read as -- reconnect
+    delay (3000ms) and last_event_id are unchanged; replayed history is now
+    de-duplicated by sequence.
+  status: completed
 - id: AC-M1-4
   description: SSE frame parser emits exactly one event per frame when frames split
     across read() chunks.
-  status: pending
+  status: completed
 - id: AC-M1-5
   description: A test FAILS when the Authorization header is removed (positive control).
-  status: pending
+  status: completed
 - id: AC-M1-6
   description: Static (non-loopback) mode is byte-unchanged.
-  status: pending
+  status: completed
 - id: AC-M1-7
   description: "npx tsc -p tsconfig.app.json --noEmit is clean (bare `npx tsc --noEmit`\
     \ is a known no-op in this repo \u2014 must pass -p)."
-  status: pending
+  status: completed
 files_modified:
 - frontend/runs-viewer/src/hooks/useAgentJobs.ts
 - frontend/runs-viewer/src/test/agents-sse-auth.test.ts
@@ -169,7 +175,7 @@ security lens.
 | M1 no server change | `git diff --stat -- src/research_foundry/` | empty output |
 | M1 no token in URL | `rg -n 'token' frontend/runs-viewer/src/hooks/useAgentJobs.ts` | no query-param token assignment remains |
 | Typecheck (all) | `cd frontend/runs-viewer && npx tsc -p tsconfig.app.json --noEmit` | no output (bare `npx tsc --noEmit` is a NO-OP here — must pass `-p`) |
-| No new suite failures | `cd frontend/runs-viewer && npx vitest run` | failing-file **set** equals the baseline set captured before M1 (~4 known-failing) |
+| No new suite failures | `cd frontend/runs-viewer && npx vitest run` | failing-file **set** equals the baseline set captured before M1 — exactly one file, `codegen/generate-types.contract.test.mjs` |
 
 ## Sequencing note (load-bearing, from plan)
 
@@ -233,10 +239,9 @@ set forbids hand-editing progress frontmatter. Evidence, criterion by criterion:
 Baseline captured before M1 was `1 failed | 48 passed (49)`, 1084 passed — same failing-file set
 (only the pre-existing `codegen/generate-types.contract.test.mjs` codegen drift).
 
-**Commit.** Feature-branch commit `efb3919` on `feat/agent-research-loopback-slice`.
-`commit_refs` is deliberately left empty: per `.claude/rules/plan-bookkeeping.md` invariant 1 it may
-only hold commits reachable from `main`, and this repo squash-merges, so the orchestrator should
-record the squash sha there instead of the pre-squash branch commit.
+**Commit.** Feature-branch commit `efb3919` on `feat/agent-research-loopback-slice`, squashed to
+`main` as `755e7d3` (now recorded in `commit_refs` above, verified reachable via
+`git merge-base --is-ancestor 755e7d3 main` per `.claude/rules/plan-bookkeeping.md` invariant 1).
 
 **Unexpected challenges / learnings for M2.**
 

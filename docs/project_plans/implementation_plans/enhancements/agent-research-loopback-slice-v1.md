@@ -3,15 +3,21 @@ it_schema: 1
 feature_slug: agent-research-loopback-slice
 title: "Agent-research loopback slice — hardening — implementation plan"
 doc_type: implementation_plan
-status: in_progress
-# M1 LANDED on main as 3276bfa (squash of efb3919/f641c3c/957cc93/975db10/6fa2401),
-# both gate lenses APPROVED. M2 LANDED on main as 161cf2f, findings 1+2 of the parked-branch
+status: completed
+# M1 LANDED on main as 755e7d3 (squash of efb3919/f641c3c/957cc93/975db10/6fa2401),
+# both gate lenses APPROVED. M2 LANDED on main as e3b7588, findings 1+2 of the parked-branch
 # CHANGES_REQUESTED review closed and re-gated APPROVED by codex/gpt-5.6-terra (the mandated
-# single validator lens). M3 was never started — findings 3+4 + M1's open coverage gap fold
-# into it, then the Tier-2 karen final-tree pass before the feature closes.
+# single validator lens). M3 LANDED on main as 47f374b (contract test) + 87fde4a (env-leak
+# fix); the validator lens and the Tier-2 karen final-tree pass both APPROVED. Findings 3+4 and
+# M1's open coverage gap were NOT silently folded into M3's close — each is recorded as its own
+# annotated deferral in M3's exit_criteria below, naming its ITT node and gate.
 commit_refs:
-  - 3276bfa   # M1 squash to main — verified reachable via git merge-base --is-ancestor
-  - 161cf2f   # M2 squash to main — verified reachable via git merge-base --is-ancestor
+  - 755e7d3   # M1 squash to main (patch-identical to the superseded pre-squash ref 3276bfa)
+  - 116295c   # M1 landing pointer + M2/M3 parked (patch-identical to superseded ref c2b86fe)
+  - e3b7588   # M2 squash to main (patch-identical to the superseded pre-squash ref 161cf2f)
+  - af642da   # M2 tracker close (patch-identical to superseded ref 238a7f9)
+  - 47f374b   # M3 contract test
+  - 87fde4a   # M3 env-leak fix
 tier: 2
 priority: P1
 points: 13
@@ -22,7 +28,7 @@ feature_end_gate: karen    # Tier 2 mandate: ONE karen final-tree pass after M3,
                            # gate-risk-classes.md § Karen placement), which is why every
                            # phase progress file carries karen_required_this_milestone: false.
 created: 2026-08-03
-updated: 2026-08-07
+updated: 2026-08-10
 changelog_required: true
 prd_ref: docs/project_plans/PRDs/enhancements/agent-research-loopback-slice-v1.md
 plan_ref: null
@@ -34,7 +40,7 @@ related_documents:
   - docs/project_plans/feature_contracts/enhancements/runs-viewer-builder-live-claim-previews.md
   - docs/project_plans/implementation_plans/features/public-multiuser-p4-agents-v1.md
 acceptance_criteria:   # terse by design — the AC -> command -> evidence matrix below is the detail
-  # "at parity" SUPERSEDED for M1 (landed 3276bfa): byte-parity with the retired EventSource meant
+  # "at parity" SUPERSEDED for M1 (landed 755e7d3): byte-parity with the retired EventSource meant
   # preserving a duplication bug (gate finding DUP-01). Read as: reconnect delay and last_event_id
   # preserved, replayed history de-duplicated. Rationale in the branch execution ledger.
   - "SSE authenticates by header from the runtime resolver, zero diff under src/research_foundry/, reconnect+replay at parity"
@@ -73,7 +79,7 @@ wave_plan:
       itt_node_id: node_01KZ4A1ZHFXH1ZRDXPPFGEV95Z
       gate_lens: [security, validator]
       gate_lens_reason: authz-boundary
-      exit_criteria:   # MET — landed on main as 3276bfa; both gate lenses APPROVED
+      exit_criteria:   # MET — landed on main as 755e7d3; both gate lenses APPROVED
         - "SSE request carries a runtime-resolved Authorization header; no token in any URL"
         # "replay at parity" was deliberately SUPERSEDED — see gate finding DUP-01. Parity with the
         # retired EventSource meant re-appending the whole event history on every reconnect. The
@@ -86,7 +92,7 @@ wave_plan:
       depends_on: ["M1"]
       itt_node_id: node_01KZ4A2GHGR6QG4EP1AMNKAR3D
       gate_lens: [validator]
-      exit_criteria:   # MET — landed on main as 161cf2f; validator lens (codex) APPROVED
+      exit_criteria:   # MET — landed on main as e3b7588; validator lens (codex) APPROVED
         # Findings 1+2 of the parked-branch review closed by a call-site design change (key the
         # job-scoped subtree by jobId; share the live job query to the event panel). Findings 3+4
         # (assertion-shaped pre-existing cancel tests + partial-real-module mock repair) explicitly
@@ -99,9 +105,14 @@ wave_plan:
       depends_on: ["M2"]
       itt_node_id: node_01KZ4A3H0R7KZT8WF6A7DG1VTG
       gate_lens: [validator]
-      exit_criteria:
+      exit_criteria:   # MET — landed on main as 47f374b (contract test) + 87fde4a (env-leak fix);
+                        # validator lens and the Tier-2 karen final-tree pass both APPROVED.
         - "All 6 routes' method + path + auth header asserted against agent_jobs.py; mutation check fails as designed"
         - "FEATURE-END GATE: the single Tier-2 karen final-tree pass runs after this milestone and APPROVES before the feature closes"
+        - "DEFERRED, Medium — Finding 3: agents-cancel pre-loads mutation state, so AC-M2-4/AC-M2-6 are vacuous as worded. Gate = resolution of ITT node node_01KZP86B466SWBSA0VR6MV6FRT; this milestone's completion does not close it."
+        - "DEFERRED, Low — Finding 4: no partial-real-module mocks; two missing exports (useCancelAgentJob, useAgentJob). Cannot be closed by a test-only diff. Gate = resolution of ITT node node_01KZP87QAJ7AKGYDP79F69VJ3X."
+        - "DEFERRED, Low — M1 coverage gap: `enabled` false->true with an unchanged `jobId` is untested; the guard exists and works at useAgentJobs.ts:347-352. Gate = resolution of ITT node node_01KZP87QHPBBWYPTTB1MK80QH6."
+        - "DEFERRED, not_started — confirm-row double-click geometry fragility, filed at ITT node node_01KZET6WBDPMZTT4Z5S3X88AYA. Gate = resolution of that node."
 ---
 
 # Implementation Plan — Agent-research loopback slice (hardening)
@@ -187,8 +198,21 @@ client/server drift fails a test rather than only showing up in `openapi.json` d
 
 **AC:** ≥1 file exercises `agentJobsClient.ts` without mocking `@/hooks/useAgentJobs`; all 6 routes'
 method + path + auth header asserted against `agent_jobs.py`; **breaking one path makes it fail**,
-then tree left clean; the 7 pre-existing tests unchanged and passing; no new suite failures vs the
-baseline **set**.
+then tree left clean; the 10 pre-existing `agents-*` files (9 hooks-mocking `.tsx` files plus the
+M1 non-mocking `agents-sse-auth.test.ts`) unchanged and passing; no new suite failures vs the
+baseline **set** — exactly one file, `codegen/generate-types.contract.test.mjs`.
+
+**Landed as** `47f374b` (adds `src/test/agents-client-contract.test.ts`, the contract test) +
+`87fde4a` (fix: the contract test's `import.meta.env` stubs leaked forward into later files sharing
+the same vitest worker — switched to `vi.stubEnv`/`vi.unstubAllEnvs`). Verified: neither commit
+touches any existing test or production file; both mutations (broken artifacts pathname, stripped
+SSE auth header) independently caught by the test and reverted; `git status --porcelain` empty
+after revert. **AC6 caveat:** the failing-file set on `main` is unchanged and stable across repeat
+runs ({`codegen/generate-types.contract.test.mjs`}, 1136 passed). During development a worktree run
+showed one additional failure, `provenance-correctness.test.ts` — this was never a regression: it
+is a worktree data-plane phantom, because ancillary `.claude/worktrees/*` checkouts lack the private
+data-plane mount that supplies that test's fixture `report_draft.md`. Do not misdiagnose a future
+recurrence of this pattern as a shipped regression.
 
 ## AC -> command -> evidence
 
@@ -202,7 +226,7 @@ baseline **set**.
 | M2 hook has a caller | `rg -n 'useCancelAgentJob' frontend/runs-viewer/src --glob '!hooks/**'` | ≥1 hit outside the hooks dir |
 | M3 non-vacuous contract test | break one client path, re-run the contract test | test **FAILS**; revert; `git status --porcelain` empty |
 | Typecheck (all) | `cd frontend/runs-viewer && npx tsc -p tsconfig.app.json --noEmit` | no output (bare `npx tsc --noEmit` is a NO-OP here — must pass `-p`) |
-| No new suite failures | `cd frontend/runs-viewer && npx vitest run` | failing-file **set** equals the baseline set captured before M1 (~4 known-failing) |
+| No new suite failures | `cd frontend/runs-viewer && npx vitest run` | failing-file **set** equals the baseline set captured before M1 — exactly one file, `codegen/generate-types.contract.test.mjs` |
 
 ## Sequencing (load-bearing)
 

@@ -9,16 +9,18 @@ phase: 2
 title: Cancel affordance reaches the live cancel endpoint
 status: completed
 created: '2026-08-03'
-updated: '2026-08-07'
+updated: '2026-08-10'
 prd_ref: docs/project_plans/PRDs/enhancements/agent-research-loopback-slice-v1.md
 plan_ref: docs/project_plans/implementation_plans/enhancements/agent-research-loopback-slice-v1.md
 intenttree_tree: tree_01KVTH95G09FX26HCRPBV77DAE
 itt_node_id: node_01KZ4A2GHGR6QG4EP1AMNKAR3D
-commit_refs: []
+commit_refs:
+- e3b7588
+- af642da
 pr_refs: []
 started: null
 completed: null
-overall_progress: 0
+overall_progress: 100
 completion_estimate: on-track
 total_tasks: 4
 completed_tasks: 4
@@ -38,7 +40,7 @@ tasks:
   started: '2026-08-07T14:30:00Z'
   completed: '2026-08-07T15:10:00Z'
   evidence:
-  - commit: 161cf2f
+  - commit: e3b7588
   verified_by:
   - ARLS-2.G
 - id: ARLS-2.2
@@ -50,7 +52,7 @@ tasks:
   started: '2026-08-07T14:30:00Z'
   completed: '2026-08-07T15:10:00Z'
   evidence:
-  - commit: 161cf2f
+  - commit: e3b7588
   verified_by:
   - ARLS-2.G
 - id: ARLS-2.3
@@ -63,7 +65,7 @@ tasks:
   started: '2026-08-07T14:30:00Z'
   completed: '2026-08-07T15:10:00Z'
   evidence:
-  - commit: 161cf2f
+  - commit: e3b7588
   verified_by:
   - ARLS-2.G
 - id: ARLS-2.G
@@ -75,7 +77,7 @@ tasks:
   started: '2026-08-07T14:30:00Z'
   completed: '2026-08-07T15:10:00Z'
   evidence:
-  - commit: 161cf2f
+  - commit: e3b7588
   - review: codex-gpt-5.6-terra-APPROVED
   verified_by:
   - ARLS-2.G
@@ -98,22 +100,29 @@ success_criteria:
 - id: AC-M2-1
   description: Cancel affordance is present only for jobs in a cancellable (running)
     state.
-  status: pending
+  status: completed
 - id: AC-M2-2
   description: An explicit confirm step precedes the cancel request.
-  status: pending
+  status: completed
 - id: AC-M2-3
   description: The job-detail query is invalidated on successful cancel.
-  status: pending
+  status: completed
 - id: AC-M2-4
-  description: A failed cancel surfaces an error rather than appearing successful.
-  status: pending
+  description: >-
+    A failed cancel surfaces an error rather than appearing successful. NOTE per
+    plan M3 exit_criteria deferral (Finding 3, ITT node node_01KZP86B466SWBSA0VR6MV6FRT,
+    Medium) -- the existing agents-cancel test for this path pre-loads mutation
+    state, so the assertion is vacuous as worded. Marked completed on the narrow
+    claim tested (an error surfaces), not on the deferred hardening.
+  status: completed
 - id: AC-M2-5
   description: useCancelAgentJob has >=1 caller outside the hooks directory.
-  status: pending
+  status: completed
 - id: AC-M2-6
-  description: Both success and failure cancel paths are tested.
-  status: pending
+  description: >-
+    Both success and failure cancel paths are tested. Same Finding-3 caveat as
+    AC-M2-4 applies to the failure-path assertion -- see plan M3 exit_criteria.
+  status: completed
 files_modified: []
 progress: 100
 ---
@@ -159,7 +168,7 @@ same seam.
 | M2 cancel paths | `cd frontend/runs-viewer && npx vitest run src/test/agents-` | success and failure cancel tests pass |
 | M2 hook has a caller | `rg -n 'useCancelAgentJob' frontend/runs-viewer/src --glob '!hooks/**'` | ≥1 hit outside the hooks dir |
 | Typecheck (all) | `cd frontend/runs-viewer && npx tsc -p tsconfig.app.json --noEmit` | no output (bare `npx tsc --noEmit` is a NO-OP here — must pass `-p`) |
-| No new suite failures | `cd frontend/runs-viewer && npx vitest run` | failing-file **set** equals the baseline set captured before M1 (~4 known-failing) |
+| No new suite failures | `cd frontend/runs-viewer && npx vitest run` | failing-file **set** equals the baseline set captured before M1 — exactly one file, `codegen/generate-types.contract.test.mjs` |
 
 ## Sequencing note (load-bearing, from plan)
 
