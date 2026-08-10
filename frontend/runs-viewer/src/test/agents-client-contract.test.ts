@@ -340,7 +340,14 @@ describe("useAgentJobEvents — real SSE reader contract (call 6 of 6)", () => {
     setEnv({ ...LOOPBACK_ON, VITE_RUNS_LOOPBACK_API_TOKEN: SSE_CRED });
 
     const requests: CapturedRequest[] = [];
-    let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+    // Held in a ref object, not a bare `let`: the only assignment happens
+    // inside the fetch mock's stream `start()` callback, which TS cannot prove
+    // ever runs, so a `let ... | null = null` narrows to `null` at the
+    // `.close()` below and fails to typecheck (`Property 'close' does not
+    // exist on type 'never'`). A property read defeats that narrowing.
+    const streamRef: { current: ReadableStreamDefaultController<Uint8Array> | null } = {
+      current: null,
+    };
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = urlOf(input as RequestInfo | URL);
       requests.push({
@@ -351,7 +358,7 @@ describe("useAgentJobEvents — real SSE reader contract (call 6 of 6)", () => {
       });
       return new Response(
         sseByteStream([sseFrame(1, "stage_start")], (controller) => {
-          streamController = controller;
+          streamRef.current = controller;
         }),
         { status: 200, headers: { "Content-Type": "text/event-stream" } },
       );
@@ -383,7 +390,7 @@ describe("useAgentJobEvents — real SSE reader contract (call 6 of 6)", () => {
     // `done: true` and the loop exit cleanly, instead of leaving a
     // permanently-pending promise referencing this test's closures behind
     // once the test finishes.
-    streamController?.close();
+    streamRef.current?.close();
     unmount();
   });
 });
