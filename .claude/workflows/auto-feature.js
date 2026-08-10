@@ -129,6 +129,108 @@ function hasHighRiskPaths(filesAffected) {
   return filesAffected.some(f => HIGH_RISK_PATTERNS.some(pat => pat.test(f)))
 }
 
+// ─── Mode-D subject matter in the REQUEST (node_01KZC1AHEDYZ8FS9TAZSXQTTSB) ────
+// hasHighRiskPaths above reads DECLARED paths, which the planner produces. The leg
+// that breached Mode-D on 2026-08-06 declared no crypto path and was routed to an
+// offload lane on that clean declaration — then wrote its own HMAC signer, minting
+// a key with secrets.token_bytes(32). The subject matter was in the text all along.
+//
+// Patterns are tight multi-word/technical forms; bare `token` would trip on
+// "token bucket", and a noisy boundary is one that gets routed around.
+// Kept verbatim-identical to the tables in execute-{plan,contract}.js — workflow
+// scripts cannot require() at runtime, so drift shows up as a visible diff.
+const MODE_D_INTENT_PATTERNS = [
+  /\b(signing|secret|private|encryption)\s+key\b/i,
+  /\bkey\s*(pair|material)\b/i,
+  /\bhmac\b/i,
+  /\btoken_(bytes|hex|urlsafe)\b/i,
+  /\b(jwt|oauth|bearer\s+token)\b/i,
+  /\bpassword\s+(hash|hashing)\b/i,
+  /\b(sign|verify|re-?sign)\s+(the\s+)?(token|payload|envelope|request)\b/i,
+  /\balembic\b/i,
+  /\bschema\s+migration\b/i,
+]
+
+// A Mode-D warning in the text is EVIDENCE of proximity to the boundary, not a
+// control over it. A request that has to say "must not mint a signing key" is a
+// request about signing keys.
+const MODE_D_SELF_WARNING_PATTERNS = [
+  /must\s+not\s+(read|generate|print|reference|mint|create)[^.\n]{0,60}\bkey\b/i,
+  /\bnever\s+(mint|generate|sign)\b/i,
+  /reason:\s*['"]?mode_?d/i,
+  /\bneeds_opus\b[^\n]{0,40}\bmode_?d\b/i,
+  /\bdo\s+not\s+(sign|mint|generate)\b/i,
+]
+
+/**
+ * Mode-D subject-matter detector over free text.
+ * @param {string} text
+ * @returns {string|null} the matching pattern's source, or null.
+ */
+function hasModeDIntent(text) {
+  const t = typeof text === 'string' ? text : ''
+  if (!t) return null
+  for (const pat of MODE_D_INTENT_PATTERNS) {
+    if (pat.test(t)) return `subject matter ${pat}`
+  }
+  for (const pat of MODE_D_SELF_WARNING_PATTERNS) {
+    if (pat.test(t)) return `Mode-D warning present ${pat}`
+  }
+  return null
+}
+
+// ─── implementation-agent roster (domain-grouped) ─────────────────────────────
+// Shown to the planner so it assigns a real, domain-appropriate agentType instead of
+// defaulting every task to the handful of names that used to be hardcoded inline here
+// (python-backend-engineer / ui-engineer-enhanced / data-layer-expert / refactoring-expert),
+// which biased every plan toward Python+UI regardless of the actual domain.
+//
+// Workflow scripts have NO filesystem access, so this roster cannot be globbed at runtime —
+// it is a hand-maintained mirror of .claude/agents/. tests/test_workflow_agent_roster.py
+// fails if it drifts from the real roster, so it cannot silently rot again.
+const IMPLEMENTATION_AGENT_ROSTER = `
+     backend/API     python-backend-engineer, backend-architect, backend-typescript-architect,
+                     openapi-expert, api-documenter
+     data            data-layer-expert
+     frontend/UI     ui-engineer-enhanced, ui-engineer, frontend-architect,
+                     nextjs-architecture-expert, ui-designer
+     quality         refactoring-expert, code-reviewer, senior-code-reviewer
+     AI/agents       ai-engineer, ai-artifacts-engineer, prompt-engineer, agent-expert,
+                     command-creator, symbols-engineer
+     architecture    system-architect, lead-architect, devops-architect
+     docs            documentation-writer, documentation-expert, documentation-complex,
+                     technical-writer, changelog-generator
+     exploration     codebase-explorer, search-specialist
+     fallback        general-purpose (only when no specialist fits)`
+
+// ─── file-placement clause (shared, verbatim) ─────────────────────────────────
+//
+// Autopilot commonly runs inside a git WORKTREE the session entered, so the repo root is
+// `.claude/worktrees/autopilot-<slug>/`, not the main checkout. Entering a worktree moves cwd but
+// does NOT sandbox absolute paths: a Write to `/…/<repo>/docs/…` lands in the MAIN checkout even
+// though the agent's cwd is the worktree — with no error and no warning.
+//
+// Measured 2026-08-08 (agentic_meta_dev PR #173): the planner's final Write targeted the absolute
+// main-checkout path for `docs/project_plans/implementation_plans/features/daily-intent-ritual-v1.md`
+// while its cwd was the worktree. The run reported `isolation: worktree` — true for commits, false
+// for that file. Days later `git merge --ff-only origin/main` ABORTED on the untracked stray. Worse
+// shape available from the same defect: an absolute Write over a TRACKED file lands outside the run
+// branch, outside the PR, and outside every gate.
+//
+// The command spec's §3c warning covers the ORCHESTRATOR's git commands; nothing constrained a
+// spawned agent. This clause is that constraint, and it goes in EVERY brief naming an output path.
+const RELATIVE_PATH_CLAUSE = `
+FILE PLACEMENT — mandatory, and not a style preference:
+  - Every path you read or write is REPO-RELATIVE (docs/project_plans/..., src/...). Never an
+    absolute path, never a leading '/Users/...' or '~/...', never a '../' that escapes the repo.
+  - You may be running inside a git worktree whose root is NOT the main checkout. cwd is already
+    the correct repo root; a relative path is therefore always right and an absolute one may
+    silently write to a DIFFERENT checkout of this same repo.
+  - If you genuinely need the root, derive it at runtime: \`git rev-parse --show-toplevel\`. Do not
+    hardcode it, and do not reconstruct it from a path you saw in a brief or in your own context.
+  - Report the path you wrote in repo-relative form — the downstream placement guards compare
+    against relative paths and cannot reason about an absolute one.`
+
 // ─── ceiling resolution (pure) ────────────────────────────────────────────────
 
 function resolveCeiling(parsed) {
@@ -206,15 +308,24 @@ STEPS:
      max_waves ${ceiling.max_waves}, max_phases ${ceiling.max_phases}, max_files ${ceiling.max_files}).
      This is ADVISORY — a deterministic gate re-checks it.
 5. Build each task's prompt fully: first line a Mode marker, then file paths and acceptance
-   detail, ending with "Do NOT git add/commit/push/stash." Assign each task an appropriate
-   implementation agentType (python-backend-engineer, ui-engineer-enhanced, data-layer-expert,
-   refactoring-expert, etc.). Set per-phase review_intensity ('standard' default; 'tier3' for
-   core-path/risky phases; 'council' only if cross-domain architecture review is warranted).
+   detail, ending with "Do NOT git add/commit/push/stash." Every task prompt whose work writes a
+   file MUST also carry the FILE PLACEMENT clause below verbatim, and every path you put in a task
+   prompt or in files_affected MUST be repo-relative — a brief that hands an agent an absolute path
+   is how the stray-write defect propagates. Assign each task an appropriate
+   implementation agentType whose domain actually matches the work, chosen from this roster
+   (these are the ONLY valid values — an unlisted name is silently dropped as a human gate, so
+   never invent one):
+${IMPLEMENTATION_AGENT_ROSTER}
+   Match on the task's domain, not on habit: a docs task goes to a docs agent, an agent/skill
+   authoring task to ai-artifacts-engineer, a pure cleanup task to refactoring-expert. Set
+   per-phase review_intensity ('standard' default; 'tier3' for core-path/risky phases;
+   'council' only if cross-domain architecture review is warranted).
 6. WRITE the artifact:
    - Feature Contract → docs/project_plans/feature_contracts/${category}/<slug>.md
    - Implementation Plan → docs/project_plans/implementation_plans/${category}/<slug>-v1.md
    Use the canonical frontmatter + body for that doc_type (see .claude/skills/planning templates).
    Derive <slug> as a short kebab-case name from the request.
+${RELATIVE_PATH_CLAUSE}
 7. EMBED a fenced \`\`\`json block tagged exactly "autopilot-graph" near the top of the artifact
    body, containing this object (the downstream structurer parses ONLY this block):
    {
@@ -489,7 +600,7 @@ if (_target && !_session) {
     report: [],
     blockers: [{
       description: `Request declares target_repo '${parsed.target_repo}' but carries no session_repo, so the workflow cannot confirm it is running in the right repository. No agents were spawned.`,
-      resolution_hint: 'In Opus pre-flight, resolve `basename "$(git rev-parse --show-toplevel)"` and pass it as session_repo. Do NOT drop target_repo to silence this.',
+      resolution_hint: 'In Opus pre-flight, resolve `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` (not `--show-toplevel` — inside a worktree that basename is the worktree directory name, not the repo name) and pass it as session_repo. Do NOT drop target_repo to silence this.',
     }],
     autopilot: { execution_target: 'none', escalation_recommendation: 'Pass session_repo alongside target_repo, or hand-orchestrate in the target repo.' },
   }
@@ -614,8 +725,16 @@ if (!planTextClaimsArtifact(planText, plan.plan_artifact_path)) {
 
 // ── Feasibility gate (deterministic; authoritative over planner self-assessment) ──
 // Order: boundary reasons (mode_d, spike) win over scope; plan_only is evaluated last.
-const modeD = plan.mode_d === true || hasHighRiskPaths(plan.files_affected)
+const modeDIntent = hasModeDIntent(parsed.request) || hasModeDIntent(plan.summary)
+const modeD = plan.mode_d === true || hasHighRiskPaths(plan.files_affected) || Boolean(modeDIntent)
 if (modeD) {
+  if (modeDIntent && plan.mode_d !== true && !hasHighRiskPaths(plan.files_affected)) {
+    // The planner said this was not Mode D and its declared paths looked clean, but
+    // the request itself is about Mode-D subject matter. Prefer the request text:
+    // node_01KZC1AHEDYZ8FS9TAZSXQTTSB is the case where clean declarations licensed
+    // an offload lane that then wrote its own HMAC signer.
+    log(`Mode D detected from the REQUEST TEXT (${modeDIntent}) despite a clean plan self-assessment.`)
+  }
   log('Mode D boundary detected — escalating to interactive Opus before any execution.')
   return {
     status: 'needs_opus',
