@@ -40,6 +40,11 @@ export const meta = {
     { title: 'Wave wave-3' },
     { title: 'Wave wave-4' },
     { title: 'Wave wave-5' },
+    // Measure runs BEFORE each Review pass: the reviewer's test scope and base→head delta
+    // are inputs to its judgment, not commentary on it. Fires once per phase reviewer gate
+    // and once per fix-cycle re-review, so each verdict lands over the measurement of its
+    // own post-fix HEAD. phase() titles must match these exactly (authoring constraint).
+    { title: 'Measure' },
     { title: 'Review' },
     { title: 'Fix cycle 1' },
     { title: 'Fix cycle 2' },
@@ -105,7 +110,9 @@ Do NOT edit any files. Read only. Do NOT git add/commit/push/stash/checkout/swit
 
 const VERDICT_SCHEMA = {
   type: 'object',
-  required: ['approved', 'reviewer_type'],
+  // R3: verification_path is REQUIRED, so a reviewer physically cannot finish without saying
+  // whether it established that the evidence exercises the path production takes.
+  required: ['approved', 'reviewer_type', 'verification_path'],
   additionalProperties: false,
   properties: {
     approved: { type: 'boolean' },
@@ -129,6 +136,77 @@ const VERDICT_SCHEMA = {
     // gate exists to catch, and it is cheaper to notice a missing `evidence` field than to
     // rediscover the defect it waved through.
     evidence: { type: 'string' },
+    // R3 (verification-path evidence gate, 2026-08-06 workflow-v41 retro). `evidence` above
+    // establishes that the reviewer looked at something; this establishes that what it looked at
+    // is on the path production takes. The dominant delegate defect class was a green suite over
+    // a path production does not take, which every `evidence` string in the world reads past.
+    verification_path: {
+      type: 'object',
+      required: ['established', 'kind'],
+      properties: {
+        established: { type: 'boolean' },
+        kind: {
+          type: 'string',
+          enum: [
+            'live-smoke',
+            'path-equivalence',
+            'real-endpoint-field-check',
+            'production-callsite-trace',
+            'not-established',
+          ],
+        },
+        // The entry point production actually takes to reach the changed code.
+        production_entrypoint: { type: 'string' },
+        // The command transcript / file:line pair / response body that proves it.
+        evidence: { type: 'string' },
+      },
+    },
+    // Claims the reviewer had to accept on a leg's own word because no artifact backed them.
+    // Any entry blocks approval: five misreporting findings in seven days came from reading
+    // "I registered the node / wrote the file" as evidence that it happened.
+    self_reported_claims: { type: 'array', items: { type: 'string' } },
+    // AC-3 (validation-scope hardening). Acceptance criteria the reviewer actually checked,
+    // with their per-AC support. `supporting_tests` lists the tests each criterion rests on
+    // and their measured status — a criterion supported only by red/absent tests is rewritten
+    // to met:false by applyTestStatusRules. See VALIDATION_SCOPE_RULES for the reviewer-side
+    // contract; reviewer-gate.js:118-164 for the identical shape.
+    ac_verdicts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['criterion', 'met'],
+        additionalProperties: false,
+        properties: {
+          criterion: { type: 'string' },
+          met: { type: 'boolean' },
+          evidence: { type: 'string' },
+          not_met_reason: { type: 'string' },
+          supporting_tests: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['nodeid', 'status'],
+              additionalProperties: false,
+              properties: {
+                nodeid: { type: 'string' },
+                status: {
+                  type: 'string',
+                  enum: [
+                    'passed',
+                    'failed',
+                    'xfailed',
+                    'xpassed',
+                    'skipped',
+                    'errored',
+                    'not-run',
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     council_artifacts: {
       type: 'object',
       properties: {
@@ -219,14 +297,30 @@ function councilEscalation(p, _tier) {
 // against its own agents dir (05c5384); tests/test_workflow_agent_roster.py fails that repo's
 // build if it drifts again.
 //
-// ⚠️ THE SET BELOW IS THE UPSTREAM DEFAULT AND HAS NOT HAD THAT REPAIR. It is the pre-repair
-// legacy value, and it is what every deployment inherits until that deployment regenerates it.
-// `api-librarian`, `telemetry-auditor` and `frontend-developer` are still listed here and exist
-// in no known agents dir — a task assigned to one is dispatched to nothing and silently dropped
-// from the wave. They are left in place rather than removed because presence is per-deployment
-// and cannot be verified from upstream; removing a name that a given deployment DOES have would
-// reclassify a dispatchable task as a human gate. Regenerate this set from the deploying repo's
-// own .claude/agents/ — do not assume the default is correct for you.
+// ⚠️ UPDATE 2026-08-08 — NEITHER DIRECTION IS SILENT ANY MORE, so this set is now a DIAGNOSTIC
+// rather than a correctness dependency, and a stale one no longer corrupts a run:
+//   * a phantom name  → the task is dispatched, returns null, and is reported as a DROPPED TASK
+//     (named, escalated, `reason: 'task_dropped'`) instead of vanishing from the wave.
+//   * an omitted real agent → under the default `hitl_routing: 'marker'` it is dispatched with a
+//     warning, not reclassified as a human gate. Only opt-in `'roster'` mode reclassifies.
+// Keeping it accurate is still worthwhile (it is what makes the pre-dispatch warning useful, and
+// what `'roster'` mode depends on), but it is no longer load-bearing. Regenerate it per deployment
+// against that deployment's own `.claude/agents/` when convenient — not urgently.
+//
+// ⚠️ THE SET BELOW IS PER-DEPLOYMENT — do not assume the value you are reading came from upstream.
+// Some deployments have regenerated it against their own `.claude/agents/`; others still carry the
+// upstream default, which lists `api-librarian`, `telemetry-auditor` and `frontend-developer` —
+// names that exist in no known agents dir. The default keeps them rather than removing them
+// because presence cannot be verified from upstream, and removing a name a given deployment DOES
+// have would reclassify a dispatchable task as a human gate.
+//
+// Regenerate it from the deploying repo's own `.claude/agents/`. A sync from upstream does NOT
+// clobber a regenerated set: `agentic_meta_dev/scripts/sync_project_workflows.py` treats this
+// block as its one per-deployment exemption and carries the LOCAL value across the write. Two
+// checkers exclude it from their diffs for the same reason (`check_global_artifact_drift.py`, and
+// that script's `roster-only` verdict) — so a green gate is not evidence this list matches
+// upstream. It is not supposed to. This note is deliberately deployment-neutral so that no repo
+// needs a local variant of it; a repo-specific edit here re-opens the drift it warns about.
 //
 // `council-review` is deliberately EXCLUDED: it is a skill, not an agent, in every deployment.
 // Its presence here was the mechanism of a real defect — a phase whose only security signal was
@@ -250,8 +344,40 @@ const KNOWN_AGENT_TYPES = new Set([
   'ica-executor', 'codex-executor', 'gemini-executor', 'bob-delegate-executor',
 ])
 
+// ─── HITL routing mode (configurable via args.hitl_routing) ───────────────────
+//
+//   'marker' (DEFAULT) — `t.hitl === true` is the SOLE authority on whether a task is a human
+//                        gate. An assigned_to the roster does not recognize is DISPATCHED, with
+//                        a warning; if it resolves to nothing, the dropped-task check names it.
+//   'roster'           — legacy behaviour: additionally reclassify any assigned_to outside
+//                        KNOWN_AGENT_TYPES as a human gate.
+//
+// Why 'marker' is the default. The roster clause was inference layered on top of an explicit
+// declaration, and it failed in the INVISIBLE direction: a real agent missing from the set was
+// silently reclassified as a human gate, so a perfectly dispatchable task never ran (17 agents
+// were omitted this way at once). Worse, the set cannot verify agent existence at all — workflow
+// scripts have no filesystem access, so it is a hand-maintained mirror that must be regenerated
+// per deployment and rots between regenerations. The phantom half is now caught AFTER dispatch
+// by the dropped-task check below, which is where it is actually observable, and which also
+// catches failures the set never could (an agent that exists but is unloadable, a stalled leg).
+// That makes roster accuracy a DIAGNOSTIC rather than a correctness dependency.
+//
+// 'roster' is kept because the strictness is legitimately wanted where the roster is trustworthy
+// — an enterprise deployment with a curated agent catalog may prefer an unrecognized name held
+// for a human over dispatched. It is opt-in precisely because it is only safe when something
+// actually keeps the set accurate. Tracker: node_01KZ9DBRAH35XHNH7NQA1H5NYT.
+let hitlRouting = 'marker'
+
 function isHitlTask(t) {
-  return t?.hitl === true || (!!t?.assigned_to && !KNOWN_AGENT_TYPES.has(t.assigned_to))
+  if (t?.hitl === true) return true
+  if (hitlRouting === 'roster') return !!t?.assigned_to && !KNOWN_AGENT_TYPES.has(t.assigned_to)
+  return false
+}
+
+// An assigned_to the roster does not recognize. In 'marker' mode this drives a WARNING and an
+// annotation on a dropped task — never a silent reclassification.
+function hasUnknownAgentType(t) {
+  return !!t?.assigned_to && !KNOWN_AGENT_TYPES.has(t.assigned_to)
 }
 
 // ---------------------------------------------------------------------------
@@ -382,7 +508,7 @@ function validateRepoTarget(graph) {
       report: [],
       blockers: [{
         description: `Graph declares target_repo '${graph.target_repo}' but carries no session_repo, so the workflow cannot confirm it is running in the right repository. No agents were spawned.`,
-        resolution_hint: 'In Opus pre-flight, resolve the session repo (`basename "$(git rev-parse --show-toplevel)"`) and pass it as session_repo alongside target_repo. Do NOT drop target_repo to silence this — the guard is what stands between a cross-repo plan and agents editing the wrong tree.',
+        resolution_hint: 'In Opus pre-flight, resolve the session repo (`basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`, not `--show-toplevel` — inside a worktree that basename is the worktree directory name, not the repo name) and pass it as session_repo alongside target_repo. Do NOT drop target_repo to silence this — the guard is what stands between a cross-repo plan and agents editing the wrong tree.',
       }],
     }
   }
@@ -400,6 +526,27 @@ function validateRepoTarget(graph) {
   }
 
   return null
+}
+
+// ─── placement facts (pure) ───────────────────────────────────────────────────
+// Provenance attached to EVERY terminal return so a consumer can tell "rebased away" from "never
+// existed" without guessing, on the blocked paths as well as the happy one. execute-plan has no
+// single sprint result — it runs many agents across waves — so it reports only what the graph
+// itself asserts: the branch topology and the caller's DESCRIPTIVE placement lane. The script has
+// no FS/shell and cannot verify any of it, so an absent field is null, never a guess and never a
+// default like "branch_in_place"; isolation and worktree_path are echoed independently, neither
+// inferred from the other. Fields execute-contract measures from a post-sprint git probe
+// (commit_count / head_sha / patch_id / parent_tip_at_report / parent_moved) are omitted here
+// rather than faked — this workflow cannot measure them.
+function placementFacts(graph) {
+  return {
+    run_branch: graph?.run_branch || null,
+    parent_branch: graph?.parent_branch || null,
+    base_sha: graph?.branch_base || null,
+    parent_tip_at_start: graph?.parent_tip_at_start || null,
+    isolation: graph?.isolation || null,
+    worktree_path: graph?.worktree_path || null,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -466,6 +613,33 @@ const MODE_D_CLASS_PATTERNS = [
   /drop.table/i,
 ]
 
+// Mode-D subject matter in a dispatch brief. Inlined rather than shared with
+// execute-contract.js's identical table because workflow scripts cannot require()
+// at runtime (workflow-authoring-spec §"no FS/shell in script"); the two copies are
+// kept verbatim-identical on purpose so a drift is a visible diff.
+// Patterns are deliberately tight multi-word/technical forms — bare `token` would
+// trip on "token bucket", and a noisy guard is a guard that gets switched off.
+const MODE_D_INTENT_PATTERNS = [
+  /\b(signing|secret|private|encryption)\s+key\b/i,
+  /\bkey\s*(pair|material)\b/i,
+  /\bhmac\b/i,
+  /\btoken_(bytes|hex|urlsafe)\b/i,
+  /\b(jwt|oauth|bearer\s+token)\b/i,
+  /\bpassword\s+(hash|hashing)\b/i,
+  /\b(sign|verify|re-?sign)\s+(the\s+)?(token|payload|envelope|request)\b/i,
+  /\balembic\b/i,
+  /\bschema\s+migration\b/i,
+]
+
+// A Mode-D warning present in the brief. See the rationale at check 6 below.
+const MODE_D_SELF_WARNING_PATTERNS = [
+  /must\s+not\s+(read|generate|print|reference|mint|create)[^.\n]{0,60}\bkey\b/i,
+  /\bnever\s+(mint|generate|sign)\b/i,
+  /reason:\s*['"]?mode_?d/i,
+  /\bneeds_opus\b[^\n]{0,40}\bmode_?d\b/i,
+  /\bdo\s+not\s+(sign|mint|generate)\b/i,
+]
+
 /**
  * P4 Mode-D guard for a fix-cycle task before Bob dispatch.
  * Reuses the same HIGH_RISK_PATTERNS from modeBoundary() for files.
@@ -513,7 +687,32 @@ function fixTaskModeDGuard(phase, prompt) {
     }
   }
 
-  return null // Safe to dispatch Bob.
+  // 5. Prompt scan for Mode-D SUBJECT MATTER (node_01KZC1AHEDYZ8FS9TAZSXQTTSB).
+  // Checks 1–4 were ALL satisfied by the leg that breached Mode-D on 2026-08-06:
+  // clean declared files, ordinary class, no destructive command. It was routed to
+  // an offload lane on those clean signals and then wrote its own HMAC signer,
+  // minting a key with secrets.token_bytes(32). What the brief did carry was the
+  // subject matter.
+  for (const pat of MODE_D_INTENT_PATTERNS) {
+    if (pat.test(promptText)) {
+      return `brief concerns Mode-D subject matter matching ${pat} — offload lane not eligible`
+    }
+  }
+
+  // 6. A Mode-D warning in the brief is EVIDENCE of proximity, not a control.
+  // The breaching brief said "must not read, generate, print or reference any
+  // signing key … STOP and return {reason: mode_d}". Treating that as the control
+  // puts enforcement inside the delegate — the very party being constrained. Read
+  // instead as a signal: a leg that has to be warned off the boundary is too close
+  // to it to offload.
+  for (const pat of MODE_D_SELF_WARNING_PATTERNS) {
+    if (pat.test(promptText)) {
+      return `brief contains a Mode-D warning matching ${pat}; a leg that must be `
+        + `warned off the boundary is too close to it to offload (the warning is the signal, not the control)`
+    }
+  }
+
+  return null // Safe to dispatch to an offload lane.
 }
 
 // ---------------------------------------------------------------------------
@@ -647,7 +846,498 @@ Do NOT edit any files. Read only.`
 // claims that carry no commit at all, pre-computed, because "completed with no commit_sha"
 // is the exact shape of the executor that never committed and is the one thing the reviewer
 // can check cheaply and decisively.
-function reviewPrompt(p, taskOut) {
+// ---------------------------------------------------------------------------
+// R3 — the verification-path evidence rules (2026-08-06 workflow-v41 delegate retro).
+//
+// The dominant delegate defect class in that window was NOT scope drift or bad reasoning: it
+// was a mid-tier executor shipping confident code that passed its own green suite while the
+// suite exercised a path production never takes — an offline fake echoing `system` where the
+// live API returns `source_system`, a branch made dead by an earlier comment-stripping step
+// but still unit-tested directly, a dry-run validating preconditions `apply` does not. Five
+// occurrences in one program, 8 delegate-bug findings in 7 days. Second class, 5 findings:
+// legs self-reporting side effects they never performed.
+//
+// Both classes are invisible to a gate that reads reports and green suites, and both produce
+// reports that satisfy every instruction they were given — so the rules are stated in the
+// prompt AND enforced on the verdict. Grounding:
+// docs/project_plans/reports/workflow-v41-delegate-retro-2026-08-06.md (leg B).
+// ---------------------------------------------------------------------------
+
+const EVIDENCE_RULES = `VERIFICATION-PATH RULE — a green suite is evidence about the path THE SUITE takes, never about
+the path production takes. Before you treat any criterion as met on the strength of tests,
+establish which ONE of these you actually saw, and name it in \`verification_path\`:
+  - live-smoke ................. the real entry point run against the real dependency, output shown
+  - path-equivalence ........... the seam the test drives IS the object production calls — name both
+                                 call sites (file:line) and show they resolve to the same thing
+  - real-endpoint-field-check ... every field/key name in a fake checked against a real response or
+                                 schema (observed: a fake echoed \`system\` where the live API
+                                 returns \`source_system\` — all tests green, feature could not work)
+  - production-callsite-trace ... you traced production's entry point to the changed code and it is
+                                 reachable (observed: a branch made dead by an earlier
+                                 comment-stripping step, still covered by its own unit tests)
+If none of the four holds, the criterion is NOT met and the suite is not evidence for it. Check the
+dry-run/apply split too: a dry-run that validates a different precondition set than \`apply\` is the
+same defect wearing a different hat. Set \`verification_path.established\` true ONLY for one of the
+four kinds — withholding it costs nothing, and an approving verdict without it is recorded as a
+gate-integrity failure rather than an approval.
+
+SELF-REPORT RULE — never accept a leg's, a report's, or a summary's statement that a side effect
+happened as evidence that it happened. "I registered the node / wrote the file / updated the row /
+published the artifact" is a claim; the evidence is the artifact itself — the row, the file on
+disk, the response body, the diff hunk. Verify each one yourself, or list it in
+\`self_reported_claims\`, which blocks approval by construction.`
+
+// Only these four are a path. 'not-established' is deliberately absent: it is the reviewer saying
+// it could not do this, which is honest and must never read as satisfaction of the rule.
+const VERIFICATION_KINDS = new Set([
+  'live-smoke',
+  'path-equivalence',
+  'real-endpoint-field-check',
+  'production-callsite-trace',
+])
+
+/** Why an approving verdict fails the verification-path rule, or null when it passes. */
+function verificationGap(verdict) {
+  const vp = verdict.verification_path
+  if (!vp) return 'no verification_path on an approving verdict — the gate cannot tell whether the evidence exercises the path production takes'
+  if (vp.established !== true) return `verification_path.established is ${JSON.stringify(vp.established)} (kind '${vp.kind}') on an approving verdict — the reviewer approved without establishing the production path`
+  if (!VERIFICATION_KINDS.has(vp.kind)) return `verification_path.kind '${vp.kind}' is not one of the four real paths (${[...VERIFICATION_KINDS].join(' | ')}) — established:true is unsupported`
+  return null
+}
+
+/**
+ * Apply the R3 evidence rules AND the AC-3/validation-scope rules to a reviewer verdict,
+ * in the {verdict, integrity_failure} shape dispatchReview uses. Chain:
+ *
+ *   1. applyTestStatusRules(verdict, measurement) — reconciles claimed test statuses
+ *      against the measurement, rewrites red-backed met:true to met:false with
+ *      defect_class:'ac-backed-by-red-test'. Fires regardless of the incoming approved.
+ *   2. self-reported-side-effect check → ORDINARY REJECTION.
+ *   3. verification-path check → GATE-INTEGRITY failure on an unverified approval.
+ *   4. enforceValidationScopeRules(verdict, phaseId, reviewerType, measurement) →
+ *      GATE-INTEGRITY failure on a still-approving verdict with no/failed measurement or
+ *      a measured regression. Same handling as a conditional council verdict.
+ *
+ * Callers pass `measurement` — the normalizeMeasurement()'d output of the Measure stage.
+ * Passing `null` degrades gracefully to `evidence_present: false` (gate-integrity failure
+ * on an approving verdict), which is deliberate — an unmeasured approval is exactly the
+ * state PR #299 slipped through in.
+ */
+function enforceEvidenceRules(verdict, phaseId, reviewerType, measurement) {
+  if (!verdict) return { verdict, integrity_failure: null }
+
+  const _measurement = measurement && typeof measurement === 'object'
+    ? measurement
+    : normalizeMeasurement(null)
+
+  // Step 1: AC-3 + R7 reconciliation. Fires on approving AND rejecting verdicts.
+  verdict = applyTestStatusRules(verdict, _measurement)
+  if (!verdict.approved) {
+    return { verdict, integrity_failure: null }
+  }
+
+  // Step 2: self-reported side effects → ordinary rejection.
+  const claims = Array.isArray(verdict.self_reported_claims) ? verdict.self_reported_claims.filter(Boolean) : []
+  if (claims.length) {
+    log(`R3 REJECTION on phase ${phaseId}: ${reviewerType} approved with ${claims.length} self-reported claim(s) and no artifact evidence. Downgrading the approval — a report of a side effect is not the side effect.`)
+    return {
+      verdict: {
+        ...verdict,
+        approved: false,
+        downgraded_from_approval: 'self_reported_side_effect',
+        defect_class: verdict.defect_class || 'self-reported-side-effect',
+        required_fixes: [
+          ...(verdict.required_fixes ?? []),
+          ...claims.map(claim => `Produce artifact evidence — the row, the file on disk, the response body, or the diff hunk — for the side effect reported as "${claim}". A leg's own report of it is not evidence that it happened.`),
+        ],
+      },
+      integrity_failure: null,
+    }
+  }
+
+  // Step 3: unverified approval → gate-integrity failure.
+  const gap = verificationGap(verdict)
+  if (gap) {
+    return {
+      verdict: {
+        ...verdict,
+        approved: false,
+        verdict_source: 'gate_integrity_failure',
+        required_fixes: [
+          `The reviewer approved phase ${phaseId} without establishing a verification path (${gap}). Re-dispatch ${reviewerType} and require one of live-smoke | path-equivalence | real-endpoint-field-check | production-callsite-trace, or record an explicit operator override. Do NOT run a fix cycle: nothing has been found yet.`,
+        ],
+      },
+      integrity_failure: `approving verdict with no established verification path — ${gap}`,
+    }
+  }
+
+  // Step 4: still-approving over a missing/failed/regression-carrying measurement
+  //          → gate-integrity failure.
+  return enforceValidationScopeRules(verdict, `phase ${phaseId}`, reviewerType, _measurement)
+}
+
+// ─── validation-scope enforcement (byte-identically duplicated from reviewer-gate.js) ──
+// This block is duplicated between reviewer-gate.js, execute-plan.js, and
+// execute-contract.js by necessity — workflow scripts cannot `require()` at runtime, so a
+// verdict-landing seam that needs the enforcement has to declare it locally. When you edit
+// one, edit the others in the same commit. `tests/test_workflow_gate_integrity.py` §
+// "Defect 10" asserts the shape is present in all three and holds the duplicates together;
+// see reviewer-gate.js:262-302 for the full grounding (skillmeat PR #299) and per-piece
+// rationale (R7 measurement reconciliation, AC-3 red-test rejection, AC-2 baseline delta,
+// measurement-integrity gate).
+
+const VALIDATION_SCOPE_RULES = `TEST-SCOPE RULE — your scope for READING is the changed files above, but your scope for TEST
+SELECTION is the resolved scope below, which is deliberately WIDER. It was computed by
+symbol reference: every test file that names a symbol this diff changed, including files the
+diff never touched. A test file can assert the exact behaviour a change removes without
+appearing in the diff at all — that is the defect this gate exists to catch, and "the files I
+edited" can never see it. Do not narrow the test scope back to the diff.
+
+BASELINE-DELTA RULE — a red test file proves nothing on its own if it was ALREADY red. Judge
+regressions by the measured per-file delta below (base counts vs head counts, and the set of
+node ids failing at head that were not failing at base), never by the absolute red count. A
+file that is 61-red at base and 61-red at head has told you nothing; a file that gained one
+NEW failing node id has told you everything. Conversely: a test that stopped being collected
+at head ran NOWHERE, so it cannot evidence anything, and its absence LOWERS the failure count —
+if the measurement reports a collected-regression or a disappeared node id, treat it as a
+regression, never as an improvement.
+
+RED-TEST-AC RULE — never mark an acceptance criterion met on the strength of a test that is
+failing, xfailing, erroring, skipped, or was never run. List each criterion's real support in
+\`ac_verdicts[].supporting_tests\` as {nodeid, status}, using the measured status below rather
+than your expectation of it. A criterion whose only support is red is NOT met: say so, with
+the node ids and their statuses as the reason. Every status you report is cross-checked against
+the measurement, and a claimed status the measurement contradicts is itself recorded as a
+finding — so report what was measured, not what should have been true.
+
+MEASUREMENT-INTEGRITY RULE — if the measurement below is absent, failed, or reports a
+truncated scope, say so plainly and do NOT compensate by approving on the narrower evidence.
+An unmeasurable scope makes affected criteria \`unverifiable\`, never met.`
+
+// Statuses that cannot support a criterion. `xpassed` is deliberately ABSENT (it passed,
+// however confusingly). `not-run` and `errored` are here because a test that did not run
+// carries no information at all — the most common way this gate got fooled.
+const NON_SUPPORTING_STATUSES = new Set(['failed', 'xfailed', 'errored', 'skipped', 'not-run'])
+
+function asList(value) {
+  if (!value) return []
+  return Array.isArray(value) ? value.filter(v => v != null && v !== '') : [value]
+}
+
+function parseMaybeJson(value) {
+  if (value == null) return null
+  if (typeof value !== 'string') return value
+  try {
+    return JSON.parse(value)
+  } catch (_err) {
+    return null
+  }
+}
+
+/**
+ * Normalize a validation-scope evidence blob (the output of
+ * `.claude/skills/dev-execution/hooks/validation-scope.sh`) into the shape the
+ * enforcement path reads. A malformed or missing blob degrades to
+ * `evidence_present: false`, which the enforcement treats as a gate-integrity failure —
+ * NOT as a clean full-scope run. A missing measurement must never be the cheaper option
+ * than a failing one.
+ */
+function normalizeMeasurement(raw) {
+  const blob = parseMaybeJson(raw)
+  if (!blob || typeof blob !== 'object') {
+    return {
+      evidence_present: false,
+      reason: 'no validation_scope evidence supplied to the gate',
+      files_run: [],
+      scope_truncated: false,
+      scope_status: null,
+      omitted_files: [],
+      test_scope: [],
+      regressions: [],
+      measurement_failures: [],
+      status_by_nodeid: {},
+    }
+  }
+  const scope = blob.scope || blob
+  const measurements = asList(blob.measurements)
+  const filesRun = measurements.map(m => m && m.file).filter(Boolean)
+  const regressions = []
+  const measurementFailures = []
+  const statusByNodeId = {}
+  for (const m of measurements) {
+    if (!m || typeof m !== 'object') continue
+    if (m.measurement_failure) {
+      measurementFailures.push({ file: m.file || '(unnamed)', reason: m.failure_reason || 'unspecified' })
+      continue
+    }
+    for (const nodeid of asList(m.newly_failing_node_ids)) {
+      regressions.push({ file: m.file, nodeid, kind: 'newly-failing' })
+      statusByNodeId[nodeid] = 'failed'
+    }
+    for (const nodeid of asList(m.disappeared_node_ids)) {
+      regressions.push({ file: m.file, nodeid, kind: 'no-longer-collected' })
+      statusByNodeId[nodeid] = 'not-run'
+    }
+    if (m.collected_regression && !asList(m.disappeared_node_ids).length) {
+      regressions.push({ file: m.file, nodeid: null, kind: 'collected-regression' })
+    }
+    const nodeStatuses = (m.head && m.head.node_status) || m.node_status || null
+    if (nodeStatuses && typeof nodeStatuses === 'object') {
+      for (const [nodeid, status] of Object.entries(nodeStatuses)) {
+        if (typeof status === 'string') statusByNodeId[nodeid] = status
+      }
+    }
+  }
+  return {
+    evidence_present: true,
+    reason: null,
+    files_run: filesRun,
+    scope_truncated: Boolean(scope.scope_truncated) || Boolean(scope.budget_exhausted),
+    scope_status: scope.scope_status || null,
+    omitted_files: asList(scope.omitted_files),
+    test_scope: asList(scope.test_scope),
+    regressions,
+    measurement_failures: measurementFailures,
+    status_by_nodeid: statusByNodeId,
+  }
+}
+
+/** The measurement rendered for the reviewer prompt. Never a bare "see attached". */
+function measurementBrief(measurement) {
+  if (!measurement.evidence_present) {
+    return `  (NO MEASUREMENT AVAILABLE — ${measurement.reason}. Treat every criterion resting on tests as \`unverifiable\`; do not approve on the narrower diff-scoped evidence.)`
+  }
+  const lines = []
+  lines.push(`  scope_status: ${measurement.scope_status || 'unknown'}${measurement.scope_truncated ? '  ⚠ TRUNCATED — affected criteria are `unverifiable`, never met' : ''}`)
+  lines.push(`  test files in resolved scope (${measurement.test_scope.length}): ${measurement.test_scope.join(', ') || '(none)'}`)
+  lines.push(`  test files actually measured (${measurement.files_run.length}): ${measurement.files_run.join(', ') || '(none)'}`)
+  if (measurement.omitted_files && measurement.omitted_files.length) {
+    lines.push(`  ⚠ omitted from scope by a bound: ${measurement.omitted_files.join(', ')}`)
+  }
+  if (measurement.measurement_failures.length) {
+    lines.push(`  ⚠ MEASUREMENT FAILED on ${measurement.measurement_failures.length} file(s) — these are not "0 failed":`)
+    for (const f of measurement.measurement_failures) lines.push(`      ${f.file}: ${f.reason}`)
+  }
+  if (measurement.regressions.length) {
+    lines.push(`  ⚠ ${measurement.regressions.length} REGRESSION(S) vs the base commit:`)
+    for (const r of measurement.regressions) {
+      lines.push(`      [${r.kind}] ${r.nodeid || r.file}`)
+    }
+    lines.push('    Each of these is worse-than-base. You may not approve over one without naming it.')
+  } else {
+    lines.push('  no regressions vs base (no new failing node ids, nothing stopped being collected)')
+  }
+  return lines.join('\n')
+}
+
+/** Reconcile a reviewer-claimed test status against the measurement.
+ *  The measurement WINS (risk R7): every rule in the R3 lineage exists because a claim
+ *  got read as evidence. A contradiction is returned as its own flag so it can be
+ *  recorded as a finding rather than silently resolved in the reviewer's favour. */
+function reconcileStatus(claimed, measurement) {
+  const measured = measurement.status_by_nodeid[claimed.nodeid]
+  if (!measured || measured === claimed.status) {
+    return { nodeid: claimed.nodeid, status: claimed.status, contradicted: false }
+  }
+  return { nodeid: claimed.nodeid, status: measured, claimed_status: claimed.status, contradicted: true }
+}
+
+/**
+ * AC-3 rule + the R7 contradiction check, applied to a real verdict. Outcomes differ:
+ *
+ *   - An AC met:true whose supporting_tests are all red/absent → ordinary REJECTION with
+ *     `defect_class: 'ac-backed-by-red-test'`. The missing work is implementer-side (make
+ *     the test pass, or drop the AC), so a fix cycle is the right next action.
+ *   - A contradicted status is recorded on the verdict as `measured_status_contradictions`
+ *     regardless of the verdict's approval state — it is a finding either way.
+ *
+ * `applyTestStatusRules` does NOT itself convert a missing/failed/regression-carrying
+ * measurement into a gate-integrity failure — that is `enforceValidationScopeRules`
+ * below (which fires only on still-APPROVING verdicts, mirroring the R3 branch).
+ */
+function applyTestStatusRules(verdict, measurement) {
+  if (!verdict) return verdict
+  const contradictions = []
+  const acVerdicts = asList(verdict.ac_verdicts).map(ac => {
+    const supporting = asList(ac.supporting_tests).map(t => {
+      const reconciled = reconcileStatus(t, measurement)
+      if (reconciled.contradicted) {
+        contradictions.push(
+          `criterion "${ac.criterion}": reviewer reported ${reconciled.nodeid} as '${reconciled.claimed_status}', the measurement shows '${reconciled.status}'`,
+        )
+      }
+      return reconciled
+    })
+    return { ...ac, supporting_tests: supporting }
+  })
+
+  const redBacked = acVerdicts.filter(ac => {
+    if (!ac.met) return false
+    const supporting = asList(ac.supporting_tests)
+    if (!supporting.length) return false
+    return supporting.every(t => NON_SUPPORTING_STATUSES.has(t.status))
+  })
+
+  let adjusted = { ...verdict, ac_verdicts: acVerdicts }
+  if (contradictions.length) {
+    adjusted = { ...adjusted, measured_status_contradictions: contradictions }
+  }
+
+  if (redBacked.length) {
+    const named = redBacked.map(ac => {
+      const ids = asList(ac.supporting_tests).map(t => `${t.nodeid} (${t.status})`).join(', ')
+      return `Criterion "${ac.criterion}" was reported MET but every supporting test is non-passing: ${ids}. Make the test pass or drop the criterion — a red test is not evidence for the behaviour it fails to demonstrate.`
+    })
+    adjusted = {
+      ...adjusted,
+      approved: false,
+      downgraded_from_approval: verdict.approved ? 'ac_backed_by_red_test' : adjusted.downgraded_from_approval,
+      defect_class: adjusted.defect_class || 'ac-backed-by-red-test',
+      ac_verdicts: acVerdicts.map(ac =>
+        redBacked.includes(ac)
+          ? {
+              ...ac,
+              met: false,
+              not_met_reason: `every supporting test is non-passing: ${asList(ac.supporting_tests).map(t => `${t.nodeid} (${t.status})`).join(', ')}`,
+            }
+          : ac,
+      ),
+      required_fixes: [...asList(adjusted.required_fixes), ...named],
+    }
+  }
+  return adjusted
+}
+
+/**
+ * Missing/failed measurement or an approval standing over a measured regression ⇒
+ * GATE-INTEGRITY failure, mirroring the R3 branch in enforceEvidenceRules. Fires ONLY on
+ * still-APPROVING verdicts: a rejection already carries the right next action, and
+ * downgrading it here would obscure what the reviewer actually said. Returns the same
+ * `{ verdict, integrity_failure }` shape enforceEvidenceRules uses.
+ */
+function enforceValidationScopeRules(verdict, phaseId, reviewerType, measurement) {
+  if (!verdict || !verdict.approved) return { verdict, integrity_failure: null }
+
+  if (!measurement.evidence_present) {
+    const gap = `approved with no validation-scope measurement (${measurement.reason}) — the gate cannot tell which test files the change actually affects, nor whether any of them regressed`
+    return {
+      verdict: {
+        ...verdict,
+        approved: false,
+        verdict_source: 'gate_integrity_failure',
+        required_fixes: [
+          ...asList(verdict.required_fixes),
+          `The reviewer approved ${phaseId} without a validation-scope measurement (${gap}). Produce the measurement — run \`.claude/skills/dev-execution/hooks/validation-scope.sh\` (or pass \`validation_evidence\`) and re-dispatch ${reviewerType}. Do NOT run a fix cycle: nothing has been found yet.`,
+        ],
+      },
+      integrity_failure: gap,
+    }
+  }
+
+  if (measurement.measurement_failures.length) {
+    const files = measurement.measurement_failures.map(f => f.file).join(', ')
+    const gap = `approved while the measurement FAILED on ${measurement.measurement_failures.length} file(s) (${files}) — a file whose measurement failed is not a file with zero failures`
+    return {
+      verdict: {
+        ...verdict,
+        approved: false,
+        verdict_source: 'gate_integrity_failure',
+        required_fixes: [
+          ...asList(verdict.required_fixes),
+          `Repair the measurement for ${files} and re-dispatch ${reviewerType}. A measurement_failure is never '0 failed'.`,
+        ],
+      },
+      integrity_failure: gap,
+    }
+  }
+
+  if (measurement.regressions.length) {
+    const named = measurement.regressions.map(r => `[${r.kind}] ${r.nodeid || r.file}`).join(', ')
+    const gap = `approved over ${measurement.regressions.length} measured regression(s) vs the base commit: ${named}`
+    return {
+      verdict: {
+        ...verdict,
+        approved: false,
+        verdict_source: 'gate_integrity_failure',
+        required_fixes: [
+          ...asList(verdict.required_fixes),
+          `Each regression is worse-than-base and must be fixed or explicitly justified: ${named}. Re-dispatch ${reviewerType} once the delta is clean, or record an explicit operator override.`,
+        ],
+      },
+      integrity_failure: gap,
+    }
+  }
+
+  return { verdict, integrity_failure: null }
+}
+
+/**
+ * The Measure stage. Preferred path is the caller running validation-scope.sh and passing
+ * the blob as `args.validation_evidence`. If absent, dispatch `task-completion-validator`
+ * (already Bash-capable, edit-less) with the sole instruction to run the hook and return
+ * its JSON verbatim. This script cannot run shell itself (authoring constraint 1), which
+ * is the whole reason this is an agent dispatch rather than three lines of code.
+ */
+async function runMeasureStage(args) {
+  const supplied = normalizeMeasurement(args.validation_evidence)
+  if (supplied.evidence_present) {
+    log(`Measure: using caller-supplied validation evidence (${supplied.files_run.length} file(s) measured, ${supplied.regressions.length} regression(s)).`)
+    return supplied
+  }
+  if (args.skip_measure_fallback) {
+    log('Measure: no caller-supplied evidence and skip_measure_fallback set — the gate will treat the measurement as ABSENT, which blocks approval as a gate-integrity failure.')
+    return supplied
+  }
+  const baseRef = args.base_ref || args.base || 'HEAD~1'
+  const repo = args.repo_root || '.'
+  log(`Measure: no caller-supplied evidence — dispatching the fallback runner (base=${baseRef}).`)
+  let blob = null
+  try {
+    blob = await agent(
+      `Run ONE command and return its output. Do not review anything. Do not edit anything.
+
+    cd ${repo} && bash .claude/skills/dev-execution/hooks/validation-scope.sh --json --base-ref ${baseRef}
+
+Return the command's JSON on stdout VERBATIM as your entire answer — no commentary, no
+markdown fence, no summary, no interpretation. If the command fails or the hook is absent,
+return exactly: {"scope_status": "hook_unavailable"}
+
+Do NOT substitute your own judgment for the measurement. Do NOT fabricate counts. This output
+is consumed mechanically as a gate input, and an invented number here defeats the gate.`,
+      {
+        phase: 'Measure',
+        label: 'gate:measure',
+        agentType: 'task-completion-validator',
+        schema: {
+          type: 'object',
+          required: ['scope_status'],
+          properties: {
+            scope_status: { type: 'string' },
+            test_scope: { type: 'array', items: { type: 'string' } },
+            scope_truncated: { type: 'boolean' },
+            budget_exhausted: { type: 'boolean' },
+            omitted_files: { type: 'array', items: { type: 'string' } },
+            measurements: { type: 'array', items: { type: 'object' } },
+          },
+        },
+      },
+    )
+  } catch (err) {
+    log(`Measure: fallback runner threw (${err && err.message ? err.message : err}). Measurement stays ABSENT — the gate blocks rather than approving on unmeasured evidence.`)
+    return supplied
+  }
+  if (!blob || blob.scope_status === 'hook_unavailable') {
+    log('Measure: fallback runner returned no usable measurement (hook unavailable or agent died). Measurement stays ABSENT.')
+    return supplied
+  }
+  const measured = normalizeMeasurement(blob)
+  log(`Measure: fallback produced a measurement — ${measured.files_run.length} file(s), ${measured.regressions.length} regression(s), truncated=${measured.scope_truncated}.`)
+  return measured
+}
+
+// ─── end validation-scope enforcement block ────────────────────────────────────
+
+function reviewPrompt(p, taskOut, measurement) {
   const claimed = taskOut.filter(Boolean)
 
   const taskSummaries = claimed
@@ -684,7 +1374,14 @@ Also check \`git status --porcelain\`: uncommitted changes in the tree mean the 
 but was never durably committed, which is a required_fix, not a pass.` : ''}
 
 Judge the acceptance criteria against what the diff shows, not against what the summaries
-assert. Where the two disagree, the diff wins and the disagreement itself is a finding.`
+assert. Where the two disagree, the diff wins and the disagreement itself is a finding.
+
+Measured validation scope and base→head delta (your scope for TEST SELECTION, not for READING):
+${measurementBrief(measurement || normalizeMeasurement(null))}
+
+${EVIDENCE_RULES}
+
+${VALIDATION_SCOPE_RULES}`
 
   return `Mode: E — Reviewer
 
@@ -702,6 +1399,19 @@ the diff yourself, every acceptance criterion is met in the code you read, and n
 remain. Record what you actually inspected in \`evidence\` — an approval with no evidence of
 inspection is the failure mode this gate exists to catch, including when you are the one
 producing it. If approved:false, provide actionable required_fixes.
+
+Also required on every verdict:
+  - verification_path: established / kind / production_entrypoint / evidence, per the
+    VERIFICATION-PATH RULE above. An approving verdict whose path is not established is recorded
+    as a gate-integrity failure, not an approval — so withholding it is the honest move, never a
+    penalty.
+  - self_reported_claims: every claim you had to take on a task agent's word for lack of an
+    artifact. Any entry blocks approval by construction.
+  - ac_verdicts: one entry per acceptance criterion, {criterion, met, evidence, supporting_tests}.
+    supporting_tests[] is {nodeid, status} using the MEASURED status above rather than your
+    expectation of it. A criterion supported only by red/absent tests must be met:false with the
+    node ids named as the reason — the gate enforces this and will downgrade a met:true that
+    violates it (defect_class: 'ac-backed-by-red-test').
 Do NOT git add/commit/push/stash.`
 }
 
@@ -797,6 +1507,8 @@ async function fixLoop(p, taskOut, initialVerdict, reviewerType) {
   // Set when the loop exits because a re-review produced NO verdict (§8b) rather than a
   // rejection. Kept separate from sameClassRepeat: same exit, different next action.
   let gateFailed = null
+  // Last measurement produced inside the loop, so the return envelope can carry it.
+  let lastMeasurement = null
 
   while (!verdict?.approved && cycles < 2 && budget.remaining() > 60_000) {
     const cycleLabel = `Fix cycle ${cycles + 1}`
@@ -873,11 +1585,20 @@ async function fixLoop(p, taskOut, initialVerdict, reviewerType) {
       })
     }
 
+    // Re-measure BEFORE each re-review: the post-fix HEAD has a different diff (new tests
+    // in scope, potentially new regressions), and a stale measurement here is precisely how
+    // a fix cycle could end on an unverified approval over a regression the previous Measure
+    // never saw. Fires under the 'Measure' phase group.
+    phase('Measure')
+    const cycleMeasurement = await runMeasureStage(args)
+    lastMeasurement = cycleMeasurement
+    phase('Review')
+
     // Route through dispatchReview, never a bare agent(): for a council phase reviewerType
     // is 'council-review', a skill with no agent file. Dispatching it here resolved nothing
     // and returned null, so EVERY council rejection's re-review gate-failed by construction —
     // a fix cycle that could never be re-reviewed on the path it came from.
-    const reReview = await dispatchReview(p, taskOut, reviewerType)
+    const reReview = await dispatchReview(p, taskOut, reviewerType, cycleMeasurement)
     verdict = reReview.verdict
 
     cycles++
@@ -939,6 +1660,22 @@ async function fixLoop(p, taskOut, initialVerdict, reviewerType) {
               resolution_hint: 'Do NOT re-review. Make a design change: render the unsafe state unrepresentable, or route every caller through one choke point, then re-enter the gate against the new shape (budget resets — the scope changed). See dev-execution/references/gate-risk-classes.md §3b.',
             }]
           : [{ description: 'Reviewer did not approve after fix-loop cycles.', resolution_hint: 'Opus adjudication required.' }],
+    // The measurement produced by the LAST re-review, or absent if the fix loop never
+    // ran (`cycles === 0`). Consumers reading the phase result need to be able to tell an
+    // approval over a MEASURED-clean delta from one over no measurement at all — the whole
+    // reason PR #299 slipped through was that the two were indistinguishable.
+    validation_scope: (() => {
+      const _m = lastMeasurement || normalizeMeasurement(null)
+      return {
+        evidence_present: _m.evidence_present,
+        files_run: _m.files_run,
+        scope_truncated: _m.scope_truncated,
+        scope_status: _m.scope_status,
+        omitted_files: _m.omitted_files || [],
+        regressions: _m.regressions,
+        measurement_failures: _m.measurement_failures,
+      }
+    })(),
   }
 }
 
@@ -1075,22 +1812,34 @@ async function runCouncil(p, taskOut) {
 // Single review dispatch point. Routing MUST go through here so that 'council-review' — a
 // SKILL, deliberately absent from KNOWN_AGENT_TYPES — can never land in an agentType position.
 // Returns { verdict, integrity_failure }.
-async function dispatchReview(p, taskOut, reviewerType) {
+//
+// `measurement` is the normalizeMeasurement()'d output of runMeasureStage, threaded through
+// so enforceEvidenceRules can apply AC-3 (red-test-AC rejection), reconcile R7 claimed vs
+// measured statuses, and treat a missing/failed/regression-carrying measurement as a
+// gate-integrity failure — matching how reviewer-gate.js does it. Callers pass null only
+// when a caller-supplied measurement is genuinely unavailable, and that null degrades to
+// `evidence_present: false` (approval blocked as gate-integrity failure) rather than to a
+// silent approve — a missing measurement must never be the cheaper option than a failing one.
+async function dispatchReview(p, taskOut, reviewerType, measurement) {
   if (reviewerType === 'council-review') {
     return assessCouncilVerdict(await runCouncil(p, taskOut), p.id)
   }
-  const verdict = await agent(reviewPrompt(p, taskOut), {
+  const verdict = await agent(reviewPrompt(p, taskOut, measurement), {
     phase: 'Review',
     agentType: reviewerType,
     schema: VERDICT_SCHEMA,
   })
-  return { verdict, integrity_failure: null }
+  // R3 + AC-3 + validation-scope: run at the single funnel every re-review passes through,
+  // so a fix cycle cannot end on an unverified approval, a red-backed AC, or an approval
+  // over a measured regression.
+  return enforceEvidenceRules(verdict, p.id, reviewerType, measurement)
 }
 
 // Shared shape for "the gate could not be trusted to have run" — used by both the §8b
 // null-verdict case and the council-integrity case. Their next action is identical:
 // re-dispatch or record an explicit operator override. Never a fix cycle.
-function gateIntegrityResult(p, taskOut, reviewerType, verdict, reason, cycles) {
+function gateIntegrityResult(p, taskOut, reviewerType, verdict, reason, cycles, measurement) {
+  const _m = measurement && typeof measurement === 'object' ? measurement : normalizeMeasurement(null)
   return {
     phase: p.id,
     reviewer_type: reviewerType,
@@ -1104,6 +1853,19 @@ function gateIntegrityResult(p, taskOut, reviewerType, verdict, reason, cycles) 
       description: `Reviewer gate on phase ${p.id} did not produce a trustworthy verdict — ${reason}.`,
       resolution_hint: 'This is NOT an approval and NOT a rejection. Re-dispatch the reviewer against the current state (or invoke the reviewer-gate workflow on the same scope), or record an explicit operator override. Do NOT run a fix cycle — there is no finding to act on.',
     }],
+    // Validation-scope provenance travels with every outcome — including this one.
+    // A phase result that only carries validation_scope when the gate ran cleanly is a
+    // shape that trains consumers to skip it, and the whole reason PR #299 slipped through
+    // was that "approved" and "approved with no measurement" were indistinguishable.
+    validation_scope: {
+      evidence_present: _m.evidence_present,
+      files_run: _m.files_run,
+      scope_truncated: _m.scope_truncated,
+      scope_status: _m.scope_status,
+      omitted_files: _m.omitted_files || [],
+      regressions: _m.regressions,
+      measurement_failures: _m.measurement_failures,
+    },
   }
 }
 
@@ -1117,6 +1879,14 @@ function gateIntegrityResult(p, taskOut, reviewerType, verdict, reason, cycles) 
 // ---------------------------------------------------------------------------
 
 async function reviewerGate(p, taskOut, tier) {
+  // Measure BEFORE the reviewer: the test-selection scope and the base→head delta are
+  // inputs to the reviewer's judgment. Fires under the 'Measure' phase group; runs again
+  // inside fixLoop for each re-review (its post-fix HEAD is a different diff). See the
+  // shared block for full rationale.
+  phase('Measure')
+  const measurement = await runMeasureStage(args)
+  phase('Review')
+
   // Resolve the reviewer FIRST, then branch on it.
   //
   // The council branch used to be guarded by `p.review_intensity === 'council'` while the
@@ -1145,7 +1915,7 @@ async function reviewerGate(p, taskOut, tier) {
     // rejection — it is not something a fix cycle can act on.
     if (integrity_failure) {
       log(`GATE INTEGRITY FAILURE on phase ${p.id}: ${integrity_failure}. Recording as a gate failure, NOT as an approval or a rejection. The fix loop is deliberately skipped.`)
-      return gateIntegrityResult(p, taskOut, 'council-review', verdict, integrity_failure, 0)
+      return gateIntegrityResult(p, taskOut, 'council-review', verdict, integrity_failure, 0, measurement)
     }
 
     if (!verdict.approved) {
@@ -1161,6 +1931,15 @@ async function reviewerGate(p, taskOut, tier) {
       escalate: false,
       files_touched: taskOut.filter(Boolean).flatMap(t => t.files_affected ?? []),
       blockers: [],
+      validation_scope: {
+        evidence_present: measurement.evidence_present,
+        files_run: measurement.files_run,
+        scope_truncated: measurement.scope_truncated,
+        scope_status: measurement.scope_status,
+        omitted_files: measurement.omitted_files || [],
+        regressions: measurement.regressions,
+        measurement_failures: measurement.measurement_failures,
+      },
     }
   }
 
@@ -1215,7 +1994,7 @@ async function reviewerGate(p, taskOut, tier) {
       // real VERDICT_SCHEMA verdict (not a synthetic not-approved placeholder) and skips the
       // codex Stage B structurer entirely (no artifact was written).
       log(`P5 fallback: actual_provider_used='claude', fallback_applied=true for ${p.id} AC validation.`)
-      verdict = await agent(reviewPrompt(p, taskOut), {
+      verdict = await agent(reviewPrompt(p, taskOut, measurement), {
         label: `${p.id}:ac-validate:primary-fallback`,
         phase: 'Review',
         agentType: reviewerType,
@@ -1267,8 +2046,9 @@ async function reviewerGate(p, taskOut, tier) {
       }
     }
   } else {
-    // Flag off: existing on-primary reviewer with inline VERDICT_SCHEMA (unchanged).
-    verdict = await agent(reviewPrompt(p, taskOut), {
+    // Flag off: existing on-primary reviewer with inline VERDICT_SCHEMA. Measurement is
+    // threaded through so the reviewer sees the resolved test scope and the base→head delta.
+    verdict = await agent(reviewPrompt(p, taskOut, measurement), {
       phase: 'Review',
       agentType: reviewerType,
       schema: VERDICT_SCHEMA,
@@ -1293,7 +2073,28 @@ async function reviewerGate(p, taskOut, tier) {
         description: `Reviewer gate did not run on phase ${p.id} — ${reviewerType} returned no verdict.`,
         resolution_hint: 'Re-dispatch the reviewer for this phase (or invoke the reviewer-gate workflow against the same scope). Do NOT treat the phase as reviewed, and do NOT run a fix cycle: nothing has been found yet.',
       }],
+      validation_scope: {
+        evidence_present: measurement.evidence_present,
+        files_run: measurement.files_run,
+        scope_truncated: measurement.scope_truncated,
+        scope_status: measurement.scope_status,
+        omitted_files: measurement.omitted_files || [],
+        regressions: measurement.regressions,
+        measurement_failures: measurement.measurement_failures,
+      },
     }
+  }
+
+  // R3 + AC-3 + validation-scope: applies to every producer above — the flag-off reviewer,
+  // the P5 primary fallback, and the Stage B structurer. Chains applyTestStatusRules first
+  // (red-backed AC → ordinary rejection), then self-reported-side-effects (rejection), then
+  // verification-path (integrity failure on unverified approval), then measurement-integrity
+  // (integrity failure on approval over missing/failed/regression-carrying measurement).
+  const enforced = enforceEvidenceRules(verdict, p.id, reviewerType, measurement)
+  verdict = enforced.verdict
+  if (enforced.integrity_failure) {
+    log(`GATE INTEGRITY FAILURE on phase ${p.id}: ${enforced.integrity_failure}. Recording as a gate failure, NOT as an approval or a rejection. The fix loop is deliberately skipped.`)
+    return gateIntegrityResult(p, taskOut, reviewerType, verdict, enforced.integrity_failure, 0, measurement)
   }
 
   if (!verdict.approved) {
@@ -1309,6 +2110,15 @@ async function reviewerGate(p, taskOut, tier) {
     escalate: false,
     files_touched: taskOut.filter(Boolean).flatMap(t => t.files_affected ?? []),
     blockers: [],
+    validation_scope: {
+      evidence_present: measurement.evidence_present,
+      files_run: measurement.files_run,
+      scope_truncated: measurement.scope_truncated,
+      scope_status: measurement.scope_status,
+      omitted_files: measurement.omitted_files || [],
+      regressions: measurement.regressions,
+      measurement_failures: measurement.measurement_failures,
+    },
   }
 }
 
@@ -1380,11 +2190,22 @@ command you ran and its output. A task id or a quoted task summary is NOT eviden
 claim under review, and citing it validates the report against itself. If you cannot point at
 code for an AC, it is NOT MET, even when a task says it did it.
 
+${EVIDENCE_RULES}
+
 IMPORTANT — TWO-STAGE DURABILITY:
 Write your complete AC validation checklist to: ${artifactPath}
 Use this format per AC item:
   - [ ] AC text — NOT MET: reason
-  - [x] AC text — MET: <file:line or traced behaviour>
+  - [x] AC text — MET: <file:line or traced behaviour> | PATH: <live-smoke | path-equivalence |
+        real-endpoint-field-check | production-callsite-trace> — <what you saw>
+
+Every MET line MUST carry a PATH segment naming one of the four kinds. A MET line whose evidence
+is only "the tests pass" has no path and is NOT MET. End the file with one line:
+  VERIFICATION-PATH: <kind> — <production entry point> — <evidence>
+or, when you could not establish one for the phase as a whole:
+  VERIFICATION-PATH: not-established — <why>
+and a line listing anything you had to take on a task agent's word:
+  SELF-REPORTED: <claim>; <claim>    (or "SELF-REPORTED: none")
 
 This file MUST exist before you return. A downstream structurer will read it to emit the verdict.
 Do NOT emit structured output yourself. Do NOT git add/commit/push/stash.`
@@ -1399,14 +2220,22 @@ function codexAcStructurePrompt(p, taskOut, planRef, artifactPath, timestamp, re
 Read the AC validation checklist at: ${artifactPath}
 
 If the file does not exist, return:
-  { "approved": false, "reviewer_type": "${reviewerType}", "required_fixes": ["AC validation artifact not found at ${artifactPath} — codex Stage A may have failed"] }
+  { "approved": false, "reviewer_type": "${reviewerType}", "verification_path": { "established": false, "kind": "not-established", "evidence": "Stage A artifact absent" }, "required_fixes": ["AC validation artifact not found at ${artifactPath} — codex Stage A may have failed"] }
 
 If the file exists:
   1. Count lines starting with "- [x]" (met) and "- [ ]" (not met).
-  2. Set approved:true ONLY if all ACs are marked met (no "- [ ]" lines).
+  2. Set approved:true ONLY if all ACs are marked met (no "- [ ]" lines) AND every "- [x]" line
+     carries a "PATH:" segment. A MET line with no PATH segment counts as NOT met — copy its AC
+     text into required_fixes with the reason "no verification path recorded".
   3. For each unmet AC, add its text to required_fixes with a brief reason from the checklist.
   4. Set reviewer_type to "${reviewerType}".
-  5. Return the VERDICT_SCHEMA object.
+  5. Copy the checklist's trailing "VERIFICATION-PATH:" line into verification_path:
+     established=true and kind=<kind> when the line names one of live-smoke | path-equivalence |
+     real-endpoint-field-check | production-callsite-trace; otherwise established=false with
+     kind="not-established". TRANSCRIBE it — never infer a path the checklist does not state,
+     and never upgrade "not-established" because the ACs look met.
+  6. Copy the "SELF-REPORTED:" line into self_reported_claims (empty array for "none").
+  7. Return the VERDICT_SCHEMA object.
 
 Do NOT write any files. Do NOT git add/commit/push/stash. Read only.`
 }
@@ -1417,6 +2246,12 @@ Do NOT write any files. Do NOT git add/commit/push/stash. Read only.`
 
 // Defensive args parsing: the workflow runtime may pass args as a JSON string.
 const graph = typeof args === 'string' ? JSON.parse(args) : args
+
+// Resolve HITL routing before anything calls isHitlTask(). Only the exact string 'roster' opts
+// into the legacy strict mode; every other value (including absent, null, a typo, or `true`)
+// resolves to 'marker'. A misspelled flag must not silently re-enable the behaviour whose
+// failure mode is invisible — the safe direction is the one that dispatches and reports.
+hitlRouting = graph?.hitl_routing === 'roster' ? 'roster' : 'marker'
 
 const {
   waves,
@@ -1463,6 +2298,7 @@ if (dryRun) {
     graph,
     graph_errors: dryErrors,
     repo_target_blocked: dryRepoBlock ? dryRepoBlock.reason : null,
+    run_placement: placementFacts(graph),
   }
 }
 
@@ -1474,6 +2310,7 @@ if (dryRun) {
 const repoBlock = validateRepoTarget(graph)
 if (repoBlock) {
   log(`HALTING — ${repoBlock.reason}: ${repoBlock.blockers[0].description}`)
+  repoBlock.run_placement = placementFacts(graph)
   return repoBlock
 }
 
@@ -1494,6 +2331,7 @@ if (graphErrors.length > 0) {
       description: e,
       resolution_hint: 'Fix the ExecutionGraph in Opus pre-flight: every batch member must be a full task object, or an {id} that matches an entry in the same phase\'s tasks[]. No agents were spawned.',
     })),
+    run_placement: placementFacts(graph),
   }
 }
 
@@ -1535,6 +2373,7 @@ if (graph.run_branch) {
         description: `This plan was assigned run branch '${graph.run_branch}' but the session working tree is on ${found}. Task agents commit to the session branch, so every wave would have committed to the wrong branch — bypassing the PR and review gates — while reporting success. No agents were spawned; nothing was committed.`,
         resolution_hint: `In the tree this session is standing in, run: git switch ${graph.run_branch} (create it from the parent branch if needed), then re-invoke. To isolate the run, ENTER a worktree with the EnterWorktree tool first and check the branch out there — agents follow an entered worktree whenever the run's placement probe confirms it (confirmed on 2.1.224 and again on 2.1.226; probed per run, never cached — node_01KZGQE6GVJTGXRSHA57FYKNDQ). Do NOT \`git worktree add\` and pass the path without entering it: the session cwd would not move and agents would commit here anyway.`,
       }],
+      run_placement: placementFacts(graph),
     }
   }
   log(`Branch guard OK: on '${guard.current_branch}' at ${guard.head_sha}.`)
@@ -1562,12 +2401,15 @@ for (const wave of waves) {
   // Pattern: modeBoundary — detect Mode D before spawning any agents for this wave.
   // Mode D phases are NEVER executed inside the workflow (constraint 2).
   const boundary = modeBoundary(wave, report)
-  if (boundary) return boundary
+  if (boundary) {
+    boundary.run_placement = placementFacts(graph)
+    return boundary
+  }
 
   // Budget exhaustion guard before dispatching an entire wave.
   if (budget.remaining() < 60_000) {
     log(`Budget exhausted before Wave ${wave.id} — returning to Opus.`)
-    return { status: 'needs_opus', reason: 'budget_exhausted', report }
+    return { status: 'needs_opus', reason: 'budget_exhausted', report, run_placement: placementFacts(graph) }
   }
 
   // All phases in this wave run concurrently (parallel barrier).
@@ -1610,12 +2452,27 @@ for (const wave of waves) {
       .map(t => ({ phase: p.id, id: t.id, assigned_to: t.assigned_to, prompt: t.prompt }))
 
     const taskOut = []
+    // Dispatched tasks that came back with NO result. Recorded, never silently discarded —
+    // see the droppedTasks accounting after the batch loop.
+    const droppedTasks = []
+    let dispatchedCount = 0
 
     for (const batch of batches) {
       // Inner parallel: only tasks with disjoint files_affected are in the same batch.
       // HITL tasks are skipped here — never passed to agent() as an agentType.
       const dispatchable = batch.filter(t => !isHitlTask(t))
       if (dispatchable.length === 0) continue
+      dispatchedCount += dispatchable.length
+
+      // In 'marker' mode an unrecognized agentType is dispatched rather than reclassified, so say
+      // so at dispatch time. The roster cannot prove existence (no FS access here); this warning
+      // plus the dropped-task check below is what replaces the guess it used to make.
+      for (const t of dispatchable.filter(hasUnknownAgentType)) {
+        log(`WARNING ${p.id}:${t.id}: assigned_to='${t.assigned_to}' is not in KNOWN_AGENT_TYPES. ` +
+            `Dispatching anyway (hitl_routing='marker'). If the agentType resolves to nothing the ` +
+            `task is reported as DROPPED, not silently skipped. Pass hitl_routing:'roster' to hold ` +
+            `unrecognized names as human gates instead.`)
+      }
       const batchOut = await parallel(dispatchable.map(t => async () => {
         // Happy path: task agent emits structured output directly.
         // Durability footer appended to every task prompt (see durabilityFooter()).
@@ -1653,7 +2510,31 @@ for (const wave of waves) {
         }
         return result
       }))
-      taskOut.push(...batchOut.filter(Boolean))
+      // `taskOut.push(...batchOut.filter(Boolean))` was the TASK-level instance of exactly the
+      // bug fixed one level up for phases (see the droppedPhases comment below): filter(Boolean)
+      // doing double duty as "drop empties" and, accidentally, "discard failures". A task whose
+      // agentType resolved to nothing — the phantom-roster-entry failure KNOWN_AGENT_TYPES exists
+      // to prevent — returns null here and was removed from the array before anything could
+      // notice, so the phase reported success having never run it. The fix was applied to phases
+      // on 2026-08-04 and never pushed down to tasks. Same loudness contract, same reasoning:
+      // recorded, named, and escalated, with the reason travelling in the RETURN VALUE.
+      batchOut.forEach((r, i) => {
+        if (r) { taskOut.push(r); return }
+        const t = dispatchable[i]
+        droppedTasks.push({
+          id: t?.id ?? `(unnamed task at index ${i})`,
+          assigned_to: t?.assigned_to ?? '(none)',
+          unknown_agent_type: hasUnknownAgentType(t),
+        })
+      })
+    }
+
+    if (droppedTasks.length > 0) {
+      log(`Phase ${p.id}: ${droppedTasks.length} of ${dispatchedCount} dispatched task(s) produced ` +
+          `NO result and were dropped: ` +
+          droppedTasks.map(d => `${d.id} (assigned_to=${d.assigned_to}` +
+            `${d.unknown_agent_type ? ', NOT in KNOWN_AGENT_TYPES — an unresolvable agentType is the likeliest cause' : ''})`).join('; ') +
+          `. This phase is NOT complete.`)
     }
 
     // Reviewer gate + fix-loop (edit-less agentType only — constraint 3).
@@ -1664,6 +2545,11 @@ for (const wave of waves) {
       : { phase: p.id, tasks: [], verdict: { approved: true, reviewer_type: 'none' }, fix_cycles: 0, escalate: false, files_touched: [], blockers: [] }
 
     phaseResult.hitl_gates = hitlGates
+    // Recorded on every phase so the invariant is checkable from the report alone, by this
+    // workflow and by anything downstream — not only when something went wrong.
+    phaseResult.tasks_expected = dispatchedCount
+    phaseResult.tasks_returned = taskOut.length
+    phaseResult.dropped_tasks = droppedTasks
 
     // trackerStep: one per phase (no FS in script — via artifact-tracker agent).
     if (progressFile) {
@@ -1720,13 +2606,45 @@ for (const wave of waves) {
         description: `Phase ${id} in wave ${wave.id} returned no result — its agent stalled, threw, or was skipped after retries. Its reviewer gate did NOT run.`,
         resolution_hint: 'Do NOT treat this wave as complete. Inspect the phase\'s worktree state by hand, then either re-dispatch the phase or run the reviewer gate against whatever work actually landed. Any later wave building on this one is building on an unverified predecessor.',
       })),
+      run_placement: placementFacts(graph),
+    }
+  }
+
+  // Dropped TASKS halt the wave for the same reason dropped phases do, and this check must come
+  // BEFORE the reviewer-escalation check below so the returned `reason` names what actually
+  // happened. The reviewer gate DID run here (on whatever landed), which is deliberate — the work
+  // that exists is still worth reviewing — but an approving verdict over a partial task set must
+  // never let the wave advance. A later wave building on this one builds on missing work.
+  const droppedTaskEntries = completedWaveResults.flatMap(r =>
+    (r?.dropped_tasks ?? []).map(d => ({ phase: r.phase, ...d })))
+  if (droppedTaskEntries.length > 0) {
+    log(`Wave ${wave.id}: ${droppedTaskEntries.length} task(s) produced NO result and were dropped: ` +
+        droppedTaskEntries.map(d => `${d.phase}:${d.id}`).join(', ') +
+        `. Any reviewer approval in this wave covers only the tasks that DID return. Returning to ` +
+        `Opus — this is not a completion.`)
+    return {
+      status: 'needs_opus',
+      reason: 'task_dropped',
+      dropped_tasks: droppedTaskEntries,
+      report,
+      blockers: droppedTaskEntries.map(d => ({
+        description: `Task ${d.phase}:${d.id} (assigned_to=${d.assigned_to}) returned no result — ` +
+          `its agent stalled, threw, or the agentType resolved to nothing.` +
+          (d.unknown_agent_type
+            ? ` '${d.assigned_to}' is NOT in KNOWN_AGENT_TYPES, so an unresolvable agentType is the likeliest cause.`
+            : ''),
+        resolution_hint: d.unknown_agent_type
+          ? `Confirm an agent definition named '${d.assigned_to}' exists in this deployment's .claude/agents/ (and in ~/.claude/agents/ for the node). If it does, add it to KNOWN_AGENT_TYPES; if it does not, correct the plan's assigned_to. Then re-dispatch this task — do NOT treat the phase as complete.`
+          : `Inspect what the task actually wrote (git diff on the run branch), then re-dispatch it or complete it by hand. Do NOT treat the phase as complete on the reviewer's verdict — it never saw this task.`,
+      })),
+      run_placement: placementFacts(graph),
     }
   }
 
   // Escalate if any phase's fix-loop exhausted without reviewer approval.
   if (completedWaveResults.some(r => r?.escalate)) {
     log(`Wave ${wave.id}: reviewer escalation unresolved — returning to Opus.`)
-    return { status: 'needs_opus', reason: 'reviewer_unresolved', report }
+    return { status: 'needs_opus', reason: 'reviewer_unresolved', report, run_placement: placementFacts(graph) }
   }
 
   // HITL gate: if any phase in this wave has pending human-assigned tasks, the wave's
@@ -1737,7 +2655,7 @@ for (const wave of waves) {
   const hitlTasks = completedWaveResults.flatMap(r => r?.hitl_gates ?? [])
   if (hitlTasks.length > 0) {
     log(`Wave ${wave.id}: ${hitlTasks.length} human-assigned task(s) require HITL gating — returning to Opus.`)
-    return { status: 'needs_opus', reason: 'hitl_required', hitl_tasks: hitlTasks, report }
+    return { status: 'needs_opus', reason: 'hitl_required', hitl_tasks: hitlTasks, report, run_placement: placementFacts(graph) }
   }
 
   // NB: cross-wave worktree merge happens in Opus post-wave (no git in script — constraint 1).
@@ -1767,7 +2685,8 @@ if (shortWaves.length > 0) {
       description: `Completeness invariant violated: ${detail}. One or more phases produced no result, so their reviewer gates did not run.`,
       resolution_hint: 'Do NOT treat this plan as complete. Identify the missing phases from the report, inspect what actually landed, and re-run their reviewer gates before merging.',
     }],
+    run_placement: placementFacts(graph),
   }
 }
 
-return { status: 'complete', report }
+return { status: 'complete', report, run_placement: placementFacts(graph) }
