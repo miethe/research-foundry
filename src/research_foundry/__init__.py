@@ -8,7 +8,11 @@ research output maps to a source card or is explicitly labeled inference or
 speculation. See ``services/verification.py`` and ``services/governance.py``.
 """
 
-__version__ = "0.1.0"
+#: Keep in lockstep with ``[project].version`` in ``pyproject.toml``. Two version
+#: strings that can disagree are worse than one that is merely stale: ``rf --version``
+#: reads the *installed distribution* metadata (i.e. pyproject), so a divergence here
+#: makes the CLI and the library report different releases for the same build.
+__version__ = "0.2.0"
 SCHEMA_VERSION = "0.1"
 
 #: Canonical semver contract-version stamped as the top-level ``rf_schema_version``

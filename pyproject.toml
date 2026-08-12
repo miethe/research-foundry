@@ -1,6 +1,10 @@
 [project]
 name = "research-foundry"
-version = "0.1.0"
+# Bump on any feature-bearing change. This is the only identity a WHEEL install has, and
+# leaving it static is what made the AOS CLIs unable to witness a release
+# (node_01KZVW15TYM9V7MSTT1BGCAVSW). For an EDITABLE install the checkout commit now printed
+# by `--version` covers the gap automatically; for a wheel, this line is the whole answer.
+version = "0.2.0"
 description = "Markdown/YAML-first research control plane: turn raw ideas into governed research swarms, evidence bundles, and verifiable reports."
 readme = "README.md"
 requires-python = ">=3.11"
