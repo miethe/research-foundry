@@ -11,6 +11,31 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### **`rf --version` — version provenance a release can actually be witnessed through**
+
+- **New `rf --version` flag reporting both declared version and checkout identity.** The flag did
+  not exist before (bare `rf --version` exited with a usage error), and the declared version had
+  never been bumped off `0.1.0`, so nothing about the CLI could answer "is the shipped feature
+  present in this install?" — the exact question a cross-host parity check asks
+  (`node_01KZVW15TYM9V7MSTT1BGCAVSW`). Because `rf` is installed **editable**, the declared
+  version cannot describe it anyway: the code that runs is whatever the backing checkout sits on,
+  and two hosts can report an identical version from different commits. The flag now prints the
+  distribution version plus the resolved checkout's short sha, branch, and dirty state —
+  e.g. `rf, version 0.2.0 (editable b4c06109-dirty on feat/cli-version-provenance)`. It is eager
+  (parsed before any subcommand or config load, so it still answers on a broken workspace),
+  never raises, and every git call is timeout-bounded; an undeterminable field is reported as
+  `null` rather than a placeholder a caller could mistake for a real commit.
+- **`AOS_VERSION_JSON=1` switches `--version` to a machine-readable object**, which is how the
+  fleet-wide version aggregator collects structured provenance across the AOS CLIs without a
+  per-CLI `--json` flag combination.
+- **`rf version` (the existing subcommand) now emits the same provenance as the flag.** Two
+  surfaces answering one question differently is the defect being fixed, not a style preference.
+- **Version bumped `0.1.0` → `0.2.0`** in both `pyproject.toml` and `research_foundry.__version__`,
+  which had been the only identity a wheel install would have had.
+- Implemented by `src/research_foundry/_version_provenance.py`, a **vendored, byte-identical**
+  helper shared across the AOS repos — copied rather than imported so six independently-versioned
+  repos are not coupled to one. Edit the upstream and re-vendor; never patch this copy in place.
+
 #### **Research Foundry Operator MCP — governed local operation surface**
 
 - **Local `rf-operator-mcp` documentation and governance contract.** Documents the exact closed

@@ -17,10 +17,15 @@ from __future__ import annotations
 import typer
 from rich.console import Console
 
-from .. import __version__
+from .._version_provenance import _emit as _emit_version
 from ..config import FoundryConfig
 from ..errors import ExitCode, RFError
 from ..schemas import SchemaRegistry
+
+#: PyPI distribution name — the key `importlib.metadata` resolves, NOT the import
+#: package (`research_foundry`). Provenance is looked up by distribution because
+#: that is what carries the declared version and the PEP 610 editable marker.
+_DIST_NAME = "research-foundry"
 
 app = typer.Typer(
     name="rf",
@@ -32,11 +37,41 @@ console = Console()
 err_console = Console(stderr=True)
 
 
+def _version_callback(value: bool) -> None:
+    """Eager ``--version`` handler: print provenance and exit 0 before anything else runs.
+
+    Routed through the vendored helper's ``_emit`` rather than ``version_string`` so the
+    ``AOS_VERSION_JSON`` env var keeps working — that is how the fleet-wide aggregator
+    collects structured output from six CLIs without a per-CLI ``--json`` flag.
+    """
+
+    if not value:
+        return
+    _emit_version(_DIST_NAME, prog_name="rf")
+    raise typer.Exit(0)
+
+
+@app.callback(invoke_without_command=True)
+def _root(
+    _version: bool = typer.Option(
+        False,
+        "--version",
+        help="Show version provenance (declared version + checkout identity) and exit.",
+        callback=_version_callback,
+        is_eager=True,
+    ),
+) -> None:
+    """Research Foundry — evidence-first research control plane."""
+
+    # `invoke_without_command=True` is what lets `rf --version` run with no subcommand;
+    # bare `rf` still prints help because the group carries `no_args_is_help=True`.
+
+
 @app.command()
 def version() -> None:
-    """Print the Research Foundry version."""
+    """Print the Research Foundry version provenance (same output as ``rf --version``)."""
 
-    console.print(f"research-foundry {__version__}")
+    _emit_version(_DIST_NAME, prog_name="rf")
 
 
 @app.command()
