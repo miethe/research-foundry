@@ -54,6 +54,34 @@ export const meta = {
 }
 
 // ---------------------------------------------------------------------------
+// Routing audit accumulator — the wire out of this script
+// ---------------------------------------------------------------------------
+// A plain array and two pure helpers. Pushing to an array is neither an FS write nor a
+// require(), so this stays inside the four constraints (§5) — which is the whole reason the
+// PREVIOUS shape existed and the whole reason it failed: routing payloads were handed to
+// agent() as a `_routing_log` opts key, and `_routing_log` is not in the opts allowlist (§1),
+// so the runtime discarded every one of them. 14 payloads across 5 workflows were written and
+// never read, which made `skillmeat routing audit` over a workflow run empty BY CONSTRUCTION
+// rather than clean — and empty reads exactly like clean. Measured 2026-08-12,
+// node_01KZVV9R3EK13DJXS44VCQ8E9C.
+//
+// Entries ride out on the report as `routing_log` (§6). The post-run caller drains them:
+//   node .claude/skills/delegation-router/log-cli.js --ingest <report.json> --task-id <id>
+// so the write lands on claude-primary, where it belongs, and this script stays pure.
+//
+// `withRouting()` wraps EVERY workflow exit reachable after a routeLog() call. No judgement
+// about which exits "matter": the ones that matter most are the mid-run bail-outs that happen
+// immediately after a fallback fired, and those are exactly the ones a reachability argument
+// talks itself out of.
+const __routingLog = []
+const routeLog = entry => {
+  __routingLog.push(entry)
+  return entry
+}
+const withRouting = result => ({ ...result, routing_log: __routingLog })
+
+
+// ---------------------------------------------------------------------------
 // JSON Schemas for structured agent output (passed via schema: option to agent()).
 // These are inline because the script cannot read files (constraint 1).
 // ---------------------------------------------------------------------------
@@ -514,7 +542,7 @@ function validateRepoTarget(graph) {
   if (!target && !session) return null // Nothing declared — legacy graph, no-op.
 
   if (target && !session) {
-    return {
+    return withRouting({
       status: 'blocked',
       reason: 'cross_repo_unverified',
       report: [],
@@ -522,11 +550,11 @@ function validateRepoTarget(graph) {
         description: `Graph declares target_repo '${graph.target_repo}' but carries no session_repo, so the workflow cannot confirm it is running in the right repository. No agents were spawned.`,
         resolution_hint: 'In Opus pre-flight, resolve the session repo (`basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`, not `--show-toplevel` — inside a worktree that basename is the worktree directory name, not the repo name) and pass it as session_repo alongside target_repo. Do NOT drop target_repo to silence this — the guard is what stands between a cross-repo plan and agents editing the wrong tree.',
       }],
-    }
+    })
   }
 
   if (target && session && target !== session) {
-    return {
+    return withRouting({
       status: 'blocked',
       reason: 'cross_repo_target',
       report: [],
@@ -534,7 +562,7 @@ function validateRepoTarget(graph) {
         description: `Plan targets repo '${graph.target_repo}' but this session is in '${graph.session_repo}'. Workflow agents always run in the session's cwd and isolation:'worktree' branches the SESSION repo, so every task would have executed against the wrong repository — reading the wrong files and committing to the wrong tree while reporting success. No agents were spawned.`,
         resolution_hint: `Re-run from the target repo: start a session in the '${graph.target_repo}' checkout and invoke the workflow there. If that is not possible, hand-orchestrate the plan and verify \`git rev-parse --show-toplevel\` + \`git branch --show-current\` + \`git diff\` yourself at each step — per .claude/skills/dev-execution/git-worktree-pr-protocol.md, never trust a completion report for repo identity.`,
       }],
-    }
+    })
   }
 
   return null
@@ -575,7 +603,7 @@ function modeBoundary(wave, report) {
   // Explicit Mode D flag on any phase in this wave.
   const modeD = wave.phases.find(p => p.mode === 'D')
   if (modeD) {
-    return { status: 'blocked', reason: 'mode_d', blocked_phase: modeD.id, report }
+    return withRouting({ status: 'blocked', reason: 'mode_d', blocked_phase: modeD.id, report })
   }
 
   // Implicit Mode D: files_affected heuristic for high-risk paths.
@@ -586,7 +614,7 @@ function modeBoundary(wave, report) {
     )
   )
   if (riskyPhase) {
-    return { status: 'needs_opus', reason: 'mode_d', blocked_phase: riskyPhase.id, report }
+    return withRouting({ status: 'needs_opus', reason: 'mode_d', blocked_phase: riskyPhase.id, report })
   }
 
   return null // No boundary — continue execution.
@@ -725,6 +753,69 @@ function fixTaskModeDGuard(phase, prompt) {
   }
 
   return null // Safe to dispatch to an offload lane.
+}
+
+// ─── Mode-D OUTPUT scan (closes node_01KZS162D3TR3ZT113TKVDW1HB) ──────────────
+//
+// fixTaskModeDGuard (above) and the MODE_D_INTENT_PATTERNS/MODE_D_SELF_WARNING_PATTERNS
+// tables are ROUTING-TIME checks: they read a declaration (files_affected, task_class,
+// prompt text) before a leg is dispatched — exactly the class of check that missed the
+// 2026-08-06 breach (node_01KZC1AHEDYZ8FS9TAZSXQTTSB), whose declaration was clean and
+// whose crypto was invented AFTER routing.
+//
+// This is the OUTPUT-time check: after a delegated leg returns, scan what it actually WROTE
+// via `.claude/skills/dev-execution/hooks/mode-d-scan.sh`, keyed on the REALIZED provider
+// (never the merely-intended one — a bob dispatch that fell back to claude must scan as
+// 'claude'). This script cannot shell out itself (authoring constraint 1), so — exactly like
+// runMeasureStage's validation-scope.sh dispatch — it is an agent() call to an edit-less
+// agentType instructed to run the hook and return its JSON verbatim.
+async function runModeDScanGuard(stageLabel, realizedProvider, baseRef) {
+  const range = `${baseRef || 'HEAD~1'}..HEAD`
+  let scan = null
+  try {
+    scan = await agent(
+      `Run ONE command and return its output. Do not review anything. Do not edit anything.
+
+    MODE_D_SCAN_PROVIDER=${realizedProvider} MODE_D_SCAN_RANGE="${range}" MODE_D_SCAN_JSON=1 \\
+      bash .claude/skills/dev-execution/hooks/mode-d-scan.sh; echo "MODE_D_SCAN_EXIT=$?"
+
+Return the command's JSON output PLUS the trailing MODE_D_SCAN_EXIT line, parsed into the
+schema fields below. Do NOT substitute your own judgment for what the hook reported — an
+invented finding count here defeats the gate the same way a fabricated test count would defeat
+a validation-scope measurement. If the hook is missing or python3 is unavailable, set
+scan_status to "hook_unavailable" and gated to false.`,
+      {
+        phase: stageLabel,
+        label: 'guard:mode-d-scan',
+        agentType: 'task-completion-validator',
+        schema: {
+          type: 'object',
+          required: ['gated'],
+          properties: {
+            scan_status: { type: 'string' },
+            gated: { type: 'boolean' },
+            lane: { type: 'string' },
+            provider: { type: 'string' },
+            findings_count: { type: 'integer' },
+            exit_code: { type: 'integer' },
+          },
+        },
+      },
+    )
+  } catch (err) {
+    log(`Mode-D output scan (${stageLabel}, provider=${realizedProvider}): runner threw (${err && err.message ? err.message : err}). Treated as non-fatal infra failure — not a breach.`)
+    return { gated: false, scan_status: 'runner_error' }
+  }
+  if (!scan) {
+    log(`Mode-D output scan (${stageLabel}, provider=${realizedProvider}): runner returned nothing. Treated as non-fatal — not a breach (this hook is a backstop, not the sole control).`)
+    return { gated: false, scan_status: 'no_result' }
+  }
+  if (scan.gated) {
+    log(`MODE-D OUTPUT BREACH on ${stageLabel} (provider=${realizedProvider}): mode-d-scan.sh reported ${scan.findings_count ?? 'unknown'} finding(s) on an OFFLOAD lane (exit 2). Halting — do not merge this output.`)
+  } else {
+    log(`Mode-D output scan (${stageLabel}, provider=${realizedProvider}): clean (status=${scan.scan_status || 'ok'}).`)
+  }
+  return scan
 }
 
 // ---------------------------------------------------------------------------
@@ -1526,6 +1617,11 @@ async function fixLoop(p, taskOut, initialVerdict, reviewerType) {
     const cycleLabel = `Fix cycle ${cycles + 1}`
     const fixPromptText = fixPrompt(p, verdict?.required_fixes)
 
+    // Realized provider for THIS fix-cycle dispatch — set inside whichever branch below
+    // actually runs, then fed into the automatic post-leg Mode-D output scan below. Defaults
+    // to 'claude' (the flag-off / non-bob path never touches an offload lane).
+    let fixCycleRealizedProvider = 'claude'
+
     // P4: Bob fix-cycle routing — three-gate check.
     if (provider_routing_enabled && p.provider === 'bob') {
       // Gate 1: Mode-D guard (MUST fire before Bob dispatch — design_spec §7).
@@ -1534,57 +1630,81 @@ async function fixLoop(p, taskOut, initialVerdict, reviewerType) {
         // Mode-D triggered: abort Bob, route to claude, record reason.
         log(`P4 Mode-D guard triggered for phase ${p.id} fix-cycle ${cycles + 1}: ${modeDReason}. Routing to claude (not Bob).`)
         // Dispatch claude on-primary for this fix (same prompt, same semantics).
+        routeLog({
+          task_ref: `${p.id}:fix-cycle-${cycles + 1}`,
+          // Decision only. The Mode-D guard fired BEFORE dispatch, so claude IS the effective
+          // route; the rejected provider is named in `reason` (v2 has no override field).
+          kind: 'decision',
+          chosen_plugin_id: 'claude',
+          intended_model: p.model || null,
+          fallback_applied: false,
+          reason: `mode_d: ${modeDReason} (provider:bob rejected by the Mode-D guard before dispatch)`,
+        })
         await agent(fixPromptText, {
           phase: cycleLabel,
           agentType: p.fix_agent || taskOut.filter(Boolean)[0]?.assigned_to || 'python-backend-engineer',
           model: p.model,
-          _routing_log: {
-            chosen_plugin_id: 'claude',
-            actual_provider_used: 'claude',
-            fallback_applied: false,
-            reason: `mode_d: ${modeDReason}`,
-          },
         })
       } else {
         // Gate 2: Bob dispatch (Mode-D cleared).
         log(`P4 Bob fix-cycle routing: dispatching bob-delegate-executor for phase ${p.id} fix-cycle ${cycles + 1}.`)
         let bobResult = null
         let bobFailed = false
+        // What the workflow actually OBSERVED, for the realization evidence below. Bob's own
+        // self-report would not be a measurement; this is the orchestrator's observation.
+        let bobFailureMode = null
         try {
+          routeLog({
+            task_ref: `${p.id}:fix-cycle-${cycles + 1}`,
+            // No actual_provider_used: nothing has run yet, and omitted means UNCONFIRMED.
+            kind: 'decision',
+            chosen_plugin_id: 'bob',
+            intended_model: p.model || null,
+            fallback_applied: false,
+            reason: `provider:bob fix-cycle for phase ${p.id}`,
+          })
           bobResult = await agent(fixPromptText, {
             phase: cycleLabel,
             agentType: 'bob-delegate-executor',
             model: p.model,
-            _routing_log: {
-              chosen_plugin_id: 'bob',
-              actual_provider_used: 'bob',
-              fallback_applied: false,
-              reason: `provider:bob fix-cycle for phase ${p.id}`,
-            },
           })
           // Bob returns null on Mode-D abort inside the executor or tool failure.
           if (!bobResult) {
             bobFailed = true
+            bobFailureMode = 'returned null'
             log(`P4 Bob fix-cycle: bob-delegate-executor returned null for phase ${p.id} fix-cycle ${cycles + 1}. Triggering fallback to claude.`)
+          } else {
+            // Bob actually ran and returned — this is the offload-lane realization.
+            fixCycleRealizedProvider = 'bob'
           }
         } catch (bobErr) {
           bobFailed = true
+          bobFailureMode = `threw: ${bobErr && bobErr.message ? bobErr.message : bobErr}`
           log(`P4 Bob fix-cycle: bob-delegate-executor threw for phase ${p.id} fix-cycle ${cycles + 1}: ${bobErr && bobErr.message ? bobErr.message : bobErr}. Triggering fallback to claude.`)
         }
 
         // Gate 3: Bob fallback — immediate escalation to claude, no Bob retry.
         if (bobFailed) {
+          fixCycleRealizedProvider = 'claude'
           log(`P4 Bob fallback: actual_provider_used='claude', fallback_applied=true for phase ${p.id} fix-cycle ${cycles + 1}.`)
+          routeLog({
+            task_ref: `${p.id}:fix-cycle-${cycles + 1}`,
+            // The one hop this path genuinely measures: the workflow observed bob fail and
+            // issued this re-dispatch itself, so the realized provider rests on evidence.
+            kind: 'realization',
+            chosen_plugin_id: 'bob',
+            intended_model: p.model || null,
+            actual_provider_used: 'claude',
+            // null when the phase pinned no model — unknowable, never guessed.
+            realized_model: p.model || null,
+            fallback_applied: true,
+            realization_evidence: `orchestrator-observed: bob-delegate-executor ${bobFailureMode} for phase ${p.id} fix-cycle ${cycles + 1}; this call is the workflow's own in-process re-dispatch to claude-primary`,
+            reason: 'bob-delegate-executor failed (timeout / binary absent / structuring error); escalated to claude immediately (no retry)',
+          })
           await agent(fixPromptText, {
             phase: cycleLabel,
             agentType: p.fix_agent || taskOut.filter(Boolean)[0]?.assigned_to || 'python-backend-engineer',
             model: p.model,
-            _routing_log: {
-              chosen_plugin_id: 'bob',
-              actual_provider_used: 'claude',
-              fallback_applied: true,
-              reason: 'bob-delegate-executor failed (timeout / binary absent / structuring error); escalated to claude immediately (no retry)',
-            },
           })
         }
       }
@@ -1595,6 +1715,24 @@ async function fixLoop(p, taskOut, initialVerdict, reviewerType) {
         agentType: p.fix_agent || taskOut.filter(Boolean)[0]?.assigned_to || 'python-backend-engineer',
         model: p.model,
       })
+    }
+
+    // Mode-D output scan on the fix-cycle leg that just returned, keyed on the REALIZED
+    // provider (bob only when bob actually ran and returned; claude on every guard-triggered,
+    // fallback, or flag-off path). An offload lane crossing the boundary here is a hard halt —
+    // do not merge this output, and do not run Measure/Review on top of it.
+    const fixCycleScan = await runModeDScanGuard(cycleLabel, fixCycleRealizedProvider, args.base_ref || args.base || 'HEAD~1')
+    if (fixCycleScan.gated) {
+      log(`GATE INTEGRITY FAILURE on phase ${p.id} ${cycleLabel}: Mode-D output breach on provider=${fixCycleRealizedProvider}. Halting the fix loop — do not merge this output.`)
+      cycles++
+      verdict = {
+        approved: false,
+        verdict_source: 'mode_d_output_breach',
+        reviewer_type: reviewerType,
+        required_fixes: [`${cycleLabel} (provider=${fixCycleRealizedProvider}) wrote Mode-D-signature output (${fixCycleScan.findings_count ?? 'unknown'} finding(s)); re-run on claude-primary and do not merge this output.`],
+      }
+      gateFailed = `mode_d_output_breach: ${cycleLabel} provider=${fixCycleRealizedProvider} findings=${fixCycleScan.findings_count ?? 'unknown'}`
+      break
     }
 
     // Re-measure BEFORE each re-review: the post-fix HEAD has a different diff (new tests
@@ -1742,7 +1880,16 @@ function assessCouncilVerdict(raw, phaseId) {
 
   // The council bailed before writing its decision record. It carries a fallback_verdict, but
   // the previous spread produced an object with no `approved` key at all — falsy by accident.
+  //
+  // council_payload_incomplete (2026-08-11 fix) is a distinct sub-case of 'needs_opus': the
+  // id-roster check inside review-council.js caught a truncated findings payload BEFORE this
+  // consumer ever saw it. It must route here (gateIntegrityResult), never fixLoop — there is
+  // no finding to fix, only a re-dispatch. missing_finding_ids travels through so the operator
+  // sees exactly what was lost without opening the sub-workflow's artifacts.
   if (raw.status === 'needs_opus' || raw.status === 'blocked') {
+    const missingIdsNote = raw.reason === 'council_payload_incomplete' && Array.isArray(raw.missing_finding_ids) && raw.missing_finding_ids.length > 0
+      ? ` — missing finding ids: ${raw.missing_finding_ids.join(', ')}`
+      : ''
     return {
       verdict: {
         ...(raw.fallback_verdict ?? {}),
@@ -1751,7 +1898,7 @@ function assessCouncilVerdict(raw, phaseId) {
         council_status: raw.status,
         council_reason: raw.reason ?? null,
       },
-      integrity_failure: `the review-council sub-workflow did not complete (status '${raw.status}'${raw.reason ? `, reason '${raw.reason}'` : ''})`,
+      integrity_failure: `the review-council sub-workflow did not complete (status '${raw.status}'${raw.reason ? `, reason '${raw.reason}'` : ''})${missingIdsNote}`,
     }
   }
 
@@ -1776,6 +1923,18 @@ function assessCouncilVerdict(raw, phaseId) {
     integrityReasons.push(`${notReceived} adjudicated finding(s) never reached the artifact writer (findings_not_received=${notReceived})`)
   } else if (typeof claimed === 'number' && typeof delivered === 'number' && claimed > delivered) {
     integrityReasons.push(`the council claimed ${claimed} findings but only ${delivered} were delivered — ${claimed - delivered} lost at the adjudication/artifact seam`)
+  }
+
+  // Belt-and-braces id-roster check (2026-08-11 fix), independent of raw.status: a stale
+  // deployed review-council.js that hasn't received this fix yet could still report
+  // status:'complete' with a truncated payload. The sub-workflow's own gate is the primary
+  // defense (above); this catches the case where that gate is absent or bypassed.
+  if (Array.isArray(summary.expected_finding_ids) && Array.isArray(summary.delivered_finding_ids)) {
+    const deliveredSet = new Set(summary.delivered_finding_ids)
+    const missingIds = summary.expected_finding_ids.filter(id => !deliveredSet.has(id))
+    if (missingIds.length > 0) {
+      integrityReasons.push(`the id roster shows ${missingIds.length} finding(s) never reached the artifact writer (missing: ${missingIds.join(', ')})`)
+    }
   }
   if (summary.arc_validate_passed === false) {
     integrityReasons.push('the council\'s own `arc validate` did not pass (arc_validate_passed=false)')
@@ -1975,7 +2134,18 @@ async function reviewerGate(p, taskOut, tier) {
     // fallback_applied. reviewerType is edit-less (constraint 3), preserved unchanged.
     let stageAText = null
     let stageAFailed = false
+    // What the workflow actually OBSERVED, for the realization evidence on the fallback below.
+    let stageAFailureMode = null
     try {
+      routeLog({
+        task_ref: `${p.id}:ac-validate`,
+        // No actual_provider_used: nothing has run yet, and omitted means UNCONFIRMED.
+        kind: 'decision',
+        chosen_plugin_id: 'codex',
+        intended_model: 'sonnet',
+        fallback_applied: false,
+        reason: `offload AC validation Stage A to codex-executor for phase ${p.id}`,
+      })
       stageAText = await agent(
         codexAcValidationPrompt(p, taskOut, planRef, acArtifactPath),
         {
@@ -1984,20 +2154,16 @@ async function reviewerGate(p, taskOut, tier) {
           agentType: 'codex-executor',
           model: 'sonnet',
           // No schema: read-only AC validation; structurer Stage B emits VERDICT_SCHEMA.
-          _routing_log: {
-            chosen_plugin_id: 'codex',
-            actual_provider_used: 'codex',
-            fallback_applied: false,
-            reason: `offload AC validation Stage A to codex-executor for phase ${p.id}`,
-          },
         }
       )
       if (!stageAText) {
         stageAFailed = true
+        stageAFailureMode = 'returned null'
         log(`P5 fallback: codex-executor returned null for ${p.id} AC validation Stage A. Falling back to primary claude reviewer (${reviewerType}).`)
       }
     } catch (codexErr) {
       stageAFailed = true
+      stageAFailureMode = `threw: ${codexErr && codexErr.message ? codexErr.message : codexErr}`
       log(`P5 fallback: codex-executor threw for ${p.id} AC validation Stage A: ${codexErr && codexErr.message ? codexErr.message : codexErr}. Falling back to primary claude reviewer (${reviewerType}).`)
     }
 
@@ -2006,17 +2172,25 @@ async function reviewerGate(p, taskOut, tier) {
       // real VERDICT_SCHEMA verdict (not a synthetic not-approved placeholder) and skips the
       // codex Stage B structurer entirely (no artifact was written).
       log(`P5 fallback: actual_provider_used='claude', fallback_applied=true for ${p.id} AC validation.`)
+      routeLog({
+        task_ref: `${p.id}:ac-validate`,
+        // Measured hop: the workflow observed codex fail and ran the on-primary reviewer itself.
+        kind: 'realization',
+        chosen_plugin_id: 'codex',
+        intended_model: 'sonnet',
+        actual_provider_used: 'claude',
+        // This call pins no model (the reviewer agentType's own default applies), so the
+        // realized model is genuinely unknowable here — null, never guessed.
+        realized_model: null,
+        fallback_applied: true,
+        realization_evidence: `orchestrator-observed: codex-executor ${stageAFailureMode} for ${p.id} AC validation Stage A; this call is the workflow's own in-process re-dispatch to ${reviewerType} on claude-primary`,
+        reason: `codex-executor failed (rate-limit / timeout / binary absent); escalated to primary claude reviewer immediately (no retry)`,
+      })
       verdict = await agent(reviewPrompt(p, taskOut, measurement), {
         label: `${p.id}:ac-validate:primary-fallback`,
         phase: 'Review',
         agentType: reviewerType,
         schema: VERDICT_SCHEMA,
-        _routing_log: {
-          chosen_plugin_id: 'codex',
-          actual_provider_used: 'claude',
-          fallback_applied: true,
-          reason: `codex-executor failed (rate-limit / timeout / binary absent); escalated to primary claude reviewer immediately (no retry)`,
-        },
       })
       if (!verdict) {
         log(`Primary-claude AC validation fallback returned null for ${p.id}. Using not-approved placeholder so fix-loop runs.`)
@@ -2027,6 +2201,18 @@ async function reviewerGate(p, taskOut, tier) {
         }
       }
     } else {
+      // Mode-D output scan on the codex offload leg — realized provider is 'codex' because
+      // it just ran and produced the checklist artifact. This is the offload-lane case where
+      // the hook can actually GATE (lane_of('codex') === 'offload').
+      const stageAScan = await runModeDScanGuard('Review', 'codex', args.base_ref || args.base || 'HEAD~1')
+      if (stageAScan.gated) {
+        verdict = {
+          approved: false,
+          verdict_source: 'mode_d_output_breach',
+          reviewer_type: reviewerType,
+          required_fixes: [`codex-executor (${p.id} AC validation Stage A) wrote Mode-D-signature output (${stageAScan.findings_count ?? 'unknown'} finding(s)); re-run on claude-primary and do not merge this output.`],
+        }
+      } else {
       log(`Stage A complete for ${p.id}. Running Stage B haiku structurer...`)
       // Stage B: cheap haiku structurer — reads checklist artifact, emits VERDICT_SCHEMA.
       try {
@@ -2055,6 +2241,7 @@ async function reviewerGate(p, taskOut, tier) {
           reviewer_type: reviewerType,
           required_fixes: [`Stage B returned null for phase ${p.id} AC validation — read ${acArtifactPath}`],
         }
+      }
       }
     }
   } else {
@@ -2305,13 +2492,13 @@ if (dryRun) {
   if (dryRepoBlock) {
     log(`REPO TARGET MISMATCH (${dryRepoBlock.reason}): ${dryRepoBlock.blockers[0].description}`)
   }
-  return {
+  return withRouting({
     status: 'dry_run',
     graph,
     graph_errors: dryErrors,
     repo_target_blocked: dryRepoBlock ? dryRepoBlock.reason : null,
     run_placement: placementFacts(graph),
-  }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -2334,7 +2521,7 @@ if (repoBlock) {
 const graphErrors = validateGraph(waves)
 if (graphErrors.length > 0) {
   log(`INVALID GRAPH — halting before any agent is spawned. ${graphErrors.length} error(s):\n  - ${graphErrors.join('\n  - ')}`)
-  return {
+  return withRouting({
     status: 'blocked',
     reason: 'invalid_graph',
     graph_errors: graphErrors,
@@ -2344,7 +2531,7 @@ if (graphErrors.length > 0) {
       resolution_hint: 'Fix the ExecutionGraph in Opus pre-flight: every batch member must be a full task object, or an {id} that matches an entry in the same phase\'s tasks[]. No agents were spawned.',
     })),
     run_placement: placementFacts(graph),
-  }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -2377,7 +2564,7 @@ if (graph.run_branch) {
   if (!guard || guard.current_branch !== graph.run_branch) {
     const found = guard ? `'${guard.current_branch}'` : 'unverifiable (guard returned nothing)'
     log(`HALTING — wrong_branch: expected '${graph.run_branch}', found ${found}.`)
-    return {
+    return withRouting({
       status: 'blocked',
       reason: 'wrong_branch',
       report: [],
@@ -2386,7 +2573,7 @@ if (graph.run_branch) {
         resolution_hint: `In the tree this session is standing in, run: git switch ${graph.run_branch} (create it from the parent branch if needed), then re-invoke. To isolate the run, ENTER a worktree with the EnterWorktree tool first and check the branch out there — agents follow an entered worktree whenever the run's placement probe confirms it (confirmed on 2.1.224 and again on 2.1.226; probed per run, never cached — node_01KZGQE6GVJTGXRSHA57FYKNDQ). Do NOT \`git worktree add\` and pass the path without entering it: the session cwd would not move and agents would commit here anyway.`,
       }],
       run_placement: placementFacts(graph),
-    }
+    })
   }
   log(`Branch guard OK: on '${guard.current_branch}' at ${guard.head_sha}.`)
 }
@@ -2421,7 +2608,7 @@ for (const wave of waves) {
   // Budget exhaustion guard before dispatching an entire wave.
   if (budget.remaining() < 60_000) {
     log(`Budget exhausted before Wave ${wave.id} — returning to Opus.`)
-    return { status: 'needs_opus', reason: 'budget_exhausted', report, run_placement: placementFacts(graph) }
+    return withRouting({ status: 'needs_opus', reason: 'budget_exhausted', report, run_placement: placementFacts(graph) })
   }
 
   // All phases in this wave run concurrently (parallel barrier).
@@ -2609,7 +2796,7 @@ for (const wave of waves) {
 
   if (droppedPhases.length > 0) {
     log(`Wave ${wave.id}: ${droppedPhases.length} phase(s) produced NO result and were dropped: ${droppedPhases.join(', ')}. Their reviewer gates did NOT run. Returning to Opus — this is not a completion.`)
-    return {
+    return withRouting({
       status: 'needs_opus',
       reason: 'phase_dropped',
       dropped_phases: droppedPhases,
@@ -2619,7 +2806,7 @@ for (const wave of waves) {
         resolution_hint: 'Do NOT treat this wave as complete. Inspect the phase\'s worktree state by hand, then either re-dispatch the phase or run the reviewer gate against whatever work actually landed. Any later wave building on this one is building on an unverified predecessor.',
       })),
       run_placement: placementFacts(graph),
-    }
+    })
   }
 
   // Dropped TASKS halt the wave for the same reason dropped phases do, and this check must come
@@ -2634,7 +2821,7 @@ for (const wave of waves) {
         droppedTaskEntries.map(d => `${d.phase}:${d.id}`).join(', ') +
         `. Any reviewer approval in this wave covers only the tasks that DID return. Returning to ` +
         `Opus — this is not a completion.`)
-    return {
+    return withRouting({
       status: 'needs_opus',
       reason: 'task_dropped',
       dropped_tasks: droppedTaskEntries,
@@ -2650,13 +2837,13 @@ for (const wave of waves) {
           : `Inspect what the task actually wrote (git diff on the run branch), then re-dispatch it or complete it by hand. Do NOT treat the phase as complete on the reviewer's verdict — it never saw this task.`,
       })),
       run_placement: placementFacts(graph),
-    }
+    })
   }
 
   // Escalate if any phase's fix-loop exhausted without reviewer approval.
   if (completedWaveResults.some(r => r?.escalate)) {
     log(`Wave ${wave.id}: reviewer escalation unresolved — returning to Opus.`)
-    return { status: 'needs_opus', reason: 'reviewer_unresolved', report, run_placement: placementFacts(graph) }
+    return withRouting({ status: 'needs_opus', reason: 'reviewer_unresolved', report, run_placement: placementFacts(graph) })
   }
 
   // HITL gate: if any phase in this wave has pending human-assigned tasks, the wave's
@@ -2667,7 +2854,7 @@ for (const wave of waves) {
   const hitlTasks = completedWaveResults.flatMap(r => r?.hitl_gates ?? [])
   if (hitlTasks.length > 0) {
     log(`Wave ${wave.id}: ${hitlTasks.length} human-assigned task(s) require HITL gating — returning to Opus.`)
-    return { status: 'needs_opus', reason: 'hitl_required', hitl_tasks: hitlTasks, report, run_placement: placementFacts(graph) }
+    return withRouting({ status: 'needs_opus', reason: 'hitl_required', hitl_tasks: hitlTasks, report, run_placement: placementFacts(graph) })
   }
 
   // NB: cross-wave worktree merge happens in Opus post-wave (no git in script — constraint 1).
@@ -2688,7 +2875,7 @@ const shortWaves = report.filter(w => (w.phases?.length ?? 0) !== (w.phases_expe
 if (shortWaves.length > 0) {
   const detail = shortWaves.map(w => `wave ${w.wave}: ${w.phases_returned ?? w.phases?.length ?? 0}/${w.phases_expected} phases${(w.dropped_phases ?? []).length ? ` (dropped: ${w.dropped_phases.join(', ')})` : ''}`).join('; ')
   log(`COMPLETENESS INVARIANT VIOLATED — refusing to report complete. ${detail}`)
-  return {
+  return withRouting({
     status: 'needs_opus',
     reason: 'phase_dropped',
     dropped_phases: shortWaves.flatMap(w => w.dropped_phases ?? []),
@@ -2698,7 +2885,7 @@ if (shortWaves.length > 0) {
       resolution_hint: 'Do NOT treat this plan as complete. Identify the missing phases from the report, inspect what actually landed, and re-run their reviewer gates before merging.',
     }],
     run_placement: placementFacts(graph),
-  }
+  })
 }
 
-return { status: 'complete', report, run_placement: placementFacts(graph) }
+return withRouting({ status: 'complete', report, run_placement: placementFacts(graph) })

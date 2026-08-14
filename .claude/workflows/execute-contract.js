@@ -91,6 +91,34 @@ export const meta = {
   whenToUse: 'Feature Contract approved, 3–8 story points, no Mode D paths (auth/payments/migrations/deletion). Invoke as: workflow execute-contract with args envelope built by Opus pre-flight.',
 }
 
+// ---------------------------------------------------------------------------
+// Routing audit accumulator — the wire out of this script
+// ---------------------------------------------------------------------------
+// A plain array and two pure helpers. Pushing to an array is neither an FS write nor a
+// require(), so this stays inside the four constraints (§5) — which is the whole reason the
+// PREVIOUS shape existed and the whole reason it failed: routing payloads were handed to
+// agent() as a `_routing_log` opts key, and `_routing_log` is not in the opts allowlist (§1),
+// so the runtime discarded every one of them. 14 payloads across 5 workflows were written and
+// never read, which made `skillmeat routing audit` over a workflow run empty BY CONSTRUCTION
+// rather than clean — and empty reads exactly like clean. Measured 2026-08-12,
+// node_01KZVV9R3EK13DJXS44VCQ8E9C.
+//
+// Entries ride out on the report as `routing_log` (§6). The post-run caller drains them:
+//   node .claude/skills/delegation-router/log-cli.js --ingest <report.json> --task-id <id>
+// so the write lands on claude-primary, where it belongs, and this script stays pure.
+//
+// `withRouting()` wraps EVERY workflow exit reachable after a routeLog() call. No judgement
+// about which exits "matter": the ones that matter most are the mid-run bail-outs that happen
+// immediately after a fallback fired, and those are exactly the ones a reachability argument
+// talks itself out of.
+const __routingLog = []
+const routeLog = entry => {
+  __routingLog.push(entry)
+  return entry
+}
+const withRouting = result => ({ ...result, routing_log: __routingLog })
+
+
 // ─── inline schemas ───────────────────────────────────────────────────────────
 
 // `commit_sha` is deliberately NOT required. It used to be, with pattern ^[0-9a-f]{7,40}$, while the
@@ -1293,6 +1321,68 @@ function fixCycleModeDGuard(filesAffected, taskClass, promptText) {
   return null // Safe to dispatch to an offload lane.
 }
 
+// ─── Mode-D OUTPUT scan (closes node_01KZS162D3TR3ZT113TKVDW1HB) ──────────────
+//
+// fixCycleModeDGuard (above) and the routing tables are ROUTING-TIME checks: they read a
+// declaration (files_affected, task_class, prompt text) before a leg is dispatched. That is
+// exactly the class of check that missed the 2026-08-06 breach (node_01KZC1AHEDYZ8FS9TAZSXQTTSB)
+// — the leg's declaration was clean; it invented the crypto AFTER being routed.
+//
+// This is the OUTPUT-time check: after a delegated leg returns, scan what it actually WROTE
+// via `.claude/skills/dev-execution/hooks/mode-d-scan.sh`, keyed on the REALIZED provider (never
+// the provider that was merely intended — an offload lane that fell back to claude must scan as
+// 'claude', not as the lane that failed). This script cannot shell out itself (authoring
+// constraint 1), so — exactly like runMeasureStage's validation-scope.sh dispatch — it is an
+// agent() call to an edit-less agentType instructed to run the hook and return its JSON verbatim.
+async function runModeDScanGuard(stageLabel, realizedProvider, baseRef) {
+  const range = `${baseRef || 'HEAD~1'}..HEAD`
+  let scan = null
+  try {
+    scan = await agent(
+      `Run ONE command and return its output. Do not review anything. Do not edit anything.
+
+    MODE_D_SCAN_PROVIDER=${realizedProvider} MODE_D_SCAN_RANGE="${range}" MODE_D_SCAN_JSON=1 \\
+      bash .claude/skills/dev-execution/hooks/mode-d-scan.sh; echo "MODE_D_SCAN_EXIT=$?"
+
+Return the command's JSON output PLUS the trailing MODE_D_SCAN_EXIT line, parsed into the
+schema fields below. Do NOT substitute your own judgment for what the hook reported — an
+invented finding count here defeats the gate the same way a fabricated test count would defeat
+a validation-scope measurement. If the hook is missing or python3 is unavailable, set
+scan_status to "hook_unavailable" and gated to false.`,
+      {
+        phase: stageLabel,
+        label: 'guard:mode-d-scan',
+        agentType: 'task-completion-validator',
+        schema: {
+          type: 'object',
+          required: ['gated'],
+          properties: {
+            scan_status: { type: 'string' },
+            gated: { type: 'boolean' },
+            lane: { type: 'string' },
+            provider: { type: 'string' },
+            findings_count: { type: 'integer' },
+            exit_code: { type: 'integer' },
+          },
+        },
+      },
+    )
+  } catch (err) {
+    log(`Mode-D output scan (${stageLabel}, provider=${realizedProvider}): runner threw (${err && err.message ? err.message : err}). Treated as non-fatal infra failure — not a breach.`)
+    return { gated: false, scan_status: 'runner_error' }
+  }
+  if (!scan) {
+    log(`Mode-D output scan (${stageLabel}, provider=${realizedProvider}): runner returned nothing. Treated as non-fatal — not a breach (absence of a scan is not evidence of a clean leg, but this hook is a backstop, not the sole control).`)
+    return { gated: false, scan_status: 'no_result' }
+  }
+  if (scan.gated) {
+    log(`MODE-D OUTPUT BREACH on ${stageLabel} (provider=${realizedProvider}): mode-d-scan.sh reported ${scan.findings_count ?? 'unknown'} finding(s) on an OFFLOAD lane (exit 2). Halting — do not merge this output.`)
+  } else {
+    log(`Mode-D output scan (${stageLabel}, provider=${realizedProvider}): clean (status=${scan.scan_status || 'ok'}).`)
+  }
+  return scan
+}
+
 // ─── workflow body ────────────────────────────────────────────────────────────
 
 // ─── P3: Two-stage AC validation helpers (codex-executor) ─────────────────────
@@ -1406,7 +1496,7 @@ const _target = repoKey(parsed?.target_repo)
 const _session = repoKey(parsed?.session_repo)
 if (_target && !_session) {
   log(`HALTING — cross_repo_unverified: target_repo '${parsed.target_repo}' declared with no session_repo.`)
-  return {
+  return withRouting({
     status: 'blocked',
     reason: 'cross_repo_unverified',
     report: [],
@@ -1414,11 +1504,11 @@ if (_target && !_session) {
       description: `Contract declares target_repo '${parsed.target_repo}' but carries no session_repo, so the workflow cannot confirm it is running in the right repository. No agents were spawned.`,
       resolution_hint: 'In Opus pre-flight, resolve `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` (not `--show-toplevel` — inside a worktree that basename is the worktree directory name, not the repo name) and pass it as session_repo. Do NOT drop target_repo to silence this.',
     }],
-  }
+  })
 }
 if (_target && _session && _target !== _session) {
   log(`HALTING — cross_repo_target: contract targets '${parsed.target_repo}' but session is '${parsed.session_repo}'.`)
-  return {
+  return withRouting({
     status: 'blocked',
     reason: 'cross_repo_target',
     report: [],
@@ -1426,18 +1516,18 @@ if (_target && _session && _target !== _session) {
       description: `Contract targets repo '${parsed.target_repo}' but this session is in '${parsed.session_repo}'. The sprint agent always runs in the session's cwd and isolation:'worktree' branches the SESSION repo, so the sprint would have executed against the wrong repository while reporting success. No agents were spawned.`,
       resolution_hint: `Start a session in the '${parsed.target_repo}' checkout and re-run there, or hand-orchestrate and verify \`git rev-parse --show-toplevel\` + \`git branch --show-current\` + \`git diff\` yourself at each step (.claude/skills/dev-execution/git-worktree-pr-protocol.md).`,
     }],
-  }
+  })
 }
 
 // ── dry-run short-circuit ─────────────────────────────────────────────────────
 if (parsed.dry_run === true) {
   log('Dry-run mode — returning parsed args envelope without spawning agents.')
-  return {
+  return withRouting({
     status: 'complete',
     report: [],
     _dry_run: true,
     _parsed_args: parsed,
-  }
+  })
 }
 
 // ── Mode D boundary check (before any agents spawn) ──────────────────────────
@@ -1450,12 +1540,12 @@ const modeD =
 
 if (modeD) {
   log('Mode D boundary detected — returning to Opus before spawning any agents.')
-  return {
+  return withRouting({
     status: 'needs_opus',
     reason: 'mode_d',
     blocked_phase: 'sprint',
     report: [],
-  }
+  })
 }
 
 // ── Phase 1: Sprint (two-stage: executor + structurer) ───────────────────────
@@ -1487,7 +1577,7 @@ if (parsed.run_branch) {
 
   if (!guard) {
     log(`HALTING — wrong_branch: branch guard returned no verdict; placement on '${parsed.run_branch}' is unverified.`)
-    return {
+    return withRouting({
       status: 'blocked',
       reason: 'wrong_branch',
       blocked_phase: 'sprint',
@@ -1496,12 +1586,12 @@ if (parsed.run_branch) {
         description: `Could not verify the working tree is on run branch '${parsed.run_branch}' (the guard agent returned nothing). No sprint agent was spawned, so nothing was committed anywhere.`,
         resolution_hint: `Check out '${parsed.run_branch}' in the session repo and re-run, or re-invoke without run_branch to accept whatever branch the tree is on.`,
       }],
-    }
+    })
   }
 
   if (guard.current_branch !== parsed.run_branch) {
     log(`HALTING — wrong_branch: tree is on '${guard.current_branch}', run branch is '${parsed.run_branch}'.`)
-    return {
+    return withRouting({
       status: 'blocked',
       reason: 'wrong_branch',
       blocked_phase: 'sprint',
@@ -1510,12 +1600,12 @@ if (parsed.run_branch) {
         description: `The session working tree is on branch '${guard.current_branch}' but this run was assigned '${parsed.run_branch}'. Workflow agents commit to the session branch, so the sprint would have committed to '${guard.current_branch}' — bypassing the PR and review gates — and reported success. No agents were spawned; nothing was committed.`,
         resolution_hint: `In the tree this session is standing in, run: git switch ${parsed.run_branch} (create it from the parent branch if needed), then re-invoke. To isolate the run, ENTER a worktree with the EnterWorktree tool first and check the branch out there — agents follow an entered worktree whenever the run's placement probe confirms it (confirmed on 2.1.224 and again on 2.1.226; probed per run, never cached — node_01KZGQE6GVJTGXRSHA57FYKNDQ). Do NOT \`git worktree add\` a worktree and pass its path without entering it: the session cwd would not move, agents would commit here anyway, and the report would read as isolated. That is the defect this guard exists to catch.`,
       }],
-    }
+    })
   }
 
   if (parsed.branch_base && guard.base_resolves === false) {
     log(`HALTING — wrong_branch: branch_base '${parsed.branch_base}' does not resolve in this repo.`)
-    return {
+    return withRouting({
       status: 'blocked',
       reason: 'wrong_branch',
       blocked_phase: 'sprint',
@@ -1524,7 +1614,7 @@ if (parsed.run_branch) {
         description: `branch_base '${parsed.branch_base}' does not resolve as a commit in the session repo, so the run has no usable pre-run checkpoint and every later diff/commit-range would be computed against a guess. No agents were spawned.`,
         resolution_hint: 'Re-resolve BASE_SHA with `git rev-parse HEAD` in the session repo at run start and pass that, or omit branch_base.',
       }],
-    }
+    })
   }
 
   log(`Branch guard OK: on '${guard.current_branch}' at ${guard.head_sha}.`)
@@ -1552,13 +1642,18 @@ const sprintText = await agent(sprintPrompt(parsed, reportPath, subtaskShardingE
 // If the user skipped the sprint agent, return blocked.
 if (!sprintText) {
   log('Sprint agent was skipped — returning to Opus.')
-  return {
+  return withRouting({
     status: 'needs_opus',
     reason: 'reviewer_unresolved',
     blocked_phase: 'sprint',
     report: [],
-  }
+  })
 }
+
+// Mode-D output scan on the sprint leg itself — feature-sprint-executor has no offload
+// routing in this file (always claude-primary), so this scans advisory-only, but it wires
+// the automatic post-leg check for the one leg every contract dispatches unconditionally.
+await runModeDScanGuard('Sprint', 'claude', parsed.branch_base)
 
 log('Sprint stage complete. Running structure stage.')
 
@@ -1620,7 +1715,7 @@ if (!sprintResult) {
 // the parent branch.
 if (parsed.run_branch && sprintResult.current_branch && sprintResult.current_branch !== parsed.run_branch) {
   log(`HALTING — wrong_branch: sprint ended on '${sprintResult.current_branch}', not '${parsed.run_branch}'.`)
-  return {
+  return withRouting({
     status: 'blocked',
     reason: 'wrong_branch',
     blocked_phase: 'sprint',
@@ -1631,13 +1726,13 @@ if (parsed.run_branch && sprintResult.current_branch && sprintResult.current_bra
     }],
     run_placement: placementFacts(parsed, sprintResult),
     artifact_tracking: artifactTrackingFacts(sprintResult),
-  }
+  })
 }
 
 if (typeof sprintResult.commit_count === 'number' && sprintResult.commit_count === 0) {
   const where = parsed.run_branch ? `run branch '${parsed.run_branch}'` : 'the current branch'
   log(`HALTING — nothing_on_run_branch: zero commits on ${where} since ${parsed.branch_base || 'the branch base'}.`)
-  return {
+  return withRouting({
     status: 'needs_opus',
     reason: 'nothing_on_run_branch',
     blocked_phase: 'sprint',
@@ -1648,7 +1743,7 @@ if (typeof sprintResult.commit_count === 'number' && sprintResult.commit_count =
     }],
     run_placement: placementFacts(parsed, sprintResult),
     artifact_tracking: artifactTrackingFacts(sprintResult),
-  }
+  })
 }
 
 // ── artifact-tracking guard (contract file + completion report must be COMMITTED) ─────────────
@@ -1674,7 +1769,7 @@ if (typeof sprintResult.commit_count === 'number' && sprintResult.commit_count =
       tracking.contract_artifact_state === 'written_untracked' ? parsed.contract_path : null,
       tracking.completion_report_artifact_state === 'written_untracked' ? reportPath : null,
     ].filter(Boolean).join(' ')
-    return {
+    return withRouting({
       status: 'needs_opus',
       reason: 'artifact_untracked',
       blocked_phase: 'sprint',
@@ -1685,7 +1780,7 @@ if (typeof sprintResult.commit_count === 'number' && sprintResult.commit_count =
       }],
       run_placement: placementFacts(parsed, sprintResult),
       artifact_tracking: tracking,
-    }
+    })
   }
 }
 
@@ -1747,6 +1842,18 @@ if (provider_routing_enabled) {
       required_fixes: ['AC validation Stage A failed — codex-executor returned null'],
     }
   } else {
+    // Mode-D output scan on the codex offload leg — realized provider is 'codex' because
+    // it just ran and produced the checklist artifact. This is the offload-lane case where
+    // the hook can actually GATE (lane_of('codex') === 'offload').
+    const stageAScan = await runModeDScanGuard('Review', 'codex', parsed.branch_base)
+    if (stageAScan.gated) {
+      verdict = {
+        approved: false,
+        verdict_source: 'mode_d_output_breach',
+        reviewer_type: reviewerType,
+        required_fixes: [`codex-executor (Stage A AC validation) wrote Mode-D-signature output (${stageAScan.findings_count ?? 'unknown'} finding(s)); re-run on claude-primary and do not merge this output.`],
+      }
+    } else {
     log('Stage A complete. Running Stage B haiku structurer...')
     // Stage B: cheap haiku structurer — reads checklist artifact, emits VERDICT_SCHEMA.
     try {
@@ -1775,6 +1882,7 @@ if (provider_routing_enabled) {
         reviewer_type: reviewerType,
         required_fixes: [`Stage B returned null — read ${acArtifactPath} for AC validation output`],
       }
+    }
     }
   }
 } else {
@@ -1836,6 +1944,11 @@ while (verdict && !verdict.approved && !integrityFailure && cycles < 2 && budget
 
   const fixPromptText = fixPrompt(parsed, verdict.required_fixes || [], cycleNumber)
 
+  // Realized provider for THIS fix-cycle dispatch — set inside whichever branch below
+  // actually runs, then fed into the automatic post-leg Mode-D output scan. Defaults to
+  // 'claude' (the flag-off / non-bob path never touches an offload lane).
+  let fixCycleRealizedProvider = 'claude'
+
   if (provider_routing_enabled && fixProvider === 'bob') {
     // P4: Bob fix-cycle routing — three-gate check (design_spec §7 + phase plan).
     const modeDReason = fixCycleModeDGuard(contractFixFiles, contractFixClass, fixPromptText)
@@ -1843,59 +1956,85 @@ while (verdict && !verdict.approved && !integrityFailure && cycles < 2 && budget
     if (modeDReason) {
       // Gate 1: Mode-D triggered — abort Bob, route to claude, log reason.
       log(`P4 Mode-D guard triggered for fix-cycle ${cycleNumber}: ${modeDReason}. Routing to claude (not Bob).`)
+      routeLog({
+        task_ref: `fix-cycle-${cycleNumber}`,
+        // The Mode-D guard fired BEFORE dispatch, so the effective routing decision is claude —
+        // recording chosen_plugin_id:'bob' here would assert an intent we knowingly did not act
+        // on. The rejected provider is named in `reason` instead (v2 has no override field).
+        kind: 'decision',
+        chosen_plugin_id: 'claude',
+        intended_model: parsed.fix_model || null,
+        fallback_applied: false,
+        reason: `mode_d: ${modeDReason} (fix_provider:bob rejected by the Mode-D guard before dispatch)`,
+      })
       await agent(fixPromptText, {
         label: `fix-cycle-${cycleNumber}`,
         phase: `Fix cycle ${cycleNumber}`,
         agentType: fixAgentType,
         model: parsed.fix_model || undefined,
-        _routing_log: {
-          chosen_plugin_id: 'bob',
-          actual_provider_used: 'claude',
-          fallback_applied: false,
-          reason: `mode_d: ${modeDReason}`,
-        },
       })
     } else {
       // Gate 2: Mode-D cleared — dispatch bob-delegate-executor.
       log(`P4 Bob fix-cycle routing: dispatching bob-delegate-executor for fix-cycle ${cycleNumber}.`)
       let bobResult = null
       let bobFailed = false
+      // What the workflow actually OBSERVED, for the realization evidence below. Bob's own
+      // self-report would not be a measurement; this is the orchestrator's observation.
+      let bobFailureMode = null
       try {
+        routeLog({
+          task_ref: `fix-cycle-${cycleNumber}`,
+          // No actual_provider_used: nothing has run yet, and omitted means UNCONFIRMED. Copying
+          // the intent into the realized field is what made the field unable to audit anything.
+          kind: 'decision',
+          chosen_plugin_id: 'bob',
+          intended_model: parsed.fix_model || null,
+          fallback_applied: false,
+          reason: `fix_provider:bob fix-cycle ${cycleNumber} for contract ${parsed.contract_path || '(unknown)'}`,
+        })
         bobResult = await agent(fixPromptText, {
           label: `fix-cycle-${cycleNumber}`,
           phase: `Fix cycle ${cycleNumber}`,
           agentType: 'bob-delegate-executor',
           model: parsed.fix_model || undefined,
-          _routing_log: {
-            chosen_plugin_id: 'bob',
-            actual_provider_used: 'bob',
-            fallback_applied: false,
-            reason: `fix_provider:bob fix-cycle ${cycleNumber} for contract ${parsed.contract_path || '(unknown)'}`,
-          },
         })
         if (!bobResult) {
           bobFailed = true
+          bobFailureMode = 'returned null'
           log(`P4 Bob fix-cycle: bob-delegate-executor returned null for fix-cycle ${cycleNumber}. Triggering fallback to claude.`)
+        } else {
+          // Bob actually ran and returned — this is the offload-lane realization.
+          fixCycleRealizedProvider = 'bob'
         }
       } catch (bobErr) {
         bobFailed = true
+        bobFailureMode = `threw: ${bobErr && bobErr.message ? bobErr.message : bobErr}`
         log(`P4 Bob fix-cycle: bob-delegate-executor threw for fix-cycle ${cycleNumber}: ${bobErr && bobErr.message ? bobErr.message : bobErr}. Triggering fallback to claude.`)
       }
 
       // Gate 3: Bob fallback — immediate escalation to claude, no Bob retry.
       if (bobFailed) {
+        fixCycleRealizedProvider = 'claude'
         log(`P4 Bob fallback: actual_provider_used='claude', fallback_applied=true for fix-cycle ${cycleNumber}.`)
+        routeLog({
+          task_ref: `fix-cycle-${cycleNumber}`,
+          // The one hop this workflow genuinely measures: it observed bob fail and issued this
+          // re-dispatch itself, so the realized provider is established by evidence, not claimed.
+          kind: 'realization',
+          chosen_plugin_id: 'bob',
+          intended_model: parsed.fix_model || null,
+          actual_provider_used: 'claude',
+          // null when the contract pinned no fix model — unknowable, never guessed.
+          realized_model: parsed.fix_model || null,
+          fallback_applied: true,
+          realization_evidence: `orchestrator-observed: bob-delegate-executor ${bobFailureMode} for fix-cycle ${cycleNumber}; this call is the workflow's own in-process re-dispatch to ${fixAgentType} on claude-primary`,
+          reason: 'bob-delegate-executor failed (timeout / binary absent / structuring error); escalated to claude immediately (no retry)',
+        })
         await agent(fixPromptText, {
           label: `fix-cycle-${cycleNumber}-fallback`,
           phase: `Fix cycle ${cycleNumber}`,
           agentType: fixAgentType,
           model: parsed.fix_model || undefined,
-          _routing_log: {
-            chosen_plugin_id: 'bob',
-            actual_provider_used: 'claude',
-            fallback_applied: true,
-            reason: 'bob-delegate-executor failed (timeout / binary absent / structuring error); escalated to claude immediately (no retry)',
-          },
         })
       }
     }
@@ -1906,6 +2045,27 @@ while (verdict && !verdict.approved && !integrityFailure && cycles < 2 && budget
       phase: `Fix cycle ${cycleNumber}`,
       agentType: fixAgentType,
       model: parsed.fix_model || undefined,
+    })
+  }
+
+  // Mode-D output scan on the fix-cycle leg that just returned, keyed on the REALIZED
+  // provider (bob only when bob actually ran and returned; claude on every guard-triggered,
+  // fallback, or flag-off path). An offload lane crossing the boundary here is a hard halt —
+  // do not merge this output, and do not run the SHA-refresh below that would fold it into
+  // reviewResult.
+  const fixCycleScan = await runModeDScanGuard(`Fix cycle ${cycleNumber}`, fixCycleRealizedProvider, parsed.branch_base)
+  if (fixCycleScan.gated) {
+    return withRouting({
+      status: 'blocked',
+      reason: 'mode_d_output_breach',
+      blocked_phase: `fix-cycle-${cycleNumber}`,
+      report: [],
+      blockers: [{
+        description: `Fix cycle ${cycleNumber} (provider=${fixCycleRealizedProvider}) wrote Mode-D-signature output — ${fixCycleScan.findings_count ?? 'unknown'} finding(s) detected by mode-d-scan.sh on an offload lane. Do not merge this output.`,
+        resolution_hint: `Inspect the fix-cycle ${cycleNumber} diff for generated key material, auth/migration/deletion paths, or history rewrites. Re-run this fix on claude-primary once confirmed.`,
+      }],
+      run_placement: placementFacts(parsed, reviewResult),
+      artifact_tracking: artifactTrackingFacts(reviewResult),
     })
   }
 
@@ -1951,7 +2111,7 @@ while (verdict && !verdict.approved && !integrityFailure && cycles < 2 && budget
     log(`Fix cycle ${cycleNumber}: refreshed reviewer commit reference to ${refreshedSha.commit_sha}.`)
     if (parsed.run_branch && reviewResult.current_branch && reviewResult.current_branch !== parsed.run_branch) {
       log(`HALTING — wrong_branch: fix cycle ${cycleNumber} left the tree on '${reviewResult.current_branch}', not '${parsed.run_branch}'.`)
-      return {
+      return withRouting({
         status: 'blocked',
         reason: 'wrong_branch',
         blocked_phase: `fix-cycle-${cycleNumber}`,
@@ -1962,7 +2122,7 @@ while (verdict && !verdict.approved && !integrityFailure && cycles < 2 && budget
         }],
         run_placement: placementFacts(parsed, reviewResult),
         artifact_tracking: artifactTrackingFacts(reviewResult),
-      }
+      })
     }
   } else {
     log(`Fix cycle ${cycleNumber}: WARNING — SHA refresh returned nothing; reviewer will use last known commit reference.`)
@@ -2087,4 +2247,4 @@ if (result.run_placement.parent_moved === true) {
   log(`NOTE: parent branch '${result.run_placement.parent_branch}' moved during this run (${result.run_placement.parent_tip_at_start} → ${result.run_placement.parent_tip_at_report}). If the run branch is rebased onto the new tip, commit_sha will change; re-find the work by patch_id (${result.run_placement.patch_id || 'unavailable'}), not by the reported SHA.`)
 }
 
-return result
+return withRouting(result)
