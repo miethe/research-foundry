@@ -471,6 +471,12 @@ def launch_run_endpoint(
     ``status`` in the response is always ``"planned"`` on success; poll
     ``GET /api/runs/{run_id}``'s ``status_derived`` field for actual progress
     once a swarm has run against the returned ``run_id`` out-of-band.
+
+    The scaffold is materialized under the server's workspace root resolved by
+    ``get_paths``, not the caller's. A remote caller receives only ``run_id``
+    and has no local run directory. The ``rf`` CLI is workspace-local, so
+    ``rf <verb> <run_id>`` run on any other host will not find the run: read it
+    back through ``GET /api/runs/{run_id}``, or operate on the server host.
     """
     # DF-004: identity is now threaded through to launch_run() -> plan_run(),
     # which stamps run.yaml.workspace_id from identity.workspace_id (never
