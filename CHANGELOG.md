@@ -405,6 +405,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
     **only** — it does not spawn, drive, or poll the Path B Claude-agent
     discovery swarm. Poll the existing `GET /api/runs/{run_id}` for status;
     run the swarm out-of-band against the returned `run_id`.
+  - The scaffold is materialized under the server's workspace root, not the
+    caller's. A remote caller receives only `run_id` and has no local run
+    directory. The `rf` CLI is workspace-local, so `rf <verb> <run_id>` run on
+    any other host will not find the run: read it back through
+    `GET /api/runs/{run_id}`, or operate on the server host.
   - New service module `research_foundry.services.run_launch.launch_run(...)`
     wraps the existing `capture_idea`/`triage_idea`/`plan_run` functions
     unmodified; owns only the "exactly one of `text`/`intent_id`" validation.
