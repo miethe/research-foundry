@@ -42,6 +42,26 @@ def _stamp(payload: dict[str, Any]) -> dict[str, Any]:
     return {"rf_schema_version": RF_SCHEMA_VERSION, **payload}
 
 
+def _atlas_ingest_best_effort(run_id: str, run_dir: Any) -> None:
+    """Fire the Atlas ingest hook after ``rf run export`` writes ``run.json``.
+
+    ``run export`` is the run-close point this repo actually has (see
+    ``services/atlas_ingest.py`` module docstring for why). This wrapper adds
+    a SECOND non-fatal boundary on top of the module's own internal
+    try/except, so a bug in the ingest module itself (an import error, an
+    unexpected exception shape) can never turn `rf run export`'s own success
+    into a failure -- the contract is "never raises past the caller",
+    enforced at both layers.
+    """
+
+    try:
+        from .services.atlas_ingest import maybe_ingest_run
+
+        maybe_ingest_run(run_id, run_dir)
+    except Exception as exc:  # noqa: BLE001 - non-fatal by contract
+        err_console.print(f"[yellow]atlas-ingest skipped ({exc})[/yellow]")
+
+
 def _arc_council_via(run_id: str, console: Console, err_console: Console, svc: object) -> None:
     """Submit a council review to ARC; fall back to local if unreachable.
 
@@ -1522,6 +1542,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                 written = svc.export_all(paths, sensitivity_threshold=sensitivity_threshold)
                 for path in written:
                     console.print(f"[green]exported[/green] {path}")
+                    _atlas_ingest_best_effort(path.parent.name, path.parent)
                 if not written:
                     console.print("[yellow]no runs found[/yellow]")
                 return
@@ -1537,6 +1558,7 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
                     paths, run_id, sensitivity_threshold=sensitivity_threshold
                 )
                 console.print(f"[green]exported[/green] {out}")
+                _atlas_ingest_best_effort(run_id, out.parent)
         # CLEARANCE (clearance-gates M5). export_run()/export_to_file() now
         # mediate every citation's raw source-card record internally
         # (export_service.py _resolve_source) -- without this clause a
