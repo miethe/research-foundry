@@ -87,9 +87,17 @@ runs/**/*.bak
 /.git-data/
 
 # --- SkillMeat project config ---
-# `.skillmeat/` is ignored outside this file (global excludes). Split it:
-# config.toml is repo POLICY (declares the canonical artifact roots) and must be
-# tracked; manifest.toml is per-machine project identity and must not be.
+# Something outside this file ignores `.skillmeat/` (a bare `git add
+# .skillmeat/config.toml` is refused as ignored; it is not `core.excludesfile`,
+# which is unset). This stanza re-includes exactly one file: config.toml is repo
+# POLICY — it declares the canonical artifact roots — so it must be tracked.
+#
+# NOTE: this stanza does NOT govern `.skillmeat/manifest.toml`. That file has
+# been git-tracked since the repo was scaffolded (48eae5c), and gitignore rules
+# never apply to an already-tracked path. It holds per-machine identity (an
+# absolute local path, project uuid, server project id) and arguably should be
+# untracked — but doing so is a behavioural change beyond this campaign phase's
+# remit. Tracked as its own finding rather than smuggled in here.
 !.skillmeat/
 .skillmeat/*
 !.skillmeat/config.toml

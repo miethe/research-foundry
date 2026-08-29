@@ -24,7 +24,15 @@ Result: `true`, exit `0`.
 | Root declared to SkillMeat | `.skillmeat/config.toml` → `[artifacts].canonical_roots = ["artifacts"]` |
 | R1 canary moved | `.claude/skills/research-foundry/` → `artifacts/skills/research-foundry/` |
 | Edit-point contract | `artifacts/README.md` |
-| Config tracked, identity not | `.gitignore` — un-ignore `.skillmeat/config.toml` only |
+| Config tracked | `.gitignore` — un-ignore `.skillmeat/config.toml` only |
+
+Correction, caught by review after the first commit and worth stating plainly: the initial
+`.gitignore` comment and commit message claimed this stanza kept `.skillmeat/manifest.toml`
+local. It does not. `manifest.toml` has been git-tracked since the repo was scaffolded
+(`48eae5c`), and gitignore rules never apply to an already-tracked path — the stanza governs
+`config.toml` and nothing else. The claim was aspirational, asserted without checking
+`git ls-files .skillmeat`. Untracking `manifest.toml` is a behavioural change outside this
+phase's remit, so it is filed as its own finding rather than folded in here.
 
 Two decisions worth recording, because both were live disagreements:
 
