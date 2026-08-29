@@ -1,0 +1,25 @@
+# SkillMeat project configuration — Research Foundry
+#
+# ADP-M3 phase R1 (artifact-deployment-program).
+#
+# `canonical_roots` declares repo-relative directories that hold CANONICAL
+# artifact sources — the tracked files a human edits. They are peers of
+# `.claude/`, never inside it: `.claude/**` holds DEPLOYED runtime copies,
+# produced by `skillmeat deploy`, which are reproducible and (from R2)
+# gitignored.
+#
+# The type subdirectory is implied, not declared: the scanner applies its own
+# container vocabulary under each declared root, so the layout is
+# `artifacts/<types>/<name>` — PLURAL container names. `rule_file` accepts only
+# the plural spelling (`rules`), so plural is the only form uniformly
+# discoverable across every artifact type.
+#
+# Constraints enforced by skillmeat/core/canonical_artifact_roots.py:
+#   - repo-relative POSIX paths only (no absolute, `~`, `..`, or backslashes)
+#   - `.claude` itself is rejected as a canonical root
+#   - case-insensitive dedupe; max 32 entries, 128 chars each
+# Invalid entries are skipped with a log line rather than raising, so a typo
+# here fails silently — verify with a reconcile run, never by exit code alone.
+
+[artifacts]
+canonical_roots = ["artifacts"]

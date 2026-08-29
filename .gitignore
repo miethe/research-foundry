@@ -86,6 +86,22 @@ runs/**/*.bak
 # The data-plane second-repo gitdir (this repo must not see it)
 /.git-data/
 
+# --- SkillMeat project config ---
+# Something outside this file ignores `.skillmeat/` (a bare `git add
+# .skillmeat/config.toml` is refused as ignored; it is not `core.excludesfile`,
+# which is unset). This stanza re-includes exactly one file: config.toml is repo
+# POLICY — it declares the canonical artifact roots — so it must be tracked.
+#
+# NOTE: this stanza does NOT govern `.skillmeat/manifest.toml`. That file has
+# been git-tracked since the repo was scaffolded (48eae5c), and gitignore rules
+# never apply to an already-tracked path. It holds per-machine identity (an
+# absolute local path, project uuid, server project id) and arguably should be
+# untracked — but doing so is a behavioural change beyond this campaign phase's
+# remit. Tracked as its own finding rather than smuggled in here.
+!.skillmeat/
+.skillmeat/*
+!.skillmeat/config.toml
+
 # --- Regenerable / runtime artifacts (kept out of the clean project repo) ---
 /.rf_state/
 /ai/
