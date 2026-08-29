@@ -86,6 +86,14 @@ runs/**/*.bak
 # The data-plane second-repo gitdir (this repo must not see it)
 /.git-data/
 
+# --- SkillMeat project config ---
+# `.skillmeat/` is ignored outside this file (global excludes). Split it:
+# config.toml is repo POLICY (declares the canonical artifact roots) and must be
+# tracked; manifest.toml is per-machine project identity and must not be.
+!.skillmeat/
+.skillmeat/*
+!.skillmeat/config.toml
+
 # --- Regenerable / runtime artifacts (kept out of the clean project repo) ---
 /.rf_state/
 /ai/
