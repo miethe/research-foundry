@@ -28,3 +28,17 @@ deployment_profile_id = "claude_code"
 platform = "claude_code"
 profile_root_dir = ".claude"
 collection_sha = "428b0da6e3358b406ee8d2c08f8aa1c6758bf3dde011810e43a6ed5490a9581a"
+
+[[deployed]]
+artifact_name = "research-foundry"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-08-30T20:26:25.455540+00:00"
+artifact_path = "skills/research-foundry"
+content_hash = "07b9a94ba11dbca53523b7db3dffb37777cf4a1d67d21d61af7da4e62be7faed"
+collection_sha = "07b9a94ba11dbca53523b7db3dffb37777cf4a1d67d21d61af7da4e62be7faed"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "skills/research-foundry/SKILL.md",
+]
