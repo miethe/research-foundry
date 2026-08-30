@@ -1,0 +1,8 @@
+schema_version: 1
+project: "research-foundry"
+
+policy:
+  mode: auto
+
+artifacts:
+  - { name: "research-foundry", type: skill, lifecycle: permanent, status: active, source: project-local, tuned: true, scope: null, version: null, note: "R1 pilot canonical/deployed split fixture — canonical at artifacts/skills/research-foundry, deployed at .claude/skills/research-foundry" }
