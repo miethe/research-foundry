@@ -134,3 +134,30 @@ and its third changed from the symlink mechanism to a copied deployment. Handed 
 `.adp-m3-r1-evidence/` on this branch (untracked scratch):
 `baseline-reconcile.json` · `r1-reconcile-receipt.json` · `r1-deploy-receipt.json` (the 404) ·
 `canary-assertion.sh`.
+
+## Resolved (2026-08-30, `campaign/rf-r1-complete`)
+
+Both blockers above are closed, per the amended plan (`campaign/rf-r1-acceptance-amend`), which
+rescoped R1's reconcile predicate to a fixture and moved the repo-wide predicate to R2
+(`node_01M19WH9FZ8A4TYVP0PSXD6V5R`):
+
+- **Deploy fixture / worktree-registration blocker** — resolved by running the deploy against
+  the *registered project root* (this repo, not the phase worktree), exactly as the blocker's own
+  recommendation stated. `skillmeat deploy research-foundry --type skill --project
+  /Users/miethe/dev/homelab/development/research-foundry --non-interactive` exits `0` and writes
+  a real `[[deployed]]` row to `.claude/.skillmeat-deployed.toml` (`377d72f`, committed directly
+  to `main` — the tracked side effect the blocker predicted, landed as its own small commit since
+  the artifact and its canonical/deployed split were already on `main` from #30).
+- **Repo-wide-predicate blocker** — not a blocker: the amend clarifies the repo-wide
+  `.gaps == [] and .drift == []` reconcile was never R1's criterion. R1's actual (scoped) predicate
+  — `skillmeat project reconcile <fixture> --manifest <fixture>/.claude/aos-artifacts.yaml --check
+  --json` against a fixture carrying only the `research-foundry` skill (canonical root, deployed
+  copy, scoped manifest, and a ledger row matching the deploy above) — passes clean: `gaps: []`,
+  `drift: []`, `gate_verdicts: [{"action": "noop", "provenance": "deployed", "detail": "in sync"}]`.
+  See `.adp-m3-r1-evidence/r1-fixture/` and `.adp-m3-r1-evidence/r1-reconcile-receipt.json` on this
+  branch. The repo-wide triage the 200-verdict `refuse_queue` actually needs is R2's job, and is
+  the subject of `docs/project_plans/campaigns/adp-m3-r2-triage.md` (analysis only — R2 itself is
+  HR-2-gated and not executed here).
+
+R1 is now complete. `node_01M0DY03YQ3BBGRQNJRTKARXJ0` remains open pending R2, per the amend's
+wave structure (R1 → R2 sequential, not R1 closing the whole work package).

@@ -1,0 +1,7 @@
+# SkillMeat project configuration — R1 scoped canonical-root fixture
+# (ADP-M3 phase R1, artifact-deployment-program). Mirrors the real
+# research-foundry repo's .skillmeat/config.toml, scoped to the pilot
+# artifact only.
+
+[artifacts]
+canonical_roots = ["artifacts"]

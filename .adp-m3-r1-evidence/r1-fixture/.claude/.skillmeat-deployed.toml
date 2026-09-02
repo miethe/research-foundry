@@ -1,0 +1,16 @@
+[[deployed]]
+artifact_name = "research-foundry"
+artifact_type = "skill"
+from_collection = "default"
+deployed_at = "2026-08-29T11:11:42.000000"
+artifact_path = "skills/research-foundry"
+content_hash = "7d6895d8c738765da48cc3a0f55264254bdcb66cc921d4ef9cf2ce508b248e30"
+local_modifications = false
+version_lineage = [
+    "7d6895d8c738765da48cc3a0f55264254bdcb66cc921d4ef9cf2ce508b248e30",
+]
+merge_base_snapshot = "7d6895d8c738765da48cc3a0f55264254bdcb66cc921d4ef9cf2ce508b248e30"
+deployment_profile_id = "claude_code"
+platform = "claude_code"
+profile_root_dir = ".claude"
+collection_sha = "7d6895d8c738765da48cc3a0f55264254bdcb66cc921d4ef9cf2ce508b248e30"

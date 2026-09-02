@@ -1,0 +1,37 @@
+{
+  "expected": [
+    {
+      "name": "research-foundry",
+      "type": "skill"
+    }
+  ],
+  "present": [
+    {
+      "name": "research-foundry",
+      "type": "skill",
+      "verified": true
+    }
+  ],
+  "gaps": [],
+  "deployed": [],
+  "needs": [],
+  "drift": [],
+  "mode": "off",
+  "exit_reason": "reconciled",
+  "gate_verdicts": [
+    {
+      "name": "research-foundry",
+      "type": "skill",
+      "row": 4,
+      "action": "noop",
+      "provenance": "deployed",
+      "kind": "plain",
+      "h_c": "7d6895d8c738765da48cc3a0f55264254bdcb66cc921d4ef9cf2ce508b248e30",
+      "h_d": "7d6895d8c738765da48cc3a0f55264254bdcb66cc921d4ef9cf2ce508b248e30",
+      "h_l": "7d6895d8c738765da48cc3a0f55264254bdcb66cc921d4ef9cf2ce508b248e30",
+      "detail": "in sync"
+    }
+  ],
+  "divergences": [],
+  "derived_unverified": []
+}
