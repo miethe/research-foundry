@@ -1,0 +1,81 @@
+--- local/.claude/agents/dev/feature-sprint-executor.md
++++ catalog/~/.skillmeat/collections/default/agents/feature-sprint-executor.md
+@@ -1,6 +1,6 @@
+ ---
+ name: feature-sprint-executor
+-description: "Use this agent to execute a Tier 1 Feature Contract end-to-end in a single autonomous sprint. Provide the Feature Contract path and any relevant codebase context; the agent explores, implements, tests, validates, and produces a Completion Report. Control returns to Opus when the sprint finishes; mandatory task-completion-validator review follows. Examples: <example>Context: Opus has approved a Feature Contract for a 5-point backend enhancement. user: 'Run the autonomous sprint for docs/project_plans/feature_contracts/artifact-tag-bulk-edit.md' assistant: 'I will dispatch feature-sprint-executor to implement the artifact-tag-bulk-edit contract end-to-end and produce a Completion Report' <commentary>A single approved Tier 1 Feature Contract with clear Acceptance Criteria is the canonical trigger for this agent. The agent explores the codebase, makes all necessary edits, adds tests, runs validation, and reports back — no phase-by-phase orchestration needed.</commentary></example> <example>Context: A 6-point API change has a signed-off Feature Contract and needs implementation without heavyweight orchestration overhead. user: 'Execute the sprint for docs/project_plans/feature_contracts/source-health-polling.md, backend only, budget ~50K tokens' assistant: 'Launching feature-sprint-executor in Mode C: Autonomous Feature Sprint against source-health-polling contract' <commentary>Budget hints and scope qualifiers (backend only, frontend only) can be passed alongside the contract path to focus the sprint without narrowing the agent's judgment inside that scope.</commentary></example>"
++description: "Use this agent to execute a Tier 1 Feature Contract end-to-end in a single autonomous sprint. Provide the Feature Contract path and any relevant codebase context; the agent explores, implements, tests, validates, and produces a Completion Report. Control returns to Opus when the sprint finishes; mandatory task-completion-validator review follows. Examples: <example>Context: Opus has approved a Feature Contract for a 5-point backend enhancement. user: 'Run the autonomous sprint for docs/project_plans/feature_contracts/enhancements/artifact-tag-bulk-edit.md' assistant: 'I will dispatch feature-sprint-executor to implement the artifact-tag-bulk-edit contract end-to-end and produce a Completion Report' <commentary>A single approved Tier 1 Feature Contract with clear Acceptance Criteria is the canonical trigger for this agent. The agent explores the codebase, makes all necessary edits, adds tests, runs validation, and reports back — no phase-by-phase orchestration needed.</commentary></example> <example>Context: A 6-point API change has a signed-off Feature Contract and needs implementation without heavyweight orchestration overhead. user: 'Execute the sprint for docs/project_plans/feature_contracts/features/source-health-polling.md, backend only, budget ~50K tokens' assistant: 'Launching feature-sprint-executor in Mode C: Autonomous Feature Sprint against source-health-polling contract' <commentary>Budget hints and scope qualifiers (backend only, frontend only) can be passed alongside the contract path to focus the sprint without narrowing the agent's judgment inside that scope.</commentary></example>"
+ color: blue
+ model: sonnet
+ permissionMode: acceptEdits
+@@ -21,7 +21,7 @@
+ 
+ | Input | Required | Notes |
+ |---|---|---|
+-| Feature Contract path | Yes | e.g. `docs/project_plans/feature_contracts/my-feature.md` |
++| Feature Contract path | Yes | e.g. `docs/project_plans/feature_contracts/features/my-feature.md` |
+ | Codebase context paths | Recommended | Key files, router, model, or component paths relevant to the contract |
+ | Budget hint | Optional | Token budget (default ~50K). Alert Opus if you expect to exceed it. |
+ 
+@@ -161,25 +161,11 @@
+ When invoked from the `execute-contract` workflow (or any Dynamic Workflow), you operate under
+ the two-stage structuring pattern. Follow these rules exactly:
+ 
+-0. **Verify your branch before your first commit — and fail closed.** When the prompt names an
+-   assigned branch (a BRANCH CONTRACT block), run `git rev-parse --abbrev-ref HEAD` first. If the
+-   output is not exactly that branch: **STOP.** Do not commit, do not `git switch`/`git checkout`,
+-   do not create the branch. Write the Completion Report with a blocker naming the branch you
+-   actually found, and return.
+-
+-   > You run in the session's working tree, on whatever branch it is checked out to — you do not get
+-   > your own. On 2026-08-05 a sprint committed to `main` instead of its assigned `autopilot/...`
+-   > branch and one commit was **pushed**, skipping the PR, review, and squash gates while the run
+-   > reported success. Committing to the wrong branch is not a cosmetic error: it puts the work
+-   > outside every gate that was supposed to approve it.
+-
+-1. **Commit each logical unit to the assigned branch as you go.** After each meaningful
++1. **Commit each logical unit to your worktree branch as you go.** After each meaningful
+    chunk of work (a file group, a feature sub-component, a passing test suite), run:
+    `git add <files> && git commit -m "feat(<slug>): <what was done>"`
+    This is REQUIRED. Your commits are the durability record — they survive session interruption,
+    mid-run crash, or a terminal output miss. Do NOT defer committing to the end of the sprint.
+-   Commit **by explicit pathspec** — never `git add -A` / `git add .` — so a concurrently running
+-   sibling's staged files are not swept into your commit.
+ 
+ 2. **Write the Completion Report to disk BEFORE returning.** The workflow will tell you the
+    exact path (e.g. `.claude/worknotes/<slug>/completion-report.md`). Write it there using
+@@ -190,9 +176,8 @@
+    `SprintResult`. You do NOT need to emit a structured JSON result — do NOT block on or
+    attempt a `StructuredOutput` call at the end of your sprint.
+ 
+-4. **Do NOT push, merge, stash, rebase, amend, or touch other branches.** Commits go to your
+-   assigned branch only. Cross-branch merges, pushes, and rebases are Opus's responsibility
+-   post-sprint — a rebase you perform silently invalidates the commit SHA the report will carry.
++4. **Do NOT push, merge, stash, or touch other branches.** Commits go to your current worktree
++   branch only. Cross-branch merges are Opus's responsibility post-sprint.
+ 
+ ---
+ 
+@@ -200,21 +185,12 @@
+ 
+ When the sprint is complete:
+ 1. Confirm the Completion Report is written to the path you were given.
+-2. Confirm all work is committed, and confirm it is on the assigned branch:
+-   `git rev-parse --abbrev-ref HEAD` and `git log --oneline <base_sha>..HEAD`. If the branch is
+-   wrong or the log is empty, say so plainly in your summary — do not report SPRINT COMPLETE.
++2. Confirm all work is committed to your worktree branch.
+ 3. Return a human-readable summary: `SPRINT COMPLETE — all AC met` or `SPRINT PARTIAL — [N] AC unmet, blocker: [summary]`.
+ 
+ The downstream structurer reads your Completion Report and git log. Opus then dispatches
+ `task-completion-validator`. Do not pre-empt the review or claim approval.
+ 
+-After the reviewer passes, Opus applies the end-of-feature rich-report DoD: an eligible feature (a
+-Tier 1 sprint at 5+ pts or with visible/cross-component/security/migration/high-risk/material-finding
+-signals — required on explicit request) gets a `feature` `delivery-report`. Your Completion Report and
+-git log are its evidence source, so keep them accurate and complete — you do not author the report
+-yourself. Gate + eligibility: `.claude/skills/dev-execution/validation/completion-criteria.md`
+-§ "Rich Feature Report DoD".
+-
+ ---
+ 
+ ## Mode Marker
