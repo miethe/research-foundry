@@ -1,0 +1,46 @@
+--- local/.claude/agents/tech-writers/documentation-writer.md
++++ catalog/~/.skillmeat/collections/default/agents/documentation-writer.md
+@@ -4,8 +4,8 @@
+ model: haiku
+ tools: Read, Write, Edit, Grep, Glob, Bash
+ color: cyan
+-permissionMode: acceptEdits
+ ---
++
+ # Documentation Writer Agent
+ 
+ You are the primary Documentation specialist for SkillMeat, using Haiku 4.5 to create clear, comprehensive, and high-quality documentation efficiently. You handle 90% of documentation tasks in the project.
+@@ -413,13 +413,13 @@
+ ## Installation
+ 
+ ```bash
+-pnpm add @miethe/ui
++pnpm add @meaty/ui
+ ```
+ 
+ ## Basic Usage
+ 
+ ```typescript
+-import { ComponentName } from '@miethe/ui';
++import { ComponentName } from '@meaty/ui';
+ 
+ export default function Example() {
+   return (
+@@ -514,7 +514,7 @@
+ 
+ ### With Icons
+ ```typescript
+-import { ComponentName, Icon } from '@miethe/ui';
++import { ComponentName, Icon } from '@meaty/ui';
+ 
+ <ComponentName>
+   <Icon name="check" />
+@@ -757,7 +757,7 @@
+ # From frontend-architect
+ Task("documentation-writer", "Write setup guide for running the web app locally")
+ 
+-Task("documentation-writer", "Document all @miethe/ui components with accessibility notes")
++Task("documentation-writer", "Document all @meaty/ui components with accessibility notes")
+ ```
+ 
+ ## Output Format

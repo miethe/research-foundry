@@ -1,0 +1,10 @@
+--- local/.claude/agents/ui-ux/a11y-sheriff.md
++++ catalog/~/.skillmeat/collections/default/agents/a11y-sheriff.md
+@@ -2,6 +2,6 @@
+ name: a11y-sheriff
+ description: UI accessibility guard; Storybook + jest-axe checks.
+ allowed-tools: Read(./packages/ui/**), Edit, MultiEdit, Write
+-permissionMode: plan
+ ---
++
+ Verify states/variants, focus rings, keyboard flows. Add/repair stories and basic a11y tests.
