@@ -23,6 +23,9 @@ deployed_at = "2026-08-10T13:28:07.664653"
 artifact_path = "skills/dev-execution"
 content_hash = "428b0da6e3358b406ee8d2c08f8aa1c6758bf3dde011810e43a6ed5490a9581a"
 local_modifications = false
+version_lineage = [
+    "428b0da6e3358b406ee8d2c08f8aa1c6758bf3dde011810e43a6ed5490a9581a",
+]
 merge_base_snapshot = "428b0da6e3358b406ee8d2c08f8aa1c6758bf3dde011810e43a6ed5490a9581a"
 deployment_profile_id = "claude_code"
 platform = "claude_code"
@@ -30,15 +33,2524 @@ profile_root_dir = ".claude"
 collection_sha = "428b0da6e3358b406ee8d2c08f8aa1c6758bf3dde011810e43a6ed5490a9581a"
 
 [[deployed]]
+artifact_name = "search-specialist"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T16:36:58.548949+00:00"
+artifact_path = "agents/search-specialist.md"
+content_hash = "8c7c2886f82c3f14e1cbf0e3f51e1e70b27f968c95fb5738a94050f6d023906c"
+local_modifications = false
+version_lineage = [
+    "8c7c2886f82c3f14e1cbf0e3f51e1e70b27f968c95fb5738a94050f6d023906c",
+]
+collection_sha = "8c7c2886f82c3f14e1cbf0e3f51e1e70b27f968c95fb5738a94050f6d023906c"
+
+[[deployed]]
+artifact_name = "Design Principles"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:14:54.926462+00:00"
+artifact_path = "skills/Design Principles"
+content_hash = "d9fa40deff00d59f60e8d1991249c9243f6f153caa1ac5ed7583e7d3b2f7b0c0"
+local_modifications = false
+version_lineage = [
+    "d9fa40deff00d59f60e8d1991249c9243f6f153caa1ac5ed7583e7d3b2f7b0c0",
+]
+collection_sha = "d9fa40deff00d59f60e8d1991249c9243f6f153caa1ac5ed7583e7d3b2f7b0c0"
+
+[[deployed]]
+artifact_name = "_meta"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:14:55.077257+00:00"
+artifact_path = "skills/_meta"
+content_hash = "26336877abd2674c2ed87e781117f2cb5bedfb145a40a6e6ccefacc04cf7563d"
+local_modifications = false
+version_lineage = [
+    "26336877abd2674c2ed87e781117f2cb5bedfb145a40a6e6ccefacc04cf7563d",
+]
+collection_sha = "26336877abd2674c2ed87e781117f2cb5bedfb145a40a6e6ccefacc04cf7563d"
+
+[[deployed]]
+artifact_name = "aesthetic"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:14:55.308432+00:00"
+artifact_path = "skills/aesthetic"
+content_hash = "9f6270cb145d935a49be5225fce99d597c360fd3895b6e4899cd3ed524d4e955"
+local_modifications = false
+version_lineage = [
+    "9f6270cb145d935a49be5225fce99d597c360fd3895b6e4899cd3ed524d4e955",
+]
+collection_sha = "9f6270cb145d935a49be5225fce99d597c360fd3895b6e4899cd3ed524d4e955"
+
+[[deployed]]
+artifact_name = "bob-shell-delegate"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:15:12.188701+00:00"
+artifact_path = "skills/bob-shell-delegate"
+content_hash = "6398f0a2136d8312f657c275e8f2a9e8bdb719f60d473a353b1a42d51f36639a"
+local_modifications = false
+version_lineage = [
+    "6398f0a2136d8312f657c275e8f2a9e8bdb719f60d473a353b1a42d51f36639a",
+]
+collection_sha = "6398f0a2136d8312f657c275e8f2a9e8bdb719f60d473a353b1a42d51f36639a"
+
+[[deployed]]
+artifact_name = "clerk-install-auth"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:15:20.817335+00:00"
+artifact_path = "skills/clerk-install-auth"
+content_hash = "541591b96eaf9360eeb2d26ea380637301a55441c35e5a32969b433cceb6b80d"
+local_modifications = false
+version_lineage = [
+    "541591b96eaf9360eeb2d26ea380637301a55441c35e5a32969b433cceb6b80d",
+]
+collection_sha = "541591b96eaf9360eeb2d26ea380637301a55441c35e5a32969b433cceb6b80d"
+
+[[deployed]]
+artifact_name = "cognitive-design"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:15:25.312359+00:00"
+artifact_path = "skills/cognitive-design"
+content_hash = "21bbc58c9847ede5c90b7e3b8c54adb8a492c841606818732ea0a8f659ce7a09"
+local_modifications = false
+version_lineage = [
+    "21bbc58c9847ede5c90b7e3b8c54adb8a492c841606818732ea0a8f659ce7a09",
+]
+collection_sha = "21bbc58c9847ede5c90b7e3b8c54adb8a492c841606818732ea0a8f659ce7a09"
+
+[[deployed]]
+artifact_name = "confidence-check"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:15:27.503474+00:00"
+artifact_path = "skills/confidence-check"
+content_hash = "b478174256b7499da66afae7c36662ea77c483c7c28d94b4bef0d562f37e50d1"
+local_modifications = false
+version_lineage = [
+    "b478174256b7499da66afae7c36662ea77c483c7c28d94b4bef0d562f37e50d1",
+]
+collection_sha = "b478174256b7499da66afae7c36662ea77c483c7c28d94b4bef0d562f37e50d1"
+
+[[deployed]]
+artifact_name = "crafting-effective-readmes"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:15:34.395421+00:00"
+artifact_path = "skills/crafting-effective-readmes"
+content_hash = "29f12598ade5efe9f71605a4517fbb1eb89b802d24dffe39dc8b59839a8b6008"
+local_modifications = false
+version_lineage = [
+    "29f12598ade5efe9f71605a4517fbb1eb89b802d24dffe39dc8b59839a8b6008",
+]
+collection_sha = "29f12598ade5efe9f71605a4517fbb1eb89b802d24dffe39dc8b59839a8b6008"
+
+[[deployed]]
+artifact_name = "design-system-patterns"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:15:39.209894+00:00"
+artifact_path = "skills/design-system-patterns"
+content_hash = "a47c690a2b7f5d7362d34cad3d42a72ea33ba28d2586697a0effc182cc5b3a08"
+local_modifications = false
+version_lineage = [
+    "a47c690a2b7f5d7362d34cad3d42a72ea33ba28d2586697a0effc182cc5b3a08",
+]
+collection_sha = "a47c690a2b7f5d7362d34cad3d42a72ea33ba28d2586697a0effc182cc5b3a08"
+
+[[deployed]]
+artifact_name = "devops"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:15:41.947265+00:00"
+artifact_path = "skills/devops"
+content_hash = "0d0ed380e3fce2ccd6547ef33b1fe76d61a4f844705ccc5011448bad6999370e"
+local_modifications = false
+version_lineage = [
+    "0d0ed380e3fce2ccd6547ef33b1fe76d61a4f844705ccc5011448bad6999370e",
+]
+collection_sha = "0d0ed380e3fce2ccd6547ef33b1fe76d61a4f844705ccc5011448bad6999370e"
+
+[[deployed]]
+artifact_name = "generating-docker-compose-files"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:16:55.662584+00:00"
+artifact_path = "skills/generating-docker-compose-files"
+content_hash = "aaad91fc1a1f979fd81bc189d72be7265f9c98e6a4829493ce234d194ce87570"
+local_modifications = false
+version_lineage = [
+    "aaad91fc1a1f979fd81bc189d72be7265f9c98e6a4829493ce234d194ce87570",
+]
+collection_sha = "aaad91fc1a1f979fd81bc189d72be7265f9c98e6a4829493ce234d194ce87570"
+
+[[deployed]]
+artifact_name = "interface-design"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:16:55.923174+00:00"
+artifact_path = "skills/interface-design"
+content_hash = "a5aea8411b42aeea880190c280e05c7eb050298f5221f5904aede2a2c95a6ca4"
+local_modifications = false
+version_lineage = [
+    "a5aea8411b42aeea880190c280e05c7eb050298f5221f5904aede2a2c95a6ca4",
+]
+collection_sha = "a5aea8411b42aeea880190c280e05c7eb050298f5221f5904aede2a2c95a6ca4"
+
+[[deployed]]
+artifact_name = "managing-readmes"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:16:56.474292+00:00"
+artifact_path = "skills/managing-readmes"
+content_hash = "55d523aa30b9eb485100931c44fc78dea0250e3303c344b378ac87d83e04eff3"
+local_modifications = false
+version_lineage = [
+    "55d523aa30b9eb485100931c44fc78dea0250e3303c344b378ac87d83e04eff3",
+]
+collection_sha = "55d523aa30b9eb485100931c44fc78dea0250e3303c344b378ac87d83e04eff3"
+
+[[deployed]]
+artifact_name = "nano-banana-pro"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:16:56.886137+00:00"
+artifact_path = "skills/nano-banana-pro"
+content_hash = "a4fd68214ea13206c8ce85304ce0af6ae5bd03d1f6906a76cefbf00614925fbf"
+local_modifications = false
+version_lineage = [
+    "a4fd68214ea13206c8ce85304ce0af6ae5bd03d1f6906a76cefbf00614925fbf",
+]
+collection_sha = "a4fd68214ea13206c8ce85304ce0af6ae5bd03d1f6906a76cefbf00614925fbf"
+
+[[deployed]]
+artifact_name = "notebooklm"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:16:57.021473+00:00"
+artifact_path = "skills/notebooklm"
+content_hash = "918d14f70eb6b1ef3e2ae7fe3589285e1ca93e5159eae7d39d9e8009d10448a5"
+local_modifications = false
+version_lineage = [
+    "918d14f70eb6b1ef3e2ae7fe3589285e1ca93e5159eae7d39d9e8009d10448a5",
+]
+collection_sha = "918d14f70eb6b1ef3e2ae7fe3589285e1ca93e5159eae7d39d9e8009d10448a5"
+
+[[deployed]]
+artifact_name = "plan-review"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:16:57.621446+00:00"
+artifact_path = "skills/plan-review"
+content_hash = "8ee07d4f301d4d18c895f4eaba4a3b5c0062688a54dac1aa43102eba9ddf3c1d"
+local_modifications = false
+version_lineage = [
+    "8ee07d4f301d4d18c895f4eaba4a3b5c0062688a54dac1aa43102eba9ddf3c1d",
+]
+collection_sha = "8ee07d4f301d4d18c895f4eaba4a3b5c0062688a54dac1aa43102eba9ddf3c1d"
+
+[[deployed]]
+artifact_name = "plan-status"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:16:57.795509+00:00"
+artifact_path = "skills/plan-status"
+content_hash = "54d511bf0cd2723f0a6aecb32aeb31bb85de682b9125bd230e003de52bd73af9"
+local_modifications = false
+version_lineage = [
+    "54d511bf0cd2723f0a6aecb32aeb31bb85de682b9125bd230e003de52bd73af9",
+]
+collection_sha = "54d511bf0cd2723f0a6aecb32aeb31bb85de682b9125bd230e003de52bd73af9"
+
+[[deployed]]
+artifact_name = "postgresql-psql"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:16:57.969430+00:00"
+artifact_path = "skills/postgresql-psql"
+content_hash = "44d7094249c5262cd33bc1386ca9901da86fc5a1c2b09de9323dbdfacf126286"
+local_modifications = false
+version_lineage = [
+    "44d7094249c5262cd33bc1386ca9901da86fc5a1c2b09de9323dbdfacf126286",
+]
+collection_sha = "44d7094249c5262cd33bc1386ca9901da86fc5a1c2b09de9323dbdfacf126286"
+
+[[deployed]]
+artifact_name = "prior-day-summary"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:16:58.466137+00:00"
+artifact_path = "skills/prior-day-summary"
+content_hash = "0eb9d27d09ca8a5ca7a749c39382c81ead919bc5abc8412b7d26d600968554f7"
+local_modifications = false
+version_lineage = [
+    "0eb9d27d09ca8a5ca7a749c39382c81ead919bc5abc8412b7d26d600968554f7",
+]
+collection_sha = "0eb9d27d09ca8a5ca7a749c39382c81ead919bc5abc8412b7d26d600968554f7"
+
+[[deployed]]
+artifact_name = "project-context-distiller"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:16:58.800849+00:00"
+artifact_path = "skills/project-context-distiller"
+content_hash = "fa0ca80858e4b383f104018f5f376a132d8aa0628a8ddf471ccb42938d6b382e"
+local_modifications = false
+version_lineage = [
+    "fa0ca80858e4b383f104018f5f376a132d8aa0628a8ddf471ccb42938d6b382e",
+]
+collection_sha = "fa0ca80858e4b383f104018f5f376a132d8aa0628a8ddf471ccb42938d6b382e"
+
+[[deployed]]
+artifact_name = "project-scaffolder"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:16:59.002963+00:00"
+artifact_path = "skills/project-scaffolder"
+content_hash = "f6e044c522b6747b89656a5be2a653b44fab9dc5a6e16b2af640fdd33601baec"
+local_modifications = false
+version_lineage = [
+    "f6e044c522b6747b89656a5be2a653b44fab9dc5a6e16b2af640fdd33601baec",
+]
+collection_sha = "f6e044c522b6747b89656a5be2a653b44fab9dc5a6e16b2af640fdd33601baec"
+
+[[deployed]]
+artifact_name = "receiving-code-review"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:16:59.146688+00:00"
+artifact_path = "skills/receiving-code-review"
+content_hash = "2d0c8c83dd378cf86e2ee7fbd864bc6cc74e5385aedc4d206baef3d23c0c0143"
+local_modifications = false
+version_lineage = [
+    "2d0c8c83dd378cf86e2ee7fbd864bc6cc74e5385aedc4d206baef3d23c0c0143",
+]
+collection_sha = "2d0c8c83dd378cf86e2ee7fbd864bc6cc74e5385aedc4d206baef3d23c0c0143"
+
+[[deployed]]
 artifact_name = "research-foundry"
 artifact_type = "skill"
 from_collection = "enterprise"
-deployed_at = "2026-08-30T20:26:25.455540+00:00"
+deployed_at = "2026-09-03T17:17:05.726676+00:00"
 artifact_path = "skills/research-foundry"
 content_hash = "07b9a94ba11dbca53523b7db3dffb37777cf4a1d67d21d61af7da4e62be7faed"
+local_modifications = false
+version_lineage = [
+    "07b9a94ba11dbca53523b7db3dffb37777cf4a1d67d21d61af7da4e62be7faed",
+]
 collection_sha = "07b9a94ba11dbca53523b7db3dffb37777cf4a1d67d21d61af7da4e62be7faed"
+
+[[deployed]]
+artifact_name = "rf-knowledge"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:06.211798+00:00"
+artifact_path = "skills/rf-knowledge"
+content_hash = "0e33f35fa7c42a684ca2e0444a6fd7790c1165c710595feb4868276aa7f64010"
+local_modifications = false
+version_lineage = [
+    "0e33f35fa7c42a684ca2e0444a6fd7790c1165c710595feb4868276aa7f64010",
+]
+collection_sha = "0e33f35fa7c42a684ca2e0444a6fd7790c1165c710595feb4868276aa7f64010"
+
+[[deployed]]
+artifact_name = "skill-builder"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:06.444798+00:00"
+artifact_path = "skills/skill-builder"
+content_hash = "d5b4238e2ee8b3da5d0b32c78a32d66c17ce67b6ec4e4a6c0eccad1d684d0fd0"
+local_modifications = false
+version_lineage = [
+    "d5b4238e2ee8b3da5d0b32c78a32d66c17ce67b6ec4e4a6c0eccad1d684d0fd0",
+]
+collection_sha = "d5b4238e2ee8b3da5d0b32c78a32d66c17ce67b6ec4e4a6c0eccad1d684d0fd0"
+
+[[deployed]]
+artifact_name = "skill-creator"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:06.674352+00:00"
+artifact_path = "skills/skill-creator"
+content_hash = "9b7215e4ea4bb2454c06c86ebfffe3ceb2c22bc3db4e0094ba0f9f9023b17093"
+local_modifications = false
+version_lineage = [
+    "9b7215e4ea4bb2454c06c86ebfffe3ceb2c22bc3db4e0094ba0f9f9023b17093",
+]
+collection_sha = "9b7215e4ea4bb2454c06c86ebfffe3ceb2c22bc3db4e0094ba0f9f9023b17093"
+
+[[deployed]]
+artifact_name = "a11y-sheriff"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:55.674286+00:00"
+artifact_path = "agents/a11y-sheriff.md"
+content_hash = "227959f8064a2227cfb81e29fdafb9ef737821945188d8d9c6b84de8fa6bd89c"
+local_modifications = false
+version_lineage = [
+    "227959f8064a2227cfb81e29fdafb9ef737821945188d8d9c6b84de8fa6bd89c",
+]
+collection_sha = "227959f8064a2227cfb81e29fdafb9ef737821945188d8d9c6b84de8fa6bd89c"
+
+[[deployed]]
+artifact_name = "agent-expert"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:55.920969+00:00"
+artifact_path = "agents/agent-expert.md"
+content_hash = "0892673f26d06a2109296ab01cd1addd796fc3a2018f0e9bb7924b84a155bfbb"
+local_modifications = false
+version_lineage = [
+    "0892673f26d06a2109296ab01cd1addd796fc3a2018f0e9bb7924b84a155bfbb",
+]
+collection_sha = "0892673f26d06a2109296ab01cd1addd796fc3a2018f0e9bb7924b84a155bfbb"
+
+[[deployed]]
+artifact_name = "ai-artifacts-engineer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:56.133649+00:00"
+artifact_path = "agents/ai-artifacts-engineer.md"
+content_hash = "40a34abc65794e1f854bbc58b5626bd69c4feee1753b73c9f62f6f759a1337ec"
+local_modifications = false
+version_lineage = [
+    "40a34abc65794e1f854bbc58b5626bd69c4feee1753b73c9f62f6f759a1337ec",
+]
+collection_sha = "40a34abc65794e1f854bbc58b5626bd69c4feee1753b73c9f62f6f759a1337ec"
+
+[[deployed]]
+artifact_name = "ai-engineer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:56.314963+00:00"
+artifact_path = "agents/ai-engineer.md"
+content_hash = "e502f6e5a4a7be06d367027eacaafdb78588e0bff2564a3c716b90c788fcf677"
+local_modifications = false
+version_lineage = [
+    "e502f6e5a4a7be06d367027eacaafdb78588e0bff2564a3c716b90c788fcf677",
+]
+collection_sha = "e502f6e5a4a7be06d367027eacaafdb78588e0bff2564a3c716b90c788fcf677"
+
+[[deployed]]
+artifact_name = "api-designer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:56.500908+00:00"
+artifact_path = "agents/api-designer.md"
+content_hash = "dc8547318598b6abecfad8d3c5709c9bb21fc38c2e5f5b4f452bb02f668df1be"
+local_modifications = false
+version_lineage = [
+    "dc8547318598b6abecfad8d3c5709c9bb21fc38c2e5f5b4f452bb02f668df1be",
+]
+collection_sha = "dc8547318598b6abecfad8d3c5709c9bb21fc38c2e5f5b4f452bb02f668df1be"
+
+[[deployed]]
+artifact_name = "api-documenter"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:56.638002+00:00"
+artifact_path = "agents/api-documenter.md"
+content_hash = "e9b20850f9df012038208bc9937ef34f913d2a2d07508ff34225b9050e047825"
+local_modifications = false
+version_lineage = [
+    "e9b20850f9df012038208bc9937ef34f913d2a2d07508ff34225b9050e047825",
+]
+collection_sha = "e9b20850f9df012038208bc9937ef34f913d2a2d07508ff34225b9050e047825"
+
+[[deployed]]
+artifact_name = "api-librarian"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:56.760516+00:00"
+artifact_path = "agents/api-librarian.md"
+content_hash = "c0d68d554edaac808643978b7acea8a212615ad820185cf7b48f5963041f4498"
+local_modifications = false
+version_lineage = [
+    "c0d68d554edaac808643978b7acea8a212615ad820185cf7b48f5963041f4498",
+]
+collection_sha = "c0d68d554edaac808643978b7acea8a212615ad820185cf7b48f5963041f4498"
+
+[[deployed]]
+artifact_name = "artifact-curator"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:56.920516+00:00"
+artifact_path = "agents/artifact-curator.md"
+content_hash = "62d5085d39c762d283c5b6e97447d33f8c393597bc7152cd856c453cc58cf484"
+local_modifications = false
+version_lineage = [
+    "62d5085d39c762d283c5b6e97447d33f8c393597bc7152cd856c453cc58cf484",
+]
+collection_sha = "62d5085d39c762d283c5b6e97447d33f8c393597bc7152cd856c453cc58cf484"
+
+[[deployed]]
+artifact_name = "backend-architect"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:57.084607+00:00"
+artifact_path = "agents/backend-architect.md"
+content_hash = "2390b3a864c935e1af411101a9f64f8006d1450f236e6812307fd02c51746c30"
+local_modifications = false
+version_lineage = [
+    "2390b3a864c935e1af411101a9f64f8006d1450f236e6812307fd02c51746c30",
+]
+collection_sha = "2390b3a864c935e1af411101a9f64f8006d1450f236e6812307fd02c51746c30"
+
+[[deployed]]
+artifact_name = "backend-typescript-architect"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:57.228352+00:00"
+artifact_path = "agents/backend-typescript-architect.md"
+content_hash = "0edc4c0f5923195ddc01552bc4622533e197d9b93a59471a0bf2baaa289727f3"
+local_modifications = false
+version_lineage = [
+    "0edc4c0f5923195ddc01552bc4622533e197d9b93a59471a0bf2baaa289727f3",
+]
+collection_sha = "0edc4c0f5923195ddc01552bc4622533e197d9b93a59471a0bf2baaa289727f3"
+
+[[deployed]]
+artifact_name = "changelog-generator"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:57.360343+00:00"
+artifact_path = "agents/changelog-generator.md"
+content_hash = "ebed5d6233cda87c37eb8da5d114430655a1ddc6cef6bbcbccc19bdc1d550b0f"
+local_modifications = false
+version_lineage = [
+    "ebed5d6233cda87c37eb8da5d114430655a1ddc6cef6bbcbccc19bdc1d550b0f",
+]
+collection_sha = "ebed5d6233cda87c37eb8da5d114430655a1ddc6cef6bbcbccc19bdc1d550b0f"
+
+[[deployed]]
+artifact_name = "code-reviewer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:57.492706+00:00"
+artifact_path = "agents/code-reviewer.md"
+content_hash = "bf2cc1bda2da30d26bf5127fa0652a861c0059e800bff17bc47a577e4a485ab3"
+local_modifications = false
+version_lineage = [
+    "bf2cc1bda2da30d26bf5127fa0652a861c0059e800bff17bc47a577e4a485ab3",
+]
+collection_sha = "bf2cc1bda2da30d26bf5127fa0652a861c0059e800bff17bc47a577e4a485ab3"
+
+[[deployed]]
+artifact_name = "codebase-explorer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:57.693905+00:00"
+artifact_path = "agents/codebase-explorer.md"
+content_hash = "bbe3ccdba8516eb79c664d2e050fb67bf4607815cf9b2698a22751f4b4ba7737"
+local_modifications = false
+version_lineage = [
+    "bbe3ccdba8516eb79c664d2e050fb67bf4607815cf9b2698a22751f4b4ba7737",
+]
+collection_sha = "bbe3ccdba8516eb79c664d2e050fb67bf4607815cf9b2698a22751f4b4ba7737"
+
+[[deployed]]
+artifact_name = "command-creator"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:57.860421+00:00"
+artifact_path = "agents/command-creator.md"
+content_hash = "1f8b04f0ee4de260a4388463578e06e1debfcc3dea3c14b466875d0af455718a"
+local_modifications = false
+version_lineage = [
+    "1f8b04f0ee4de260a4388463578e06e1debfcc3dea3c14b466875d0af455718a",
+]
+collection_sha = "1f8b04f0ee4de260a4388463578e06e1debfcc3dea3c14b466875d0af455718a"
+
+[[deployed]]
+artifact_name = "data-layer-expert"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:58.223375+00:00"
+artifact_path = "agents/data-layer-expert.md"
+content_hash = "e1c90036336d73edaab1e95b9dad23ae25865275690fc62b9d55dd3cb61000c9"
+local_modifications = false
+version_lineage = [
+    "e1c90036336d73edaab1e95b9dad23ae25865275690fc62b9d55dd3cb61000c9",
+]
+collection_sha = "e1c90036336d73edaab1e95b9dad23ae25865275690fc62b9d55dd3cb61000c9"
+
+[[deployed]]
+artifact_name = "devops-architect"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:58.357683+00:00"
+artifact_path = "agents/devops-architect.md"
+content_hash = "c341d7a6d145fcadb5c6394cf505ca83829c62fca72d01c6dd5b432f2e074b52"
+local_modifications = false
+version_lineage = [
+    "c341d7a6d145fcadb5c6394cf505ca83829c62fca72d01c6dd5b432f2e074b52",
+]
+collection_sha = "c341d7a6d145fcadb5c6394cf505ca83829c62fca72d01c6dd5b432f2e074b52"
+
+[[deployed]]
+artifact_name = "documentation-complex"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:58.610289+00:00"
+artifact_path = "agents/documentation-complex.md"
+content_hash = "5c7eb8d7ec80d885d3e2cd659fec85e340f15fc1a765f04f8313d6073462c075"
+local_modifications = false
+version_lineage = [
+    "5c7eb8d7ec80d885d3e2cd659fec85e340f15fc1a765f04f8313d6073462c075",
+]
+collection_sha = "5c7eb8d7ec80d885d3e2cd659fec85e340f15fc1a765f04f8313d6073462c075"
+
+[[deployed]]
+artifact_name = "documentation-expert"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:58.769090+00:00"
+artifact_path = "agents/documentation-expert.md"
+content_hash = "5a235ae257894746ec7fbb6cd645e3444ed9ca219b5f017e5f4e8836b01f8f01"
+local_modifications = false
+version_lineage = [
+    "5a235ae257894746ec7fbb6cd645e3444ed9ca219b5f017e5f4e8836b01f8f01",
+]
+collection_sha = "5a235ae257894746ec7fbb6cd645e3444ed9ca219b5f017e5f4e8836b01f8f01"
+
+[[deployed]]
+artifact_name = "documentation-planner"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:17:59.033009+00:00"
+artifact_path = "agents/documentation-planner.md"
+content_hash = "ee6ba8932bd7f74b8434fdb9426b9d7ee396d12c11434be525491c605ff2fb43"
+local_modifications = false
+version_lineage = [
+    "ee6ba8932bd7f74b8434fdb9426b9d7ee396d12c11434be525491c605ff2fb43",
+]
+collection_sha = "ee6ba8932bd7f74b8434fdb9426b9d7ee396d12c11434be525491c605ff2fb43"
+
+[[deployed]]
+artifact_name = "documentation-writer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:01.825876+00:00"
+artifact_path = "agents/documentation-writer.md"
+content_hash = "5d1382d3021e43c39940ddb3549a789b42bcc1807300f62a6082c8b840075891"
+local_modifications = false
+version_lineage = [
+    "5d1382d3021e43c39940ddb3549a789b42bcc1807300f62a6082c8b840075891",
+]
+collection_sha = "5d1382d3021e43c39940ddb3549a789b42bcc1807300f62a6082c8b840075891"
+
+[[deployed]]
+artifact_name = "feature-planner"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:02.130836+00:00"
+artifact_path = "agents/feature-planner.md"
+content_hash = "3916df4465ed19b52c15228a1164c1d64f7dec7cb4234d7556d7fefa4208977c"
+local_modifications = false
+version_lineage = [
+    "3916df4465ed19b52c15228a1164c1d64f7dec7cb4234d7556d7fefa4208977c",
+]
+collection_sha = "3916df4465ed19b52c15228a1164c1d64f7dec7cb4234d7556d7fefa4208977c"
+
+[[deployed]]
+artifact_name = "feature-sprint-executor"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:02.312839+00:00"
+artifact_path = "agents/feature-sprint-executor.md"
+content_hash = "781f4156dfdc5669596a38ddaf5a34a5f239c1cbe3a9d427ffc448daad7064eb"
+local_modifications = false
+version_lineage = [
+    "781f4156dfdc5669596a38ddaf5a34a5f239c1cbe3a9d427ffc448daad7064eb",
+]
+collection_sha = "781f4156dfdc5669596a38ddaf5a34a5f239c1cbe3a9d427ffc448daad7064eb"
+
+[[deployed]]
+artifact_name = "frontend-architect"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:02.495934+00:00"
+artifact_path = "agents/frontend-architect.md"
+content_hash = "c6526b5f99b8e1c836600d5867bf864b892a7db0f8bd1100a764bb37a8107bad"
+local_modifications = false
+version_lineage = [
+    "c6526b5f99b8e1c836600d5867bf864b892a7db0f8bd1100a764bb37a8107bad",
+]
+collection_sha = "c6526b5f99b8e1c836600d5867bf864b892a7db0f8bd1100a764bb37a8107bad"
+
+[[deployed]]
+artifact_name = "frontend-developer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:02.642321+00:00"
+artifact_path = "agents/frontend-developer.md"
+content_hash = "1ef58b8e9645066d3e8d068549a10c2dcac4a0ec778583a362ba3e6962a4db38"
+local_modifications = false
+version_lineage = [
+    "1ef58b8e9645066d3e8d068549a10c2dcac4a0ec778583a362ba3e6962a4db38",
+]
+collection_sha = "1ef58b8e9645066d3e8d068549a10c2dcac4a0ec778583a362ba3e6962a4db38"
+
+[[deployed]]
+artifact_name = "research-technical-spike"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:04.875961+00:00"
+artifact_path = "agents/research-technical-spike.md"
+content_hash = "8fba3309bfb9555e2d37fc00a2462e6f07b56227f8c184cef8883e4772615c8d"
+local_modifications = false
+version_lineage = [
+    "8fba3309bfb9555e2d37fc00a2462e6f07b56227f8c184cef8883e4772615c8d",
+]
+collection_sha = "8fba3309bfb9555e2d37fc00a2462e6f07b56227f8c184cef8883e4772615c8d"
+
+[[deployed]]
+artifact_name = "rf_claim_auditor"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:05.010746+00:00"
+artifact_path = "agents/rf_claim_auditor.md"
+content_hash = "4c58c7526853f41200df484c8e83834e6caf53d965ea981521c31abf123db5ed"
+local_modifications = false
+version_lineage = [
+    "4c58c7526853f41200df484c8e83834e6caf53d965ea981521c31abf123db5ed",
+]
+collection_sha = "4c58c7526853f41200df484c8e83834e6caf53d965ea981521c31abf123db5ed"
+
+[[deployed]]
+artifact_name = "rf_knowledge_lookup"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:05.436542+00:00"
+artifact_path = "agents/rf_knowledge_lookup.md"
+content_hash = "1fa3f76a7ff11dce25409197d748722f20ff69a98be03cdfd1e5ed4f7f7afe8c"
+local_modifications = false
+version_lineage = [
+    "1fa3f76a7ff11dce25409197d748722f20ff69a98be03cdfd1e5ed4f7f7afe8c",
+]
+collection_sha = "1fa3f76a7ff11dce25409197d748722f20ff69a98be03cdfd1e5ed4f7f7afe8c"
+
+[[deployed]]
+artifact_name = "task-completion-validator"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:05.786909+00:00"
+artifact_path = "agents/task-completion-validator.md"
+content_hash = "0d108706433c168888fac80d9a449da588dcdff70900a16ae4390a1d0fba9adb"
+local_modifications = false
+version_lineage = [
+    "0d108706433c168888fac80d9a449da588dcdff70900a16ae4390a1d0fba9adb",
+]
+collection_sha = "0d108706433c168888fac80d9a449da588dcdff70900a16ae4390a1d0fba9adb"
+
+[[deployed]]
+artifact_name = "task-decomposition-expert"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:05.933402+00:00"
+artifact_path = "agents/task-decomposition-expert.md"
+content_hash = "44bfe4fc6202b8e5bde689fa083c2a64e0560fbf18318f80d3fe84260eadd711"
+local_modifications = false
+version_lineage = [
+    "44bfe4fc6202b8e5bde689fa083c2a64e0560fbf18318f80d3fe84260eadd711",
+]
+collection_sha = "44bfe4fc6202b8e5bde689fa083c2a64e0560fbf18318f80d3fe84260eadd711"
+
+[[deployed]]
+artifact_name = "technical-writer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:06.093605+00:00"
+artifact_path = "agents/technical-writer.md"
+content_hash = "96c022626b3e7d10d79418a0df49ffc83bda2c232859cf7851673d4f9830cef0"
+local_modifications = false
+version_lineage = [
+    "96c022626b3e7d10d79418a0df49ffc83bda2c232859cf7851673d4f9830cef0",
+]
+collection_sha = "96c022626b3e7d10d79418a0df49ffc83bda2c232859cf7851673d4f9830cef0"
+
+[[deployed]]
+artifact_name = "analyze-codebase"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:16.570088+00:00"
+artifact_path = "commands/analyze-codebase.md"
+content_hash = "d10e25693b3e051513bb3c63450ede86b3b5380fcac860bd7788e623cd4c016e"
+local_modifications = false
+version_lineage = [
+    "d10e25693b3e051513bb3c63450ede86b3b5380fcac860bd7788e623cd4c016e",
+]
+collection_sha = "d10e25693b3e051513bb3c63450ede86b3b5380fcac860bd7788e623cd4c016e"
+
+[[deployed]]
+artifact_name = "architecture-review"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:16.707664+00:00"
+artifact_path = "commands/architecture-review.md"
+content_hash = "7dd204f83a80bedeb63878a5eedaae0f7db0c6ce4911b4d1c35156c391751875"
+local_modifications = false
+version_lineage = [
+    "7dd204f83a80bedeb63878a5eedaae0f7db0c6ce4911b4d1c35156c391751875",
+]
+collection_sha = "7dd204f83a80bedeb63878a5eedaae0f7db0c6ce4911b4d1c35156c391751875"
+
+[[deployed]]
+artifact_name = "architecture-scenario-explorer"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:16.922866+00:00"
+artifact_path = "commands/architecture-scenario-explorer.md"
+content_hash = "81d98091c117211a0f818d01603788beaf58a4e26fcb824dc5923065b1ad1893"
+local_modifications = false
+version_lineage = [
+    "81d98091c117211a0f818d01603788beaf58a4e26fcb824dc5923065b1ad1893",
+]
+collection_sha = "81d98091c117211a0f818d01603788beaf58a4e26fcb824dc5923065b1ad1893"
+
+[[deployed]]
+artifact_name = "bugfix-commit"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:17.145160+00:00"
+artifact_path = "commands/bugfix-commit.md"
+content_hash = "a2ca8c07ac1f13caf2e625a3a6e63f8a86716e6ed5f6b3b8981b03dc4406381c"
+local_modifications = false
+version_lineage = [
+    "a2ca8c07ac1f13caf2e625a3a6e63f8a86716e6ed5f6b3b8981b03dc4406381c",
+]
+collection_sha = "a2ca8c07ac1f13caf2e625a3a6e63f8a86716e6ed5f6b3b8981b03dc4406381c"
+
+[[deployed]]
+artifact_name = "check-architecture"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:17.400906+00:00"
+artifact_path = "commands/check-architecture.md"
+content_hash = "dc3cd2b393ae98eb44607cf4f9521a85c7107604fb45ca4c7c8ca93f0b13827c"
+local_modifications = false
+version_lineage = [
+    "dc3cd2b393ae98eb44607cf4f9521a85c7107604fb45ca4c7c8ca93f0b13827c",
+]
+collection_sha = "dc3cd2b393ae98eb44607cf4f9521a85c7107604fb45ca4c7c8ca93f0b13827c"
+
+[[deployed]]
+artifact_name = "check-file"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:17.545409+00:00"
+artifact_path = "commands/check-file.md"
+content_hash = "3bf110fb72ba6419fea50de0a420a4e3a43b5f761cba14f736a1783644fa2024"
+local_modifications = false
+version_lineage = [
+    "3bf110fb72ba6419fea50de0a420a4e3a43b5f761cba14f736a1783644fa2024",
+]
+collection_sha = "3bf110fb72ba6419fea50de0a420a4e3a43b5f761cba14f736a1783644fa2024"
+
+[[deployed]]
+artifact_name = "code-review"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:17.687201+00:00"
+artifact_path = "commands/code-review.md"
+content_hash = "35a0e40cc71018a791f802b87d3201d0769d32a25ccfb0148d0072fcb26335b9"
+local_modifications = false
+version_lineage = [
+    "35a0e40cc71018a791f802b87d3201d0769d32a25ccfb0148d0072fcb26335b9",
+]
+collection_sha = "35a0e40cc71018a791f802b87d3201d0769d32a25ccfb0148d0072fcb26335b9"
+
+[[deployed]]
+artifact_name = "complete-user-story"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:17.907269+00:00"
+artifact_path = "commands/complete-user-story.md"
+content_hash = "63f9f3d00793a9867d74315ae5f80d803e3174b63893aaa3e4fc6b00a72e90ad"
+local_modifications = false
+version_lineage = [
+    "63f9f3d00793a9867d74315ae5f80d803e3174b63893aaa3e4fc6b00a72e90ad",
+]
+collection_sha = "63f9f3d00793a9867d74315ae5f80d803e3174b63893aaa3e4fc6b00a72e90ad"
+
+[[deployed]]
+artifact_name = "create-adr"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:18.181807+00:00"
+artifact_path = "commands/create-adr.md"
+content_hash = "49e62f6cb9fa103ae43f03e487e6690aab7915d28276426c671ca37ca239826c"
+local_modifications = false
+version_lineage = [
+    "49e62f6cb9fa103ae43f03e487e6690aab7915d28276426c671ca37ca239826c",
+]
+collection_sha = "49e62f6cb9fa103ae43f03e487e6690aab7915d28276426c671ca37ca239826c"
+
+[[deployed]]
+artifact_name = "create-feature"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:18.348851+00:00"
+artifact_path = "commands/create-feature.md"
+content_hash = "7017565a81ee7874f8b1ef2593589175b7c0b71db3cbf5a6d968b5f03d2f672c"
+local_modifications = false
+version_lineage = [
+    "7017565a81ee7874f8b1ef2593589175b7c0b71db3cbf5a6d968b5f03d2f672c",
+]
+collection_sha = "7017565a81ee7874f8b1ef2593589175b7c0b71db3cbf5a6d968b5f03d2f672c"
+
+[[deployed]]
+artifact_name = "debug"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:18.496432+00:00"
+artifact_path = "commands/debug.md"
+content_hash = "a1b08c53e02f25bceb33cc415cdd7ef2aeca8389f24a034e4a518b5144dbde29"
+local_modifications = false
+version_lineage = [
+    "a1b08c53e02f25bceb33cc415cdd7ef2aeca8389f24a034e4a518b5144dbde29",
+]
+collection_sha = "a1b08c53e02f25bceb33cc415cdd7ef2aeca8389f24a034e4a518b5144dbde29"
+
+[[deployed]]
+artifact_name = "design"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:18.650869+00:00"
+artifact_path = "commands/design.md"
+content_hash = "6a5384f49a8bb7f8fc7241ce908a59cee5d94f5be7d3950f20a9d86e1727f5bc"
+local_modifications = false
+version_lineage = [
+    "6a5384f49a8bb7f8fc7241ce908a59cee5d94f5be7d3950f20a9d86e1727f5bc",
+]
+collection_sha = "6a5384f49a8bb7f8fc7241ce908a59cee5d94f5be7d3950f20a9d86e1727f5bc"
+
+[[deployed]]
+artifact_name = "execute-contract"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:19.257172+00:00"
+artifact_path = "commands/execute-contract.js"
+content_hash = "977fab96c26b0850f788de88079b8b242a0f9896287b8740ee96957633a9d5f1"
+local_modifications = false
+version_lineage = [
+    "977fab96c26b0850f788de88079b8b242a0f9896287b8740ee96957633a9d5f1",
+]
+collection_sha = "977fab96c26b0850f788de88079b8b242a0f9896287b8740ee96957633a9d5f1"
+
+[[deployed]]
+artifact_name = "execute-phase"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:19.416631+00:00"
+artifact_path = "commands/execute-phase.md"
+content_hash = "25b9aef7b071de5760f4e8987f0c6f41853606ecdae79c0ddd464e522331b473"
+local_modifications = false
+version_lineage = [
+    "25b9aef7b071de5760f4e8987f0c6f41853606ecdae79c0ddd464e522331b473",
+]
+collection_sha = "25b9aef7b071de5760f4e8987f0c6f41853606ecdae79c0ddd464e522331b473"
+
+[[deployed]]
+artifact_name = "execute-plan"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:20.158990+00:00"
+artifact_path = "commands/execute-plan.js"
+content_hash = "27787d3900f2e11b7675c1062dfb8763d87c92c7be10e2d7afde1051db55dd5b"
+local_modifications = false
+version_lineage = [
+    "27787d3900f2e11b7675c1062dfb8763d87c92c7be10e2d7afde1051db55dd5b",
+]
+collection_sha = "27787d3900f2e11b7675c1062dfb8763d87c92c7be10e2d7afde1051db55dd5b"
+
+[[deployed]]
+artifact_name = "explore"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:20.445636+00:00"
+artifact_path = "commands/explore.js"
+content_hash = "97349e015eae9fff1fb592a1ce8d8c017f123d88f51bfb5f773e38615805591c"
+local_modifications = false
+version_lineage = [
+    "97349e015eae9fff1fb592a1ce8d8c017f123d88f51bfb5f773e38615805591c",
+]
+collection_sha = "97349e015eae9fff1fb592a1ce8d8c017f123d88f51bfb5f773e38615805591c"
+
+[[deployed]]
+artifact_name = "fix-arch-violation"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:20.578721+00:00"
+artifact_path = "commands/fix-arch-violation.md"
+content_hash = "1e281c18cff392f83a25f7edc047ba756863f0323ca9031838b12e587ea68ba2"
+local_modifications = false
+version_lineage = [
+    "1e281c18cff392f83a25f7edc047ba756863f0323ca9031838b12e587ea68ba2",
+]
+collection_sha = "1e281c18cff392f83a25f7edc047ba756863f0323ca9031838b12e587ea68ba2"
+
+[[deployed]]
+artifact_name = "fix-gh-issue"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:20.729756+00:00"
+artifact_path = "commands/fix-gh-issue.md"
+content_hash = "69bf39f91823f64412b95bb2de32578a6b2595f9b8f23ee4e6b1260e8622a1d0"
+local_modifications = false
+version_lineage = [
+    "69bf39f91823f64412b95bb2de32578a6b2595f9b8f23ee4e6b1260e8622a1d0",
+]
+collection_sha = "69bf39f91823f64412b95bb2de32578a6b2595f9b8f23ee4e6b1260e8622a1d0"
+
+[[deployed]]
+artifact_name = "freeze-api-version"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:22.744834+00:00"
+artifact_path = "commands/freeze-api-version.md"
+content_hash = "407014e3500fe2edc42cadd72f8ede04c480761f17340d146f93cf61f86a288d"
+local_modifications = false
+version_lineage = [
+    "407014e3500fe2edc42cadd72f8ede04c480761f17340d146f93cf61f86a288d",
+]
+collection_sha = "407014e3500fe2edc42cadd72f8ede04c480761f17340d146f93cf61f86a288d"
+
+[[deployed]]
+artifact_name = "generate-api-docs"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:23.011177+00:00"
+artifact_path = "commands/generate-api-docs.md"
+content_hash = "a0008f8893fa5c09e8817c9d78d1859c067105368f66f1ec0b063c83c367c2fb"
+local_modifications = false
+version_lineage = [
+    "a0008f8893fa5c09e8817c9d78d1859c067105368f66f1ec0b063c83c367c2fb",
+]
+collection_sha = "a0008f8893fa5c09e8817c9d78d1859c067105368f66f1ec0b063c83c367c2fb"
+
+[[deployed]]
+artifact_name = "github-create-issue"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:23.315569+00:00"
+artifact_path = "commands/github-create-issue.md"
+content_hash = "5c6538386d1642b40116344cb3765d6345c4091602a3101c52f241f48eedeca4"
+local_modifications = false
+version_lineage = [
+    "5c6538386d1642b40116344cb3765d6345c4091602a3101c52f241f48eedeca4",
+]
+collection_sha = "5c6538386d1642b40116344cb3765d6345c4091602a3101c52f241f48eedeca4"
+
+[[deployed]]
+artifact_name = "implement-story"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:23.508512+00:00"
+artifact_path = "commands/implement-story.md"
+content_hash = "c57fabc4dc2b942cfe3596086343ee35b1b34c4f6a01b78c4424426902771599"
+local_modifications = false
+version_lineage = [
+    "c57fabc4dc2b942cfe3596086343ee35b1b34c4f6a01b78c4424426902771599",
+]
+collection_sha = "c57fabc4dc2b942cfe3596086343ee35b1b34c4f6a01b78c4424426902771599"
+
+[[deployed]]
+artifact_name = "spike"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:25.833852+00:00"
+artifact_path = "commands/spike.js"
+content_hash = "7e3c7d3dc1738500b1d35dabb062980613a26b56e23b71345ac9de367675ec01"
+local_modifications = false
+version_lineage = [
+    "7e3c7d3dc1738500b1d35dabb062980613a26b56e23b71345ac9de367675ec01",
+]
+collection_sha = "7e3c7d3dc1738500b1d35dabb062980613a26b56e23b71345ac9de367675ec01"
+
+[[deployed]]
+artifact_name = "validate-chunking"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:27.888610+00:00"
+artifact_path = "commands/validate-chunking.md"
+content_hash = "9e7740b4d1e6e3d26d4584f44d0ae2712f1dec761f51320b8109dd6a010c1545"
+local_modifications = false
+version_lineage = [
+    "9e7740b4d1e6e3d26d4584f44d0ae2712f1dec761f51320b8109dd6a010c1545",
+]
+collection_sha = "9e7740b4d1e6e3d26d4584f44d0ae2712f1dec761f51320b8109dd6a010c1545"
+
+[[deployed]]
+artifact_name = "debugging"
+artifact_type = "rule_file"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:33.980136+00:00"
+artifact_path = "rules/debugging.md"
+content_hash = "fba4bf1e482b72d71f096aac8498e5efedbb5ccc75eaee26a85c31fcd4c9e5ad"
+local_modifications = false
+version_lineage = [
+    "fba4bf1e482b72d71f096aac8498e5efedbb5ccc75eaee26a85c31fcd4c9e5ad",
+]
+collection_sha = "fba4bf1e482b72d71f096aac8498e5efedbb5ccc75eaee26a85c31fcd4c9e5ad"
+
+[[deployed]]
+artifact_name = "lsp-diagnostics"
+artifact_type = "rule_file"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:34.161031+00:00"
+artifact_path = "rules/lsp-diagnostics.md"
+content_hash = "f2edd1c0cc96acae72c141fe2866e62d44719c40baa95d332c48819b65402e1f"
+local_modifications = false
+version_lineage = [
+    "f2edd1c0cc96acae72c141fe2866e62d44719c40baa95d332c48819b65402e1f",
+]
+collection_sha = "f2edd1c0cc96acae72c141fe2866e62d44719c40baa95d332c48819b65402e1f"
+
+[[deployed]]
+artifact_name = "progress-cli-only"
+artifact_type = "rule_file"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:34.282906+00:00"
+artifact_path = "rules/progress-cli-only.md"
+content_hash = "a4a0b37afbae4f3b15eb612edc932192442fe248eab8d42dbb257354b9fd76d3"
+local_modifications = false
+version_lineage = [
+    "a4a0b37afbae4f3b15eb612edc932192442fe248eab8d42dbb257354b9fd76d3",
+]
+collection_sha = "a4a0b37afbae4f3b15eb612edc932192442fe248eab8d42dbb257354b9fd76d3"
+
+[[deployed]]
+artifact_name = "check-context-staleness"
+artifact_type = "hook"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:36.173173+00:00"
+artifact_path = "hooks/check-context-staleness.sh"
+content_hash = "cbaf97c743a92c5798ad6cbc1c45b7775a333b449ebfa86cb9631aec5d25365a"
+local_modifications = false
+version_lineage = [
+    "cbaf97c743a92c5798ad6cbc1c45b7775a333b449ebfa86cb9631aec5d25365a",
+]
+collection_sha = "cbaf97c743a92c5798ad6cbc1c45b7775a333b449ebfa86cb9631aec5d25365a"
+
+[[deployed]]
+artifact_name = "check-style"
+artifact_type = "hook"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:36.304411+00:00"
+artifact_path = "hooks/check-style.sh"
+content_hash = "7e050f012bccf969423079330c0faf250022f7ee543fab3d9041a323e5c19c43"
+local_modifications = false
+version_lineage = [
+    "7e050f012bccf969423079330c0faf250022f7ee543fab3d9041a323e5c19c43",
+]
+collection_sha = "7e050f012bccf969423079330c0faf250022f7ee543fab3d9041a323e5c19c43"
+
+[[deployed]]
+artifact_name = "pre-compact-state"
+artifact_type = "hook"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:36.459661+00:00"
+artifact_path = "hooks/pre-compact-state.sh"
+content_hash = "77d9ca613e8472df3f039e7b78049e9d467aac10d1692a7cbfb472e68130f215"
+local_modifications = false
+version_lineage = [
+    "77d9ca613e8472df3f039e7b78049e9d467aac10d1692a7cbfb472e68130f215",
+]
+hook_settings_registered = false
+collection_sha = "77d9ca613e8472df3f039e7b78049e9d467aac10d1692a7cbfb472e68130f215"
+
+[[deployed]]
+artifact_name = "run-py-tests"
+artifact_type = "hook"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:36.603927+00:00"
+artifact_path = "hooks/run-py-tests.sh"
+content_hash = "0079b2d1197980c3f55d8bd1b8581d641c18832ab5730cb67c3a89643961559e"
+collection_sha = "0079b2d1197980c3f55d8bd1b8581d641c18832ab5730cb67c3a89643961559e"
 local_modifications = false
 enterprise_version = "1.0.0"
 enterprise_files = [
-    "skills/research-foundry/SKILL.md",
+    "hooks/run-py-tests.sh",
+]
+
+[[deployed]]
+artifact_name = "run-web-tests"
+artifact_type = "hook"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:18:36.836209+00:00"
+artifact_path = "hooks/run-web-tests.sh"
+content_hash = "46fa29f8ba87ea409e32ed7bcac4f70273083303d09de30b3ebdb2facdea866e"
+collection_sha = "46fa29f8ba87ea409e32ed7bcac4f70273083303d09de30b3ebdb2facdea866e"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "hooks/run-web-tests.sh",
+]
+
+[[deployed]]
+artifact_name = "gemini-orchestrator"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:19.045436+00:00"
+artifact_path = "agents/gemini-orchestrator.md"
+content_hash = "5494c84b2ec5d9ed5697973bc0ee8273e12d74f1d3915001c48e1562842342f3"
+collection_sha = "5494c84b2ec5d9ed5697973bc0ee8273e12d74f1d3915001c48e1562842342f3"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/gemini-orchestrator.md",
+]
+
+[[deployed]]
+artifact_name = "implementation-planner"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:19.222362+00:00"
+artifact_path = "agents/implementation-planner.md"
+content_hash = "d5c37f693f5c2bb20047157dd280c3af65e457db5144f6c13285240a633673da"
+collection_sha = "d5c37f693f5c2bb20047157dd280c3af65e457db5144f6c13285240a633673da"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/implementation-planner.md",
+]
+
+[[deployed]]
+artifact_name = "karen"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:19.414999+00:00"
+artifact_path = "agents/karen.md"
+content_hash = "20e14cecbfc6d8c6a72eacc4aeb86871a7be62f765aaa34632d35033cc67aa01"
+collection_sha = "20e14cecbfc6d8c6a72eacc4aeb86871a7be62f765aaa34632d35033cc67aa01"
+local_modifications = false
+enterprise_version = "cas-2616ad165436"
+enterprise_files = [
+    "agents/karen.md",
+]
+
+[[deployed]]
+artifact_name = "lead-architect"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:19.685489+00:00"
+artifact_path = "agents/lead-architect.md"
+content_hash = "7a7996bc067a528ce136cea7ae530d62438dce408e066e2159049446f2beab9f"
+collection_sha = "7a7996bc067a528ce136cea7ae530d62438dce408e066e2159049446f2beab9f"
+local_modifications = false
+enterprise_version = "cas-e40f06f87885"
+enterprise_files = [
+    "agents/lead-architect.md",
+]
+
+[[deployed]]
+artifact_name = "lead-pm"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:19.937256+00:00"
+artifact_path = "agents/lead-pm.md"
+content_hash = "7bf7a5de4917d0bb9152b312b58d038ad7034b00c0143f3ddd0967f9e9ca5369"
+collection_sha = "7bf7a5de4917d0bb9152b312b58d038ad7034b00c0143f3ddd0967f9e9ca5369"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/lead-pm.md",
+]
+
+[[deployed]]
+artifact_name = "mobile-app-builder"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:20.104948+00:00"
+artifact_path = "agents/mobile-app-builder.md"
+content_hash = "6d91adba3d8676835876e3aca88abe008bccd4493513fba037fe91b0be4820ec"
+collection_sha = "6d91adba3d8676835876e3aca88abe008bccd4493513fba037fe91b0be4820ec"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/mobile-app-builder.md",
+]
+
+[[deployed]]
+artifact_name = "nextjs-architecture-expert"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:20.289542+00:00"
+artifact_path = "agents/nextjs-architecture-expert.md"
+content_hash = "fce9c10883f7362e388c940084e1ac537507e5788cb9c92d39b76e0df1e01c6c"
+collection_sha = "fce9c10883f7362e388c940084e1ac537507e5788cb9c92d39b76e0df1e01c6c"
+local_modifications = false
+enterprise_version = "cas-2b5ff33a616d"
+enterprise_files = [
+    "agents/nextjs-architecture-expert.md",
+]
+
+[[deployed]]
+artifact_name = "openapi-expert"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:20.444940+00:00"
+artifact_path = "agents/openapi-expert.md"
+content_hash = "41b96f8f7a8662569e837a9b31f27281a6794403079cfa434bb2af99b3856a6c"
+collection_sha = "41b96f8f7a8662569e837a9b31f27281a6794403079cfa434bb2af99b3856a6c"
+local_modifications = false
+enterprise_version = "cas-f3ff006de8dd"
+enterprise_files = [
+    "agents/openapi-expert.md",
+]
+
+[[deployed]]
+artifact_name = "phase-owner"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:20.629836+00:00"
+artifact_path = "agents/phase-owner.md"
+content_hash = "6a4798d7233b6a8e9c8cae024008586a5074fd7930530c8267335496b756d939"
+collection_sha = "6a4798d7233b6a8e9c8cae024008586a5074fd7930530c8267335496b756d939"
+local_modifications = false
+enterprise_version = "cas-fc648b654557"
+enterprise_files = [
+    "agents/phase-owner.md",
+]
+
+[[deployed]]
+artifact_name = "prd-writer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:51.360619+00:00"
+artifact_path = "agents/prd-writer.md"
+content_hash = "f6def7effb3187bdde9e8fb90d1c457c091f9742e13e17fc963ab9f102f90add"
+collection_sha = "f6def7effb3187bdde9e8fb90d1c457c091f9742e13e17fc963ab9f102f90add"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/prd-writer.md",
+]
+
+[[deployed]]
+artifact_name = "project-analyzer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:51.534765+00:00"
+artifact_path = "agents/project-analyzer.md"
+content_hash = "9dd200fb3e9d52f4fc0145fbcb0b27e329e76742634cd91e8427576e96b957d7"
+collection_sha = "9dd200fb3e9d52f4fc0145fbcb0b27e329e76742634cd91e8427576e96b957d7"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/project-analyzer.md",
+]
+
+[[deployed]]
+artifact_name = "prompt-engineer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:51.728222+00:00"
+artifact_path = "agents/prompt-engineer.md"
+content_hash = "d0053fa33400135126bf0de49a14ce888ca31acbad62c4c97295207bd836e611"
+collection_sha = "d0053fa33400135126bf0de49a14ce888ca31acbad62c4c97295207bd836e611"
+local_modifications = false
+enterprise_version = "cas-c03a2d096452"
+enterprise_files = [
+    "agents/prompt-engineer.md",
+]
+
+[[deployed]]
+artifact_name = "python-backend-engineer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:51.911717+00:00"
+artifact_path = "agents/python-backend-engineer.md"
+content_hash = "6d45e8494df92e0675f3b15b9203453c20210c9da24d4ec2bc0f8a8b8e764f85"
+collection_sha = "6d45e8494df92e0675f3b15b9203453c20210c9da24d4ec2bc0f8a8b8e764f85"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/python-backend-engineer.md",
+]
+
+[[deployed]]
+artifact_name = "python-pro"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:52.120980+00:00"
+artifact_path = "agents/python-pro.md"
+content_hash = "d1483555b1b7f00b12ca06c82fc76dfb1402bcf4c13dbb9cc4d85f1678f2153d"
+collection_sha = "d1483555b1b7f00b12ca06c82fc76dfb1402bcf4c13dbb9cc4d85f1678f2153d"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/python-pro.md",
+]
+
+[[deployed]]
+artifact_name = "react-performance-optimizer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:52.367053+00:00"
+artifact_path = "agents/react-performance-optimizer.md"
+content_hash = "1b9e4704d707e3bba97d3fcf318566b394dcb44e9f752a55d192f039ef339675"
+collection_sha = "1b9e4704d707e3bba97d3fcf318566b394dcb44e9f752a55d192f039ef339675"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/react-performance-optimizer.md",
+]
+
+[[deployed]]
+artifact_name = "refactoring-expert"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:52.515556+00:00"
+artifact_path = "agents/refactoring-expert.md"
+content_hash = "074328d682e6481ad6245da5c892637d132710d7ffc545ccb83a869822ea3d0c"
+collection_sha = "074328d682e6481ad6245da5c892637d132710d7ffc545ccb83a869822ea3d0c"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/refactoring-expert.md",
+]
+
+[[deployed]]
+artifact_name = "rf_deep_reader"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:52.650020+00:00"
+artifact_path = "agents/rf_deep_reader.md"
+content_hash = "a5cf85989bfa44abab59a16e3c04288d21fea4d2f27c7546aaf97e49c544a5e3"
+collection_sha = "a5cf85989bfa44abab59a16e3c04288d21fea4d2f27c7546aaf97e49c544a5e3"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/rf_deep_reader.md",
+]
+
+[[deployed]]
+artifact_name = "rf_discovery_lead"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:52.822599+00:00"
+artifact_path = "agents/rf_discovery_lead.md"
+content_hash = "b96cd764c4692166a9c2fd2df2e7401eb2ee3c4b108c97b0876c28100c83720f"
+collection_sha = "b96cd764c4692166a9c2fd2df2e7401eb2ee3c4b108c97b0876c28100c83720f"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/rf_discovery_lead.md",
+]
+
+[[deployed]]
+artifact_name = "rf_domain_researcher"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:26:52.959478+00:00"
+artifact_path = "agents/rf_domain_researcher.md"
+content_hash = "8f0a5756883aeaefb7934c012546b434f6c9b0a102695ea4747c5b67b4391d09"
+collection_sha = "8f0a5756883aeaefb7934c012546b434f6c9b0a102695ea4747c5b67b4391d09"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/rf_domain_researcher.md",
+]
+
+[[deployed]]
+artifact_name = "rf_governance_officer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:23.168632+00:00"
+artifact_path = "agents/rf_governance_officer.md"
+content_hash = "d0e1fd3b6a0b4fbceb89658e53b6fac0379ca90477dbcf135d83789d09c0ca57"
+collection_sha = "d0e1fd3b6a0b4fbceb89658e53b6fac0379ca90477dbcf135d83789d09c0ca57"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/rf_governance_officer.md",
+]
+
+[[deployed]]
+artifact_name = "rf_intake_curator"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:23.313489+00:00"
+artifact_path = "agents/rf_intake_curator.md"
+content_hash = "6521742caddc2c0924ac4f0c99942753e305e19e6fb5e627ed7bdc8bfafea336"
+collection_sha = "6521742caddc2c0924ac4f0c99942753e305e19e6fb5e627ed7bdc8bfafea336"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/rf_intake_curator.md",
+]
+
+[[deployed]]
+artifact_name = "rf_source_carder"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:23.443515+00:00"
+artifact_path = "agents/rf_source_carder.md"
+content_hash = "7ce1bf1b742cfd9d03268392bd985993704297d3b26f87fb38d64f3c37fbcc1d"
+collection_sha = "7ce1bf1b742cfd9d03268392bd985993704297d3b26f87fb38d64f3c37fbcc1d"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/rf_source_carder.md",
+]
+
+[[deployed]]
+artifact_name = "rf_source_scout"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:23.643746+00:00"
+artifact_path = "agents/rf_source_scout.md"
+content_hash = "328091a1cbffa65e23c1b51468e8398bf8922fbdfb1e2049781508a35313b04e"
+collection_sha = "328091a1cbffa65e23c1b51468e8398bf8922fbdfb1e2049781508a35313b04e"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/rf_source_scout.md",
+]
+
+[[deployed]]
+artifact_name = "rf_synthesizer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:23.818629+00:00"
+artifact_path = "agents/rf_synthesizer.md"
+content_hash = "3f3800b7f3966d787abf114daf3a3657df7216da615ccbdc7ec91bb611abeab0"
+collection_sha = "3f3800b7f3966d787abf114daf3a3657df7216da615ccbdc7ec91bb611abeab0"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/rf_synthesizer.md",
+]
+
+[[deployed]]
+artifact_name = "senior-code-reviewer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:23.971325+00:00"
+artifact_path = "agents/senior-code-reviewer.md"
+content_hash = "bf282141b350f3856d1ac8f01669e15fa44835ab8815ca5f851373c658a39b17"
+collection_sha = "bf282141b350f3856d1ac8f01669e15fa44835ab8815ca5f851373c658a39b17"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/senior-code-reviewer.md",
+]
+
+[[deployed]]
+artifact_name = "spike-writer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:24.138045+00:00"
+artifact_path = "agents/spike-writer.md"
+content_hash = "95f90bf2b54bffe0a235134bda59aa2b3ee2c43fd0df28ccceb4e467643c6251"
+collection_sha = "95f90bf2b54bffe0a235134bda59aa2b3ee2c43fd0df28ccceb4e467643c6251"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/spike-writer.md",
+]
+
+[[deployed]]
+artifact_name = "symbols-engineer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:24.346524+00:00"
+artifact_path = "agents/symbols-engineer.md"
+content_hash = "243656ec2c5cd8c3cda5af393384c7ebacf3f45db97e34746309018ced560305"
+collection_sha = "243656ec2c5cd8c3cda5af393384c7ebacf3f45db97e34746309018ced560305"
+local_modifications = false
+enterprise_version = "cas-f44a1df69bef"
+enterprise_files = [
+    "agents/symbols-engineer.md",
+]
+
+[[deployed]]
+artifact_name = "system-architect"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:24.488596+00:00"
+artifact_path = "agents/system-architect.md"
+content_hash = "d0b643737e2f5f2100449dc1545da5fb38f506e7804ae8b70bceb6fced79659e"
+collection_sha = "d0b643737e2f5f2100449dc1545da5fb38f506e7804ae8b70bceb6fced79659e"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/system-architect.md",
+]
+
+[[deployed]]
+artifact_name = "telemetry-auditor"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:24.620983+00:00"
+artifact_path = "agents/telemetry-auditor.md"
+content_hash = "80e02bf8cef9b98c4faf903eecee12697248dd5099dfa027316bead180715bad"
+collection_sha = "80e02bf8cef9b98c4faf903eecee12697248dd5099dfa027316bead180715bad"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/telemetry-auditor.md",
+]
+
+[[deployed]]
+artifact_name = "ui-designer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:55.498728+00:00"
+artifact_path = "agents/ui-designer.md"
+content_hash = "45bb53db1f7aca47e6684b3f3c2f933b9ce1b8e99c92c9aef0d9b922792d66f7"
+collection_sha = "45bb53db1f7aca47e6684b3f3c2f933b9ce1b8e99c92c9aef0d9b922792d66f7"
+local_modifications = false
+enterprise_version = "cas-94dd3db673b8"
+enterprise_files = [
+    "agents/ui-designer.md",
+]
+
+[[deployed]]
+artifact_name = "ui-engineer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:55.647470+00:00"
+artifact_path = "agents/ui-engineer.md"
+content_hash = "504c5a08a6d39ca39514f438a77c5bd5e156c72753e463e8154c1ef64691a7bd"
+collection_sha = "504c5a08a6d39ca39514f438a77c5bd5e156c72753e463e8154c1ef64691a7bd"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/ui-engineer.md",
+]
+
+[[deployed]]
+artifact_name = "ui-engineer-enhanced"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:55.838409+00:00"
+artifact_path = "agents/ui-engineer-enhanced.md"
+content_hash = "addeebf8281a947e9045e7dadd8c0b47eccffcfef5fdba3017f809ff3746acce"
+collection_sha = "addeebf8281a947e9045e7dadd8c0b47eccffcfef5fdba3017f809ff3746acce"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/ui-engineer-enhanced.md",
+]
+
+[[deployed]]
+artifact_name = "ultrathink-debugger"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:56.018822+00:00"
+artifact_path = "agents/ultrathink-debugger.md"
+content_hash = "2d034e122cb743d5cb990fde584cecb8b6f74672a73ea5037ce7f8e70de172a0"
+collection_sha = "2d034e122cb743d5cb990fde584cecb8b6f74672a73ea5037ce7f8e70de172a0"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/ultrathink-debugger.md",
+]
+
+[[deployed]]
+artifact_name = "url-context-validator"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:56.176834+00:00"
+artifact_path = "agents/url-context-validator.md"
+content_hash = "185a7e21876f45583f0441cf895adc6a520f83d65c8602f6a6136e8316505c13"
+collection_sha = "185a7e21876f45583f0441cf895adc6a520f83d65c8602f6a6136e8316505c13"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/url-context-validator.md",
+]
+
+[[deployed]]
+artifact_name = "url-link-extractor"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:56.331685+00:00"
+artifact_path = "agents/url-link-extractor.md"
+content_hash = "462bf5b31a014fde69e654f3e9518d2f6d3d2cea35494047711e3d86e71e696c"
+collection_sha = "462bf5b31a014fde69e654f3e9518d2f6d3d2cea35494047711e3d86e71e696c"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/url-link-extractor.md",
+]
+
+[[deployed]]
+artifact_name = "ux-researcher"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:56.513312+00:00"
+artifact_path = "agents/ux-researcher.md"
+content_hash = "67d7797b2c4fdc7a24c0f794cf8ee093000f706bfdca9e26b3965deffe89389a"
+collection_sha = "67d7797b2c4fdc7a24c0f794cf8ee093000f706bfdca9e26b3965deffe89389a"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/ux-researcher.md",
+]
+
+[[deployed]]
+artifact_name = "web-accessibility-checker"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:27:56.658910+00:00"
+artifact_path = "agents/web-accessibility-checker.md"
+content_hash = "49712b3bd06007222fa8cf57b3dd63bc6b8b64e25319e92ba674812826bfac28"
+collection_sha = "49712b3bd06007222fa8cf57b3dd63bc6b8b64e25319e92ba674812826bfac28"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/web-accessibility-checker.md",
+]
+
+[[deployed]]
+artifact_name = "linear-create-task"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:28:32.018251+00:00"
+artifact_path = "commands/linear-create-task.md"
+content_hash = "08cd47ace8786311a0f1acf58964bd043fdfb840b5678b060ab83dc9785f34ea"
+collection_sha = "08cd47ace8786311a0f1acf58964bd043fdfb840b5678b060ab83dc9785f34ea"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/linear-create-task.md",
+]
+
+[[deployed]]
+artifact_name = "load-story"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:28:32.164819+00:00"
+artifact_path = "commands/load-story.md"
+content_hash = "d3179c740939436028335dc7c28e709b65bc75d2d418fc7a957a956303a4e903"
+collection_sha = "d3179c740939436028335dc7c28e709b65bc75d2d418fc7a957a956303a4e903"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/load-story.md",
+]
+
+[[deployed]]
+artifact_name = "load-symbols"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:28:32.340915+00:00"
+artifact_path = "commands/load-symbols.md"
+content_hash = "ac49755ad0b5823eee6401f2186c1edbf7fc697d20f6fc8904ee2d7e9b2f6737"
+collection_sha = "ac49755ad0b5823eee6401f2186c1edbf7fc697d20f6fc8904ee2d7e9b2f6737"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/load-symbols.md",
+]
+
+[[deployed]]
+artifact_name = "lyra"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:28:32.533671+00:00"
+artifact_path = "commands/lyra.md"
+content_hash = "cf15b8d6fb5ea3a436f3a1fc45419049c9e9e96e76cef59a322fbd82f3b55603"
+collection_sha = "cf15b8d6fb5ea3a436f3a1fc45419049c9e9e96e76cef59a322fbd82f3b55603"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/lyra.md",
+]
+
+[[deployed]]
+artifact_name = "mc"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:28:32.691440+00:00"
+artifact_path = "commands/mc.md"
+content_hash = "65514080cb3ac6ba8acf9102ba8d3e6fa4f9fdb18056c40b476acb0791e816cd"
+collection_sha = "65514080cb3ac6ba8acf9102ba8d3e6fa4f9fdb18056c40b476acb0791e816cd"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/mc.md",
+]
+
+[[deployed]]
+artifact_name = "memory-spring-cleaning"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:28:32.835904+00:00"
+artifact_path = "commands/memory-spring-cleaning.md"
+content_hash = "8ca9a05d7e417771cf3f7969e4fb77c5171e100bfb9da371d5fde64364d497a8"
+collection_sha = "8ca9a05d7e417771cf3f7969e4fb77c5171e100bfb9da371d5fde64364d497a8"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/memory-spring-cleaning.md",
+]
+
+[[deployed]]
+artifact_name = "new-feature"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:28:32.980400+00:00"
+artifact_path = "commands/new-feature.md"
+content_hash = "97cff1b38200bb0f55747bf4232b9a5dd0629c8697085310f9997e2a7253efe1"
+collection_sha = "97cff1b38200bb0f55747bf4232b9a5dd0629c8697085310f9997e2a7253efe1"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/new-feature.md",
+]
+
+[[deployed]]
+artifact_name = "plan-feature"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:28:33.174298+00:00"
+artifact_path = "commands/plan-feature.md"
+content_hash = "79452b75c7ee2d596bb747489e367fd24a3d3b410eb8e174dbafdd339ea49dec"
+collection_sha = "79452b75c7ee2d596bb747489e367fd24a3d3b410eb8e174dbafdd339ea49dec"
+local_modifications = false
+enterprise_version = "cas-c566b01ca007"
+enterprise_files = [
+    "commands/plan-feature.md",
+]
+
+[[deployed]]
+artifact_name = "plan-from-gh"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:28:33.356271+00:00"
+artifact_path = "commands/plan-from-gh.md"
+content_hash = "d2c9a948f0288d7afaace6d6e25ab7497e1c0d4055aa3cbc30ac77af7eec1bc4"
+collection_sha = "d2c9a948f0288d7afaace6d6e25ab7497e1c0d4055aa3cbc30ac77af7eec1bc4"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/plan-from-gh.md",
+]
+
+[[deployed]]
+artifact_name = "plan-story"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:02.006418+00:00"
+artifact_path = "commands/plan-story.md"
+content_hash = "5297f650d5b2ea6ffd8d9c34a6531c63b20acda043dcd13526b3fd32a7213803"
+collection_sha = "5297f650d5b2ea6ffd8d9c34a6531c63b20acda043dcd13526b3fd32a7213803"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/plan-story.md",
+]
+
+[[deployed]]
+artifact_name = "post-implementation-updates"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:02.250692+00:00"
+artifact_path = "commands/post-implementation-updates.md"
+content_hash = "258a2fb568462b3a90c9a384f4c474b71ad79fcbddd42a8ea8dccdd6e51444c8"
+collection_sha = "258a2fb568462b3a90c9a384f4c474b71ad79fcbddd42a8ea8dccdd6e51444c8"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/post-implementation-updates.md",
+]
+
+[[deployed]]
+artifact_name = "pr"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:02.404036+00:00"
+artifact_path = "commands/pr.md"
+content_hash = "434489bfe586640117f4a9b79f5e34d6ed1ab865c0fa3811de025c3e39c50900"
+collection_sha = "434489bfe586640117f4a9b79f5e34d6ed1ab865c0fa3811de025c3e39c50900"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/pr.md",
+]
+
+[[deployed]]
+artifact_name = "pre-pr-validation"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:02.676647+00:00"
+artifact_path = "commands/pre-pr-validation.md"
+content_hash = "1a39fb153b0a3339782404bc053b9eddca4d1e907592d4975fe69b04df5a0a77"
+collection_sha = "1a39fb153b0a3339782404bc053b9eddca4d1e907592d4975fe69b04df5a0a77"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/pre-pr-validation.md",
+]
+
+[[deployed]]
+artifact_name = "refactor-code"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:02.893006+00:00"
+artifact_path = "commands/refactor-code.md"
+content_hash = "50cae5572b870db245ea61d501571e8d07ed87ca5128a1c3553add6450dcb3b7"
+collection_sha = "50cae5572b870db245ea61d501571e8d07ed87ca5128a1c3553add6450dcb3b7"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/refactor-code.md",
+]
+
+[[deployed]]
+artifact_name = "refractor"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:03.046282+00:00"
+artifact_path = "commands/refractor.md"
+content_hash = "3b8f4b156b934c5d6b78598910ddea715d213a8c3f9e4062b2e3b401087c9e10"
+collection_sha = "3b8f4b156b934c5d6b78598910ddea715d213a8c3f9e4062b2e3b401087c9e10"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/refractor.md",
+]
+
+[[deployed]]
+artifact_name = "refresh-ai-artifacts"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:03.294826+00:00"
+artifact_path = "commands/refresh-ai-artifacts.md"
+content_hash = "4d445cd4953a3a47a0ad19f96395f38ba7d211229e4094653008f502d1308e2d"
+collection_sha = "4d445cd4953a3a47a0ad19f96395f38ba7d211229e4094653008f502d1308e2d"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/refresh-ai-artifacts.md",
+]
+
+[[deployed]]
+artifact_name = "review-story"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:03.462861+00:00"
+artifact_path = "commands/review-story.md"
+content_hash = "f0384fd35643c03ffd0a8060407308b5ae7bb54aee508045d2ab66c45e43f167"
+collection_sha = "f0384fd35643c03ffd0a8060407308b5ae7bb54aee508045d2ab66c45e43f167"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/review-story.md",
+]
+
+[[deployed]]
+artifact_name = "scan-violations"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:03.817030+00:00"
+artifact_path = "commands/scan-violations.md"
+content_hash = "f4aa60e75075c42c044255ea96c867722e03a42dcd298e9025265442086bc7b1"
+collection_sha = "f4aa60e75075c42c044255ea96c867722e03a42dcd298e9025265442086bc7b1"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/scan-violations.md",
+]
+
+[[deployed]]
+artifact_name = "session-learning-capture"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:33.061935+00:00"
+artifact_path = "commands/session-learning-capture.md"
+content_hash = "4c854b91f3ad1b9b82cc682c90b35fbad51e4eb34c4ee2b6877758b9c9c79a44"
+collection_sha = "4c854b91f3ad1b9b82cc682c90b35fbad51e4eb34c4ee2b6877758b9c9c79a44"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/session-learning-capture.md",
+]
+
+[[deployed]]
+artifact_name = "symbols-chunk"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:33.236879+00:00"
+artifact_path = "commands/symbols-chunk.md"
+content_hash = "bd078db9c15f5744c97f65a7412dc477bf208d35e5e0d3898c3e372344a1dee4"
+collection_sha = "bd078db9c15f5744c97f65a7412dc477bf208d35e5e0d3898c3e372344a1dee4"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/symbols-chunk.md",
+]
+
+[[deployed]]
+artifact_name = "symbols-query"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:33.409938+00:00"
+artifact_path = "commands/symbols-query.md"
+content_hash = "7c24d7c8d215c2075e22d0f925b173b825be7ddbfef948c0ca2c06a638a39f81"
+collection_sha = "7c24d7c8d215c2075e22d0f925b173b825be7ddbfef948c0ca2c06a638a39f81"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/symbols-query.md",
+]
+
+[[deployed]]
+artifact_name = "symbols-search"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:33.610380+00:00"
+artifact_path = "commands/symbols-search.md"
+content_hash = "85b8e0bb69a4ee0e36f2615edf397698a66a2476ccd69c99912e78b647316036"
+collection_sha = "85b8e0bb69a4ee0e36f2615edf397698a66a2476ccd69c99912e78b647316036"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/symbols-search.md",
+]
+
+[[deployed]]
+artifact_name = "symbols-update"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:33.783384+00:00"
+artifact_path = "commands/symbols-update.md"
+content_hash = "839df5594de7bc7a14edcbc7f6e2f1afb1801cbc2ff1f97fc9c8b29850d7e056"
+collection_sha = "839df5594de7bc7a14edcbc7f6e2f1afb1801cbc2ff1f97fc9c8b29850d7e056"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/symbols-update.md",
+]
+
+[[deployed]]
+artifact_name = "task_gen"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:33.929149+00:00"
+artifact_path = "commands/task_gen.md"
+content_hash = "bd9cee39546c53ac0aafdabb1f131969b78e68c6dbccb2cefcddfda1d18e08fb"
+collection_sha = "bd9cee39546c53ac0aafdabb1f131969b78e68c6dbccb2cefcddfda1d18e08fb"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/task_gen.md",
+]
+
+[[deployed]]
+artifact_name = "test-stories"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:34.083644+00:00"
+artifact_path = "commands/test-stories.md"
+content_hash = "20080c89a3b1ac67046ba3b987e14bccaf4861f68e678a500cbedc8dffa644d0"
+collection_sha = "20080c89a3b1ac67046ba3b987e14bccaf4861f68e678a500cbedc8dffa644d0"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/test-stories.md",
+]
+
+[[deployed]]
+artifact_name = "trello-add-card"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:34.429023+00:00"
+artifact_path = "commands/trello-add-card.md"
+content_hash = "442cf0a1d317a28e3af3fcb9a264f888f2bbe00fd27079af0a1fca592060609e"
+collection_sha = "442cf0a1d317a28e3af3fcb9a264f888f2bbe00fd27079af0a1fca592060609e"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/trello-add-card.md",
+]
+
+[[deployed]]
+artifact_name = "ultra_think"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:34.836565+00:00"
+artifact_path = "commands/ultra_think.md"
+content_hash = "e2a983b15479d305e16183f2558fff302ec0120408f4da1157a67e7dc9c1aee2"
+collection_sha = "e2a983b15479d305e16183f2558fff302ec0120408f4da1157a67e7dc9c1aee2"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/ultra_think.md",
+]
+
+[[deployed]]
+artifact_name = "update-ai-hints"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:29:35.052162+00:00"
+artifact_path = "commands/update-ai-hints.md"
+content_hash = "4ac27a0a3964327eda292916765eb4eb8fe652fcd29875768ec112ef1dec9133"
+collection_sha = "4ac27a0a3964327eda292916765eb4eb8fe652fcd29875768ec112ef1dec9133"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/update-ai-hints.md",
+]
+
+[[deployed]]
+artifact_name = "update-codeowners"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:30:04.296917+00:00"
+artifact_path = "commands/update-codeowners.md"
+content_hash = "614261a44a7688c17a7025335ad2e811c5199092d7631fa402b5837a5bad62f9"
+collection_sha = "614261a44a7688c17a7025335ad2e811c5199092d7631fa402b5837a5bad62f9"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/update-codeowners.md",
+]
+
+[[deployed]]
+artifact_name = "update-readmes"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:30:04.559418+00:00"
+artifact_path = "commands/update-readmes.md"
+content_hash = "5679b9fb475eebcf134bade0abc6c591290fd92765524e97eb80f401de0e86e4"
+collection_sha = "5679b9fb475eebcf134bade0abc6c591290fd92765524e97eb80f401de0e86e4"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/update-readmes.md",
+]
+
+[[deployed]]
+artifact_name = "update-repo-map"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:30:04.751250+00:00"
+artifact_path = "commands/update-repo-map.md"
+content_hash = "305baab3982110042cc4227a865c1322cfbb547acacc89aedd771740b759f123"
+collection_sha = "305baab3982110042cc4227a865c1322cfbb547acacc89aedd771740b759f123"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/update-repo-map.md",
+]
+
+[[deployed]]
+artifact_name = "update-symbols-graph"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:30:05.009251+00:00"
+artifact_path = "commands/update-symbols-graph.md"
+content_hash = "13e4708257ed164f80e503d1b3409d5f40308efc49d3ebf317c3af62a2365718"
+collection_sha = "13e4708257ed164f80e503d1b3409d5f40308efc49d3ebf317c3af62a2365718"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/update-symbols-graph.md",
+]
+
+[[deployed]]
+artifact_name = "user_stories"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:30:05.176175+00:00"
+artifact_path = "commands/user_stories.md"
+content_hash = "66a26f6ae2f93382634b8f6ea05b460c092064aca014bb21615e00a035557c41"
+collection_sha = "66a26f6ae2f93382634b8f6ea05b460c092064aca014bb21615e00a035557c41"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/user_stories.md",
+]
+
+[[deployed]]
+artifact_name = "validate-contracts"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:30:05.482992+00:00"
+artifact_path = "commands/validate-contracts.md"
+content_hash = "3994107f0234dc20e9a99bbc93a320e65d8d4c8406b7a61d787a5cbc651630cc"
+collection_sha = "3994107f0234dc20e9a99bbc93a320e65d8d4c8406b7a61d787a5cbc651630cc"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/validate-contracts.md",
+]
+
+[[deployed]]
+artifact_name = "write-tests"
+artifact_type = "command"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:30:05.624885+00:00"
+artifact_path = "commands/write-tests.md"
+content_hash = "e8a41405465161355134051bb01dff767bc01ef89e876f1adec23b78a5a78896"
+collection_sha = "e8a41405465161355134051bb01dff767bc01ef89e876f1adec23b78a5a78896"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "commands/write-tests.md",
+]
+
+[[deployed]]
+artifact_name = "architecture-reviewer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:45:00.171479+00:00"
+artifact_path = "agents/architecture-reviewer.md"
+content_hash = "beedf7589c1adaf3d5b8c7085874012311633064605ed215157b2032bcae9164"
+collection_sha = "beedf7589c1adaf3d5b8c7085874012311633064605ed215157b2032bcae9164"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/architecture-reviewer.md",
+]
+
+[[deployed]]
+artifact_name = "correctness-reviewer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:45:42.136655+00:00"
+artifact_path = "agents/correctness-reviewer.md"
+content_hash = "25beac0f0822aba16787a542aadf80ad875e6e57e840fffdd155ee57bc2651a6"
+collection_sha = "25beac0f0822aba16787a542aadf80ad875e6e57e840fffdd155ee57bc2651a6"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/correctness-reviewer.md",
+]
+
+[[deployed]]
+artifact_name = "council-coordinator"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:45:47.329341+00:00"
+artifact_path = "agents/council-coordinator.md"
+content_hash = "66cfc470c447e2bdb37884539701bca1796cb6c9a6995eaa16a402990420412e"
+collection_sha = "66cfc470c447e2bdb37884539701bca1796cb6c9a6995eaa16a402990420412e"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/council-coordinator.md",
+]
+
+[[deployed]]
+artifact_name = "devex-platform-reviewer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:45:51.583380+00:00"
+artifact_path = "agents/devex-platform-reviewer.md"
+content_hash = "43be293f843a78d0f7055914500615ecbf9217229ceef6df8bc6366c6616b3b6"
+collection_sha = "43be293f843a78d0f7055914500615ecbf9217229ceef6df8bc6366c6616b3b6"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/devex-platform-reviewer.md",
+]
+
+[[deployed]]
+artifact_name = "domain-research-reviewer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:45:55.818269+00:00"
+artifact_path = "agents/domain-research-reviewer.md"
+content_hash = "c18c3b1451dc403c76dee173b996cbf7ce63a500f576ea9ebfe6fbdeff29eb9c"
+collection_sha = "c18c3b1451dc403c76dee173b996cbf7ce63a500f576ea9ebfe6fbdeff29eb9c"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/domain-research-reviewer.md",
+]
+
+[[deployed]]
+artifact_name = "evaluator-reviewer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:45:59.835588+00:00"
+artifact_path = "agents/evaluator-reviewer.md"
+content_hash = "74ba6b0c0864e758cd95d1b1090fc491409d6f44add8b9c3b847ad239ea37829"
+collection_sha = "74ba6b0c0864e758cd95d1b1090fc491409d6f44add8b9c3b847ad239ea37829"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/evaluator-reviewer.md",
+]
+
+[[deployed]]
+artifact_name = "gtm-executive-narrative-reviewer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:46:04.007705+00:00"
+artifact_path = "agents/gtm-executive-narrative-reviewer.md"
+content_hash = "909db3e9a36ecbc96de9b2f95d94986e833e8c3bd6520d713a55873bb8ce2d15"
+collection_sha = "909db3e9a36ecbc96de9b2f95d94986e833e8c3bd6520d713a55873bb8ce2d15"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/gtm-executive-narrative-reviewer.md",
+]
+
+[[deployed]]
+artifact_name = "mcp-tool-governance-reviewer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:46:08.072543+00:00"
+artifact_path = "agents/mcp-tool-governance-reviewer.md"
+content_hash = "36eb0e935a0ada5ff7706674da26b6d83e54228d099b6a50032891302a334674"
+collection_sha = "36eb0e935a0ada5ff7706674da26b6d83e54228d099b6a50032891302a334674"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/mcp-tool-governance-reviewer.md",
+]
+
+[[deployed]]
+artifact_name = "operator-sre-reviewer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:46:12.074661+00:00"
+artifact_path = "agents/operator-sre-reviewer.md"
+content_hash = "f74960bc43da022c753ee04ae25b2e3d2adf6d7f7b8d711a7a1dbeb41caefa1c"
+collection_sha = "f74960bc43da022c753ee04ae25b2e3d2adf6d7f7b8d711a7a1dbeb41caefa1c"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/operator-sre-reviewer.md",
+]
+
+[[deployed]]
+artifact_name = "platform-architecture-reviewer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:46:16.840278+00:00"
+artifact_path = "agents/platform-architecture-reviewer.md"
+content_hash = "481fbbf239ac40dd71b8ccd4eef09663daac2fe009979fbcbe56641ca87c8065"
+collection_sha = "481fbbf239ac40dd71b8ccd4eef09663daac2fe009979fbcbe56641ca87c8065"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/platform-architecture-reviewer.md",
+]
+
+[[deployed]]
+artifact_name = "platform-engineer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:46:20.768996+00:00"
+artifact_path = "agents/platform-engineer.md"
+content_hash = "17ea9f3d0a8f91fb5d787c9291f6f69cd20abef3bb950f9a4c3573c857e20859"
+collection_sha = "17ea9f3d0a8f91fb5d787c9291f6f69cd20abef3bb950f9a4c3573c857e20859"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/platform-engineer.md",
+]
+
+[[deployed]]
+artifact_name = "vector-database-engineer"
+artifact_type = "agent"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:46:24.824152+00:00"
+artifact_path = "agents/vector-database-engineer.md"
+content_hash = "228dfc74a5f64d29e523899e6813a676ca7a1b8ff923d11752520dd372ba5b39"
+collection_sha = "228dfc74a5f64d29e523899e6813a676ca7a1b8ff923d11752520dd372ba5b39"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "agents/vector-database-engineer.md",
+]
+
+[[deployed]]
+artifact_name = "notebooklm-extended"
+artifact_type = "orchestration"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:46:48.073719+00:00"
+artifact_path = "workflows/notebooklm-extended.js"
+content_hash = "4cea62ad122cf96bfe82759b2e7d48341ee6c38b5f50f5512e5c2a4f21871883"
+collection_sha = "4cea62ad122cf96bfe82759b2e7d48341ee6c38b5f50f5512e5c2a4f21871883"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "workflows/notebooklm-extended.js",
+]
+
+[[deployed]]
+artifact_name = "notebooklm-report"
+artifact_type = "orchestration"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:47:03.653506+00:00"
+artifact_path = "workflows/notebooklm-report.js"
+content_hash = "09b5413ae878369896b98d4b683d8ed2e09e0969b2b0cbaeed2b5213b8a24dbb"
+collection_sha = "09b5413ae878369896b98d4b683d8ed2e09e0969b2b0cbaeed2b5213b8a24dbb"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "workflows/notebooklm-report.js",
+]
+
+[[deployed]]
+artifact_name = "notebooklm-sourcing"
+artifact_type = "orchestration"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:47:07.799329+00:00"
+artifact_path = "workflows/notebooklm-sourcing.js"
+content_hash = "bc4a161fe2d55356fdfa4b18151afe4904a2e8db389ae3fb0f22fd1b40a03d18"
+collection_sha = "bc4a161fe2d55356fdfa4b18151afe4904a2e8db389ae3fb0f22fd1b40a03d18"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "workflows/notebooklm-sourcing.js",
+]
+
+[[deployed]]
+artifact_name = "research-foundry-council"
+artifact_type = "orchestration"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:47:11.765545+00:00"
+artifact_path = "workflows/research-foundry-council.js"
+content_hash = "df00b835c3dc850cbd37245517f051099f47efd1a0018c78f6b6afd96a25e708"
+collection_sha = "df00b835c3dc850cbd37245517f051099f47efd1a0018c78f6b6afd96a25e708"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "workflows/research-foundry-council.js",
+]
+
+[[deployed]]
+artifact_name = "research-foundry-swarm"
+artifact_type = "orchestration"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:47:15.798736+00:00"
+artifact_path = "workflows/research-foundry-swarm.js"
+content_hash = "5985400d85507288cf96b8ba65570a24ff69260776b3567840d4a6a940896247"
+collection_sha = "5985400d85507288cf96b8ba65570a24ff69260776b3567840d4a6a940896247"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "workflows/research-foundry-swarm.js",
+]
+
+[[deployed]]
+artifact_name = "rf-pediatric-cds-run-execute"
+artifact_type = "orchestration"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:47:19.905862+00:00"
+artifact_path = "workflows/rf-pediatric-cds-run-execute.js"
+content_hash = "ef075b797c9283e5593ada1e6c55817f867eae76744a26cd021e10ac78faed14"
+collection_sha = "ef075b797c9283e5593ada1e6c55817f867eae76744a26cd021e10ac78faed14"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "workflows/rf-pediatric-cds-run-execute.js",
+]
+
+[[deployed]]
+artifact_name = "rf-run-execute"
+artifact_type = "orchestration"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:47:23.919408+00:00"
+artifact_path = "workflows/rf-run-execute.js"
+content_hash = "addffe9698d42de5dc0fc9df39f0a36f566dae1daeec68ba7d35325aff9ee9fc"
+collection_sha = "addffe9698d42de5dc0fc9df39f0a36f566dae1daeec68ba7d35325aff9ee9fc"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "workflows/rf-run-execute.js",
+]
+
+[[deployed]]
+artifact_name = "format-javascript-files"
+artifact_type = "hook"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:47:28.018256+00:00"
+artifact_path = "hooks/format-javascript-files.json"
+content_hash = "b5f6e2e46ca1158b8b07aaecd88ff1f08088a04a3ec89c20d27d7e1acb0d2dba"
+collection_sha = "b5f6e2e46ca1158b8b07aaecd88ff1f08088a04a3ec89c20d27d7e1acb0d2dba"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "hooks/format-javascript-files.json",
+]
+
+[[deployed]]
+artifact_name = "format-python-files"
+artifact_type = "hook"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:47:32.204595+00:00"
+artifact_path = "hooks/format-python-files.json"
+content_hash = "a2930d0f88f1d5301bb6be3b0a21babe7e9ccca2518acd6dfb1c2e202ab9af39"
+collection_sha = "a2930d0f88f1d5301bb6be3b0a21babe7e9ccca2518acd6dfb1c2e202ab9af39"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "hooks/format-python-files.json",
+]
+
+[[deployed]]
+artifact_name = "git-add-changes"
+artifact_type = "hook"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:47:36.133189+00:00"
+artifact_path = "hooks/git-add-changes.json"
+content_hash = "069b391faf00362bc7bc70ab2317f5dc4b3a723eb76eb6173ef4dc6b25cbc592"
+collection_sha = "069b391faf00362bc7bc70ab2317f5dc4b3a723eb76eb6173ef4dc6b25cbc592"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "hooks/git-add-changes.json",
+]
+
+[[deployed]]
+artifact_name = "run-tests-after-changes"
+artifact_type = "hook"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:47:40.198620+00:00"
+artifact_path = "hooks/run-tests-after-changes.json"
+content_hash = "feaec3a06a280d7402e4c85df99666c5672c96e381362efe7ea7806db00ae843"
+collection_sha = "feaec3a06a280d7402e4c85df99666c5672c96e381362efe7ea7806db00ae843"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "hooks/run-tests-after-changes.json",
+]
+
+[[deployed]]
+artifact_name = "update-symbols-on-code-change"
+artifact_type = "hook"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:47:44.367912+00:00"
+artifact_path = "hooks/update-symbols-on-code-change.json"
+content_hash = "b8417e7e85a25963f32bf23d4e7cb2c3a7617c89ea5cd02d7339554bab718802"
+collection_sha = "b8417e7e85a25963f32bf23d4e7cb2c3a7617c89ea5cd02d7339554bab718802"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "hooks/update-symbols-on-code-change.json",
+]
+
+[[deployed]]
+artifact_name = "meatywiki-author"
+artifact_type = "skill"
+from_collection = "enterprise"
+deployed_at = "2026-09-03T17:47:48.571522+00:00"
+artifact_path = "skills/meatywiki-author"
+content_hash = "10619a35c5ad6431af5d32710d61514155900a34c8031baedb08458b040a719a"
+collection_sha = "10619a35c5ad6431af5d32710d61514155900a34c8031baedb08458b040a719a"
+local_modifications = false
+enterprise_version = "1.0.0"
+enterprise_files = [
+    "skills/meatywiki-author/README.md",
+    "skills/meatywiki-author/SKILL.md",
+    "skills/meatywiki-author/SPEC.md",
+    "skills/meatywiki-author/examples/code-snippet.md",
+    "skills/meatywiki-author/examples/concept.md",
+    "skills/meatywiki-author/examples/research-finding.md",
 ]
